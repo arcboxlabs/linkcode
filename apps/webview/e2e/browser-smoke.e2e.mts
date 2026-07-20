@@ -35,10 +35,11 @@ function monitorApplicationErrors(page: Page, appOrigin: string, appErrors: stri
   page.on('requestfailed', (request) => {
     // Cloud/Sentry endpoints are outside this standalone boundary. Same-origin failures are app
     // asset/navigation failures and must close the smoke test immediately at its next assertion.
-    if (request.url().startsWith(appOrigin)) {
-      appErrors.push(
-        `requestfailed: ${request.method()} ${request.url()} (${request.failure()?.errorText ?? 'unknown'})`,
-      );
+    // Chromium reports route-change cancellations as ERR_ABORTED while the Vite module graph is
+    // still loading; a required canceled module is covered by the subsequent UI assertion.
+    const errorText = request.failure()?.errorText ?? 'unknown';
+    if (request.url().startsWith(appOrigin) && errorText !== 'net::ERR_ABORTED') {
+      appErrors.push(`requestfailed: ${request.method()} ${request.url()} (${errorText})`);
     }
   });
 }
