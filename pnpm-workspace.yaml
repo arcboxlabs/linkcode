@@ -51,7 +51,7 @@ catalog:
   # the 6.0 API re-export (ships a `tsc6` binary). Native TypeScript 7 provides the `tsc` binary used
   # for typecheck/build via the root `@typescript/native` devDependency (npm:typescript@7).
   typescript: "npm:@typescript/typescript6@^6.0.2"
-  "@types/node": ^25.9.3
+  "@types/node": ^26.1.1
 
   # Data contracts
   zod: ^4.4.3
