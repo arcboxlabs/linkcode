@@ -14,6 +14,7 @@ describe('applyProviderDefaults', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, defaultModel: 'o4-mini' } };
     expect(applyProviderDefaults(baseOpts, providers).model).toBe('o4-mini');
     expect(applyProviderDefaults({ ...baseOpts, model: 'gpt-4o' }, providers).model).toBe('gpt-4o');
+    expect(applyProviderDefaults({ ...baseOpts, model: null }, providers).model).toBeNull();
   });
 
   it('injects the api key into config, preserving existing config keys', () => {

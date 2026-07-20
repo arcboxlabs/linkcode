@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { effortOptionsForModel } from '../shell/agent-efforts';
 import { AGENT_MODEL_OPTIONS, groupModelsByProvider, resolveModel } from '../shell/agent-models';
 
 const claude = AGENT_MODEL_OPTIONS['claude-code'];
@@ -57,5 +58,31 @@ describe('groupModelsByProvider', () => {
     expect(
       groupModelsByProvider(multiProvider.filter((option) => option.description === 'OpenAI')),
     ).toBeNull();
+  });
+});
+
+describe('effortOptionsForModel', () => {
+  it('limits Pi effort choices to the selected dynamic model', () => {
+    expect(
+      effortOptionsForModel('pi', {
+        id: 'banned/basic',
+        label: 'Basic',
+        effortLevels: [],
+      }),
+    ).toEqual([]);
+    expect(
+      effortOptionsForModel('pi', {
+        id: 'banned/reasoning',
+        label: 'Reasoning',
+        effortLevels: ['low', 'high'],
+      }),
+    ).toEqual([
+      { id: 'low', label: 'Low', shortLabel: 'L' },
+      { id: 'high', label: 'High', shortLabel: 'H' },
+    ]);
+  });
+
+  it('keeps agent-level choices when a model has no capability metadata', () => {
+    expect(effortOptionsForModel('codex', { id: 'gpt-5.5', label: 'GPT-5.5' })).toHaveLength(4);
   });
 });

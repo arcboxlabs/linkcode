@@ -35,6 +35,10 @@ class ScheduleFakeAdapter implements AgentAdapter {
     return Promise.resolve();
   }
 
+  startCatalog() {
+    return Promise.resolve({ models: [], policies: [] });
+  }
+
   send(input: AgentInput): Promise<void> {
     if (input.type === 'prompt') {
       this.emit({
