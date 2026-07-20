@@ -7,7 +7,6 @@ import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import type { TerminalSessionLease } from './session-registry';
 import { acquireTerminalSession, peekTerminalSnapshot } from './session-registry';
-import { useTerminalTabsStore } from './tabs-store';
 
 const TERMINAL_INITIAL_SIZE = { cols: 80, rows: 24 };
 const INPUT_LOST_BANNER_MS = 4000;
@@ -20,12 +19,15 @@ const INPUT_LOST_BANNER_MS = 4000;
 export function TerminalPanel({
   sessionKey,
   cwd,
+  onCloseTab,
   interactive,
   suspended,
 }: {
   sessionKey: string;
   /** Working directory for the shell, captured when the terminal first opens (host home if omitted). */
   cwd?: string;
+  /** Close through the host action so panel selection/open state follows the shared tab store. */
+  onCloseTab: (id: string) => void;
   interactive?: boolean;
   /** Freeze the terminal's box while the host panel animates shut/open — see {@link LiveTerminal}. */
   suspended?: boolean;
@@ -44,7 +46,7 @@ export function TerminalPanel({
         client,
         sessionKey,
         { ...TERMINAL_INITIAL_SIZE, cwd },
-        () => useTerminalTabsStore.getState().closeTab(sessionKey),
+        () => onCloseTab(sessionKey),
       );
       leaseRef.current = lease;
       const unsubscribe = lease.subscribe(onStoreChange);
@@ -54,7 +56,7 @@ export function TerminalPanel({
         if (leaseRef.current === lease) leaseRef.current = null;
       };
     },
-    [client, sessionKey, cwd],
+    [client, sessionKey, cwd, onCloseTab],
   );
   const snapshot = useSyncExternalStore(subscribe, () => peekTerminalSnapshot(client, sessionKey));
 

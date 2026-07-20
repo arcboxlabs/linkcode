@@ -460,6 +460,7 @@ export function DesktopShell({
       node: tab.id.startsWith('attach:') ? (
         <AttachedTerminalPanel
           terminalId={tab.id.slice('attach:'.length)}
+          onCloseTab={closeTab}
           interactive={rightOwnsTerminal}
           primary={rightOwnsTerminal}
           suspended={rightTransition.phase !== 'open' || shellAnimating}
@@ -468,6 +469,7 @@ export function DesktopShell({
         <TerminalPanel
           sessionKey={tab.id}
           cwd={active?.cwd}
+          onCloseTab={closeTab}
           interactive={rightOwnsTerminal}
           suspended={rightTransition.phase !== 'open' || shellAnimating}
         />
@@ -493,6 +495,7 @@ export function DesktopShell({
           tab.id.startsWith('attach:') ? (
             <AttachedTerminalPanel
               terminalId={tab.id.slice('attach:'.length)}
+              onCloseTab={closeTab}
               interactive={bottomOwnsTerminal}
               primary={bottomOwnsTerminal}
               suspended={bottomTransition.phase !== 'open' || shellAnimating}
@@ -501,6 +504,7 @@ export function DesktopShell({
             <TerminalPanel
               sessionKey={tab.id}
               cwd={active?.cwd}
+              onCloseTab={closeTab}
               interactive={bottomOwnsTerminal}
               suspended={bottomTransition.phase !== 'open' || shellAnimating}
             />
