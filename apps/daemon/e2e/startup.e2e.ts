@@ -121,7 +121,13 @@ async function main(): Promise<void> {
     for (const table of ['__drizzle_migrations', 'sessions', 'workspaces', 'schedules', 'loops']) {
       assert(tables.has(table), `missing migrated table ${table}`);
     }
-    console.log('PASS daemon startup, discovery, SQLite, Socket.IO, and PTY');
+
+    assert(child.kill('SIGTERM'), 'daemon rejected SIGTERM');
+    const shutdown = await waitFor(() => exit ?? false, 50, AbortSignal.timeout(10000));
+    assert.deepEqual(shutdown, { code: 0, signal: null });
+    assert.equal(existsSync(runtimePath), false, 'runtime.json survived graceful shutdown');
+
+    console.log('PASS daemon startup, discovery, SQLite, Socket.IO, PTY, and graceful shutdown');
   } catch (error) {
     console.error(logs.join('').slice(-8000));
     throw error;

@@ -110,7 +110,7 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 
 ### CI runs Vitest and process acceptance separately
 
-CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **webview** (the production bundle in Chromium, followed by the Vite mock entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry, window-state persistence, plus an unsigned packaged devshell), **webview** (the production bundle in Chromium, followed by the bundled mock entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 The daemon acceptance driver is deliberately outside Vitest: it starts `dist/index.js` as an external process with an isolated `HOME`, waits for `runtime.json`, checks the HTTP identity, connects a public `LinkCodeClient` through Socket.IO, reads the migrated native SQLite database, and opens a shell through the real PTY sidecar. Run the same boundary locally with:
 
@@ -158,10 +158,11 @@ intended operation.
 
 ## Desktop E2E procedures
 
-The CI entry smoke tests are `e2e:unpackaged` and `e2e:packaged`. The first launches the built main/preload/renderer and calls the sandbox preload bridge. The second builds and launches the unsigned devshell directory product, then proves that its preload bridge, supervised bundled daemon, native SQLite migrations, and staged PTY sidecar work together. Run both on Linux with `xvfb-run`; the packaged check is intentionally not evidence for signing or notarization:
+The CI entry smoke tests are `e2e:unpackaged`, `e2e:window-bounds`, and `e2e:packaged`. The first launches the built main/preload/renderer and calls the sandbox preload bridge. The window check relaunches Electron to prove first-run sizing and persisted normal/maximized bounds; a headless Xvfb run needs a window manager such as Openbox because Linux maximize is a window-manager operation. The packaged check builds and launches the unsigned devshell directory product, proves that its renderer crosses the connection gate, then exercises its preload bridge, supervised bundled daemon, native SQLite migrations, staged PTY sidecar, and graceful app/daemon shutdown. Run all three on Linux with `xvfb-run`; the packaged check is intentionally not evidence for signing or notarization:
 
 ```bash
 xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+xvfb-run -a sh -c 'openbox >/tmp/linkcode-openbox.log 2>&1 & wm_pid=$!; trap "kill $wm_pid 2>/dev/null || true" EXIT; pnpm -F @linkcode/desktop e2e:window-bounds'
 xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
 ```
 

@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
+import { waitFor } from 'foxts/wait-for';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 
@@ -20,8 +21,7 @@ const electronBinary = require('electron') as unknown as string;
 const PROFILE = `e2e-window-bounds-${process.pid}`;
 
 function fail(message: string): never {
-  console.error(`FAIL: ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 async function launch(): Promise<ElectronApplication> {
@@ -100,7 +100,11 @@ async function main(): Promise<void> {
 
     // Maximize, close, relaunch: the maximized flag survives while normal bounds stay intact.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].maximize());
-    await wait(500);
+    await waitFor(
+      () => app?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()),
+      100,
+      AbortSignal.timeout(5000),
+    );
     await app.close();
     app = null;
     app = await launch();
