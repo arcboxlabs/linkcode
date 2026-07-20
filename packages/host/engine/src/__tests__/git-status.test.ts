@@ -4,13 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect, Logger as EffectLogger } from 'effect';
 import { noop } from 'foxts/noop';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GitService } from '../git/git-service';
 import { GitProviderError } from '../git/provider';
 import { readGitStatus } from '../git/status';
 
 const roots: string[] = [];
 const silentLogger = EffectLogger.layer([EffectLogger.make(noop)]);
+const previousGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+const previousGitConfigNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
 
 function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'linkcode-git-test-'));
@@ -41,7 +43,18 @@ function makeRepo(): string {
   return dir;
 }
 
+beforeAll(() => {
+  const globalConfig = join(makeTempDir(), 'global.gitconfig');
+  writeFileSync(globalConfig, '');
+  process.env.GIT_CONFIG_GLOBAL = globalConfig;
+  process.env.GIT_CONFIG_NOSYSTEM = '1';
+});
+
 afterAll(() => {
+  if (previousGitConfigGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+  else process.env.GIT_CONFIG_GLOBAL = previousGitConfigGlobal;
+  if (previousGitConfigNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+  else process.env.GIT_CONFIG_NOSYSTEM = previousGitConfigNoSystem;
   for (const dir of roots) rmSync(dir, { recursive: true, force: true });
 });
 

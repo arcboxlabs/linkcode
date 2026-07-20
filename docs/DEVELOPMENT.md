@@ -101,9 +101,9 @@ There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven 
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
 ```
 
-### CI does NOT run vitest
+### CI runs vitest separately
 
-CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. None of them runs `pnpm test` — the vitest suite gates nothing in CI, so **run it yourself before every commit**. Do not trust an agent workflow's "all green" self-report: run `pnpm check:ci` and `pnpm test` and re-check anything a review left unfixed. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`, `test`), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. `check:ci` still excludes vitest, so run both `pnpm check:ci` and `pnpm test` before every commit rather than treating either command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 Every workspace with a root `tests/` directory must provide `tests/tsconfig.json`, extending its production config with the workspace root as `rootDir`, and the root `tsconfig.json` must reference it. Vitest discovery alone does not type-check every support file.
 
@@ -125,7 +125,7 @@ pnpm -F @linkcode/daemon run build:rust
 pnpm test
 ```
 
-CI never builds the binary inside the TypeScript job, so this cross-language test no-ops in CI — you must run it locally. `cargo test --locked` runs `smoke.rs` self-contained.
+CI does not build the binary inside the TypeScript job, so this cross-language test still no-ops there even though vitest runs — build it before the local suite when validating the TS↔Rust wire. `cargo test --locked` runs `smoke.rs` self-contained in the Rust job.
 
 The multi-device terminal contract has a separate in-process integration check. It opens from a
 desktop peer, attaches a late mobile controller through the Hub, verifies replay plus live output,
