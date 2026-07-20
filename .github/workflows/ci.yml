@@ -78,6 +78,41 @@ jobs:
           pnpm -F @linkcode/daemon build
           pnpm -F @linkcode/daemon e2e:startup
 
+  desktop:
+    name: Desktop App Entry
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Electron system dependencies
+        run: pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+
+      - name: Test unpackaged app entry
+        run: xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+
+      - name: Test unsigned packaged app entry
+        run: xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
+
   rust:
     name: Rust
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -108,12 +143,13 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     needs:
       - typescript
+      - desktop
       - rust
     if: always()
 
     steps:
       - name: Check required jobs
         run: |
-          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
+          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.desktop.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
             exit 1
           fi
