@@ -141,10 +141,7 @@ jobs:
       - name: Install Chromium
         run: pnpm -F @linkcode/webview exec playwright-core install --with-deps chromium --only-shell
 
-      - name: Build production browser entry
-        run: pnpm -F @linkcode/webview build
-
-      - name: Test browser app entry
+      - name: Test production and mock browser entries
         run: pnpm -F @linkcode/webview e2e:browser
 
   mobile:

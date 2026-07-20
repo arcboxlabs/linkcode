@@ -110,7 +110,7 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 
 ### CI runs Vitest and process acceptance separately
 
-CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **webview** (real Chromium against the Vite browser entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **webview** (the production bundle in Chromium, followed by the Vite mock entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 The daemon acceptance driver is deliberately outside Vitest: it starts `dist/index.js` as an external process with an isolated `HOME`, waits for `runtime.json`, checks the HTTP identity, connects a public `LinkCodeClient` through Socket.IO, reads the migrated native SQLite database, and opens a shell through the real PTY sidecar. Run the same boundary locally with:
 
@@ -193,7 +193,7 @@ Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/Lin
 
 ## Webview and mobile entry smoke tests
 
-The webview browser smoke starts the real Vite app in mock mode, launches Chromium, drives the index and Settings routes, then sends prompts through the workbench's real wire-compatible mock transport before and after a full reload. Install Playwright's Chromium shell once, then run:
+The webview browser smoke builds the daemon and production bundle, then launches Chromium against the emitted assets with that isolated daemon as its real Socket.IO host and drives the index/Settings routes. It next starts the Vite app in mock mode and sends prompts through the workbench's real wire-compatible mock transport before and after a full reload. Install Playwright's Chromium shell once, then run:
 
 ```bash
 pnpm -F @linkcode/webview exec playwright-core install chromium --only-shell

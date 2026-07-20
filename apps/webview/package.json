@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
-    "e2e:browser": "node e2e/browser-smoke.e2e.mts",
+    "e2e:browser": "pnpm -F @linkcode/daemon build && pnpm run build && node e2e/browser-smoke.e2e.mts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/webview"
