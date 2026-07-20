@@ -687,6 +687,8 @@ export const en = {
       noMatches: 'No matching accounts.',
       detected: 'Detected',
       accountMenu: 'Account actions',
+      edit: 'Edit account',
+      backToAccount: 'Back to account details',
       credential: 'Credential',
       credentialApiKey: 'API key',
       credentialAuthToken: 'Auth token',
@@ -760,11 +762,14 @@ export const en = {
       oauthLoggedOutHint:
         'No CLI login detected — you can still add it; sessions will prompt for login.',
       oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
+      oauthEditHint:
+        'Subscription credentials follow the CLI login; only the account name can be changed here.',
       form: {
         label: 'Name',
         variant: 'Protocol shape',
         model: 'Default model (optional)',
         submit: 'Add account',
+        save: 'Save changes',
         credentialType: 'Type',
         secret: 'Key / token',
         baseUrl: 'Endpoint URL (optional)',

@@ -67,9 +67,29 @@ function catalogAccount(
 }
 
 function customAccount(draft: CustomDraft): Account {
+  return accountFromCustomDraft(draft);
+}
+
+/** Update an account in place while preserving its identity and fields outside the editor. */
+export function updateAccountFromDraft(account: Account, draft: CustomDraft): Account {
+  return accountFromCustomDraft(draft, account);
+}
+
+function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account {
   const protocol = draft.protocol as AccountProtocol | '';
+  const base =
+    account === undefined
+      ? newAccountBase(draft.label)
+      : (({
+          credential: _credential,
+          endpoint: _endpoint,
+          label: _label,
+          model: _model,
+          ...rest
+        }) => rest)(account);
   return {
-    ...newAccountBase(draft.label),
+    ...base,
+    label: draft.label.trim(),
     credential:
       draft.type === 'auth-token'
         ? { type: 'auth-token', token: draft.secret }
@@ -168,6 +188,83 @@ export function AddAccountForm({
         <CustomAccountForm busy={busy} onSubmit={onSubmit} />
       )}
     </div>
+  );
+}
+
+/** Existing-account editor shown in the selected account's detail pane. */
+export function EditAccountForm({
+  account,
+  busy,
+  onBack,
+  onSubmit,
+}: {
+  account: Account;
+  busy: boolean;
+  onBack: () => void;
+  onSubmit: (account: Account) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const service = serviceById(account.service);
+  return (
+    <div className="flex min-w-0 max-w-md flex-1 flex-col gap-4">
+      <div>
+        <Button type="button" size="sm" variant="ghost" onClick={onBack}>
+          <ChevronLeftIcon className="size-4" />
+          {t('backToAccount')}
+        </Button>
+      </div>
+      <div className="flex items-center gap-2.5">
+        <ServiceIcon service={account.service} label={account.label} />
+        <h3 className="font-semibold text-sm">
+          {service ? t(`serviceName.${service.id}`) : account.label}
+        </h3>
+      </div>
+      {account.credential.type === 'oauth' ? (
+        <OauthEditForm account={account} busy={busy} onSubmit={onSubmit} />
+      ) : (
+        <CustomAccountForm account={account} busy={busy} onSubmit={onSubmit} />
+      )}
+    </div>
+  );
+}
+
+const OauthEditDraftSchema = z.object({ label: z.string().min(1) });
+type OauthEditDraft = z.infer<typeof OauthEditDraftSchema>;
+
+function OauthEditForm({
+  account,
+  busy,
+  onSubmit,
+}: {
+  account: Account;
+  busy: boolean;
+  onSubmit: (account: Account) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const {
+    register,
+    handleSubmit,
+    formState: { isSubmitting },
+  } = useForm<OauthEditDraft>({
+    resolver: zodResolver(OauthEditDraftSchema),
+    defaultValues: { label: account.label },
+  });
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={handleSubmit((draft) => onSubmit({ ...account, label: draft.label.trim() }))}
+    >
+      <Field>
+        <FieldLabel>{t('form.label')}</FieldLabel>
+        <Input className="w-full" autoComplete="off" {...register('label')} />
+      </Field>
+      <p className="text-muted-foreground text-xs">{t('oauthEditHint')}</p>
+      <div>
+        <Button type="submit" size="sm" disabled={busy || isSubmitting}>
+          {t('form.save')}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -368,9 +465,11 @@ type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
 function CustomAccountForm({
+  account,
   busy,
   onSubmit,
 }: {
+  account?: Account;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -382,7 +481,22 @@ function CustomAccountForm({
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
     resolver: zodResolver(CustomDraftSchema),
-    defaultValues: { label: '', type: 'api-key', secret: '', baseUrl: '', protocol: '', model: '' },
+    defaultValues: {
+      label: account?.label ?? '',
+      type:
+        account?.credential.type === 'auth-token' || account?.credential.type === 'api-key'
+          ? account.credential.type
+          : 'api-key',
+      secret:
+        account?.credential.type === 'auth-token'
+          ? account.credential.token
+          : account?.credential.type === 'api-key'
+            ? account.credential.key
+            : '',
+      baseUrl: account?.endpoint?.baseUrl ?? '',
+      protocol: account?.endpoint?.protocol ?? '',
+      model: account?.model ?? '',
+    },
   });
 
   const typeItems = [
@@ -399,7 +513,11 @@ function CustomAccountForm({
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit(customAccount(draft)))}
+      onSubmit={handleSubmit((draft) =>
+        onSubmit(
+          account === undefined ? customAccount(draft) : updateAccountFromDraft(account, draft),
+        ),
+      )}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
@@ -444,7 +562,7 @@ function CustomAccountForm({
       </Field>
       <div>
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
-          {t('form.submit')}
+          {account === undefined ? t('form.submit') : t('form.save')}
         </Button>
       </div>
     </form>
