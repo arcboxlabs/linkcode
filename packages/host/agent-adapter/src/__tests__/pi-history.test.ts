@@ -69,6 +69,23 @@ describe('Pi history', () => {
     });
   });
 
+  it('marks cancelled and nonzero bash executions as failed', () => {
+    const events = mapPiHistoryEvents(asHistoryId('id'), [
+      entry('ok', { role: 'bashExecution', command: 'true', output: '', exitCode: 0 }),
+      entry('failed', { role: 'bashExecution', command: 'false', output: '', exitCode: 1 }),
+      entry('cancelled', {
+        role: 'bashExecution',
+        command: 'sleep 10',
+        output: '',
+        cancelled: true,
+      }),
+    ]);
+
+    expect(
+      events.map(({ event }) => (event.type === 'tool-call' ? event.toolCall.status : undefined)),
+    ).toEqual(['completed', 'failed', 'failed']);
+  });
+
   it('lists and reads through SessionManager', async () => {
     const info = {
       id: 'id',

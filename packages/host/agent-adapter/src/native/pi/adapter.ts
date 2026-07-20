@@ -22,6 +22,7 @@ import type {
   ToolKind,
 } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
+import type { AgentStartCatalogOptions } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
 import { asHistoryId } from '../../history-util';
@@ -32,6 +33,7 @@ import {
   locationsFromToolInput,
   toolKindFromName,
 } from '../../util';
+import type { PiSdk } from './history';
 import {
   findPiSessionFile,
   lastPiModelChange,
@@ -91,6 +93,39 @@ function modelOptions(models: PiModel[]) {
   }));
 }
 
+function createConfiguredRegistry(
+  pi: PiSdk,
+  opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
+  fallbackProvider?: string,
+) {
+  const authStorage = pi.AuthStorage.create();
+  const modelRegistry = pi.ModelRegistry.create(authStorage);
+  const ref = opts.model ? parseModel(opts.model) : null;
+  if (opts.model && !ref) {
+    throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
+  }
+
+  const cred = readAgentCredential(opts.config);
+  const key = cred.apiKey ?? cred.authToken;
+  const provider = ref?.provider ?? fallbackProvider ?? modelRegistry.getAvailable()[0]?.provider;
+  if ((key || cred.baseUrl) && !provider) {
+    throw new Error('pi: cannot target credential without a provider/model');
+  }
+  if (key && provider) authStorage.setRuntimeApiKey(provider, key);
+  if (cred.baseUrl) {
+    modelRegistry.registerProvider(provider, {
+      baseUrl: cred.baseUrl,
+      ...(key && { apiKey: key }),
+    });
+  }
+  return {
+    authStorage,
+    modelRegistry,
+    ref,
+    credentialProviderId: key || cred.baseUrl ? (provider ?? null) : null,
+  };
+}
+
 /**
  * Pi adapter — drives `@earendil-works/pi-coding-agent` via `createAgentSession()`. Events arrive through
  * `session.subscribe()`; prompts via `session.prompt()` (queued as a follow-up while streaming). Auth and
@@ -121,11 +156,11 @@ export class PiAdapter extends BaseAgentAdapter {
   /** Invalidates SDK and extension callbacks captured by a stopped Pi session. */
   private lifecycle = 0;
 
-  override async startCatalog(): Promise<AgentStartCatalog> {
+  override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const pi = await this.importSdk();
-    const registry = pi.ModelRegistry.create(pi.AuthStorage.create());
+    const { modelRegistry } = createConfiguredRegistry(pi, opts);
     return {
-      models: modelOptions(registry.getAvailable()),
+      models: modelOptions(modelRegistry.getAvailable()),
       policies: [...POLICIES],
       defaultPolicyId: 'default',
     };
@@ -166,9 +201,6 @@ export class PiAdapter extends BaseAgentAdapter {
       }
       this.policyId = opts.approvalPolicyId;
     }
-    const authStorage = pi.AuthStorage.create();
-    const modelRegistry = pi.ModelRegistry.create(authStorage);
-    this.modelRegistry = modelRegistry;
     let manager: SessionManager | undefined;
     let savedProvider: string | undefined;
     if (this.resumeFrom) {
@@ -177,32 +209,20 @@ export class PiAdapter extends BaseAgentAdapter {
       manager = pi.SessionManager.open(file);
       savedProvider = lastPiModelChange(manager.getBranch())?.provider;
     }
-    const ref = opts.model ? parseModel(opts.model) : null;
-    if (opts.model && !ref) {
-      throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
-    }
-
     // Inject the account's key as a runtime override so it outranks ~/.pi/agent/auth.json and env
     // vars; a gateway base URL is registered on the model registry, overriding the provider's URL.
-    const cred = readAgentCredential(opts.config);
-    const key = cred.apiKey ?? cred.authToken;
-    const provider = ref?.provider ?? savedProvider ?? modelRegistry.getAvailable()[0]?.provider;
-    if ((key || cred.baseUrl) && !provider) {
-      throw new Error('pi: cannot target credential without a provider/model');
-    }
-    if (key && provider) authStorage.setRuntimeApiKey(provider, key);
-    if (cred.baseUrl) {
-      modelRegistry.registerProvider(provider, {
-        baseUrl: cred.baseUrl,
-        ...(key && { apiKey: key }),
-      });
-    }
-    if (key || cred.baseUrl) this.credentialProviderId = provider ?? null;
+    const { authStorage, modelRegistry, ref, credentialProviderId } = createConfiguredRegistry(
+      pi,
+      opts,
+      savedProvider,
+    );
+    this.modelRegistry = modelRegistry;
+    this.credentialProviderId = credentialProviderId;
     let model = ref ? modelRegistry.find(ref.provider, ref.modelId) : undefined;
     if (ref && !model) {
       throw new Error(`pi: model '${opts.model}' is not available for provider '${ref.provider}'`);
     }
-    if (!model && !manager) model = modelRegistry.getAvailable()[0];
+    if (opts.model !== null && !model && !manager) model = modelRegistry.getAvailable()[0];
     const cwd = manager?.getCwd() ?? opts.cwd;
     const resourceLoader = new pi.DefaultResourceLoader({
       cwd,
@@ -402,7 +422,10 @@ export class PiAdapter extends BaseAgentAdapter {
       { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
     ]);
     if (this.lifecycle !== generation) return { block: true, reason: 'The Pi session has stopped' };
-    if (outcome.outcome === 'cancelled') return { block: true, reason: 'Tool call cancelled' };
+    if (outcome.outcome === 'cancelled') {
+      this.emitTool({ toolCallId: event.toolCallId, status: 'failed' });
+      return { block: true, reason: 'Tool call cancelled' };
+    }
     if (outcome.optionId === 'always') {
       this.sessionAllowedTools.add(event.toolName);
       return undefined;

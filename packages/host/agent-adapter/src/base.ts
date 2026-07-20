@@ -33,7 +33,7 @@ import { AGENT_INPUT_CAPABILITIES, textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { AgentAdapter } from './adapter';
+import type { AgentAdapter, AgentStartCatalogOptions } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
@@ -96,7 +96,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emitStatus('idle');
   }
 
-  startCatalog(_opts?: { cwd?: string }): Promise<AgentStartCatalog> {
+  startCatalog(_opts?: AgentStartCatalogOptions): Promise<AgentStartCatalog> {
     return Promise.resolve({ models: [], policies: [] });
   }
 

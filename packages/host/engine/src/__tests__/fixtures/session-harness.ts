@@ -19,6 +19,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import type { ProviderConfigStore } from '../../agent/provider-config';
 import type { SessionStore } from '../../session/session-store';
 import { InMemorySessionStore } from '../../session/session-store';
 import type { WorkspaceStore } from '../../workspace/workspace-store';
@@ -105,6 +106,7 @@ export function createSessionHarness(
   collectAgentRuntimes?: () => Promise<AgentRuntimes>,
   agentRuntimesReady?: Promise<AgentRuntimes>,
   workspaceStore?: WorkspaceStore,
+  providerStore?: ProviderConfigStore,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: ValidatedWireMessage) => void) | null = null;
@@ -132,6 +134,7 @@ export function createSessionHarness(
     collectAgentRuntimes,
     agentRuntimesReady,
     workspaceStore,
+    providerStore,
   });
 
   async function inject(payload: WirePayload): Promise<void> {
