@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PtyProcess } from '@linkcode/engine';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SidecarPtyBackend } from '../sidecar';
+import { SidecarPtyBackend } from '../../src/pty/sidecar';
 
 /**
  * Cross-boundary test: the frame protocol is implemented twice (Rust `proto.rs`, TS `codec.ts`);
@@ -11,7 +11,7 @@ import { SidecarPtyBackend } from '../sidecar';
  * must agree on the wire. Skips unless the binary is built (`cargo build -p linkcode-pty`).
  */
 const binaryName = process.platform === 'win32' ? 'linkcode-pty.exe' : 'linkcode-pty';
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const BINARY =
   [
     process.env.LINKCODE_PTY_SIDECAR_PATH,

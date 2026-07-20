@@ -1,7 +1,7 @@
 import type { WorkspaceRecord } from '@linkcode/schema';
 import { WorkspaceRecordSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { createWorkspaceStore } from '../workspace-store';
+import { createWorkspaceStore } from '../../src/workspace-store';
 
 function makeRecord(value: Record<string, unknown>): WorkspaceRecord {
   return WorkspaceRecordSchema.parse({

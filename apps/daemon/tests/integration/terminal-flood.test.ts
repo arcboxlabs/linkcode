@@ -10,7 +10,7 @@ import { createSocketIoServer, Hub } from '@linkcode/transport/server';
 import { ManagedRuntime } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { binaryName, SidecarPtyBackend } from '../pty/sidecar';
+import { binaryName, SidecarPtyBackend } from '../../src/pty/sidecar';
 
 /**
  * CODE-231 regression: a terminal flooding at full PTY speed must not starve the control plane.

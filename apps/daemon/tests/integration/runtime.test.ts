@@ -13,7 +13,7 @@ import {
   listenWithPortHunt,
   probeDaemonIdentity,
   writeRuntimeFile,
-} from '../runtime';
+} from '../../src/runtime';
 
 const servers: Server[] = [];
 let savedHome: string | undefined;

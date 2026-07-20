@@ -5,7 +5,7 @@ import type { SessionRecord } from '@linkcode/schema';
 import { SessionRecordSchema } from '@linkcode/schema';
 import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createSessionStore } from '../session-store';
+import { createSessionStore } from '../../src/session-store';
 
 function makeRecord(value: Record<string, unknown>): SessionRecord {
   return SessionRecordSchema.parse({

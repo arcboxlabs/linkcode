@@ -5,7 +5,7 @@ import process from 'node:process';
 import { AssetManager } from '@linkcode/assets';
 import type { AgentRuntimes } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agentsToRefresh, consentedManagedAgents } from '../managed-agent-refresh';
+import { agentsToRefresh, consentedManagedAgents } from '../../src/managed-agent-refresh';
 
 afterEach(() => {
   vi.unstubAllEnvs();
