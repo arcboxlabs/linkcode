@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CATALOG } from '../catalog';
-import { wantedVersion } from '../version-pin';
+import { CATALOG } from '../../src/catalog';
+import { wantedVersion } from '../../src/version-pin';
 
 const SEMVER = /^\d+\.\d+\.\d+/;
 
