@@ -19,6 +19,12 @@ const BINARY =
     join(repoRoot, 'target', 'release', binaryName),
   ].find((path) => !!path && existsSync(path)) ?? '';
 
+if (process.env.LINKCODE_REQUIRE_PTY_SIDECAR === '1' && !BINARY) {
+  throw new Error(
+    'LINKCODE_REQUIRE_PTY_SIDECAR=1 but linkcode-pty was not found; build it or set LINKCODE_PTY_SIDECAR_PATH',
+  );
+}
+
 const TIMEOUT_MS = 10000;
 
 /** Resolve once `needle` appears in the terminal output, or reject on timeout. */

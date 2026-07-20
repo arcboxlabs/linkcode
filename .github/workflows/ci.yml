@@ -44,6 +44,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -56,7 +62,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build PTY sidecar for interoperability tests
+        run: cargo build --locked -p linkcode-pty
+
       - name: Test
+        env:
+          LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
+          LINKCODE_REQUIRE_PTY_SIDECAR: '1'
         run: pnpm test
 
   rust:
