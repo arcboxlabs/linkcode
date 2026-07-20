@@ -71,6 +71,13 @@ jobs:
           LINKCODE_REQUIRE_PTY_SIDECAR: '1'
         run: pnpm test
 
+      - name: Daemon process acceptance
+        env:
+          LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
+        run: |
+          pnpm -F @linkcode/daemon build
+          pnpm -F @linkcode/daemon e2e:startup
+
   rust:
     name: Rust
     runs-on: blacksmith-2vcpu-ubuntu-2404
