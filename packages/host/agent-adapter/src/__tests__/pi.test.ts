@@ -9,6 +9,7 @@ const prompt = vi.fn<AgentSession['prompt']>();
 
 const session = {
   abort: vi.fn(),
+  bindExtensions: vi.fn(),
   dispose: vi.fn(),
   get isStreaming() {
     return false;
@@ -22,6 +23,9 @@ const session = {
 
 vi.mock('@earendil-works/pi-coding-agent', () => ({
   AuthStorage: { create: () => ({ setRuntimeApiKey: vi.fn() }) },
+  DefaultResourceLoader: class {
+    reload = vi.fn();
+  },
   ModelRegistry: {
     create: () => ({
       find: vi.fn(),
@@ -90,7 +94,7 @@ describe('PiAdapter lifecycle', () => {
     );
   });
 
-  it('advertises its fixed bypass posture without supporting policy changes', async () => {
+  it('advertises and switches its approval policies', async () => {
     const adapter = new PiAdapter();
     const events = record(adapter);
 
@@ -101,17 +105,32 @@ describe('PiAdapter lifecycle', () => {
       state: {
         availablePolicies: [
           {
+            policyId: 'default',
+            name: 'Ask permissions',
+            description: 'Ask before edits, commands, and unrecognized tools.',
+          },
+          {
+            policyId: 'acceptEdits',
+            name: 'Accept edits',
+            description: 'Apply edits without asking; ask for commands and other tools.',
+          },
+          {
             policyId: 'bypassPermissions',
-            name: 'Bypass permissions',
-            description: 'All tools run without approval prompts; this adapter cannot change it.',
+            name: 'Bypass',
+            description: 'Run every tool without asking.',
           },
         ],
-        currentPolicyId: 'bypassPermissions',
+        currentPolicyId: 'default',
       },
     });
-    await expect(
-      adapter.send({ type: 'set-approval-policy', policyId: 'default' }),
-    ).rejects.toThrow('pi: changing the approval policy is not supported');
+    await adapter.send({ type: 'set-approval-policy', policyId: 'acceptEdits' });
+    expect(events.at(-1)).toEqual({
+      type: 'approval-policy-update',
+      state: {
+        availablePolicies: expect.any(Array),
+        currentPolicyId: 'acceptEdits',
+      },
+    });
   });
 
   it('waits through retrying ends and settles successful turns exactly once', async () => {
