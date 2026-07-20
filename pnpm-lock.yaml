@@ -223,6 +223,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
+      '@linkcode/client-core':
+        specifier: workspace:*
+        version: link:../../packages/client/core
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
