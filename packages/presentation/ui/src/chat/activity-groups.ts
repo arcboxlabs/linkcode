@@ -1,4 +1,3 @@
-import type { ToolCall } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import type { ConversationItem } from './types';
 
@@ -13,14 +12,9 @@ type NonTaskToolTimelineItem = ToolTimelineItem & {
 /** Activity which can be collapsed without hiding narration or an interactive subagent. */
 export type ActivityRunItem = ReasoningTimelineItem | NonTaskToolTimelineItem;
 
-export type ActivityBucket = 'explore' | 'command' | 'fetch' | 'think' | 'files' | 'other';
-
 export type TimelineEntry =
   | { type: 'item'; item: ConversationItem }
-  | { type: 'run'; id: string; items: ActivityRunItem[] }
-  | { type: 'single'; item: ToolTimelineItem }
-  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] }
-  | { type: 'task'; item: ToolTimelineItem };
+  | { type: 'run'; id: string; items: ActivityRunItem[] };
 
 export interface ActivityGroupingContext {
   readonly index: number;
@@ -40,26 +34,6 @@ export const defaultActivityGroupingPolicy: ActivityGroupingPolicy = {
   classify: (item) => (isActivityRunItem(item) ? DEFAULT_ACTIVITY_KEY : null),
   minimumGroupSize: 2,
 };
-
-export function activityBucket(kind: ToolCall['kind']): ActivityBucket {
-  switch (kind) {
-    case 'read':
-    case 'search':
-      return 'explore';
-    case 'execute':
-      return 'command';
-    case 'fetch':
-      return 'fetch';
-    case 'think':
-      return 'think';
-    case 'edit':
-    case 'delete':
-    case 'move':
-      return 'files';
-    default:
-      return 'other';
-  }
-}
 
 export function groupTimeline(
   items: readonly ConversationItem[],

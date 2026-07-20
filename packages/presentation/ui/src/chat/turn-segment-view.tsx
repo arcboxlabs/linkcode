@@ -84,8 +84,6 @@ export function TurnSegmentView({
         />
       );
     }
-    if (entry.type !== 'item') return null;
-
     const item = entry.item;
     if (item.kind === 'tool' && item.toolCall.kind === 'task') {
       return (

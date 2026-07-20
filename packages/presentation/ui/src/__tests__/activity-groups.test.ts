@@ -233,6 +233,21 @@ describe('groupTimeline', () => {
     ]);
   });
 
+  it('honors a custom minimum group size', () => {
+    const items = [tool('read'), tool('execute'), reasoning()];
+    const policy: ActivityGroupingPolicy = {
+      classify: (item) => (item.kind === 'reasoning' || item.kind === 'tool' ? 'activity' : null),
+      minimumGroupSize: 3,
+    };
+
+    expect(groupTimeline(items.slice(0, 2), policy)).toEqual(
+      items.slice(0, 2).map((item) => ({ type: 'item', item })),
+    );
+    expect(groupTimeline(items, policy)).toEqual([
+      { type: 'run', id: `run-${items[0].id}`, items },
+    ]);
+  });
+
   it('keeps run ids stable while a streaming burst appends items', () => {
     const first = tool('execute');
     const second = reasoning();

@@ -15,23 +15,13 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
 import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
-import type { ConversationItem } from './types';
 
-type ReasoningActivityItem = Extract<ConversationItem, { kind: 'reasoning' }>;
-type ToolActivityItem = Extract<ConversationItem, { kind: 'tool' }>;
-type ActivityRunItem =
-  | ReasoningActivityItem
-  | (ToolActivityItem & {
-      toolCall: ToolActivityItem['toolCall'] & {
-        kind: Exclude<ToolActivityItem['toolCall']['kind'], 'task'>;
-      };
-    });
-
-export type ActivityRunEntry = { type: 'run'; id: string; items: ActivityRunItem[] };
+export type ActivityRunEntry = Extract<TimelineEntry, { type: 'run' }>;
 
 /** One terse, user-controlled disclosure for a contiguous burst of reasoning and tool activity. */
 export function ActivityRun({
