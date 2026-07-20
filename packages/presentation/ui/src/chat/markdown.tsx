@@ -1,9 +1,12 @@
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
+import type { Root } from 'hast';
 import { createContext, useContext, useId } from 'react';
 import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
+import type { Plugin } from 'unified';
+import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
 import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
@@ -15,7 +18,23 @@ import { useSmoothText } from './smooth-text-controller';
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 const NON_WORD_RE = /\W/g;
 const SANITIZED_HEADING_PREFIX = 'user-content-';
+const HEADING_TAG_NAMES = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 const MarkdownHeadingPrefixContext = createContext<string | null>(null);
+
+interface HeadingIdPrefixOptions {
+  prefix: string;
+}
+
+const prefixExplicitHeadingIds: Plugin<[HeadingIdPrefixOptions], Root> =
+  ({ prefix }) =>
+  (tree) => {
+    visit(tree, 'element', (node) => {
+      const id = node.properties.id;
+      if (HEADING_TAG_NAMES.has(node.tagName) && typeof id === 'string' && id.length > 0) {
+        node.properties.id = `${prefix}${id}`;
+      }
+    });
+  };
 
 /** Inline code, upgraded to a file link when the span is a viewer-openable path and
  * the host wires `openFile` (degrades to plain code everywhere else). */
@@ -199,9 +218,14 @@ function createMarkdownRehypePlugins(headingPrefix: string): RehypePlugins {
     throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
   }
   const defaults = Object.values(defaultRehypePlugins);
+  const explicitHeadingIdPlugin: RehypePlugins[number] = [
+    prefixExplicitHeadingIds,
+    { prefix: headingPrefix },
+  ];
   const headingSlugPlugin: RehypePlugins[number] = [rehypeSlug, { prefix: headingPrefix }];
   return [
     ...defaults.slice(0, rawRehypePluginIndex + 1),
+    explicitHeadingIdPlugin,
     headingSlugPlugin,
     ...defaults.slice(rawRehypePluginIndex + 1),
   ];
