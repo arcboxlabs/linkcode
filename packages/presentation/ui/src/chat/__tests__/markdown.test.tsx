@@ -8,28 +8,53 @@ afterEach(cleanup);
 
 const FENCE = '```ts\nconst greeting: string = "hello";\n```';
 
-it('keeps fragment links in the document and opens external links in a new tab', () => {
-  const { getByRole } = render(
-    <Markdown>
-      {'## Target\n\n[Jump to target](#target)\n\n[External](https://example.com)'}
-    </Markdown>,
+it('scopes heading anchors to their Markdown document and keeps external links separate', () => {
+  const { getAllByRole, getByRole } = render(
+    <>
+      <Markdown headingAnchors>{'## Target\n\n[First jump](#target)'}</Markdown>
+      <Markdown headingAnchors>
+        {'## Target\n\n[Second jump](#target)\n\n[External](https://example.com)'}
+      </Markdown>
+    </>,
   );
 
-  const heading = getByRole('heading', { name: 'Target' });
-  const fragmentLink = getByRole('link', { name: 'Jump to target' });
+  const headings = getAllByRole('heading', { name: 'Target' });
+  const firstFragmentLink = getByRole('link', { name: 'First jump' });
+  const secondFragmentLink = getByRole('link', { name: 'Second jump' });
   const externalLink = getByRole('link', { name: 'External' });
 
-  expect(heading.getAttribute('id')).toBe('user-content-target');
-  expect(fragmentLink.getAttribute('href')).toBe('#user-content-target');
-  expect(fragmentLink.getAttribute('target')).toBeNull();
-  expect(fragmentLink.getAttribute('rel')).toBeNull();
+  expect(headings[0]?.id).not.toBe(headings[1]?.id);
+  expect(firstFragmentLink.getAttribute('href')).toBe(`#${headings[0]?.id}`);
+  expect(secondFragmentLink.getAttribute('href')).toBe(`#${headings[1]?.id}`);
+  expect(secondFragmentLink.getAttribute('target')).toBeNull();
+  expect(secondFragmentLink.getAttribute('rel')).toBeNull();
   expect(externalLink.getAttribute('target')).toBe('_blank');
   expect(externalLink.getAttribute('rel')).toBe('noreferrer');
 
   const scrollIntoView = vi.fn();
-  heading.scrollIntoView = scrollIntoView;
-  fireEvent.click(fragmentLink);
+  if (headings[1]) headings[1].scrollIntoView = scrollIntoView;
+  fireEvent.click(secondFragmentLink);
   expect(scrollIntoView).toHaveBeenCalledOnce();
+});
+
+it('generates scoped anchors for raw HTML headings after parsing them', () => {
+  const { getByRole } = render(
+    <Markdown headingAnchors>{'<h2>HTML Target</h2>\n\n[Jump](#html-target)'}</Markdown>,
+  );
+
+  const heading = getByRole('heading', { name: 'HTML Target' });
+  expect(heading.id).not.toBe('');
+  expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${heading.id}`);
+});
+
+it('deduplicates repeated headings across one anchored document', () => {
+  const { getAllByRole, getByRole } = render(
+    <Markdown headingAnchors>{'## Repeat\n\n## Repeat\n\n[Jump](#repeat-1)'}</Markdown>,
+  );
+
+  const headings = getAllByRole('heading', { name: 'Repeat' });
+  expect(headings[0]?.id).not.toBe(headings[1]?.id);
+  expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${headings[1]?.id}`);
 });
 
 // Pins the @streamdown/code ↔ shiki contract: the workspace override forces shiki 4 under the

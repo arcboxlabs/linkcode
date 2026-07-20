@@ -1,5 +1,6 @@
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
+import { createContext, useContext, useId } from 'react';
 import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
 import { defaultRehypePlugins, Streamdown } from 'streamdown';
@@ -12,7 +13,9 @@ import { artifactFenceLanguages } from './artifacts/registry';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
+const NON_WORD_RE = /\W/g;
 const SANITIZED_HEADING_PREFIX = 'user-content-';
+const MarkdownHeadingPrefixContext = createContext<string | null>(null);
 
 /** Inline code, upgraded to a file link when the span is a viewer-openable path and
  * the host wires `openFile` (degrades to plain code everywhere else). */
@@ -55,8 +58,12 @@ function MarkdownLink({
   href,
   ...rest
 }: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
+  const headingPrefix = useContext(MarkdownHeadingPrefixContext);
   const isFragment = href?.[0] === '#';
-  const fragmentHref = isFragment ? `#${SANITIZED_HEADING_PREFIX}${href.slice(1)}` : undefined;
+  const fragmentHref =
+    isFragment && headingPrefix
+      ? `#${SANITIZED_HEADING_PREFIX}${headingPrefix}${href.slice(1)}`
+      : undefined;
   return (
     <a
       {...rest}
@@ -170,11 +177,23 @@ const artifactRenderers = [
   { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
 ];
 
-// Generate heading IDs before Streamdown's sanitizer so its DOM-clobbering prefix remains intact.
-const markdownRehypePlugins = [
-  rehypeSlug,
-  ...Object.values(defaultRehypePlugins),
-] satisfies NonNullable<StreamdownProps['rehypePlugins']>;
+type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
+
+const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
+const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
+
+function createMarkdownRehypePlugins(headingPrefix: string): RehypePlugins {
+  if (rawRehypePluginIndex < 0) {
+    throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
+  }
+  const defaults = Object.values(defaultRehypePlugins);
+  const headingSlugPlugin: RehypePlugins[number] = [rehypeSlug, { prefix: headingPrefix }];
+  return [
+    ...defaults.slice(0, rawRehypePluginIndex + 1),
+    headingSlugPlugin,
+    ...defaults.slice(rawRehypePluginIndex + 1),
+  ];
+}
 
 const INSTANT_STREAM_ANIMATION = {
   duration: 0,
@@ -185,14 +204,22 @@ interface MarkdownProps {
   children: string;
   className?: string;
   animated?: StreamdownProps['animated'];
+  headingAnchors?: boolean;
 }
 
 interface SmoothMarkdownProps extends MarkdownProps {
   isStreaming: boolean;
 }
 
-export function Markdown({ children, className, animated }: MarkdownProps): React.ReactNode {
+export function Markdown({
+  children,
+  className,
+  animated,
+  headingAnchors = false,
+}: MarkdownProps): React.ReactNode {
   const { codeTheme } = useRenderPrefs();
+  const markdownId = useId();
+  const headingPrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
   // The @streamdown/code plugin's getThemes() wins over the shikiTheme prop, so the selected theme
   // must be baked into the plugin. createCodePlugin is cheap — its highlighter is created lazily.
   const plugins: PluginConfig = {
@@ -200,7 +227,7 @@ export function Markdown({ children, className, animated }: MarkdownProps): Reac
     code: createCodePlugin({ themes: codeTheme }),
     renderers: artifactRenderers,
   };
-  return (
+  const content = (
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
       // matching the previous react-markdown renderer.
@@ -208,10 +235,18 @@ export function Markdown({ children, className, animated }: MarkdownProps): Reac
       components={components}
       animated={animated}
       plugins={plugins}
-      rehypePlugins={markdownRehypePlugins}
+      mode={headingAnchors ? 'static' : undefined}
+      rehypePlugins={headingAnchors ? createMarkdownRehypePlugins(headingPrefix) : undefined}
     >
       {children}
     </Streamdown>
+  );
+  return headingAnchors ? (
+    <MarkdownHeadingPrefixContext.Provider value={headingPrefix}>
+      {content}
+    </MarkdownHeadingPrefixContext.Provider>
+  ) : (
+    content
   );
 }
 
