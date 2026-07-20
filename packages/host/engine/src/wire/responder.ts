@@ -2,6 +2,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Cause, Effect } from 'effect';
 import { OperationError, OperationTimeout, RequestError, toRequestFailure } from '../failure';
+import { recordRequestFailure } from '../observability';
 
 export class WireResponder {
   constructor(private readonly transport: Transport) {}
@@ -12,6 +13,7 @@ export class WireResponder {
         if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt;
         const error = Cause.squash(cause);
         return reportFailure(error).pipe(
+          Effect.andThen(recordRequestFailure(error)),
           Effect.andThen(Effect.sync(() => this.sendFailure(replyTo, error))),
         );
       }),

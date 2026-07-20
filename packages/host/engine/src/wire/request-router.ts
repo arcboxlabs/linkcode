@@ -6,6 +6,7 @@ import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
 import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
+import { observeRequest } from '../observability';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
 import type { ScriptRequestHandler } from '../scripts/request-handler';
 import type { HistoryRequestHandler } from '../session/history-request-handler';
@@ -35,6 +36,18 @@ export class WireRequestRouter {
   ) {}
 
   handle(msg: WireMessage): Effect.Effect<void, unknown> {
+    const p = msg.payload;
+    const routed = this.route(msg);
+    // Terminal input and acknowledgement are data-plane hot paths, not control-plane requests.
+    if (p.kind === 'terminal.input' || p.kind === 'terminal.ack') return routed;
+    const clientReqId = 'clientReqId' in p ? p.clientReqId : undefined;
+    return observeRequest(routed, p.kind, {
+      kind: p.kind,
+      ...(clientReqId && { clientReqId }),
+    });
+  }
+
+  private route(msg: WireMessage): Effect.Effect<void, unknown> {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.start':
