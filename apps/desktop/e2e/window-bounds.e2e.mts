@@ -72,8 +72,9 @@ async function main(): Promise<void> {
       );
     }
 
-    // Resize + move, then close: the state file must capture the normal bounds.
-    const target = { x: 120, y: 140, width: 1180, height: 820 };
+    // Resize + move within the work area, then close: the state file must capture the normal bounds.
+    // A real window manager is allowed to constrain off-screen geometry before Electron persists it.
+    const target = { x: 80, y: 100, width: 1080, height: 780 };
     await app.evaluate(({ BrowserWindow }, bounds) => {
       BrowserWindow.getAllWindows()[0].setBounds(bounds);
     }, target);
