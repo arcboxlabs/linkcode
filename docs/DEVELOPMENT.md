@@ -110,7 +110,7 @@ pnpm test apps/daemon/src/pty     # just the PTY unit tests
 
 ### CI runs Vitest and process acceptance separately
 
-CI (`.github/workflows/ci.yml`) has four jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all three required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry plus an unsigned packaged devshell), **webview** (real Chromium against the Vite browser entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
 
 The daemon acceptance driver is deliberately outside Vitest: it starts `dist/index.js` as an external process with an isolated `HOME`, waits for `runtime.json`, checks the HTTP identity, connects a public `LinkCodeClient` through Socket.IO, reads the migrated native SQLite database, and opens a shell through the real PTY sidecar. Run the same boundary locally with:
 
@@ -190,6 +190,21 @@ Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/Lin
 **Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `node scripts/build.mts --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`scripts/dev.mts --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, and the asar-unpack debug trick. Electron flags such as `--remote-debugging-port` and `--profile` pass through `dev`/`dev:mock` with or without a `--` separator (e.g. `pnpm -F @linkcode/desktop dev --remote-debugging-port=9222`).
 
 **Feature gotchas (memory-sourced).** The composer is disabled with no thread ("Create or pick a thread first") — click the Chats `+` first. "Ask permissions" stalls a Task at approval — switch to "Bypass permissions" before spawning an agent. Clicking a sidebar thread row needs Playwright `force: true`. Match the active row by `classList.contains('bg-sidebar-accent')` exactly (`className.includes` also matches the hover variant). Webview artifact E2E (`pnpm -F @linkcode/webview run dev:mock`): mock `blob:` URLs can't cross the Electron webview process (promotion fails `ERR_FILE_NOT_FOUND`) — use a real http URL.
+
+## Webview and mobile entry smoke tests
+
+The webview browser smoke starts the real Vite app in mock mode, launches Chromium, drives the index and Settings routes, then sends prompts through the workbench's real wire-compatible mock transport before and after a full reload. Install Playwright's Chromium shell once, then run:
+
+```bash
+pnpm -F @linkcode/webview exec playwright-core install chromium --only-shell
+pnpm -F @linkcode/webview e2e:browser
+```
+
+The mobile smoke performs separate production exports from the real Expo Router entry for Android and iOS. It requires Hermes bytecode and source maps, then verifies that the root layout, startup route, host route, and terminal route were all included by Metro. This is an app-entry bundle gate, **not** simulator/device E2E and not evidence that native modules load on a device:
+
+```bash
+pnpm -F @linkcode/mobile smoke:export
+```
 
 ## Debugging and triage
 

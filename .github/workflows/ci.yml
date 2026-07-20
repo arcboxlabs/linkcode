@@ -30,6 +30,7 @@ jobs:
   typescript:
     name: TypeScript
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -69,7 +70,9 @@ jobs:
         env:
           LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
           LINKCODE_REQUIRE_PTY_SIDECAR: '1'
-        run: pnpm test
+        run: |
+          pnpm test --exclude='apps/daemon/tests/integration/**'
+          pnpm test apps/daemon/tests/integration --no-file-parallelism
 
       - name: Daemon process acceptance
         env:
@@ -81,6 +84,7 @@ jobs:
   desktop:
     name: Desktop App Entry
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -113,9 +117,64 @@ jobs:
       - name: Test unsigned packaged app entry
         run: xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
 
+  webview:
+    name: Webview Browser Entry
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm -F @linkcode/webview exec playwright-core install --with-deps chromium --only-shell
+
+      - name: Build production browser entry
+        run: pnpm -F @linkcode/webview build
+
+      - name: Test browser app entry
+        run: pnpm -F @linkcode/webview e2e:browser
+
+  mobile:
+    name: Mobile Native Bundles
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Export Android and iOS app entries
+        run: pnpm -F @linkcode/mobile smoke:export
+
   rust:
     name: Rust
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -141,15 +200,18 @@ jobs:
   all-green:
     name: All Green
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     needs:
       - typescript
       - desktop
+      - webview
+      - mobile
       - rust
     if: always()
 
     steps:
       - name: Check required jobs
         run: |
-          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.desktop.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
+          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.desktop.result }}' != 'success' ] || [ '${{ needs.webview.result }}' != 'success' ] || [ '${{ needs.mobile.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
             exit 1
           fi
