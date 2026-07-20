@@ -83,10 +83,14 @@ async function main(): Promise<void> {
     assert.equal(typeof bridge.maximized, 'boolean');
 
     const runtime = await waitFor(
-      () =>
-        existsSync(runtimePath)
-          ? (JSON.parse(readFileSync(runtimePath, 'utf8')) as RuntimeInfo)
-          : false,
+      () => {
+        if (!existsSync(runtimePath)) return false;
+        try {
+          return JSON.parse(readFileSync(runtimePath, 'utf8')) as RuntimeInfo;
+        } catch {
+          return false;
+        }
+      },
       100,
       AbortSignal.timeout(30000),
     );

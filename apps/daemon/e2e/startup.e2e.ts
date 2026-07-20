@@ -71,10 +71,14 @@ async function main(): Promise<void> {
       () => {
         if (exit) throw new Error(`daemon exited during boot: ${JSON.stringify(exit)}`);
         if (!existsSync(runtimePath)) return false;
-        return JSON.parse(readFileSync(runtimePath, 'utf8')) as {
-          pid: number;
-          listeners: Array<{ type: string; url: string }>;
-        };
+        try {
+          return JSON.parse(readFileSync(runtimePath, 'utf8')) as {
+            pid: number;
+            listeners: Array<{ type: string; url: string }>;
+          };
+        } catch {
+          return false;
+        }
       },
       100,
       AbortSignal.timeout(30000),

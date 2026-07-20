@@ -691,6 +691,9 @@ importers:
       babel-plugin-react-compiler:
         specifier: 'catalog:'
         version: 1.0.0
+      playwright-core:
+        specifier: ^1.61.1
+        version: 1.61.1
       tailwindcss:
         specifier: 'catalog:'
         version: 4.3.2

@@ -7,8 +7,10 @@
   "references": [
     { "path": "apps/desktop" },
     { "path": "apps/webview" },
+    { "path": "apps/webview/e2e" },
     { "path": "packages/vendor/coss-ui" },
     { "path": "apps/daemon" },
+    { "path": "apps/daemon/e2e" },
     { "path": "apps/daemon/tests" },
     { "path": "apps/mobile" },
     { "path": "packages/client/core" },
