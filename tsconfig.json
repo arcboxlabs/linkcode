@@ -13,6 +13,7 @@
     { "path": "packages/client/core" },
     { "path": "packages/client/sdk" },
     { "path": "packages/client/workbench" },
+    { "path": "packages/client/workbench/tests" },
     { "path": "packages/foundation/common" },
     { "path": "packages/foundation/schema" },
     { "path": "packages/foundation/schema/tests" },
