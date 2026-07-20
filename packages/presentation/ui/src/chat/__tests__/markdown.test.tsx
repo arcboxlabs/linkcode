@@ -12,9 +12,11 @@ it('scopes heading anchors to their Markdown document and keeps external links s
   const { getAllByRole, getByRole } = render(
     <>
       <Markdown headingAnchors>{'## Target\n\n[First jump](#target)'}</Markdown>
-      <Markdown headingAnchors>
-        {'## Target\n\n[Second jump](#target)\n\n[External](https://example.com)'}
-      </Markdown>
+      <div data-markdown-scroll-container>
+        <Markdown headingAnchors>
+          {'## Target\n\n[Second jump](#target)\n\n[External](https://example.com)'}
+        </Markdown>
+      </div>
     </>,
   );
 
@@ -31,10 +33,22 @@ it('scopes heading anchors to their Markdown document and keeps external links s
   expect(externalLink.getAttribute('target')).toBe('_blank');
   expect(externalLink.getAttribute('rel')).toBe('noreferrer');
 
+  const scrollContainer = secondFragmentLink.closest<HTMLElement>(
+    '[data-markdown-scroll-container]',
+  );
+  expect(scrollContainer).not.toBeNull();
+  if (!scrollContainer || !headings[1]) return;
+
+  Object.defineProperty(scrollContainer, 'scrollTop', { value: 120, writable: true });
+  const scrollTo = vi.fn();
+  scrollContainer.scrollTo = scrollTo;
+  vi.spyOn(scrollContainer, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 100 }));
+  vi.spyOn(headings[1], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 400 }));
   const scrollIntoView = vi.fn();
-  if (headings[1]) headings[1].scrollIntoView = scrollIntoView;
+  headings[1].scrollIntoView = scrollIntoView;
   fireEvent.click(secondFragmentLink);
-  expect(scrollIntoView).toHaveBeenCalledOnce();
+  expect(scrollTo).toHaveBeenCalledWith({ top: 420 });
+  expect(scrollIntoView).not.toHaveBeenCalled();
 });
 
 it('generates scoped anchors for raw HTML headings after parsing them', () => {
