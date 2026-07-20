@@ -198,7 +198,10 @@ export function mapPiHistoryEvents(
         toolCallId: `pi-bash-${entry.id}`,
         title: message.command,
         kind: 'execute',
-        status: message.cancelled ? 'failed' : 'completed',
+        status:
+          message.cancelled || (typeof message.exitCode === 'number' && message.exitCode !== 0)
+            ? 'failed'
+            : 'completed',
         content: [],
         rawOutput: compactRecord({ output: message.output, exitCode: message.exitCode }),
       });

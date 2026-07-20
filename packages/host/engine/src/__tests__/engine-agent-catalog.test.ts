@@ -1,12 +1,14 @@
-import type { AgentStartCatalog } from '@linkcode/schema';
+import type { AgentStartCatalogOptions } from '@linkcode/agent-adapter';
+import type { Account, AgentStartCatalog } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { createSessionHarness, FakeAdapter } from './fixtures/session-harness';
 
 class CatalogAdapter extends FakeAdapter {
-  catalogCwd: string | undefined;
+  catalogOptions: AgentStartCatalogOptions | undefined;
 
-  override startCatalog(opts?: { cwd?: string }): Promise<AgentStartCatalog> {
-    this.catalogCwd = opts?.cwd;
+  override startCatalog(opts?: AgentStartCatalogOptions): Promise<AgentStartCatalog> {
+    this.catalogOptions = opts;
     return Promise.resolve({
       models: [{ id: 'pi/sonnet', label: 'Sonnet', effortLevels: ['low', 'high'] }],
       policies: [{ policyId: 'default', name: 'Default' }],
@@ -22,9 +24,29 @@ class RejectingCatalogAdapter extends FakeAdapter {
 }
 
 describe('engine agent catalog', () => {
-  it('loads a catalog from a fresh adapter with the requested cwd', async () => {
+  it('loads a catalog with the requested cwd and daemon-resolved account config', async () => {
     const adapter = new CatalogAdapter();
-    const h = createSessionHarness(undefined, () => adapter);
+    const providers = new InMemoryProviderConfigStore();
+    const account: Account = {
+      id: 'catalog-account',
+      label: 'Catalog account',
+      credential: { type: 'api-key', key: 'catalog-key' },
+      endpoint: { baseUrl: 'https://catalog.example.test', protocol: 'openai-chat' },
+      model: 'provider/model',
+      createdAt: 0,
+    };
+    providers.set({
+      'claude-code': { enabled: true, activeAccountId: account.id },
+    });
+    providers.setAccounts([account]);
+    const h = createSessionHarness(
+      undefined,
+      () => adapter,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
     await h.engine.start();
     await h.inject({
       kind: 'agent.catalog',
@@ -34,7 +56,15 @@ describe('engine agent catalog', () => {
     });
 
     expect(h.adapters).toHaveLength(1);
-    expect(adapter.catalogCwd).toBe('/repo');
+    expect(adapter.catalogOptions).toEqual({
+      cwd: '/repo',
+      model: 'provider/model',
+      config: {
+        apiKey: 'catalog-key',
+        baseUrl: 'https://catalog.example.test',
+        protocol: 'openai-chat',
+      },
+    });
     expect(h.sent).toContainEqual({
       kind: 'agent.cataloged',
       replyTo: 'catalog-1',

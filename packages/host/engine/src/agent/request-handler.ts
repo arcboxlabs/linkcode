@@ -7,6 +7,7 @@ import { OperationError, RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
+import { applyProviderDefaults } from './provider-config';
 import type { AgentRuntimeService } from './runtime-service';
 
 type AgentRequest = Extract<
@@ -41,8 +42,15 @@ export class AgentRequestHandler {
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
+              const startOptions = applyProviderDefaults(
+                { kind: payload.agentKind, cwd: payload.cwd ?? '.' },
+                this.providers.get(),
+                this.providers.getAccounts(),
+              );
               const catalog = await this.factory(payload.agentKind).startCatalog({
                 cwd: payload.cwd,
+                model: startOptions.model,
+                config: startOptions.config,
               });
               this.transport.send(
                 createWireMessage({

@@ -118,6 +118,10 @@ describe('Pi approval gate', () => {
     const cancelled = gate(call('cancel'));
     await respond(adapter, events);
     await expect(cancelled).resolves.toEqual({ block: true, reason: 'Tool call cancelled' });
+    expect(events).toContainEqual({
+      type: 'tool-call',
+      toolCall: expect.objectContaining({ toolCallId: 'cancel', status: 'failed' }),
+    });
   });
 
   it('invalidates queued callbacks on stop and clears always behavior', async () => {

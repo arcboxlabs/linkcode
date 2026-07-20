@@ -18,16 +18,18 @@ const sdk = vi.hoisted(() => ({
   models: [] as Model[],
   createOptions: null as Record<string, unknown> | null,
   open: vi.fn(),
+  registerProvider: vi.fn(),
   session: null as Record<string, unknown> | null,
+  setRuntimeApiKey: vi.fn(),
 }));
 vi.mock('@earendil-works/pi-coding-agent', () => ({
-  AuthStorage: { create: () => ({ setRuntimeApiKey: vi.fn() }) },
+  AuthStorage: { create: () => ({ setRuntimeApiKey: sdk.setRuntimeApiKey }) },
   ModelRegistry: {
     create: () => ({
       find: (provider: string, id: string) =>
         sdk.models.find((m) => m.provider === provider && m.id === id),
       getAvailable: () => sdk.models,
-      registerProvider: vi.fn(),
+      registerProvider: sdk.registerProvider,
     }),
   },
   DefaultResourceLoader: class {
@@ -100,6 +102,8 @@ beforeEach(() => {
   sdk.session = makeSession(sdk.models[0]);
   sdk.createOptions = null;
   sdk.open.mockReset();
+  sdk.registerProvider.mockReset();
+  sdk.setRuntimeApiKey.mockReset();
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -121,6 +125,20 @@ describe('Pi dynamic model catalog', () => {
     expect(catalog.defaultPolicyId).toBe('default');
   });
 
+  it('applies LinkCode account credentials before enumerating the catalog', async () => {
+    const catalog = await new PiAdapter().startCatalog({
+      model: 'openai/gpt',
+      config: { apiKey: 'account-key', baseUrl: 'https://gateway.example.test/v1' },
+    });
+
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('openai', 'account-key');
+    expect(sdk.registerProvider).toHaveBeenCalledWith('openai', {
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'account-key',
+    });
+    expect(catalog.models).toContainEqual(expect.objectContaining({ id: 'openai/gpt' }));
+  });
+
   it('switches model and effort live and reflects SDK readback', async () => {
     const { adapter, events } = await start();
     events.length = 0;
@@ -135,6 +153,11 @@ describe('Pi dynamic model catalog', () => {
       "pi: model 'openai/missing' is not available for provider 'openai'",
     );
     expect(sdk.createOptions).toBeNull();
+  });
+
+  it('preserves an explicit null model reset for the Pi provider default', async () => {
+    await start({ model: null });
+    expect(sdk.createOptions).not.toHaveProperty('model');
   });
 });
 
