@@ -47,6 +47,9 @@ import { mockScriptDeclarations } from './data/scripts';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
+  SHOWCASE_ACTIVITY_RUN_INTRO,
+  SHOWCASE_ACTIVITY_RUN_NARRATION,
+  SHOWCASE_ACTIVITY_RUN_THOUGHT,
   SHOWCASE_ARCHITECTURE_LINK,
   SHOWCASE_ARTIFACTS_CONTENT,
   SHOWCASE_COMMANDS_NARRATION,
@@ -1072,6 +1075,25 @@ export class DevMockHost {
         content: SHOWCASE_COMMANDS_NARRATION,
       },
       ...toolEvents(bursts.wrapUp),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-activity-run-intro'),
+        content: SHOWCASE_ACTIVITY_RUN_INTRO,
+      },
+      {
+        type: 'agent-thought-chunk',
+        messageId: this.nextMessageId('mock-activity-run-thought'),
+        content: SHOWCASE_ACTIVITY_RUN_THOUGHT,
+      },
+      ...toolEvents(bursts.activityRun.beforeNarration),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-activity-run-note'),
+        content: SHOWCASE_ACTIVITY_RUN_NARRATION,
+      },
+      ...toolEvents([bursts.activityRun.singleton]),
+      ...toolEvents([bursts.activityRun.taskBoundary]),
+      ...toolEvents(bursts.activityRun.afterTask),
     ];
 
     for (const event of script) {

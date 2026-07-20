@@ -275,15 +275,34 @@ export const SHOWCASE_COMMANDS_NARRATION = textBlock(
   'Typecheck flagged a stale preview import, so a last pass double-checks the preview and coverage.',
 );
 
+export const SHOWCASE_ACTIVITY_RUN_THOUGHT = textBlock(
+  'Checking whether mixed activity stays compact without hiding failures or useful details.',
+);
+
+export const SHOWCASE_ACTIVITY_RUN_INTRO = textBlock(
+  'Starting a focused mixed-activity pass after the earlier tool and permission coverage.',
+);
+
+export const SHOWCASE_ACTIVITY_RUN_NARRATION = textBlock(
+  'The mixed pass is complete; checking singleton and subagent boundaries next.',
+);
+
 export interface ShowcaseToolBursts {
-  /** Contiguous read/search calls — renders as an "Explored" group. */
+  /** Contiguous read/search calls — renders as one exploration activity run. */
   explore: ToolCall[];
-  /** Contiguous file calls — renders as an "Edited files" group with curated paths and summed +/-. */
+  /** Contiguous file calls — renders as one file activity run with curated paths. */
   files: ToolCall[];
-  /** Contiguous execute calls (one failed) — renders as a "Ran commands" group. */
+  /** Contiguous execute calls (one failed) — renders as one command activity run. */
   commands: ToolCall[];
-  /** Trailing singletons: failed fetch, think, custom tool, subagent, and permission asks. */
+  /** Mixed tools, a task boundary, then the tool snapshots used by question and permission asks. */
   wrapUp: ToolCall[];
+  /** One six-clause mixed run, followed by text, singleton, and task boundaries. */
+  activityRun: {
+    beforeNarration: ToolCall[];
+    singleton: ToolCall;
+    taskBoundary: ToolCall;
+    afterTask: ToolCall[];
+  };
 }
 
 export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): ShowcaseToolBursts {
@@ -530,5 +549,111 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
       SHOWCASE_QUESTION.toolCall,
       ...SHOWCASE_PERMISSIONS.map((permission) => permission.toolCall),
     ],
+    activityRun: {
+      beforeNarration: [
+        {
+          toolCallId: 'mock-activity-read',
+          title: 'Read activity grouping',
+          kind: 'read',
+          status: 'completed',
+          locations: [{ path: 'packages/presentation/ui/src/chat/activity-groups.ts', line: 42 }],
+          content: [],
+          rawInput: { path: 'packages/presentation/ui/src/chat/activity-groups.ts' },
+        },
+        {
+          toolCallId: 'mock-activity-execute-failed',
+          title: 'Run compact activity check',
+          kind: 'execute',
+          status: 'failed',
+          content: [],
+          rawInput: { command: 'pnpm test activity-run' },
+          rawOutput: { exitCode: 1, message: 'mixed activity fixture needs an updated summary' },
+        },
+        {
+          toolCallId: 'mock-activity-edit',
+          title: 'Update activity summary',
+          kind: 'edit',
+          status: 'completed',
+          content: [
+            {
+              type: 'diff',
+              path: 'packages/presentation/ui/src/chat/activity-run.tsx',
+              oldText: "const summary = 'verbose';\n",
+              newText: "const summary = 'compact';\n",
+            },
+          ],
+        },
+        {
+          toolCallId: 'mock-activity-integration',
+          title: 'mcp__linear__get_issue',
+          kind: 'other',
+          status: 'completed',
+          content: [{ type: 'content', content: textBlock('CODE-354 · Simplify chat activity') }],
+          rawInput: { id: 'CODE-354' },
+        },
+      ],
+      singleton: {
+        toolCallId: 'mock-activity-singleton-fetch',
+        title: 'Fetch activity reference',
+        kind: 'fetch',
+        status: 'completed',
+        content: [],
+        rawInput: { url: 'https://example.test/activity-reference' },
+        rawOutput: { code: 200, codeText: 'OK', durationMs: 42 },
+      },
+      taskBoundary: {
+        toolCallId: 'mock-activity-task-boundary',
+        title: 'Review activity boundaries',
+        kind: 'task',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('Confirmed that task transcripts remain outside activity runs.'),
+          },
+        ],
+        rawInput: {
+          description: 'Review activity boundaries',
+          prompt: 'Verify singleton and task boundaries in the compact activity flow.',
+          subagent_type: 'Explore',
+        },
+        rawOutput: { agentId: 'mock-activity-reviewer' },
+      },
+      afterTask: [
+        {
+          toolCallId: 'mock-activity-search-after-task',
+          title: 'Search activity labels',
+          kind: 'search',
+          status: 'completed',
+          content: [],
+          rawInput: { query: 'activityRun', glob: '**/*.{ts,tsx}' },
+          rawOutput: { matches: ['packages/presentation/i18n/src/locales/en.ts'], files: 1 },
+        },
+        {
+          toolCallId: 'mock-activity-move-after-task',
+          title: 'Move activity fixture',
+          kind: 'move',
+          status: 'completed',
+          locations: [{ path: 'packages/client/workbench/src/mock/data/showcase.ts' }],
+          content: [],
+          rawInput: {
+            path: 'packages/client/workbench/src/mock/data/activity.ts',
+            move_path: 'packages/client/workbench/src/mock/data/showcase.ts',
+          },
+        },
+        {
+          toolCallId: 'mock-activity-think-after-task',
+          title: 'Summarize compact activity',
+          kind: 'think',
+          status: 'completed',
+          content: [
+            {
+              type: 'content',
+              content: textBlock('The post-task run still preserves mixed tool details.'),
+            },
+          ],
+        },
+      ],
+    },
   };
 }

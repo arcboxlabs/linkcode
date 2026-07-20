@@ -205,24 +205,13 @@ function conversationViewPipeline(conversation: ConversationViewModel): number {
   );
 }
 
-/** Sum toolCallDiffStats across every edit tool — ActivityGroup headers do this on re-render. */
-function allEditDiffStats(conversation: ConversationViewModel): number {
-  let total = 0;
-  for (const item of conversation.items) {
-    if (item.kind !== 'tool' || item.toolCall.kind !== 'edit') continue;
-    const stats = toolCallDiffStats(item.toolCall);
-    total += stats.additions + stats.deletions;
-  }
-  return total;
-}
-
 function simulateStreamTicks(conversation: ConversationViewModel, ticks: number): number {
   // Identity-stable history + mutating tail message text, like a streaming chunk each tick.
-  let acc = 0;
   const base = conversation.items.slice(0, -1);
   const last = conversation.items.at(-1);
   if (last?.kind !== 'message') return conversationViewPipeline(conversation);
 
+  let acc = 0;
   let text = last.blocks[0]?.type === 'text' ? last.blocks[0].text : '';
   for (let i = 0; i < ticks; i += 1) {
     text += ` token${i}`;
@@ -247,9 +236,6 @@ describe('ConversationView pure pipeline — small (~20 turns)', () => {
   bench(`pipeline once (${conversation.items.length} items)`, () => {
     conversationViewPipeline(conversation);
   });
-  bench('all edit toolCallDiffStats once', () => {
-    allEditDiffStats(conversation);
-  });
   bench('simulate 50 stream ticks (full pipeline each)', () => {
     simulateStreamTicks(conversation, 50);
   });
@@ -259,9 +245,6 @@ describe('ConversationView pure pipeline — large (~80 turns)', () => {
   const conversation = buildConversation(LARGE);
   bench(`pipeline once (${conversation.items.length} items)`, () => {
     conversationViewPipeline(conversation);
-  });
-  bench('all edit toolCallDiffStats once', () => {
-    allEditDiffStats(conversation);
   });
   bench('simulate 100 stream ticks (full pipeline each)', () => {
     simulateStreamTicks(conversation, 100);
