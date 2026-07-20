@@ -7,8 +7,8 @@ import { createSocketIoServer } from '@linkcode/transport/server';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import type { WorkbenchConnectionSource } from '../connection-controller';
-import { WorkbenchConnectionController } from '../connection-controller';
+import type { WorkbenchConnectionSource } from '../../src/runtime/connection-controller';
+import { WorkbenchConnectionController } from '../../src/runtime/connection-controller';
 
 const HOST = '127.0.0.1';
 
