@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ExtractError } from '../errors';
-import { extractMember } from '../extract';
+import { ExtractError } from '../../src/errors';
+import { extractMember } from '../../src/extract';
 import { makeTgz } from './helpers/fixtures';
 
 function dest(): string {
