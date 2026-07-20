@@ -43,6 +43,7 @@ export function FileTabStrip({
             closeLabel={t('closeTab', { label })}
             onSelect={() => onSelectTab(tab.id)}
             onClose={() => onCloseTab(tab.id)}
+            onMiddleClick={() => onCloseTab(tab.id)}
           />
         );
       })}
