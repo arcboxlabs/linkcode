@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { toHostPath } from '@linkcode/common/node';
@@ -84,8 +85,8 @@ export const readWorkspaceFile: (
 
         const mimeType = MIME_BY_EXTENSION[path.extname(resolved).toLowerCase()];
         // Known-binary types (PDF, raster images) must round-trip as base64 even when no NUL lands
-        // in the sniff window — a utf8 decode would corrupt the bytes. SVG stays text (it's XML).
-        const binary = isBinary(buffer) || isBinaryMime(mimeType);
+        // in the sniff window. Invalid UTF-8 must also stay byte-exact. SVG stays text (it's XML).
+        const binary = isBinary(buffer) || !isUtf8(buffer) || isBinaryMime(mimeType);
         return {
           path: resolved,
           size: stat.size,

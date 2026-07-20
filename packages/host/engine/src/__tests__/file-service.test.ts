@@ -58,6 +58,16 @@ describe('readWorkspaceFile', () => {
     expect(Buffer.from(file.content, 'base64')).toEqual(pdf);
   });
 
+  it('returns invalid UTF-8 as base64 when the invalid byte is after the sniff window', async () => {
+    const root = makeTempDir();
+    const bytes = Buffer.concat([Buffer.alloc(8192, 0x61), Buffer.from([0xff])]);
+    writeFileSync(join(root, 'invalid.txt'), bytes);
+
+    const file = await runReadWorkspaceFile(root, 'invalid.txt');
+    expect(file.encoding).toBe('base64');
+    expect(Buffer.from(file.content, 'base64')).toEqual(bytes);
+  });
+
   it('keeps svg as utf8 text (it is XML, not binary)', async () => {
     const root = makeTempDir();
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
