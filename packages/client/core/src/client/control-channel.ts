@@ -16,6 +16,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -299,6 +300,16 @@ export class ControlChannel {
       clientReqId,
       content,
       mimeType,
+    }));
+  }
+
+  /** Host a workspace file on the daemon's per-file origin, streamed with Range (CODE-316). */
+  hostFile(cwd: string, path: string): Promise<HostedFile> {
+    return this.sendCorrelated('fileHost', (clientReqId) => ({
+      kind: 'file.host',
+      clientReqId,
+      cwd,
+      path,
     }));
   }
 

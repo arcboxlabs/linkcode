@@ -20,6 +20,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -300,6 +301,11 @@ export class LinkCodeSdkClient {
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
   hostArtifact(content: string, mimeType: string): RequestResult<HostedArtifact> {
     return toResult(this.raw.hostArtifact(content, mimeType));
+  }
+
+  /** Host a workspace file on the daemon's per-file origin, streamed with Range (CODE-316). */
+  hostFile(cwd: string, path: string): RequestResult<HostedFile> {
+    return toResult(this.raw.hostFile(cwd, path));
   }
 
   /** Every registered workspace (directory), most recently used first. */

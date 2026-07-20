@@ -88,7 +88,8 @@ export class WireRequestRouter {
       }
       case 'file.read':
       case 'file.list':
-      case 'file.suggest': {
+      case 'file.suggest':
+      case 'file.host': {
         return this.handlers.file.handle(p);
       }
       case 'script.list':

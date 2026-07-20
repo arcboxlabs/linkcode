@@ -11,7 +11,8 @@ import { WirePayloadSchema } from './payload';
 // 39 disambiguates a parallel double-bump: #186 (CODE-142) and #189 (CODE-219) both shipped as
 // "38" with different schemas, so a build from between their merges shares a number with a
 // schema it does not speak.
-export const WIRE_PROTOCOL_VERSION = 41 as const;
+// 42 adds file.host/file.hosted (CODE-316: workspace media served over the preview proxy).
+export const WIRE_PROTOCOL_VERSION = 42 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

@@ -2,13 +2,17 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
-import { RequestError } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
+import type { FileHostService } from '../preview/file-host-service';
 import type { WireResponder } from '../wire/responder';
 import { readWorkspaceFile } from './file-service';
 import type { FileSuggestService } from './file-suggest-service';
 import type { WorkspaceRegistry } from './workspace-registry';
 
-type FileRequest = Extract<WirePayload, { kind: 'file.read' | 'file.list' | 'file.suggest' }>;
+type FileRequest = Extract<
+  WirePayload,
+  { kind: 'file.read' | 'file.list' | 'file.suggest' | 'file.host' }
+>;
 
 /** Translates inbound file reads and registered-workspace enumeration requests. */
 export class FileRequestHandler {
@@ -17,6 +21,7 @@ export class FileRequestHandler {
     private readonly files: FileSuggestService,
     private readonly workspaces: WorkspaceRegistry,
     private readonly responder: WireResponder,
+    private readonly fileHost: FileHostService,
   ) {}
 
   handle(payload: FileRequest): Effect.Effect<void> {
@@ -70,6 +75,33 @@ export class FileRequestHandler {
                     kind: 'file.suggest.result',
                     replyTo: payload.clientReqId,
                     suggestions,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+      case 'file.host':
+        return this.responder.reply(
+          payload.clientReqId,
+          Effect.tryPromise({
+            try: () => this.fileHost.host(payload.cwd, payload.path),
+            catch: (cause) =>
+              cause instanceof RequestError
+                ? cause
+                : toOperationFailure(cause, {
+                    subsystem: 'preview',
+                    operation: 'file.host',
+                    publicMessage: 'Failed to host workspace file',
+                  }),
+          }).pipe(
+            Effect.flatMap((hosted) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'file.hosted',
+                    replyTo: payload.clientReqId,
+                    hosted,
                   }),
                 ),
               ),

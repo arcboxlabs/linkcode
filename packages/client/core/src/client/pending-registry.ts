@@ -8,6 +8,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
@@ -73,6 +74,7 @@ export interface PendingValueMap {
   fileSuggest: FileSuggestion[];
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
+  fileHost: HostedFile;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -115,6 +117,7 @@ export class PendingRegistry {
     fileSuggest: new Map(),
     scriptList: new Map(),
     artifactHost: new Map(),
+    fileHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),
