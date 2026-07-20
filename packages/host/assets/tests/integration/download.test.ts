@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { DownloadProgress } from '../../src/download';
 import { downloadVerified } from '../../src/download';
 import { DownloadError, IntegrityError } from '../../src/errors';
-import type { LocalServer } from './helpers/local-server';
-import { startLocalServer } from './helpers/local-server';
+import type { LocalServer } from '../support/local-server';
+import { startLocalServer } from '../support/local-server';
 
 const payload = randomBytes(256 * 1024);
 const sri = `sha512-${createHash('sha512').update(payload).digest('base64')}`;

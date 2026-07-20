@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DownloadError } from '../../src/errors';
 import { fetchNpmDist } from '../../src/registry-client';
-import type { LocalServer } from './helpers/local-server';
-import { startLocalServer } from './helpers/local-server';
+import type { LocalServer } from '../support/local-server';
+import { startLocalServer } from '../support/local-server';
 
 const servers: LocalServer[] = [];
 afterEach(async () => {

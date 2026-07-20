@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NpmClosureAssetDescriptor } from '../../src/catalog';
 import { AssetManager } from '../../src/manager';
 import { versionDir } from '../../src/paths';
-import type { TgzFixture } from './helpers/fixtures';
-import { makePackageTgz } from './helpers/fixtures';
-import type { LocalServer } from './helpers/local-server';
-import { startLocalServer } from './helpers/local-server';
+import type { TgzFixture } from '../support/fixtures';
+import { makePackageTgz } from '../support/fixtures';
+import type { LocalServer } from '../support/local-server';
+import { startLocalServer } from '../support/local-server';
 
 const servers: LocalServer[] = [];
 afterEach(async () => {

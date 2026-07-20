@@ -7,10 +7,10 @@ import { IntegrityError } from '../../src/errors';
 import { installAsset, installedComplete, installedPath } from '../../src/install';
 import { assetDir } from '../../src/paths';
 import { currentPlatformKey } from '../../src/platform';
-import type { TgzFixture } from './helpers/fixtures';
-import { makeTgz } from './helpers/fixtures';
-import type { LocalServer } from './helpers/local-server';
-import { startLocalServer } from './helpers/local-server';
+import type { TgzFixture } from '../support/fixtures';
+import { makeTgz } from '../support/fixtures';
+import type { LocalServer } from '../support/local-server';
+import { startLocalServer } from '../support/local-server';
 
 const platform = currentPlatformKey();
 if (!platform) throw new Error('tests require a catalog-supported platform');

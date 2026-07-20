@@ -95,7 +95,14 @@ The release build is used in dev on purpose, so the daemon's fallback path match
 
 ### One runner
 
-There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` with `environment: 'node'`. Module unit tests stay beside their source under package/app `src/**/__tests__`; workspace-level contract and integration tests live under `tests/{contract,integration}`. Shared fixtures live under `tests/support` and are type-checked but are not test entry points. Test files use `*.test.ts` or `*.test.tsx`; DOM component tests opt in per file with `@vitest-environment jsdom`. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
+There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` with `environment: 'node'`. Test placement follows the boundary under test:
+
+- Module unit and behavior tests stay beside their source under package/app `src/**/__tests__`.
+- `tests/contract` is only for consumer contracts exercised through a workspace's public exports; it must not import private `src` modules.
+- `tests/integration` is for real process or runtime boundaries: loopback network servers, native databases, CLI/child processes, compiled binaries, or multiple runtimes wired together. A temporary filesystem by itself does not make a test an integration test.
+- App `e2e/` tests launch the real app entry and drive it externally; renderer component tests are not E2E.
+
+Shared external-test fixtures live under `tests/support` and are type-checked but are not test entry points. Test files use `*.test.ts` or `*.test.tsx`; DOM component tests opt in per file with `@vitest-environment jsdom`. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
 
 ```bash
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
@@ -115,7 +122,7 @@ The PTY subsystem has four layers, and the frame protocol is implemented **twice
 
 1. `apps/daemon/src/pty/__tests__/codec.test.ts` — pure TS frame codec.
 2. `apps/daemon/src/pty/__tests__/sidecar.test.ts` — `SidecarPtyBackend` with `vi.mock('node:child_process')`; no real binary.
-3. `apps/daemon/src/pty/__tests__/sidecar.integration.test.ts` — real backend against the real compiled `linkcode-pty` (cross-boundary wire check).
+3. `apps/daemon/tests/integration/pty-sidecar.test.ts` — real backend against the real compiled `linkcode-pty` (cross-boundary wire check).
 4. `crates/linkcode-pty/tests/smoke.rs` — Rust, unix-only, self-builds via `CARGO_BIN_EXE_linkcode-pty`.
 
 **Silent-skip trap:** layer 3 is `describe.skipIf(!BINARY)` and **silently skips** when `linkcode-pty` isn't built (it looks for `target/debug` then `target/release`, first existing wins, else skip). Plain `pnpm test` therefore passes green **without ever exercising the real wire protocol**. To actually run it, build the binary first:

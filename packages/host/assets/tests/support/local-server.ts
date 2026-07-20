@@ -10,7 +10,7 @@ export interface LocalServer {
   close(): Promise<void>;
 }
 
-/** Loopback HTTP server on an ephemeral port — the repo's stand-in for HTTP mocking libs. */
+/** Loopback HTTP server on an ephemeral port — the integration stand-in for HTTP mocking libs. */
 export async function startLocalServer(
   handler: (req: IncomingMessage, res: ServerResponse) => void,
 ): Promise<LocalServer> {

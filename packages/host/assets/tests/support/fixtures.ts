@@ -11,7 +11,7 @@ export interface TgzFixture {
   integrity: string;
 }
 
-/** Build a real tgz with the system tar (dev machines are posix). */
+/** Build a real tgz with the system tar for integration tests (dev machines are posix). */
 export function makeTgz(
   member: string,
   content: string,

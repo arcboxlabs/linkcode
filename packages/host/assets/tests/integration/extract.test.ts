@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ExtractError } from '../../src/errors';
 import { extractMember } from '../../src/extract';
-import { makeTgz } from './helpers/fixtures';
+import { makeTgz } from '../support/fixtures';
 
 function dest(): string {
   return join(mkdtempSync(join(tmpdir(), 'extract-')), 'out', 'tool');
