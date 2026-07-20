@@ -17,6 +17,7 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
+import { EffortLevelSchema } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
@@ -91,6 +92,27 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
     }
   }
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+interface CodexModelDefaults {
+  defaultModel: string | undefined;
+  efforts: Map<string, EffortLevel>;
+}
+
+/** Read model-specific defaults from `model/list` without pinning them as thread/turn overrides.
+ * The response is an external JSON-RPC boundary, so accept only the verified fields. */
+function codexModelDefaults(response: unknown): CodexModelDefaults {
+  const defaults: CodexModelDefaults = { defaultModel: undefined, efforts: new Map() };
+  if (!isRecord(response) || !Array.isArray(response.data)) return defaults;
+  for (const candidate of response.data) {
+    if (!isRecord(candidate)) continue;
+    const model = stringField(candidate, 'model') ?? stringField(candidate, 'id');
+    if (!model) continue;
+    const effort = EffortLevelSchema.safeParse(candidate.defaultReasoningEffort);
+    if (effort.success) defaults.efforts.set(model, effort.data);
+    if (candidate.isDefault === true) defaults.defaultModel = model;
+  }
+  return defaults;
 }
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
@@ -214,7 +236,6 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -253,6 +274,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Model/effort for the next `turn/start`; `turn/start` overrides stick for subsequent turns. */
   private model: string | undefined;
   private effort: EffortLevel | undefined;
+  /** Provider defaults keyed by model, refreshed from `model/list` for effective-effort fallback. */
+  private modelDefaultEfforts = new Map<string, EffortLevel>();
   /** Active approval/sandbox tier; switches ride the next `turn/start` like model/effort. */
   private policyId: CodexPolicyId = INITIAL_POLICY_ID;
   /** True once the user explicitly picked a tier this session; only then may a preset override
@@ -276,9 +299,8 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model;
-    // Reflect a model chosen at new-session time; codex has no live channel to observe the
-    // config.toml default when none was picked, so a fresh unset session shows a placeholder.
-    if (this.model) this.emitModel(this.model);
+    // openThread reflects the app-server's effective model after thread/start accepts or corrects
+    // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
   }
 
@@ -349,7 +371,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     await this.ensureThread();
     const { server, threadId } = this.liveThread();
     if (name === COMPACT_COMMAND.name) {
-      await server.request('thread/compact/start', { threadId });
+      this.emitStatus('running');
+      try {
+        await server.request('thread/compact/start', { threadId });
+      } catch (err) {
+        this.teardown();
+        this.emitStatus('idle');
+        throw err;
+      }
       return;
     }
     const skill = this.skillCommands.get(name);
@@ -554,6 +583,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.server = server;
     // A fresh process re-read the on-disk credentials — its auth state is unknown again.
     this.authFailed = false;
+    const modelDefaultsPromise = this.readModelDefaults(server);
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
@@ -575,6 +605,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       const response = resume
         ? await server.request('thread/resume', { ...params, threadId: resume, excludeTurns: true })
         : await server.request('thread/start', params);
+      const modelDefaults = await modelDefaultsPromise;
+      this.modelDefaultEfforts = modelDefaults.efforts;
+      this.reflectThreadSettings(response, modelDefaults.defaultModel);
       const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
@@ -592,6 +625,33 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.server = null;
       throw err;
     }
+  }
+
+  /** Best-effort provider defaults. Older detected app-server builds may lack `model/list`; the
+   * thread response can still reflect any explicit configured effort without this catalog. */
+  private async readModelDefaults(server: CodexServerHandle): Promise<CodexModelDefaults> {
+    try {
+      return codexModelDefaults(await server.request('model/list', {}));
+    } catch {
+      return { defaultModel: undefined, efforts: new Map() };
+    }
+  }
+
+  /** Reflect the app-server's effective model and effort. A null effort means no override, so the
+   * selected model's catalog default is the actual value. An explicit user pick remains pending
+   * until `thread/settings/updated` confirms what the next turn accepted. */
+  private reflectThreadSettings(response: unknown, fallbackModel?: string): void {
+    if (!isRecord(response)) return;
+    const model = stringField(response, 'model') ?? fallbackModel;
+    if (model) this.emitModel(model);
+    if (this.effort !== undefined) return;
+    const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
+    const effective = effort.success
+      ? effort.data
+      : model
+        ? this.modelDefaultEfforts.get(model)
+        : null;
+    if (effective) this.emitEffort(effective);
   }
 
   /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path, so
@@ -719,6 +779,20 @@ export class CodexAdapter extends BaseAgentAdapter {
           // Deferred to the first turn for fresh threads — see openThread.
           if (!this.holdSessionRef) this.emitSessionRef(asHistoryId(id));
         }
+        break;
+      }
+      case 'thread/settings/updated': {
+        const settings = recordField(params, 'threadSettings');
+        if (!settings) break;
+        const model = stringField(settings, 'model');
+        if (model) this.emitModel(model);
+        const effort = EffortLevelSchema.safeParse(settings.effort);
+        const effective = effort.success
+          ? effort.data
+          : this.effort === undefined && model
+            ? this.modelDefaultEfforts.get(model)
+            : undefined;
+        if (effective) this.emitEffort(effective);
         break;
       }
       case 'turn/started': {

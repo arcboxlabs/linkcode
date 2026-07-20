@@ -45,6 +45,10 @@ export class SessionRecordRegistry {
     return this.records.get(sessionId);
   }
 
+  values(): IterableIterator<SessionRecord> {
+    return this.records.values();
+  }
+
   list(statusOf: (sessionId: SessionId) => SessionInfo['status'] | undefined): SessionInfo[] {
     return Array.from(this.records.values(), (record) => ({
       sessionId: record.sessionId,

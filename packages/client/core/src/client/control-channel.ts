@@ -153,7 +153,8 @@ export class ControlChannel {
     return this.prompt(sessionId, [{ type: 'text', text }]);
   }
 
-  /** Invoke a provider slash command by name. Rejects if the adapter has no command catalog. */
+  /** Invoke a provider slash command by name. The host rejects unsupported commands and misses
+   * from an authoritative catalog; while discovery is loading, the provider validates the name. */
   invokeCommand(sessionId: SessionId, name: string, args?: string): Promise<RequestAck> {
     return this.send(sessionId, { type: 'command', name, arguments: args });
   }

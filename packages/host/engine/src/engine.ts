@@ -187,6 +187,15 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
       );
+      // Reconcile imports created before workspace auto-registration. Known workspaces are skipped so
+      // daemon startup never renames or freshens an existing project merely because it has imports.
+      for (const record of records.values()) {
+        if (record.origin.type === 'imported' && record.cwd && !workspaces.findByCwd(record.cwd)) {
+          yield* tryOperation('store', 'workspace.touch', 'Failed to persist workspace', () =>
+            workspaces.touch(record.cwd),
+          );
+        }
+      }
       // After the session records are loaded (the schedule orphan-sweep reads them) and before the
       // transport connects, so the first tick can't race an unconnected transport.
       yield* scheduler.start();

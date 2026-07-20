@@ -1,10 +1,13 @@
 import type {
+  AgentInput,
   AgentKind,
   ContentBlock,
+  EffortLevel,
   SessionModeId,
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -31,9 +34,10 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_MODEL_OPTIONS } from './agent-models';
+import { AGENT_DEFAULT_MODELS } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
+import type { ComposerDirectiveControls, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { DEFAULT_MODE_ID } from './session-modes';
@@ -49,9 +53,12 @@ export interface NewSessionSubmission {
   cwd: string;
   /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
   workspaceId: WorkspaceId;
-  model?: string;
+  /** Null explicitly returns this provider to its configured/default model. */
+  model?: string | null;
+  /** Null explicitly returns this provider to its default effort. */
+  effort?: EffortLevel | null;
   modeId?: SessionModeId;
-  content: ContentBlock[];
+  input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
 
 export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
@@ -68,6 +75,17 @@ export interface NewSessionSurfaceProps {
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
+   * built-in provider defaults fill missing kinds for standalone consumers. */
+  defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
+  /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
+  preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Last accepted effort per provider. Missing kinds retain the provider default. */
+  preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
+  /** Ranked files for the active draft workspace's `@` query. */
+  mentionItems: MentionItem[];
+  /** Queries files in the draft's currently selected workspace. */
+  onMentionQueryChange: (cwd: string | undefined, query: string | null) => void;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
@@ -91,8 +109,8 @@ export interface NewSessionSurfaceProps {
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
 
-/** Unified new-session page: heading + shared `Composer` + workspace context bar. Model and
- * workflow-mode picks ride into the submission; the session reflects them from then on. */
+/** Unified new-session page: heading + shared `Composer` + workspace context bar. Model, effort,
+ * and workflow-mode picks ride into the submission; the session reflects them from then on. */
 export function NewSessionSurface({
   draft,
   workspaces,
@@ -101,6 +119,11 @@ export function NewSessionSurface({
   topContent,
   runtimeCues,
   attachmentSupport,
+  defaultModels,
+  preferredModels,
+  preferredEfforts,
+  mentionItems,
+  onMentionQueryChange,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -114,7 +137,12 @@ export function NewSessionSurface({
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
   const [workspaceId, setWorkspaceId] = useState(draft.initialWorkspaceId);
-  const [model, setModel] = useState<string | null>(null);
+  const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
+    {},
+  );
+  const [selectedEfforts, setSelectedEfforts] = useState<
+    Partial<Record<AgentKind, EffortLevel | null>>
+  >({});
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
   const [pending, setPending] = useState(false);
 
@@ -122,25 +150,45 @@ export function NewSessionSurface({
   const selected =
     selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
   const isChatSelected = selected != null && selected === chatWorkspace;
+  const localModel = selectedModels[provider];
+  const selectedModel =
+    localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
+  const displayedModel =
+    selectedModel ??
+    (defaultModels === null
+      ? null
+      : (defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null));
+  const localEffort = selectedEfforts[provider];
+  const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
 
-  function handleSend(content: ContentBlock[]): void {
-    if (!selected) return;
-    // The model rides only when it belongs to the submitted provider — mirroring what the
-    // composer's trigger displays (a pick made under another provider shows as "Default").
-    const providerModels = AGENT_MODEL_OPTIONS[provider];
-    const validModel =
-      model != null && providerModels?.some((option) => option.id === model) ? model : undefined;
+  async function submit(input: NewSessionSubmission['input']): Promise<void> {
+    if (!selected) throw new Error('Cannot start a session without a workspace');
     setPending(true);
-    onSubmit({
-      kind: provider,
-      cwd: selected.cwd,
-      workspaceId: selected.workspaceId,
-      model: validModel,
-      modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-      content,
-    })
-      .catch(noop)
-      .finally(() => setPending(false));
+    try {
+      await onSubmit({
+        kind: provider,
+        cwd: selected.cwd,
+        workspaceId: selected.workspaceId,
+        model: localModel === null ? null : (selectedModel ?? undefined),
+        ...(localEffort === null ? { effort: null } : effort !== null && { effort }),
+        modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
+        input,
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function handleSend(content: ContentBlock[]): Promise<void> {
+    return submit({ type: 'prompt', content });
+  }
+
+  function handleInvokeCommand(name: string, args?: string): Promise<void> {
+    return submit({ type: 'command', name, arguments: args });
+  }
+
+  function handleRunShellCommand(command: string): Promise<void> {
+    return submit({ type: 'shell-command', command });
   }
 
   function handleProviderChange(nextProvider: AgentKind): Promise<void> {
@@ -149,8 +197,21 @@ export function NewSessionSurface({
   }
 
   function handleModelChange(nextModel: string): Promise<void> {
-    setModel(nextModel);
+    setSelectedModels((current) => ({ ...current, [provider]: nextModel }));
     return Promise.resolve();
+  }
+
+  function handleEffortChange(nextEffort: EffortLevel): Promise<void> {
+    setSelectedEfforts((current) => ({ ...current, [provider]: nextEffort }));
+    return Promise.resolve();
+  }
+
+  function handleResetModel(): void {
+    setSelectedModels((current) => ({ ...current, [provider]: null }));
+  }
+
+  function handleResetEffort(): void {
+    setSelectedEfforts((current) => ({ ...current, [provider]: null }));
   }
 
   function handleModeChange(nextModeId: string): Promise<void> {
@@ -163,6 +224,20 @@ export function NewSessionSurface({
       ? t('headingIn', { name: selected.name ?? repositoryLabel(selected.cwd) })
       : t('heading');
   const cue = runtimeCues?.[provider];
+  const capabilities = AGENT_INPUT_CAPABILITIES[provider];
+  const directiveControls: ComposerDirectiveControls = {
+    slash: capabilities.slashCommands
+      ? { state: 'loading', onInvokeCommand: handleInvokeCommand }
+      : { state: 'unsupported' },
+    shell: capabilities.shellCommand
+      ? { state: 'ready', onRunShellCommand: handleRunShellCommand }
+      : { state: 'unsupported' },
+  };
+
+  function handleWorkspaceChange(nextWorkspaceId: WorkspaceId): void {
+    onMentionQueryChange(undefined, null);
+    setWorkspaceId(nextWorkspaceId);
+  }
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
@@ -191,18 +266,26 @@ export function NewSessionSurface({
             agentLabel={AGENT_LABELS[provider]}
             agentKind={provider}
             attachmentsSupported={Boolean(attachmentSupport?.[provider])}
+            blockDirectivesWithAttachments
             disabled={pending || !selected}
+            directiveControls={directiveControls}
             isRunning={false}
+            mentionItems={mentionItems}
+            onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
-            currentModel={model}
+            currentModel={displayedModel}
+            currentEffort={effort}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
+            onEffortChange={handleEffortChange}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
+            onResetEffort={effort === null ? undefined : handleResetEffort}
+            onResetModel={selectedModel === null ? undefined : handleResetModel}
             onProviderChange={handleProviderChange}
             contextBar={
               <NewSessionContextBar
@@ -211,7 +294,7 @@ export function NewSessionSurface({
                 selected={selected}
                 isChatSelected={isChatSelected}
                 disabled={pending}
-                onSelect={setWorkspaceId}
+                onSelect={handleWorkspaceChange}
                 onPickDirectory={onPickDirectory}
                 onRegisterWorkspace={onRegisterWorkspace}
               />

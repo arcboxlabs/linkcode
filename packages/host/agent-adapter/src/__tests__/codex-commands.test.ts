@@ -7,6 +7,7 @@ import type { CodexAppServerOptions } from '../native/codex/app-server';
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
   rejectSkills = false;
+  compactResponse: Promise<unknown> = Promise.resolve({});
   private turn = 0;
 
   constructor(
@@ -26,6 +27,7 @@ class FakeCodexServer {
       this.turn += 1;
       return Promise.resolve({ turn: { id: `turn-${this.turn}` } });
     }
+    if (method === 'thread/compact/start') return this.compactResponse;
     return Promise.resolve({});
   }
 
@@ -245,5 +247,69 @@ describe('CodexAdapter slash commands', () => {
     await expect(adapter.send({ type: 'command', name: 'missing' })).rejects.toThrow(
       "codex: unknown slash command '/missing'",
     );
+  });
+
+  it('stays running after the /compact ack and settles from its compaction turn', async () => {
+    const adapter = new TestCodex(response());
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    events.length = 0;
+    let resolveCompact!: (value: unknown) => void;
+    adapter.fake.compactResponse = new Promise((resolve) => {
+      resolveCompact = resolve;
+    });
+
+    const sending = adapter.send({ type: 'command', name: 'compact' });
+    let settled = false;
+    void sending.then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => expect(events).toContainEqual({ type: 'status', status: 'running' }));
+    expect(settled).toBe(false);
+    resolveCompact({});
+    await sending;
+
+    expect(events.filter((event) => event.type === 'status')).toEqual([
+      { type: 'status', status: 'running' },
+    ]);
+    // thread/compact/start returns an empty ack before app-server 0.144.1 runs compaction as a
+    // normal turn. The standard notifications — not the request response — own settlement.
+    adapter.fake.notify('turn/started', { turn: { id: 'compact-turn' } });
+    adapter.fake.notify('item/started', {
+      item: { id: 'compaction-1', type: 'contextCompaction' },
+    });
+    adapter.fake.notify('item/completed', {
+      item: { id: 'compaction-1', type: 'contextCompaction' },
+    });
+    adapter.fake.notify('turn/completed', {
+      turn: { id: 'compact-turn', status: 'completed' },
+    });
+
+    expect(events.filter((event) => event.type === 'compaction')).toEqual([
+      { type: 'compaction', compactionId: 'compaction-1', status: 'in_progress' },
+      { type: 'compaction', compactionId: 'compaction-1', status: 'completed' },
+    ]);
+    expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+  });
+
+  it('returns /compact to idle when its request is rejected', async () => {
+    const adapter = new TestCodex(response());
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    events.length = 0;
+    adapter.fake.compactResponse = Promise.reject(new Error('compact unavailable'));
+
+    await expect(adapter.send({ type: 'command', name: 'compact' })).rejects.toThrow(
+      'compact unavailable',
+    );
+
+    expect(events.filter((event) => event.type === 'status')).toEqual([
+      { type: 'status', status: 'running' },
+      { type: 'status', status: 'idle' },
+    ]);
   });
 });

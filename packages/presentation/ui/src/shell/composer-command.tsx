@@ -29,12 +29,6 @@ export interface MentionItem {
   hint?: string;
 }
 
-export interface TextTriggerState {
-  kind: 'mention' | 'slash';
-  query: string;
-  start: number;
-}
-
 export type ComposerCommandSource = 'mention' | 'plus' | 'slash';
 
 interface BaseCommandEntry {
@@ -86,25 +80,9 @@ const MODE_COMMAND_ICONS: Record<string, LucideIcon> = {
   goal: TargetIcon,
   plan: ListTodoIcon,
 };
-const WHITESPACE_RE = /\s/;
 
 export function commandEntryToString(item: unknown): string {
   return (item as ComposerCommandEntry).label;
-}
-
-export function computeTextTrigger(value: string, caret: number): TextTriggerState | null {
-  let start = caret;
-  while (start > 0 && !WHITESPACE_RE.test(value[start - 1])) start--;
-  const token = value.slice(start, caret);
-  if (token[0] === '@') return { kind: 'mention', query: token.slice(1), start };
-  if (token[0] === '/') return { kind: 'slash', query: token.slice(1), start };
-  return null;
-}
-
-export function textControlFromEvent(event: Event): HTMLInputElement | HTMLTextAreaElement | null {
-  return event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
-    ? event.target
-    : null;
 }
 
 function matchesQuery(
@@ -149,7 +127,7 @@ export function buildComposerCommandGroups({
   mentionItems: MentionItem[];
   modesEnabled: boolean;
   plusQuery: string;
-  textTrigger: TextTriggerState | null;
+  textTrigger: { query: string } | null;
 }): ComposerCommandGroup[] {
   if (!commandSource) return [];
 
@@ -264,16 +242,21 @@ function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNod
 
 export function ComposerCommandMenu({
   emptyLabel,
+  listId,
   onSelect,
 }: {
   emptyLabel: string;
+  listId: string;
   onSelect: (entry: ComposerCommandEntry) => void;
 }): React.ReactNode {
   return (
     <div className="flex max-h-80 min-h-0 flex-col **:data-[slot=scroll-area-viewport]:max-h-80 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-0!">
       <CommandEmpty>{emptyLabel}</CommandEmpty>
       <div className="min-h-0 flex-1">
-        <CommandList className="in-data-has-overflow-y:pe-2! not-empty:scroll-py-1 not-empty:p-1 not-empty:pb-2">
+        <CommandList
+          className="in-data-has-overflow-y:pe-2! not-empty:scroll-py-1 not-empty:p-1 not-empty:pb-2"
+          id={listId}
+        >
           {(group: ComposerCommandGroup) => (
             <CommandGroup key={group.value} items={group.items}>
               <CommandGroupLabel>{group.label}</CommandGroupLabel>

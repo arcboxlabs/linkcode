@@ -7,6 +7,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   ContentBlock,
+  EffortLevel,
   ManagedAssetId,
   ManagedAssetStatus,
   MessageId,
@@ -25,10 +26,11 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { normalizeCwdKey, textBlock } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
+import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
@@ -79,9 +81,24 @@ import {
 /** Pace of the mock download's staged `asset.progress` broadcasts. */
 const ASSET_PROGRESS_LATENCY_MS = 400;
 
+/** Provider truths the mock can reflect without probing a real install. Install-discovered model
+ * defaults (Pi) stay absent; adapters without an effort axis (OpenCode/Pi) stay absent too. */
+const MOCK_DEFAULT_MODELS: Readonly<Partial<Record<AgentKind, string>>> = {
+  'claude-code': 'claude-opus-4-8',
+  codex: 'gpt-5.5',
+  'grok-build': 'grok-4.5',
+};
+
+const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = {
+  'claude-code': 'high',
+  codex: 'high',
+  'grok-build': 'high',
+};
+
 interface MockSession extends SessionInfo {
-  /** Host-only state: keep it off `session.list` so the mock still crosses the schema boundary cleanly. */
+  /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
+  effort?: EffortLevel;
   /** Bumped by cancel/stop so an in-flight prompt turn knows to bail out. */
   epoch: number;
   showcase?: boolean;
@@ -272,9 +289,12 @@ export class DevMockHost {
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
         break;
+      case 'session.attach':
+        this.attachSession(p.sessionId);
+        break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
-        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model);
+        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model, p.opts.effort);
         break;
       case 'session.resume':
         await wait(CONTROL_LATENCY_MS);
@@ -519,6 +539,12 @@ export class DevMockHost {
     const { origin, ...rest } = init;
     const session: MockSession = {
       ...rest,
+      model:
+        rest.model ?? SEED_MODEL_CATALOGS[rest.kind]?.[0]?.id ?? MOCK_DEFAULT_MODELS[rest.kind],
+      effort:
+        MOCK_DEFAULT_EFFORTS[rest.kind] === undefined
+          ? undefined
+          : (rest.effort ?? MOCK_DEFAULT_EFFORTS[rest.kind]),
       sessionId: this.nextSessionId(),
       origin: origin ?? { type: 'created' },
       epoch: 0,
@@ -568,6 +594,7 @@ export class DevMockHost {
     kind: MockSession['kind'],
     cwd: string,
     model: string | undefined,
+    effort: EffortLevel | undefined,
   ): void {
     const now = Date.now();
     const session = this.addSession({
@@ -577,22 +604,21 @@ export class DevMockHost {
       createdAt: now,
       updatedAt: now,
       model,
+      effort,
     });
     // Parity with the engine: starting a session registers/freshens its directory's workspace.
     this.touchWorkspace(cwd, now);
     const { sessionId } = session;
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
+    this.emitDirectiveAdvertisement(sessionId);
     const catalog = SEED_MODEL_CATALOGS[kind];
     if (catalog) {
       this.emit(sessionId, { type: 'available-models-update', models: catalog });
     }
     // Reflect a concrete model/effort like a real adapter, so the composer shows them not placeholders.
-    this.emit(sessionId, {
-      type: 'model-update',
-      model: model ?? catalog?.[0]?.id ?? (kind === 'codex' ? 'gpt-5.5' : 'claude-opus-4-8'),
-    });
-    this.emit(sessionId, { type: 'effort-update', effort: 'high' });
+    if (session.model) this.emit(sessionId, { type: 'model-update', model: session.model });
+    if (session.effort) this.emit(sessionId, { type: 'effort-update', effort: session.effort });
     this.emit(sessionId, { type: 'status', status: 'idle' });
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -756,13 +782,34 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
-    // Parity with the engine's replay-on-attach: a resumed session re-advertises its catalog.
-    const catalog = SEED_MODEL_CATALOGS[session.kind];
-    if (catalog) {
-      this.emit(sessionId, { type: 'available-models-update', models: catalog });
-    }
-    this.emit(sessionId, { type: 'status', status: 'idle' });
+    this.attachSession(sessionId);
     this.send({ kind: 'session.started', replyTo, sessionId });
+  }
+
+  /** Replay the live state a late subscriber cannot recover from session history. */
+  private attachSession(sessionId: SessionId): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.emit(sessionId, { type: 'status', status: session.status });
+    if (session.model) this.emit(sessionId, { type: 'model-update', model: session.model });
+    if (session.effort) this.emit(sessionId, { type: 'effort-update', effort: session.effort });
+    this.emitDirectiveAdvertisement(sessionId);
+    const catalog = SEED_MODEL_CATALOGS[session.kind];
+    if (catalog) this.emit(sessionId, { type: 'available-models-update', models: catalog });
+  }
+
+  /** The composer's directive inputs: what the session accepts (`/` + `$`) and its `/` catalog. */
+  private emitDirectiveAdvertisement(sessionId: SessionId): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const capabilities = AGENT_INPUT_CAPABILITIES[session.kind];
+    this.emit(sessionId, {
+      type: 'capabilities-update',
+      capabilities,
+    });
+    if (capabilities.slashCommands) {
+      this.emit(sessionId, { type: 'available-commands-update', commands: MOCK_COMMAND_CATALOG });
+    }
   }
 
   private stopSession(replyTo: string, sessionId: SessionId): void {
@@ -812,6 +859,7 @@ export class DevMockHost {
         this.sendSuccess(replyTo);
         break;
       case 'set-effort':
+        session.effort = input.effort;
         this.emit(sessionId, { type: 'effort-update', effort: input.effort });
         this.sendSuccess(replyTo);
         break;
@@ -823,22 +871,14 @@ export class DevMockHost {
         this.respondPermission(replyTo, sessionId, input.requestId, input.outcome);
         break;
       case 'command':
-        // Parity with the real engine + claude-code /usage intercept (CODE-213): the engine
-        // echoes the invocation text as a user-message before dispatch, the adapter brackets the
-        // control request with status running→idle, and the reply is one structured usage-report
-        // — no transcript text. Unknown commands mirror the engine's prevalidation reject (no echo).
-        if (input.name === 'usage' || input.name === 'cost') {
-          this.emit(sessionId, {
-            type: 'user-message',
-            content: [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)],
-          });
-          this.emit(sessionId, { type: 'status', status: 'running' });
-          this.emit(sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
-          this.emit(sessionId, { type: 'status', status: 'idle' });
-          this.sendSuccess(replyTo);
-        } else {
-          this.sendFailure(replyTo, 'Dev mock host only mocks the /usage command.');
-        }
+        this.invokeCommand(replyTo, session, input.name, input.arguments);
+        break;
+      case 'shell-command':
+        this.emit(sessionId, {
+          type: 'user-message',
+          content: [textBlock(`$ ${input.command}`)],
+        });
+        this.sendSuccess(replyTo);
         break;
       case 'question-response':
         this.respondQuestion(replyTo, sessionId, input.requestId, input.outcome);
@@ -847,6 +887,39 @@ export class DevMockHost {
         this.sendFailure(replyTo, 'Dev mock host does not support that input yet.');
         break;
     }
+  }
+
+  private invokeCommand(
+    replyTo: string,
+    session: MockSession,
+    name: string,
+    args: string | undefined,
+  ): void {
+    const fixture = mockCommandFixture(name);
+    if (!fixture) {
+      this.sendFailure(replyTo, `Unknown mock slash command: /${name}`);
+      return;
+    }
+
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
+    });
+    session.status = 'running';
+    this.emit(session.sessionId, { type: 'status', status: 'running' });
+    if (fixture.reply === undefined) {
+      this.emit(session.sessionId, { type: 'usage-report', report: MOCK_USAGE_REPORT });
+    } else {
+      this.emit(session.sessionId, {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId(`mock-${fixture.command.name}`),
+        content: textBlock(fixture.reply),
+      });
+      this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
+    }
+    session.status = 'idle';
+    this.emit(session.sessionId, { type: 'status', status: 'idle' });
+    this.sendSuccess(replyTo);
   }
 
   private async prompt(

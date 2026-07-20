@@ -1,6 +1,5 @@
 import type {
   AgentKind,
-  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -11,6 +10,7 @@ import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
+import type { ConversationComposerController } from './conversation-surface';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type {
@@ -45,6 +45,12 @@ export interface ShellFrameProps
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  /** Effective daemon-configured default models for new sessions; null while unresolved. */
+  newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
+  /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
+  newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
+  /** Last effort accepted by LinkCode per provider for new sessions. */
+  newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -77,11 +83,11 @@ export interface ShellFrameProps
   /** Registers a directory as a workspace; every shell wires this into the sidebar's Add workspace row. */
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
-  mentionItems?: MentionItem[];
-  /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
-  onMentionQueryChange?: (query: string | null) => void;
-  onSendPrompt: (content: ContentBlock[]) => void;
-  onStopTurn: () => void;
+  mentionItems: MentionItem[];
+  /** Queries mentions against the cwd belonging to whichever composer is visible. */
+  onMentionQueryChange: (cwd: string | undefined, query: string | null) => void;
+  /** Complete active-session composer behavior, forwarded atomically by every shell. */
+  conversationComposer: ConversationComposerController;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Hosts inline artifact content on the daemon (sandboxed html previews, CODE-62). */
@@ -94,12 +100,6 @@ export interface ShellFrameProps
   searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
-  onModeChange?: (modeId: string) => Promise<void>;
-  onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  onModelChange?: (model: string) => Promise<void>;
-  onEffortChange?: (effort: EffortLevel) => Promise<void>;
-  onInvokeCommand?: (name: string, args?: string) => void;
-  onRunShellCommand?: (command: string) => void;
 }
 
 export function ShellFrame({
@@ -112,6 +112,9 @@ export function ShellFrame({
   draft,
   runtimeCues,
   attachmentSupport,
+  newSessionDefaultModels,
+  newSessionPreferredModels,
+  newSessionPreferredEfforts,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -139,8 +142,7 @@ export function ShellFrame({
   onTogglePreviewExpanded,
   mentionItems,
   onMentionQueryChange,
-  onSendPrompt,
-  onStopTurn,
+  conversationComposer,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
@@ -150,12 +152,6 @@ export function ShellFrame({
   TerminalBlockComponent,
   BranchStatusComponent,
   onDismissError,
-  onModeChange,
-  onApprovalPolicyChange,
-  onModelChange,
-  onEffortChange,
-  onInvokeCommand,
-  onRunShellCommand,
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -202,11 +198,16 @@ export function ShellFrame({
             chatWorkspace={chatWorkspace}
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
+            defaultModels={newSessionDefaultModels}
+            preferredModels={newSessionPreferredModels}
+            preferredEfforts={newSessionPreferredEfforts}
+            mentionItems={mentionItems}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
             onLoginAgent={onLoginAgent}
             onSubmitLoginCode={onSubmitLoginCode}
             onCancelLogin={onCancelLogin}
+            onMentionQueryChange={onMentionQueryChange}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
           />
@@ -216,6 +217,7 @@ export function ShellFrame({
             key={active?.sessionId ?? 'no-active-session'}
             className="min-h-0 flex-1"
             conversation={conversation}
+            composer={conversationComposer}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
             attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
@@ -230,18 +232,10 @@ export function ShellFrame({
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}
             mentionItems={mentionItems}
-            onMentionQueryChange={onMentionQueryChange}
-            onSendPrompt={onSendPrompt}
-            onStopTurn={onStopTurn}
+            onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
             onRespondPermission={onRespondPermission}
             onRespondQuestion={onRespondQuestion}
             onHostArtifact={onHostArtifact}
-            onModeChange={onModeChange}
-            onApprovalPolicyChange={onApprovalPolicyChange}
-            onModelChange={onModelChange}
-            onEffortChange={onEffortChange}
-            onInvokeCommand={onInvokeCommand}
-            onRunShellCommand={onRunShellCommand}
           />
         )}
       </main>

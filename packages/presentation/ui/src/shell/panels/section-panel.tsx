@@ -148,7 +148,7 @@ function SectionTabStrip({
             title={label}
             aria-pressed={section === activeSection}
             className={cn(
-              'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring',
+              'flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring',
               section === activeSection ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
             )}
             onClick={() => onSelectSection(section)}

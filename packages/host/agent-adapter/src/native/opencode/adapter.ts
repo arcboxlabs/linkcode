@@ -20,6 +20,7 @@ import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { falseFn } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -51,6 +52,8 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
  * in ~30ms). Past the cap the local cancel proceeds while the abort settles server-side. */
 const ABORT_WAIT_MS = 2000;
 const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
+/** Prevent a server that repeatedly closes an empty SSE response from spinning a hot subscribe loop. */
+const EVENT_RESUBSCRIBE_DELAY_MS = 100;
 
 /** Most `session.error` variants carry `data.message`; fall back to the variant name. */
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
@@ -109,7 +112,6 @@ type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['cli
  */
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: true } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -144,6 +146,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Monotonic flag-ownership counter, bumped by every prompt AND every cancel — a straggling
    * abort settlement from an earlier cancel may clear `cancelling` only if it still owns the epoch. */
   private turnEpoch = 0;
+  /** Accepted next-turn model selections advance this revision. A turn keeps the revision it began
+   * with so late frames from it cannot overwrite a newer selection before the next turn starts. */
+  private modelSelectionRevision = 0;
+  private turnModelSelectionRevision: number | null = null;
   /** Tool part id by provider `callID`: asks cite tools via `tool.callID` but the card was
    * announced under the PART id — this map re-joins them. Cleared at each turn settle. */
   private readonly toolPartIdByCallId = new Map<string, string>();
@@ -217,6 +223,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.client = started.client;
     this.closeServer = () => started.server.close();
     let resumedAgent: string | null = null;
+    let resumedModel: string | undefined;
     if (this.resumeFrom) {
       // Adopt the existing provider session and announce its id right away — a resumed session's
       // transcript is real, so the seed read is safe immediately (unlike the fresh path below).
@@ -229,9 +236,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
-      if (!opts.model && got.data.model) {
-        opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
-      }
+      if (got.data.model) resumedModel = `${got.data.model.providerID}/${got.data.model.id}`;
+      if (!opts.model && resumedModel) opts.model = resumedModel;
       resumedAgent = got.data.agent ?? null;
       this.emitSessionRef(asHistoryId(got.data.id));
     } else {
@@ -245,38 +251,42 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.directory = opts.cwd;
     }
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
-    // list must not fail session start — absence is itself the capability signal (no command /
-    // model / approval-policy state ever fires for this session). They are independent reads of
-    // the same local server, so they run concurrently.
-    await Promise.all([
+    // list must not fail session start. They are independent reads of the same local server, so
+    // they run concurrently.
+    const [availableModels] = await Promise.all([
+      this.fetchModelCatalog(),
       this.fetchCommandCatalog(),
       this.fetchAgentCatalog(resumedAgent),
-      this.fetchModelCatalog(),
     ]);
-    // Reflect the model the session will prompt with (configured, or adopted from the resumed
-    // session above) so the client chip is right before the first turn.
-    if (opts.model) this.emitModel(opts.model);
+    // A resumed session record confirms its current model. A fresh override is confirmed only when
+    // the running server advertises that exact ref; a request or failed catalog is not acceptance.
+    if (opts.model && (opts.model === resumedModel || availableModels?.has(opts.model))) {
+      this.emitModel(opts.model);
+    }
     void this.consumeEvents();
   }
 
-  /** Best-effort slash-command catalog fetch — swallows every failure (see `onStart`). */
+  /** Best-effort slash-command catalog fetch. Failure publishes an authoritative empty catalog so
+   * host validation does not remain in its pre-catalog window indefinitely. */
   private async fetchCommandCatalog(): Promise<void> {
     if (!this.client) return;
     try {
       const listed = await this.client.command.list({ directory: this.directory });
-      if (listed.error === undefined && listed.data.length > 0) {
-        this.emitCommands(
-          listed.data.map(
-            (c): AgentCommand => ({
-              name: c.name,
-              description: c.description,
-              argumentHint: c.hints.join(' ') || undefined,
-            }),
-          ),
-        );
+      if (listed.error !== undefined) {
+        this.emitCommands([]);
+        return;
       }
+      this.emitCommands(
+        listed.data.map(
+          (c): AgentCommand => ({
+            name: c.name,
+            description: c.description,
+            argumentHint: c.hints.join(' ') || undefined,
+          }),
+        ),
+      );
     } catch {
-      // Non-fatal — see onStart.
+      this.emitCommands([]);
     }
   }
 
@@ -284,8 +294,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `set-model` can actually reach: every connected (or key-less `api`-source) provider's models,
    * narrowed to the credential-injected provider when one is in play — the cross-provider guard
    * in `onSetModel` would reject everything else anyway. */
-  private async fetchModelCatalog(): Promise<void> {
-    if (!this.client) return;
+  private async fetchModelCatalog(): Promise<ReadonlySet<string> | undefined> {
+    if (!this.client) return undefined;
     try {
       const listed = await this.client.provider.list({ directory: this.directory });
       if (listed.error !== undefined) return;
@@ -306,8 +316,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         }
       }
       if (models.length > 0) this.emitModels(models);
+      return new Set(models.map((model) => model.id));
     } catch {
       // Non-fatal — see onStart.
+      return undefined;
     }
   }
 
@@ -330,6 +342,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       throw new Error('opencode: session is busy');
     }
     this.turnEpoch += 1;
+    this.turnModelSelectionRevision = this.modelSelectionRevision;
     this.turnActive = true;
     this.turnStarted = false;
     this.cancelling = false;
@@ -603,6 +616,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       );
     }
     this.opts.model = model;
+    this.modelSelectionRevision += 1;
     // Reflect the pick now; it applies from the next prompt.
     this.emitModel(model);
     return Promise.resolve();
@@ -654,40 +668,50 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return this.opts?.model ? parseModelRef(this.opts.model) : undefined;
   }
 
-  /** Runs for the whole session, dispatching every SSE event from the single long-lived
-   * `event.subscribe()` stream; returns only when that stream ends. Not every ending is a failure —
-   * a turn finishing normally (`session.idle`) or our own cancel closes the stream too. Only a
-   * close while a turn is active with no cancel pending, or a non-cancel iterator throw, is a
-   * real, unexpected failure. */
+  /** Runs for the whole session, dispatching every SSE event and replacing a stream the server
+   * cleanly closes while idle/cancelling. A close while a turn is active with no cancel pending,
+   * or any non-cancel iterator throw, remains fatal: completion events may have been lost. */
   private async consumeEvents(): Promise<void> {
     if (!this.client) return;
-    let caught: unknown;
-    try {
-      // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
-      // instance's bus and silently misses every session event (verified live on 1.17.11).
-      const sub = await this.client.event.subscribe({ directory: this.directory });
-      for await (const ev of sub.stream) {
-        if (this.stopped) break;
-        this.handleEvent(ev);
+    let emptyCloses = 0;
+    while (!this.stopped) {
+      let caught: unknown;
+      let sawProgress = false;
+      try {
+        // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
+        // instance's bus and silently misses every session event (verified live on 1.17.11).
+        const sub = await this.client.event.subscribe({ directory: this.directory });
+        for await (const ev of sub.stream) {
+          if (this.stopped) break;
+          // Every successful subscription starts with this synthetic greeting, including a broken
+          // stream that immediately closes. Only a real bus event proves the replacement is healthy.
+          if (ev.type !== 'server.connected') sawProgress = true;
+          this.handleEvent(ev);
+        }
+      } catch (err) {
+        caught = err;
       }
-    } catch (err) {
-      caught = err;
+      if (this.stopped) return;
+      const fatal = !this.cancelling && (caught !== undefined || this.turnActive);
+      if (fatal) {
+        this.teardown();
+        this.emitError(
+          caught
+            ? (extractErrorMessage(caught) ?? 'opencode: event stream failed')
+            : 'opencode: event stream ended unexpectedly',
+          undefined,
+          false,
+        );
+        this.emitStatus('stopped');
+        return;
+      }
+      if (this.cancelling) this.settleTurn(true);
+      // A clean close after idle/cancel interrupted nothing. Subscribe again so a later turn keeps
+      // receiving lifecycle events immediately. Back off only after an empty replacement also
+      // closes, preventing a hot loop without adding a gap after a healthy turn's stream.
+      emptyCloses = sawProgress ? 0 : emptyCloses + 1;
+      if (emptyCloses > 0) await wait(EVENT_RESUBSCRIBE_DELAY_MS);
     }
-    if (this.stopped || this.cancelling) return;
-    // Clean close with no turn in flight (already idle, or never started one) is expected —
-    // nothing was interrupted.
-    if (!caught && !this.turnActive) return;
-    // Nothing resubscribes today (CODE-9), so this session can no longer receive events. Surface
-    // it as fatal — `stopped`, not `idle`, so the UI disables the composer.
-    this.teardown();
-    this.emitError(
-      caught
-        ? (extractErrorMessage(caught) ?? 'opencode: event stream failed')
-        : 'opencode: event stream ended unexpectedly',
-      undefined,
-      false,
-    );
-    this.emitStatus('stopped');
   }
 
   /** Each event is handled in its own try/catch so one malformed event (e.g. an unexpected
@@ -696,8 +720,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       switch (ev.type) {
         case 'message.updated':
-          if (ev.properties.sessionID === this.sessionId && ev.properties.info.role === 'user') {
-            this.userMessageIds.add(ev.properties.info.id);
+          if (ev.properties.sessionID === this.sessionId) {
+            const { info } = ev.properties;
+            if (info.role === 'user') {
+              this.userMessageIds.add(info.id);
+              this.reflectTurnModel(`${info.model.providerID}/${info.model.modelID}`);
+            } else {
+              this.reflectTurnModel(`${info.providerID}/${info.modelID}`);
+            }
           }
           break;
         case 'message.part.updated':
@@ -753,6 +783,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     } catch (err) {
       this.emitError(extractErrorMessage(err) ?? `opencode: failed to handle event (${ev.type})`);
     }
+  }
+
+  private reflectTurnModel(model: string): void {
+    if (
+      this.turnModelSelectionRevision !== null &&
+      this.turnModelSelectionRevision !== this.modelSelectionRevision
+    ) {
+      return;
+    }
+    this.emitModel(model);
   }
 
   /** Turn settle on `session.idle`, guarded on liveness AND `turnStarted`: an abort's duplicate

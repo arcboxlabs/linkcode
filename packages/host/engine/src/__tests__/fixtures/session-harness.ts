@@ -20,6 +20,7 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import type { SessionStore } from '../../session/session-store';
 import { InMemorySessionStore } from '../../session/session-store';
+import type { WorkspaceStore } from '../../workspace/workspace-store';
 import { createTestEngine } from './test-engine';
 
 export class FakeAdapter implements AgentAdapter {
@@ -98,6 +99,7 @@ export function createSessionHarness(
   makeAdapter: () => FakeAdapter = () => new FakeAdapter(),
   collectAgentRuntimes?: () => Promise<AgentRuntimes>,
   agentRuntimesReady?: Promise<AgentRuntimes>,
+  workspaceStore?: WorkspaceStore,
 ) {
   const sent: WirePayload[] = [];
   let handler: ((msg: ValidatedWireMessage) => void) | null = null;
@@ -124,6 +126,7 @@ export function createSessionHarness(
     sessionStore: store,
     collectAgentRuntimes,
     agentRuntimesReady,
+    workspaceStore,
   });
 
   async function inject(payload: WirePayload): Promise<void> {

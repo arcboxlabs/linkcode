@@ -79,7 +79,7 @@ export class SessionLifecycleService {
     kind: AgentKind,
     historyId: AgentHistoryId,
   ): Effect.Effect<SessionRecord, EngineFailure> {
-    const { history, records } = this;
+    const { history, records, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
       // Read one event only: the summary (title/cwd/createdAt) is what the record needs.
@@ -96,6 +96,7 @@ export class SessionLifecycleService {
         runs: [],
       };
       yield* records.importRecord(record);
+      if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
       return record;
     });
   }

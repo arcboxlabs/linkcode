@@ -101,6 +101,8 @@ export interface CodexAppServerOptions {
   onExit: (code: number | null, stderrTail: string) => void;
 }
 
+export type CodexAppServerConnectionOptions = Omit<CodexAppServerOptions, 'binaryPath'>;
+
 export class CodexAppServer {
   private nextRequestId = 0;
   private readonly pending = new Map<number, PendingRequest>();
@@ -110,7 +112,7 @@ export class CodexAppServer {
 
   private constructor(
     private readonly child: ChildProcessWithoutNullStreams,
-    private readonly opts: CodexAppServerOptions,
+    private readonly opts: CodexAppServerConnectionOptions,
   ) {
     const rl = createInterface({ input: child.stdout });
     rl.on('line', (line) => this.handleLine(line));
@@ -138,6 +140,15 @@ export class CodexAppServer {
       env: { ...processEnv, ...opts.env },
       windowsHide: true,
     });
+    return CodexAppServer.attach(child, opts);
+  }
+
+  /** Complete the app-server handshake over an already-spawned child. */
+  static async attach(
+    this: void,
+    child: ChildProcessWithoutNullStreams,
+    opts: CodexAppServerConnectionOptions,
+  ): Promise<CodexAppServer> {
     const server = new CodexAppServer(child, opts);
     try {
       await server.request('initialize', {

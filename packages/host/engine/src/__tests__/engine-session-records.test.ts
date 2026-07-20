@@ -1,13 +1,43 @@
 import { asHistoryId } from '@linkcode/agent-adapter';
+import type {
+  AgentHistoryReadOptions,
+  SessionId,
+  SessionRecord,
+  WorkspaceId,
+} from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
+import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
 import {
+  FakeAdapter,
   createSessionHarness as harness,
   listedSessions,
   startedSessionId as startedId,
 } from './fixtures/session-harness';
+
+class CwdlessHistoryAdapter extends FakeAdapter {
+  override readHistory(opts: AgentHistoryReadOptions) {
+    return Promise.resolve({
+      session: {
+        historyId: opts.historyId,
+        kind: this.kind,
+        title: 'Imported title',
+        createdAt: 1111,
+      },
+      events: [],
+    });
+  }
+}
+
+function listedWorkspaces(sent: Parameters<typeof listedSessions>[0], replyTo: string) {
+  const listed = sent.find(
+    (payload) => payload.kind === 'workspace.listed' && payload.replyTo === replyTo,
+  );
+  if (listed?.kind !== 'workspace.listed') throw new Error(`no workspace.listed for ${replyTo}`);
+  return listed.workspaces;
+}
 
 describe('engine session records', () => {
   it('persists created sessions with title and session-ref, and lists them cold after a restart', async () => {
@@ -100,6 +130,87 @@ describe('engine session records', () => {
 
     await inject({ kind: 'session.list', clientReqId: 'r2' });
     expect(listedSessions(sent, 'r2')[0].status).toBe('stopped');
+
+    await inject({ kind: 'workspace.list', clientReqId: 'r3' });
+    expect(listedWorkspaces(sent, 'r3')).toEqual([
+      expect.objectContaining({ cwd: '/imported', name: 'imported', kind: 'project' }),
+    ]);
+  });
+
+  it('does not register a workspace when imported history has no cwd', async () => {
+    const h = harness(new InMemorySessionStore(), () => new CwdlessHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.import',
+      clientReqId: 'r1',
+      agentKind: 'claude-code',
+      historyId: asHistoryId('native-9'),
+    });
+
+    await h.inject({ kind: 'workspace.list', clientReqId: 'r2' });
+    expect(listedWorkspaces(h.sent, 'r2')).toEqual([]);
+  });
+
+  it('keeps an existing registered workspace when importing history from its cwd', async () => {
+    const workspaceStore = new InMemoryWorkspaceStore();
+    await workspaceStore.save({
+      workspaceId: 'ws-existing' as WorkspaceId,
+      cwd: '/imported',
+      name: 'Custom project name',
+      kind: 'project',
+      createdAt: 1,
+      lastUsedAt: 1,
+    });
+    const h = harness(undefined, undefined, undefined, undefined, workspaceStore);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.import',
+      clientReqId: 'r1',
+      agentKind: 'claude-code',
+      historyId: asHistoryId('native-9'),
+    });
+
+    await h.inject({ kind: 'workspace.list', clientReqId: 'r2' });
+    expect(listedWorkspaces(h.sent, 'r2')).toEqual([
+      expect.objectContaining({
+        workspaceId: 'ws-existing',
+        cwd: '/imported',
+        name: 'Custom project name',
+      }),
+    ]);
+  });
+
+  it('backfills projects for existing imported sessions without changing created sessions', async () => {
+    const sessionStore = new InMemorySessionStore();
+    const imported: SessionRecord = {
+      sessionId: 's-imported' as SessionId,
+      kind: 'claude-code',
+      cwd: '/legacy/imported-project',
+      title: 'Imported title',
+      origin: { type: 'imported', historyId: asHistoryId('native-9'), importedAt: 2 },
+      createdAt: 1,
+      updatedAt: 2,
+      runs: [],
+    };
+    const created: SessionRecord = {
+      sessionId: 's-created' as SessionId,
+      kind: 'claude-code',
+      cwd: '/legacy/created-project',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 2,
+      runs: [],
+    };
+    await sessionStore.save(imported);
+    await sessionStore.save(created);
+
+    const h = harness(sessionStore);
+    await h.engine.start();
+    await h.inject({ kind: 'workspace.list', clientReqId: 'r1' });
+
+    expect(listedWorkspaces(h.sent, 'r1')).toEqual([
+      expect.objectContaining({ cwd: '/legacy/imported-project', name: 'imported-project' }),
+    ]);
   });
 
   it('does not retain an imported session when its durable save fails', async () => {

@@ -139,6 +139,30 @@ function pushBusy(): void {
   });
 }
 
+function pushAssistantModel(modelID: string, id: string): void {
+  client.stream.push({
+    id: `e-${id}`,
+    type: 'message.updated',
+    properties: {
+      sessionID: 'sess-1',
+      info: {
+        id,
+        sessionID: 'sess-1',
+        role: 'assistant',
+        time: { created: 0 },
+        parentID: 'msg-user',
+        modelID,
+        providerID: 'openai',
+        mode: 'build',
+        agent: 'build',
+        path: { cwd: '/tmp/repo', root: '/tmp/repo' },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+    },
+  });
+}
+
 describe('OpenCodeAdapter.consumeEvents', () => {
   it('reports a malformed event via emitError instead of throwing, and keeps consuming', async () => {
     const unhandled = vi.fn();
@@ -215,6 +239,27 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       },
     });
     client.stream.push({
+      id: 'e-assistant-msg',
+      type: 'message.updated',
+      properties: {
+        sessionID: 'sess-1',
+        info: {
+          id: 'msg-assist',
+          sessionID: 'sess-1',
+          role: 'assistant',
+          time: { created: 0 },
+          parentID: 'msg-user',
+          modelID: 'gpt-5.6-sol',
+          providerID: 'openai',
+          mode: 'build',
+          agent: 'build',
+          path: { cwd: '/tmp/repo', root: '/tmp/repo' },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        },
+      },
+    });
+    client.stream.push({
       id: 'e-assistant-part',
       type: 'message.part.updated',
       properties: {
@@ -239,9 +284,11 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     );
     expect(chunks).toHaveLength(1);
     expect(chunks[0].content).toEqual({ type: 'text', text: 'reply' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.5' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.6-sol' });
   });
 
-  it('treats the stream ending after the turn already went idle as expected, not an error', async () => {
+  it('resubscribes after an idle stream close so the next turn still receives events', async () => {
     const { adapter, events } = await makeAdapter();
 
     await adapter.send({ type: 'prompt', content: [] });
@@ -254,12 +301,77 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     });
     events.length = 0;
 
-    // opencode closing the SSE stream right after the turn ended is the normal fallout of a
-    // completed round-trip, not a failure — there's nothing left to interrupt.
+    // opencode closing the SSE stream right after the turn ended is normal fallout. The adapter
+    // replaces it rather than silently leaving the next prompt without lifecycle events.
     client.stream.end();
+    await vi.waitFor(() => {
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+    });
+    expect(errors(events)).toHaveLength(0);
 
-    await drained();
-    expect(events).toHaveLength(0);
+    await adapter.send({ type: 'prompt', content: [] });
+    events.length = 0;
+    pushBusy();
+    client.stream.push({
+      id: 'e-second-turn',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-second-turn',
+          sessionID: 'sess-1',
+          messageID: 'msg-second-turn',
+          type: 'text',
+          text: 'still connected',
+        },
+      },
+    });
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['end_turn']);
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'agent-message-chunk',
+        content: { type: 'text', text: 'still connected' },
+      }),
+    );
+  });
+
+  it('backs off streams that close after only the connection greeting', async () => {
+    vi.useFakeTimers();
+    const { adapter } = await makeAdapter();
+    try {
+      client.stream.push({ id: 'e-connected-1', type: 'server.connected', properties: {} });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.event.subscribe).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(99);
+      expect(client.event.subscribe).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+
+      client.stream.push({ id: 'e-connected-2', type: 'server.connected', properties: {} });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(3);
+
+      client.stream.push({
+        id: 'e-other-session',
+        type: 'session.idle',
+        properties: { sessionID: 'other' },
+      });
+      client.stream.end();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.event.subscribe).toHaveBeenCalledTimes(4);
+    } finally {
+      await adapter.stop();
+      vi.useRealTimers();
+    }
   });
 
   it('treats the stream closing while a turn is still active as a fatal error and stops the session', async () => {
@@ -299,8 +411,20 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     // that's the abort's own fallout, not an unexpected disconnect.
     client.stream.end();
 
-    await drained();
-    expect(events).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['cancelled']);
+    });
+    expect(errors(events)).toHaveLength(0);
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+
+    // The local settle clears the cancellation latch even if no abort error/idle event survived the
+    // closed stream, so the replacement subscription can carry another turn.
+    await adapter.send({ type: 'prompt', content: [] });
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(stops(events).map((event) => event.stopReason)).toEqual(['cancelled', 'end_turn']);
+    });
   });
 
   it('does not latch the cancel suppression when abort() itself rejects, so a later stream failure still surfaces', async () => {
@@ -360,13 +484,15 @@ describe('OpenCodeAdapter.consumeEvents', () => {
 
   it('on stop(): the stream ending afterwards is the expected shutdown, not an error', async () => {
     const { adapter, events } = await makeAdapter();
+    const subscriptions = client.event.subscribe.mock.calls.length;
     await adapter.stop();
     events.length = 0;
 
     // stop() already closed the server; the stream ending is the normal fallout, not a failure.
     client.stream.end();
-    await drained();
+    await wait(150);
     expect(events).toHaveLength(0);
+    expect(client.event.subscribe).toHaveBeenCalledTimes(subscriptions);
   });
 });
 
@@ -934,7 +1060,13 @@ describe('OpenCodeAdapter command catalog', () => {
     ]);
   });
 
-  it('still starts successfully when command.list resolves with an error envelope', async () => {
+  it('emits an authoritative empty catalog when command.list succeeds without commands', async () => {
+    const { events } = await makeAdapter();
+
+    expect(events).toContainEqual({ type: 'available-commands-update', commands: [] });
+  });
+
+  it('fails closed when command.list resolves with an error envelope', async () => {
     sdkMock.createOpencode = () => {
       client = new FakeClient();
       client.command.list.mockReturnValueOnce({ error: { message: 'boom' } } as never);
@@ -942,7 +1074,7 @@ describe('OpenCodeAdapter command catalog', () => {
     };
     const { events } = await makeAdapter();
 
-    expect(events.some((e) => e.type === 'available-commands-update')).toBe(false);
+    expect(events).toContainEqual({ type: 'available-commands-update', commands: [] });
     expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 });
@@ -1294,6 +1426,30 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     );
   });
 
+  it('ignores old-turn model frames after a next-turn pick, then reflects the new turn', async () => {
+    const { adapter, events } = await makeAdapter();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'first' }] });
+    await adapter.send({ type: 'set-model', model: 'openai/gpt-5-nano' });
+    events.length = 0;
+
+    pushAssistantModel('gpt-5.5', 'msg-old-assistant');
+    await drained();
+    expect(events.some((event) => event.type === 'model-update')).toBe(false);
+
+    pushBusy();
+    pushIdle();
+    await vi.waitFor(() => {
+      expect(events).toContainEqual({ type: 'status', status: 'idle' });
+    });
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'second' }] });
+    events.length = 0;
+
+    pushAssistantModel('gpt-5.6-sol', 'msg-new-assistant');
+    await vi.waitFor(() => {
+      expect(events).toContainEqual({ type: 'model-update', model: 'openai/gpt-5.6-sol' });
+    });
+  });
+
   it('rejects a set-model ref that is not providerID/modelID', async () => {
     const { adapter, events } = await makeAdapter();
     events.length = 0;
@@ -1427,7 +1583,25 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
   });
 
-  it('reflects a configured start model before the first turn', async () => {
+  it('reflects a configured start model only when the provider catalog confirms it', async () => {
+    sdkMock.createOpencode = () => {
+      client = new FakeClient();
+      client.provider.list.mockReturnValue({
+        data: {
+          all: [
+            {
+              id: 'openai',
+              name: 'OpenAI',
+              source: 'env',
+              models: { 'gpt-5.5': { name: 'GPT-5.5' } },
+            },
+          ],
+          default: {},
+          connected: ['openai'],
+        },
+      });
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
     const adapter = new OpenCodeAdapter();
     const events: AgentEvent[] = [];
     adapter.onEvent((e) => events.push(e));
@@ -1436,5 +1610,15 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     expect(events.some((e) => e.type === 'model-update' && e.model === 'openai/gpt-5.5')).toBe(
       true,
     );
+  });
+
+  it('does not reflect a configured start model absent from the provider catalog', async () => {
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', model: 'openai/unavailable' });
+
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'openai/unavailable' });
   });
 });

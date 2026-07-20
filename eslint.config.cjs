@@ -101,6 +101,16 @@ module.exports = require('eslint-config-sukka').sukka(
     },
   },
   {
+    // Lexical nodes are class-based by API contract: overrides often take no `this`, and
+    // `decorate()` returning JSX does not make the node class a React component.
+    name: 'linkcode/lexical-node-classes',
+    files: ['packages/presentation/ui/src/shell/composer-editor/nodes.tsx'],
+    rules: {
+      '@typescript-eslint/class-methods-use-this': 'off',
+      'react-prefer-function-component/react-prefer-function-component': 'off',
+    },
+  },
+  {
     // `~icons/*` are unplugin-icons virtual modules resolved by Vite at build time,
     // so the TypeScript import resolver can't see them.
     name: 'linkcode/unplugin-icons-virtual-modules',

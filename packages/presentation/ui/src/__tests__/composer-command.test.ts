@@ -19,7 +19,7 @@ function slashGroups(agentCommands: AgentCommand[], query = '') {
     mentionItems: [],
     modesEnabled: false,
     plusQuery: '',
-    textTrigger: { kind: 'slash', query, start: 0 },
+    textTrigger: { query },
   });
 }
 

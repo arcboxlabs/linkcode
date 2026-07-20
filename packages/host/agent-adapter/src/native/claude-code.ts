@@ -53,7 +53,7 @@ import {
   UsageReportSchema,
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { invariant, nullthrow } from 'foxts/guard';
+import { nullthrow } from 'foxts/guard';
 import { z } from 'zod';
 import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
@@ -249,6 +249,15 @@ export function mapClaudeStop(reason: string | null): StopReason {
   }
 }
 
+/** Preserve the SDK's structured failure diagnostics instead of collapsing every terminal result
+ * into the same generic message. The machine-readable subtype/reason make provider failures
+ * attributable even when the CLI supplies no prose in `errors`. */
+function claudeResultErrorMessage(msg: Exclude<ResultMessage, { subtype: 'success' }>): string {
+  const terminal = msg.terminal_reason ? `, ${msg.terminal_reason}` : '';
+  const errors = msg.errors.filter((error) => error.length > 0).join('; ');
+  return `Claude failed (${msg.subtype}${terminal})${errors ? `: ${errors}` : ''}`;
+}
+
 /** Normalize a `SlashCommand` onto `AgentCommand`: empty-string `description`/`argumentHint` and an
  * empty `aliases` list become `undefined`. Aliases ride through so composer/engine matching accepts
  * them; invocation pushes the alias itself, which the CLI resolves like any typed `/`. */
@@ -377,7 +386,6 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
  */
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'claude-code' as const;
-  override readonly capabilities = { slashCommands: true, shellCommand: false } as const;
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
@@ -386,6 +394,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
+  /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
+  private turnActive = false;
+  /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
+  private stopped = false;
   /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
    * afterwards; the Query carries the conversation itself from there. */
   private resumeFrom: string | undefined;
@@ -393,6 +405,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private cancelling = false;
   /** The effort the session should run at; applied at `Query` creation and on live switches. */
   private effort: EffortLevel | undefined;
+  /** Whether settings enabled Ultracode before any explicit pick. The Stop hook reports only its
+   * underlying xhigh level, so retain this bit until an accepted user selection replaces it. */
+  private settingsUltracode = false;
   /** The approval policy the session runs under; applied at `Query` creation and on live switches.
    * `undefined` = no user pick — the CLI resolves its own default, reported back via init. */
   private approvalPolicy: ClaudeApprovalPolicyId | undefined;
@@ -413,10 +428,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private commandCatalog: AgentCommand[] = [];
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    await this.loadSdk(
+    this.stopped = false;
+    const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    if (this.effort === undefined) {
+      const { effective } = await sdk.resolveSettings({ cwd: opts.cwd });
+      // The SDK documents `high` as Claude's provider default. A persisted setting wins, while the
+      // Stop hook below later reconciles any model-specific downgrade made by the running CLI.
+      this.settingsUltracode = effective.ultracode === true;
+      this.emitEffort(this.settingsUltracode ? 'ultracode' : (effective.effortLevel ?? 'high'));
+    }
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
     // Query init is the only authoritative slash-command catalog source: start the persistent
@@ -446,14 +469,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (model) this.emitModel(model);
   }
 
-  /** Read-only `Stop` hook: learns the CLI's *resolved* effort (after any per-model downgrade) so a
-   * session with no explicit pick still reflects a real value. Skipped once the user picks — the
-   * pick (including `ultracode`/`max`, which this hook's base-level field can't express) is
-   * authoritative via `onSetEffort`. The field is absent on models without effort support. */
+  /** Read-only `Stop` hook: learns the CLI's *resolved* effort after any per-model downgrade. The
+   * hook reports Ultracode as its underlying xhigh level, so map only that pair back to the mode;
+   * every other level is the actual downgrade. The field is absent without effort support. */
   private readonly reflectEffortHook: HookCallback = (input) => {
-    if (this.effort === undefined && input.effort?.level) {
+    if (input.effort?.level) {
       const parsed = EffortLevelSchema.safeParse(input.effort.level);
-      if (parsed.success) this.emitEffort(parsed.data);
+      if (parsed.success) {
+        const ultracode = this.effort === 'ultracode' || this.settingsUltracode;
+        this.emitEffort(ultracode && parsed.data === 'xhigh' ? 'ultracode' : parsed.data);
+      }
     }
     return Promise.resolve({ continue: true });
   };
@@ -555,7 +580,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     this.freshSegment();
-    this.emitStatus('running');
     type ClaudeImageBlock = {
       type: 'image';
       source: { type: 'base64'; media_type: SupportedAttachmentImageMimeType; data: string };
@@ -589,30 +613,42 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       message: { role: 'user', content: messageContent },
       parent_tool_use_id: null,
     };
-    if (this.inputQueue) {
-      // Session already running: hand the SDK's own queued-message support the next turn.
-      this.inputQueue.push(message);
-      return;
+    this.turnActive = true;
+    this.emitStatus('running');
+    try {
+      if (this.inputQueue) {
+        // Session already running: hand the SDK's own queued-message support the next turn.
+        this.inputQueue.push(message);
+        return;
+      }
+      // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
+      // own their Query from onStart so the command catalog is available before this first prompt.
+      const queue = await this.createQuery();
+      queue.push(message);
+    } catch (error) {
+      this.turnActive = false;
+      this.teardown();
+      this.emitStatus('idle');
+      throw error;
     }
-    // A crashed or deliberately rebuilt process is recreated on demand. Normal sessions already
-    // own their Query from onStart so the command catalog is available before this first prompt.
-    const queue = await this.createQuery();
-    queue.push(message);
   }
 
   private async createQuery(): Promise<AsyncMessageQueue> {
     const opts = nullthrow(this.opts, 'claude-code: session not started');
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const queue = new AsyncMessageQueue();
-    this.inputQueue = queue;
     // One-time use: the persistent Query carries the conversation itself from here on, so a later
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
-    this.resumeFrom = undefined;
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
-    const q = query({
+    let q: Query | null = null;
+    const reflectCurrentQueryEffort: HookCallback = (input, toolUseID, hookOptions) => {
+      if (q === null || this.q !== q) return Promise.resolve({ continue: true });
+      return this.reflectEffortHook(input, toolUseID, hookOptions);
+    };
+    q = query({
       prompt: queue,
       options: {
         cwd: opts.cwd,
@@ -637,7 +673,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
         extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
-        hooks: { Stop: [{ hooks: [this.reflectEffortHook] }] },
+        hooks: { Stop: [{ hooks: [reflectCurrentQueryEffort] }] },
         canUseTool: this.canUseTool,
         // Resolved in onStart via `settingsDefaultMode` — the SDK-driven CLI does not apply
         // settings.json itself. `undefined` = no pick anywhere; the CLI then starts in 'default'.
@@ -650,20 +686,31 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         ...(credentialEnv && { env: credentialEnv }),
       },
     });
+    this.resumeFrom = undefined;
     this.q = q;
+    this.inputQueue = queue;
     void this.consume(q);
+    if (opts.model) {
+      // `setModel` is an acknowledged streaming-mode control request. Reflect the startup pick only
+      // after the CLI accepts it, so an unavailable model cannot masquerade as provider confirmation.
+      await q.setModel(opts.model);
+      this.emitModel(opts.model);
+    }
     // Catalog discovery is optional and may wait on CLI initialization indefinitely. Do not hold
     // session.start behind it; publish whenever the snapshot becomes available.
     void this.publishCommands(q);
     if (this.effort !== undefined && this.effort !== 'max') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
+        this.emitEffort(this.effort);
       } catch (err) {
         // A stored level the CLI rejects (ultracode without dynamic workflows enabled) must not
         // fail the prompt or wedge later ones: drop it, report it, run at the CLI's default level.
         this.effort = undefined;
         this.emitError(extractErrorMessage(err) ?? 'claude-code: effort switch rejected');
       }
+    } else if (this.effort === 'max') {
+      this.emitEffort(this.effort);
     }
     return queue;
   }
@@ -671,32 +718,52 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Runs for the whole session — not per turn — dispatching every message the persistent `Query`
    * emits. Returns only when the underlying process exits (crash, `close()`, or the CLI quitting). */
   private async consume(q: Query): Promise<void> {
+    let streamError: unknown;
     try {
-      for await (const msg of q) this.handleMessage(msg);
+      for await (const msg of q) {
+        if (this.q === q) this.handleMessage(msg);
+      }
     } catch (err) {
-      if (this.cancelling) this.cancelling = false;
-      else this.emitError(extractErrorMessage(err) ?? 'Unknown error');
+      streamError = err;
     }
-    // Guard against clobbering a newer Query: if onPrompt already replaced this.q while this call
-    // was unwinding, only this call's own q/inputQueue should be torn down here.
-    if (this.q === q) {
-      this.q = null;
-      this.inputQueue = null;
+    // A deliberately rebuilt Query is detached before close. Its late unwind must not tear down or
+    // emit idle into the newer Query's active turn.
+    if (this.q !== q) return;
+    this.q = null;
+    this.inputQueue = null;
+    const cancelling = this.cancelling;
+    this.cancelling = false;
+    const interruptedTurn = this.turnActive;
+    this.turnActive = false;
+    if (this.stopped) return;
+    // Rebuild from the last provider session after a process/transport exit; `createQuery()` consumes
+    // this once. Without re-arming it, an async spawn failure silently starts a new conversation.
+    this.resumeFrom = this.lastSessionRef;
+    if (!cancelling) {
+      if (streamError !== undefined) {
+        this.emitError(
+          `claude-code: query failed (${extractErrorMessage(streamError) ?? 'unknown error'})`,
+        );
+      } else if (interruptedTurn) {
+        this.emitError('claude-code: query ended before the turn returned a result');
+      }
     }
-    // The process is gone; finalize anything a mid-flight turn left dangling.
+    // The process is gone; finalize anything a mid-flight turn left dangling. Normal exits leave
+    // the adapter idle; onCancel owns that transition while its interrupt request is still open.
     this.teardown();
-    this.emitStatus('idle');
+    // onCancel keeps the engine gate closed until its interrupt round trip and base teardown finish.
+    if (!cancelling) this.emitStatus('idle');
   }
 
   /** `supportedCommands()` is a snapshot captured at Query init — this fires once per Query to seed
-   * the catalog; later changes arrive via the `commands_changed` push. Failure is non-fatal: a
-   * catalog's absence IS the capability signal (see `AgentEvent.available-commands-update`), so it
-   * must not surface as a session error. */
+   * the catalog; later changes arrive via the `commands_changed` push. A failed snapshot publishes
+   * an authoritative empty catalog so host validation does not stay fail-open indefinitely. */
   private async publishCommands(q: Query): Promise<void> {
     try {
-      this.publishCatalog(await q.supportedCommands());
+      const commands = await q.supportedCommands();
+      if (this.q === q) this.publishCatalog(commands);
     } catch {
-      // Dropped on purpose — see above.
+      if (this.q === q) this.publishCatalog([]);
     }
   }
 
@@ -706,22 +773,55 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emitCommands(this.commandCatalog);
   }
 
+  /** Detach a Query before closing it so its late messages and consume() unwind cannot affect the
+   * replacement. The next turn resumes from the last provider session id when one was observed. */
+  private detachQueryForRebuild(q: Query): void {
+    const queue = this.inputQueue;
+    this.q = null;
+    this.inputQueue = null;
+    this.resumeFrom = this.lastSessionRef;
+    q.close();
+    queue?.close();
+  }
+
   protected override async onCancel(): Promise<void> {
+    const q = this.q;
+    const hadTurn = this.turnActive;
+    let interruptFailed = false;
     this.cancelling = true;
+    this.turnActive = false;
     try {
-      await this.q?.interrupt();
+      if (q) await q.interrupt();
+      else this.cancelling = false;
     } catch {
-      // Nothing was in flight, so no result/error will follow to consume the flag — clear it now,
-      // or a later unrelated error would be wrongly swallowed as if it were this cancel's fallout.
+      // No ack can delimit this turn's fallout. Clear the suppression flag and fall through to
+      // detach the Query; otherwise a late result could still be mistaken for the next turn's.
+      interruptFailed = true;
       this.cancelling = false;
     }
-    // interrupt() stops the current turn's generation but doesn't guarantee a matching `result`
-    // message, so finalize here too; teardown()/emitStatus('idle') are idempotent if one does follow.
+    // The interrupt ack can precede the cancelled turn's terminal result. If no result/EOF settled
+    // while awaiting it, detach the old Query so that late fallout cannot settle the next turn.
+    const settledWhileInterrupting =
+      q !== null && hadTurn && !interruptFailed && (this.q !== q || !this.cancelling);
+    if (settledWhileInterrupting) {
+      this.teardown();
+      this.emitStatus('idle');
+      return;
+    }
+    if (q && hadTurn && this.q === q && !this.turnActive) {
+      this.cancelling = false;
+      this.detachQueryForRebuild(q);
+    }
+    // A prompt racing the interrupt round trip owns the running status and the live queue.
+    if (this.turnActive) return;
+    this.cancelling = false;
     this.teardown();
     this.emitStatus('idle');
   }
 
   protected override onStop(): Promise<void> {
+    this.stopped = true;
+    this.turnActive = false;
     this.q?.close();
     this.inputQueue?.close();
     return Promise.resolve();
@@ -730,12 +830,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Live model switch via `Query#setModel` (streaming-input-mode-only control request) — the CLI
    * ignores a changed `model` option once a session is resumed, so a resume-based design can't. */
   protected override async onSetModel(model: string): Promise<void> {
-    if (this.q) {
-      await this.q.setModel(model);
-    } else {
-      invariant(this.opts, 'claude-code: session not started');
-      this.opts.model = model;
-    }
+    const opts = nullthrow(this.opts, 'claude-code: session not started');
+    if (this.q) await this.q.setModel(model);
+    // Keep rebuilt Queries on the accepted live selection, rather than replaying the startup model.
+    opts.model = model;
     // Reflect the pick immediately (the CLI accepted it, or it will apply at the next Query
     // creation); the served id off the next assistant frame reconciles it via `syncModel`.
     this.emitModel(model);
@@ -762,7 +860,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (effort === previous) return;
     if (!this.q) {
       this.effort = effort; // No process yet; onPrompt's Query creation applies it.
-      this.emitEffort(effort);
+      this.settingsUltracode = false;
       return;
     }
     if (effort !== 'max' && previous !== 'max') {
@@ -770,22 +868,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // Committed only after the CLI accepted the switch: a rejected one (ultracode without
       // dynamic workflows enabled) must not linger and get replayed onto a later rebuilt Query.
       this.effort = effort;
+      this.settingsUltracode = false;
       this.emitEffort(effort);
       return;
     }
     this.effort = effort;
-    this.emitEffort(effort);
+    this.settingsUltracode = false;
     // Detach before closing so a prompt racing the async consume() unwind creates the new Query
     // instead of pushing into the closed queue; consume()'s self-guard then skips its own cleanup.
     const q = this.q;
-    const queue = this.inputQueue;
-    this.q = null;
-    this.inputQueue = null;
     // If the process died before any message carried a session id there is nothing to resume;
     // the rebuilt Query then simply starts fresh, keeping the same Link Code session.
-    this.resumeFrom = this.lastSessionRef;
-    q.close();
-    queue?.close();
+    this.detachQueryForRebuild(q);
   }
 
   /** Invoking a command is pushing a plain user message through the existing prompt path: the
@@ -1140,6 +1234,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** A `result` message ends one turn — not the session, which spans the whole `consume()` loop —
    * so per-turn cleanup happens here. */
   private handleResult(msg: ResultMessage): void {
+    const cancelling = this.cancelling;
+    this.cancelling = false;
+    this.turnActive = false;
     if (msg.subtype === 'success') {
       // A 401 comes back as a `success` result carrying `api_error_status` (CODE-75) — surface it
       // as a non-recoverable auth error driving the daemon's login re-probe, not usage + a phantom stop.
@@ -1150,7 +1247,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           false,
         );
         this.teardown();
-        this.emitStatus('idle');
+        if (!cancelling) this.emitStatus('idle');
         return;
       }
       const usage = isRecord(msg.usage) ? msg.usage : {};
@@ -1162,15 +1259,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         totalCostUsd: msg.total_cost_usd,
       });
       this.emitStop(mapClaudeStop(msg.stop_reason));
-    } else if (this.cancelling) {
+    } else if (cancelling) {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
       // failure — consume the flag instead of surfacing it as an error.
-      this.cancelling = false;
     } else {
-      this.emitError('Claude returned an error', undefined, true);
+      this.emitError(claudeResultErrorMessage(msg), undefined, true);
     }
     this.teardown();
-    this.emitStatus('idle');
+    // A result can beat interrupt()'s control ack. Keep the gate closed until onCancel returns so
+    // base send(cancel)'s final teardown cannot sweep a newly admitted turn.
+    if (!cancelling) this.emitStatus('idle');
   }
 }
 

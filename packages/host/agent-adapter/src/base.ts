@@ -28,7 +28,7 @@ import type {
   ToolCallUpdate,
   UsageReport,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES, textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -49,10 +49,9 @@ type QuestionResolver = (outcome: QuestionOutcome) => void;
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
 
-  readonly capabilities: AgentCapabilities = {
-    slashCommands: false,
-    shellCommand: false,
-  };
+  get capabilities(): AgentCapabilities {
+    return AGENT_INPUT_CAPABILITIES[this.kind];
+  }
 
   readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
@@ -84,6 +83,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.opts = opts;
     this.emitStatus('starting');
     this.emit({ type: 'capabilities-update', capabilities: this.capabilities });
+    // Apply the user's initial effort before the provider starts. Some adapters need it while
+    // constructing their process/thread (claude `max`), while the shared hook also preserves the
+    // same validation and reflection semantics as a later `set-effort` input.
+    if (opts.effort !== undefined) await this.onSetEffort(opts.effort);
     await this.onStart(opts);
     this.emitStatus('idle');
   }
@@ -180,7 +183,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   protected onSetMode(_modeId: string): Promise<void> {
     return Promise.resolve();
   }
-  /** Default: reject. Only adapters that advertise approval policies override this. */
+  /** Default: reject. Only adapters with selectable approval policies override this. */
   protected onSetApprovalPolicy(_policyId: string): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: changing the approval policy is not supported`));
   }

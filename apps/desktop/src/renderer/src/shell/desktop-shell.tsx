@@ -63,6 +63,9 @@ export function DesktopShell({
   draft,
   runtimeCues,
   attachmentSupport,
+  newSessionDefaultModels,
+  newSessionPreferredModels,
+  newSessionPreferredEfforts,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -89,8 +92,7 @@ export function DesktopShell({
   onTogglePreviewExpanded,
   mentionItems,
   onMentionQueryChange,
-  onSendPrompt,
-  onStopTurn,
+  conversationComposer,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
@@ -101,9 +103,6 @@ export function DesktopShell({
   TerminalBlockComponent,
   BranchStatusComponent,
   onDismissError,
-  onApprovalPolicyChange,
-  onModelChange,
-  onEffortChange,
   onOpenSettings,
   onImportHistory,
   themeType,
@@ -330,12 +329,17 @@ export function DesktopShell({
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
+          defaultModels={newSessionDefaultModels}
+          preferredModels={newSessionPreferredModels}
+          preferredEfforts={newSessionPreferredEfforts}
+          mentionItems={mentionItems}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}
           onLoginAgent={onLoginAgent}
           onSubmitLoginCode={onSubmitLoginCode}
           onCancelLogin={onCancelLogin}
+          onMentionQueryChange={onMentionQueryChange}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
@@ -347,6 +351,7 @@ export function DesktopShell({
           key={active?.sessionId ?? 'no-active-session'}
           className="min-h-0 flex-1"
           conversation={conversation}
+          composer={conversationComposer}
           agentKind={active?.kind}
           agentLabel={agentLabel}
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
@@ -361,9 +366,7 @@ export function DesktopShell({
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           mentionItems={mentionItems}
-          onMentionQueryChange={onMentionQueryChange}
-          onSendPrompt={onSendPrompt}
-          onStopTurn={onStopTurn}
+          onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
           onRespondPermission={onRespondPermission}
           onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
@@ -371,9 +374,6 @@ export function DesktopShell({
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}
           onPickAttachmentFiles={pickAttachmentFiles}
-          onApprovalPolicyChange={onApprovalPolicyChange}
-          onModelChange={onModelChange}
-          onEffortChange={onEffortChange}
         />
       )}
     </main>
