@@ -12,16 +12,13 @@ import type { Transport } from '@linkcode/transport';
 import { Cause, Effect, Schedule as EffectSchedule, Fiber, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { OperationError, RequestError } from '../failure';
-import { automationFailureMessage } from './failure';
 import { ScheduleCadenceCalculator } from './schedule-cadence';
 import { ScheduleReporter } from './schedule-reporter';
-import { ScheduleRunExecutor, ScheduleTargetGoneError } from './schedule-run-executor';
+import { ScheduleRunCoordinator } from './schedule-run-coordinator';
 import type { ScheduleStore } from './schedule-store';
 import type { SessionDriver } from './session-driver';
 
 export { ScheduleTargetGoneError } from './schedule-run-executor';
-
-const RUNS_KEPT_PER_SCHEDULE = 100;
 
 type RunTask = (effect: Effect.Effect<void>) => Fiber.Fiber<void>;
 
@@ -44,14 +41,12 @@ export class ScheduleService {
   private readonly schedules = new Map<ScheduleId, Schedule>();
   /** Serializes persisted state transitions so request and cadence fibers cannot overwrite each other. */
   private readonly mutations = Semaphore.makeUnsafe(1);
-  /** Single-flight guard: a schedule with a run in flight is skipped by the tick. */
-  private readonly activeRuns = new Set<ScheduleId>();
   /** Schedule work runs in Engine's root FiberSet; local handles provide targeted draining. */
   private readonly inFlight = new Set<Fiber.Fiber<void>>();
   private readonly now: () => number;
   private readonly cadence: ScheduleCadenceCalculator;
   private readonly reporter: ScheduleReporter;
-  private readonly runExecutor: ScheduleRunExecutor;
+  private readonly runCoordinator: ScheduleRunCoordinator;
   private readonly tickMs: number;
   private readonly defaultMisfirePolicy: ScheduleMisfirePolicy;
   private cadenceFiber: Fiber.Fiber<void> | undefined;
@@ -62,13 +57,22 @@ export class ScheduleService {
   constructor(
     transport: Transport,
     private readonly store: ScheduleStore,
-    private readonly driver: SessionDriver,
+    driver: SessionDriver,
     options: ScheduleServiceOptions = {},
   ) {
     this.now = options.now ?? Date.now;
     this.cadence = new ScheduleCadenceCalculator(this.now);
     this.reporter = new ScheduleReporter(transport);
-    this.runExecutor = new ScheduleRunExecutor(driver, store, this.reporter);
+    this.runCoordinator = new ScheduleRunCoordinator(store, driver, this.reporter, this.now, {
+      launch: (effect) => this.launch(effect),
+      settle: (scheduleId, trigger, endedAt) =>
+        this.serialized(() => this.settleScheduleAfterRun(scheduleId, trigger, endedAt)),
+      targetGone: (scheduleId) =>
+        this.serialized(() => {
+          const schedule = this.schedules.get(scheduleId);
+          return schedule ? this.complete(schedule, 'targetGone') : Effect.void;
+        }),
+    });
     this.tickMs = options.tickMs ?? 1000;
     this.defaultMisfirePolicy = options.defaultMisfirePolicy ?? 'catch-up';
   }
@@ -86,7 +90,7 @@ export class ScheduleService {
           schedules.forEach((schedule) => this.schedules.set(schedule.scheduleId, schedule)),
         ),
       ),
-      Effect.andThen(this.recover()),
+      Effect.andThen(this.runCoordinator.recover(this.schedules.values())),
       Effect.tap(() =>
         Effect.sync(() => {
           if (this.cadenceFiber) return;
@@ -113,7 +117,8 @@ export class ScheduleService {
       this.cadenceFiber = undefined;
     }).pipe(
       Effect.andThen(this.serialized(() => Effect.void)),
-      Effect.andThen(Effect.suspend(() => this.settleAll())),
+      Effect.andThen(Effect.suspend(() => this.settleTasks())),
+      Effect.andThen(Effect.suspend(() => this.runCoordinator.settleAll())),
     );
   }
 
@@ -123,7 +128,7 @@ export class ScheduleService {
 
   /** Resolves once no run is in flight. Test-only seam — the tick never awaits runs. */
   settleAll(): Effect.Effect<void> {
-    return Effect.asVoid(Effect.all([...this.inFlight].map((fiber) => Fiber.await(fiber))));
+    return this.runCoordinator.settleAll();
   }
 
   create(spec: ScheduleSpec): Effect.Effect<Schedule, RequestError | OperationError> {
@@ -236,7 +241,7 @@ export class ScheduleService {
           if (schedule.status === 'completed') {
             return Effect.fail(conflict('Schedule is already completed'));
           }
-          if (this.activeRuns.has(scheduleId)) {
+          if (this.runCoordinator.isActive(scheduleId)) {
             return Effect.fail(conflict('Schedule run already in progress'));
           }
           return this.startRun(schedule, 'manual');
@@ -309,7 +314,7 @@ export class ScheduleService {
         (schedule) =>
           schedule.status === 'active' &&
           schedule.nextRunAt !== undefined &&
-          !this.activeRuns.has(schedule.scheduleId) &&
+          !this.runCoordinator.isActive(schedule.scheduleId) &&
           schedule.nextRunAt <= now,
       );
       return Effect.forEach(
@@ -375,27 +380,20 @@ export class ScheduleService {
     schedule: Schedule,
     trigger: ScheduleRunTrigger,
   ): Effect.Effect<void, OperationError> {
-    const run: ScheduleRun = {
-      runId: this.mintRunId(),
-      scheduleId: schedule.scheduleId,
-      status: 'running',
-      trigger,
-      startedAt: this.now(),
-    };
-    return this.saveRun(run).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          this.activeRuns.add(schedule.scheduleId);
-          this.track(this.executeRun(schedule, run));
-        }),
-      ),
-    );
+    return this.runCoordinator.start(schedule, this.mintRunId(), trigger);
   }
 
   /** Track Engine-owned schedule work for targeted shutdown without creating another Runtime. */
   private track(effect: Effect.Effect<void, unknown>): Fiber.Fiber<void> {
+    const fiber = this.launch(effect);
+    this.inFlight.add(fiber);
+    fiber.addObserver(() => this.inFlight.delete(fiber));
+    return fiber;
+  }
+
+  private launch(effect: Effect.Effect<void, unknown>): Fiber.Fiber<void> {
     const run = nullthrow(this.runTask, 'Schedule runtime has not started');
-    const fiber = run(
+    return run(
       effect.pipe(
         Effect.catchCause((cause) =>
           Cause.hasInterruptsOnly(cause)
@@ -404,67 +402,10 @@ export class ScheduleService {
         ),
       ),
     );
-    this.inFlight.add(fiber);
-    fiber.addObserver(() => this.inFlight.delete(fiber));
-    return fiber;
   }
 
-  private executeRun(schedule: Schedule, run: ScheduleRun): Effect.Effect<void, unknown> {
-    const scheduleId = schedule.scheduleId;
-    return this.runExecutor.execute(schedule, run).pipe(
-      Effect.matchEffect({
-        onFailure: (error) => {
-          run.status = 'failed';
-          // Bare message (no `Error:` prefix) — this string is shown in the run history.
-          run.error = automationFailureMessage(error);
-          const diagnostic = Effect.logError(
-            'Schedule run failed',
-            {
-              scheduleId,
-              runId: run.runId,
-              operation: 'automation.schedule.run',
-            },
-            error,
-          );
-          if (!(error instanceof ScheduleTargetGoneError)) return diagnostic;
-          const completion = this.serialized(() => {
-            const current = this.schedules.get(scheduleId);
-            return current ? this.complete(current, 'targetGone') : Effect.void;
-          });
-          return diagnostic.pipe(Effect.andThen(completion));
-        },
-        onSuccess: (outcome) =>
-          Effect.sync(() => {
-            run.status = 'succeeded';
-            run.sessionId = outcome.sessionId;
-            run.summary = outcome.summary;
-          }),
-      }),
-      Effect.andThen(
-        Effect.suspend(() => {
-          run.endedAt = this.now();
-          return this.saveRun(run);
-        }),
-      ),
-      Effect.andThen(
-        storeEffect('schedule-runs.prune', 'Failed to prune schedule runs', () =>
-          this.store.pruneRuns(scheduleId, RUNS_KEPT_PER_SCHEDULE),
-        ),
-      ),
-      Effect.andThen(
-        Effect.suspend(() =>
-          this.serialized(() =>
-            this.settleScheduleAfterRun(scheduleId, run.trigger, nullthrow(run.endedAt)),
-          ),
-        ),
-      ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          this.activeRuns.delete(scheduleId);
-        }),
-      ),
-      Effect.asVoid,
-    );
+  private settleTasks(): Effect.Effect<void> {
+    return Effect.asVoid(Effect.all([...this.inFlight].map((fiber) => Fiber.await(fiber))));
   }
 
   /** Bookkeeping once a run settles: count scheduled runs toward maxRuns; record lastRunAt. */
@@ -511,13 +452,7 @@ export class ScheduleService {
       startedAt: scheduledFor,
       endedAt: now,
     };
-    return this.saveRun(run).pipe(
-      Effect.andThen(
-        storeEffect('schedule-runs.prune', 'Failed to prune schedule runs', () =>
-          this.store.pruneRuns(schedule.scheduleId, RUNS_KEPT_PER_SCHEDULE),
-        ),
-      ),
-    );
+    return this.runCoordinator.recordSkipped(run);
   }
 
   private complete(
@@ -543,36 +478,6 @@ export class ScheduleService {
     );
   }
 
-  /** Mark runs left `running` by a previous daemon as failed, then complete orphaned targets. */
-  private recover(): Effect.Effect<void, OperationError> {
-    const complete = this.complete.bind(this);
-    const saveRun = this.saveRun.bind(this);
-    const { driver, schedules, store } = this;
-    const now = this.now;
-    return Effect.gen(function* () {
-      const running = yield* storeEffect(
-        'schedule-runs.load-running',
-        'Failed to recover schedule runs',
-        () => store.loadRunningRuns(),
-      );
-      for (const run of running) {
-        yield* saveRun({
-          ...run,
-          status: 'failed',
-          error: 'daemon restarted before the run completed',
-          endedAt: now(),
-        });
-      }
-      for (const schedule of schedules.values()) {
-        if (schedule.status !== 'active') continue;
-        const target = schedule.spec.target;
-        if (target.type === 'session' && !driver.hasRecord(target.sessionId)) {
-          yield* complete(schedule, 'targetGone');
-        }
-      }
-    });
-  }
-
   private catchUpThresholdMs(): number {
     return Math.max(this.tickMs * 2, 5000);
   }
@@ -587,12 +492,6 @@ export class ScheduleService {
       return Effect.fail(new RequestError({ code: 'not_found', message: 'Schedule not found' }));
     }
     return Effect.succeed(schedule);
-  }
-
-  private saveRun(run: ScheduleRun): Effect.Effect<void, OperationError> {
-    return storeEffect('schedule-runs.save', 'Failed to save schedule run', () =>
-      this.store.saveRun(run),
-    ).pipe(Effect.tap(() => Effect.sync(() => this.reporter.runChanged(run))));
   }
 
   private serialized<A, E>(effect: () => Effect.Effect<A, E>): Effect.Effect<A, E> {
