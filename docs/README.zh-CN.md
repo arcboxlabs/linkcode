@@ -114,6 +114,8 @@ pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
 | [`docs/DEVELOPMENT.md`](./DEVELOPMENT.md) | 运行手册:各端启动、测试、E2E、排障 |
 | [`docs/RELEASE.md`](./RELEASE.md) | 打包、签名、公证、发布 |
 
+欢迎参与贡献 —— 工具链、检查项与 PR 约定见 [`CONTRIBUTING.md`](../CONTRIBUTING.md);社区行为规范见 [行为准则](../CODE_OF_CONDUCT.md);获取帮助的途径见 [`SUPPORT.md`](../SUPPORT.md)。
+
 ## 许可证
 
 LinkCode 以 [Business Source License 1.1](../LICENSE) 的 source-available 形式提供;Logo 与品牌资产单独授权(见 [`assets/LICENSE`](../assets/LICENSE) 与 [品牌使用条款](../assets/BRAND.md))。

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & support
+    url: https://github.com/arcboxlabs/linkcode/blob/master/SUPPORT.md
+    about: Where to look and who to ask — docs, logs, email, and social channels.
+  - name: ArcBox
+    url: https://arcbox.dev
+    about: The team behind LinkCode.

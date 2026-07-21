@@ -114,6 +114,8 @@ pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Runbook: run every surface, test, E2E, triage |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | Packaging, signing, notarization, publishing |
 
+Contributions are welcome — [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the toolchain, checks, and PR conventions. Community expectations live in the [Code of Conduct](CODE_OF_CONDUCT.md), and [`SUPPORT.md`](SUPPORT.md) covers where to get help.
+
 ## License
 
 LinkCode is source-available under the [Business Source License 1.1](LICENSE); its logos and brand assets are licensed separately (see [`assets/LICENSE`](assets/LICENSE) and the [Brand Usage Terms](assets/BRAND.md)).
