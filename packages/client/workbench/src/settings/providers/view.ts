@@ -217,7 +217,7 @@ export function withEnabled(
   kind: AgentKind,
   enabled: boolean,
 ): ProvidersConfig {
-  return { ...providers, [kind]: { ...(providers[kind] ?? {}), enabled } };
+  return { ...providers, [kind]: { ...providers[kind], enabled } };
 }
 
 /** Set (or, with undefined, clear) an agent's default model. */

@@ -14,7 +14,7 @@ function schedule(opts: {
     spec: {
       name: opts.name,
       prompt: opts.prompt ?? 'do it',
-      cadence: { type: 'interval', everyMs: 60_000 },
+      cadence: { type: 'interval', everyMs: 60000 },
       target: { type: 'new-session', config: { kind: 'claude-code', cwd: '/repo' } },
     },
     status: opts.status ?? 'active',

@@ -203,8 +203,8 @@ export const SHOWCASE_STREAM_THOUGHT_CONTENT = textBlock(
 );
 
 export const SHOWCASE_COMPACTION_ID = 'mock-compaction-1';
-export const SHOWCASE_COMPACTION_PRE_TOKENS = 193_437;
-export const SHOWCASE_COMPACTION_POST_TOKENS = 12_180;
+export const SHOWCASE_COMPACTION_PRE_TOKENS = 193437;
+export const SHOWCASE_COMPACTION_POST_TOKENS = 12180;
 /** How long the live "compacting…" row stays visible before the completed re-emit merges over it. */
 export const SHOWCASE_COMPACTION_HOLD_MS = 2400;
 

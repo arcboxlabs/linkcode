@@ -53,7 +53,7 @@ function toSpec(draft: ScheduleFormDraft): ScheduleSpec {
     prompt: draft.prompt,
     cadence:
       draft.cadenceKind === 'interval'
-        ? { type: 'interval', everyMs: draft.intervalMinutes * 60_000 }
+        ? { type: 'interval', everyMs: draft.intervalMinutes * 60000 }
         : { type: 'cron', expression: draft.cronExpression, timezone: draft.timezone || undefined },
     target: { type: 'new-session', config: { kind: draft.kind, cwd: draft.cwd } },
     misfirePolicy: draft.misfire === 'default' ? undefined : draft.misfire,

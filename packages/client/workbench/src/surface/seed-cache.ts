@@ -125,6 +125,7 @@ export function persistSeed(
     memoFor(storage).set(key, { events: seed.events, uptoSeq: 0 });
   } catch (err) {
     // The cache is an optimization; failing to write it must not break the conversation surface.
+    // eslint-disable-next-line no-console -- cache failures are non-fatal but still need a developer diagnostic.
     console.warn('[LinkCode] failed to persist conversation seed', err);
   }
 }

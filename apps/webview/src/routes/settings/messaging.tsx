@@ -17,7 +17,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 /** Container: better-auth browser session gate + workbench IM data into the shared panel. */
 export function MessagingSettings(): React.ReactNode {
   const session = authClient.useSession();
-  const signedIn = session.data !== null && session.data !== undefined;
+  const signedIn = session.data !== null;
   const accountKey = session.data?.user.email ?? null;
   const overview = useCloudImOverview(accountKey);
   const linked = (overview.data?.accounts.length ?? 0) > 0;

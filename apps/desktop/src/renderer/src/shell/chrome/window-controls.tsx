@@ -39,7 +39,7 @@ function WindowControls(): React.ReactNode {
     void systemBridge.window.isMaximized().then((value) => {
       if (!signal.aborted) setMaximized(value);
     });
-    signal.addEventListener('abort', systemBridge.window.onMaximizedChange(setMaximized));
+    return systemBridge.window.onMaximizedChange(setMaximized);
   }, []);
 
   return (

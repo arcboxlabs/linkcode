@@ -43,7 +43,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const closeAdd = useProvidersSettingsStore((state) => state.closeAdd);
 
   const pool = accounts ?? [];
-  const selected = pool.find((account) => account.id === selectedId) ?? pool.at(0);
+  const accountsById = new Map(pool.map((account) => [account.id, account] as const));
+  const selected = (selectedId === null ? undefined : accountsById.get(selectedId)) ?? pool.at(0);
   const busy = saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined

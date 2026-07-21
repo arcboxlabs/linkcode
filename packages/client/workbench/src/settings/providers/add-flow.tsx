@@ -52,7 +52,8 @@ function catalogAccount(
 ): Account {
   const trimmed: Record<string, string> = {};
   for (const key of templatePlaceholders(variant.baseUrl)) {
-    trimmed[key] = draft.placeholders[key]?.trim() ?? '';
+    const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
+    trimmed[key] = value.trim();
   }
   return {
     ...newAccountBase(draft.label),
@@ -235,7 +236,8 @@ type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 function catalogDraftSchema(variant: ServiceVariant): typeof CatalogDraftSchema {
   return CatalogDraftSchema.superRefine((draft, ctx) => {
     for (const key of templatePlaceholders(variant.baseUrl)) {
-      if (!draft.placeholders[key]?.trim()) {
+      const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
+      if (!value.trim()) {
         ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });
       }
     }
@@ -274,7 +276,7 @@ function CatalogAccountForm({
     defaultValues: { label: serviceName, secret: '', model: '', placeholders: {} },
   });
   // Display-only subscription for the endpoint preview; fields are wired via register/Controller.
-  const placeholderValues = useWatch({ control, name: 'placeholders' }) ?? {};
+  const placeholderValues = useWatch({ control, name: 'placeholders' });
 
   const secretLabel =
     variant.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');

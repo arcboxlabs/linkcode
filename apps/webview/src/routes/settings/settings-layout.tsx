@@ -24,6 +24,7 @@ const SETTINGS_ROUTES: Record<string, string> = {
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
+const RE_TRAILING_SLASH = /\/$/;
 
 export function SettingsLayout(): React.ReactNode {
   const t = useTranslations('settings');
@@ -129,9 +130,8 @@ export function SettingsLayout(): React.ReactNode {
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
             onSearchSubmit={() => {
-              const first = visibleGroups.flatMap((group) => group.items)[0];
-              const route = first === undefined ? undefined : SETTINGS_ROUTES[first.key];
-              if (route !== undefined) void navigate(route);
+              const first = visibleGroups.flatMap((group) => group.items).at(0);
+              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key]);
             }}
             searchEmptyLabel={t('searchNoResults')}
             groups={visibleGroups}
@@ -167,5 +167,5 @@ function isActive(
     | 'agents'
     | 'messaging',
 ): boolean {
-  return pathname.replace(/\/$/, '') === `/settings${section ? `/${section}` : ''}`;
+  return pathname.replace(RE_TRAILING_SLASH, '') === `/settings${section ? `/${section}` : ''}`;
 }
