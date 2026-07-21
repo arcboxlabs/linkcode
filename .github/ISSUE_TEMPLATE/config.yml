@@ -4,7 +4,7 @@ contact_links:
     url: https://github.com/arcboxlabs/linkcode/security/advisories/new
     about: Never report vulnerabilities in public issues — use private advisory reporting.
   - name: Questions & support
-    url: https://github.com/arcboxlabs/linkcode/blob/master/SUPPORT.md
+    url: https://github.com/arcboxlabs/linkcode/blob/master/.github/SUPPORT.md
     about: Where to look and who to ask — docs, logs, email, and social channels.
   - name: ArcBox
     url: https://arcbox.dev

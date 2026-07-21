@@ -4,10 +4,10 @@
 
 | Doc | What's inside |
 | --- | --- |
-| [`README.md`](README.md) | What LinkCode is, install, quick start |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Run every surface, test, E2E, triage a stuck daemon |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, data contract, transport and wire protocol |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | Packaging, signing, publishing |
+| [`README.md`](../README.md) | What LinkCode is, install, quick start |
+| [`docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) | Run every surface, test, E2E, triage a stuck daemon |
+| [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Layers, data contract, transport and wire protocol |
+| [`docs/RELEASE.md`](../docs/RELEASE.md) | Packaging, signing, publishing |
 
 ## Bugs and feature requests
 

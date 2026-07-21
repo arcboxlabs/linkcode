@@ -5,8 +5,8 @@ Thanks for your interest in improving LinkCode! This guide covers the practical 
 ## Before you start
 
 - **Bug fixes and small improvements** — open a PR directly. Linking an issue is appreciated but not required.
-- **New features or behavior changes** — open an issue first. The architecture has deliberate boundaries and some deliberately open questions ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)); a short discussion up front saves you from building something that can't merge.
-- LinkCode is source-available under the [Business Source License 1.1](LICENSE). By contributing, you agree that your contributions are licensed under the same terms.
+- **New features or behavior changes** — open an issue first. The architecture has deliberate boundaries and some deliberately open questions ([`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)); a short discussion up front saves you from building something that can't merge.
+- LinkCode is source-available under the [Business Source License 1.1](../LICENSE). By contributing, you agree that your contributions are licensed under the same terms.
 
 ## Toolchain
 
@@ -25,7 +25,7 @@ pnpm install
 devenv shell -- app   # daemon + desktop, in dev mode
 ```
 
-The full runbook — running each surface on its own, the test layout, E2E procedures, and triage for a stuck daemon — is [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+The full runbook — running each surface on its own, the test layout, E2E procedures, and triage for a stuck daemon — is [`docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md).
 
 ## Checks
 
@@ -49,10 +49,10 @@ Pre-commit hooks (prek, configured in `devenv.nix`) run format, lint, and typech
 ## Things to know before touching…
 
 - **The wire protocol** — any change to any wire message in `packages/foundation/schema` must bump `WIRE_PROTOCOL_VERSION`. Mismatched peers still connect but silently discard every frame; after a bump, restart the daemon and all clients together.
-- **Package boundaries** — apps never import other apps; shared client runtime belongs in `packages/client/workbench`, business-free presentation in `packages/presentation/ui`. The ownership map is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- **Package boundaries** — apps never import other apps; shared client runtime belongs in `packages/client/workbench`, business-free presentation in `packages/presentation/ui`. The ownership map is in [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
 - **Native dependencies** — pnpm blocks install scripts by default; a native dep must be allow-listed under `allowBuilds:` in `pnpm-workspace.yaml` or it fails at `require()` time.
 - **`packages/vendor/coss-ui` is vendored** — synced from upstream and excluded from lint/format; never hand-edit or reformat it.
-- **Versions and tags are CI-owned** — never hand-bump `apps/desktop/package.json` or push `v*` tags; releases go through the flow in [`docs/RELEASE.md`](docs/RELEASE.md).
+- **Versions and tags are CI-owned** — never hand-bump `apps/desktop/package.json` or push `v*` tags; releases go through the flow in [`docs/RELEASE.md`](../docs/RELEASE.md).
 
 ## Commits and pull requests
 
