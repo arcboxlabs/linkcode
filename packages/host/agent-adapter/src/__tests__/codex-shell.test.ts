@@ -89,6 +89,10 @@ class FakeCodexServer {
   notify(method: string, params: unknown): void {
     this.opts.onNotification(method, params);
   }
+  exit(stderrTail = 'crashed'): void {
+    this.closed = true;
+    this.opts.onExit(1, stderrTail);
+  }
 }
 
 class TestCodex extends CodexAdapter {
@@ -365,6 +369,38 @@ describe('CodexAdapter shell-command passthrough', () => {
 
     const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
     expect(turn?.params).toMatchObject({ model: 'gpt-5.6-luna', effort: 'max' });
+  });
+
+  it('keeps a pending model pick when recovery resumes the previously active model', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1' },
+      model: 'gpt-5.6-luna',
+      reasoningEffort: 'low',
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    await adapter.send({ type: 'set-model', model: 'gpt-5.6-terra' });
+    await adapter.send({ type: 'set-effort', effort: 'ultra' });
+    expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-terra' });
+    events.length = 0;
+
+    adapter.fakeServers[0].exit();
+    await adapter.send({ type: 'prompt', content: [textBlock('use my pending model')] });
+
+    expect(adapter.fakeServers).toHaveLength(2);
+    const resumed = adapter.fakeServers[1];
+    expect(resumed.requests).toContainEqual({
+      method: 'thread/resume',
+      params: expect.objectContaining({
+        threadId: 'thread-1',
+        model: 'gpt-5.6-terra',
+      }),
+    });
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'gpt-5.6-luna' });
+    const turn = resumed.requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ model: 'gpt-5.6-terra', effort: 'ultra' });
   });
 
   it('rejects Claude-only effort levels before starting app-server', async () => {

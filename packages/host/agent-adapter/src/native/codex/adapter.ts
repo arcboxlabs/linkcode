@@ -689,7 +689,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       const response = resume
         ? await server.request('thread/resume', { ...params, threadId: resume, excludeTurns: true })
         : await server.request('thread/start', params);
-      this.reflectThreadSettings(response, modelCatalog?.defaultModel);
+      this.reflectThreadSettings(response, modelCatalog?.defaultModel, resume !== undefined);
       const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
@@ -721,19 +721,24 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Reflect the app-server's effective model and effort. A null effort means no override, so the
-   * selected model's catalog default is the actual value. An explicit user pick remains pending
-   * until `thread/settings/updated` confirms what the next turn accepted. */
-  private reflectThreadSettings(response: unknown, fallbackModel?: string): void {
+  /** Reflect the app-server's effective model and effort. A resumed thread can report its
+   * previously active model, so keep any next-turn override that was selected before recovery.
+   * A null effort means no override, so the selected model's catalog default is the actual value. */
+  private reflectThreadSettings(response: unknown, fallbackModel?: string, resumed = false): void {
     if (!isRecord(response)) return;
     const model = stringField(response, 'model') ?? fallbackModel;
+    const pendingModel = resumed ? this.model : undefined;
     if (model) {
       this.activeModel = model;
-      if (this.model !== undefined) this.model = model;
-      this.emitModel(model);
+      if (pendingModel === undefined) {
+        if (this.model !== undefined) this.model = model;
+        this.emitModel(model);
+      } else {
+        this.emitModel(pendingModel);
+      }
     }
     if (this.effort !== undefined) {
-      this.assertEffortSupported(this.effort, model, !this.modelCatalogAvailable);
+      this.assertEffortSupported(this.effort, pendingModel ?? model, !this.modelCatalogAvailable);
       return;
     }
     const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
