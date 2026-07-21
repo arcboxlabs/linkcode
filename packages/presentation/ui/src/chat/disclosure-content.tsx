@@ -2,6 +2,11 @@ import { CollapsibleContent } from 'coss-ui/components/collapsible';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
 import { cn } from '../lib/cn';
 
+// Natural height keeps the parent Collapsible measurable; native overscroll chaining lets
+// boundary wheel gestures continue through the conversation instead of stopping here.
+const CHAT_DISCLOSURE_SCROLL_AREA_CLASS_NAME =
+  'h-auto! w-full **:data-[slot=scroll-area-viewport]:data-has-overflow-y:overscroll-auto!';
+
 export const CHAT_DISCLOSURE_MAX_HEIGHT_CLASS_NAME =
   'max-h-96 **:data-[slot=scroll-area-viewport]:max-h-96';
 
@@ -29,7 +34,7 @@ export function ChatDisclosureContent({
     <CollapsibleContent className={className} {...props}>
       {constrainHeight ? (
         <ScrollArea
-          className={cn('w-full', boundedClassName)}
+          className={cn(CHAT_DISCLOSURE_SCROLL_AREA_CLASS_NAME, boundedClassName)}
           data-slot="chat-disclosure-scroll"
           scrollFade
         >

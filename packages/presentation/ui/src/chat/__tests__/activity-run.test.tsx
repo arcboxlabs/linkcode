@@ -168,8 +168,12 @@ describe('ActivityRun', () => {
     expect(header.getAttribute('aria-expanded')).toBe('true');
     const scrollArea = container.querySelector('[data-slot="chat-disclosure-scroll"]');
     const viewport = scrollArea?.querySelector('[data-slot="scroll-area-viewport"]');
+    expect(scrollArea?.className).toContain('h-auto!');
     expect(scrollArea?.className).toContain('max-h-96');
     expect(scrollArea?.className).toContain('**:data-[slot=scroll-area-viewport]:max-h-96');
+    expect(scrollArea?.className).toContain(
+      '**:data-[slot=scroll-area-viewport]:data-has-overflow-y:overscroll-auto!',
+    );
     expect(viewport?.className).toContain('mask-t-from');
     expect(viewport?.className).toContain('mask-b-from');
     expect(container.querySelectorAll('[data-slot="chat-disclosure-scroll"]')).toHaveLength(1);
