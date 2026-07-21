@@ -21,3 +21,17 @@ export const FileSuggestionSchema = z.object({
   path: z.string().min(1),
 });
 export type FileSuggestion = z.infer<typeof FileSuggestionSchema>;
+
+/**
+ * A workspace file the daemon streams over the preview proxy (CODE-316): its own
+ * `file--<hash>.localhost` origin, served with HTTP Range so large media (video) plays in the
+ * host's browser without a full download. Path-addressed, revoked on daemon restart.
+ */
+export const HostedFileSchema = z.object({
+  /** Absolute-path hash (also the hostname label); re-hosting the same path is idempotent. */
+  hash: z.string().min(1),
+  hostname: z.string().min(1),
+  /** Full URL through the daemon proxy. */
+  url: z.string().min(1),
+});
+export type HostedFile = z.infer<typeof HostedFileSchema>;

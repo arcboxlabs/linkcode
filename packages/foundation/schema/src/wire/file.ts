@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FileSuggestionSchema, WorkspaceFileSchema } from '../model/file';
+import { FileSuggestionSchema, HostedFileSchema, WorkspaceFileSchema } from '../model/file';
 import { WireRequestIdSchema } from './request';
 
 /** File wire variants — directory-backed: keyed by cwd + path, shared by same-cwd sessions (see file.ts). */
@@ -46,5 +46,18 @@ export const fileWireVariants = [
     kind: z.literal('file.suggest.result'),
     replyTo: WireRequestIdSchema,
     suggestions: z.array(FileSuggestionSchema),
+  }),
+  z.object({
+    kind: z.literal('file.host'),
+    clientReqId: WireRequestIdSchema,
+    /** Directory a relative `path` resolves against (the session's workspace root). */
+    cwd: z.string().min(1),
+    /** Absolute, or relative to `cwd`; may point outside the workspace. */
+    path: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('file.hosted'),
+    replyTo: WireRequestIdSchema,
+    hosted: HostedFileSchema,
   }),
 ] as const;

@@ -2,8 +2,9 @@
  * (engine). Hostnames are `<label>--<label>.localhost`; the `--` and `.localhost` suffix mark the
  * namespace, so an unrouted preview-looking Host 404s without reaching the daemon API (CODE-58). */
 
-/** Either an upstream dev server to proxy to, or daemon-held content served directly
- * (ephemeral artifact hosting — CODE-62). */
+/** Either an upstream dev server to proxy to, daemon-held content served directly
+ * (ephemeral artifact hosting — CODE-62), or an on-disk file streamed with HTTP Range
+ * support (workspace media previews — CODE-316). */
 export type PreviewRoute =
   | {
       /** Loopback port of the upstream dev server. */
@@ -12,6 +13,12 @@ export type PreviewRoute =
   | {
       /** Response body served verbatim for every path under the hostname. */
       body: string;
+      contentType: string;
+    }
+  | {
+      /** Absolute path of an on-disk file streamed for every path under the hostname,
+       * honoring the request's `Range` header so large media seeks without a full download. */
+      filePath: string;
       contentType: string;
     };
 

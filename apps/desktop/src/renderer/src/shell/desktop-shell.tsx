@@ -63,6 +63,7 @@ export function DesktopShell({
   draft,
   runtimeCues,
   attachmentSupport,
+  agentCatalogs,
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
@@ -96,6 +97,7 @@ export function DesktopShell({
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
+  onHostVideoFile,
   onReadAttachmentFile,
   onOpenSearch,
   onOpenAutomations,
@@ -312,6 +314,16 @@ export function DesktopShell({
     void locateFileArtifact(path, cwd, conversation.items).then(openRightFileTab);
   }
 
+  // Video plays in the Browser pane: locate the real path, ask the daemon to host it (streamed
+  // with Range), then navigate the in-app browser to that URL — never the 10 MB file viewer.
+  function openVideoPreview(path: string): void {
+    const cwd = active?.cwd;
+    if (!cwd || !onHostVideoFile) return;
+    void locateFileArtifact(path, cwd, conversation.items)
+      .then((resolved) => onHostVideoFile(cwd, resolved))
+      .then(({ url }) => openBrowserUrl(url));
+  }
+
   function reviewChanges(): void {
     openRightPanelSection('diff');
   }
@@ -329,6 +341,7 @@ export function DesktopShell({
           chatWorkspace={chatWorkspace}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
+          agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
           preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}
@@ -370,6 +383,7 @@ export function DesktopShell({
           onRespondPermission={onRespondPermission}
           onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
+          onOpenVideoPreview={openVideoPreview}
           onReviewChanges={reviewChanges}
           onHostArtifact={onHostArtifact}
           onOpenPreviewUrl={openBrowserUrl}

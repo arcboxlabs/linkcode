@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
+import { waitFor } from 'foxts/wait-for';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 
@@ -20,8 +21,7 @@ const electronBinary = require('electron') as unknown as string;
 const PROFILE = `e2e-window-bounds-${process.pid}`;
 
 function fail(message: string): never {
-  console.error(`FAIL: ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 async function launch(): Promise<ElectronApplication> {
@@ -72,8 +72,9 @@ async function main(): Promise<void> {
       );
     }
 
-    // Resize + move, then close: the state file must capture the normal bounds.
-    const target = { x: 120, y: 140, width: 1180, height: 820 };
+    // Resize + move within the work area, then close: the state file must capture the normal bounds.
+    // A real window manager is allowed to constrain off-screen geometry before Electron persists it.
+    const target = { x: 80, y: 100, width: 1080, height: 780 };
     await app.evaluate(({ BrowserWindow }, bounds) => {
       BrowserWindow.getAllWindows()[0].setBounds(bounds);
     }, target);
@@ -100,7 +101,11 @@ async function main(): Promise<void> {
 
     // Maximize, close, relaunch: the maximized flag survives while normal bounds stay intact.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].maximize());
-    await wait(500);
+    await waitFor(
+      () => app?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()),
+      100,
+      AbortSignal.timeout(5000),
+    );
     await app.close();
     app = null;
     app = await launch();

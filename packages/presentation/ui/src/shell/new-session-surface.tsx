@@ -1,6 +1,7 @@
 import type {
   AgentInput,
   AgentKind,
+  AgentStartCatalog,
   ContentBlock,
   EffortLevel,
   SessionModeId,
@@ -57,11 +58,13 @@ export interface NewSessionSubmission {
   model?: string | null;
   /** Null explicitly returns this provider to its default effort. */
   effort?: EffortLevel | null;
+  approvalPolicyId?: string;
   modeId?: SessionModeId;
   input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
 
 export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
+export type AgentStartCatalogs = Readonly<Partial<Record<AgentKind, AgentStartCatalog>>>;
 
 export interface NewSessionSurfaceProps {
   draft: NewSessionDraft;
@@ -75,6 +78,7 @@ export interface NewSessionSurfaceProps {
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  agentCatalogs?: AgentStartCatalogs;
   /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
    * built-in provider defaults fill missing kinds for standalone consumers. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
@@ -130,6 +134,7 @@ export function NewSessionSurface({
   topContent,
   runtimeCues,
   attachmentSupport,
+  agentCatalogs,
   defaultModels,
   preferredModels,
   preferredEfforts,
@@ -155,6 +160,7 @@ export function NewSessionSurface({
     Partial<Record<AgentKind, EffortLevel | null>>
   >({});
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
+  const [selectedPolicies, setSelectedPolicies] = useState<Partial<Record<AgentKind, string>>>({});
   const [pending, setPending] = useState(false);
 
   const selectableWorkspaces = chatWorkspace ? [chatWorkspace, ...workspaces] : workspaces;
@@ -170,6 +176,18 @@ export function NewSessionSurface({
       : (defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null));
   const localEffort = selectedEfforts[provider];
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
+  const catalog = agentCatalogs?.[provider];
+  const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
+  const modelOption = dynamicModels?.find((option) => option.id === displayedModel);
+  const effortLevels = modelOption?.effortLevels;
+  const constrainedEffort =
+    effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
+  const currentPolicyId =
+    selectedPolicies[provider] ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
+  const approvalPolicy =
+    catalog && catalog.policies.length > 0 && currentPolicyId
+      ? { availablePolicies: catalog.policies, currentPolicyId }
+      : undefined;
 
   async function submit(input: NewSessionSubmission['input']): Promise<void> {
     if (!selected) throw new Error('Cannot start a session without a workspace');
@@ -180,7 +198,10 @@ export function NewSessionSurface({
         cwd: selected.cwd,
         workspaceId: selected.workspaceId,
         model: localModel === null ? null : (selectedModel ?? undefined),
-        ...(localEffort === null ? { effort: null } : effort !== null && { effort }),
+        ...(localEffort === null
+          ? { effort: null }
+          : constrainedEffort !== null && { effort: constrainedEffort }),
+        ...(currentPolicyId && { approvalPolicyId: currentPolicyId }),
         modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
         input,
       });
@@ -226,6 +247,11 @@ export function NewSessionSurface({
 
   function handleModeChange(nextModeId: string): Promise<void> {
     setModeId(nextModeId);
+    return Promise.resolve();
+  }
+
+  function handleApprovalPolicyChange(policyId: string): Promise<void> {
+    setSelectedPolicies((current) => ({ ...current, [provider]: policyId }));
     return Promise.resolve();
   }
 
@@ -286,12 +312,15 @@ export function NewSessionSurface({
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
             currentModel={displayedModel}
-            currentEffort={effort}
+            currentEffort={constrainedEffort}
+            agentModels={dynamicModels}
+            approvalPolicy={approvalPolicy}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
             onEffortChange={handleEffortChange}
+            onApprovalPolicyChange={handleApprovalPolicyChange}
             onModeChange={handleModeChange}
             onModelChange={handleModelChange}
             onResetEffort={effort === null ? undefined : handleResetEffort}

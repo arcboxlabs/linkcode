@@ -1,6 +1,6 @@
-import { Field, FieldDescription, FieldLabel } from 'coss-ui/components/field';
 import { Switch } from 'coss-ui/components/switch';
 import { useTranslations } from 'use-intl';
+import { SettingsCard, SettingsRow } from './settings-page';
 
 export type NotificationToggleKey = 'enabled' | 'turnCompleted' | 'awaitingApproval' | 'error';
 
@@ -25,70 +25,42 @@ export function NotificationsSettingsPanel({
   const t = useTranslations('settings.notifications');
 
   return (
-    <div className="flex flex-col gap-6">
-      <Field>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <FieldLabel>{t('enable')}</FieldLabel>
-            <FieldDescription>{t('enableHint')}</FieldDescription>
-          </div>
+    <div className="flex flex-col gap-8">
+      <SettingsCard>
+        <SettingsRow title={t('enable')} description={t('enableHint')}>
           <Switch checked={enabled} onCheckedChange={(value) => onChange('enabled', value)} />
-        </div>
+        </SettingsRow>
         {permission === 'denied' ? (
-          <p className="mt-1 text-destructive text-sm">{t('permissionDenied')}</p>
+          <p className="px-4 py-3 text-destructive text-xs">{t('permissionDenied')}</p>
         ) : null}
         {enabled && permission === 'default' ? (
-          <p className="mt-1 text-muted-foreground text-sm">{t('permissionRequest')}</p>
+          <p className="px-4 py-3 text-muted-foreground text-xs">{t('permissionRequest')}</p>
         ) : null}
-      </Field>
+      </SettingsCard>
 
-      <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
-        <ReasonToggle
-          label={t('turnCompleted')}
-          hint={t('turnCompletedHint')}
-          checked={turnCompleted}
-          disabled={!enabled}
-          onChange={(value) => onChange('turnCompleted', value)}
-        />
-        <ReasonToggle
-          label={t('awaitingApproval')}
-          hint={t('awaitingApprovalHint')}
-          checked={awaitingApproval}
-          disabled={!enabled}
-          onChange={(value) => onChange('awaitingApproval', value)}
-        />
-        <ReasonToggle
-          label={t('error')}
-          hint={t('errorHint')}
-          checked={error}
-          disabled={!enabled}
-          onChange={(value) => onChange('error', value)}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ReasonToggle({
-  label,
-  hint,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (value: boolean) => void;
-}): React.ReactNode {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex flex-col gap-0.5">
-        <span className="font-medium text-sm">{label}</span>
-        <span className="text-muted-foreground text-xs">{hint}</span>
-      </div>
-      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      <SettingsCard>
+        <SettingsRow title={t('turnCompleted')} description={t('turnCompletedHint')}>
+          <Switch
+            checked={turnCompleted}
+            disabled={!enabled}
+            onCheckedChange={(value) => onChange('turnCompleted', value)}
+          />
+        </SettingsRow>
+        <SettingsRow title={t('awaitingApproval')} description={t('awaitingApprovalHint')}>
+          <Switch
+            checked={awaitingApproval}
+            disabled={!enabled}
+            onCheckedChange={(value) => onChange('awaitingApproval', value)}
+          />
+        </SettingsRow>
+        <SettingsRow title={t('error')} description={t('errorHint')}>
+          <Switch
+            checked={error}
+            disabled={!enabled}
+            onCheckedChange={(value) => onChange('error', value)}
+          />
+        </SettingsRow>
+      </SettingsCard>
     </div>
   );
 }

@@ -94,6 +94,26 @@ describe('NewSessionSurface', () => {
     expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
   });
 
+  it('names the model selector with its agent, model, and reasoning effort', () => {
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Claude Code, Sonnet 5, reasoning: effortDefault',
+      }),
+    ).toBeTruthy();
+  });
+
   it.each([
     'codex',
     'opencode',
@@ -563,6 +583,66 @@ describe('NewSessionSurface', () => {
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
     );
+  });
+
+  it('submits compatible Pi catalog choices and suppresses stale effort for models without it', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        agentCatalogs={{
+          pi: {
+            models: [
+              { id: 'pi/sonnet', label: 'Pi Sonnet', effortLevels: ['low', 'high'] },
+              { id: 'pi/basic', label: 'Pi Basic', effortLevels: [] },
+            ],
+            policies: [
+              { policyId: 'default', name: 'Default' },
+              { policyId: 'accept-edits', name: 'Accept edits' },
+            ],
+            defaultPolicyId: 'default',
+          },
+        }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
+    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(await screen.findByText('High'));
+    await user.click(screen.getByRole('button', { name: /Default/ }));
+    await user.click(await screen.findByRole('menuitemradio', { name: /Accept edits/ }));
+    typeInComposer('catalog choices');
+    await pressInComposer('Enter');
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'pi/sonnet',
+          effort: 'high',
+          approvalPolicyId: 'accept-edits',
+        }),
+      ),
+    );
+
+    onSubmit.mockClear();
+    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Pi Sonnet' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
+    typeInComposer('no stale effort');
+    await pressInComposer('Enter');
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ model: 'pi/basic', approvalPolicyId: 'accept-edits' }),
+    );
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
   });
 
   it('queries mentions in the selected draft workspace and submits the picked file', async () => {

@@ -55,10 +55,10 @@ function createWindow(): BrowserWindow {
     title: APP_NAME,
     titleBarStyle: 'hidden',
     // macOS 26 Tahoe (Darwin ≥ 25) shrank the traffic-light frame height 16pt → 14pt (same fix as
-    // microsoft/vscode#279769); y = floor((48 − frameHeight) / 2) centers the buttons on the 48px
+    // microsoft/vscode#279769); y = floor((40 − frameHeight) / 2) centers the buttons on the 40px
     // chrome bar (renderer DESKTOP_CHROME_METRICS.height).
     ...(process.platform === 'darwin' && {
-      trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 17 : 16 },
+      trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 13 : 12 },
     }),
     ...desktopBackdropOptions(),
     webPreferences: {

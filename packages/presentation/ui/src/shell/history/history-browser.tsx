@@ -1,4 +1,12 @@
 import type { AgentHistoryId } from '@linkcode/schema';
+import {
+  AlertDialog,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from 'coss-ui/components/alert-dialog';
 import { Button } from 'coss-ui/components/button';
 import {
   Empty,
@@ -36,13 +44,84 @@ export interface HistoryBrowserListProps {
   isLoading: boolean;
   /** The list fetch failure message, when there is nothing to show. */
   loadError?: string | null;
-  importingId?: AgentHistoryId | null;
-  /** The most recent import failure message; rendered inline, never swallowed. */
-  importError?: string | null;
+  importingIds: ReadonlySet<AgentHistoryId>;
+  importingCwds: ReadonlySet<string>;
+  /** Import failures stay next to the exact rows that remain importable. */
+  importErrors: ReadonlyMap<AgentHistoryId, string>;
+  /** Partial batch outcomes, keyed by full cwd. */
+  groupImportFailures: ReadonlyMap<string, { imported: number; total: number }>;
+  /** Failure from a non-import list action, such as opening an imported conversation. */
+  actionError?: string | null;
   onImport: (historyId: AgentHistoryId) => void;
+  onImportGroup: (cwd: string, historyIds: readonly AgentHistoryId[]) => void;
   onOpen: (historyId: AgentHistoryId) => void;
   /** Backs the error state's Retry; the primary refresh control lives in the host's chrome. */
   onRefresh: () => void;
+}
+
+export interface HistoryImportAllDialogProps {
+  open: boolean;
+  importableCount: number;
+  scanFailedCount: number;
+  importing: boolean;
+  result: { importedCount: number; failedCount: number } | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}
+
+export function HistoryImportAllDialog({
+  open,
+  importableCount,
+  scanFailedCount,
+  importing,
+  result,
+  onOpenChange,
+  onConfirm,
+}: HistoryImportAllDialogProps): React.ReactNode {
+  const t = useTranslations('settings.historyImport');
+  const completed = result !== null;
+  const partial = (result?.failedCount ?? 0) > 0;
+
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => !importing && onOpenChange(next)}>
+      <AlertDialogPopup>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {completed
+              ? t(partial ? 'importAllPartialTitle' : 'importAllCompleteTitle')
+              : t('importAllTitle')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {completed
+              ? t(partial ? 'importAllPartialResult' : 'importAllCompleteResult', {
+                  imported: result.importedCount,
+                  failed: result.failedCount,
+                })
+              : t('importAllDescription', { count: importableCount })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {!completed && scanFailedCount > 0 && (
+          <p className="px-6 pb-2 text-muted-foreground text-xs">
+            {t('importAllScanWarning', { count: scanFailedCount })}
+          </p>
+        )}
+        <AlertDialogFooter>
+          {completed ? (
+            <Button onClick={() => onOpenChange(false)}>{t('importAllClose')}</Button>
+          ) : (
+            <>
+              <Button variant="outline" disabled={importing} onClick={() => onOpenChange(false)}>
+                {t('importAllCancel')}
+              </Button>
+              <Button loading={importing} onClick={onConfirm}>
+                {t('importAllConfirm', { count: importableCount })}
+              </Button>
+            </>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
+  );
 }
 
 /** One provider's importable conversation rows (settings portal main pane). */
@@ -52,9 +131,13 @@ export function HistoryBrowserList({
   truncated,
   isLoading,
   loadError,
-  importingId,
-  importError,
+  importingIds,
+  importingCwds,
+  importErrors,
+  groupImportFailures,
+  actionError,
   onImport,
+  onImportGroup,
   onOpen,
   onRefresh,
 }: HistoryBrowserListProps): React.ReactNode {
@@ -107,7 +190,11 @@ export function HistoryBrowserList({
           entry={entry}
           // The section header already names the project; keep grouped row meta to time · count.
           showProject={!groupByProject}
-          importing={importingId === entry.historyId}
+          importing={
+            importingIds.has(entry.historyId) ||
+            (entry.cwd !== undefined && importingCwds.has(entry.cwd))
+          }
+          importError={importErrors.get(entry.historyId)}
           onImport={onImport}
           onOpen={onOpen}
         />
@@ -117,26 +204,49 @@ export function HistoryBrowserList({
 
   return (
     <div className="flex flex-col">
-      {importError != null && (
+      {actionError != null && (
         <p className="pb-2 text-destructive text-xs">
-          {t('importError', { message: importError })}
+          {t('actionError', { message: actionError })}
         </p>
       )}
       {groupByProject ? (
         <div className="flex flex-col gap-5">
-          {groupHistoryBrowserEntries(entries).map((group) => (
-            <section key={group.cwd ?? 'no-project'}>
-              <div
-                className="flex items-center gap-1.5 pb-1 font-medium text-muted-foreground text-xs"
-                title={group.cwd}
-              >
-                <FolderIcon className="size-3.5 shrink-0" />
-                <span className="min-w-0 truncate">{group.label ?? t('noProject')}</span>
-                <span className="ml-auto shrink-0">{group.entries.length}</span>
-              </div>
-              {rows(group.entries)}
-            </section>
-          ))}
+          {groupHistoryBrowserEntries(entries).map((group) => {
+            const importableIds = group.entries.reduce<AgentHistoryId[]>((ids, entry) => {
+              if (!entry.imported) ids.push(entry.historyId);
+              return ids;
+            }, []);
+            const partial = group.cwd ? groupImportFailures.get(group.cwd) : undefined;
+            return (
+              <section key={group.cwd ?? 'no-project'}>
+                <div
+                  className="flex min-h-7 items-center gap-1.5 pb-1 font-medium text-muted-foreground text-xs"
+                  title={group.cwd}
+                >
+                  <FolderIcon className="size-3.5 shrink-0" />
+                  <span className="min-w-0 truncate">{group.label ?? t('noProject')}</span>
+                  <span className="shrink-0">{group.entries.length}</span>
+                  {group.cwd && importableIds.length > 0 && (
+                    <Button
+                      className="ml-auto"
+                      size="xs"
+                      variant="outline"
+                      loading={importingCwds.has(group.cwd)}
+                      onClick={() => onImportGroup(group.cwd!, importableIds)}
+                    >
+                      {t('importFolder', { count: importableIds.length })}
+                    </Button>
+                  )}
+                </div>
+                {partial !== undefined && (
+                  <p className="pb-1 text-destructive text-xs">
+                    {t('groupPartialFailure', partial)}
+                  </p>
+                )}
+                {rows(group.entries)}
+              </section>
+            );
+          })}
         </div>
       ) : (
         rows(entries)
@@ -154,12 +264,14 @@ function HistoryBrowserRow({
   entry,
   showProject,
   importing,
+  importError,
   onImport,
   onOpen,
 }: {
   entry: HistoryBrowserEntry;
   showProject: boolean;
   importing: boolean;
+  importError?: string;
   onImport: (historyId: AgentHistoryId) => void;
   onOpen: (historyId: AgentHistoryId) => void;
 }): React.ReactNode {
@@ -178,6 +290,11 @@ function HistoryBrowserRow({
         <div className="truncate text-sm">{entry.title}</div>
         {meta.length > 0 && (
           <div className="truncate text-muted-foreground text-xs">{meta.join(' · ')}</div>
+        )}
+        {importError !== undefined && (
+          <div className="truncate text-destructive text-xs" title={importError}>
+            {t('importError', { message: importError })}
+          </div>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">

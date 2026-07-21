@@ -1,4 +1,4 @@
-import { SettingsSidebarNav, ShellSidebar, TitleStrip } from '@linkcode/ui';
+import { SettingsPageTitle, SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { filterSettingsNavGroups, useSettingsSearchKeywords } from '@linkcode/workbench';
 import {
   BellIcon,
@@ -118,6 +118,8 @@ export function SettingsLayout(): React.ReactNode {
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
+  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
+  const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -139,14 +141,11 @@ export function SettingsLayout(): React.ReactNode {
         </ShellSidebar>
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
-        <TitleStrip className="border-border border-b">
-          <span className="min-w-0 truncate font-semibold text-sm">{t('title')}</span>
-        </TitleStrip>
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {/* The providers page is a master/detail split and needs the extra width. */}
-          <div
-            className={`mx-auto p-6 ${isActive(pathname, 'providers') ? 'max-w-5xl' : 'max-w-2xl'}`}
-          >
+          <div className="mx-auto max-w-2xl p-6">
+            {activeLabel === undefined ? null : (
+              <SettingsPageTitle>{activeLabel}</SettingsPageTitle>
+            )}
             <Outlet />
           </div>
         </div>

@@ -273,7 +273,7 @@ export const en = {
       badgeDownloading: 'Downloading',
       badgeFailed: 'Download failed',
       badgeUnverified: 'Unverified',
-      badgeNeedsLogin: 'Sign in',
+      badgeNeedsLogin: 'Signed out',
       needsLoginTitle: '{agent} needs you to sign in',
       needsLoginBody: 'Sign in to your {agent} account to get started.',
       login: 'Sign in to {agent}',
@@ -592,6 +592,7 @@ export const en = {
       sortByProject: 'By project',
       noProject: 'No project',
       importAction: 'Import',
+      importFolder: 'Import all ({count})',
       importedBadge: 'Imported',
       open: 'Open',
       emptyTitle: 'No history yet',
@@ -601,7 +602,25 @@ export const en = {
       showingLatest:
         'Showing the latest {count, plural, one {# conversation} other {# conversations}}',
       importError: 'Failed to import: {message}',
+      groupPartialFailure:
+        'Imported {imported} of {total} conversations; failed conversations can be retried.',
+      actionError: 'Action failed: {message}',
       messageCount: '{count, plural, one {# message} other {# messages}}',
+      importAllAction: 'Import all scanned ({count})',
+      importAllTitle: 'Import all local conversations?',
+      importAllDescription:
+        '{count, plural, one {# local conversation is} other {# local conversations are}} ready to import. This imports all of them at once.',
+      importAllScanWarning:
+        '{count, plural, one {History from # agent could not be scanned} other {History from # agents could not be scanned}}. All other scanned conversations can still be imported.',
+      importAllCancel: 'Not now',
+      importAllConfirm: 'Import all {count}',
+      importAllCompleteTitle: 'All conversations imported',
+      importAllPartialTitle: 'Some conversations failed to import',
+      importAllCompleteResult:
+        'Imported {imported, plural, one {# conversation} other {# conversations}}.',
+      importAllPartialResult:
+        'Imported {imported, plural, one {# conversation} other {# conversations}}; {failed, plural, one {# failed} other {# failed}}. Failed conversations remain available to retry.',
+      importAllClose: 'Done',
     },
     general: {
       language: 'Language',
@@ -694,8 +713,14 @@ export const en = {
       customService: 'Custom endpoint',
       unbound: 'Not connected',
       noMatches: 'No matching accounts.',
+      emptyTitle: 'No accounts yet',
+      emptyHint: 'Add a subscription, API key, AI gateway, or custom endpoint.',
       detected: 'Detected',
       accountMenu: 'Account actions',
+      edit: 'Edit account',
+      backToAccount: 'Back to account details',
+      accountMissingTitle: 'Account no longer available',
+      accountMissingHint: 'It may have been removed from another client.',
       credential: 'Credential',
       credentialApiKey: 'API key',
       credentialAuthToken: 'Auth token',
@@ -769,11 +794,14 @@ export const en = {
       oauthLoggedOutHint:
         'No CLI login detected — you can still add it; sessions will prompt for login.',
       oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
+      oauthEditHint:
+        'Subscription credentials follow the CLI login; only the account name can be changed here.',
       form: {
         label: 'Name',
         variant: 'Protocol shape',
         model: 'Default model (optional)',
         submit: 'Add account',
+        save: 'Save changes',
         credentialType: 'Type',
         secret: 'Key / token',
         baseUrl: 'Endpoint URL (optional)',

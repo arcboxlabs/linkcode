@@ -20,7 +20,7 @@ const MAX_DEFAULT_SIZE = { width: 1560, height: 980 } as const;
 const WORK_AREA_FRACTION = { width: 0.9, height: 0.92 } as const;
 
 /** Smallest top-chrome area that must remain on-display so the window can be dragged. */
-const GRABBABLE_CHROME = { width: 100, height: 48 } as const;
+const GRABBABLE_CHROME = { width: 100, height: 40 } as const;
 
 const WindowStateSchema = z.object({
   bounds: z.object({

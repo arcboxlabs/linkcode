@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -14,6 +15,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -47,6 +49,12 @@ export function listSessions(options?: Options): RequestResult<SessionInfo[]> {
 
 export function startSession(options: Options<{ opts: StartOptions }>): RequestResult<SessionId> {
   return resolveClient(options).startSession(options.opts);
+}
+
+export function getAgentCatalog(
+  options: Options<{ agentKind: AgentKind; cwd?: string }>,
+): RequestResult<AgentStartCatalog> {
+  return resolveClient(options).getAgentCatalog(options.agentKind, options.cwd);
 }
 
 export function stopSession(
@@ -256,6 +264,14 @@ export function hostArtifact(
   options: Options<{ content: string; mimeType: string }>,
 ): RequestResult<HostedArtifact> {
   return resolveClient(options).hostArtifact(options.content, options.mimeType);
+}
+
+/** Host a workspace file (directory-backed) on the daemon's per-file origin, streamed with
+ * Range so the host's browser plays large media inline (CODE-316). */
+export function hostWorkspaceFile(
+  options: Options<{ cwd: string; path: string }>,
+): RequestResult<HostedFile> {
+  return resolveClient(options).hostFile(options.cwd, options.path);
 }
 
 /** Every registered workspace (directory), most recently used first. */

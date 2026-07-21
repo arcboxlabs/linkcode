@@ -1,6 +1,8 @@
+// 40px bar + 8px edge = uniform 8px around the 24px (icon-xs) controls, matching the
+// panel TitleStrip (h-10) and the sidebar's 8px edge grid.
 export const DESKTOP_CHROME_METRICS = {
-  height: 48,
-  edgePadding: 16,
+  height: 40,
+  edgePadding: 8,
   controlGap: 4,
   sectionGap: 8,
   nativeTrafficInset: 80,

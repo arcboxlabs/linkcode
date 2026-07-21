@@ -11,6 +11,12 @@ const KIND_BY_EXTENSION: Record<string, string> = {
   svg: 'image',
   txt: 'text',
   json: 'text',
+  mp4: 'video',
+  m4v: 'video',
+  webm: 'video',
+  mov: 'video',
+  mkv: 'video',
+  ogv: 'video',
 };
 
 export function fileExtension(path: string): string {

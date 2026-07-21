@@ -54,4 +54,4 @@ const BASE_ID =
 export const APP_ID = PROFILE === undefined ? BASE_ID : `${BASE_ID}.${PROFILE}`;
 
 /** `~/LinkCode` holds user workspaces — shared across channels and profiles on purpose. */
-export const DEFAULT_WORKSPACES_DIRNAME = 'LinkCode';
+export { WORKSPACES_DIRNAME as DEFAULT_WORKSPACES_DIRNAME } from '@linkcode/schema/product';

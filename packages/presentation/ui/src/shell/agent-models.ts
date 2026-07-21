@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, EffortLevel } from '@linkcode/schema';
 
 export interface ModelOption {
   id: string;
@@ -6,6 +6,8 @@ export interface ModelOption {
   /** Secondary line in the picker (adapter-advertised catalogs carry the provider name here,
    * disambiguating same-named models across providers); static table entries omit it. */
   description?: string;
+  /** Per-model effort capability from a dynamic adapter catalog. */
+  effortLevels?: EffortLevel[];
 }
 
 export interface ModelProviderGroups {

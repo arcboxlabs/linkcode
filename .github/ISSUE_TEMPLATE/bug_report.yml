@@ -1,0 +1,66 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please check [SUPPORT.md](https://github.com/arcboxlabs/linkcode/blob/master/.github/SUPPORT.md) and search existing issues first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LinkCode version
+      description: The release you installed, or the commit for a dev build.
+      placeholder: e.g. 0.4.2
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Desktop (macOS)
+        - Desktop (Windows)
+        - Desktop (Linux)
+        - Browser (webview)
+        - Mobile
+        - Daemon / CLI
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      description: Which agent were you using when it happened, if relevant?
+      multiple: true
+      options:
+        - Claude Code
+        - Codex
+        - OpenCode
+        - Pi
+        - Grok Build
+        - Not agent-related
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Desktop logs live at `~/Library/Logs/LinkCode/main.log` (macOS), `%APPDATA%/LinkCode/logs/main.log` (Windows), or `~/.config/LinkCode/logs/main.log` (Linux). Please redact anything sensitive.
+      render: text

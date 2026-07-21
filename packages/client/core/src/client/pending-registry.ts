@@ -3,11 +3,13 @@ import type {
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentRuntimes,
+  AgentStartCatalog,
   FileSuggestion,
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
@@ -63,6 +65,7 @@ export interface PendingValueMap {
   configGet: ProvidersConfig;
   accountsGet: Accounts;
   agentRuntimeList: AgentRuntimes;
+  agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
@@ -73,6 +76,7 @@ export interface PendingValueMap {
   fileSuggest: FileSuggestion[];
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
+  fileHost: HostedFile;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -105,6 +109,7 @@ export class PendingRegistry {
     configGet: new Map(),
     accountsGet: new Map(),
     agentRuntimeList: new Map(),
+    agentCatalog: new Map(),
     assetList: new Map(),
     assetEnsure: new Map(),
     gitStatus: new Map(),
@@ -115,6 +120,7 @@ export class PendingRegistry {
     fileSuggest: new Map(),
     scriptList: new Map(),
     artifactHost: new Map(),
+    fileHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),

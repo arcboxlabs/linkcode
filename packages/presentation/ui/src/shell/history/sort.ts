@@ -36,22 +36,25 @@ export interface HistoryBrowserGroup {
   entries: HistoryBrowserEntry[];
 }
 
-/** Partitions project-sorted entries into consecutive per-directory groups. */
+/** Groups by full directory while preserving the first occurrence order from the selected sort. */
 export function groupHistoryBrowserEntries(
   sorted: readonly HistoryBrowserEntry[],
 ): HistoryBrowserGroup[] {
   const groups: HistoryBrowserGroup[] = [];
+  const byCwd = new Map<string | undefined, HistoryBrowserGroup>();
   for (const entry of sorted) {
-    const last = groups.at(-1);
-    if (last && last.cwd === entry.cwd) {
-      last.entries.push(entry);
+    const existing = byCwd.get(entry.cwd);
+    if (existing) {
+      existing.entries.push(entry);
       continue;
     }
-    groups.push({
+    const group = {
       cwd: entry.cwd,
       label: entry.cwd === undefined ? null : repositoryLabel(entry.cwd),
       entries: [entry],
-    });
+    };
+    byCwd.set(entry.cwd, group);
+    groups.push(group);
   }
   return groups;
 }

@@ -1,6 +1,6 @@
 import type { AgentKind, AgentRuntimeAvailability } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
-import { AgentIcon, AgentOnboardingCard } from '@linkcode/ui';
+import { AgentIcon, AgentOnboardingCard, SettingsCard } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Switch } from 'coss-ui/components/switch';
@@ -38,11 +38,9 @@ export function AgentsSettingsPanel({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="font-semibold text-sm">{t('title')}</h2>
-        <p className="text-muted-foreground text-xs">{t('hint')}</p>
-      </div>
-      <div className="rounded-lg border border-border">
+      {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
+      <p className="text-muted-foreground text-sm">{t('hint')}</p>
+      <SettingsCard>
         {AGENT_KINDS.map((kind) => {
           const runtime = runtimes?.[kind];
           const boundId = providers?.[kind]?.activeAccountId;
@@ -59,7 +57,7 @@ export function AgentsSettingsPanel({
               ? runtime.auth.email
               : undefined;
           return (
-            <div key={kind} className="border-border border-t px-3 py-3 first:border-t-0">
+            <div key={kind} className="px-3 py-3">
               <div className="flex items-center gap-3">
                 <AgentIcon kind={kind} />
                 <div className="min-w-0 flex-1">
@@ -104,7 +102,7 @@ export function AgentsSettingsPanel({
             </div>
           );
         })}
-      </div>
+      </SettingsCard>
     </div>
   );
 }

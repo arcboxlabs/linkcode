@@ -8,6 +8,8 @@ describe('artifactKindForPath', () => {
     expect(artifactKindForPath('a/b/logo.svg')).toBe('image');
     expect(artifactKindForPath('shot.webp')).toBe('image');
     expect(artifactKindForPath('notes.txt')).toBe('text');
+    expect(artifactKindForPath('demo/clip.mp4')).toBe('video');
+    expect(artifactKindForPath('capture.MOV')).toBe('video');
   });
 
   it('returns null for unknown or missing extensions', () => {

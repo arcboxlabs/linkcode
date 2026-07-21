@@ -104,4 +104,28 @@ describe('groupHistoryBrowserEntries', () => {
       '/b/work',
     ]);
   });
+
+  it('forms stable groups even when the selected time sort interleaves directories', () => {
+    const latest = sortHistoryBrowserEntries(
+      [
+        entry('a-new', { cwd: '/a/work', timestamp: 40 }),
+        entry('b', { cwd: '/b/work', timestamp: 30 }),
+        entry('a-old', { cwd: '/a/work', timestamp: 20 }),
+        entry('no-cwd-new', { timestamp: 35 }),
+        entry('no-cwd-old', { timestamp: 10 }),
+      ],
+      'latest',
+    );
+
+    expect(
+      groupHistoryBrowserEntries(latest).map((group) => ({
+        cwd: group.cwd,
+        entries: ids(group.entries),
+      })),
+    ).toEqual([
+      { cwd: '/a/work', entries: ['a-new', 'a-old'] },
+      { cwd: undefined, entries: ['no-cwd-new', 'no-cwd-old'] },
+      { cwd: '/b/work', entries: ['b'] },
+    ]);
+  });
 });

@@ -165,10 +165,12 @@ function providerAccountListItem(
   return {
     id: account.id,
     label: account.label,
+    credentialType: account.credential.type,
     boundAgents: boundAgentKinds(providers, account.id),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
     ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
+    ...(account.endpoint !== undefined && { protocol: account.endpoint.protocol }),
     ...(auth !== undefined && {
       auth: {
         loggedIn: auth.loggedIn,

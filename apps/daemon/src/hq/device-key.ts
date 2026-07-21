@@ -52,7 +52,7 @@ function ensureSoftwareDeviceKey(): DeviceKey {
     writeFileSync(path, privatePem, { mode: 0o600 });
   }
   const privateKey = createPrivateKey(privatePem);
-  const publicKeyPem = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
+  const publicKeyPem = createPublicKey(privatePem).export({ type: 'spki', format: 'pem' });
   return {
     publicKeyPem,
     protection: 'software',

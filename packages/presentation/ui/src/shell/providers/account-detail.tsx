@@ -28,6 +28,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   MoreHorizontalIcon,
+  PencilIcon,
   Trash2Icon,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -94,12 +95,13 @@ function DetailRow({
   );
 }
 
-/** Right pane of the Providers page: credential, per-agent binding switches, config preview. */
+/** Account-dialog content: credential, per-agent binding switches, and config preview. */
 export function AccountDetail({
   account,
   busy,
   onSetBinding,
   onSetModel,
+  onEdit,
   onRemove,
 }: {
   account: ProviderAccountDetailViewModel;
@@ -107,6 +109,7 @@ export function AccountDetail({
   busy: boolean;
   onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
   onSetModel: (kind: AgentKind, model: string | undefined) => void;
+  onEdit: () => void;
   onRemove: () => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
@@ -135,6 +138,10 @@ export function AccountDetail({
             }
           />
           <MenuPopup align="end">
+            <MenuItem onClick={onEdit}>
+              <PencilIcon className="size-4" />
+              {t('edit')}
+            </MenuItem>
             <MenuItem onClick={() => setRemoveOpen(true)}>
               <Trash2Icon className="size-4" />
               {t('remove')}

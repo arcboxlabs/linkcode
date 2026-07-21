@@ -122,7 +122,7 @@ function PanelTabButton({
   return (
     <div
       className={cn(
-        'group flex h-7 max-w-44 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
+        'group flex h-6 max-w-44 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
         active ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
       )}
     >

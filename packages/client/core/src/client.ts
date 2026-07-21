@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   ContentBlock,
   EffortLevel,
   FileSuggestion,
@@ -15,6 +16,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -299,6 +301,9 @@ export class LinkCodeClient {
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
+      case 'agent.cataloged':
+        this.pending.resolve('agentCatalog', p.replyTo, p.catalog);
+        break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
         break;
@@ -341,6 +346,9 @@ export class LinkCodeClient {
         break;
       case 'artifact.hosted':
         this.pending.resolve('artifactHost', p.replyTo, p.artifact);
+        break;
+      case 'file.hosted':
+        this.pending.resolve('fileHost', p.replyTo, p.hosted);
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
@@ -437,6 +445,10 @@ export class LinkCodeClient {
 
   startSession(opts: StartOptions): Promise<SessionId> {
     return this.control.startSession(opts);
+  }
+
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
+    return this.control.getAgentCatalog(agentKind, cwd);
   }
 
   listSessions(): Promise<SessionInfo[]> {
@@ -656,6 +668,11 @@ export class LinkCodeClient {
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
   hostArtifact(content: string, mimeType: string): Promise<HostedArtifact> {
     return this.control.hostArtifact(content, mimeType);
+  }
+
+  /** Host a workspace file on the daemon's per-file origin, streamed with Range (CODE-316). */
+  hostFile(cwd: string, path: string): Promise<HostedFile> {
+    return this.control.hostFile(cwd, path);
   }
 
   listWorkspaces(): Promise<WorkspaceRecord[]> {

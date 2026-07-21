@@ -137,6 +137,27 @@ describe('engine session records', () => {
     ]);
   });
 
+  it('serializes concurrent imports of the same provider history', async () => {
+    const store = new InMemorySessionStore();
+    const { engine, sent, inject } = harness(store);
+    await engine.start();
+    const request = {
+      kind: 'session.import' as const,
+      agentKind: 'claude-code' as const,
+      historyId: asHistoryId('native-9'),
+    };
+
+    await Promise.all([
+      inject({ ...request, clientReqId: 'r1' }),
+      inject({ ...request, clientReqId: 'r2' }),
+    ]);
+
+    const imported = sent.filter((payload) => payload.kind === 'session.imported');
+    expect(imported).toHaveLength(2);
+    expect(new Set(imported.map((payload) => payload.record.sessionId)).size).toBe(1);
+    expect(await store.load()).toHaveLength(1);
+  });
+
   it('does not register a workspace when imported history has no cwd', async () => {
     const h = harness(new InMemorySessionStore(), () => new CwdlessHistoryAdapter());
     await h.engine.start();
@@ -213,11 +234,19 @@ describe('engine session records', () => {
     ]);
   });
 
-  it('does not retain an imported session when its durable save fails', async () => {
+  it('retries an imported session after its first durable save fails', async () => {
+    const inner = new InMemorySessionStore();
+    let shouldFail = true;
     const store: SessionStore = {
-      load: () => Promise.resolve([]),
-      save: () => Promise.reject(new Error('private database detail')),
-      delete: () => Promise.resolve(),
+      load: () => inner.load(),
+      save(record) {
+        if (shouldFail) {
+          shouldFail = false;
+          return Promise.reject(new Error('private database detail'));
+        }
+        return inner.save(record);
+      },
+      delete: (sessionId) => inner.delete(sessionId),
     };
     const { engine, sent, inject } = harness(store);
     await engine.start();
@@ -239,5 +268,15 @@ describe('engine session records', () => {
     ).toBe(false);
     await inject({ kind: 'session.list', clientReqId: 'r2' });
     expect(listedSessions(sent, 'r2')).toEqual([]);
+
+    await inject({
+      kind: 'session.import',
+      clientReqId: 'r3',
+      agentKind: 'claude-code',
+      historyId: asHistoryId('native-9'),
+    });
+    await inject({ kind: 'session.list', clientReqId: 'r4' });
+    expect(listedSessions(sent, 'r4')).toHaveLength(1);
+    expect(await inner.load()).toHaveLength(1);
   });
 });

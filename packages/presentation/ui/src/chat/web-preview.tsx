@@ -1,5 +1,6 @@
 import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
@@ -127,20 +128,19 @@ export function WebPreviewUrl({
   ...props
 }: WebPreviewUrlProps): React.ReactNode {
   return (
-    <span className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-full border border-input bg-background px-3 shadow-xs/5 transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/24 dark:bg-input/32">
-      <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <input
-        className={cn(
-          'min-w-0 flex-1 bg-transparent font-mono text-[12px] text-foreground outline-none placeholder:text-muted-foreground/72',
-          className,
-        )}
+    <InputGroup className="h-7 flex-1 rounded-full before:rounded-full">
+      <InputGroupAddon>
+        <GlobeIcon className="size-3.5 text-muted-foreground" />
+      </InputGroupAddon>
+      <InputGroupInput
+        className={cn('font-mono text-[12px] placeholder:text-muted-foreground/72', className)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') onCommit?.(event.currentTarget.value);
         }}
         spellCheck={false}
         {...props}
       />
-    </span>
+    </InputGroup>
   );
 }
 

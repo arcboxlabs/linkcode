@@ -1,5 +1,6 @@
 import type {
   AgentHistoryId,
+  AgentKind,
   ContentBlock,
   SessionId,
   SessionInfo,
@@ -47,6 +48,19 @@ export class SessionRecordRegistry {
 
   values(): IterableIterator<SessionRecord> {
     return this.records.values();
+  }
+
+  findImported(kind: AgentKind, historyId: AgentHistoryId): SessionRecord | undefined {
+    for (const record of this.records.values()) {
+      if (
+        record.kind === kind &&
+        record.origin.type === 'imported' &&
+        record.origin.historyId === historyId
+      ) {
+        return record;
+      }
+    }
+    return undefined;
   }
 
   list(statusOf: (sessionId: SessionId) => SessionInfo['status'] | undefined): SessionInfo[] {

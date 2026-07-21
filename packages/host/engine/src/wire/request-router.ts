@@ -67,6 +67,7 @@ export class WireRequestRouter {
         return this.handlers.history.handle(p);
       }
       case 'agent-runtime.list':
+      case 'agent.catalog':
       case 'config.get':
       case 'config.set': {
         return this.handlers.agent.handle(p);
@@ -88,7 +89,8 @@ export class WireRequestRouter {
       }
       case 'file.read':
       case 'file.list':
-      case 'file.suggest': {
+      case 'file.suggest':
+      case 'file.host': {
         return this.handlers.file.handle(p);
       }
       case 'script.list':

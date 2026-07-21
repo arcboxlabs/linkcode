@@ -1,6 +1,7 @@
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { noop } from 'foxts/noop';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopShellStore } from '../store/store';
@@ -30,6 +31,11 @@ export function BrowserWebviewPane(): React.ReactNode {
   const t = useTranslations('workbench.preview.browser');
   const url = useDesktopShellStore((state) => state.rightPanel.browser.url);
   const setBrowserUrl = useDesktopShellStore((state) => state.setBrowserUrl);
+  // The webview is a permanent resident (unmounting/DOM-moving it reloads), so collapsing the
+  // panel or switching section only hides it — media would keep playing audio in the background.
+  const visible = useDesktopShellStore(
+    (state) => state.rightPanel.open && state.rightPanel.activeSection === 'browser',
+  );
   const [webview, setWebview] = useState<WebviewTag | null>(null);
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
@@ -81,6 +87,17 @@ export function BrowserWebviewPane(): React.ReactNode {
     },
     [webview, setBrowserUrl, t],
   );
+
+  // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
+  // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
+  // restarts it on their next visit.
+  useAbortableEffect(() => {
+    if (webview === null || visible) return;
+    // Guest may be mid-navigation or detached, in which case there is nothing to pause.
+    webview
+      .executeJavaScript('document.querySelectorAll("video,audio").forEach((m) => m.pause())')
+      .catch(noop);
+  }, [webview, visible]);
 
   return (
     <BrowserPane

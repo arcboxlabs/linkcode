@@ -297,7 +297,13 @@ export class DevMockHost {
         break;
       case 'session.start':
         await wait(CONTROL_LATENCY_MS);
-        this.startSession(p.clientReqId, p.opts.kind, p.opts.cwd, p.opts.model, p.opts.effort);
+        this.startSession(
+          p.clientReqId,
+          p.opts.kind,
+          p.opts.cwd,
+          p.opts.model ?? undefined,
+          p.opts.effort,
+        );
         break;
       case 'session.resume':
         await wait(CONTROL_LATENCY_MS);
@@ -449,6 +455,22 @@ export class DevMockHost {
       }
       case 'artifact.revoke': {
         this.sendSuccess(p.clientReqId);
+        break;
+      }
+      case 'file.host': {
+        await wait(CONTROL_LATENCY_MS);
+        // No reverse proxy in mock mode: the requested path can't be streamed, so echo a
+        // placeholder origin. Mock video preview isn't wired — this only keeps the request
+        // from hanging.
+        this.send({
+          kind: 'file.hosted',
+          replyTo: p.clientReqId,
+          hosted: {
+            hash: `mock-${this.messageSeq++}`,
+            hostname: 'file--mock.localhost',
+            url: `http://file--mock.localhost/${p.path}`,
+          },
+        });
         break;
       }
       case 'script.stop': {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { agentWireVariants } from './agent';
+import { agentCatalogWireVariants } from './agent-catalog';
 import { agentLoginWireVariants } from './agent-login';
 import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
@@ -24,6 +25,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...requestWireVariants,
   ...configWireVariants,
   ...agentRuntimeWireVariants,
+  ...agentCatalogWireVariants,
   ...agentLoginWireVariants,
   ...managedAssetWireVariants,
   ...workspaceWireVariants,

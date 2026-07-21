@@ -42,7 +42,7 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
       return Promise.reject(new Error(message));
     }
     this.binaryPath = resolved;
-    this.model = opts.model;
+    this.model = opts.model ?? undefined;
     // Reflect the verified CLI default without turning it into a `-m` override. An explicit model
     // is reflected only after a successful headless run proves the CLI accepted its `-m` value.
     if (!this.model) this.emitModel(DEFAULT_GROK_MODEL);

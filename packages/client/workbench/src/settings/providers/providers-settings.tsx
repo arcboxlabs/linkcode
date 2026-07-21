@@ -1,11 +1,18 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
-import { AccountDetail, AccountMasterList } from '@linkcode/ui';
+import { AccountDetail, AccountList } from '@linkcode/ui';
+import {
+  Dialog,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from 'coss-ui/components/dialog';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useData, useMutation } from '../../runtime/tayori';
-import { AddAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
 import { useProvidersSettingsStore } from './store';
 import {
@@ -17,10 +24,9 @@ import {
 } from './view';
 
 /**
- * The Providers settings page: the global account pool (master list) plus per-account credential
- * and agent bindings (detail); the add flow takes over the detail pane. Transport-backed — it
- * must render inside `WorkbenchProviders`, but may sit above the connection gate, degrading to
- * loading/error while the daemon is down.
+ * The Providers settings page: one account list, with account management and creation in a dialog.
+ * Transport-backed — it must render inside `WorkbenchProviders`, but may sit above the connection
+ * gate, degrading to loading/error while the daemon is down.
  */
 export function ProvidersSettingsPanel(): React.ReactNode {
   const t = useTranslations('settings.providers');
@@ -34,17 +40,18 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
 
-  const selectedId = useProvidersSettingsStore((state) => state.selectedAccountId);
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
+  const startEdit = useProvidersSettingsStore((state) => state.startEdit);
+  const backToAccount = useProvidersSettingsStore((state) => state.backToAccount);
   const startAdd = useProvidersSettingsStore((state) => state.startAdd);
   const pickService = useProvidersSettingsStore((state) => state.pickService);
   const backToCatalog = useProvidersSettingsStore((state) => state.backToCatalog);
-  const closeAdd = useProvidersSettingsStore((state) => state.closeAdd);
+  const closeDialog = useProvidersSettingsStore((state) => state.closeDialog);
 
   const pool = accounts ?? [];
-  const accountsById = new Map(pool.map((account) => [account.id, account] as const));
-  const selected = (selectedId === null ? undefined : accountsById.get(selectedId)) ?? pool.at(0);
+  const accountsById = new Map(pool.map((account) => [account.id, account]));
+  const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
   const busy = saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
@@ -67,7 +74,15 @@ export function ProvidersSettingsPanel(): React.ReactNode {
 
   const handleAdd = async (account: Account): Promise<void> => {
     await saveAccounts.trigger({ accounts: [...pool, account] });
-    void mutateAccounts();
+    await mutateAccounts();
+    closeDialog();
+  };
+
+  const handleUpdate = async (account: Account): Promise<void> => {
+    await saveAccounts.trigger({
+      accounts: pool.map((candidate) => (candidate.id === account.id ? account : candidate)),
+    });
+    await mutateAccounts();
     select(account.id);
   };
 
@@ -85,63 +100,94 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     await saveAccounts.trigger({
       accounts: pool.filter((account) => account.id !== selected.id),
     });
-    void mutateAccounts();
-    const fallback = pool.find((account) => account.id !== selected.id);
-    if (fallback) select(fallback.id);
+    await mutateAccounts();
+    closeDialog();
   };
 
-  // An empty pool has nothing to browse — the detail pane is the service catalog itself.
-  const effectiveView =
-    view.kind === 'browse' && pool.length === 0 && !accountsLoading
-      ? ({ kind: 'add-catalog' } as const)
-      : view;
+  const dialogOpen = view.kind !== 'browse';
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="font-semibold text-sm">{t('title')}</h2>
-        <p className="text-muted-foreground text-xs">{t('hint')}</p>
-      </div>
-      <div className="flex gap-6">
-        <AccountMasterList
-          {...accountList}
-          loading={accountsLoading}
-          selectedId={selected?.id}
-          onSelect={select}
-          onAdd={startAdd}
-          onAdoptDetected={handleAdoptDetected}
-        />
-        <div className="min-w-0 flex-1">
-          {effectiveView.kind === 'add-form' ? (
-            <AddAccountForm
-              serviceId={effectiveView.service}
-              runtimes={runtimes}
-              busy={saveAccounts.isMutating}
-              onBack={backToCatalog}
-              onSubmit={(account) => {
-                void handleAdd(account);
-              }}
-            />
-          ) : effectiveView.kind === 'add-catalog' ? (
-            <ServiceCatalogView
-              onPick={pickService}
-              onCancel={pool.length > 0 ? closeAdd : undefined}
-            />
-          ) : selectedDetail ? (
-            <AccountDetail
-              account={selectedDetail}
-              busy={busy}
-              onSetBinding={handleSetBinding}
-              onSetModel={handleSetModel}
-              onRemove={() => {
-                void handleRemove();
-              }}
-            />
+      {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
+      <p className="text-muted-foreground text-sm">{t('hint')}</p>
+      <AccountList
+        {...accountList}
+        loading={accountsLoading}
+        onSelect={select}
+        onAdd={startAdd}
+        onAdoptDetected={handleAdoptDetected}
+      />
+      <Dialog
+        open={dialogOpen}
+        disablePointerDismissal={saveAccounts.isMutating}
+        onOpenChange={(open) => {
+          if (!open && !saveAccounts.isMutating) closeDialog();
+        }}
+      >
+        <DialogPopup
+          className={view.kind === 'add-catalog' ? 'max-w-3xl' : 'max-w-2xl'}
+          closeProps={{ disabled: saveAccounts.isMutating }}
+        >
+          {view.kind === 'add-catalog' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t('chooseService')}</DialogTitle>
+              </DialogHeader>
+              <DialogPanel>
+                <ServiceCatalogView onPick={pickService} />
+              </DialogPanel>
+            </>
           ) : (
-            <Skeleton className="h-40 w-full rounded-lg" />
+            <>
+              <DialogTitle className="sr-only">
+                {view.kind === 'account' ? (selected?.label ?? t('edit')) : t('addAccount')}
+              </DialogTitle>
+              <DialogPanel>
+                {view.kind === 'add-form' ? (
+                  <AddAccountForm
+                    serviceId={view.service}
+                    runtimes={runtimes}
+                    busy={saveAccounts.isMutating}
+                    onBack={backToCatalog}
+                    onSubmit={(account) => {
+                      void handleAdd(account);
+                    }}
+                  />
+                ) : view.kind === 'account' && selected && selectedDetail ? (
+                  view.editing ? (
+                    <EditAccountForm
+                      account={selected}
+                      busy={saveAccounts.isMutating}
+                      onBack={backToAccount}
+                      onSubmit={(account) => {
+                        void handleUpdate(account);
+                      }}
+                    />
+                  ) : (
+                    <AccountDetail
+                      account={selectedDetail}
+                      busy={busy}
+                      onSetBinding={handleSetBinding}
+                      onSetModel={handleSetModel}
+                      onEdit={startEdit}
+                      onRemove={() => {
+                        void handleRemove();
+                      }}
+                    />
+                  )
+                ) : accounts === undefined ? (
+                  <Skeleton className="h-40 w-full rounded-lg" />
+                ) : (
+                  <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
+                    <span className="font-medium text-sm">{t('accountMissingTitle')}</span>
+                    <span className="text-muted-foreground text-xs">{t('accountMissingHint')}</span>
+                  </div>
+                )}
+              </DialogPanel>
+            </>
           )}
-        </div>
-      </div>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }

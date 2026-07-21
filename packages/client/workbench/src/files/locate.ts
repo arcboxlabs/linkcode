@@ -1,5 +1,6 @@
 import type { Conversation } from '@linkcode/client-core';
 import { readWorkspaceFile } from '@linkcode/sdk';
+import { isErrorLikeObject } from 'foxts/extract-error-message';
 import { dirname, isAbsolute, join, normalize } from 'pathe';
 
 /** Probing is bounded: candidates beyond this are dropped (dirs are deduped first). */
@@ -52,8 +53,9 @@ export function fileArtifactCandidates(
 }
 
 /**
- * Resolve a clicked file reference: the first candidate the daemon can actually read wins; when
- * none reads, fall back to the most likely candidate so the viewer surfaces the read error.
+ * Resolve a clicked file reference: the first candidate the daemon confirms as a regular file
+ * wins. The read-size cap still proves an oversized candidate exists; when none can be verified,
+ * fall back to the most likely candidate so the viewer surfaces the read error.
  */
 export async function locateFileArtifact(
   requestPath: string,
@@ -67,7 +69,11 @@ export async function locateFileArtifact(
         // eslint-disable-next-line no-await-in-loop -- candidates must be probed in priority order and stop at the first readable path.
         await readWorkspaceFile({ cwd, path: candidate });
         return candidate;
-      } catch {
+      } catch (error) {
+        if (isErrorLikeObject(error) && 'code' in error && error.code === 'limit_exceeded') {
+          // file.read verifies the candidate is a regular file before enforcing its size cap.
+          return candidate;
+        }
         // Unreadable candidate — try the next; the viewer reports the final failure.
       }
     }

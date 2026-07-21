@@ -4,6 +4,8 @@
 }:
 
 {
+  dotenv.disableHint = true;
+
   packages = [
     pkgs.git
     pkgs.prek
@@ -11,7 +13,8 @@
 
   languages.rust = {
     enable = true;
-    channel = "stable";
+    # Version and components come from rust-toolchain.toml so devenv, rustup, and CI agree.
+    toolchainFile = ./rust-toolchain.toml;
   };
 
   languages.javascript = {
@@ -20,7 +23,8 @@
     corepack.enable = false;
     pnpm = {
       enable = true;
-      install.enable = true;
+      # Orb setup owns the frozen install; shell activation must stay side-effect free.
+      install.enable = false;
     };
   };
   languages.typescript.enable = true;

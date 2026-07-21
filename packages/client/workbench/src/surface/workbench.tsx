@@ -13,6 +13,7 @@ import {
   archiveWorkspace,
   cancelTurn,
   hostArtifact,
+  hostWorkspaceFile,
   readWorkspaceFile,
   registerWorkspace,
   respondPermission,
@@ -64,6 +65,7 @@ import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
+import { useAgentStartCatalogs } from './use-agent-catalogs';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
@@ -80,6 +82,11 @@ const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
 
 async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
   const { data } = await hostArtifact({ content, mimeType });
+  return { url: data.url };
+}
+
+async function handleHostVideoFile(cwd: string, path: string): Promise<{ url: string }> {
+  const { data } = await hostWorkspaceFile({ cwd, path });
   return { url: data.url };
 }
 
@@ -201,6 +208,7 @@ function WorkbenchSessionSurface({
   const active = sessions.active;
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
+  const agentCatalogs = useAgentStartCatalogs();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -305,8 +313,9 @@ function WorkbenchSessionSurface({
     const sessionId = await sessions.create({
       kind: submission.kind,
       cwd: submission.cwd,
-      model: submission.model ?? undefined,
+      model: submission.model,
       effort: submission.effort ?? undefined,
+      approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
     });
     const startupSelection = reflectedStartupSelection(
@@ -550,6 +559,7 @@ function WorkbenchSessionSurface({
       activeSession={active}
       draft={draft}
       newSessionDefaultModels={newSessionDefaultModels}
+      agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       runtimeCues={onboarding.cues}
@@ -594,6 +604,7 @@ function WorkbenchSessionSurface({
       onRespondPermission={handleRespond}
       onRespondQuestion={handleRespondQuestion}
       onHostArtifact={handleHostArtifact}
+      onHostVideoFile={handleHostVideoFile}
       onReadAttachmentFile={handleReadAttachmentFile}
       onOpenSearch={openCommandPalette}
       searchShortcut={searchShortcut}

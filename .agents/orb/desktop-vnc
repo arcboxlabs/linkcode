@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export LINKCODE_PROFILE=orb
 
 display=:99

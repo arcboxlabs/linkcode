@@ -8,15 +8,14 @@ description: Cargo-build linkcode-pty for both arches and stage it for electron-
 runs:
   using: composite
   steps:
+    # The version comes from rust-toolchain.toml (no `toolchain` input).
     - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         # The cross target per platform (the native target ships with the toolchain). Keep in
         # sync with CROSS_BUILDS in apps/desktop/scripts/stage-sidecar.mts.
-        targets: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin' || runner.os == 'Windows' && 'aarch64-pc-windows-msvc' || 'aarch64-unknown-linux-gnu' }}
-
-    - name: Cache Rust build
-      uses: Swatinem/rust-cache@v2
+        target: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin' || runner.os == 'Windows' && 'aarch64-pc-windows-msvc' || 'aarch64-unknown-linux-gnu' }}
+        rustflags: ''
 
     - name: Install aarch64 cross linker
       if: runner.os == 'Linux'
