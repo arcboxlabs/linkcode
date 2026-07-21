@@ -44,8 +44,9 @@ fi
 
 if ! command -v devenv >/dev/null 2>&1; then
   echo "==> Installing devenv"
+  nixpkgs_revision="$(python3 -c 'import json; print(json.load(open("devenv.lock"))["nodes"]["nixpkgs-src"]["locked"]["rev"])')"
   nix-env --install --attr devenv \
-    -f https://github.com/NixOS/nixpkgs/tarball/nixpkgs-unstable
+    -f "https://github.com/NixOS/nixpkgs/archive/${nixpkgs_revision}.tar.gz"
 fi
 
 echo "==> Installing JavaScript dependencies"
