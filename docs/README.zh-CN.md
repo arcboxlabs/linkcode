@@ -20,7 +20,7 @@
     <a href="../LICENSE" target="_blank">
     <img alt="License" src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat"></a>
     <a href="https://x.com/linkcodeai" target="_blank">
-    <img alt="follow on X" src="https://img.shields.io/badge/follow-linkcodeai-green?style=social&logo=X"></a>
+    <img alt="follow on X" src="https://img.shields.io/badge/follow-LinkCodeAI-green?style=social&logo=X"></a>
 </div>
 
 <p align="center">
