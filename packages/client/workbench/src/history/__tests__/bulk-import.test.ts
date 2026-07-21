@@ -1,5 +1,5 @@
 import { AgentHistoryIdSchema } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { historyImportOnboardingAction, summarizeHistoryGroupImports } from '../bulk-import';
 
 const HISTORY_1 = AgentHistoryIdSchema.parse('history-1');

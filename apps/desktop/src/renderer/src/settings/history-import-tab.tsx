@@ -30,6 +30,7 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
   const t = useTranslations('settings.historyImport');
   const [sort, setSort] = useState<HistorySortOrder>('latest');
   const [manualImportOpen, setManualImportOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const surface = useHistoryImportSurface(kind, sort);
   const bulk = useBulkHistoryImport();
   const onboardingHandled = useDesktopSettingsStore(
@@ -56,6 +57,7 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
       return;
     }
     setManualImportOpen(false);
+    setOnboardingDismissed(true);
     if (!onboardingHandled) void markOnboardingHandled().catch(noop);
   }
 
@@ -109,7 +111,7 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
         onRefresh={surface.refresh}
       />
       <HistoryImportAllDialog
-        open={manualImportOpen || onboardingAction === 'offer'}
+        open={manualImportOpen || (!onboardingDismissed && onboardingAction === 'offer')}
         importableCount={bulk.importableCount}
         scanFailedCount={bulk.scanFailedCount}
         importing={bulk.isImporting}
