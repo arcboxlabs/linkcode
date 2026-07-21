@@ -27,4 +27,5 @@ export * from './shell-sidebar';
 export * from './sidebar';
 export * from './terminal/prefs';
 export * from './terminal-settings-panel';
+export * from './thread-title-menu';
 export * from './use-relative-time-label';
