@@ -36,6 +36,7 @@ curl http://127.0.0.1:19523/linkcode
 ## Questions
 
 - Open a [GitHub issue](https://github.com/arcboxlabs/linkcode/issues/new/choose) — questions are welcome there too.
+- Join the community on [Discord](https://arcbox.link/discord).
 - Email [support@linkcode.ai](mailto:support@linkcode.ai).
 - Reach us on X at [@linkcodeai](https://x.com/linkcodeai).
 
