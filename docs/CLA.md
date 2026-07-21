@@ -1,6 +1,6 @@
 # ArcBox Individual Contributor License Agreement
 
-> **Status: Draft v1.1 (2026-07-21) — pending legal review; not yet in force.**
+> **Status: Draft v1.2 (2026-07-21) — pending legal review; not yet in force.**
 > The authoritative copy will be published as a GitHub Gist and linked through cla-assistant.io. This in-repo copy exists for review and history.
 
 Thank you for your interest in contributing to software projects maintained by ArcBox, Inc., a Delaware corporation, d/b/a ArcBox Labs ("ArcBox"), including LinkCode.
@@ -21,13 +21,13 @@ You accept and agree to the following terms and conditions for Your present and 
 
 ## 2. Grant of Copyright License
 
-Subject to the terms and conditions of this Agreement, You hereby grant to ArcBox and to recipients of software distributed by ArcBox a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute Your Contributions and such derivative works.
+Subject to the terms and conditions of this Agreement, You hereby grant to ArcBox and to recipients of software distributed by ArcBox a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute Your Contributions and such derivative works; provided that the license granted in this Section 2 to recipients of software distributed by ArcBox is limited to the scope of, and is subject to, the license terms under which ArcBox distributes that software to those recipients.
 
 For the avoidance of doubt, the license granted in this Section 2 includes the right for ArcBox to license and distribute Your Contributions, and derivative works thereof, under license terms of ArcBox's choosing, including without limitation open source licenses (such as the Apache License, Version 2.0), source-available licenses (such as the Business Source License 1.1), and commercial or proprietary license terms.
 
 ## 3. Grant of Patent License
 
-Subject to the terms and conditions of this Agreement, You hereby grant to ArcBox and to recipients of software distributed by ArcBox a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by You that are necessarily infringed by Your Contribution(s) alone or by combination of Your Contribution(s) with the Work to which such Contribution(s) was submitted. If any entity institutes patent litigation against You or any other entity (including a cross-claim or counterclaim in a lawsuit) alleging that Your Contribution, or the Work to which You have contributed, constitutes direct or contributory patent infringement, then any patent licenses granted to that entity under this Agreement for that Contribution or Work shall terminate as of the date such litigation is filed.
+Subject to the terms and conditions of this Agreement, You hereby grant to ArcBox and to recipients of software distributed by ArcBox a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by You that are necessarily infringed by Your Contribution(s) alone or by combination of Your Contribution(s) with the Work to which such Contribution(s) was submitted. The license granted in this Section 3 to recipients of software distributed by ArcBox is limited to the scope of, and is subject to, the license terms under which ArcBox distributes the Work to those recipients. If any entity institutes patent litigation against You or any other entity (including a cross-claim or counterclaim in a lawsuit) alleging that Your Contribution, or the Work to which You have contributed, constitutes direct or contributory patent infringement, then any patent licenses granted to that entity under this Agreement for that Contribution or Work shall terminate as of the date such litigation is filed.
 
 ## 4. Authority
 
