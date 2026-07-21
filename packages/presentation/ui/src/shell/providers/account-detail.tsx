@@ -95,7 +95,7 @@ function DetailRow({
   );
 }
 
-/** Right pane of the Providers page: credential, per-agent binding switches, config preview. */
+/** Account-dialog content: credential, per-agent binding switches, and config preview. */
 export function AccountDetail({
   account,
   busy,
