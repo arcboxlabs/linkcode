@@ -42,7 +42,7 @@ jobs:
   release:
     name: Publish release
     needs: build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     # R2 credentials live in the `release` environment (same gate as the signing secrets) —
     # without this reference the job resolves them as empty.
     environment: release
