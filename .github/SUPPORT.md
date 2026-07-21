@@ -37,6 +37,6 @@ curl http://127.0.0.1:19523/linkcode
 
 - Open a [GitHub issue](https://github.com/arcboxlabs/linkcode/issues/new/choose) — questions are welcome there too.
 - Email [support@linkcode.ai](mailto:support@linkcode.ai).
-- Reach us on X at [@arcboxlabs](https://twitter.com/arcboxlabs).
+- Reach us on X at [@linkcodeai](https://x.com/linkcodeai).
 
 LinkCode is developed by ArcBox. Support is best-effort; bug reports with logs and clear reproduction steps get answered fastest.
