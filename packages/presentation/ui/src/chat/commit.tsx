@@ -88,7 +88,7 @@ export function CommitHeader({
           >
             <CommitAvatar commit={commit} />
             <div className="min-w-0 shrink overflow-hidden">
-              <div className="truncate font-medium">{commit.message}</div>
+              <div className="truncate font-medium opacity-80">{commit.message}</div>
               <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 <CommitHash hash={commit.hash} />
                 {commit.authorName ? (

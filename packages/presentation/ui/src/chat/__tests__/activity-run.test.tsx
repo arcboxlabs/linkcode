@@ -379,16 +379,27 @@ describe('ActivityRun', () => {
     const expected =
       'An action failed · Used an integration once · Ran a command · Made 2 file changes · Explored once';
     expect(header.textContent).toBe(expected);
-    for (const label of [
-      'An action failed',
+    const regularLabels = [
       'Used an integration once',
       'Ran a command',
       'Made 2 file changes',
       'Explored once',
-    ]) {
+    ];
+    for (const label of ['An action failed', ...regularLabels]) {
       expect(header.textContent.split(label)).toHaveLength(2);
     }
-    expect(within(header).getByText(RE_FAILURE).className).toContain('text-destructive-foreground');
+    const failureClause = within(header).getByText(RE_FAILURE);
+    expect(failureClause.className).toContain('text-destructive-foreground');
+    expect(failureClause.className).toContain('font-medium');
+    expect(failureClause.className).toContain('opacity-100');
+    const regularClauses = regularLabels.map((label) => within(header).getByText(`· ${label}`));
+    for (const clause of regularClauses) {
+      expect(clause.className).toContain('font-medium');
+      expect(clause.className).toContain('opacity-80');
+      expect(clause.className).not.toContain('text-muted-foreground/70');
+    }
+    expect(regularClauses[0]?.parentElement?.className).toContain('shrink');
+    expect(regularClauses[0]?.parentElement?.className).toContain('truncate');
     const icon = header.querySelector('svg.lucide-wrench');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('class')).toContain('text-destructive-foreground');

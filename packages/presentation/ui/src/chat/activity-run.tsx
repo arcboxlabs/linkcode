@@ -12,7 +12,6 @@ import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
 import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
 import {
-  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
   CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
@@ -105,21 +104,29 @@ export function ActivityRun({
           <span
             className={cn(
               CHAT_DISCLOSURE_TITLE_CLASS_NAME,
-              leadingClause.failure && 'text-destructive-foreground',
+              leadingClause.failure && 'text-destructive-foreground opacity-100',
             )}
           >
             {leadingClause.text}
           </span>
           {secondaryClauses.length > 0 ? (
-            <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>
+            <span className="min-w-0 shrink truncate">
               {secondaryClauses.map((clause) => (
-                <span key={clause.key}> · {clause.text}</span>
+                <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME} key={clause.key}>
+                  {' · '}
+                  {clause.text}
+                </span>
               ))}
             </span>
           ) : null}
         </span>
         {trailingFailure ? (
-          <span className="shrink-0 text-destructive-foreground">
+          <span
+            className={cn(
+              CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+              'text-destructive-foreground opacity-100',
+            )}
+          >
             {' · '}
             {trailingFailure.text}
           </span>

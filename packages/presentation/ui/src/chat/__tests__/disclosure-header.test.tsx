@@ -34,6 +34,7 @@ describe('chat disclosure headers', () => {
     expect(icon?.className).toContain('shrink-0');
     expect(title.className).toContain('shrink-0');
     expect(title.className).toContain('truncate');
+    expect(title.className).toContain('opacity-80');
     expect(chevron?.getAttribute('class')).toContain('shrink-0');
     expect(trigger.lastElementChild).toBe(chevron);
 
@@ -68,6 +69,7 @@ describe('chat disclosure headers', () => {
     const stackChevron = stackTrigger?.querySelector('[data-slot="chat-disclosure-chevron"]');
 
     expect(stackTitle.className).toContain('shrink-0');
+    expect(stackTitle.className).toContain('opacity-100');
     expect(stackSummary.className).toContain('shrink');
     expect(stackSummary.className).toContain('truncate');
     expect(stackTrigger?.lastElementChild).toBe(stackChevron);
@@ -76,6 +78,7 @@ describe('chat disclosure headers', () => {
       name: RE_COMMIT_MESSAGE,
     });
     const commitChevron = commitTrigger.querySelector('[data-slot="chat-disclosure-chevron"]');
+    expect(screen.getByText(RE_COMMIT_MESSAGE).className).toContain('opacity-80');
     expect(commitTrigger.lastElementChild).toBe(commitChevron);
   });
 });

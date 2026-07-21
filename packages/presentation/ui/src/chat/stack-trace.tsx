@@ -93,7 +93,12 @@ export function StackTraceHeader({
               <AlertTriangleIcon />
             </ChatDisclosureIconSlot>
             <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
-              <span className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'text-destructive-foreground')}>
+              <span
+                className={cn(
+                  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                  'text-destructive-foreground opacity-100',
+                )}
+              >
                 {stackTrace.title ?? parsed.errorType ?? 'Error'}
               </span>
               {parsed.errorMessage ? (
