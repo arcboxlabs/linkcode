@@ -670,6 +670,8 @@ export const zhCN = {
       customService: '自定义端点',
       unbound: '未接入',
       noMatches: '没有匹配的账号。',
+      emptyTitle: '尚未添加账号',
+      emptyHint: '添加订阅、API 密钥、AI 网关或自定义端点。',
       detected: '检测到',
       accountMenu: '账号操作',
       edit: '编辑账号',

@@ -1,6 +1,6 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
-import { AccountDetail, AccountMasterList } from '@linkcode/ui';
+import { AccountDetail, AccountList } from '@linkcode/ui';
 import {
   Dialog,
   DialogHeader,
@@ -110,10 +110,9 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
       <p className="text-muted-foreground text-sm">{t('hint')}</p>
-      <AccountMasterList
+      <AccountList
         {...accountList}
         loading={accountsLoading}
-        selectedId={undefined}
         onSelect={select}
         onAdd={startAdd}
         onAdoptDetected={handleAdoptDetected}

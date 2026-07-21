@@ -104,6 +104,8 @@ describe('view helpers', () => {
           service: 'openai-api',
           serviceLabel: 'OpenAI API',
           endpoint: 'https://api.openai.com/v1',
+          protocol: 'openai-chat',
+          credentialType: 'api-key',
           boundAgents: ['claude-code'],
         },
         {
@@ -111,6 +113,7 @@ describe('view helpers', () => {
           label: 'Claude subscription',
           service: 'claude-sub',
           serviceLabel: 'Claude',
+          credentialType: 'oauth',
           auth: { loggedIn: true, email: 'claude@example.com' },
           boundAgents: ['codex'],
         },
