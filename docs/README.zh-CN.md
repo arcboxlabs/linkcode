@@ -28,8 +28,8 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-dark-3x.webp">
-  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-light-3x.webp" alt="LinkCode">
+  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-dark-rounded.webp?v=dee6283">
+  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-light-rounded.webp?v=dee6283" alt="LinkCode">
 </picture>
 
 LinkCode 是所有 Coding Agent 的统一工作台。它在你的机器上运行一个本地宿主,接管 Claude Code、Codex、OpenCode、Pi 和 Grok Build,把它们各不相同的原生事件归一成同一份数据契约,再把同样的会话投送到每一个客户端 —— 在电脑前启动 Agent,走到哪里都能随时照看。
@@ -62,19 +62,29 @@ LinkCode 是所有 Coding Agent 的统一工作台。它在你的机器上运行
 ```mermaid
 flowchart LR
     subgraph machine["你的机器"]
-        DESKTOP["桌面端"]
-        WEB["浏览器"]
-        DAEMON["Daemon<br/>engine · adapters · PTY"]
-        AGENTS["Claude Code · Codex · OpenCode<br/>Pi · Grok Build"]
+        DESKTOP("桌面端")
+        WEB("浏览器")
+        DAEMON("Daemon<br/>engine · adapters · PTY")
+        AGENTS("Claude Code · Codex · OpenCode<br/>Pi · Grok Build")
     end
-    CLOUD["LinkCode Cloud<br/>中继"]
-    MOBILE["移动端"]
+    CLOUD("LinkCode Cloud<br/>中继")
+    MOBILE("移动端")
 
     DESKTOP <--> DAEMON
     WEB <--> DAEMON
     DAEMON <--> AGENTS
     DAEMON <--> CLOUD
     CLOUD <--> MOBILE
+
+    classDef client fill:#88888826,stroke:#88888880
+    classDef host fill:#FF00001A,stroke:#FF0000,stroke-width:2px
+    classDef muted fill:#88888812,stroke:#88888880,stroke-dasharray:4 3
+    class DESKTOP,WEB,MOBILE client
+    class DAEMON host
+    class AGENTS,CLOUD muted
+    style machine fill:#88888809,stroke:#88888840
+    linkStyle default stroke:#888888B0,stroke-width:1.5px
+    linkStyle 3,4 stroke:#888888B0,stroke-width:1.5px,stroke-dasharray:4 3
 ```
 
 本地 daemon 承载引擎,并为每个 Agent 配一个 adapter。adapter 把各家的原生事件归一成一份 zod 校验的数据契约,经带版本号的 wire 协议传输;客户端只是这份归一化会话的轻量渲染器,因此桌面端、浏览器和移动端无论直连还是走 Cloud 隧道,看到的都完全一致。完整设计 —— 分层、契约、数据面与系统面的切分 —— 见 [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)。

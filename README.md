@@ -28,8 +28,8 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-dark-3x.webp">
-  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-light-3x.webp" alt="LinkCode">
+  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-dark-rounded.webp?v=dee6283">
+  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-light-rounded.webp?v=dee6283" alt="LinkCode">
 </picture>
 
 LinkCode is one workspace for all your coding agents. A host on your machine takes over Claude Code, Codex, OpenCode, Pi, and Grok Build, normalizes their divergent events into a single contract, and serves the same threads to every client — start an agent at your desk, keep an eye on it from anywhere.
@@ -62,19 +62,29 @@ LinkCode is one workspace for all your coding agents. A host on your machine tak
 ```mermaid
 flowchart LR
     subgraph machine["Your machine"]
-        DESKTOP["Desktop"]
-        WEB["Browser"]
-        DAEMON["Daemon<br/>engine · adapters · PTY"]
-        AGENTS["Claude Code · Codex · OpenCode<br/>Pi · Grok Build"]
+        DESKTOP("Desktop")
+        WEB("Browser")
+        DAEMON("Daemon<br/>engine · adapters · PTY")
+        AGENTS("Claude Code · Codex · OpenCode<br/>Pi · Grok Build")
     end
-    CLOUD["LinkCode Cloud<br/>relay"]
-    MOBILE["Mobile"]
+    CLOUD("LinkCode Cloud<br/>relay")
+    MOBILE("Mobile")
 
     DESKTOP <--> DAEMON
     WEB <--> DAEMON
     DAEMON <--> AGENTS
     DAEMON <--> CLOUD
     CLOUD <--> MOBILE
+
+    classDef client fill:#88888826,stroke:#88888880
+    classDef host fill:#FF00001A,stroke:#FF0000,stroke-width:2px
+    classDef muted fill:#88888812,stroke:#88888880,stroke-dasharray:4 3
+    class DESKTOP,WEB,MOBILE client
+    class DAEMON host
+    class AGENTS,CLOUD muted
+    style machine fill:#88888809,stroke:#88888840
+    linkStyle default stroke:#888888B0,stroke-width:1.5px
+    linkStyle 3,4 stroke:#888888B0,stroke-width:1.5px,stroke-dasharray:4 3
 ```
 
 A local daemon hosts the engine and one adapter per agent. Adapters normalize each agent's native events into a single zod-validated data contract, carried over a versioned wire protocol; clients are thin renderers of that one normalized conversation, so desktop, browser, and mobile stay identical whether they connect directly or through the Cloud tunnel. The full picture — layers, contracts, and the data-plane/system-plane split — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
