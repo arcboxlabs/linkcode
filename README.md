@@ -2,8 +2,8 @@
 
 <p align="center">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/icon/mark-white.png">
-      <img src="https://static.linkcode.ai/icon/mark-black.png" width="138" alt="LinkCode"/>
+      <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/icon/mark-dark.png">
+      <img src="https://static.linkcode.ai/icon/mark-light.png" width="138" alt="LinkCode"/>
     </picture>
 </p>
 
