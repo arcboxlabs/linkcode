@@ -4,7 +4,9 @@ import type { BrowserWindow, IpcMain, IpcMainEvent } from 'electron';
 import type { SystemContext } from './context';
 import {
   DesktopSettingsPatchSchema,
+  OpenInEditorRequestSchema,
   PickFileOptionsSchema,
+  ShellPathSchema,
   SystemNotificationSchema,
 } from './context';
 import {
@@ -41,6 +43,10 @@ export function bindElectronSystemIpc({
     },
     windowIsMaximized: () => ctx.window.isMaximized(),
     fsPickFile: (opts) => ctx.dialog.pickFile(PickFileOptionsSchema.optional().parse(opts)),
+    shellRevealPath: (path) => ctx.shell.revealPath(ShellPathSchema.parse(path)),
+    shellListEditors: () => ctx.shell.listEditors(),
+    shellOpenInEditor: (request) =>
+      ctx.shell.openInEditor(OpenInEditorRequestSchema.parse(request)),
     appVersion: () => ctx.app.getVersion(),
     appCheckForUpdates: () => ctx.app.checkForUpdates(),
     daemonIsManaged: () => ctx.daemon.isManaged(),

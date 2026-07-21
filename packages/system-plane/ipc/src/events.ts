@@ -2,6 +2,8 @@ import { defineInvokeEventa } from '@moeru/eventa';
 import type {
   DesktopSettings,
   DesktopSettingsPatch,
+  DetectedEditor,
+  OpenInEditorRequest,
   PickFileOptions,
   SystemNotification,
 } from './context';
@@ -27,6 +29,11 @@ export const systemIpcEvents = {
   windowIsMaximized: defineInvokeEventa<boolean>('linkcode.system.window.isMaximized'),
   fsPickFile: defineInvokeEventa<string[] | null, PickFileOptions | undefined>(
     'linkcode.system.fs.pickFile',
+  ),
+  shellRevealPath: defineInvokeEventa<void, string>('linkcode.system.shell.revealPath'),
+  shellListEditors: defineInvokeEventa<DetectedEditor[]>('linkcode.system.shell.listEditors'),
+  shellOpenInEditor: defineInvokeEventa<void, OpenInEditorRequest>(
+    'linkcode.system.shell.openInEditor',
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
   appCheckForUpdates: defineInvokeEventa<void>('linkcode.system.app.checkForUpdates'),
