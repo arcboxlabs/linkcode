@@ -1,6 +1,6 @@
 import type { LoopRecord, LoopStatus } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { buildLoopItems } from '../loop-items';
+import { buildLoopItems } from '../items';
 
 function loop(opts: {
   loopId: string;

@@ -19,7 +19,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyDescription, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
-import { useMutation } from '../runtime/tayori';
+import { useMutation } from '../../runtime/tayori';
 import { useScheduleRuns, useSchedules } from './hooks';
 import { cadenceLabel } from './labels';
 

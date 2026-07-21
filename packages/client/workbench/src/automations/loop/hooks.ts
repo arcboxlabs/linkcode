@@ -1,47 +1,14 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
-import type { LoopId, LoopLogEntry, ScheduleId } from '@linkcode/schema';
-import { inspectLoop, listLoops, listScheduleRuns, listSchedules } from '@linkcode/sdk';
+import type { LoopId, LoopLogEntry } from '@linkcode/schema';
+import { inspectLoop, listLoops } from '@linkcode/sdk';
 import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import { useSyncExternalStore } from 'react';
-import { useData } from '../runtime/tayori';
+import { useData } from '../../runtime/tayori';
 
 /**
- * Every schedule the daemon holds. The list is a cheap RPC, so `schedule.*` broadcasts simply
- * revalidate it instead of merging patches client-side (the `useWorkspaceScripts` pattern).
- */
-export function useSchedules() {
-  const client = useLinkCodeClient();
-  const result = useData(listSchedules, {}, { keepPreviousData: true });
-  const { mutate } = result;
-  useAbortableEffect(
-    (signal) =>
-      client.subscribeScheduleEvents(() => {
-        if (!signal.aborted) void mutate();
-      }),
-    [client, mutate],
-  );
-  return result;
-}
-
-/** A schedule's run history, newest first. Pass null to pause (no schedule selected). */
-export function useScheduleRuns(scheduleId: ScheduleId | null) {
-  const client = useLinkCodeClient();
-  const result = useData(listScheduleRuns, scheduleId === null ? null : { scheduleId });
-  const { mutate } = result;
-  useAbortableEffect(
-    (signal) =>
-      client.subscribeScheduleEvents((event) => {
-        if ((event.type === 'run' || event.type === 'changed') && !signal.aborted) void mutate();
-      }),
-    [client, mutate],
-  );
-  return result;
-}
-
-/**
- * Every loop the daemon holds. Like {@link useSchedules}, `loop.*` broadcasts revalidate the cheap
- * list RPC rather than merging patches client-side.
+ * Every loop the daemon holds. `loop.*` broadcasts revalidate the cheap list RPC rather than
+ * merging patches client-side.
  */
 export function useLoops() {
   const client = useLinkCodeClient();

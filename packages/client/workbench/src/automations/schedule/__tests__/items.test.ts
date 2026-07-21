@@ -25,7 +25,7 @@ function schedule(opts: {
 }
 
 describe('buildScheduleItems', () => {
-  it('orders active before paused before completed, then by updatedAt desc', () => {
+  it('orders schedules by status, then by updatedAt desc', () => {
     const items = buildScheduleItems([
       schedule({ scheduleId: 'a', status: 'completed', updatedAt: 100 }),
       schedule({ scheduleId: 'b', status: 'active', updatedAt: 10 }),

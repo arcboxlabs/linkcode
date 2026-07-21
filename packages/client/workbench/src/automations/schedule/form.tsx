@@ -20,10 +20,10 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
-import { rhfErrorsToFormErrors } from '../lib/form';
-import { useMutation } from '../runtime/tayori';
-import { CwdField } from './cwd-field';
-import { useAutomationsViewStore } from './store';
+import { rhfErrorsToFormErrors } from '../../lib/form';
+import { useMutation } from '../../runtime/tayori';
+import { CwdField } from '../cwd-field';
+import { useAutomationsViewStore } from '../store';
 
 const INTERVAL_PRESETS = [5, 15, 60, 360, 1440] as const;
 

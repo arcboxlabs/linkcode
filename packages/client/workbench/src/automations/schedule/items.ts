@@ -1,6 +1,6 @@
 import type { Schedule, ScheduleCadence, ScheduleId, ScheduleStatus } from '@linkcode/schema';
 
-/** A schedule reduced to what the Automations master list renders (localized by the UI). */
+/** A schedule reduced to what the schedule master list renders (localized by the UI). */
 export interface AutomationListItem {
   scheduleId: ScheduleId;
   /** Display name: the schedule's name, or an excerpt of its prompt. */

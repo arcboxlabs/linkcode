@@ -19,7 +19,7 @@ const SOURCE_LABEL: Record<LoopLogSource, string> = {
 const STICK_THRESHOLD_PX = 24;
 
 /**
- * Read-only monospace renderer for a loop's live log. Follows the tail while the user is at the
+ * Read-only monospace renderer for the loop detail's live log. Follows the tail while the user is at the
  * bottom, and pauses following the moment they scroll up. Pure presentation over a plain
  * `LoopLogEntry[]` — no WASM, no data plane.
  */

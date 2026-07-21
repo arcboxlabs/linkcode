@@ -1,6 +1,6 @@
 import type { LoopId, LoopRecord, LoopStatus } from '@linkcode/schema';
 
-/** A loop reduced to what the Automations master list renders (localized by the UI). */
+/** A loop reduced to what the loop master list renders (localized by the UI). */
 export interface LoopListItem {
   loopId: LoopId;
   /** Display name: the loop's name, or an excerpt of its prompt. */

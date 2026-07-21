@@ -12,9 +12,9 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
-import { useMutation } from '../runtime/tayori';
+import { useMutation } from '../../runtime/tayori';
 import { useLoopInspection, useLoopLog } from './hooks';
-import { LoopLogView } from './loop-log-view';
+import { LoopLogView } from './log-view';
 
 const STATUS_BADGE: Record<LoopStatus, 'success' | 'warning' | 'error' | 'secondary'> = {
   running: 'warning',

@@ -13,10 +13,10 @@ import { PlusIcon, XIcon } from 'lucide-react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
-import { rhfErrorsToFormErrors } from '../lib/form';
-import { useMutation } from '../runtime/tayori';
-import { CwdField } from './cwd-field';
-import { useAutomationsViewStore } from './store';
+import { rhfErrorsToFormErrors } from '../../lib/form';
+import { useMutation } from '../../runtime/tayori';
+import { CwdField } from '../cwd-field';
+import { useAutomationsViewStore } from '../store';
 
 const loopFormSchema = z
   .object({
