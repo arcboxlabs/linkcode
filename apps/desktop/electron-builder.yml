@@ -12,7 +12,7 @@
 
 appId: com.arcboxlabs.linkcode.desktop
 productName: LinkCode
-copyright: Copyright © 2026 ArcBox Labs
+copyright: Copyright © 2026 ArcBox, Inc. All rights reserved.
 
 # The `linkcode://` / `linkcode-dev://` deep-link scheme is declared per channel, NOT here. This
 # base is shared by both channels, and electron-builder CONCATENATES arrays inherited via `extends`
