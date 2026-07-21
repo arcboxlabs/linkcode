@@ -33,6 +33,7 @@ import {
   isRecord,
   numberField,
   recordField,
+  sliceHistoryEventPage,
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
@@ -342,10 +343,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!summary?.path) throw new Error(`codex: history '${opts.historyId}' was not found`);
     const rows = await readJsonlFile(summary.path);
     const events = mapCodexHistoryEvents(opts.historyId, rows);
+    const page = sliceHistoryEventPage(events, offset, limit);
     return {
       session: codexSummaryToSession(summary),
-      events: events.slice(offset, offset + limit),
-      cursor: cursorFromTotal(offset, events.length, limit),
+      events: page.events,
+      cursor: page.cursor,
     };
   }
 

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
 import { describe, expect, it } from 'vitest';
+import { asHistoryId } from '../../src/history-util';
 import { CodexAdapter } from '../../src/native/codex';
 
 describe('CodexAdapter history', () => {
@@ -120,6 +121,67 @@ describe('CodexAdapter history', () => {
         messageId: 'assistant-1',
         content: { type: 'text', text: 'world' },
       });
+    } finally {
+      if (previousCodexHome === undefined) env.CODEX_HOME = undefined;
+      else env.CODEX_HOME = previousCodexHome;
+      await rm(codexHome, { recursive: true, force: true });
+    }
+  });
+
+  it('pages an image-heavy transcript by aggregate attachment payload across cursor reads', async () => {
+    const previousCodexHome = env.CODEX_HOME;
+    const codexHome = await mkdtemp(join(tmpdir(), 'linkcode-codex-history-'));
+    try {
+      env.CODEX_HOME = codexHome;
+      const sessionDir = join(codexHome, 'sessions', '2026', '07', '20');
+      await mkdir(sessionDir, { recursive: true });
+      // Two prompts whose images together exceed one page's attachment budget
+      // (MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) while each stays under the per-image cap.
+      const imageData = 'A'.repeat(9 * 1024 * 1024);
+      const userRow = (id: string, text: string) => ({
+        type: 'response_item',
+        payload: {
+          id,
+          role: 'user',
+          content: [
+            { type: 'input_text', text },
+            { type: 'input_image', image_url: `data:image/png;base64,${imageData}` },
+          ],
+        },
+      });
+      const assistantRow = (id: string, text: string) => ({
+        type: 'response_item',
+        payload: { id, role: 'assistant', content: [{ type: 'output_text', text }] },
+      });
+      await writeFile(
+        join(sessionDir, 'rollout-thread-img.jsonl'),
+        [
+          { type: 'session_meta', payload: { id: 'thread-img', cwd: '/repo' } },
+          userRow('user-1', 'first shot'),
+          assistantRow('assistant-1', 'looks good'),
+          userRow('user-2', 'second shot'),
+          assistantRow('assistant-2', 'done'),
+        ]
+          .map((row) => JSON.stringify(row))
+          .join('\n'),
+      );
+
+      const adapter = new CodexAdapter();
+      const historyId = asHistoryId('thread-img');
+      const first = await adapter.readHistory({ historyId, limit: 10 });
+      expect(first.events.map((event) => event.itemId)).toEqual(['user-1', 'assistant-1']);
+      expect(first.cursor).toBe('2');
+      expect(first.events[0]?.event).toMatchObject({
+        type: 'user-message',
+        content: [
+          { type: 'text', text: 'first shot' },
+          { type: 'image', data: imageData, mimeType: 'image/png' },
+        ],
+      });
+
+      const rest = await adapter.readHistory({ historyId, cursor: first.cursor, limit: 10 });
+      expect(rest.events.map((event) => event.itemId)).toEqual(['user-2', 'assistant-2']);
+      expect(rest.cursor).toBeUndefined();
     } finally {
       if (previousCodexHome === undefined) env.CODEX_HOME = undefined;
       else env.CODEX_HOME = previousCodexHome;
