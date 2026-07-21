@@ -29,14 +29,14 @@ curl http://127.0.0.1:19523/linkcode
 
 ## Cloud, agents, and security
 
-- **LinkCode Cloud or account issues** — the Cloud service lives outside this repository; email [hello@arcbox.dev](mailto:hello@arcbox.dev) instead of filing an issue here.
+- **LinkCode Cloud or account issues** — the Cloud service lives outside this repository; email [support@linkcode.ai](mailto:support@linkcode.ai) instead of filing an issue here.
 - **Agent CLI problems** — bugs in Claude Code, Codex, OpenCode, Pi, or Grok Build themselves belong upstream with their vendors; file here only when LinkCode integrates them incorrectly.
-- **Security vulnerabilities** — never open a public issue. Report privately via [GitHub security advisories](https://github.com/arcboxlabs/linkcode/security/advisories/new) or email [hello@arcbox.dev](mailto:hello@arcbox.dev).
+- **Security vulnerabilities** — never open a public issue. Report privately via [GitHub security advisories](https://github.com/arcboxlabs/linkcode/security/advisories/new) or email [security@linkcode.ai](mailto:security@linkcode.ai).
 
 ## Questions
 
 - Open a [GitHub issue](https://github.com/arcboxlabs/linkcode/issues/new/choose) — questions are welcome there too.
-- Email [hello@arcbox.dev](mailto:hello@arcbox.dev).
+- Email [support@linkcode.ai](mailto:support@linkcode.ai).
 - Reach us on X at [@arcboxlabs](https://twitter.com/arcboxlabs).
 
 LinkCode is developed by ArcBox. Support is best-effort; bug reports with logs and clear reproduction steps get answered fastest.
