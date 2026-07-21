@@ -95,7 +95,7 @@ function Attachment({
   return (
     <Card
       className={cn(
-        'group min-w-0 shrink-0 overflow-hidden rounded-xl',
+        'group min-w-0 shrink-0 overflow-hidden',
         isImage
           ? compact
             ? 'size-14'

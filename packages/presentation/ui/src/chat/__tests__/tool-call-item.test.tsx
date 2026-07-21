@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
+import { FileArtifactCard } from '../artifacts/file-card';
 import { SubagentCard, SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 import { hasToolBody } from '../tool-utils';
@@ -184,6 +185,8 @@ describe('ToolCallBody', () => {
   }, 15000);
 
   it('highlights embedded text resources from their MIME type', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
     const toolCall: ToolCall = {
       toolCallId: 'resource-result',
       title: 'Load manifest',
@@ -195,7 +198,7 @@ describe('ToolCallBody', () => {
           content: {
             type: 'resource',
             resource: {
-              uri: 'mock://manifest',
+              uri: 'https://example.test/manifest.json?token=secret',
               mimeType: 'application/json',
               text: '{"enabled":true}',
             },
@@ -204,7 +207,24 @@ describe('ToolCallBody', () => {
       ],
     };
 
-    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+    const { container } = render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <ToolCallBody toolCall={toolCall} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const resourceLabel = screen.getByText('manifest.json');
+    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).not.toBeNull();
+    expect(resourceHeader?.tabIndex).toBe(0);
+    expect(screen.queryByText('https://example.test/manifest.json?token=secret')).toBeNull();
+    await user.hover(resourceHeader!);
+    expect(
+      await screen.findByText('https://example.test/manifest.json?token=secret'),
+    ).toBeDefined();
+    await user.click(resourceHeader!);
+    expect(openFile).not.toHaveBeenCalled();
 
     await waitFor(
       () => {
@@ -213,6 +233,47 @@ describe('ToolCallBody', () => {
       { timeout: 10000 },
     );
   }, 15000);
+
+  it('renders embedded blob resources as non-navigating header-only file cards', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const toolCall: ToolCall = {
+      toolCallId: 'blob-resource-result',
+      title: 'Load archive',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: {
+            type: 'resource',
+            resource: {
+              uri: 'urn:uuid:bundle-secret',
+              mimeType: 'application/zip',
+              blob: 'UEsDBAoAAAAA',
+            },
+          },
+        },
+      ],
+    };
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <ToolCallBody toolCall={toolCall} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const resourceLabel = screen.getByText('resource');
+    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(resourceHeader?.tabIndex).toBe(0);
+    expect(screen.queryByRole('button', { name: 'resource' })).toBeNull();
+    await user.hover(resourceHeader!);
+    expect(await screen.findByText('urn:uuid:bundle-secret')).toBeDefined();
+    await user.click(resourceHeader!);
+    expect(openFile).not.toHaveBeenCalled();
+  });
 
   it('renders Markdown file reads as a document preview', () => {
     const toolCall: ToolCall = {
@@ -240,7 +301,7 @@ describe('ToolCallBody', () => {
     const tooltipTrigger = screen
       .getByText('preview.md')
       .closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(tooltipTrigger?.tabIndex).toBe(-1);
+    expect(tooltipTrigger?.tabIndex).toBe(0);
   });
 
   it('keeps a Claude edit receipt outside the structured file diff', () => {
@@ -376,6 +437,45 @@ describe('ToolCallBody', () => {
     expect(screen.getByText('true')).toBeDefined();
     expect(container.querySelector('pre')).toBeNull();
     expect(container.textContent).not.toContain('0');
+  });
+});
+
+describe('FileArtifactCard', () => {
+  it('reuses the file preview header and opens the full path when the host supports it', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const path = '/repo/output/report.pdf';
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <FileArtifactCard path={path} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const header = screen.getByRole('button', { name: 'report.pdf' });
+    const card = header.closest('[data-slot="card"]');
+    expect(card?.className).toContain('max-w-md');
+    expect(card?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    await user.hover(header);
+    expect(await screen.findByText(path)).toBeDefined();
+    await user.click(header);
+    expect(openFile).toHaveBeenCalledOnce();
+    expect(openFile).toHaveBeenCalledWith(path);
+  });
+
+  it('keeps its full-path tooltip keyboard reachable without a host file viewer', async () => {
+    const user = userEvent.setup();
+    const path = '/repo/output/report.pdf';
+
+    render(<FileArtifactCard path={path} />);
+
+    const label = screen.getByText('report.pdf');
+    const header = label.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(header?.tabIndex).toBe(0);
+    header?.focus();
+    expect(await screen.findByText(path)).toBeDefined();
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('button', { name: 'report.pdf' })).toBeNull();
   });
 });
 

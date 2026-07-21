@@ -928,7 +928,8 @@ export function Composer({
                 onSubmit={submit}
                 className={cn(
                   'relative z-10',
-                  frameVisible && '*:[[data-slot=input-group]]:rounded-xl',
+                  frameVisible &&
+                    '*:[[data-slot=input-group]]:rounded-xl *:[[data-slot=input-group]]:before:rounded-xl',
                 )}
               >
                 {attachments.length > 0 ? (

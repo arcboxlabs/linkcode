@@ -1,4 +1,5 @@
 import { Button } from 'coss-ui/components/button';
+import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
@@ -34,7 +35,7 @@ export function TurnDiffSummary({
   const overflowFiles = edits.files.slice(COLLAPSED_FILE_COUNT);
 
   return (
-    <div className="my-1 rounded-xl border border-border bg-card text-sm">
+    <Card className="my-1 bg-card text-sm">
       <div className="flex items-center px-3 py-2 gap-1">
         <div className="min-w-0 flex flex-1 gap-2 items-center">
           <ChatDisclosureIconSlot className="text-muted-foreground">
@@ -87,7 +88,7 @@ export function TurnDiffSummary({
           </>
         )}
       </Collapsible>
-    </div>
+    </Card>
   );
 }
 

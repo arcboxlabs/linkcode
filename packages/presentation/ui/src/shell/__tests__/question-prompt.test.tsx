@@ -533,6 +533,10 @@ describe('ConversationPromptDock', () => {
     const prompt = screen.getByText('Pick features').closest('[data-slot="frame"]');
     if (!prompt) throw new Error('prompt card not found');
     expect(step.compareDocumentPosition(prompt)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(prompt.classList.contains('rounded-2xl')).toBe(true);
+    expect(
+      prompt.querySelector('[data-slot="frame-panel"]')?.classList.contains('rounded-xl'),
+    ).toBe(true);
   });
 
   it('shows an authoritative busy state without a local response snapshot', () => {
@@ -578,6 +582,11 @@ describe('ConversationPromptDock', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('button', { name: SKIP_BUTTON_NAME })).toBeNull();
     const allow = screen.getByRole('button', { name: ALLOW_CHOICE_NAME });
+    const permissionFrame = allow.closest('[data-slot="frame"]');
+    expect(permissionFrame?.classList.contains('rounded-2xl')).toBe(true);
+    expect(
+      permissionFrame?.querySelector('[data-slot="frame-panel"]')?.classList.contains('rounded-xl'),
+    ).toBe(true);
     const footerLabels = [
       ...(allow.closest('[data-slot="frame-panel-footer"]')?.querySelectorAll('button') ?? []),
     ].map((button) => button.textContent);

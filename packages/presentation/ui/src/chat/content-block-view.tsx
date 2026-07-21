@@ -1,9 +1,18 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { CodeBlock } from './code-block';
+import { fileBasename } from './artifacts/file-kind';
 import { codeLanguageForResource } from './code-language';
+import { FilePreviewCard } from './file-preview-card';
+import { HighlightedCode } from './highlighted-code';
 import { Markdown, SmoothMarkdown } from './markdown';
+
+function resourceLabel(uri: string, fallback: string): string {
+  const visible = uri.split('#', 1)[0]?.split('?', 1)[0] ?? '';
+  if (visible.endsWith('/')) return fallback;
+  const label = fileBasename(visible);
+  return label && !label.includes(':') ? label : fallback;
+}
 
 export function ContentBlockView({
   block,
@@ -50,16 +59,21 @@ export function ContentBlockView({
           {t('resourceLink', { name: block.name })}
         </a>
       );
-    case 'resource':
+    case 'resource': {
+      const uri = block.resource.uri;
+      const label = resourceLabel(uri, t('resource'));
       return 'text' in block.resource ? (
-        <CodeBlock
-          code={block.resource.text}
-          language={codeLanguageForResource(block.resource.uri, block.resource.mimeType)}
-          title={block.resource.uri}
-        />
+        <FilePreviewCard label={label} navigation={null} panelClassName="p-0" path={uri}>
+          <HighlightedCode
+            className="p-3"
+            code={block.resource.text}
+            language={codeLanguageForResource(uri, block.resource.mimeType)}
+          />
+        </FilePreviewCard>
       ) : (
-        <span className="text-sm text-muted-foreground">{t('resource')}</span>
+        <FilePreviewCard label={label} navigation={null} path={uri} />
       );
+    }
     default:
       return null;
   }

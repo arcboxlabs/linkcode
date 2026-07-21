@@ -16,7 +16,7 @@ export type StepProps = React.ComponentProps<typeof Collapsible>;
 export function Step({ className, defaultOpen = true, ...props }: StepProps): React.ReactNode {
   return (
     <Collapsible
-      className={cn('my-1 rounded-xl border border-border bg-card p-3', className)}
+      className={cn('my-1 rounded-2xl border border-border bg-card p-3', className)}
       defaultOpen={defaultOpen}
       {...props}
     />

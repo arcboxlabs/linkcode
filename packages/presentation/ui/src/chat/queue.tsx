@@ -1,5 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
+import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
 import { Spinner } from 'coss-ui/components/spinner';
@@ -43,10 +44,7 @@ export function Queue({
   ...props
 }: QueueProps): React.ReactNode {
   return (
-    <div
-      className={cn('my-1 rounded-xl border border-border bg-card p-3 text-sm', className)}
-      {...props}
-    >
+    <Card className={cn('my-1 p-3 text-sm', className)} {...props}>
       {children ?? (
         <QueueSection defaultOpen>
           <QueueSectionTrigger count={items?.length ?? 0} />
@@ -63,7 +61,7 @@ export function Queue({
           </QueueSectionContent>
         </QueueSection>
       )}
-    </div>
+    </Card>
   );
 }
 

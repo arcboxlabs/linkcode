@@ -1,4 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
+import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { cn } from '../lib/cn';
 import { ChatDisclosureContent } from './disclosure-content';
@@ -53,13 +54,7 @@ export function SchemaDisplay({
   ...props
 }: SchemaDisplayProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
-        className,
-      )}
-      {...props}
-    >
+    <Card className={cn('my-2 overflow-hidden text-sm', className)} {...props}>
       {children ?? (
         <>
           <SchemaDisplayHeader endpoint={endpoint} />
@@ -79,7 +74,7 @@ export function SchemaDisplay({
           </SchemaDisplayBody>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 

@@ -1,4 +1,5 @@
 import { Button } from 'coss-ui/components/button';
+import { Card } from 'coss-ui/components/card';
 import { XIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { TooltipIconButtonProps } from './tooltip-icon-button';
@@ -26,13 +27,7 @@ export function Artifact({
   ...props
 }: ArtifactProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
-        className,
-      )}
-      {...props}
-    >
+    <Card className={cn('my-2 min-h-0 overflow-hidden', className)} {...props}>
       {children ?? (
         <>
           <ArtifactHeader>
@@ -47,7 +42,7 @@ export function Artifact({
           <ArtifactContent />
         </>
       )}
-    </div>
+    </Card>
   );
 }
 

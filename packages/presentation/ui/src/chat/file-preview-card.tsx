@@ -63,7 +63,10 @@ export function FilePreviewCard({
       {content}
     </Button>
   ) : (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-muted-foreground text-xs">
+    <div
+      className="flex items-center gap-2 px-3 py-1.5 text-muted-foreground text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      tabIndex={0}
+    >
       {content}
     </div>
   );

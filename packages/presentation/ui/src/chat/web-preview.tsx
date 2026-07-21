@@ -1,3 +1,4 @@
+import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -43,13 +44,7 @@ export function WebPreview({
   ...props
 }: WebPreviewProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-2 flex min-h-96 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm',
-        className,
-      )}
-      {...props}
-    >
+    <Card className={cn('my-2 min-h-96 overflow-hidden shadow-sm', className)} {...props}>
       {children ?? (
         <WebPreviewSession
           key={`${preview.id}:${preview.url}`}
@@ -57,7 +52,7 @@ export function WebPreview({
           preview={preview}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
