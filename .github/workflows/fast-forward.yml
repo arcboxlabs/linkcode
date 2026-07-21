@@ -1,0 +1,30 @@
+name: Fast Forward Merge
+
+# 薄壳:全部逻辑在 arcboxlabs/actions 的 reusable workflow 里。
+# 在 PR 评论 `/fast-forward` 即可把 head 分支原样推进到 base 分支(签名保留、历史线性)。
+# 文档:https://github.com/arcboxlabs/actions/blob/master/docs/fast-forward.md
+
+on:
+  issue_comment:
+    types: [created]
+
+# 这是 GITHUB_TOKEN 的权限上限;被调用的 workflow 只会申请其中的子集。
+# 推送由 GitHub App token 完成,所以这里的 contents 只需要 read。
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+jobs:
+  fast-forward:
+    # 粗筛:PR 上的评论、且提到了触发命令。精确判定在 reusable workflow 里。
+    if: >-
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/fast-forward')
+    # 必须 pin 到 40 位 commit SHA:能改动该仓库的人等于能向本仓库默认分支直推。
+    uses: arcboxlabs/actions/.github/workflows/fast-forward.yml@a940102d549190d703ae06a2c6ab97721ae7d32a # ff-v1
+    secrets:
+      app_id: ${{ secrets.BOT_APP_ID }}
+      app_private_key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
