@@ -9,6 +9,7 @@ import {
   createRightFileTab,
   createRightTerminalTab,
   DEFAULT_LAYOUT,
+  durableBrowserUrl,
   openFileTabState,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
@@ -234,7 +235,7 @@ describe('desktop shell state persistence', () => {
       activeSection: 'browser',
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
-      browser: { url: 'http://web--app-1a2b3c.localhost:19523' },
+      browser: { url: 'https://example.com' },
     };
     const source: DesktopShellState = {
       sidebarOpen: false,
@@ -259,13 +260,16 @@ describe('desktop shell state persistence', () => {
       '/w/report.pdf',
     ]);
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
-    expect(parsed.rightPanel.browser.url).toBe('http://web--app-1a2b3c.localhost:19523');
+    expect(parsed.rightPanel.browser.url).toBe('https://example.com');
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 
-  it('drops renderer-scoped blob URLs from persisted browser state', () => {
+  it.each([
+    'blob:http://localhost:5173/expired-preview',
+    'http://file--3e2d018e14777dcb.localhost:19523/',
+  ])('drops ephemeral URL %s from persisted browser state', (url) => {
     const source = createDefaultDesktopShellState();
-    source.rightPanel.browser.url = 'blob:http://localhost:5173/expired-preview';
+    source.rightPanel.browser.url = url;
 
     const serialized = serializeDesktopShellState(source);
     expect(serialized.rightPanel.browserUrl).toBeNull();
@@ -274,10 +278,20 @@ describe('desktop shell state persistence', () => {
       ...serialized,
       rightPanel: {
         ...serialized.rightPanel,
-        browserUrl: 'blob:http://localhost:5173/expired-preview',
+        browserUrl: url,
       },
     });
     expect(parsed.rightPanel.browser.url).toBeNull();
+  });
+
+  it.each([
+    ['blob:http://localhost:5173/expired-preview', null],
+    ['http://file--3e2d018e14777dcb.localhost:19523/', null],
+    ['http://artifact--turn-123.localhost:19523/', null],
+    ['http://web--app-1a2b3c.localhost:19523/', null],
+    ['https://example.com/path', 'https://example.com/path'],
+  ])('filters durable browser URL %s', (url, expected) => {
+    expect(durableBrowserUrl(url)).toBe(expected);
   });
 });
 
