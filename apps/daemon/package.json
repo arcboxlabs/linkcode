@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "tsx watch --import ./src/instrument.ts src/index.ts",
-    "dev:clean": "rm -f ~/.linkcode/daemon.db ~/.linkcode/runtime.json && pnpm run dev",
+    "dev:clean": "tsx scripts/dev-clean.mts && pnpm run dev",
     "build": "tsup",
     "package": "pnpm run build && node scripts/package-daemon.mts",
     "build:rust": "cargo build -p linkcode-pty --release",
