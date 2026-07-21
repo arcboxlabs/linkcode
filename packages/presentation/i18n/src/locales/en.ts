@@ -691,6 +691,8 @@ export const en = {
       accountMenu: 'Account actions',
       edit: 'Edit account',
       backToAccount: 'Back to account details',
+      accountMissingTitle: 'Account no longer available',
+      accountMissingHint: 'It may have been removed from another client.',
       credential: 'Credential',
       credentialApiKey: 'API key',
       credentialAuthToken: 'Auth token',

@@ -175,8 +175,13 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                       }}
                     />
                   )
-                ) : (
+                ) : accounts === undefined ? (
                   <Skeleton className="h-40 w-full rounded-lg" />
+                ) : (
+                  <div className="flex h-40 flex-col items-center justify-center gap-1 text-center">
+                    <span className="font-medium text-sm">{t('accountMissingTitle')}</span>
+                    <span className="text-muted-foreground text-xs">{t('accountMissingHint')}</span>
+                  </div>
                 )}
               </DialogPanel>
             </>

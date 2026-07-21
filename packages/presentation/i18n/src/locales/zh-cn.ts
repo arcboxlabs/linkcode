@@ -676,6 +676,8 @@ export const zhCN = {
       accountMenu: '账号操作',
       edit: '编辑账号',
       backToAccount: '返回账号详情',
+      accountMissingTitle: '账号已不存在',
+      accountMissingHint: '该账号可能已在其他客户端被移除。',
       credential: '凭证',
       credentialApiKey: 'API 密钥',
       credentialAuthToken: '授权令牌',
