@@ -27,6 +27,11 @@
     <a href="#how-it-works">How It Works</a>
 </p>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/cdn-cgi/image/width=1920,format=auto/screenshot/2026-07-desktop-new-task/shots-gray-dark.webp">
+  <img src="https://static.linkcode.ai/cdn-cgi/image/width=1920,format=auto/screenshot/2026-07-desktop-new-task/shots-gray-light.webp" alt="LinkCode">
+</picture>
+
 LinkCode is one workspace for all your coding agents. A host on your machine takes over Claude Code, Codex, OpenCode, Pi, and Grok Build, normalizes their divergent events into a single contract, and serves the same threads to every client — start an agent at your desk, keep an eye on it from anywhere.
 
 ## Features
