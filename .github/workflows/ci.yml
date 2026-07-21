@@ -46,10 +46,9 @@ jobs:
           cache: pnpm
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: '' # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -100,10 +99,9 @@ jobs:
           cache: pnpm
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ''
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -188,13 +186,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # rustfmt and clippy come from rust-toolchain.toml's components.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+          rustflags: ''
 
       - name: Format
         run: cargo fmt --check
