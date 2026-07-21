@@ -20,7 +20,7 @@
     <a href="../LICENSE" target="_blank">
     <img alt="License" src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat"></a>
     <a href="https://x.com/linkcodeai" target="_blank">
-    <img alt="follow on X" src="https://img.shields.io/badge/follow-LinkCodeAI-green?style=social&logo=X"></a>
+    <img alt="follow on X" src="https://img.shields.io/badge/follow-LinkCodeAI-000000?style=flat&logo=X&logoColor=white"></a>
     <a href="https://arcbox.link/discord" target="_blank">
     <img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat&logo=discord&logoColor=white"></a>
 </div>
