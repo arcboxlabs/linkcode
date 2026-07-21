@@ -1,10 +1,7 @@
 <h4 align="right"><strong>English</strong> | <a href="docs/README.zh-CN.md">简体中文</a></h4>
 
 <p align="center">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/icon/mark-dark.png">
-      <img src="https://static.linkcode.ai/icon/mark-light.png" width="138" alt="LinkCode"/>
-    </picture>
+    <img src="https://static.linkcode.ai/icon/icon-dark.svg" width="138" alt="LinkCode"/>
 </p>
 
 <h1 align="center">LinkCode</h1>
