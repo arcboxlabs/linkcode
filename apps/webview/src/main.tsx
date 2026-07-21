@@ -2,7 +2,7 @@ import { setKeyboardShortcutPlatform } from '@linkcode/ui';
 import { installAppearancePrefs } from '@linkcode/workbench';
 import * as Sentry from '@sentry/react';
 import { createRoot } from 'react-dom/client';
-import { RouterProvider } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { router } from './router';
 import { installTheme } from './settings/theme';
 import './index.css';
