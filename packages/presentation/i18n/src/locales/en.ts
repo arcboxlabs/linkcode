@@ -232,7 +232,6 @@ export const en = {
       customPlaceholder: 'Tell Codex what to do differently',
     },
     question: {
-      badge: 'Question',
       navigation: 'Question navigation',
       previous: 'Previous question',
       next: 'Next question',

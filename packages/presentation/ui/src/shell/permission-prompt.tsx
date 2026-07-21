@@ -103,7 +103,6 @@ export function PermissionPrompt({
         ) : undefined
       }
       title={t('question', { action: title })}
-      tone="warning"
     />
   );
 }

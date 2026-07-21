@@ -36,7 +36,7 @@ export function TurnDiffSummary({
 
   return (
     <Card className="my-1 bg-card text-sm">
-      <div className="flex items-center px-3 py-2 gap-1">
+      <div className="flex items-center pl-4 pr-2 py-2 gap-1">
         <div className="min-w-0 flex flex-1 gap-2 items-center">
           <ChatDisclosureIconSlot className="text-muted-foreground">
             <FileDiffIcon />

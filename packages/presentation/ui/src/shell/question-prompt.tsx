@@ -39,7 +39,6 @@ export function QuestionPrompt({
   const [focusAfterNavigation, setFocusAfterNavigation] = useState(false);
   const [lastAction, setLastAction] = useState<LastAction>(null);
   const question = item.questions[index];
-  const header = question.header ?? t('badge');
   const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
   const customDraft = customDrafts.get(question.questionId) ?? '';
   const isLastQuestion = index === item.questions.length - 1;
@@ -193,7 +192,6 @@ export function QuestionPrompt({
       onSubmit={handleSubmit}
     >
       <PromptCard
-        badge={header}
         busyLabel={lastAction ? undefined : tp('responding')}
         disabled={responding}
         error={

@@ -61,7 +61,7 @@ export function QuestionChoices({
 
   return (
     // Bleeds the rows' own px-2 into the panel padding so keycaps align with the title.
-    <div className="-mx-2 flex flex-col gap-0.5">
+    <div className="-m-2 flex flex-col gap-0.5">
       {question.multiSelect ? (
         <CheckboxGroup
           aria-label={question.prompt}

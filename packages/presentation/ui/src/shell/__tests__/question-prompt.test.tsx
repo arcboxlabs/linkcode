@@ -164,6 +164,24 @@ const SKIP_BUTTON_NAME = /skip/i;
 afterEach(cleanup);
 
 describe('QuestionPrompt', () => {
+  it('separates prompt identity, choices, and actions across the Frame regions', () => {
+    render(<QuestionPrompt item={ITEM} responding={false} onRespond={vi.fn()} />);
+
+    const frame = screen.getByText('Pick features').closest('[data-slot="frame"]');
+    const header = frame?.querySelector('[data-slot="frame-panel-header"]');
+    const panel = frame?.querySelector('[data-slot="frame-panel"]');
+    const footer = frame?.querySelector('[data-slot="frame-panel-footer"]');
+
+    expect(header?.contains(screen.getByText('Pick features'))).toBe(true);
+    expect(header?.contains(screen.getByText('1 of 3'))).toBe(true);
+    expect(header?.contains(screen.getByRole('button', { name: 'Dismiss request' }))).toBe(true);
+    expect(screen.queryByText('Features')).toBeNull();
+    expect(panel?.contains(screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }))).toBe(true);
+    expect(panel?.contains(screen.getByText('Pick features'))).toBe(false);
+    expect(footer?.contains(screen.getByText('Select all that apply'))).toBe(true);
+    expect(footer?.contains(screen.getByRole('button', { name: 'Next' }))).toBe(true);
+  });
+
   it('shows an authoritative busy state without a local action snapshot', () => {
     render(<QuestionPrompt item={ITEM} responding onRespond={vi.fn()} />);
 
