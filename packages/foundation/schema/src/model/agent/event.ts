@@ -104,9 +104,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * learned and on every provider-side change, full-replace semantics. */
   z.object({ type: z.literal('available-commands-update'), commands: z.array(AgentCommandSchema) }),
   /** The model catalog the session accepts via `AgentInput.set-model` — same full-replace contract
-   * as the command catalog. Only adapters whose model set is install-dependent emit it (opencode);
-   * agents with a curated static catalog (claude-code/codex) never do, and clients fall back to
-   * their static tables. */
+   * as the command catalog. Adapter catalogs may also carry per-model effort capabilities; clients
+   * fall back to curated static tables when no catalog is advertised. */
   z.object({ type: z.literal('available-models-update'), models: z.array(AgentModelOptionSchema) }),
 
   z.object({ type: z.literal('status'), status: SessionStatusSchema }),

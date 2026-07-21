@@ -34,10 +34,18 @@ export const McpServerSchema = z.discriminatedUnion('type', [
 ]);
 export type McpServer = z.infer<typeof McpServerSchema>;
 
-/** Reasoning-effort levels. low–xhigh switch live; `max` only applies at process startup, so
- * adapters honor it by restarting the underlying process and resuming in place. `ultracode` is
- * claude-code's xhigh-plus-standing-orchestration mode, modeled as a level; it switches live. */
-export const EffortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']);
+/** Normalized reasoning-effort levels. Availability is provider- and model-specific: `max` is
+ * startup-only for claude-code but a normal per-turn Codex value; Codex `ultra` enables proactive
+ * multi-agent behavior, while claude-code's distinct `ultracode` mode switches live. */
+export const EffortLevelSchema = z.enum([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+  'ultracode',
+]);
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
 /** Parameters required to start an agent session. */
@@ -83,15 +91,16 @@ export function agentCommandMatches(command: AgentCommand, name: string): boolea
   return command.name === name || (command.aliases?.includes(name) ?? false);
 }
 
-/** A model a live session accepts via `AgentInput.set-model`, advertised by adapters whose model
- * set is install-dependent (opencode: whatever providers the user's local install has connected)
- * rather than a fixed vendor list. `id` is the exact value to send back on `set-model`. */
+/** A model an adapter accepts via `AgentInput.set-model`, advertised before session start and/or
+ * on a live session. `id` is the exact value to send back on `set-model`. */
 export const AgentModelOptionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
   /** Absent means unknown; an empty list means this model has no effort axis. */
   effortLevels: z.array(EffortLevelSchema).optional(),
+  /** Provider default for this model, when the catalog advertises one. */
+  defaultEffort: EffortLevelSchema.optional(),
 });
 export type AgentModelOption = z.infer<typeof AgentModelOptionSchema>;
 

@@ -5,11 +5,16 @@ import { CodexAdapter } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
 
+function reasoningEfforts(...efforts: string[]) {
+  return efforts.map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort }));
+}
+
 /** Minimal fake satisfying `CodexServerHandle` — narrower than `normalize.test.ts`'s
  * `FakeCodexServer` (not exported): a request log, a per-method response hook, and the
  * notification/exit callbacks the adapter registers through `startAppServer`'s options. */
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+  closed = false;
   /** Set per test to reject a specific method like a JSON-RPC error response. */
   rejectMethod: string | undefined;
   threadResponse: unknown = {
@@ -32,14 +37,41 @@ class FakeCodexServer {
           {
             id: 'gpt-5.6-terra',
             model: 'gpt-5.6-terra',
+            displayName: 'GPT-5.6-Terra',
             isDefault: false,
             defaultReasoningEffort: 'medium',
+            supportedReasoningEfforts: reasoningEfforts(
+              'low',
+              'medium',
+              'high',
+              'xhigh',
+              'max',
+              'ultra',
+            ),
           },
           {
             id: 'gpt-5.6-sol',
             model: 'gpt-5.6-sol',
+            displayName: 'GPT-5.6-Sol',
             isDefault: true,
             defaultReasoningEffort: 'low',
+            supportedReasoningEfforts: reasoningEfforts(
+              'minimal',
+              'low',
+              'medium',
+              'high',
+              'xhigh',
+              'max',
+              'ultra',
+            ),
+          },
+          {
+            id: 'gpt-5.6-luna',
+            model: 'gpt-5.6-luna',
+            displayName: 'GPT-5.6-Luna',
+            isDefault: false,
+            defaultReasoningEffort: 'medium',
+            supportedReasoningEfforts: reasoningEfforts('low', 'medium', 'high', 'xhigh', 'max'),
           },
         ],
       });
@@ -50,7 +82,7 @@ class FakeCodexServer {
     // Approvals never fire on the shell-command path.
   }
   close(): void {
-    // Nothing to reap.
+    this.closed = true;
   }
   notify(method: string, params: unknown): void {
     this.opts.onNotification(method, params);
@@ -110,6 +142,35 @@ function driveShellTurn(
 }
 
 describe('CodexAdapter shell-command passthrough', () => {
+  it('advertises normalized per-model effort capabilities before session start', async () => {
+    const adapter = new TestCodex();
+
+    await expect(adapter.startCatalog()).resolves.toEqual({
+      models: [
+        {
+          id: 'gpt-5.6-terra',
+          label: 'GPT-5.6-Terra',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          defaultEffort: 'medium',
+        },
+        {
+          id: 'gpt-5.6-sol',
+          label: 'GPT-5.6-Sol',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          defaultEffort: 'low',
+        },
+        {
+          id: 'gpt-5.6-luna',
+          label: 'GPT-5.6-Luna',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+          defaultEffort: 'medium',
+        },
+      ],
+      policies: [],
+    });
+    expect(adapter.fakeServers[0].closed).toBe(true);
+  });
+
   it('reflects the effective model and its catalog default without pinning overrides', async () => {
     const adapter = new TestCodex();
     const events: AgentEvent[] = [];
@@ -118,6 +179,20 @@ describe('CodexAdapter shell-command passthrough', () => {
 
     expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-sol' });
     expect(events).toContainEqual({ type: 'effort-update', effort: 'low' });
+    expect(events).toContainEqual({
+      type: 'available-models-update',
+      models: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gpt-5.6-sol',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          defaultEffort: 'low',
+        }),
+        expect.objectContaining({
+          id: 'gpt-5.6-luna',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        }),
+      ]),
+    });
     expect(adapter.fakeServers[0].requests).toContainEqual({
       method: 'thread/start',
       params: expect.objectContaining({ model: undefined }),
@@ -188,10 +263,73 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
   });
 
+  it.each([
+    'max',
+    'ultra',
+  ] as const)('accepts Sol effort %s and sends it on the first turn', async (effort) => {
+    const adapter = new TestCodex();
+    await adapter.start({ ...start, effort });
+    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+
+    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ effort });
+  });
+
+  it('accepts Luna max but rejects Luna ultra from provider metadata', async () => {
+    const accepted = new TestCodex();
+    await expect(
+      accepted.start({ ...start, model: 'gpt-5.6-luna', effort: 'max' }),
+    ).resolves.toBeUndefined();
+
+    const rejected = new TestCodex();
+    await expect(
+      rejected.start({ ...start, model: 'gpt-5.6-luna', effort: 'ultra' }),
+    ).rejects.toThrow("codex: effort 'ultra' is not supported by model 'gpt-5.6-luna'");
+    expect(rejected.fakeServers[0].closed).toBe(true);
+    expect(
+      rejected.fakeServers[0].requests.some((request) => request.method === 'thread/start'),
+    ).toBe(false);
+  });
+
+  it('validates live effort and model switches against the selected Codex model', async () => {
+    const adapter = new TestCodex();
+    await adapter.start(start);
+
+    await adapter.send({ type: 'set-model', model: 'gpt-5.6-terra' });
+    await expect(adapter.send({ type: 'set-effort', effort: 'ultra' })).resolves.toBeUndefined();
+    await expect(adapter.send({ type: 'set-model', model: 'gpt-5.6-luna' })).rejects.toThrow(
+      "codex: effort 'ultra' is not supported by model 'gpt-5.6-luna'",
+    );
+
+    await adapter.send({ type: 'set-effort', effort: 'max' });
+    await expect(
+      adapter.send({ type: 'set-model', model: 'gpt-5.6-luna' }),
+    ).resolves.toBeUndefined();
+    await expect(adapter.send({ type: 'set-effort', effort: 'ultra' })).rejects.toThrow(
+      "codex: effort 'ultra' is not supported by model 'gpt-5.6-luna'",
+    );
+  });
+
+  it('keeps newer live picks when a previous turn reports stale settings', async () => {
+    const adapter = new TestCodex();
+    await adapter.start(start);
+    await adapter.send({ type: 'set-model', model: 'gpt-5.6-luna' });
+    await adapter.send({ type: 'set-effort', effort: 'max' });
+
+    adapter.fakeServers[0].notify('thread/settings/updated', {
+      threadId: 'thread-1',
+      threadSettings: { model: 'gpt-5.6-sol', effort: 'low' },
+    });
+    await adapter.send({ type: 'prompt', content: [textBlock('use my latest picks')] });
+
+    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ model: 'gpt-5.6-luna', effort: 'max' });
+  });
+
   it('rejects Claude-only effort levels before starting app-server', async () => {
     const adapter = new TestCodex();
-    await expect(adapter.start({ ...start, effort: 'max' })).rejects.toThrow(
-      "codex: effort 'max' is not supported",
+    await expect(adapter.start({ ...start, effort: 'ultracode' })).rejects.toThrow(
+      "codex: effort 'ultracode' is not supported",
     );
     expect(adapter.fakeServers).toHaveLength(0);
   });

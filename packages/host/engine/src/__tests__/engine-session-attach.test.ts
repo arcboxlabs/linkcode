@@ -85,7 +85,14 @@ describe('engine session attach', () => {
     adapter.emit({ type: 'available-models-update', models: [{ id: 'stale/old', label: 'Old' }] });
     adapter.emit({
       type: 'available-models-update',
-      models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
+      models: [
+        {
+          id: 'gpt-5.6-sol',
+          label: 'GPT-5.6-Sol',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          defaultEffort: 'low',
+        },
+      ],
     });
 
     const mark = sent.length;
@@ -95,7 +102,14 @@ describe('engine session attach', () => {
     expect(catalogs).toEqual([
       {
         type: 'available-models-update',
-        models: [{ id: 'openai/gpt-5-nano', label: 'GPT-5 Nano', description: 'OpenAI' }],
+        models: [
+          {
+            id: 'gpt-5.6-sol',
+            label: 'GPT-5.6-Sol',
+            effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+            defaultEffort: 'low',
+          },
+        ],
       },
     ]);
   });
