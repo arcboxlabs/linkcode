@@ -86,8 +86,8 @@ describe('parseStackTrace frames', () => {
   it('falls back to the raw line when the location is missing a column', () => {
     const parsed = parseStackTrace(['Error: boom', 'at foo (/app/src/index.js:10)'].join('\n'));
     const [frame] = parsed.frames;
-    expect(frame?.filePath).toBeUndefined();
-    expect(frame?.lineNumber).toBeUndefined();
+    expect(frame.filePath).toBeUndefined();
+    expect(frame.lineNumber).toBeUndefined();
   });
 
   it('flags frames under node_modules, node: built-ins, and internal/ as internal', () => {

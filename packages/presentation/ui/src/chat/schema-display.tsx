@@ -1,11 +1,14 @@
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
-import { ChevronRightIcon } from 'lucide-react';
+import { Card } from 'coss-ui/components/card';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+} from './disclosure-header';
 
 const PATH_PARAM_RE = /\{[^}]+\}/g;
 
@@ -51,13 +54,7 @@ export function SchemaDisplay({
   ...props
 }: SchemaDisplayProps): React.ReactNode {
   return (
-    <div
-      className={cn(
-        'my-2 overflow-hidden rounded-xl border border-border bg-card text-sm',
-        className,
-      )}
-      {...props}
-    >
+    <Card className={cn('my-2 overflow-hidden text-sm', className)} {...props}>
       {children ?? (
         <>
           <SchemaDisplayHeader endpoint={endpoint} />
@@ -77,7 +74,7 @@ export function SchemaDisplay({
           </SchemaDisplayBody>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -179,11 +176,14 @@ export function SchemaDisplayParameters({
       {children ?? (
         <>
           <SchemaDisplaySectionTrigger count={parameters.length} label="Parameters" />
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
             {parameters.map((parameter) => (
               <SchemaDisplayParameter key={parameter.id} parameter={parameter} />
             ))}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </>
       )}
     </Collapsible>
@@ -237,11 +237,14 @@ export function SchemaDisplayProperties({
       {children ?? (
         <>
           <SchemaDisplaySectionTrigger count={properties.length} label={label} />
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
             {properties.map((schemaProperty) => (
               <SchemaDisplayProperty key={schemaProperty.id} schemaProperty={schemaProperty} />
             ))}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </>
       )}
     </Collapsible>
@@ -268,18 +271,22 @@ export function SchemaDisplayProperty({
       <Collapsible defaultOpen={depth < 2}>
         <div className={className} {...props}>
           <CollapsibleTrigger
-            className="group flex w-full items-center gap-2 py-2 pr-3 text-left hover:bg-muted"
+            className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full py-2 pr-3 hover:bg-muted')}
             style={{ paddingLeft }}
           >
-            <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
             <SchemaPropertySummary schemaProperty={schemaProperty} />
+            <ChatDisclosureChevron />
           </CollapsibleTrigger>
           {schemaProperty.description ? (
             <div className="pb-2 text-xs text-muted-foreground" style={{ paddingLeft }}>
               {schemaProperty.description}
             </div>
           ) : null}
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+            constrainHeight={false}
+          >
             {children ??
               schemaProperty.properties?.map((child) => (
                 <SchemaDisplayProperty key={child.id} depth={depth + 1} schemaProperty={child} />
@@ -287,7 +294,7 @@ export function SchemaDisplayProperty({
             {schemaProperty.items ? (
               <SchemaDisplayProperty depth={depth + 1} schemaProperty={schemaProperty.items} />
             ) : null}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </div>
       </Collapsible>
     );
@@ -298,7 +305,6 @@ export function SchemaDisplayProperty({
       {children ?? (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="size-3.5" />
             <SchemaPropertySummary schemaProperty={schemaProperty} />
           </div>
           {schemaProperty.description ? (
@@ -334,14 +340,18 @@ function SchemaDisplaySectionTrigger({
   count?: number;
 }): React.ReactNode {
   return (
-    <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted">
-      <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-      <span className="font-medium text-foreground">{label}</span>
+    <CollapsibleTrigger
+      className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full px-3 py-2 hover:bg-muted')}
+    >
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{label}</span>
+      </span>
       {typeof count === 'number' ? (
-        <Badge className="ml-auto" variant="secondary">
+        <Badge className="shrink-0" variant="secondary">
           {count}
         </Badge>
       ) : null}
+      <ChatDisclosureChevron />
     </CollapsibleTrigger>
   );
 }
@@ -353,9 +363,19 @@ function SchemaPropertySummary({
 }): React.ReactNode {
   return (
     <>
-      <span className="font-mono text-foreground">{schemaProperty.name}</span>
-      <Badge variant="outline">{schemaProperty.type}</Badge>
-      {schemaProperty.required ? <Badge variant="error">required</Badge> : null}
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'font-mono')}>
+          {schemaProperty.name}
+        </span>
+      </span>
+      <Badge className="shrink-0" variant="outline">
+        {schemaProperty.type}
+      </Badge>
+      {schemaProperty.required ? (
+        <Badge className="shrink-0" variant="error">
+          required
+        </Badge>
+      ) : null}
     </>
   );
 }

@@ -98,6 +98,45 @@ describe('registerArtifactKind', () => {
   });
 });
 
+describe('registerArtifactDetector', () => {
+  it('unregisters only its own duplicate registration', () => {
+    const unregisterKind = registerArtifactKind({
+      id: 'duplicate-detector-kind',
+      capabilities: {
+        inlineCapable: true,
+        panelCapable: false,
+        sandboxRequired: false,
+        interactive: false,
+      },
+      fenceLanguages: [],
+      Inline: () => null,
+    });
+    const detector = {
+      id: 'duplicate-detector',
+      detectFence: (block: FencedBlock) => ({
+        kind: 'duplicate-detector-kind',
+        source: { type: 'inline' as const, language: block.language, text: block.code },
+        detectorId: 'duplicate-detector',
+      }),
+    };
+    const unregisterFirst = registerArtifactDetector(detector);
+    const unregisterSecond = registerArtifactDetector(detector);
+
+    try {
+      unregisterSecond();
+      expect(resolveFencedArtifact(fence('mermaid'))!.artifact.kind).toBe(
+        'duplicate-detector-kind',
+      );
+    } finally {
+      unregisterFirst();
+      unregisterSecond();
+      unregisterKind();
+    }
+
+    expect(resolveFencedArtifact(fence('mermaid'))!.artifact.kind).toBe('mermaid');
+  });
+});
+
 describe('artifactFenceLanguages', () => {
   it('collects the union of registered fence languages', () => {
     expect(artifactFenceLanguages()).toEqual(expect.arrayContaining(['mermaid', 'svg']));

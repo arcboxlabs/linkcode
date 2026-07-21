@@ -1,20 +1,23 @@
 import type { ToolCall } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
-import { Spinner } from 'coss-ui/components/spinner';
-import { ChevronRightIcon, ShieldIcon } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { BanIcon, CircleXIcon, MessageCircleQuestionMarkIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
+import { Shimmer } from './shimmer';
 import { TOOL_KIND_ICONS } from './tool-utils';
 import { FilePathTooltip } from './with-tooltip';
-
-export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
@@ -29,13 +32,16 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   /** Unshortened context for a compact summary. */
   tooltip?: string;
   diffStats?: DiffStats;
-  badge?: string;
-  /** Localized marker for a call whose gating permission the user declined. */
-  declinedBadge?: string;
+  /** Short localized state text for approval, failure, or rejection. */
+  statusLabel?: string;
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   /** The call's gating permission is still awaiting an answer (shows the shield glyph). */
   awaitingApproval?: boolean;
+  /** The call's question is still awaiting the user's answer (shows the question glyph). */
+  awaitingAnswer?: boolean;
+  /** The user declined this call's gating permission. */
+  declined?: boolean;
   /** Custom glyph for plugin / MCP / custom tool calls; replaces the kind icon. */
   icon?: React.ReactNode;
   hasBody?: boolean;
@@ -47,41 +53,61 @@ export function ToolHeader({
   summary,
   tooltip,
   diffStats,
-  badge,
-  declinedBadge,
+  statusLabel,
   status,
   kind,
   awaitingApproval = false,
+  awaitingAnswer = false,
+  declined = false,
   icon,
   hasBody = false,
   ...props
 }: ToolHeaderProps): React.ReactNode {
   const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
   const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
+  // A call blocked on the user still holds the turn, so it shimmers like any running call;
+  // only a declined call is settled and stays static.
+  const running = (status === 'pending' || status === 'in_progress') && !declined;
   const content = (
     <>
-      <ToolIcon awaitingApproval={awaitingApproval} icon={icon} kind={kind} status={status} />
-      <span
-        className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}
-        ref={titleAnchorRef}
-      >
-        {title}
+      <ChatDisclosureIconSlot>
+        <ToolIcon
+          awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          declined={declined}
+          icon={icon}
+          kind={kind}
+          status={status}
+        />
+      </ChatDisclosureIconSlot>
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME} ref={titleAnchorRef}>
+          {running ? <Shimmer>{title}</Shimmer> : title}
+        </span>
+        {summary ? (
+          <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME} ref={tooltipAnchorRef}>
+            · {summary}
+          </span>
+        ) : null}
       </span>
       {diffStats ? <DiffCounter stats={diffStats} /> : null}
-      {summary ? (
-        <span className="min-w-0 flex-1 truncate text-muted-foreground" ref={tooltipAnchorRef}>
-          · {summary}
+      {statusLabel ? (
+        <span
+          className={cn(
+            'shrink-0 text-xs',
+            awaitingApproval ? 'text-warning-foreground' : 'text-destructive-foreground',
+          )}
+        >
+          {statusLabel}
         </span>
       ) : null}
-      {declinedBadge ? <Badge variant="error">{declinedBadge}</Badge> : null}
-      {badge ? <Badge variant="secondary">{badge}</Badge> : null}
-      {hasBody ? (
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
-      ) : null}
+      {hasBody ? <ChatDisclosureChevron /> : null}
     </>
   );
   const headerClassName = cn(
-    'group/header flex w-full items-center gap-2 py-1 text-left text-sm',
+    CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+    'w-full',
+    !hasBody && 'cursor-default',
     className,
   );
 
@@ -107,49 +133,54 @@ export function ToolHeader({
   );
 }
 
-/** A call's glyph names what it does, not how it went: kind icon (or custom `icon`), spinner
- * while running, shield while its permission ask is open. Failure reads via color, never a cross. */
+/** A call's glyph names important state first, then falls back to its action kind. */
 export function ToolIcon({
   status,
   kind,
   awaitingApproval = false,
+  awaitingAnswer = false,
+  declined = false,
   icon,
 }: {
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   awaitingApproval?: boolean;
+  awaitingAnswer?: boolean;
+  declined?: boolean;
   icon?: React.ReactNode;
 }): React.ReactNode {
-  if (awaitingApproval) return <ShieldIcon className="size-3.5 text-warning-foreground" />;
-  if (status === 'in_progress') return <Spinner className="size-3.5 text-foreground" />;
+  if (awaitingApproval) {
+    return <ShieldIcon className="size-3.5 shrink-0 text-warning-foreground" />;
+  }
+  if (declined) return <BanIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
+  if (status === 'failed') {
+    return <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
+  }
+  if (awaitingAnswer) {
+    return <MessageCircleQuestionMarkIcon className="size-3.5 shrink-0 text-foreground" />;
+  }
   if (icon) return icon;
+  // No spinner while running — the shimmering title carries the signal; the glyph stays put.
   const KindIcon = TOOL_KIND_ICONS[kind];
-  return (
-    <KindIcon
-      className={cn(
-        'size-3.5',
-        status === 'failed' ? 'text-destructive-foreground' : 'text-muted-foreground',
-      )}
-    />
-  );
+  if (status === 'pending' || status === 'in_progress') {
+    return <KindIcon className="size-3.5 shrink-0 text-foreground" />;
+  }
+  return <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
-export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {
-  constrainHeight?: boolean;
-};
+export type ToolContentProps = ChatDisclosureContentProps;
 
 export function ToolContent({
+  bodyClassName,
   className,
   constrainHeight = true,
   ...props
 }: ToolContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
-      className={cn(
-        'mt-1 space-y-2 border-0',
-        constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
-        className,
-      )}
+    <ChatDisclosureContent
+      bodyClassName={cn('space-y-2', bodyClassName)}
+      className={cn('mt-1 border-0', className)}
+      constrainHeight={constrainHeight}
       {...props}
     />
   );

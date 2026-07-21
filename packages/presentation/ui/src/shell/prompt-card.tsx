@@ -1,5 +1,4 @@
 import { Alert, AlertAction, AlertDescription } from 'coss-ui/components/alert';
-import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
   Frame,
@@ -29,7 +28,6 @@ export interface PromptCardError {
 }
 
 export function PromptCard({
-  badge,
   busyLabel,
   children,
   description,
@@ -41,9 +39,7 @@ export function PromptCard({
   meta,
   panelClassName,
   title,
-  tone = 'neutral',
 }: {
-  badge?: string;
   busyLabel?: string;
   children?: React.ReactNode;
   description?: string;
@@ -55,7 +51,6 @@ export function PromptCard({
   meta?: React.ReactNode;
   panelClassName?: string;
   title: string;
-  tone?: 'neutral' | 'warning';
 }): React.ReactNode {
   const titleId = useId();
 
@@ -66,31 +61,28 @@ export function PromptCard({
       className="my-0"
       role="group"
     >
-      {eyebrow ? <FrameHeader className="px-3 py-2">{eyebrow}</FrameHeader> : null}
-      <FramePanel className={cn('space-y-2 p-3', panelClassName)}>
-        <div className="flex flex-col gap-1.5">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <FrameTitle className="flex min-w-0 items-center gap-2">
-              <span id={titleId} className="min-w-0">
-                {title}
-              </span>
-              {badge ? (
-                <Badge variant={tone === 'warning' ? 'warning' : 'secondary'}>{badge}</Badge>
+      <FrameHeader className="gap-1.5 px-3 py-2">
+        {eyebrow}
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <FrameTitle className="flex min-w-0 items-center gap-2">
+            <span id={titleId} className="min-w-0">
+              {title}
+            </span>
+          </FrameTitle>
+          {(disabled && busyLabel) || meta ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              {disabled && busyLabel ? (
+                <Spinner aria-label={busyLabel} className="size-3.5" />
               ) : null}
-            </FrameTitle>
-            {(disabled && busyLabel) || meta ? (
-              <div className="flex shrink-0 items-center gap-1.5">
-                {disabled && busyLabel ? (
-                  <Spinner aria-label={busyLabel} className="size-3.5" />
-                ) : null}
-                {meta}
-              </div>
-            ) : null}
-          </div>
-          {description ? (
-            <FrameDescription className="max-w-2xl text-pretty">{description}</FrameDescription>
+              {meta}
+            </div>
           ) : null}
         </div>
+      </FrameHeader>
+      <FramePanel className={cn('space-y-2 p-3', panelClassName)}>
+        {description ? (
+          <FrameDescription className="max-w-2xl text-pretty">{description}</FrameDescription>
+        ) : null}
         {details.length > 0 ? <PromptCardDetails details={details} /> : null}
         {children}
         {error ? (
@@ -109,11 +101,11 @@ export function PromptCard({
           </Alert>
         ) : null}
       </FramePanel>
-      {footer !== undefined ? (
-        <FrameFooter className="flex items-center justify-between gap-2 px-3 py-1.5">
+      {footer === undefined ? null : (
+        <FrameFooter className="flex items-center justify-between gap-2 p-1.5">
           {footer}
         </FrameFooter>
-      ) : null}
+      )}
     </Frame>
   );
 }

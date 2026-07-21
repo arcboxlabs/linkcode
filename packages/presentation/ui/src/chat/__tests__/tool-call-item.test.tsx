@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
 import type { ToolCall } from '@linkcode/schema';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
-import { SubagentTranscript } from '../subagent-card';
+import { FileArtifactCard } from '../artifacts/file-card';
+import type { QuestionConversationItem } from '../conversation-prompts';
+import { QuestionCallItem } from '../question-call-item';
+import { SubagentCard, SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 import { hasToolBody } from '../tool-utils';
 
@@ -24,15 +27,19 @@ vi.mock('use-intl', () => ({
 const LiveTerminal = vi.fn(({ terminalId }: { terminalId: string }) => <div>{terminalId}</div>);
 const RE_ANSWER_SOURCE_HEADER = /^answer\.ts/;
 const RE_APPLY_GUARDED_EDIT = /^Apply guarded edit/;
+const RE_BASH = /^Bash/;
 const RE_DELETE_LEGACY = /^Delete legacy/;
 const RE_EDITED_GONE_PREVIEW = /^edited\.ts, gone\.ts$/;
 const RE_FAILED_MOVE_PREVIEW = /^old\.ts → new\.ts$/;
 const RE_FIRST_SECOND_PREVIEW = /^first\.ts, second\.ts$/;
 const RE_LEGACY_PREVIEW = /^legacy\.ts/;
+const RE_SUBAGENT_LABEL = /^label/;
 const RE_MOVE = /^Move file/;
 const RE_MOVE_PREVIEW = /^target\.ts → moved\.ts$/;
+const RE_QUESTION_CALL_TITLE = /^callTitle/;
 const RE_READ = /^Read/;
 const RE_TARGET_PREVIEW_HEADER = /^target\.ts/;
+const RE_THINKING_PUBLIC_SUMMARY = /thinking.*Reviewing public results/;
 const RE_WRITE_PLAN = /^Write PLAN/;
 
 afterEach(() => {
@@ -116,6 +123,12 @@ describe('ToolCallBody', () => {
     expect(screen.queryByText(path)).toBeNull();
 
     await user.click(peekHeader);
+    const scrollArea = container.querySelector('[data-slot="chat-disclosure-scroll"]');
+    const viewport = scrollArea?.querySelector('[data-slot="scroll-area-viewport"]');
+    expect(scrollArea?.className).toContain('max-h-96');
+    expect(scrollArea?.className).toContain('**:data-[slot=scroll-area-viewport]:max-h-96');
+    expect(viewport?.className).toContain('mask-t-from');
+    expect(viewport?.className).toContain('mask-b-from');
     const previewHeader = screen.getByRole('button', { name: RE_ANSWER_SOURCE_HEADER });
     expect(previewHeader.querySelector('[aria-hidden="true"] svg')).not.toBeNull();
     await user.hover(previewHeader);
@@ -124,6 +137,12 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
     expect(openFile).toHaveBeenCalledOnce();
     expect(openFile).toHaveBeenCalledWith(path);
   });
@@ -142,6 +161,121 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
+  });
+
+  it('highlights structured JSON tool results', async () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'json-result',
+      title: 'Inspect package metadata',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: { type: 'text', text: '{"name":"@linkcode/ui","private":true}' },
+        },
+      ],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
+  }, 15000);
+
+  it('highlights embedded text resources from their MIME type', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const toolCall: ToolCall = {
+      toolCallId: 'resource-result',
+      title: 'Load manifest',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: {
+            type: 'resource',
+            resource: {
+              uri: 'https://example.test/manifest.json?token=secret',
+              mimeType: 'application/json',
+              text: '{"enabled":true}',
+            },
+          },
+        },
+      ],
+    };
+
+    const { container } = render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <ToolCallBody toolCall={toolCall} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const resourceLabel = screen.getByText('manifest.json');
+    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).not.toBeNull();
+    expect(resourceHeader?.tabIndex).toBe(0);
+    expect(screen.queryByText('https://example.test/manifest.json?token=secret')).toBeNull();
+    await user.hover(resourceHeader!);
+    expect(
+      await screen.findByText('https://example.test/manifest.json?token=secret'),
+    ).toBeDefined();
+    await user.click(resourceHeader!);
+    expect(openFile).not.toHaveBeenCalled();
+
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
+  }, 15000);
+
+  it('renders embedded blob resources as non-navigating header-only file cards', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const toolCall: ToolCall = {
+      toolCallId: 'blob-resource-result',
+      title: 'Load archive',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: {
+            type: 'resource',
+            resource: {
+              uri: 'urn:uuid:bundle-secret',
+              mimeType: 'application/zip',
+              blob: 'UEsDBAoAAAAA',
+            },
+          },
+        },
+      ],
+    };
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <ToolCallBody toolCall={toolCall} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const resourceLabel = screen.getByText('resource');
+    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(resourceHeader?.tabIndex).toBe(0);
+    expect(screen.queryByRole('button', { name: 'resource' })).toBeNull();
+    await user.hover(resourceHeader!);
+    expect(await screen.findByText('urn:uuid:bundle-secret')).toBeDefined();
+    await user.click(resourceHeader!);
+    expect(openFile).not.toHaveBeenCalled();
   });
 
   it('renders Markdown file reads as a document preview', () => {
@@ -170,7 +304,87 @@ describe('ToolCallBody', () => {
     const tooltipTrigger = screen
       .getByText('preview.md')
       .closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(tooltipTrigger?.tabIndex).toBe(-1);
+    expect(tooltipTrigger?.tabIndex).toBe(0);
+  });
+
+  it('keeps a Claude edit receipt outside the structured file diff', () => {
+    const path = '/repo/hello.py';
+    const receipt =
+      'The file /repo/hello.py has been updated successfully. The file state is current.';
+    const toolCall: ToolCall = {
+      toolCallId: 'claude-edit-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'completed',
+      locations: [{ path }],
+      content: [
+        {
+          type: 'diff',
+          path,
+          oldText: 'print("hello")\n',
+          newText: 'print("hello")\n\nhello()\n',
+        },
+        { type: 'content', content: { type: 'text', text: receipt } },
+      ],
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const receiptNode = screen.getByText(receipt);
+    expect(screen.getAllByText('hello.py')).toHaveLength(1);
+    expect(fileCard?.contains(receiptNode)).toBe(false);
+    expect(receiptNode.closest('[data-slot="card"]')?.textContent).toContain('Edit');
+  });
+
+  it('keeps a failed mutation explanation visible without presenting it as file content', () => {
+    const path = '/repo/hello.py';
+    const explanation =
+      'The target changed before the edit could be applied. The user modified the file after it was read.';
+    const toolCall: ToolCall = {
+      toolCallId: 'failed-edit-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'failed',
+      locations: [{ path }],
+      content: [
+        { type: 'diff', path, oldText: 'before\n', newText: 'after\n' },
+        { type: 'content', content: { type: 'text', text: explanation } },
+      ],
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const explanationNode = screen.getByText(explanation);
+    expect(explanationNode).toBeDefined();
+    expect(fileCard?.contains(explanationNode)).toBe(false);
+  });
+
+  it.each([
+    [
+      'OpenCode content',
+      [{ type: 'content' as const, content: { type: 'text' as const, text: 'Updated hello.py' } }],
+      undefined,
+    ],
+    ['Pi raw output', [], { content: [{ type: 'text' as const, text: 'Updated hello.py' }] }],
+  ])('keeps a %s mutation receipt outside the file navigation card', (_label, content, rawOutput) => {
+    const toolCall: ToolCall = {
+      toolCallId: 'mutation-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'completed',
+      locations: [{ path: '/repo/hello.py' }],
+      content,
+      rawOutput,
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const receiptNode = screen.getByText('Updated hello.py');
+    expect(fileCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(fileCard?.contains(receiptNode)).toBe(false);
   });
 
   it('surfaces an execute failure message without its raw result envelope', () => {
@@ -229,7 +443,151 @@ describe('ToolCallBody', () => {
   });
 });
 
+describe('FileArtifactCard', () => {
+  it('reuses the file preview header and opens the full path when the host supports it', async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn();
+    const path = '/repo/output/report.pdf';
+
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
+        <FileArtifactCard path={path} />
+      </ArtifactHostActionsProvider>,
+    );
+
+    const header = screen.getByRole('button', { name: 'report.pdf' });
+    const card = header.closest('[data-slot="card"]');
+    expect(card?.className).toContain('max-w-md');
+    expect(card?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    await user.hover(header);
+    expect(await screen.findByText(path)).toBeDefined();
+    await user.click(header);
+    expect(openFile).toHaveBeenCalledOnce();
+    expect(openFile).toHaveBeenCalledWith(path);
+  });
+
+  it('keeps its full-path tooltip keyboard reachable without a host file viewer', async () => {
+    const user = userEvent.setup();
+    const path = '/repo/output/report.pdf';
+
+    render(<FileArtifactCard path={path} />);
+
+    const label = screen.getByText('report.pdf');
+    const header = label.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
+    expect(header?.tabIndex).toBe(0);
+    header?.focus();
+    expect(await screen.findByText(path)).toBeDefined();
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('button', { name: 'report.pdf' })).toBeNull();
+  });
+});
+
 describe('ToolCallItem', () => {
+  it('uses Sparkles for a thinking tool', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'thinking-tool',
+      title: 'Think',
+      kind: 'think',
+      status: 'completed',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(
+      container
+        .querySelector('[data-slot="chat-disclosure-icon"]')
+        ?.querySelector('.lucide-sparkles'),
+    ).not.toBeNull();
+  });
+
+  it('omits the disclosure without leaving a leading placeholder when there is no detail', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'empty-tool',
+      title: 'No details',
+      kind: 'other',
+      status: 'completed',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    const header = screen.getByText('No details').closest('.group');
+    expect(header?.querySelector('.lucide-chevron-right')).toBeNull();
+    expect(
+      container
+        .querySelector('[data-slot="chat-disclosure-icon"]')
+        ?.querySelector('.lucide-wrench'),
+    ).not.toBeNull();
+  });
+
+  it('ends with disclosure and names failure without an action-kind badge', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'bash-failed',
+      title: 'Bash',
+      kind: 'execute',
+      status: 'failed',
+      rawInput: { command: 'false' },
+      content: [],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    const header = screen.getByRole('button', { name: RE_BASH });
+    const title = screen.getByText('Bash');
+    const summary = screen.getByText('· false');
+    expect(header.lastElementChild?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(title.className).toContain('shrink-0');
+    expect(summary.className).toContain('shrink');
+    expect(summary.className).toContain('truncate');
+    expect(header.querySelector('[data-slot="chat-disclosure-icon"]')).not.toBeNull();
+    expect(header.querySelector('svg.lucide-circle-x')).not.toBeNull();
+    expect(header.textContent).toContain('failed');
+    expect(header.textContent).not.toContain('kindExecute');
+  });
+
+  it('marks a call awaiting the user answer with the question glyph, not a spinner', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'question-1',
+      title: 'Request user input',
+      kind: 'other',
+      status: 'pending',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem awaitingAnswer toolCall={toolCall} />);
+
+    expect(container.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('.bg-clip-text')).not.toBeNull();
+  });
+
+  it('shimmers running and user-blocked titles but not declined ones', () => {
+    const running: ToolCall = {
+      toolCallId: 'running-1',
+      title: 'Running tests',
+      kind: 'execute',
+      status: 'in_progress',
+      content: [],
+    };
+
+    const { container, rerender } = render(<ToolCallItem toolCall={running} />);
+    // The kind glyph stays put while running — the shimmering title is the activity signal.
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('svg.lucide-terminal')?.getAttribute('class')).toContain(
+      'text-foreground',
+    );
+    expect(container.querySelector('.bg-clip-text')?.textContent).toBe('Running tests');
+
+    rerender(<ToolCallItem awaitingApproval toolCall={{ ...running, status: 'pending' }} />);
+    expect(container.querySelector('svg.lucide-shield')).not.toBeNull();
+    expect(container.querySelector('.bg-clip-text')).not.toBeNull();
+
+    rerender(<ToolCallItem declined toolCall={{ ...running, status: 'pending' }} />);
+    expect(container.querySelector('svg.lucide-ban')).not.toBeNull();
+    expect(container.querySelector('.bg-clip-text')).toBeNull();
+  });
+
   it('opens a path-only write from its header-only preview', async () => {
     const user = userEvent.setup();
     const openFile = vi.fn();
@@ -520,10 +878,39 @@ describe('SubagentTranscript', () => {
   };
   const sharedProps = {
     awaitingApproval: new Set<string>(),
+    awaitingAnswer: new Set<string>(),
+    questionsByToolCall: new Map<string, QuestionConversationItem>(),
     childrenByParent: new Map(),
     declined: new Set<string>(),
     toolCall: taskToolCall,
   };
+
+  it('keeps the subagent top-level summary compact when a child action fails', () => {
+    render(
+      <SubagentCard
+        {...sharedProps}
+        items={[
+          {
+            id: 'child-failed',
+            kind: 'tool',
+            turnId: null,
+            toolCall: {
+              toolCallId: 'child-failed',
+              title: 'Bash',
+              kind: 'execute',
+              status: 'failed',
+              content: [],
+            },
+          },
+        ]}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_SUBAGENT_LABEL });
+    expect(header.lastElementChild?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(header.textContent).toContain('failed');
+    expect(header.textContent).not.toContain('steps');
+  });
 
   it('uses the task result as the empty-transcript fallback', () => {
     render(<SubagentTranscript {...sharedProps} items={[]} />);
@@ -588,6 +975,115 @@ describe('SubagentTranscript', () => {
       />,
     );
 
-    expect(screen.getAllByText('Final review report')).toHaveLength(2);
+    expect(screen.getAllByText('Final review report')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'thought' }).textContent).toBe('thought');
+  });
+
+  it('keeps streaming subagent reasoning open and shows only its public summary in the header', () => {
+    render(
+      <SubagentTranscript
+        {...sharedProps}
+        items={[
+          {
+            id: 'reasoning-streaming',
+            kind: 'reasoning',
+            turnId: null,
+            isStreaming: true,
+            summary: 'Reviewing public results',
+            blocks: [{ type: 'text', text: 'api_key=private' }],
+          },
+        ]}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_THINKING_PUBLIC_SUMMARY });
+    expect(header.getAttribute('aria-expanded')).toBe('true');
+    expect(header.textContent).not.toContain('api_key');
+  });
+});
+
+describe('QuestionCallItem', () => {
+  const questionToolCall: ToolCall = {
+    toolCallId: 'question-1',
+    title: 'AskUserQuestion',
+    kind: 'other',
+    status: 'pending',
+    rawOutput: 'The user doesn’t want to proceed with this tool use.',
+    content: [],
+  };
+  const questionItem: QuestionConversationItem = {
+    id: 'question-item-1',
+    kind: 'question',
+    turnId: 'turn-1',
+    requestId: 'request-1',
+    toolCall: { toolCallId: 'question-1' },
+    questions: [
+      {
+        questionId: 'scope',
+        prompt: 'How broad should the change be?',
+        header: 'Scope',
+        multiSelect: false,
+        options: [
+          { optionId: 'narrow', label: 'Narrow fix' },
+          { optionId: 'broad', label: 'Broad refactor' },
+        ],
+      },
+    ],
+    responding: false,
+  };
+
+  it('presents a pending ask as a shimmering question row without the raw payload', () => {
+    const { container } = render(
+      <QuestionCallItem awaitingAnswer question={questionItem} toolCall={questionToolCall} />,
+    );
+
+    expect(container.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('svg.lucide-wrench')).toBeNull();
+    expect(container.querySelector('.bg-clip-text')?.textContent).toBe('callTitle');
+    expect(screen.getByText('· How broad should the change be?')).toBeDefined();
+    expect(container.textContent).not.toContain('AskUserQuestion');
+    expect(container.textContent).not.toContain('want to proceed');
+  });
+
+  it('records the chosen answer once resolved', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionCallItem
+        question={{
+          ...questionItem,
+          resolution: {
+            outcome: {
+              outcome: 'answered',
+              answers: [{ questionId: 'scope', selectedOptionIds: ['narrow'] }],
+            },
+            source: 'user',
+          },
+        }}
+        toolCall={{ ...questionToolCall, status: 'completed' }}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_QUESTION_CALL_TITLE });
+    expect(header.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(header.querySelector('.bg-clip-text')).toBeNull();
+    await user.click(header);
+    expect(screen.getByText('How broad should the change be?')).toBeDefined();
+    expect(screen.getByText('Narrow fix')).toBeDefined();
+  });
+
+  it('labels a dismissed ask instead of showing a raw failure', () => {
+    const { container } = render(
+      <QuestionCallItem
+        question={{
+          ...questionItem,
+          resolution: { outcome: { outcome: 'cancelled' }, source: 'user' },
+        }}
+        toolCall={{ ...questionToolCall, status: 'failed' }}
+      />,
+    );
+
+    expect(screen.getByText('dismissed')).toBeDefined();
+    expect(container.textContent).not.toContain('want to proceed');
   });
 });

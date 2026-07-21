@@ -1,12 +1,18 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { nullthrow } from 'foxts/guard';
-import { BrainIcon, ChevronRightIcon } from 'lucide-react';
+import { SparklesIcon } from 'lucide-react';
 import { createContext, useContext, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { Shimmer } from './shimmer';
 
 interface ReasoningContextValue {
@@ -59,13 +65,13 @@ export function Reasoning({
 
 export type ReasoningTriggerProps = React.ComponentProps<typeof CollapsibleTrigger> & {
   label: string;
-  preview?: string;
+  summary?: string;
 };
 
 export function ReasoningTrigger({
   className,
   label,
-  preview,
+  summary,
   children,
   ...props
 }: ReasoningTriggerProps): React.ReactNode {
@@ -73,33 +79,32 @@ export function ReasoningTrigger({
 
   return (
     <CollapsibleTrigger
-      className={cn(
-        'flex w-full items-center gap-2 py-1 text-left text-sm hover:text-foreground',
-        className,
-      )}
+      className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full', className)}
       {...props}
     >
       {children ?? (
         <>
-          <BrainIcon className="size-3.5 shrink-0" />
-          <span className="font-medium">{isStreaming ? <Shimmer>{label}</Shimmer> : label}</span>
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-            {isOpen ? '' : preview}
+          <ChatDisclosureIconSlot>
+            <SparklesIcon />
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>
+              {isStreaming ? <Shimmer>{label}</Shimmer> : label}
+            </span>
+            {summary ? <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>{summary}</span> : null}
           </span>
-          <ChevronRightIcon
-            className={cn('size-3.5 shrink-0 transition-transform', isOpen && 'rotate-90')}
-          />
+          <ChatDisclosureChevron open={isOpen} />
         </>
       )}
     </CollapsibleTrigger>
   );
 }
 
-export type ReasoningContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type ReasoningContentProps = ChatDisclosureContentProps;
 
 export function ReasoningContent({ className, ...props }: ReasoningContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
+    <ChatDisclosureContent
       className={cn('mt-1 border-l-2 border-border pl-3 text-sm italic opacity-90', className)}
       {...props}
     />

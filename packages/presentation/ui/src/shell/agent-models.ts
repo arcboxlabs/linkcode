@@ -13,7 +13,7 @@ export interface ModelOption {
 export interface ModelProviderGroups {
   /** Options without a provider subtitle, rendered flat before the provider submenus. */
   ungrouped: ModelOption[];
-  groups: { label: string; options: ModelOption[] }[];
+  groups: Array<{ label: string; options: ModelOption[] }>;
 }
 
 /** Group a catalog by its provider subtitle (`description`, per the adapter convention above),
@@ -36,7 +36,7 @@ export function groupModelsByProvider(
   if (byProvider.size < 2) return null;
   return {
     ungrouped,
-    groups: [...byProvider.entries()].map(([label, grouped]) => ({ label, options: grouped })),
+    groups: Array.from(byProvider, ([label, grouped]) => ({ label, options: grouped })),
   };
 }
 

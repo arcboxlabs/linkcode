@@ -6,8 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
 import { TurnDiffSummary } from '../turn-diff-summary';
 
+function translateKey(key: string): string {
+  return key;
+}
+
 vi.mock('use-intl', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => translateKey,
 }));
 
 const FILES = [
@@ -16,6 +20,7 @@ const FILES = [
   { path: 'packages/presentation/ui/src/chat/three.tsx', additions: 0, deletions: 3 },
   { path: 'packages/presentation/ui/src/chat/four.tsx', additions: 4, deletions: 0 },
 ] as const;
+const RE_SHOW_MORE = /showMore/;
 
 afterEach(cleanup);
 
@@ -34,11 +39,15 @@ describe('TurnDiffSummary', () => {
       </ArtifactHostActionsProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: /showMore/ }));
+    await user.click(screen.getByRole('button', { name: RE_SHOW_MORE }));
     const fileButtons = FILES.map((file) =>
-      screen.getByRole('button', { name: new RegExp(file.path) }),
+      screen.getByRole('button', {
+        name: `${file.path} +${file.additions}-${file.deletions}`,
+      }),
     );
     expect(fileButtons).toHaveLength(FILES.length);
+    // user-event queues pointer interactions, so these clicks must stay serial.
+    // eslint-disable-next-line no-await-in-loop -- preserve interaction ordering
     for (const button of fileButtons) await user.click(button);
     await user.click(screen.getByRole('button', { name: 'review' }));
 

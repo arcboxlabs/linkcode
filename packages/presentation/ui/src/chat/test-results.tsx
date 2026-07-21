@@ -1,4 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
+import { Card } from 'coss-ui/components/card';
 import { CheckCircleIcon, CircleIcon, XCircleIcon } from 'lucide-react';
 import prettyMilliseconds from 'pretty-ms';
 import { cn } from '../lib/cn';
@@ -28,13 +29,7 @@ export function TestResults({
   const summary = summarizeTests(testResults);
 
   return (
-    <div
-      className={cn(
-        'my-2 overflow-hidden rounded-xl border border-border bg-card text-sm',
-        className,
-      )}
-      {...props}
-    >
+    <Card className={cn('my-2 overflow-hidden text-sm', className)} {...props}>
       {children ?? (
         <>
           <TestResultsHeader summary={summary} />
@@ -45,7 +40,7 @@ export function TestResults({
           </div>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 

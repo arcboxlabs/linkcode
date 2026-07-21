@@ -1,12 +1,18 @@
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
-import { ChevronDownIcon, FileDiffIcon, Undo2Icon } from 'lucide-react';
+import { Card } from 'coss-ui/components/card';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
 import { useArtifactHostActions } from './artifacts/host-actions';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import type { TurnEdits, TurnFileEdit } from './turn-edits';
 
 const COLLAPSED_FILE_COUNT = 3;
@@ -29,11 +35,15 @@ export function TurnDiffSummary({
   const overflowFiles = edits.files.slice(COLLAPSED_FILE_COUNT);
 
   return (
-    <div className="my-1 rounded-xl border border-border bg-card text-sm">
-      <div className="flex items-center px-3 py-2 gap-1">
+    <Card className="my-1 bg-card text-sm">
+      <div className="flex items-center pl-4 pr-2 py-2 gap-1">
         <div className="min-w-0 flex flex-1 gap-2 items-center">
-          <FileDiffIcon className="size-3.5 text-muted-foreground" />
-          <div className="font-medium">{t('title', { count: edits.files.length })}</div>
+          <ChatDisclosureIconSlot className="text-muted-foreground">
+            <FileDiffIcon />
+          </ChatDisclosureIconSlot>
+          <div className="min-w-0 shrink truncate font-medium">
+            {t('title', { count: edits.files.length })}
+          </div>
           <DiffStat additions={edits.additions} deletions={edits.deletions} />
         </div>
         <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
@@ -50,22 +60,35 @@ export function TurnDiffSummary({
         ))}
         {overflowFiles.length > 0 && (
           <>
-            <CollapsibleContent>
+            <ChatDisclosureContent>
               {overflowFiles.map((file) => (
                 <FileRow key={file.path} file={file} onOpenFile={openFile} />
               ))}
-            </CollapsibleContent>
-            <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
-              <span className="group-data-[panel-open]:hidden">
-                {t('showMore', { count: overflowFiles.length })}
+            </ChatDisclosureContent>
+            <CollapsibleTrigger
+              className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full')}
+            >
+              <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+                <span
+                  className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'group-data-[panel-open]:hidden')}
+                >
+                  {t('showMore', { count: overflowFiles.length })}
+                </span>
+                <span
+                  className={cn(
+                    CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                    'hidden group-data-[panel-open]:inline',
+                  )}
+                >
+                  {t('showLess')}
+                </span>
               </span>
-              <span className="hidden group-data-[panel-open]:inline">{t('showLess')}</span>
-              <ChevronDownIcon className="size-3.5 transition-transform group-data-[panel-open]:rotate-180" />
+              <ChatDisclosureChevron />
             </CollapsibleTrigger>
           </>
         )}
       </Collapsible>
-    </div>
+    </Card>
   );
 }
 

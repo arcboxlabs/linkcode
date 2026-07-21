@@ -5,6 +5,7 @@ import { BotIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ToolTimelineItem } from './activity-groups';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { SubagentTranscript } from './subagent-card';
 import { subagentTaskInput } from './subagent-task-input';
 import type { ConversationItem } from './types';
@@ -18,6 +19,8 @@ export interface SubagentViewerProps {
   onSelect: (toolCallId: string) => void;
   childrenByParent: ReadonlyMap<string, ConversationItem[]>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }
@@ -32,13 +35,15 @@ export function SubagentViewer({
   onSelect,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
 }: SubagentViewerProps): React.ReactNode {
   const t = useTranslations('workbench.subagent');
 
   // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a conversation holds a handful of subagents at most; a lookup Map would outweigh the scan
-  const selected = tasks.find((task) => task.toolCall.toolCallId === selectedId) ?? tasks[0];
+  const selected = tasks.find((task) => task.toolCall.toolCallId === selectedId) ?? tasks.at(0);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -63,6 +68,8 @@ export function SubagentViewer({
             {selected ? (
               <SubagentTranscript
                 awaitingApproval={awaitingApproval}
+                awaitingAnswer={awaitingAnswer}
+                questionsByToolCall={questionsByToolCall}
                 childrenByParent={childrenByParent}
                 declined={declined}
                 items={childrenByParent.get(selected.toolCall.toolCallId) ?? []}

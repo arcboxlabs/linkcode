@@ -38,7 +38,8 @@ export function FilesPanel({
 }: FilesPanelProps): React.ReactNode {
   const t = useTranslations('workbench.files');
   const treeSide = useAppearancePrefsStore((state) => state.filesTreeSide);
-  const active = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const tabsById = new Map(tabs.map((tab) => [tab.id, tab] as const));
+  const active = activeTabId === null ? null : (tabsById.get(activeTabId) ?? null);
   const { data, isLoading, error } = useWorkspaceFile(cwd, active?.path ?? null);
   const { data: treeFiles } = useWorkspaceFileList(cwd);
 

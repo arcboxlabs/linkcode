@@ -232,6 +232,7 @@ function createCacheProvider(cache: Cache): () => Cache {
 }
 
 function handleFetchError(error: unknown): void {
+  // eslint-disable-next-line no-console -- transport fetch failures need a diagnostic without interrupting the UI with a toast.
   console.error('[LinkCode data error]', extractErrorMessage(error) ?? error);
 }
 

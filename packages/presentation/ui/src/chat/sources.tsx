@@ -1,11 +1,16 @@
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
-import { BookOpenIcon, ChevronRightIcon, ExternalLinkIcon } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { BookOpenIcon, ExternalLinkIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 
 // TODO(linkcode-schema): Provisional UI-only source metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when assistant messages can emit source/citation metadata.
@@ -66,31 +71,41 @@ export function SourcesTrigger({
   return (
     <CollapsibleTrigger
       className={cn(
-        'group flex w-fit items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-muted hover:text-foreground',
+        CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+        'w-fit max-w-full rounded-md px-1.5 hover:bg-muted',
         className,
       )}
       {...props}
     >
       {children ?? (
         <>
-          <BookOpenIcon className="size-3.5 shrink-0" />
-          <span>{title ?? 'Sources'}</span>
-          <Badge size="sm" variant="secondary">
+          <ChatDisclosureIconSlot>
+            <BookOpenIcon />
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{title ?? 'Sources'}</span>
+          </span>
+          <Badge className="shrink-0" size="sm" variant="secondary">
             {count}
           </Badge>
-          <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[panel-open]:rotate-90" />
+          <ChatDisclosureChevron />
         </>
       )}
     </CollapsibleTrigger>
   );
 }
 
-export type SourcesContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type SourcesContentProps = ChatDisclosureContentProps;
 
-export function SourcesContent({ className, ...props }: SourcesContentProps): React.ReactNode {
+export function SourcesContent({
+  bodyClassName,
+  className,
+  ...props
+}: SourcesContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
-      className={cn('mt-1 flex max-w-full flex-col gap-1 border-l-2 border-border pl-3', className)}
+    <ChatDisclosureContent
+      bodyClassName={cn('flex max-w-full flex-col gap-1', bodyClassName)}
+      className={cn('mt-1 border-l-2 border-border pl-3', className)}
       {...props}
     />
   );

@@ -1,7 +1,7 @@
 import { useAbortableEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useReducer, useRef } from 'react';
 
 // Duration and bezier are duplicated in index.css (the workspace/chrome grid transitions
 // under the axis-specific shell animation attributes) — keep both in sync.
@@ -36,6 +36,11 @@ export interface SplitTransitionState {
   version: number;
 }
 
+type SplitTransitionAction =
+  | { type: 'reconcile'; open: boolean; reducedMotion: boolean }
+  | { type: 'settle' }
+  | { type: 'settle-if-current'; version: number };
+
 /**
  * Phase machine for a shell pane toggle. Geometry is a CSS variable written once per change — the
  * scoped grid transitions in index.css interpolate the consuming templates, no per-frame JS. The
@@ -49,21 +54,21 @@ export function usePaneTransition({
 }: UsePaneTransitionOptions): PaneTransition {
   const reducedMotion = useReducedMotion() ?? false;
 
-  // Plain useState with whole-object replacement: the object feeds reconcileTransition, whose memo
-  // the React Compiler keys on the object's IDENTITY. A tracked-getter store (foxact
-  // useStateWithDeps) keeps one stable, internally-mutated reference — phase updates then rendered
-  // from the stale memo and the phase never left 'opening'/'closing'. This machine wants snapshot
-  // semantics.
-  const [transition, setTransition] = useState<SplitTransitionState>(() => ({
-    requestedOpen: open,
-    phase: open ? 'open' : 'closed',
-    version: 0,
-  }));
+  // Reducer snapshots keep the request, phase, and version atomic. A tracked-getter store (foxact
+  // useStateWithDeps) keeps one stable, internally-mutated reference, which makes the React Compiler
+  // reuse a stale reconciliation result and leaves the phase stuck in 'opening'/'closing'.
+  const [transition, dispatchTransition] = useReducer(
+    transitionReducer,
+    open,
+    createInitialTransition,
+  );
 
   // Derive the next transition from the latest `open` request during render — React's prescribed way
   // to adjust state when props change (it re-renders before paint, avoiding an effect round-trip).
   const active = reconcileTransition(transition, open, reducedMotion);
-  if (active !== transition) setTransition(active);
+  if (active !== transition) {
+    dispatchTransition({ type: 'reconcile', open, reducedMotion });
+  }
   const { phase, version: transitionVersion } = active;
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -74,14 +79,12 @@ export function usePaneTransition({
   }, []);
   const settle = useCallback((): void => {
     cancelFallback();
-    setTransition(settleTransition);
+    dispatchTransition({ type: 'settle' });
   }, [cancelFallback]);
   const rearmFallback = useCallback((): void => {
     cancelFallback();
     fallbackTimerRef.current = setTimeout(() => {
-      setTransition((latest) =>
-        latest.version === transitionVersion ? settleTransition(latest) : latest,
-      );
+      dispatchTransition({ type: 'settle-if-current', version: transitionVersion });
     }, SHELL_TRANSITION.durationMs + 100);
   }, [cancelFallback, transitionVersion]);
 
@@ -151,4 +154,23 @@ export function settleTransition(current: SplitTransitionState): SplitTransition
     ...current,
     phase: current.requestedOpen ? 'open' : 'closed',
   };
+}
+
+function createInitialTransition(open: boolean): SplitTransitionState {
+  return {
+    requestedOpen: open,
+    phase: open ? 'open' : 'closed',
+    version: 0,
+  };
+}
+
+function transitionReducer(
+  current: SplitTransitionState,
+  action: SplitTransitionAction,
+): SplitTransitionState {
+  if (action.type === 'reconcile') {
+    return reconcileTransition(current, action.open, action.reducedMotion);
+  }
+  if (action.type === 'settle') return settleTransition(current);
+  return action.version === current.version ? settleTransition(current) : current;
 }

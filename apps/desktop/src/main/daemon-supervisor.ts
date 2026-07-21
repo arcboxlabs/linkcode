@@ -21,10 +21,13 @@ const RESPAWN_DELAY_MS = 1000;
 /** A child that lived at least this long resets the crash-loop counter. */
 const HEALTHY_AFTER_MS = 30000;
 const MAX_CONSECUTIVE_FAST_EXITS = 5;
+/** How long quit waits for the SIGTERMed daemon to drain before leaving it to Electron. */
+const DRAIN_GRACE_MS = 5000;
 
 let child: UtilityProcess | null = null;
 let respawnTimer: NodeJS.Timeout | null = null;
 let quitting = false;
+let draining = false;
 let fastExits = 0;
 let blockedBy: 'external-daemon' | 'crash-loop' | null = null;
 
@@ -37,11 +40,26 @@ export function startDaemonSupervisor(): void {
   // Dev shells run the daemon from the repo.
   if (!app.isPackaged) return;
   const unwatchRuntime = watchDaemonRuntime(syncDaemonSupervisor);
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     quitting = true;
     unwatchRuntime();
     if (respawnTimer !== null) clearTimeout(respawnTimer);
-    child?.kill();
+    const proc = child;
+    if (draining || proc === null) return;
+    draining = true;
+    // Electron destroys its utility processes as the browser exits, so quitting straight after
+    // the SIGTERM truncates the daemon's drain — it dies mid-shutdown, leaving runtime.json
+    // behind and its session writes unfinished. Hold the quit until the child is actually gone.
+    event.preventDefault();
+    const deadline = setTimeout(() => {
+      log.warn('[linkcode/desktop] daemon did not drain in time; quitting anyway');
+      app.quit();
+    }, DRAIN_GRACE_MS);
+    proc.once('exit', () => {
+      clearTimeout(deadline);
+      app.quit();
+    });
+    proc.kill();
   });
   syncDaemonSupervisor();
 }

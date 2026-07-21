@@ -57,6 +57,12 @@ export type ConversationItem = (
       blocks: ContentBlock[];
       isStreaming: boolean;
       parentToolCallId?: string;
+      /** Best-known time of the first chunk in this reasoning item. */
+      startedAt?: number;
+      /** Best-known time of the next semantic boundary in the same scope. */
+      endedAt?: number;
+      /** Reserved for a future provider-supplied summary; never derived from `blocks`. */
+      summary?: string;
     }
   | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
   | {
@@ -194,6 +200,8 @@ export function createConversationBuilder(): ConversationBuilder {
   const promptResponseStatuses = new Map<string, 'open' | 'responding'>();
   /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
   const seenAskIds = new Set<string>();
+  /** parentToolCallId (undefined = main agent) → the reasoning item currently open in that scope. */
+  const activeReasoningByScope = new Map<string | undefined, number>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
@@ -207,9 +215,27 @@ export function createConversationBuilder(): ConversationBuilder {
   let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
+  let turnStopped = false;
   let cached: Conversation | null = null;
 
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
+
+  const endActiveReasoning = (scope: string | undefined, endedAt: number | undefined): void => {
+    const index = activeReasoningByScope.get(scope);
+    if (index === undefined) return;
+    activeReasoningByScope.delete(scope);
+    if (endedAt === undefined) return;
+    const item = items[index];
+    if (item.kind === 'reasoning' && item.endedAt === undefined) {
+      items[index] = { ...item, endedAt };
+    }
+  };
+
+  const endAllActiveReasoning = (endedAt: number | undefined): void => {
+    for (const scope of activeReasoningByScope.keys()) {
+      endActiveReasoning(scope, endedAt);
+    }
+  };
 
   // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
   const openAgentStream = (
@@ -233,6 +259,7 @@ export function createConversationBuilder(): ConversationBuilder {
         return;
       }
     }
+    endActiveReasoning(parentToolCallId, receivedAt);
     if (kind === 'message') {
       items.push({
         kind: 'message',
@@ -253,8 +280,10 @@ export function createConversationBuilder(): ConversationBuilder {
         blocks: [block],
         isStreaming: false,
         parentToolCallId,
+        startedAt: receivedAt,
         receivedAt,
       });
+      activeReasoningByScope.set(parentToolCallId, items.length - 1);
     }
     messageIndex.set(messageId, items.length - 1);
   };
@@ -264,6 +293,8 @@ export function createConversationBuilder(): ConversationBuilder {
     switch (event.type) {
       case 'user-message': {
         // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
+        endAllActiveReasoning(receivedAt);
+        turnStopped = false;
         currentTurnId = genId('turn');
         items.push({
           kind: 'message',
@@ -299,6 +330,7 @@ export function createConversationBuilder(): ConversationBuilder {
         // Every event is a full snapshot, so replace-by-id; no merge, no synthesis.
         const existing = toolIndex.get(event.toolCall.toolCallId);
         if (existing === undefined) {
+          endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
           items.push({
             kind: 'tool',
             id: event.toolCall.toolCallId,
@@ -325,6 +357,7 @@ export function createConversationBuilder(): ConversationBuilder {
         // repeats the compactionId) — merge, so a partial emit never wipes earlier fields.
         const existing = compactionIndex.get(event.compactionId);
         if (existing === undefined) {
+          endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'compaction',
             id: event.compactionId,
@@ -357,6 +390,7 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'plan': {
         const planIndex = planIndexByTurn.get(currentTurnId);
         if (planIndex === undefined) {
+          endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'plan',
             id: genId('plan'),
@@ -400,6 +434,12 @@ export function createConversationBuilder(): ConversationBuilder {
         capabilities = event.capabilities;
         break;
       case 'status':
+        if (event.status !== 'starting' && event.status !== 'running') {
+          endAllActiveReasoning(receivedAt);
+          turnStopped = true;
+        } else {
+          turnStopped = false;
+        }
         status = event.status;
         break;
       case 'token-usage':
@@ -409,10 +449,13 @@ export function createConversationBuilder(): ConversationBuilder {
         usageReport = event.report;
         break;
       case 'stop':
+        endAllActiveReasoning(receivedAt);
+        turnStopped = true;
         stopReason = event.stopReason;
         break;
 
       case 'error':
+        endActiveReasoning(undefined, receivedAt);
         items.push({
           kind: 'error',
           id: genId('error'),
@@ -428,6 +471,7 @@ export function createConversationBuilder(): ConversationBuilder {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
+        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
         items.push({
           kind: 'approval',
           id: event.requestId,
@@ -447,6 +491,7 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
+        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
         items.push({
           kind: 'question',
           id: event.requestId,
@@ -529,10 +574,14 @@ export function createConversationBuilder(): ConversationBuilder {
     if (cached) return cached;
 
     const out = [...items];
-    const isSessionStreaming = status === 'running' || status === 'starting';
+    const isSessionStreaming = !turnStopped && (status === 'running' || status === 'starting');
     if (isSessionStreaming) {
+      for (const index of activeReasoningByScope.values()) {
+        const reasoning = out[index];
+        if (reasoning.kind === 'reasoning') out[index] = { ...reasoning, isStreaming: true };
+      }
       const last = out.at(-1);
-      if (last?.kind === 'reasoning' || (last?.kind === 'message' && last.role === 'assistant')) {
+      if (last?.kind === 'message' && last.role === 'assistant') {
         out[out.length - 1] = { ...last, isStreaming: true };
       }
     }

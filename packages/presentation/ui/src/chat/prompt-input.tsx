@@ -22,7 +22,7 @@ export function PromptInput({
     <form className={cn('w-full', className)} onSubmit={handleSubmit} {...props}>
       {/* The group's own focus/disabled styling keys on literal input/textarea selectors; the
        * composer's contenteditable editor needs these equivalents keyed on its data-slot. */}
-      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none has-[[data-slot=composer-editor][contenteditable=false]]:opacity-64 has-[[data-slot=composer-editor][contenteditable=false]]:before:shadow-none has-[[data-slot=composer-editor]:focus-visible]:border-ring has-[[data-slot=composer-editor]:focus-visible]:ring-[3px] has-[[data-slot=composer-editor]:focus-visible]:before:shadow-none">
+      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none before:rounded-2xl has-[[data-slot=composer-editor][contenteditable=false]]:opacity-64 has-[[data-slot=composer-editor][contenteditable=false]]:before:shadow-none has-[[data-slot=composer-editor]:focus-visible]:border-ring has-[[data-slot=composer-editor]:focus-visible]:ring-[3px] has-[[data-slot=composer-editor]:focus-visible]:before:shadow-none">
         {children}
       </InputGroup>
     </form>

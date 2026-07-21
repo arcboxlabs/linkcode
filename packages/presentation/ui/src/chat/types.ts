@@ -48,6 +48,14 @@ export type ConversationItem =
       blocks: ContentBlock[];
       isStreaming: boolean;
       parentToolCallId?: string;
+      /** Client-observed lifetime of this reasoning item; history may not provide either value. */
+      startedAt?: number;
+      endedAt?: number;
+      /**
+       * TODO: Populate only from an explicit provider-authored public summary. Never derive this
+       * from private reasoning blocks.
+       */
+      summary?: string;
     })
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
   | (ConversationItemBase & {

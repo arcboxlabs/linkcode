@@ -41,8 +41,14 @@ export function ConversationView({
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const { items } = conversation;
-  const { segments, declined, snapshottedToolIds, awaitingApproval } =
-    useTimelineModel(conversation);
+  const {
+    segments,
+    declined,
+    snapshottedToolIds,
+    awaitingApproval,
+    awaitingAnswer,
+    questionsByToolCall,
+  } = useTimelineModel(conversation);
 
   if (items.length === 0) {
     return (
@@ -97,6 +103,8 @@ export function ConversationView({
             declined={declined}
             snapshottedToolIds={snapshottedToolIds}
             awaitingApproval={awaitingApproval}
+            awaitingAnswer={awaitingAnswer}
+            questionsByToolCall={questionsByToolCall}
             TerminalBlockComponent={TerminalBlockComponent}
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
@@ -106,6 +114,8 @@ export function ConversationView({
       <ConversationScrollButton />
       <SubagentViewer
         awaitingApproval={awaitingApproval}
+        awaitingAnswer={awaitingAnswer}
+        questionsByToolCall={questionsByToolCall}
         childrenByParent={allSubagentChildren}
         declined={declined}
         onOpenChange={(open) => {

@@ -46,6 +46,16 @@ function subscribeThemeChange(listener: () => void): () => void {
   };
 }
 
+function createThemeChangeHandler(
+  resttyRef: React.RefObject<Restty | null>,
+  frameRef: React.RefObject<HTMLDivElement | null>,
+  colorScheme: TerminalColorScheme,
+): () => void {
+  return () => {
+    if (resttyRef.current) applyTerminalTheme(resttyRef.current, frameRef.current, colorScheme);
+  };
+}
+
 /** Bridge a {@link TerminalSession} to restty's native PTY transport. Load-bearing: with a
  * connected transport restty does NOT locally echo keystrokes; the transportless xterm-shim path
  * echoes on top of the shell's own echo — every character twice and broken backspace. */
@@ -259,9 +269,7 @@ export function LiveTerminal({
   );
 
   useAbortableEffect(() => {
-    const apply = (): void => {
-      if (resttyRef.current) applyTerminalTheme(resttyRef.current, frameRef.current, colorScheme);
-    };
+    const apply = createThemeChangeHandler(resttyRef, frameRef, colorScheme);
     apply();
     // Re-apply on `.dark` flips too, so the 'auto' scheme keeps following the app mode.
     return subscribeThemeChange(apply);

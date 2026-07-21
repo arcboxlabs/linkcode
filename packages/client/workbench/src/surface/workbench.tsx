@@ -80,6 +80,25 @@ const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
   // Headless streaming-json has no image prompt path verified yet.
 };
 
+async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
+  const { data } = await hostArtifact({ content, mimeType });
+  return { url: data.url };
+}
+
+async function handleHostVideoFile(cwd: string, path: string): Promise<{ url: string }> {
+  const { data } = await hostWorkspaceFile({ cwd, path });
+  return { url: data.url };
+}
+
+function availableWorkspaceId(
+  workspaceId: WorkspaceId | null | undefined,
+  workspaceIds: ReadonlySet<WorkspaceId>,
+): WorkspaceId | null {
+  return workspaceId !== null && workspaceId !== undefined && workspaceIds.has(workspaceId)
+    ? workspaceId
+    : null;
+}
+
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
 }
@@ -259,6 +278,10 @@ function WorkbenchSessionSurface({
     threadOrder,
     previewExpandedKeys,
   ]);
+  const threadGroupsByCollapseKey = useMemo(
+    () => new Map(threadGroups.map((group) => [group.collapseKey, group] as const)),
+    [threadGroups],
+  );
 
   function submitActiveInput(input: AgentInput): Promise<void> {
     const sessionId = sessions.activeId;
@@ -316,16 +339,6 @@ function WorkbenchSessionSurface({
         rememberSelection(submission.kind, newlyConfirmed);
       })
       .catch(noop);
-  }
-
-  async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
-    const { data } = await hostArtifact({ content, mimeType });
-    return { url: data.url };
-  }
-
-  async function handleHostVideoFile(cwd: string, path: string): Promise<{ url: string }> {
-    const { data } = await hostWorkspaceFile({ cwd, path });
-    return { url: data.url };
   }
 
   /** Reads a natively-picked attachment via the daemon's file-read op (drag-and-drop/paste reads
@@ -445,7 +458,7 @@ function WorkbenchSessionSurface({
     overId: SessionId,
     placement: 'before' | 'after',
   ): void {
-    const group = threadGroups.find((candidate) => candidate.collapseKey === collapseKey);
+    const group = threadGroupsByCollapseKey.get(collapseKey);
     if (!group) return;
     const next = applyThreadDrag({
       orderedIds: group.sessions.map((session) => session.sessionId),
@@ -460,35 +473,30 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const chatWorkspace =
-    allWorkspaces.find((workspace) => workspaceKind(workspace) === 'chat') ?? null;
-  const projectWorkspaces = allWorkspaces.filter(
-    (workspace) => workspaceKind(workspace) !== 'chat',
-  );
+  const workspaceIds = new Set(allWorkspaces.map((workspace) => workspace.workspaceId));
+  let chatWorkspace: WorkspaceRecord | null = null;
+  const projectWorkspaces: WorkspaceRecord[] = [];
+  for (const workspace of allWorkspaces) {
+    if (workspaceKind(workspace) === 'chat') chatWorkspace ??= workspace;
+    else projectWorkspaces.push(workspace);
+  }
 
   // Resolve the draft's initial picks: an explicit preselection (group "+", Chats "+") wins, then
   // the persisted last-used workspace (if it still exists), then chat, then the first project.
-  const persistedWorkspaceId =
-    lastWorkspaceId != null &&
-    allWorkspaces.some((workspace) => workspace.workspaceId === lastWorkspaceId)
-      ? lastWorkspaceId
-      : null;
+  const persistedWorkspaceId = availableWorkspaceId(lastWorkspaceId, workspaceIds);
   // Same validation as the persisted default: the store-held draft outlives daemon switches, so
   // its preselection can name a workspace this daemon has never heard of.
-  const requestedDraftWorkspaceId = sessions.draft?.workspaceId ?? null;
-  const draftWorkspaceId =
-    requestedDraftWorkspaceId != null &&
-    allWorkspaces.some((workspace) => workspace.workspaceId === requestedDraftWorkspaceId)
-      ? requestedDraftWorkspaceId
-      : null;
+  const draftWorkspaceId = availableWorkspaceId(sessions.draft?.workspaceId, workspaceIds);
+  const initialWorkspaceId =
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the helper explicitly returns null when the requested workspace is unavailable.
+    draftWorkspaceId ??
+    persistedWorkspaceId ??
+    chatWorkspace?.workspaceId ??
+    projectWorkspaces[0]?.workspaceId ??
+    null;
   const draft: NewSessionDraft | null = sessions.draft
     ? {
-        initialWorkspaceId:
-          draftWorkspaceId ??
-          persistedWorkspaceId ??
-          chatWorkspace?.workspaceId ??
-          projectWorkspaces[0]?.workspaceId ??
-          null,
+        initialWorkspaceId,
         initialProvider: lastProvider ?? 'claude-code',
       }
     : null;

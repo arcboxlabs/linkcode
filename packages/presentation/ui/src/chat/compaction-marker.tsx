@@ -1,14 +1,19 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Separator } from 'coss-ui/components/separator';
 import { Spinner } from 'coss-ui/components/spinner';
-import { ChevronRightIcon, FoldVerticalIcon } from 'lucide-react';
+import { FoldVerticalIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { Markdown } from './markdown';
 import { Shimmer } from './shimmer';
 import { formatElapsed, useNowEverySecond } from './use-elapsed';
@@ -57,26 +62,31 @@ export function CompactionMarker({
 }: CompactionMarkerProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const [open, setOpen] = useState(false);
-  const detail =
-    preTokens !== undefined && postTokens !== undefined
-      ? t('compactedTokens', { pre: formatTokens(preTokens), post: formatTokens(postTokens) })
-      : null;
 
   if (inProgress) {
     return <CompactingRow startedAt={startedAt} />;
   }
 
+  const detail =
+    preTokens !== undefined && postTokens !== undefined
+      ? t('compactedTokens', { pre: formatTokens(preTokens), post: formatTokens(postTokens) })
+      : null;
+
   const row = (
     <>
-      <FoldVerticalIcon className="size-3.5 shrink-0" />
-      <span className="font-medium">{t('compacted')}</span>
-      {detail ? <span className="text-muted-foreground/70">{detail}</span> : null}
+      <ChatDisclosureIconSlot>
+        <FoldVerticalIcon />
+      </ChatDisclosureIconSlot>
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{t('compacted')}</span>
+        {detail ? <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>{detail}</span> : null}
+      </span>
     </>
   );
 
   if (!summary) {
     return (
-      <div className="my-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+      <div className="my-2 flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
         {row}
         <Separator className="min-w-8 flex-1" />
       </div>
@@ -89,18 +99,16 @@ export function CompactionMarker({
       onOpenChange={setOpen}
       open={open}
     >
-      <div className="flex items-center gap-2">
-        <CollapsibleTrigger className="flex shrink-0 items-center gap-2 py-1 text-left hover:text-foreground">
+      <div className="flex min-w-0 items-center gap-2">
+        <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'max-w-full shrink')}>
           {row}
-          <ChevronRightIcon
-            className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
-          />
+          <ChatDisclosureChevron open={open} />
         </CollapsibleTrigger>
         <Separator className="min-w-8 flex-1" />
       </div>
-      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3">
+      <ChatDisclosureContent className="mt-1 border-l-2 border-border pl-3">
         <Markdown>{summary}</Markdown>
-      </CollapsibleContent>
+      </ChatDisclosureContent>
     </Collapsible>
   );
 }

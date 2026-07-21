@@ -44,7 +44,7 @@ export function WorkspaceFileTree({
   const [searchValue, setSearchValue] = useState('');
   const modelRef = useRef<PierreFileTreeModel | null>(null);
   const handleSelectionChange = useStableHandler((selected: readonly string[]) => {
-    const path = selected[0];
+    const path = selected.at(0);
     if (path === undefined) return;
     // isDirectory() !== false also drops paths the model no longer knows (mid-reset clicks).
     if (modelRef.current?.getItem(path)?.isDirectory() !== false) return;

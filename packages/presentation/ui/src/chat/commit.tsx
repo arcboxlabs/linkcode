@@ -1,14 +1,13 @@
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { FileIcon, GitCommitIcon, MinusIcon, PlusIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
+import { CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, ChatDisclosureChevron } from './disclosure-header';
 
 // TODO(linkcode-schema): Provisional UI-only commit metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when git/checkpoint events expose structured commits.
@@ -44,7 +43,7 @@ export function Commit({
   return (
     <Collapsible
       className={cn(
-        'my-2 overflow-hidden rounded-xl border border-border bg-card text-sm',
+        'my-2 overflow-hidden rounded-2xl border border-border bg-card text-sm',
         className,
       )}
       defaultOpen={defaultOpen}
@@ -82,18 +81,25 @@ export function CommitHeader({
     >
       {children ?? (
         <>
-          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <CollapsibleTrigger
+            className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'flex-1 gap-3 py-0')}
+          >
             <CommitAvatar commit={commit} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium text-foreground">{commit.message}</div>
+            <div className="min-w-0 shrink overflow-hidden">
+              <div className="truncate font-medium opacity-80">{commit.message}</div>
               <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 <CommitHash hash={commit.hash} />
-                {commit.authorName ? <span className="truncate">{commit.authorName}</span> : null}
+                {commit.authorName ? (
+                  <span className="min-w-0 shrink truncate">{commit.authorName}</span>
+                ) : null}
                 {commit.createdAt ? (
-                  <time dateTime={commit.createdAt}>{commit.createdAt}</time>
+                  <time className="shrink-0" dateTime={commit.createdAt}>
+                    {commit.createdAt}
+                  </time>
                 ) : null}
               </div>
             </div>
+            <ChatDisclosureChevron />
           </CollapsibleTrigger>
           <CommitCopyButton hash={commit.hash} />
         </>
@@ -106,9 +112,9 @@ export type CommitAvatarProps = React.ComponentProps<typeof Avatar> & {
   commit: ChatCommit;
 };
 
-export function CommitAvatar({ commit, ...props }: CommitAvatarProps): React.ReactNode {
+export function CommitAvatar({ className, commit, ...props }: CommitAvatarProps): React.ReactNode {
   return (
-    <Avatar {...props}>
+    <Avatar className={cn('shrink-0', className)} {...props}>
       <AvatarFallback>
         {commit.authorInitials ?? <GitCommitIcon className="size-3.5 text-muted-foreground" />}
       </AvatarFallback>
@@ -122,7 +128,7 @@ export type CommitHashProps = React.ComponentProps<'span'> & {
 
 export function CommitHash({ className, hash, ...props }: CommitHashProps): React.ReactNode {
   return (
-    <span className={cn('inline-flex items-center gap-1 font-mono', className)} {...props}>
+    <span className={cn('inline-flex shrink-0 items-center gap-1 font-mono', className)} {...props}>
       <GitCommitIcon className="size-3" />
       {hash.slice(0, 8)}
     </span>
@@ -153,10 +159,12 @@ export function CommitCopyButton({
   );
 }
 
-export type CommitContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type CommitContentProps = ChatDisclosureContentProps;
 
 export function CommitContent({ className, ...props }: CommitContentProps): React.ReactNode {
-  return <CollapsibleContent className={cn('border-t border-border p-2', className)} {...props} />;
+  return (
+    <ChatDisclosureContent className={cn('border-t border-border p-2', className)} {...props} />
+  );
 }
 
 export type CommitFilesProps = React.ComponentProps<'div'> & {

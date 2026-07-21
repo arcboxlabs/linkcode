@@ -99,7 +99,7 @@ function DesktopConnectionFallback(): React.ReactNode {
     const timer = setTimeout(() => {
       if (!signal.aborted) setWithinStartupGrace(false);
     }, remaining);
-    signal.addEventListener('abort', () => clearTimeout(timer));
+    return () => clearTimeout(timer);
   }, []);
 
   if (status === 'connecting' || (managed && withinStartupGrace)) return <ConnectionSkeleton />;

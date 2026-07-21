@@ -74,155 +74,201 @@
 }
 
 @layer components {
-  .ansi-black-fg {
-    color: #6b7280;
+  /* Read-only chat terminals mirror LiveTerminal's auto pair: GitHub Light Default / Dark+.
+     Scope the palette so ANSI class names from other libraries cannot inherit it accidentally. */
+  .chat-terminal-output {
+    --lc-ansi-black: rgb(36 41 47);
+    --lc-ansi-red: rgb(207 34 46);
+    --lc-ansi-green: rgb(17 99 41);
+    --lc-ansi-yellow: rgb(77 45 0);
+    --lc-ansi-blue: rgb(9 105 218);
+    --lc-ansi-magenta: rgb(130 80 223);
+    --lc-ansi-cyan: rgb(27 124 131);
+    --lc-ansi-white: rgb(110 119 129);
+    --lc-ansi-bright-black: rgb(87 96 106);
+    --lc-ansi-bright-red: rgb(164 14 38);
+    --lc-ansi-bright-green: rgb(26 127 55);
+    --lc-ansi-bright-yellow: rgb(99 60 1);
+    --lc-ansi-bright-blue: rgb(33 139 255);
+    --lc-ansi-bright-magenta: rgb(164 117 249);
+    --lc-ansi-bright-cyan: rgb(49 146 170);
+    --lc-ansi-bright-white: rgb(140 149 159);
+
+    background-color: rgb(255 255 255);
+    color: rgb(31 35 40);
   }
 
-  .ansi-red-fg {
-    color: #f87171;
+  .dark .chat-terminal-output {
+    --lc-ansi-black: rgb(0 0 0);
+    --lc-ansi-red: rgb(205 49 49);
+    --lc-ansi-green: rgb(13 188 121);
+    --lc-ansi-yellow: rgb(229 229 16);
+    --lc-ansi-blue: rgb(36 114 200);
+    --lc-ansi-magenta: rgb(188 63 188);
+    --lc-ansi-cyan: rgb(17 168 205);
+    --lc-ansi-white: rgb(229 229 229);
+    --lc-ansi-bright-black: rgb(102 102 102);
+    --lc-ansi-bright-red: rgb(241 76 76);
+    --lc-ansi-bright-green: rgb(35 209 139);
+    --lc-ansi-bright-yellow: rgb(245 245 67);
+    --lc-ansi-bright-blue: rgb(59 142 234);
+    --lc-ansi-bright-magenta: rgb(214 112 214);
+    --lc-ansi-bright-cyan: rgb(41 184 219);
+    --lc-ansi-bright-white: rgb(229 229 229);
+
+    background-color: rgb(30 30 30);
+    color: rgb(204 204 204);
   }
 
-  .ansi-green-fg {
-    color: #4ade80;
+  .chat-terminal-output .ansi-black-fg {
+    color: var(--lc-ansi-black);
   }
 
-  .ansi-yellow-fg {
-    color: #facc15;
+  .chat-terminal-output .ansi-red-fg {
+    color: var(--lc-ansi-red);
   }
 
-  .ansi-blue-fg {
-    color: #60a5fa;
+  .chat-terminal-output .ansi-green-fg {
+    color: var(--lc-ansi-green);
   }
 
-  .ansi-magenta-fg {
-    color: #c084fc;
+  .chat-terminal-output .ansi-yellow-fg {
+    color: var(--lc-ansi-yellow);
   }
 
-  .ansi-cyan-fg {
-    color: #22d3ee;
+  .chat-terminal-output .ansi-blue-fg {
+    color: var(--lc-ansi-blue);
   }
 
-  .ansi-white-fg {
-    color: #e5e7eb;
+  .chat-terminal-output .ansi-magenta-fg {
+    color: var(--lc-ansi-magenta);
   }
 
-  .ansi-bright-black-fg {
-    color: #9ca3af;
+  .chat-terminal-output .ansi-cyan-fg {
+    color: var(--lc-ansi-cyan);
   }
 
-  .ansi-bright-red-fg {
-    color: #fca5a5;
+  .chat-terminal-output .ansi-white-fg {
+    color: var(--lc-ansi-white);
   }
 
-  .ansi-bright-green-fg {
-    color: #86efac;
+  .chat-terminal-output .ansi-bright-black-fg {
+    color: var(--lc-ansi-bright-black);
   }
 
-  .ansi-bright-yellow-fg {
-    color: #fde047;
+  .chat-terminal-output .ansi-bright-red-fg {
+    color: var(--lc-ansi-bright-red);
   }
 
-  .ansi-bright-blue-fg {
-    color: #93c5fd;
+  .chat-terminal-output .ansi-bright-green-fg {
+    color: var(--lc-ansi-bright-green);
   }
 
-  .ansi-bright-magenta-fg {
-    color: #d8b4fe;
+  .chat-terminal-output .ansi-bright-yellow-fg {
+    color: var(--lc-ansi-bright-yellow);
   }
 
-  .ansi-bright-cyan-fg {
-    color: #67e8f9;
+  .chat-terminal-output .ansi-bright-blue-fg {
+    color: var(--lc-ansi-bright-blue);
   }
 
-  .ansi-bright-white-fg {
-    color: #f9fafb;
+  .chat-terminal-output .ansi-bright-magenta-fg {
+    color: var(--lc-ansi-bright-magenta);
   }
 
-  .ansi-black-bg {
-    background-color: #111827;
+  .chat-terminal-output .ansi-bright-cyan-fg {
+    color: var(--lc-ansi-bright-cyan);
   }
 
-  .ansi-red-bg {
-    background-color: #7f1d1d;
+  .chat-terminal-output .ansi-bright-white-fg {
+    color: var(--lc-ansi-bright-white);
   }
 
-  .ansi-green-bg {
-    background-color: #14532d;
+  .chat-terminal-output .ansi-black-bg {
+    background-color: var(--lc-ansi-black);
   }
 
-  .ansi-yellow-bg {
-    background-color: #713f12;
+  .chat-terminal-output .ansi-red-bg {
+    background-color: var(--lc-ansi-red);
   }
 
-  .ansi-blue-bg {
-    background-color: #1e3a8a;
+  .chat-terminal-output .ansi-green-bg {
+    background-color: var(--lc-ansi-green);
   }
 
-  .ansi-magenta-bg {
-    background-color: #581c87;
+  .chat-terminal-output .ansi-yellow-bg {
+    background-color: var(--lc-ansi-yellow);
   }
 
-  .ansi-cyan-bg {
-    background-color: #164e63;
+  .chat-terminal-output .ansi-blue-bg {
+    background-color: var(--lc-ansi-blue);
   }
 
-  .ansi-white-bg {
-    background-color: #e5e7eb;
+  .chat-terminal-output .ansi-magenta-bg {
+    background-color: var(--lc-ansi-magenta);
   }
 
-  .ansi-bright-black-bg {
-    background-color: #374151;
+  .chat-terminal-output .ansi-cyan-bg {
+    background-color: var(--lc-ansi-cyan);
   }
 
-  .ansi-bright-red-bg {
-    background-color: #991b1b;
+  .chat-terminal-output .ansi-white-bg {
+    background-color: var(--lc-ansi-white);
   }
 
-  .ansi-bright-green-bg {
-    background-color: #166534;
+  .chat-terminal-output .ansi-bright-black-bg {
+    background-color: var(--lc-ansi-bright-black);
   }
 
-  .ansi-bright-yellow-bg {
-    background-color: #854d0e;
+  .chat-terminal-output .ansi-bright-red-bg {
+    background-color: var(--lc-ansi-bright-red);
   }
 
-  .ansi-bright-blue-bg {
-    background-color: #1d4ed8;
+  .chat-terminal-output .ansi-bright-green-bg {
+    background-color: var(--lc-ansi-bright-green);
   }
 
-  .ansi-bright-magenta-bg {
-    background-color: #7e22ce;
+  .chat-terminal-output .ansi-bright-yellow-bg {
+    background-color: var(--lc-ansi-bright-yellow);
   }
 
-  .ansi-bright-cyan-bg {
-    background-color: #0e7490;
+  .chat-terminal-output .ansi-bright-blue-bg {
+    background-color: var(--lc-ansi-bright-blue);
   }
 
-  .ansi-bright-white-bg {
-    background-color: #f9fafb;
+  .chat-terminal-output .ansi-bright-magenta-bg {
+    background-color: var(--lc-ansi-bright-magenta);
   }
 
-  .ansi-bold {
+  .chat-terminal-output .ansi-bright-cyan-bg {
+    background-color: var(--lc-ansi-bright-cyan);
+  }
+
+  .chat-terminal-output .ansi-bright-white-bg {
+    background-color: var(--lc-ansi-bright-white);
+  }
+
+  .chat-terminal-output .ansi-bold {
     font-weight: 700;
   }
 
-  .ansi-dim {
+  .chat-terminal-output .ansi-dim {
     opacity: 0.62;
   }
 
-  .ansi-italic {
+  .chat-terminal-output .ansi-italic {
     font-style: italic;
   }
 
-  .ansi-underline {
+  .chat-terminal-output .ansi-underline {
     text-decoration-line: underline;
   }
 
-  .ansi-strikethrough {
+  .chat-terminal-output .ansi-strikethrough {
     text-decoration-line: line-through;
   }
 
-  .ansi-hidden {
+  .chat-terminal-output .ansi-hidden {
     visibility: hidden;
   }
 }

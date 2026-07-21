@@ -1,89 +1,88 @@
-import type { ToolCall } from '@linkcode/schema';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import type { ConversationItem } from './types';
 
-/**
- * Codex-style grouping: consecutive same-bucket tool calls collapse; any other item kind flushes.
- * Approval-gated calls stay standalone (interaction points); lone calls render as plain rows.
- */
-
-export type ActivityBucket = 'explore' | 'command' | 'fetch' | 'think' | 'files' | 'other';
-
+type ReasoningTimelineItem = Extract<ConversationItem, { kind: 'reasoning' }>;
 export type ToolTimelineItem = Extract<ConversationItem, { kind: 'tool' }>;
+type NonTaskToolTimelineItem = ToolTimelineItem & {
+  toolCall: ToolTimelineItem['toolCall'] & {
+    kind: Exclude<ToolTimelineItem['toolCall']['kind'], 'task'>;
+  };
+};
+
+/** Activity which can be collapsed without hiding narration or an interactive subagent. */
+export type ActivityRunItem = ReasoningTimelineItem | NonTaskToolTimelineItem;
 
 export type TimelineEntry =
   | { type: 'item'; item: ConversationItem }
-  | { type: 'single'; item: ToolTimelineItem }
-  | { type: 'group'; id: string; bucket: ActivityBucket; items: ToolTimelineItem[] }
-  /** A subagent spawn (`task`-kind tool call); renders as its own nested card, never in a streak. */
-  | { type: 'task'; item: ToolTimelineItem };
+  | { type: 'run'; id: string; items: ActivityRunItem[] };
 
-/** Buckets tool kinds by review affordance, so summaries read "Explored" / "Ran commands" / "Edited files". */
-export function activityBucket(kind: ToolCall['kind']): ActivityBucket {
-  switch (kind) {
-    case 'read':
-    case 'search':
-      return 'explore';
-    case 'execute':
-      return 'command';
-    case 'fetch':
-      return 'fetch';
-    case 'think':
-      return 'think';
-    case 'edit':
-    case 'delete':
-    case 'move':
-      return 'files';
-    // 'task' never reaches this default: groupTimeline breaks it out as a `task` entry first.
-    default:
-      return 'other';
-  }
+export interface ActivityGroupingContext {
+  readonly index: number;
+  readonly timeline: readonly ConversationItem[];
+  readonly approvalGatedToolCallIds: ReadonlySet<string>;
 }
 
-export function groupTimeline(items: readonly ConversationItem[]): TimelineEntry[] {
-  // Approval-gated calls are interaction points; never bury them in a group.
+export interface ActivityGroupingPolicy {
+  /** Equal non-null keys form a run until another key or a non-activity item interrupts it. */
+  classify(item: ConversationItem, context: ActivityGroupingContext): string | null;
+  minimumGroupSize: number;
+}
+
+const DEFAULT_ACTIVITY_KEY = 'activity';
+
+export const defaultActivityGroupingPolicy: ActivityGroupingPolicy = {
+  classify: (item) => (isActivityRunItem(item) ? DEFAULT_ACTIVITY_KEY : null),
+  minimumGroupSize: 2,
+};
+
+export function groupTimeline(
+  items: readonly ConversationItem[],
+  policy: ActivityGroupingPolicy = defaultActivityGroupingPolicy,
+): TimelineEntry[] {
+  // Policies may preserve approval-gated tools as standalone interaction points.
   const approvalGated = new Set<string>();
   for (const item of items) {
     if (item.kind === 'approval') approvalGated.add(item.toolCall.toolCallId);
   }
 
   const entries: TimelineEntry[] = [];
-  let streak: ToolTimelineItem[] = [];
-  let streakBucket: ActivityBucket | null = null;
+  let run: ActivityRunItem[] = [];
+  let runKey: string | null = null;
 
-  const flushStreak = (): void => {
-    if (streak.length === 0) return;
-    entries.push(
-      streak.length === 1
-        ? { type: 'single', item: streak[0] }
-        : // Keyed by the first item so the group identity is stable while a streaming burst appends.
-          { type: 'group', id: `group-${streak[0].id}`, bucket: streakBucket!, items: streak },
-    );
-    streak = [];
-    streakBucket = null;
+  const flushRun = (): void => {
+    if (run.length === 0) return;
+    if (run.length >= policy.minimumGroupSize) {
+      entries.push({ type: 'run', id: `run-${run[0].id}`, items: run });
+    } else {
+      appendArrayInPlace(
+        entries,
+        run.map((item) => ({ type: 'item' as const, item })),
+      );
+    }
+    run = [];
+    runKey = null;
   };
 
-  for (const item of items) {
-    if (item.kind !== 'tool') {
-      flushStreak();
+  for (const [index, item] of items.entries()) {
+    const key = policy.classify(item, {
+      index,
+      timeline: items,
+      approvalGatedToolCallIds: approvalGated,
+    });
+    if (!isActivityRunItem(item) || key === null) {
+      flushRun();
       entries.push({ type: 'item', item });
       continue;
     }
-    if (item.toolCall.kind === 'task') {
-      flushStreak();
-      entries.push({ type: 'task', item });
-      continue;
-    }
-    if (approvalGated.has(item.toolCall.toolCallId)) {
-      flushStreak();
-      entries.push({ type: 'single', item });
-      continue;
-    }
-    const bucket = activityBucket(item.toolCall.kind);
-    if (bucket !== streakBucket) flushStreak();
-    streakBucket = bucket;
-    streak.push(item);
+    if (runKey !== null && key !== runKey) flushRun();
+    runKey = key;
+    run.push(item);
   }
-  flushStreak();
+  flushRun();
 
   return entries;
+}
+
+function isActivityRunItem(item: ConversationItem): item is ActivityRunItem {
+  return item.kind === 'reasoning' || (item.kind === 'tool' && item.toolCall.kind !== 'task');
 }

@@ -44,6 +44,16 @@ function optionById<T extends { id: string }>(
   return undefined;
 }
 
+function policyById(
+  policies: readonly ApprovalPolicy[],
+  policyId: string | null,
+): ApprovalPolicy | undefined {
+  for (const policy of policies) {
+    if (policy.policyId === policyId) return policy;
+  }
+  return undefined;
+}
+
 /** The `+` trigger for the composer's shared command popup. */
 export function ComposerPlusMenu({
   disabled,
@@ -86,7 +96,7 @@ export function ApprovalPolicyMenu({
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   if (policies.length === 0) return null;
-  const active = policies.find((policy) => policy.policyId === currentPolicyId) ?? policies[0];
+  const active = policyById(policies, currentPolicyId) ?? policies[0];
 
   return (
     <Menu>
