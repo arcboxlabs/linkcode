@@ -1,6 +1,11 @@
 import { Card } from 'coss-ui/components/card';
 import { cn } from '../lib/cn';
 
+/** Large page-level heading at the top of a settings panel column (Codex-style). */
+export function SettingsPageTitle({ children }: React.PropsWithChildren): React.ReactNode {
+  return <h1 className="mb-8 font-semibold text-3xl tracking-tight">{children}</h1>;
+}
+
 /** A titled settings section: small heading floating above its content (Codex-style). */
 export function SettingsSection({
   title,
