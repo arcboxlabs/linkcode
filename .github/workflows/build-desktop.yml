@@ -65,7 +65,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: blacksmith-6vcpu-macos-26 # arm64 (M4); Xcode 26 (actool >= 26) compiles mac.icon into Assets.car
+          - os: arcbox-macos-arm64 # arm64 macOS; host must have Xcode 26 (actool >= 26) to compile mac.icon into Assets.car
             platform: mac
           - os: blacksmith-4vcpu-windows-2025 # public beta; VS Build Tools only — enough for NSIS
             platform: win
