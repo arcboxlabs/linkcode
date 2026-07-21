@@ -4,6 +4,8 @@
 }:
 
 {
+  dotenv.disableHint = true;
+
   packages = [
     pkgs.git
     pkgs.prek
@@ -20,7 +22,8 @@
     corepack.enable = false;
     pnpm = {
       enable = true;
-      install.enable = true;
+      # Orb setup owns the frozen install; shell activation must stay side-effect free.
+      install.enable = false;
     };
   };
   languages.typescript.enable = true;
