@@ -114,57 +114,46 @@ export function AccountList({
               </li>
             </>
           ) : null}
-          {loading
-            ? null
-            : rows.map((account) => (
-                <li key={account.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-                    onClick={() => onSelect(account.id)}
-                  >
-                    <ServiceIcon
-                      service={account.service}
-                      label={account.label}
-                      className="size-10"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-sm">{account.label}</span>
-                      <span className="block truncate text-muted-foreground text-xs">
-                        {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
-                      </span>
-                      {account.auth !== undefined || account.endpoint !== undefined ? (
-                        <span className="block truncate text-muted-foreground text-xs">
-                          {accountDetailLine(account)}
-                        </span>
-                      ) : null}
+          {rows.map((account) => (
+            <li key={account.id}>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
+                onClick={() => onSelect(account.id)}
+              >
+                <ServiceIcon service={account.service} label={account.label} className="size-10" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-sm">{account.label}</span>
+                  <span className="block truncate text-muted-foreground text-xs">
+                    {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
+                  </span>
+                  {account.auth !== undefined || account.endpoint !== undefined ? (
+                    <span className="block truncate text-muted-foreground text-xs">
+                      {accountDetailLine(account)}
                     </span>
-                    <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
-                      {account.boundAgents.length === 0 ? (
-                        <Badge
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full border-dashed text-muted-foreground"
-                        >
-                          {t('unbound')}
-                        </Badge>
-                      ) : (
-                        account.boundAgents.map((kind) => (
-                          <Badge
-                            key={kind}
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full"
-                          >
-                            {tAgent(kind)}
-                          </Badge>
-                        ))
-                      )}
-                    </span>
-                    <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                </li>
-              ))}
+                  ) : null}
+                </span>
+                <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
+                  {account.boundAgents.length === 0 ? (
+                    <Badge
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full border-dashed text-muted-foreground"
+                    >
+                      {t('unbound')}
+                    </Badge>
+                  ) : (
+                    account.boundAgents.map((kind) => (
+                      <Badge key={kind} variant="outline" size="sm" className="rounded-full">
+                        {tAgent(kind)}
+                      </Badge>
+                    ))
+                  )}
+                </span>
+                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
           {!loading && needle && rows.length === 0 ? (
             <li className="px-4 py-12 text-center text-muted-foreground text-sm">
               {t('noMatches')}
