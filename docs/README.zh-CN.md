@@ -28,8 +28,8 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/cdn-cgi/image/width=1920,format=auto/screenshot/2026-07-desktop-new-task/shots-gray-dark.webp">
-  <img src="https://static.linkcode.ai/cdn-cgi/image/width=1920,format=auto/screenshot/2026-07-desktop-new-task/shots-gray-light.webp" alt="LinkCode">
+  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-dark-3x.webp">
+  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-gray-light-3x.webp" alt="LinkCode">
 </picture>
 
 LinkCode 是所有 Coding Agent 的统一工作台。它在你的机器上运行一个本地宿主,接管 Claude Code、Codex、OpenCode、Pi 和 Grok Build,把它们各不相同的原生事件归一成同一份数据契约,再把同样的会话投送到每一个客户端 —— 在电脑前启动 Agent,走到哪里都能随时照看。
