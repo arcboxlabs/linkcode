@@ -658,12 +658,13 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.resumeFrom = undefined;
     try {
       const modelCatalog = await this.readModelCatalog(server);
-      this.modelCatalogAvailable = modelCatalog !== undefined;
-      if (modelCatalog) {
+      if (modelCatalog && modelCatalog.models.length > 0) {
+        this.modelCatalogAvailable = true;
         this.catalogDefaultModel = modelCatalog.defaultModel;
         this.modelOptions = new Map(modelCatalog.models.map((model) => [model.id, model]));
         this.emitModels(modelCatalog.models);
       } else {
+        this.modelCatalogAvailable = false;
         this.catalogDefaultModel = undefined;
         this.modelOptions.clear();
       }

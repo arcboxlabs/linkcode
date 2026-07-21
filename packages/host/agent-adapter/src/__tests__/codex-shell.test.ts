@@ -15,6 +15,7 @@ function reasoningEfforts(...efforts: string[]) {
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
   closed = false;
+  emptyModelList = false;
   /** Set per test to reject a specific method like a JSON-RPC error response. */
   rejectMethod: string | undefined;
   threadResponse: unknown = {
@@ -32,6 +33,7 @@ class FakeCodexServer {
       return Promise.resolve(this.threadResponse);
     }
     if (method === 'model/list') {
+      if (this.emptyModelList) return Promise.resolve({ data: [] });
       return Promise.resolve({
         data: [
           {
@@ -91,12 +93,14 @@ class FakeCodexServer {
 
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
+  emptyModelList = false;
   rejectMethod: string | undefined;
   threadResponse: unknown;
   protected override startAppServer(
     opts: Omit<CodexAppServerOptions, 'binaryPath'>,
   ): Promise<CodexServerHandle> {
     const server = new FakeCodexServer(opts);
+    server.emptyModelList = this.emptyModelList;
     server.rejectMethod = this.rejectMethod;
     if (this.threadResponse !== undefined) server.threadResponse = this.threadResponse;
     this.fakeServers.push(server);
@@ -292,6 +296,19 @@ describe('CodexAdapter shell-command passthrough', () => {
     );
     const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
     expect(turn?.params).toMatchObject({ effort });
+  });
+
+  it.each([
+    'max',
+    'ultra',
+  ] as const)('defers effort %s validation when model discovery has no usable entries', async (effort) => {
+    const adapter = new TestCodex();
+    adapter.emptyModelList = true;
+
+    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+      'thread/start',
+    );
   });
 
   it('accepts Luna max but rejects Luna ultra from provider metadata', async () => {
