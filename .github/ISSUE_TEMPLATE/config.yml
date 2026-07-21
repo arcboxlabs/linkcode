@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/arcboxlabs/linkcode/security/advisories/new
+    about: Never report vulnerabilities in public issues — use private advisory reporting.
   - name: Questions & support
     url: https://github.com/arcboxlabs/linkcode/blob/master/SUPPORT.md
     about: Where to look and who to ask — docs, logs, email, and social channels.

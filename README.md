@@ -18,7 +18,6 @@
     <img alt="License" src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat"></a>
     <a href="https://twitter.com/arcboxlabs" target="_blank">
     <img alt="twitter" src="https://img.shields.io/badge/follow-arcboxlabs-green?style=social&logo=Twitter"></a>
-    <img alt="Hits" src="https://hits.aprilnea.com/hits?url=https://github.com/arcboxlabs/linkcode">
 </div>
 
 <p align="center">

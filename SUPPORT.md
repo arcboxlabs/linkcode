@@ -27,6 +27,12 @@ Quick daemon health check — a JSON identity reply means the local host is up:
 curl http://127.0.0.1:19523/linkcode
 ```
 
+## Cloud, agents, and security
+
+- **LinkCode Cloud or account issues** — the Cloud service lives outside this repository; email [hello@arcbox.dev](mailto:hello@arcbox.dev) instead of filing an issue here.
+- **Agent CLI problems** — bugs in Claude Code, Codex, OpenCode, Pi, or Grok Build themselves belong upstream with their vendors; file here only when LinkCode integrates them incorrectly.
+- **Security vulnerabilities** — never open a public issue. Report privately via [GitHub security advisories](https://github.com/arcboxlabs/linkcode/security/advisories/new) or email [hello@arcbox.dev](mailto:hello@arcbox.dev).
+
 ## Questions
 
 - Open a [GitHub issue](https://github.com/arcboxlabs/linkcode/issues/new/choose) — questions are welcome there too.
