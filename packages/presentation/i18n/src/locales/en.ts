@@ -232,6 +232,8 @@ export const en = {
       customPlaceholder: 'Tell Codex what to do differently',
     },
     question: {
+      callTitle: 'Request user input',
+      dismissed: 'Dismissed',
       navigation: 'Question navigation',
       previous: 'Previous question',
       next: 'Next question',

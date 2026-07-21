@@ -6,6 +6,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
 import { FileArtifactCard } from '../artifacts/file-card';
+import type { QuestionConversationItem } from '../conversation-prompts';
+import { QuestionCallItem } from '../question-call-item';
 import { SubagentCard, SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 import { hasToolBody } from '../tool-utils';
@@ -34,6 +36,7 @@ const RE_LEGACY_PREVIEW = /^legacy\.ts/;
 const RE_SUBAGENT_LABEL = /^label/;
 const RE_MOVE = /^Move file/;
 const RE_MOVE_PREVIEW = /^target\.ts → moved\.ts$/;
+const RE_QUESTION_CALL_TITLE = /^callTitle/;
 const RE_READ = /^Read/;
 const RE_TARGET_PREVIEW_HEADER = /^target\.ts/;
 const RE_THINKING_PUBLIC_SUMMARY = /thinking.*Reviewing public results/;
@@ -543,6 +546,48 @@ describe('ToolCallItem', () => {
     expect(header.textContent).not.toContain('kindExecute');
   });
 
+  it('marks a call awaiting the user answer with the question glyph, not a spinner', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'question-1',
+      title: 'Request user input',
+      kind: 'other',
+      status: 'pending',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem awaitingAnswer toolCall={toolCall} />);
+
+    expect(container.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('.bg-clip-text')).not.toBeNull();
+  });
+
+  it('shimmers running and user-blocked titles but not declined ones', () => {
+    const running: ToolCall = {
+      toolCallId: 'running-1',
+      title: 'Running tests',
+      kind: 'execute',
+      status: 'in_progress',
+      content: [],
+    };
+
+    const { container, rerender } = render(<ToolCallItem toolCall={running} />);
+    // The kind glyph stays put while running — the shimmering title is the activity signal.
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('svg.lucide-terminal')?.getAttribute('class')).toContain(
+      'text-foreground',
+    );
+    expect(container.querySelector('.bg-clip-text')?.textContent).toBe('Running tests');
+
+    rerender(<ToolCallItem awaitingApproval toolCall={{ ...running, status: 'pending' }} />);
+    expect(container.querySelector('svg.lucide-shield')).not.toBeNull();
+    expect(container.querySelector('.bg-clip-text')).not.toBeNull();
+
+    rerender(<ToolCallItem declined toolCall={{ ...running, status: 'pending' }} />);
+    expect(container.querySelector('svg.lucide-ban')).not.toBeNull();
+    expect(container.querySelector('.bg-clip-text')).toBeNull();
+  });
+
   it('opens a path-only write from its header-only preview', async () => {
     const user = userEvent.setup();
     const openFile = vi.fn();
@@ -833,6 +878,8 @@ describe('SubagentTranscript', () => {
   };
   const sharedProps = {
     awaitingApproval: new Set<string>(),
+    awaitingAnswer: new Set<string>(),
+    questionsByToolCall: new Map<string, QuestionConversationItem>(),
     childrenByParent: new Map(),
     declined: new Set<string>(),
     toolCall: taskToolCall,
@@ -952,5 +999,91 @@ describe('SubagentTranscript', () => {
     const header = screen.getByRole('button', { name: RE_THINKING_PUBLIC_SUMMARY });
     expect(header.getAttribute('aria-expanded')).toBe('true');
     expect(header.textContent).not.toContain('api_key');
+  });
+});
+
+describe('QuestionCallItem', () => {
+  const questionToolCall: ToolCall = {
+    toolCallId: 'question-1',
+    title: 'AskUserQuestion',
+    kind: 'other',
+    status: 'pending',
+    rawOutput: 'The user doesn’t want to proceed with this tool use.',
+    content: [],
+  };
+  const questionItem: QuestionConversationItem = {
+    id: 'question-item-1',
+    kind: 'question',
+    turnId: 'turn-1',
+    requestId: 'request-1',
+    toolCall: { toolCallId: 'question-1' },
+    questions: [
+      {
+        questionId: 'scope',
+        prompt: 'How broad should the change be?',
+        header: 'Scope',
+        multiSelect: false,
+        options: [
+          { optionId: 'narrow', label: 'Narrow fix' },
+          { optionId: 'broad', label: 'Broad refactor' },
+        ],
+      },
+    ],
+    responding: false,
+  };
+
+  it('presents a pending ask as a shimmering question row without the raw payload', () => {
+    const { container } = render(
+      <QuestionCallItem awaitingAnswer question={questionItem} toolCall={questionToolCall} />,
+    );
+
+    expect(container.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(container.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(container.querySelector('svg.lucide-wrench')).toBeNull();
+    expect(container.querySelector('.bg-clip-text')?.textContent).toBe('callTitle');
+    expect(screen.getByText('· How broad should the change be?')).toBeDefined();
+    expect(container.textContent).not.toContain('AskUserQuestion');
+    expect(container.textContent).not.toContain('want to proceed');
+  });
+
+  it('records the chosen answer once resolved', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuestionCallItem
+        question={{
+          ...questionItem,
+          resolution: {
+            outcome: {
+              outcome: 'answered',
+              answers: [{ questionId: 'scope', selectedOptionIds: ['narrow'] }],
+            },
+            source: 'user',
+          },
+        }}
+        toolCall={{ ...questionToolCall, status: 'completed' }}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_QUESTION_CALL_TITLE });
+    expect(header.querySelector('svg.lucide-message-circle-question-mark')).not.toBeNull();
+    expect(header.querySelector('.bg-clip-text')).toBeNull();
+    await user.click(header);
+    expect(screen.getByText('How broad should the change be?')).toBeDefined();
+    expect(screen.getByText('Narrow fix')).toBeDefined();
+  });
+
+  it('labels a dismissed ask instead of showing a raw failure', () => {
+    const { container } = render(
+      <QuestionCallItem
+        question={{
+          ...questionItem,
+          resolution: { outcome: { outcome: 'cancelled' }, source: 'user' },
+        }}
+        toolCall={{ ...questionToolCall, status: 'failed' }}
+      />,
+    );
+
+    expect(screen.getByText('dismissed')).toBeDefined();
+    expect(container.textContent).not.toContain('want to proceed');
   });
 });

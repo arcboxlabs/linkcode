@@ -1,7 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
-import { Spinner } from 'coss-ui/components/spinner';
-import { BanIcon, CircleXIcon, ShieldIcon } from 'lucide-react';
+import { BanIcon, CircleXIcon, MessageCircleQuestionMarkIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
@@ -16,6 +15,7 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
+import { Shimmer } from './shimmer';
 import { TOOL_KIND_ICONS } from './tool-utils';
 import { FilePathTooltip } from './with-tooltip';
 
@@ -38,6 +38,8 @@ export type ToolHeaderProps = React.ComponentProps<typeof CollapsibleTrigger> & 
   kind: ToolCall['kind'];
   /** The call's gating permission is still awaiting an answer (shows the shield glyph). */
   awaitingApproval?: boolean;
+  /** The call's question is still awaiting the user's answer (shows the question glyph). */
+  awaitingAnswer?: boolean;
   /** The user declined this call's gating permission. */
   declined?: boolean;
   /** Custom glyph for plugin / MCP / custom tool calls; replaces the kind icon. */
@@ -55,6 +57,7 @@ export function ToolHeader({
   status,
   kind,
   awaitingApproval = false,
+  awaitingAnswer = false,
   declined = false,
   icon,
   hasBody = false,
@@ -62,11 +65,15 @@ export function ToolHeader({
 }: ToolHeaderProps): React.ReactNode {
   const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
   const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
+  // A call blocked on the user still holds the turn, so it shimmers like any running call;
+  // only a declined call is settled and stays static.
+  const running = (status === 'pending' || status === 'in_progress') && !declined;
   const content = (
     <>
       <ChatDisclosureIconSlot>
         <ToolIcon
           awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
           declined={declined}
           icon={icon}
           kind={kind}
@@ -75,7 +82,7 @@ export function ToolHeader({
       </ChatDisclosureIconSlot>
       <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
         <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME} ref={titleAnchorRef}>
-          {title}
+          {running ? <Shimmer>{title}</Shimmer> : title}
         </span>
         {summary ? (
           <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME} ref={tooltipAnchorRef}>
@@ -131,12 +138,14 @@ export function ToolIcon({
   status,
   kind,
   awaitingApproval = false,
+  awaitingAnswer = false,
   declined = false,
   icon,
 }: {
   status: ToolCall['status'];
   kind: ToolCall['kind'];
   awaitingApproval?: boolean;
+  awaitingAnswer?: boolean;
   declined?: boolean;
   icon?: React.ReactNode;
 }): React.ReactNode {
@@ -147,11 +156,15 @@ export function ToolIcon({
   if (status === 'failed') {
     return <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
   }
-  if (status === 'pending' || status === 'in_progress') {
-    return <Spinner className="size-3.5 shrink-0 text-foreground" />;
+  if (awaitingAnswer) {
+    return <MessageCircleQuestionMarkIcon className="size-3.5 shrink-0 text-foreground" />;
   }
   if (icon) return icon;
+  // No spinner while running — the shimmering title carries the signal; the glyph stays put.
   const KindIcon = TOOL_KIND_ICONS[kind];
+  if (status === 'pending' || status === 'in_progress') {
+    return <KindIcon className="size-3.5 shrink-0 text-foreground" />;
+  }
   return <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 

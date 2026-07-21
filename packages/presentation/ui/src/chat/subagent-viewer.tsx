@@ -5,6 +5,7 @@ import { BotIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ToolTimelineItem } from './activity-groups';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { SubagentTranscript } from './subagent-card';
 import { subagentTaskInput } from './subagent-task-input';
 import type { ConversationItem } from './types';
@@ -18,6 +19,8 @@ export interface SubagentViewerProps {
   onSelect: (toolCallId: string) => void;
   childrenByParent: ReadonlyMap<string, ConversationItem[]>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }
@@ -32,6 +35,8 @@ export function SubagentViewer({
   onSelect,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
 }: SubagentViewerProps): React.ReactNode {
@@ -63,6 +68,8 @@ export function SubagentViewer({
             {selected ? (
               <SubagentTranscript
                 awaitingApproval={awaitingApproval}
+                awaitingAnswer={awaitingAnswer}
+                questionsByToolCall={questionsByToolCall}
                 childrenByParent={childrenByParent}
                 declined={declined}
                 items={childrenByParent.get(selected.toolCall.toolCallId) ?? []}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { QuestionConversationItem } from './conversation-prompts';
 import {
   conversationFlowItems,
   declinedToolCallIds,
@@ -21,6 +22,10 @@ export interface TimelineModel {
   snapshottedToolIds: ReadonlySet<string>;
   /** Gated calls whose ask is still open — these carry the shield glyph. */
   awaitingApproval: ReadonlySet<string>;
+  /** Question calls still awaiting the user's answer — these carry the question glyph. */
+  awaitingAnswer: ReadonlySet<string>;
+  /** Question asks joined to their tool call — these rows render as questions, not raw tools. */
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
 }
 
 interface TimelineCache {
@@ -43,6 +48,21 @@ function stableSet(
   return prev && setsEqual(prev, next) ? prev : next;
 }
 
+function mapsEqual<V>(a: ReadonlyMap<string, V>, b: ReadonlyMap<string, V>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, value] of a) if (b.get(key) !== value) return false;
+  return true;
+}
+
+/** The previous map when every entry is identical, so unchanged maps keep identity across
+ * events (question items keep their identity until they resolve). */
+function stableMap<V>(
+  prev: ReadonlyMap<string, V> | undefined,
+  next: ReadonlyMap<string, V>,
+): ReadonlyMap<string, V> {
+  return prev && mapsEqual(prev, next) ? prev : next;
+}
+
 function advanceTimeline(
   prev: TimelineCache | null,
   conversation: ConversationViewModel,
@@ -54,12 +74,16 @@ function advanceTimeline(
   const segments = advanceTurnSegments(prev?.segmentsSnapshot ?? null, flowItems);
 
   const snapshotted = new Set<string>();
+  const questions = new Map<string, QuestionConversationItem>();
   for (const item of items) {
     if (item.kind === 'tool') snapshotted.add(item.toolCall.toolCallId);
+    if (item.kind === 'question') questions.set(item.toolCall.toolCallId, item);
   }
   const awaiting = new Set<string>();
+  const answering = new Set<string>();
   for (const item of selectPendingPromptItems(conversation)) {
     if (item.kind === 'approval') awaiting.add(item.toolCall.toolCallId);
+    if (item.kind === 'question') answering.add(item.toolCall.toolCallId);
   }
 
   const model: TimelineModel = {
@@ -67,6 +91,8 @@ function advanceTimeline(
     declined: stableSet(prev?.model.declined, declinedToolCallIds(items)),
     snapshottedToolIds: stableSet(prev?.model.snapshottedToolIds, snapshotted),
     awaitingApproval: stableSet(prev?.model.awaitingApproval, awaiting),
+    awaitingAnswer: stableSet(prev?.model.awaitingAnswer, answering),
+    questionsByToolCall: stableMap(prev?.model.questionsByToolCall, questions),
   };
   return { conversation, segmentsSnapshot: { items: flowItems, segments }, model };
 }

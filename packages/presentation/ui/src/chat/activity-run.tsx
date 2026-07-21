@@ -1,5 +1,4 @@
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
-import { Spinner } from 'coss-ui/components/spinner';
 import { PencilIcon, SearchIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -7,6 +6,7 @@ import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
 import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -15,6 +15,8 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
+import { QuestionCallItem } from './question-call-item';
+import { Shimmer } from './shimmer';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
 
@@ -26,11 +28,15 @@ const EXACT_ACTIVITY_COUNT_MAX = 10;
 export function ActivityRun({
   run,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
 }: {
   run: ActivityRunEntry;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
 }): React.ReactNode {
@@ -104,14 +110,14 @@ export function ActivityRun({
               leadingClause.failure && 'text-destructive-foreground opacity-100',
             )}
           >
-            {leadingClause.text}
+            {current ? <Shimmer>{leadingClause.text}</Shimmer> : leadingClause.text}
           </span>
           {secondaryClauses.length > 0 ? (
             <span className="min-w-0 shrink truncate">
               {secondaryClauses.map((clause) => (
                 <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME} key={clause.key}>
                   {' · '}
-                  {clause.text}
+                  {current ? <Shimmer>{clause.text}</Shimmer> : clause.text}
                 </span>
               ))}
             </span>
@@ -131,28 +137,44 @@ export function ActivityRun({
         <ChatDisclosureChevron />
       </CollapsibleTrigger>
       <ChatDisclosureContent bodyClassName="space-y-0.5">
-        {run.items.map((item) =>
-          item.kind === 'reasoning' ? (
-            <ThoughtBlock
-              key={item.id}
-              blocks={item.blocks}
-              endedAt={item.endedAt}
-              isStreaming={item.isStreaming}
-              startedAt={item.startedAt}
-              summary={item.summary}
-              constrainHeight={false}
-            />
-          ) : (
+        {run.items.map((item) => {
+          if (item.kind === 'reasoning') {
+            return (
+              <ThoughtBlock
+                key={item.id}
+                blocks={item.blocks}
+                endedAt={item.endedAt}
+                isStreaming={item.isStreaming}
+                startedAt={item.startedAt}
+                summary={item.summary}
+                constrainHeight={false}
+              />
+            );
+          }
+          const question = questionsByToolCall.get(item.toolCall.toolCallId);
+          if (question) {
+            return (
+              <QuestionCallItem
+                key={item.id}
+                awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+                question={question}
+                toolCall={item.toolCall}
+                constrainHeight={false}
+              />
+            );
+          }
+          return (
             <ToolCallItem
               key={item.id}
               awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+              awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
               declined={declined.has(item.toolCall.toolCallId)}
               toolCall={item.toolCall}
               TerminalBlockComponent={TerminalBlockComponent}
               constrainHeight={false}
             />
-          ),
-        )}
+          );
+        })}
       </ChatDisclosureContent>
     </Collapsible>
   );
@@ -180,9 +202,11 @@ function ActivityRunIcon({
   failed: boolean;
   running: boolean;
 }): React.ReactNode {
+  // The shimmering label already signals activity, so a running head keeps its category
+  // glyph (no spinner) and only brightens it.
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
   if (failed) return <Icon className="size-3.5 shrink-0 text-destructive-foreground" />;
-  if (running) return <Spinner className="size-3.5 shrink-0 text-foreground" />;
+  if (running) return <Icon className="size-3.5 shrink-0 text-foreground" />;
   return <Icon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 

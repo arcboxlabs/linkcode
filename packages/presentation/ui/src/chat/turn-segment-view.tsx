@@ -6,10 +6,12 @@ import { ActivityRun } from './activity-run';
 import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
 import { positionalBlockEntries } from './content-derived-keys';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { declinedToolCall } from './conversation-prompts';
 import { assistantTurnText, latestReceivedAt, turnModel } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
+import { QuestionCallItem } from './question-call-item';
 import { SubagentCard } from './subagent-card';
 import { partitionSubagentItems } from './subagents';
 import { ThoughtBlock } from './thought-block';
@@ -32,6 +34,8 @@ export interface TurnSegmentViewProps {
   declined: ReadonlySet<string>;
   snapshottedToolIds: ReadonlySet<string>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
@@ -53,6 +57,8 @@ export function TurnSegmentView({
   declined,
   snapshottedToolIds,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   TerminalBlockComponent,
   onExpandTask,
   onReviewChanges,
@@ -78,6 +84,8 @@ export function TurnSegmentView({
         <ActivityRun
           key={entry.id}
           awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
           declined={declined}
           run={entry}
           TerminalBlockComponent={TerminalBlockComponent}
@@ -90,6 +98,8 @@ export function TurnSegmentView({
         <SubagentCard
           key={item.id}
           awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
           childrenByParent={childrenByParent}
           declined={declined}
           items={childrenByParent.get(item.toolCall.toolCallId) ?? []}
@@ -100,10 +110,22 @@ export function TurnSegmentView({
       );
     }
     if (item.kind === 'tool') {
+      const question = questionsByToolCall.get(item.toolCall.toolCallId);
+      if (question) {
+        return (
+          <QuestionCallItem
+            key={item.id}
+            awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+            question={question}
+            toolCall={item.toolCall}
+          />
+        );
+      }
       return (
         <ToolCallItem
           key={item.id}
           awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+          awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
           declined={declined.has(item.toolCall.toolCallId)}
           toolCall={item.toolCall}
           TerminalBlockComponent={TerminalBlockComponent}

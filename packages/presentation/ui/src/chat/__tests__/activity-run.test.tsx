@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityRunEntry } from '../activity-run';
 import { ActivityRun } from '../activity-run';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
+import type { QuestionConversationItem } from '../conversation-prompts';
 import type { ConversationItem } from '../types';
 
 function translateKey(key: string, values?: Record<string, unknown>): string {
@@ -141,6 +142,7 @@ function activityRun(items: ActivityRunEntry['items']): ActivityRunEntry {
 }
 
 const EMPTY_IDS = new Set<string>();
+const EMPTY_QUESTIONS = new Map<string, QuestionConversationItem>();
 
 describe('ActivityRun', () => {
   it('starts collapsed and toggles by keyboard with a trailing disclosure', async () => {
@@ -152,7 +154,13 @@ describe('ActivityRun', () => {
 
     const { container } = render(
       <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile: vi.fn() }}>
-        <ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />
+        <ActivityRun
+          awaitingApproval={EMPTY_IDS}
+          awaitingAnswer={EMPTY_IDS}
+          questionsByToolCall={EMPTY_QUESTIONS}
+          declined={EMPTY_IDS}
+          run={run}
+        />
       </ArtifactHostActionsProvider>,
     );
 
@@ -188,13 +196,24 @@ describe('ActivityRun', () => {
         summary: '  Checking\npublic behavior  ',
       }),
     ]);
-    const props = { awaitingApproval: EMPTY_IDS, declined: EMPTY_IDS };
+    const props = {
+      awaitingApproval: EMPTY_IDS,
+      awaitingAnswer: EMPTY_IDS,
+      questionsByToolCall: EMPTY_QUESTIONS,
+      declined: EMPTY_IDS,
+    };
     const { rerender } = render(<ActivityRun {...props} run={streamingRun} />);
 
     let header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toBe('Thinking · Checking public behavior');
     expect(header.getAttribute('aria-label')).not.toContain('private');
-    expect(header.querySelector('svg.lucide-loader-circle')).not.toBeNull();
+    // Running keeps the category glyph — the shimmering label is the activity signal.
+    expect(header.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(header.querySelector('svg.lucide-sparkles')?.getAttribute('class')).toContain(
+      'text-foreground',
+    );
+    // Both running clauses (leading + live summary) carry the shimmer sweep.
+    expect(header.querySelectorAll('.bg-clip-text')).toHaveLength(2);
 
     const pendingEdit = fileTool('edit-1', 'edit', '/repo/first.ts');
     pendingEdit.toolCall.status = 'pending';
@@ -208,7 +227,8 @@ describe('ActivityRun', () => {
     header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toBe('Editing a file');
     expect(header.getAttribute('aria-label')).not.toContain('first.ts');
-    expect(header.querySelector('svg.lucide-loader-circle')).not.toBeNull();
+    expect(header.querySelector('svg.lucide-loader-circle')).toBeNull();
+    expect(header.querySelector('svg.lucide-pencil')).not.toBeNull();
   });
 
   it('keeps a concise destructive failure clause beside a running action', () => {
@@ -219,12 +239,23 @@ describe('ActivityRun', () => {
       executeTool('command-running', 'Guarded command', 'echo secret=private', 'in_progress'),
     ]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toBe('Running a command · An action failed');
     expect(header.getAttribute('aria-label')).not.toContain('private');
     expect(within(header).getByText(RE_FAILURE).className).toContain('text-destructive-foreground');
+    // Only the running clause shimmers; the settled failure clause stays static.
+    expect(header.querySelectorAll('.bg-clip-text')).toHaveLength(1);
+    expect(within(header).getByText(RE_FAILURE).querySelector('.bg-clip-text')).toBeNull();
     const icon = header.querySelector('svg.lucide-terminal');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('class')).toContain('text-destructive-foreground');
@@ -240,7 +271,15 @@ describe('ActivityRun', () => {
       reasoningItem('thought-running', 'token=private', true, { summary: 'Reviewing results' }),
     ]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toBe('Thinking · Reviewing results · An action failed');
@@ -268,7 +307,13 @@ describe('ActivityRun', () => {
 
     const { container } = render(
       <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile }}>
-        <ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />
+        <ActivityRun
+          awaitingApproval={EMPTY_IDS}
+          awaitingAnswer={EMPTY_IDS}
+          questionsByToolCall={EMPTY_QUESTIONS}
+          declined={EMPTY_IDS}
+          run={run}
+        />
       </ArtifactHostActionsProvider>,
     );
 
@@ -314,6 +359,8 @@ describe('ActivityRun', () => {
     ]);
     const props = {
       awaitingApproval: EMPTY_IDS,
+      awaitingAnswer: EMPTY_IDS,
+      questionsByToolCall: EMPTY_QUESTIONS,
       declined: EMPTY_IDS,
       TerminalBlockComponent: undefined,
     };
@@ -349,6 +396,8 @@ describe('ActivityRun', () => {
     render(
       <ActivityRun
         awaitingApproval={new Set(['approval-1'])}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
         declined={new Set(['declined-1'])}
         run={run}
       />,
@@ -367,7 +416,15 @@ describe('ActivityRun', () => {
     });
     const run = activityRun([...failures, executeTool('command-1', 'Check status', 'git status')]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent.match(RE_FAILURE_GLOBAL)).toHaveLength(1);
@@ -385,7 +442,15 @@ describe('ActivityRun', () => {
       failedEdit,
     ]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     const expected =
@@ -416,6 +481,8 @@ describe('ActivityRun', () => {
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('class')).toContain('text-destructive-foreground');
     expect(header.querySelector('svg.lucide-circle-x')).toBeNull();
+    // A settled abstract never shimmers.
+    expect(header.querySelector('.bg-clip-text')).toBeNull();
     for (const detail of [
       'first.ts',
       'second.ts',
@@ -435,7 +502,15 @@ describe('ActivityRun', () => {
       simpleTool('think-1', 'think', 'Private second thought'),
     ]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toBe('Thought');
@@ -449,7 +524,15 @@ describe('ActivityRun', () => {
     failedThink.toolCall.status = 'failed';
     const run = activityRun([reasoningItem('thought-1', 'Private first thought'), failedThink]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     const icon = header.querySelector('svg.lucide-sparkles');
@@ -470,7 +553,15 @@ describe('ActivityRun', () => {
     );
     const run = activityRun([...commands, reasoningItem('thought-1', 'Private reasoning')]);
 
-    render(<ActivityRun awaitingApproval={EMPTY_IDS} declined={EMPTY_IDS} run={run} />);
+    render(
+      <ActivityRun
+        awaitingApproval={EMPTY_IDS}
+        awaitingAnswer={EMPTY_IDS}
+        questionsByToolCall={EMPTY_QUESTIONS}
+        declined={EMPTY_IDS}
+        run={run}
+      />,
+    );
 
     const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
     expect(header.textContent).toContain(expected);

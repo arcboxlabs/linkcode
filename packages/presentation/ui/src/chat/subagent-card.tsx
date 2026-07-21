@@ -8,6 +8,7 @@ import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
 import { contentDerivedEntries } from './content-derived-keys';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
@@ -18,6 +19,7 @@ import {
   ChatDisclosureIconSlot,
 } from './disclosure-header';
 import { Message, MessageContent } from './message';
+import { QuestionCallItem } from './question-call-item';
 import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
@@ -33,6 +35,8 @@ interface SubagentTranscriptProps {
   /** The whole slice's parent→children buckets, so nested spawns can recurse into their own card. */
   childrenByParent: ReadonlyMap<string, ConversationItem[]>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onExpand?: (toolCallId: string) => void;
@@ -47,6 +51,8 @@ export function SubagentTranscript({
   items,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
   onExpand,
@@ -86,12 +92,14 @@ export function SubagentTranscript({
                 constrainHeight={false}
               />
             );
-          case 'tool':
+          case 'tool': {
             if (item.toolCall.kind === 'task') {
               return (
                 <SubagentCardContent
                   key={item.id}
                   awaitingApproval={awaitingApproval}
+                  awaitingAnswer={awaitingAnswer}
+                  questionsByToolCall={questionsByToolCall}
                   childrenByParent={childrenByParent}
                   constrainHeight={false}
                   declined={declined}
@@ -102,16 +110,30 @@ export function SubagentTranscript({
                 />
               );
             }
+            const question = questionsByToolCall.get(item.toolCall.toolCallId);
+            if (question) {
+              return (
+                <QuestionCallItem
+                  key={item.id}
+                  awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+                  constrainHeight={false}
+                  question={question}
+                  toolCall={item.toolCall}
+                />
+              );
+            }
             return (
               <ToolCallItem
                 key={item.id}
                 awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+                awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
                 constrainHeight={false}
                 declined={declined.has(item.toolCall.toolCallId)}
                 toolCall={item.toolCall}
                 TerminalBlockComponent={TerminalBlockComponent}
               />
             );
+          }
           default:
             return null;
         }
@@ -147,6 +169,8 @@ function SubagentCardContent({
   items,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
   onExpand,
@@ -213,6 +237,8 @@ function SubagentCardContent({
       >
         <SubagentTranscript
           awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
           childrenByParent={childrenByParent}
           declined={declined}
           items={items}

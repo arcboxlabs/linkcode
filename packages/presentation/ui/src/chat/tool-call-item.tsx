@@ -66,6 +66,7 @@ export function ToolCallItem({
   toolCall,
   declined = false,
   awaitingApproval = false,
+  awaitingAnswer = false,
   icon,
   TerminalBlockComponent,
   constrainHeight = true,
@@ -75,6 +76,8 @@ export function ToolCallItem({
   declined?: boolean;
   /** The call's gating permission is still awaiting an answer. */
   awaitingApproval?: boolean;
+  /** The call's question is still awaiting the user's answer. */
+  awaitingAnswer?: boolean;
   /** Custom glyph for plugin / MCP / custom tool calls. */
   icon?: React.ReactNode;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -94,6 +97,7 @@ export function ToolCallItem({
     <Tool>
       <ToolHeader
         awaitingApproval={awaitingApproval}
+        awaitingAnswer={awaitingAnswer}
         declined={declined}
         diffStats={diffTotals}
         hasBody={hasBody}

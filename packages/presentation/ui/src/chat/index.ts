@@ -20,6 +20,7 @@ export * from './markdown';
 export * from './message';
 export * from './package-info';
 export * from './prompt-input';
+export * from './question-call-item';
 export * from './queue';
 export * from './reasoning';
 export * from './schema-display';

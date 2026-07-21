@@ -227,6 +227,8 @@ export const zhCN = {
       customPlaceholder: '告诉 Codex 要如何调整',
     },
     question: {
+      callTitle: '请求用户输入',
+      dismissed: '已取消',
       navigation: '问题导航',
       previous: '上一个问题',
       next: '下一个问题',
