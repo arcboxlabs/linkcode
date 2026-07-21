@@ -84,7 +84,7 @@ export function TerminalContent({
   return (
     <pre
       className={cn(
-        'max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-xs leading-relaxed bg-background',
+        'chat-terminal-output max-h-80 overflow-auto border-t border-border px-3 py-2 font-mono text-xs leading-relaxed',
         className,
       )}
       {...props}

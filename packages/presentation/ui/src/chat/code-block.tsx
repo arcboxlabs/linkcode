@@ -2,6 +2,7 @@ import { Card, CardHeader, CardPanel, CardTitle } from 'coss-ui/components/card'
 import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
+import { HighlightedCode } from './highlighted-code';
 
 export interface CodeBlockProps extends React.ComponentProps<typeof Card> {
   code: string;
@@ -28,9 +29,7 @@ export function CodeBlock({
         </CodeBlockHeader>
       ) : null}
       <CardPanel className="p-0">
-        <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed">
-          <code>{code}</code>
-        </pre>
+        <HighlightedCode className="p-3" code={code} language={language} />
       </CardPanel>
     </Card>
   );

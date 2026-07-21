@@ -2,6 +2,7 @@ import type { ContentBlock } from '@linkcode/schema';
 import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { CodeBlock } from './code-block';
+import { codeLanguageForResource } from './code-language';
 import { Markdown, SmoothMarkdown } from './markdown';
 
 export function ContentBlockView({
@@ -51,7 +52,11 @@ export function ContentBlockView({
       );
     case 'resource':
       return 'text' in block.resource ? (
-        <CodeBlock code={block.resource.text} title={block.resource.uri} />
+        <CodeBlock
+          code={block.resource.text}
+          language={codeLanguageForResource(block.resource.uri, block.resource.mimeType)}
+          title={block.resource.uri}
+        />
       ) : (
         <span className="text-sm text-muted-foreground">{t('resource')}</span>
       );

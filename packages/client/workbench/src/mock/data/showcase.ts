@@ -225,7 +225,10 @@ export const SHOWCASE_STREAM_START_DELAY_MS = 1000;
 export const SHOWCASE_STREAM_CHUNK_LATENCY_MS = 220;
 
 export const SHOWCASE_TERMINAL_START_OUTPUT =
-  '$ pnpm vitest run packages/client/workbench/src/mock\n✓ dev mock transport (4)\n';
+  '$ pnpm vitest run packages/client/workbench/src/mock\n' +
+  '\u{1B}[32mPASS\u{1B}[0m dev mock transport (4)\n' +
+  '\u{1B}[33mWARN\u{1B}[0m retry fixture exercised\n' +
+  '\u{1B}[31mFAIL\u{1B}[0m expected negative-path fixture\n';
 
 export const SHOWCASE_TERMINAL_EXIT_OUTPUT = 'mock terminal stream finished\n';
 
@@ -233,6 +236,9 @@ const SHOWCASE_STATIC_EXEC_COMMAND =
   'fd -e ts -e tsx --exclude node_modules --exclude coss-ui --exclude target . apps packages | xargs wc -l';
 
 const SHOWCASE_STATIC_EXEC_OUTPUT = [
+  '\u{1B}[32mPASS\u{1B}[0m focused preview tests',
+  '\u{1B}[33mWARN\u{1B}[0m retry fixture exercised',
+  '\u{1B}[31mFAIL\u{1B}[0m expected negative-path fixture',
   '74570 total',
   '---per-dir---',
   'apps/daemon: 2953',

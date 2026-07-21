@@ -9,6 +9,7 @@ import { DiffBlock } from './diff-block';
 import { FilePreviewCard } from './file-preview-card';
 import type { ToolCallFilePresentation } from './file-tool-presentation';
 import { toolCallDiffNavigation, toolCallFilePresentation } from './file-tool-presentation';
+import { HighlightedCode } from './highlighted-code';
 import { Markdown } from './markdown';
 import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
@@ -110,9 +111,10 @@ function FileCallText({
     return <Markdown>{previewText}</Markdown>;
   }
   return (
-    <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-      <code>{previewText}</code>
-    </pre>
+    <HighlightedCode
+      code={previewText}
+      language={file.ambiguous ? undefined : fileExtension(file.path)}
+    />
   );
 }
 
@@ -220,9 +222,7 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'read': {
       return (
         <ToolPreviewCard icon={FileTextIcon} title={displayTitle}>
-          <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-            <code>{text}</code>
-          </pre>
+          <HighlightedCode code={text} />
         </ToolPreviewCard>
       );
     }

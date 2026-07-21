@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ToolCall } from '@linkcode/schema';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
@@ -127,6 +127,12 @@ describe('ToolCallBody', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
     expect(openFile).toHaveBeenCalledOnce();
     expect(openFile).toHaveBeenCalledWith(path);
   });
@@ -146,6 +152,61 @@ describe('ToolCallBody', () => {
     expect(container.querySelector('h1')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe(source);
   });
+
+  it('highlights structured JSON tool results', async () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'json-result',
+      title: 'Inspect package metadata',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: { type: 'text', text: '{"name":"@linkcode/ui","private":true}' },
+        },
+      ],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
+  }, 15000);
+
+  it('highlights embedded text resources from their MIME type', async () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'resource-result',
+      title: 'Load manifest',
+      kind: 'other',
+      status: 'completed',
+      content: [
+        {
+          type: 'content',
+          content: {
+            type: 'resource',
+            resource: {
+              uri: 'mock://manifest',
+              mimeType: 'application/json',
+              text: '{"enabled":true}',
+            },
+          },
+        },
+      ],
+    };
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
+      },
+      { timeout: 10000 },
+    );
+  }, 15000);
 
   it('renders Markdown file reads as a document preview', () => {
     const toolCall: ToolCall = {
