@@ -9,13 +9,19 @@ import { ScrollArea } from 'coss-ui/components/scroll-area';
 import { Spinner } from 'coss-ui/components/spinner';
 import {
   CheckCircleIcon,
-  ChevronRightIcon,
   CircleXIcon,
   ClockIcon,
   ListOrderedIcon,
   XCircleIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 
 // TODO(linkcode-schema): Provisional UI-only queue item, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when queued agent operations are emitted by client-core.
@@ -87,19 +93,23 @@ export function QueueSectionTrigger({
 }: QueueSectionTriggerProps): React.ReactNode {
   return (
     <CollapsibleTrigger
-      className={cn('group flex w-full items-center gap-2 text-left font-medium', className)}
+      className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full', className)}
       {...props}
     >
       {children ?? (
         <>
-          <ListOrderedIcon className="size-3.5 text-muted-foreground" />
-          <span className="min-w-0 flex-1">{label}</span>
+          <ChatDisclosureIconSlot>
+            <ListOrderedIcon />
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{label}</span>
+          </span>
           {typeof count === 'number' ? (
-            <Badge size="sm" variant="secondary">
+            <Badge className="shrink-0" size="sm" variant="secondary">
               {count}
             </Badge>
           ) : null}
-          <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+          <ChatDisclosureChevron />
         </>
       )}
     </CollapsibleTrigger>

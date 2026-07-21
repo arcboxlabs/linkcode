@@ -3,11 +3,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import { AlertTriangleIcon, ChevronRightIcon } from 'lucide-react';
+import { AlertTriangleIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import type { ParsedStackFrame, ParsedStackTrace } from './stack-trace-parser';
 import { formatStackLocationPart, parseStackTrace } from './stack-trace-parser';
 
@@ -80,22 +88,19 @@ export function StackTraceHeader({
     >
       {children ?? (
         <>
-          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
-            <AlertTriangleIcon className="size-4 shrink-0 text-destructive-foreground" />
-            <span className="min-w-0 flex-1 truncate">
-              <span className="font-semibold text-destructive-foreground">
+          <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'flex-1 py-0')}>
+            <ChatDisclosureIconSlot className="text-destructive-foreground">
+              <AlertTriangleIcon />
+            </ChatDisclosureIconSlot>
+            <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+              <span className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'text-destructive-foreground')}>
                 {stackTrace.title ?? parsed.errorType ?? 'Error'}
               </span>
               {parsed.errorMessage ? (
-                <span className="text-foreground">: {parsed.errorMessage}</span>
+                <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>: {parsed.errorMessage}</span>
               ) : null}
             </span>
-            <ChevronRightIcon
-              className={cn(
-                'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                open && 'rotate-90',
-              )}
-            />
+            <ChatDisclosureChevron open={open} />
           </CollapsibleTrigger>
           <StackTraceCopyButton trace={stackTrace.trace} />
         </>

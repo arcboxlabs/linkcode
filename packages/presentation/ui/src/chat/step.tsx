@@ -3,14 +3,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import {
-  ChevronRightIcon,
-  CircleCheckIcon,
-  CircleDashedIcon,
-  CircleIcon,
-  ListTodoIcon,
-} from 'lucide-react';
+import { CircleCheckIcon, CircleDashedIcon, CircleIcon, ListTodoIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 
 export type StepProps = React.ComponentProps<typeof Collapsible>;
 
@@ -36,17 +37,18 @@ export function StepHeader({
 }: StepHeaderProps): React.ReactNode {
   return (
     <CollapsibleTrigger
-      className={cn(
-        'group flex w-full items-center gap-2 text-left text-sm font-medium',
-        className,
-      )}
+      className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full', className)}
       {...props}
     >
       {children ?? (
         <>
-          <ListTodoIcon className="3.5 text-muted-foreground" />
-          <span className="min-w-0 flex-1">{title}</span>
-          <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+          <ChatDisclosureIconSlot>
+            <ListTodoIcon />
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{title}</span>
+          </span>
+          <ChatDisclosureChevron />
         </>
       )}
     </CollapsibleTrigger>

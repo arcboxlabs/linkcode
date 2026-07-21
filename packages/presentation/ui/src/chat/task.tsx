@@ -6,7 +6,6 @@ import {
 } from 'coss-ui/components/collapsible';
 import {
   CheckCircleIcon,
-  ChevronRightIcon,
   CircleDashedIcon,
   CircleIcon,
   CircleXIcon,
@@ -14,6 +13,13 @@ import {
   MinusCircleIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 
 // TODO(linkcode-schema): Provisional UI-only task item, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when agent task progress is part of the event stream.
@@ -68,21 +74,26 @@ export function TaskTrigger({
   return (
     <CollapsibleTrigger
       className={cn(
-        'group flex w-fit items-center gap-2 rounded-md px-1.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground',
+        CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+        'w-fit max-w-full rounded-md px-1.5 hover:bg-muted',
         className,
       )}
       {...props}
     >
       {children ?? (
         <>
-          <ListTodoIcon className="size-3.5 shrink-0" />
-          <span className="font-medium">{title}</span>
+          <ChatDisclosureIconSlot>
+            <ListTodoIcon />
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{title}</span>
+          </span>
           {typeof count === 'number' ? (
-            <Badge size="sm" variant="secondary">
+            <Badge className="shrink-0" size="sm" variant="secondary">
               {count}
             </Badge>
           ) : null}
-          <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[panel-open]:rotate-90" />
+          <ChatDisclosureChevron />
         </>
       )}
     </CollapsibleTrigger>
