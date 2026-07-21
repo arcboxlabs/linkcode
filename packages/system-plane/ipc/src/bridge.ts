@@ -1,6 +1,7 @@
 import type {
   DesktopSettings,
   DesktopSettingsPatch,
+  DetectedEditor,
   PickFileOptions,
   SystemNotification,
   UpdaterStatus,
@@ -22,6 +23,14 @@ export interface SystemBridge {
     /** Resolves to every picked path, or `null` if the dialog was cancelled — a single pick is a
      * one-element array. */
     pickFile(opts?: PickFileOptions): Promise<string[] | null>;
+  };
+  shell: {
+    /** Reveal a path in the OS file manager (Finder / Explorer / …). */
+    revealPath(path: string): Promise<void>;
+    /** External editors detected on this machine, in display order; empty when none is installed. */
+    listEditors(): Promise<DetectedEditor[]>;
+    /** Launch a detected editor (its opaque `id` from `listEditors`) on `path`. */
+    openInEditor(editorId: string, path: string): Promise<void>;
   };
   app: {
     version(): Promise<string>;
