@@ -16,6 +16,8 @@ on:
           - Dry Run
           - Release
 
+# Runners resolve through repo/org `vars` (ArcBox pins paid Blacksmith labels there);
+# forks without the vars fall back to GitHub-hosted labels with zero setup.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -29,7 +31,7 @@ env:
 jobs:
   typescript:
     name: TypeScript
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     steps:
@@ -82,7 +84,7 @@ jobs:
 
   desktop:
     name: Desktop App Entry
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     steps:
@@ -128,7 +130,7 @@ jobs:
 
   webview:
     name: Webview Browser Entry
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
@@ -155,7 +157,7 @@ jobs:
 
   mobile:
     name: Mobile Native Bundles
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
@@ -179,7 +181,7 @@ jobs:
 
   rust:
     name: Rust
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
@@ -203,7 +205,7 @@ jobs:
 
   all-green:
     name: All Green
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 5
     needs:
       - typescript
