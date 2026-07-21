@@ -78,7 +78,11 @@ export function useBulkHistoryImport(): BulkHistoryImportSurface {
           return result;
         }),
       );
-      setImportedInBatch((current) => current.union(importedKeys));
+      setImportedInBatch((current) => {
+        const next = new Set(current);
+        for (const key of importedKeys) next.add(key);
+        return next;
+      });
       await refreshSessions().catch(noop);
       setResult(summarizeHistoryGroupImports(completed.filter((result) => result !== null)));
     } finally {
