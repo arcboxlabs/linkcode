@@ -21,7 +21,7 @@ type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions
 
 export class SessionLifecycleService {
   readonly driver: SessionDriver;
-  private readonly importSemaphore = Semaphore.makeUnsafe(1);
+  private readonly importSemaphores = new Map<string, Semaphore.Semaphore>();
   private seq = 0;
   private runEffect: RunEffect | undefined;
 
@@ -81,10 +81,14 @@ export class SessionLifecycleService {
     historyId: AgentHistoryId,
   ): Effect.Effect<SessionRecord, EngineFailure> {
     const { history, records, workspaces } = this;
-    return this.importSemaphore.withPermit(
+    return this.importSemaphore(kind, historyId).withPermit(
       Effect.suspend(() => {
         const existing = records.findImported(kind, historyId);
-        if (existing) return Effect.succeed(existing);
+        if (existing) {
+          return existing.cwd
+            ? workspaceTouch(workspaces, existing.cwd).pipe(Effect.as(existing))
+            : Effect.succeed(existing);
+        }
 
         const sessionId = this.nextSessionId();
         return Effect.gen(function* () {
@@ -213,6 +217,15 @@ export class SessionLifecycleService {
   private nextSessionId(): SessionId {
     this.seq += 1;
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
+  }
+
+  private importSemaphore(kind: AgentKind, historyId: AgentHistoryId): Semaphore.Semaphore {
+    const key = `${kind}\0${historyId}`;
+    const existing = this.importSemaphores.get(key);
+    if (existing) return existing;
+    const semaphore = Semaphore.makeUnsafe(1);
+    this.importSemaphores.set(key, semaphore);
+    return semaphore;
   }
 
   private run<A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions): Promise<A> {

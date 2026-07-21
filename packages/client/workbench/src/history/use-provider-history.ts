@@ -1,10 +1,12 @@
 import type { AgentHistoryId, AgentHistorySession, AgentKind, SessionId } from '@linkcode/schema';
 import { importSession, listHistory } from '@linkcode/sdk';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { useMemo, useRef, useState } from 'react';
 import { useData, useMutation } from '../runtime/tayori';
 
 /** Single page, newest first; add cursor pagination when a provider actually overflows this. */
 const HISTORY_PAGE_LIMIT = 200;
+const GROUP_IMPORT_CONCURRENCY = 4;
 
 export interface ProviderHistory {
   /** Provider-local sessions across every project, most recent first. */
@@ -57,7 +59,14 @@ export async function importHistoryGroup({
   inFlight.add(inFlightKey);
   try {
     // session.import registers each successful entry's cwd as a project in the engine (CODE-345).
-    const settled = await Promise.allSettled(entries.map((entry) => importEntry(entry)));
+    const settled: Array<PromiseSettledResult<SessionId>> = [];
+    for (let start = 0; start < entries.length; start += GROUP_IMPORT_CONCURRENCY) {
+      const batch = entries.slice(start, start + GROUP_IMPORT_CONCURRENCY);
+      appendArrayInPlace(
+        settled,
+        await Promise.allSettled(batch.map((entry) => importEntry(entry))),
+      );
+    }
     const result: HistoryGroupImportResult = { imported: [], failures: [] };
     for (const [index, outcome] of settled.entries()) {
       const entry = entries[index];
