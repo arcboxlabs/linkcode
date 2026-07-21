@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
-import { noop } from 'foxact/noop';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
@@ -100,26 +99,15 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
   };
 }
 
-/** Step one of the add flow: the service directory, grouped, taking over the detail pane. */
+/** Step one of the add flow: the grouped service directory. */
 export function ServiceCatalogView({
   onPick,
-  onCancel,
 }: {
   onPick: (service: string) => void;
-  /** Absent when the pool is empty — the catalog then IS the pane, with nothing to go back to. */
-  onCancel?: () => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">{t('chooseService')}</h3>
-        {onCancel ? (
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-            {t('cancel')}
-          </Button>
-        ) : null}
-      </div>
       {GROUPS.map((group) => (
         <div key={group} className="flex flex-col gap-2">
           <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-widest">
@@ -167,9 +155,9 @@ export function AddAccountForm({
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const service = serviceById(serviceId);
-  if (!service) return <ServiceCatalogView onPick={noop} onCancel={onBack} />;
+  if (!service) return null;
   return (
-    <div className="flex min-w-0 max-w-md flex-1 flex-col gap-4">
+    <div className="flex min-w-0 flex-1 flex-col gap-4">
       <div className="flex items-center gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={onBack}>
           <ChevronLeftIcon className="size-4" />
@@ -191,7 +179,7 @@ export function AddAccountForm({
   );
 }
 
-/** Existing-account editor shown in the selected account's detail pane. */
+/** Existing-account editor shown inside the account management dialog. */
 export function EditAccountForm({
   account,
   busy,
@@ -206,7 +194,7 @@ export function EditAccountForm({
   const t = useTranslations('settings.providers');
   const service = serviceById(account.service);
   return (
-    <div className="flex min-w-0 max-w-md flex-1 flex-col gap-4">
+    <div className="flex min-w-0 flex-1 flex-col gap-4">
       <div>
         <Button type="button" size="sm" variant="ghost" onClick={onBack}>
           <ChevronLeftIcon className="size-4" />
@@ -259,7 +247,7 @@ function OauthEditForm({
         <Input className="w-full" autoComplete="off" {...register('label')} />
       </Field>
       <p className="text-muted-foreground text-xs">{t('oauthEditHint')}</p>
-      <div>
+      <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {t('form.save')}
         </Button>
@@ -307,7 +295,7 @@ function OauthCreateForm({
             : t('oauthLoggedOutHint')
           : t('oauthUnprobedHint')}
       </p>
-      <div>
+      <div className="flex justify-end pt-1">
         <Button
           type="button"
           size="sm"
@@ -441,10 +429,10 @@ function CatalogAccountForm({
           </Field>
         </div>
       </div>
-      <p className="truncate font-mono text-muted-foreground text-xs">
+      <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
         {fillTemplate(variant.baseUrl, placeholderValues)} · {variant.protocol}
       </p>
-      <div>
+      <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {t('form.submit')}
         </Button>
@@ -560,7 +548,7 @@ function CustomAccountForm({
         <FieldLabel>{t('form.model')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('model')} />
       </Field>
-      <div>
+      <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {account === undefined ? t('form.submit') : t('form.save')}
         </Button>
