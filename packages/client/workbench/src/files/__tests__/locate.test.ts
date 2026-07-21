@@ -1,7 +1,16 @@
 import type { Conversation } from '@linkcode/client-core';
 import type { ToolCall } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
-import { fileArtifactCandidates } from '../locate';
+import { readWorkspaceFile } from '@linkcode/sdk';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileArtifactCandidates, locateFileArtifact } from '../locate';
+
+vi.mock('@linkcode/sdk', () => ({ readWorkspaceFile: vi.fn() }));
+
+const readWorkspaceFileMock = vi.mocked(readWorkspaceFile);
+
+beforeEach(() => {
+  readWorkspaceFileMock.mockReset();
+});
 
 function toolItem(partial: Partial<ToolCall>): Conversation['items'][number] {
   return {
@@ -86,5 +95,28 @@ describe('fileArtifactCandidates', () => {
     expect(fileArtifactCandidates(String.raw`\\server\share\a.md`, '/w', [])).toEqual([
       String.raw`\\server\share\a.md`,
     ]);
+  });
+});
+
+describe('locateFileArtifact', () => {
+  it('treats an oversized candidate as existing instead of falling back to a stale path', async () => {
+    const items = [toolItem({ locations: [{ path: '/stale/clip.mp4' }] })];
+    readWorkspaceFileMock
+      .mockRejectedValueOnce(Object.assign(new Error('File not found'), { code: 'not_found' }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('File exceeds read limit'), { code: 'limit_exceeded' }),
+      );
+
+    await expect(locateFileArtifact('clip.mp4', '/actual', items)).resolves.toBe(
+      '/actual/clip.mp4',
+    );
+    expect(readWorkspaceFileMock).toHaveBeenNthCalledWith(1, {
+      cwd: '/actual',
+      path: '/stale/clip.mp4',
+    });
+    expect(readWorkspaceFileMock).toHaveBeenNthCalledWith(2, {
+      cwd: '/actual',
+      path: '/actual/clip.mp4',
+    });
   });
 });

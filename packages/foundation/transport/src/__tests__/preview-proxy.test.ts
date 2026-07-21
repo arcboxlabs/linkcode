@@ -103,6 +103,18 @@ describe('preview file route serving', () => {
     expect(res.body).toEqual(body);
   });
 
+  it('serves a zero-length file without constructing an invalid stream range', async () => {
+    await writeFile(filePath, Buffer.alloc(0));
+    try {
+      const res = await request();
+      expect(res.status).toBe(200);
+      expect(res.headers['content-length']).toBe('0');
+      expect(res.body).toEqual(Buffer.alloc(0));
+    } finally {
+      await writeFile(filePath, body);
+    }
+  });
+
   it('serves a partial 206 for a byte range', async () => {
     const res = await request({ range: 'bytes=4-7' });
     expect(res.status).toBe(206);

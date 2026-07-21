@@ -119,6 +119,11 @@ async function serveFile(
     res.end();
     return;
   }
+  if (size === 0) {
+    res.writeHead(200, { ...commonHeaders, 'content-length': '0' });
+    res.end();
+    return;
+  }
   if (req.method === 'HEAD') {
     res.writeHead(200, { ...commonHeaders, 'content-length': String(size) });
     res.end();
