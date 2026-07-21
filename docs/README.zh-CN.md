@@ -25,8 +25,7 @@
     <a href="#安装">安装</a> ·
     <a href="#功能特性">功能特性</a> ·
     <a href="#支持的-agent">支持的 Agent</a> ·
-    <a href="#工作原理">工作原理</a> ·
-    <a href="#参与开发">参与开发</a>
+    <a href="#工作原理">工作原理</a>
 </p>
 
 LinkCode 是所有 Coding Agent 的统一工作台。它在你的机器上运行一个本地宿主,接管 Claude Code、Codex、OpenCode、Pi 和 Grok Build,把它们各不相同的原生事件归一成同一份数据契约,再把同样的会话投送到每一个客户端 —— 在电脑前启动 Agent,走到哪里都能随时照看。
@@ -91,30 +90,6 @@ brew install --cask arcboxlabs/tap/linkcode
 从 [最新 Release](https://github.com/arcboxlabs/linkcode/releases/latest) 下载安装包(`.exe`)、`.AppImage` 或 `.deb`。
 
 桌面端会自动保持更新。
-
-## 参与开发
-
-前置条件:Node.js 24+、pnpm 11、stable Rust —— 也可以交给 [`devenv`](https://devenv.sh) 一次性锁定。
-
-```bash
-pnpm install
-devenv shell -- app   # 以开发模式启动 daemon + 桌面端
-```
-
-不用 devenv 时,等价命令为:
-
-```bash
-pnpm -F @linkcode/daemon run build:rust
-pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
-```
-
-| 文档 | 内容 |
-| --- | --- |
-| [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | 分层、唯一数据契约、transport 与 wire 协议 |
-| [`docs/DEVELOPMENT.md`](./DEVELOPMENT.md) | 运行手册:各端启动、测试、E2E、排障 |
-| [`docs/RELEASE.md`](./RELEASE.md) | 打包、签名、公证、发布 |
-
-欢迎参与贡献 —— 工具链、检查项与 PR 约定见 [`CONTRIBUTING.md`](../CONTRIBUTING.md);社区行为规范见 [行为准则](../CODE_OF_CONDUCT.md);获取帮助的途径见 [`SUPPORT.md`](../SUPPORT.md)。
 
 ## 许可证
 

@@ -25,8 +25,7 @@
     <a href="#install">Install</a> ·
     <a href="#features">Features</a> ·
     <a href="#supported-agents">Supported Agents</a> ·
-    <a href="#how-it-works">How It Works</a> ·
-    <a href="#development">Development</a>
+    <a href="#how-it-works">How It Works</a>
 </p>
 
 LinkCode is one workspace for all your coding agents. A host on your machine takes over Claude Code, Codex, OpenCode, Pi, and Grok Build, normalizes their divergent events into a single contract, and serves the same threads to every client — start an agent at your desk, keep an eye on it from anywhere.
@@ -91,30 +90,6 @@ Or grab the DMG (Apple silicon / Intel) from the [latest release](https://github
 Download the installer (`.exe`), `.AppImage`, or `.deb` from the [latest release](https://github.com/arcboxlabs/linkcode/releases/latest).
 
 The desktop app keeps itself up to date automatically.
-
-## Development
-
-Prerequisites: Node.js 24+, pnpm 11, and stable Rust — or let [`devenv`](https://devenv.sh) pin all of them for you.
-
-```bash
-pnpm install
-devenv shell -- app   # daemon + desktop, in dev mode
-```
-
-Without devenv, the same sequence is:
-
-```bash
-pnpm -F @linkcode/daemon run build:rust
-pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
-```
-
-| Doc | What's inside |
-| --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, the single data contract, transport and wire protocol |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Runbook: run every surface, test, E2E, triage |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | Packaging, signing, notarization, publishing |
-
-Contributions are welcome — [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the toolchain, checks, and PR conventions. Community expectations live in the [Code of Conduct](CODE_OF_CONDUCT.md), and [`SUPPORT.md`](SUPPORT.md) covers where to get help.
 
 ## License
 
