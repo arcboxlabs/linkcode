@@ -129,7 +129,16 @@ export function TurnSegmentView({
           </Message>
         );
       case 'reasoning':
-        return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+        return (
+          <ThoughtBlock
+            key={item.id}
+            blocks={item.blocks}
+            endedAt={item.endedAt}
+            isStreaming={item.isStreaming}
+            startedAt={item.startedAt}
+            summary={item.summary}
+          />
+        );
       case 'compaction':
         return (
           <CompactionMarker

@@ -21,6 +21,14 @@ function userText(t: string): AgentEvent {
     content: [{ type: 'text', text: t }],
   };
 }
+function thought(t: string, messageId: string, parentToolCallId?: string): AgentEvent {
+  return {
+    type: 'agent-thought-chunk',
+    messageId: messageId as MessageId,
+    parentToolCallId,
+    content: { type: 'text', text: t },
+  };
+}
 
 describe('buildConversation', () => {
   it('returns an empty conversation for no events', () => {
@@ -694,6 +702,135 @@ describe('createConversationBuilder', () => {
     builder.snapshot();
     // The earlier snapshot still shows the pending tool call and the streaming message.
     expect(before).toEqual(frozen);
+  });
+
+  it('records the first thought chunk as the start and keeps later chunks as updates', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('first', 'th1'), 100);
+    builder.advance(thought(' second', 'th1'), 160);
+
+    const item = nullthrow(builder.snapshot().items[0]);
+    expect(item.kind).toBe('reasoning');
+    if (item.kind === 'reasoning') {
+      expect(item.startedAt).toBe(100);
+      expect(item.endedAt).toBeUndefined();
+      expect(item.summary).toBeUndefined();
+      expect(item.receivedAt).toBe(160);
+    }
+  });
+
+  it('ends reasoning at the next new semantic item in the same scope only', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('before tool', 'th1', 'task-1'), 100);
+    builder.advance(
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'read-1',
+          parentToolCallId: 'task-1',
+          title: 'Read',
+          kind: 'read',
+          status: 'in_progress',
+          content: [],
+        },
+      },
+      120,
+    );
+    builder.advance(thought('after tool', 'th2', 'task-1'), 140);
+    builder.advance(
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'read-1',
+          parentToolCallId: 'task-1',
+          title: 'Read',
+          kind: 'read',
+          status: 'completed',
+          content: [],
+        },
+      },
+      160,
+    );
+
+    const before = nullthrow(builder.snapshot().items.find((item) => item.id === 'th1'));
+    const afterUpdate = nullthrow(builder.snapshot().items.find((item) => item.id === 'th2'));
+    expect(before).toMatchObject({ kind: 'reasoning', startedAt: 100, endedAt: 120 });
+    expect(afterUpdate).toMatchObject({ kind: 'reasoning', startedAt: 140 });
+    if (afterUpdate.kind === 'reasoning') expect(afterUpdate.endedAt).toBeUndefined();
+
+    builder.advance(
+      {
+        type: 'agent-message-chunk',
+        messageId: 'message-1' as MessageId,
+        parentToolCallId: 'task-1',
+        content: { type: 'text', text: 'done' },
+      },
+      180,
+    );
+    expect(builder.snapshot().items.find((item) => item.id === 'th2')).toMatchObject({
+      kind: 'reasoning',
+      endedAt: 180,
+    });
+  });
+
+  it('tracks active reasoning independently for parallel parent scopes', () => {
+    const builder = createConversationBuilder();
+    builder.advance({ type: 'status', status: 'running' }, 90);
+    builder.advance(thought('one', 'th1', 'task-1'), 100);
+    builder.advance(thought('two', 'th2', 'task-2'), 110);
+
+    const active = builder.snapshot().items.filter((item) => item.kind === 'reasoning');
+    expect(active.every((item) => item.isStreaming)).toBe(true);
+
+    builder.advance(
+      {
+        type: 'agent-message-chunk',
+        messageId: 'message-1' as MessageId,
+        parentToolCallId: 'task-1',
+        content: { type: 'text', text: 'first done' },
+      },
+      130,
+    );
+
+    const first = nullthrow(builder.snapshot().items.find((item) => item.id === 'th1'));
+    const second = nullthrow(builder.snapshot().items.find((item) => item.id === 'th2'));
+    expect(first).toMatchObject({ kind: 'reasoning', startedAt: 100, endedAt: 130 });
+    expect(second).toMatchObject({ kind: 'reasoning', startedAt: 110, isStreaming: true });
+    if (first.kind === 'reasoning') expect(first.isStreaming).toBe(false);
+    if (second.kind === 'reasoning') expect(second.endedAt).toBeUndefined();
+  });
+
+  it.each([
+    ['stop event', { type: 'stop', stopReason: 'end_turn' } as const],
+    ['idle status', { type: 'status', status: 'idle' } as const],
+    ['stopped status', { type: 'status', status: 'stopped' } as const],
+  ])('ends reasoning in every scope on %s', (_label, settlement) => {
+    const builder = createConversationBuilder();
+    builder.advance({ type: 'status', status: 'running' }, 90);
+    builder.advance(thought('main', 'th-main'), 100);
+    builder.advance(thought('child', 'th-child', 'task-1'), 110);
+    builder.advance(settlement, 150);
+
+    const snapshot = builder.snapshot();
+    const reasoning = snapshot.items.filter((item) => item.kind === 'reasoning');
+    expect(reasoning).toHaveLength(2);
+    expect(reasoning.every((item) => item.endedAt === 150)).toBe(true);
+    expect(reasoning.every((item) => !item.isStreaming)).toBe(true);
+  });
+
+  it('keeps unknown timing absent and does not backfill the start from a later chunk', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('unknown start', 'th1'));
+    builder.advance(thought(' later', 'th1'), 120);
+    builder.advance(text('boundary', 'm2'), 150);
+
+    const item = nullthrow(builder.snapshot().items.find((entry) => entry.id === 'th1'));
+    expect(item.kind).toBe('reasoning');
+    if (item.kind === 'reasoning') {
+      expect(item.startedAt).toBeUndefined();
+      expect(item.endedAt).toBe(150);
+      expect(item.receivedAt).toBe(120);
+    }
   });
 });
 
