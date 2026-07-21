@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { artifactKindForPath } from './file-kind';
 
 /** Host-side actions artifacts can trigger. In-process only — the sandboxed bridge
  * (CODE-64) adapts the same surface over JSON-RPC for iframe-hosted artifacts. */
@@ -9,6 +10,9 @@ export interface ArtifactHostActions {
   /** Open a workspace file in the host's viewer; relative paths anchor to the session cwd.
    * Absent (webview has no viewer) — cards then render without the open affordance. */
   openFile?: (path: string) => void;
+  /** Play a workspace video in the host's browser surface (desktop: Browser pane), streamed
+   * from the daemon with Range (CODE-316). Absent → video paths fall back to `openFile`. */
+  openVideoPreview?: (path: string) => void;
   /** Open the workspace-change review surface. File results use this when the target no longer
    * exists (for example, a completed delete) or one adapter result spans multiple files. */
   reviewChanges?: () => void;
@@ -29,8 +33,15 @@ export function artifactNavigationAction(
 ): (() => void) | undefined {
   if (!actions || !navigation) return undefined;
   if (navigation.kind === 'review') return actions.reviewChanges;
+  const { path } = navigation;
+  // Video plays in the host's browser surface, not the file viewer; fall back to openFile
+  // when the host wires no video preview.
+  if (artifactKindForPath(path) === 'video' && actions.openVideoPreview) {
+    const openVideoPreview = actions.openVideoPreview;
+    return () => openVideoPreview(path);
+  }
   const openFile = actions.openFile;
-  return openFile ? () => openFile(navigation.path) : undefined;
+  return openFile ? () => openFile(path) : undefined;
 }
 
 export const ArtifactHostActionsContext = createContext<ArtifactHostActions | null>(null);

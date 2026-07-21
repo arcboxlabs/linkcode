@@ -62,6 +62,9 @@ export interface ConversationSurfaceProps {
   /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
    * when the shell has no viewer — file cards then render without the open affordance. */
   onOpenFileArtifact?: (path: string) => void;
+  /** Plays a workspace video in the shell's browser surface (desktop Browser pane). Absent
+   * when the shell has no browser — video paths then fall back to `onOpenFileArtifact`. */
+  onOpenVideoPreview?: (path: string) => void;
   /** Opens workspace changes in the shell's review surface. */
   onReviewChanges?: () => void;
   /** Hosts inline content on the daemon's ephemeral origin (sandboxed html previews). */
@@ -97,6 +100,7 @@ export function ConversationSurface({
   onRespondPermission,
   onRespondQuestion,
   onOpenFileArtifact,
+  onOpenVideoPreview,
   onReviewChanges,
   onHostArtifact,
   onOpenPreviewUrl,
@@ -113,6 +117,7 @@ export function ConversationSurface({
   const artifactActions = {
     referenceToComposer: (text: string) => composerRef.current?.insertText(text),
     openFile: onOpenFileArtifact,
+    openVideoPreview: onOpenVideoPreview,
     reviewChanges: onReviewChanges,
     hostArtifact: onHostArtifact,
     openPreviewUrl: onOpenPreviewUrl,

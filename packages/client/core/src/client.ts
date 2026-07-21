@@ -16,6 +16,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -346,6 +347,9 @@ export class LinkCodeClient {
       case 'artifact.hosted':
         this.pending.resolve('artifactHost', p.replyTo, p.artifact);
         break;
+      case 'file.hosted':
+        this.pending.resolve('fileHost', p.replyTo, p.hosted);
+        break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
@@ -664,6 +668,11 @@ export class LinkCodeClient {
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */
   hostArtifact(content: string, mimeType: string): Promise<HostedArtifact> {
     return this.control.hostArtifact(content, mimeType);
+  }
+
+  /** Host a workspace file on the daemon's per-file origin, streamed with Range (CODE-316). */
+  hostFile(cwd: string, path: string): Promise<HostedFile> {
+    return this.control.hostFile(cwd, path);
   }
 
   listWorkspaces(): Promise<WorkspaceRecord[]> {

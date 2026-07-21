@@ -11,7 +11,7 @@ import { cn } from '../lib/cn';
 import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
-import { useArtifactHostActions } from './artifacts/host-actions';
+import { artifactNavigationAction, useArtifactHostActions } from './artifacts/host-actions';
 import { artifactFenceLanguages } from './artifacts/registry';
 import { useSmoothText } from './smooth-text-controller';
 
@@ -36,8 +36,9 @@ const prefixExplicitHeadingIds: Plugin<[HeadingIdPrefixOptions], Root> =
     });
   };
 
-/** Inline code, upgraded to a file link when the span is a viewer-openable path and
- * the host wires `openFile` (degrades to plain code everywhere else). */
+/** Inline code, upgraded to a file link when the span is a viewer-openable path and the host
+ * wires a matching action (video → browser preview, else the file viewer); degrades to plain
+ * code everywhere else. */
 function InlineCode({
   className,
   children,
@@ -45,10 +46,11 @@ function InlineCode({
   ...rest
 }: React.ComponentProps<'code'> & { node?: unknown }): React.ReactNode {
   const actions = useArtifactHostActions();
-  const openFile = actions?.openFile;
-  const path = openFile && typeof children === 'string' ? detectInlineFilePath(children) : null;
+  const path = typeof children === 'string' ? detectInlineFilePath(children) : null;
+  const onOpen =
+    path === null ? undefined : artifactNavigationAction(actions, { kind: 'file', path });
 
-  if (openFile && path !== null) {
+  if (onOpen) {
     return (
       <button
         type="button"
@@ -57,7 +59,7 @@ function InlineCode({
           'cursor-pointer underline decoration-dotted underline-offset-2 hover:bg-accent',
           className,
         )}
-        onClick={() => openFile(path)}
+        onClick={onOpen}
       >
         {children}
       </button>

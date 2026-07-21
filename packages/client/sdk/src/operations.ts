@@ -15,6 +15,7 @@ import type {
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
+  HostedFile,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -263,6 +264,14 @@ export function hostArtifact(
   options: Options<{ content: string; mimeType: string }>,
 ): RequestResult<HostedArtifact> {
   return resolveClient(options).hostArtifact(options.content, options.mimeType);
+}
+
+/** Host a workspace file (directory-backed) on the daemon's per-file origin, streamed with
+ * Range so the host's browser plays large media inline (CODE-316). */
+export function hostWorkspaceFile(
+  options: Options<{ cwd: string; path: string }>,
+): RequestResult<HostedFile> {
+  return resolveClient(options).hostFile(options.cwd, options.path);
 }
 
 /** Every registered workspace (directory), most recently used first. */

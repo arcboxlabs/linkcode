@@ -22,6 +22,7 @@ import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
 import { ArtifactHostService } from './preview/artifact-host-service';
+import { FileHostService } from './preview/file-host-service';
 import { ArtifactRequestHandler } from './preview/request-handler';
 import { PreviewRouteRegistry } from './preview/route-registry';
 import { ScriptRequestHandler } from './scripts/request-handler';
@@ -99,8 +100,15 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const git = deps.git ?? (yield* GitService.make());
   const gitRequests = new GitRequestHandler(transport, git, responder);
   const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
-  const fileRequests = new FileRequestHandler(transport, fileSuggest, workspaces, responder);
   const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
+  const fileHost = new FileHostService(routes);
+  const fileRequests = new FileRequestHandler(
+    transport,
+    fileSuggest,
+    workspaces,
+    responder,
+    fileHost,
+  );
   const scripts = terminals
     ? new ScriptService(transport, terminals, routes, (cwd) => workspaces.findByCwd(cwd)?.name)
     : undefined;
@@ -263,6 +271,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* FiberSet.clear(taskSet);
       yield* finalizeEffect('sessions.shutdown', sessions.shutdown());
       yield* finalize('artifacts.shutdown', () => artifacts.close());
+      yield* finalize('file-host.shutdown', () => fileHost.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());

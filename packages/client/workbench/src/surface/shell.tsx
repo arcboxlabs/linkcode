@@ -23,6 +23,9 @@ export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   /** Reads a natively-picked attachment path via the daemon. Only a shell that supplies its own
    * native picker trigger (desktop) can use it — the bare fallback shell drops it. */
   onReadAttachmentFile?: (path: string) => Promise<ComposerAttachment>;
+  /** Hosts a workspace file on the daemon's per-file origin for browser playback (CODE-316).
+   * Only a shell with a browser surface (desktop's Browser pane) uses it; others drop it. */
+  onHostVideoFile?: (cwd: string, path: string) => Promise<{ url: string }>;
 }
 
 export type WorkbenchShellComponent = (props: WorkbenchShellProps) => React.ReactNode;

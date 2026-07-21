@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
 import { request as httpRequest } from 'node:http';
 import { connect as netConnect } from 'node:net';
@@ -34,6 +36,10 @@ export function createPreviewRequestHandler(
       serveContent(res, route.body, route.contentType);
       return;
     }
+    if ('filePath' in route) {
+      void serveFile(req, res, route.filePath, route.contentType);
+      return;
+    }
     proxyRequest(req, res, route.port);
   };
 }
@@ -48,6 +54,94 @@ function serveContent(res: ServerResponse, body: string, contentType: string): v
   res.end(body);
 }
 
+const RE_BYTE_RANGE = /^bytes=(\d*)-(\d*)$/;
+
+/** One `bytes=start-end` range resolved against the file size, or null when the header is
+ * absent/unsatisfiable/multi-range (callers then serve the whole file, or 416 for unsatisfiable). */
+export function parseByteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | 'unsatisfiable' | null {
+  if (header === undefined) return null;
+  const match = RE_BYTE_RANGE.exec(header.trim());
+  if (!match) return null;
+  const [, rawStart, rawEnd] = match;
+  if (rawStart === '' && rawEnd === '') return null;
+
+  let start: number;
+  let end: number;
+  if (rawStart === '') {
+    // Suffix range `bytes=-N`: the final N bytes.
+    const suffix = Number(rawEnd);
+    if (suffix === 0) return 'unsatisfiable';
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd === '' ? size - 1 : Math.min(Number(rawEnd), size - 1);
+  }
+  if (start > end || start >= size) return 'unsatisfiable';
+  return { start, end };
+}
+
+/** On-disk media served with Range support so `<video>`/`<audio>` can seek without a full
+ * download. `size` comes from a fresh stat each request — the file may change between hosts. */
+async function serveFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  filePath: string,
+  contentType: string,
+): Promise<void> {
+  let size: number;
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Not a file\n');
+      return;
+    }
+    size = info.size;
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('File not found\n');
+    return;
+  }
+
+  const commonHeaders = {
+    'content-type': contentType,
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+    'accept-ranges': 'bytes',
+  };
+  const range = parseByteRange(req.headers.range, size);
+  if (range === 'unsatisfiable') {
+    res.writeHead(416, { ...commonHeaders, 'content-range': `bytes */${size}` });
+    res.end();
+    return;
+  }
+  if (size === 0) {
+    res.writeHead(200, { ...commonHeaders, 'content-length': '0' });
+    res.end();
+    return;
+  }
+  if (req.method === 'HEAD') {
+    res.writeHead(200, { ...commonHeaders, 'content-length': String(size) });
+    res.end();
+    return;
+  }
+
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  res.writeHead(range ? 206 : 200, {
+    ...commonHeaders,
+    'content-length': String(end - start + 1),
+    ...(range && { 'content-range': `bytes ${start}-${end}/${size}` }),
+  });
+  const stream = createReadStream(filePath, { start, end });
+  stream.on('error', () => res.destroy());
+  res.on('close', () => stream.destroy());
+  stream.pipe(res);
+}
+
 /** Upgrade interceptor (Vite/Metro HMR WebSockets). True = the socket was taken over (proxied or
  * rejected); false = the caller's own WS server owns it. */
 export function handlePreviewUpgrade(
@@ -59,8 +153,8 @@ export function handlePreviewUpgrade(
   const hostname = normalizeHostname(req.headers.host);
   if (hostname === null || !isPreviewHostname(hostname)) return false;
   const route = routes.lookup(hostname);
-  if (route === null || 'body' in route) {
-    // Content-hosted artifact origins have no WebSocket upstream.
+  if (route === null || 'body' in route || 'filePath' in route) {
+    // Content-hosted artifact and file origins have no WebSocket upstream.
     socket.end('HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n');
     return true;
   }
