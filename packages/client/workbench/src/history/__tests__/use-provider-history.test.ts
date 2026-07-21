@@ -9,6 +9,7 @@ import type {
 } from '@linkcode/schema';
 import { AgentHistoryIdSchema } from '@linkcode/schema';
 import { cleanup, renderHook } from '@testing-library/react';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { importHistoryGroup, useProviderHistory } from '../use-provider-history';
 
@@ -182,6 +183,28 @@ describe('importHistoryGroup', () => {
       failures: [{ historyId: 'two', error: failure }],
     });
     expect(importEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it('limits the number of concurrent imports in a directory', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const importEntry = vi.fn(async (item: AgentHistorySession) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active -= 1;
+      return `session-${item.historyId}` as SessionId;
+    });
+
+    await importHistoryGroup({
+      cwd: '/work/linkcode',
+      entries: createFixedArray(10).map((index) => entry(`entry-${index}`)),
+      inFlight: new Set(),
+      importEntry,
+    });
+
+    expect(importEntry).toHaveBeenCalledTimes(10);
+    expect(maxActive).toBe(4);
   });
 
   it('drops a repeated click while the same directory import is in flight', async () => {

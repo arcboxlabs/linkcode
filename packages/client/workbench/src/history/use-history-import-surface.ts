@@ -7,6 +7,11 @@ import { useWorkbenchSessions } from '../surface/use-workbench-sessions';
 import { importedSessionByHistoryId, importedSessionKey } from './imported';
 import { useProviderHistory } from './use-provider-history';
 
+interface GroupImportFailureState {
+  total: number;
+  failedIds: ReadonlySet<AgentHistoryId>;
+}
+
 export interface HistoryImportSurface {
   /** Dedup-annotated view models in the requested order — feeds the list. */
   entries: HistoryBrowserEntry[];
@@ -47,7 +52,7 @@ export function useHistoryImportSurface(
     () => new Map(),
   );
   const [groupImportFailuresByKey, setGroupImportFailuresByKey] = useState<
-    ReadonlyMap<string, { imported: number; total: number }>
+    ReadonlyMap<string, GroupImportFailureState>
   >(() => new Map());
   const sessions = useWorkbenchSessions((error) => setOpenError({ kind, error }));
 
@@ -60,7 +65,12 @@ export function useHistoryImportSurface(
     if (!entry.cwd) continue;
     const groupKey = historyStateKey(kind, entry.cwd);
     const groupFailure = groupImportFailuresByKey.get(groupKey);
-    if (groupFailure !== undefined) groupImportFailures.set(entry.cwd, groupFailure);
+    if (groupFailure !== undefined) {
+      groupImportFailures.set(entry.cwd, {
+        imported: groupFailure.total - groupFailure.failedIds.size,
+        total: groupFailure.total,
+      });
+    }
   }
   const entries = sortHistoryBrowserEntries(
     history.entries.map((entry) => ({
@@ -88,7 +98,14 @@ export function useHistoryImportSurface(
     // The dedup badge flips once the revalidated session list carries the imported origin.
     void history
       .importEntry(entry)
-      .then(() => sessions.refresh())
+      .then(() => {
+        sessions.refresh();
+        if (!entry.cwd) return;
+        const groupKey = historyStateKey(kind, entry.cwd);
+        setGroupImportFailuresByKey((current) =>
+          groupFailureAfterRetry(current, groupKey, entry.historyId),
+        );
+      })
       .catch((error: unknown) => {
         setImportErrorsByKey((current) => new Map(current).set(key, errorMessage(error)));
       });
@@ -120,8 +137,8 @@ export function useHistoryImportSurface(
       });
       setGroupImportFailuresByKey((current) =>
         new Map(current).set(groupKey, {
-          imported: result.imported.length,
           total: entriesToImport.length,
+          failedIds: new Set(result.failures.map((failure) => failure.historyId)),
         }),
       );
     });
@@ -182,5 +199,20 @@ function withoutMapKeys<K, V>(map: ReadonlyMap<K, V>, keys: readonly K[]): Reado
   if (!keys.some((key) => map.has(key))) return map;
   const next = new Map(map);
   for (const key of keys) next.delete(key);
+  return next;
+}
+
+export function groupFailureAfterRetry(
+  failures: ReadonlyMap<string, GroupImportFailureState>,
+  groupKey: string,
+  historyId: AgentHistoryId,
+): ReadonlyMap<string, GroupImportFailureState> {
+  const failure = failures.get(groupKey);
+  if (!failure?.failedIds.has(historyId)) return failures;
+  const next = new Map(failures);
+  const failedIds = new Set(failure.failedIds);
+  failedIds.delete(historyId);
+  if (failedIds.size === 0) next.delete(groupKey);
+  else next.set(groupKey, { ...failure, failedIds });
   return next;
 }

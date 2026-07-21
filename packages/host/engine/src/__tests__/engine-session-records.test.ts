@@ -239,7 +239,7 @@ describe('engine session records', () => {
     let shouldFail = true;
     const store: SessionStore = {
       load: () => inner.load(),
-      save: (record) => {
+      save(record) {
         if (shouldFail) {
           shouldFail = false;
           return Promise.reject(new Error('private database detail'));
