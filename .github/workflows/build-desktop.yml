@@ -63,13 +63,18 @@ jobs:
     environment: ${{ inputs.sign && 'release' || '' }}
     strategy:
       fail-fast: false
+      # Runners resolve through repo/org `vars` (ArcBox pins Blacksmith labels there); forks
+      # fall back to GitHub-hosted images. Whatever the source, each platform keeps its floor:
+      # mac needs arm64 + Xcode 26 (actool >= 26 compiles mac.icon into Assets.car), windows
+      # needs VS Build Tools (enough for NSIS), linux stays on 22.04-era glibc so AppImages
+      # stay broadly compatible.
       matrix:
         include:
-          - os: blacksmith-6vcpu-macos-26 # arm64 (M4); Xcode 26 (actool >= 26) compiles mac.icon into Assets.car
+          - os: ${{ vars.CI_RUNNER_MACOS || 'macos-26' }}
             platform: mac
-          - os: blacksmith-4vcpu-windows-2025 # public beta; VS Build Tools only — enough for NSIS
+          - os: ${{ vars.CI_RUNNER_WINDOWS || 'windows-2025' }}
             platform: win
-          - os: blacksmith-4vcpu-ubuntu-2204 # older glibc => broader AppImage compatibility
+          - os: ${{ vars.CI_RUNNER_LINUX_PACKAGING || 'ubuntu-22.04' }}
             platform: linux
 
     steps:
