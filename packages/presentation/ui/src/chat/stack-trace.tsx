@@ -39,7 +39,7 @@ export function StackTrace({
   return (
     <Collapsible
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card font-mono text-[12px]',
+        'my-2 overflow-hidden rounded-xl border border-border bg-card font-mono text-[12px]',
         className,
       )}
       open={open}

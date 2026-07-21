@@ -26,7 +26,7 @@ export function ContentBlockView({
       return (
         <img
           alt=""
-          className="my-2 max-h-80 max-w-full rounded-lg border border-border"
+          className="my-2 max-h-80 max-w-full rounded-xl border border-border"
           src={block.uri ?? `data:${block.mimeType};base64,${block.data}`}
         />
       );

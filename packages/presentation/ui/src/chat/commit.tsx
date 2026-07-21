@@ -44,7 +44,7 @@ export function Commit({
   return (
     <Collapsible
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
+        'my-2 overflow-hidden rounded-xl border border-border bg-card text-sm',
         className,
       )}
       defaultOpen={defaultOpen}

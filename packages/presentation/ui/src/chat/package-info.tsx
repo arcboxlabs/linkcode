@@ -32,7 +32,7 @@ export function PackageInfo({
 }: PackageInfoProps): React.ReactNode {
   return (
     <div
-      className={cn('my-2 rounded-lg border border-border bg-card p-3 text-sm', className)}
+      className={cn('my-2 rounded-xl border border-border bg-card p-3 text-sm', className)}
       {...props}
     >
       {children ?? (

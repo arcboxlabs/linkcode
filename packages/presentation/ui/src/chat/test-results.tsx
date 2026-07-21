@@ -30,7 +30,7 @@ export function TestResults({
   return (
     <div
       className={cn(
-        'my-2 overflow-hidden rounded-lg border border-border bg-card text-sm',
+        'my-2 overflow-hidden rounded-xl border border-border bg-card text-sm',
         className,
       )}
       {...props}

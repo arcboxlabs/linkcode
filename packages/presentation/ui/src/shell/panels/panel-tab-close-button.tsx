@@ -12,7 +12,7 @@ export function PanelTabCloseButton({ label, onClick }: PanelTabCloseButtonProps
       type="button"
       aria-label={label}
       title={label}
-      className="mr-1 flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-50 outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+      className="mr-1 flex size-4 shrink-0 items-center justify-center rounded-[4px] text-muted-foreground opacity-50 outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
       onClick={(event) => {
         event.stopPropagation();
         onClick();

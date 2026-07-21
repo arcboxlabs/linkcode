@@ -28,7 +28,7 @@ export function Artifact({
   return (
     <div
       className={cn(
-        'my-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
+        'my-2 flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card',
         className,
       )}
       {...props}
