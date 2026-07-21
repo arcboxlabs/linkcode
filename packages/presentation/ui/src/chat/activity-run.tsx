@@ -1,8 +1,4 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import { PencilIcon, SearchIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -11,6 +7,7 @@ import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
 import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -133,7 +130,7 @@ export function ActivityRun({
         ) : null}
         <ChatDisclosureChevron />
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-0.5">
+      <ChatDisclosureContent bodyClassName="space-y-0.5">
         {run.items.map((item) =>
           item.kind === 'reasoning' ? (
             <ThoughtBlock
@@ -143,6 +140,7 @@ export function ActivityRun({
               isStreaming={item.isStreaming}
               startedAt={item.startedAt}
               summary={item.summary}
+              constrainHeight={false}
             />
           ) : (
             <ToolCallItem
@@ -151,10 +149,11 @@ export function ActivityRun({
               declined={declined.has(item.toolCall.toolCallId)}
               toolCall={item.toolCall}
               TerminalBlockComponent={TerminalBlockComponent}
+              constrainHeight={false}
             />
           ),
         )}
-      </CollapsibleContent>
+      </ChatDisclosureContent>
     </Collapsible>
   );
 }

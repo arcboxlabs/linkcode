@@ -19,7 +19,7 @@ afterEach(cleanup);
 describe('ThoughtBlock', () => {
   it('shows only the observed duration after settlement and reveals content on demand', async () => {
     const user = userEvent.setup();
-    render(
+    const { container } = render(
       <ThoughtBlock
         blocks={[{ type: 'text', text: 'Private chain of thought' }]}
         endedAt={6300}
@@ -36,6 +36,12 @@ describe('ThoughtBlock', () => {
     await user.click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('Private chain of thought')).toBeDefined();
+    const scrollArea = container.querySelector('[data-slot="chat-disclosure-scroll"]');
+    const viewport = scrollArea?.querySelector('[data-slot="scroll-area-viewport"]');
+    expect(scrollArea?.className).toContain('max-h-96');
+    expect(scrollArea?.className).toContain('**:data-[slot=scroll-area-viewport]:max-h-96');
+    expect(viewport?.className).toContain('mask-t-from');
+    expect(viewport?.className).toContain('mask-b-from');
   });
 
   it.each([

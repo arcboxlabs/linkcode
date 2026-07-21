@@ -1,13 +1,11 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { AlertTriangleIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -114,14 +112,14 @@ export function StackTraceHeader({
   );
 }
 
-export type StackTraceContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type StackTraceContentProps = ChatDisclosureContentProps;
 
 export function StackTraceContent({
   className,
   ...props
 }: StackTraceContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
+    <ChatDisclosureContent
       className={cn('border-t border-border bg-muted/30', className)}
       {...props}
     />
@@ -188,10 +186,7 @@ export type StackTraceRawProps = React.ComponentProps<'pre'> & {
 export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps): React.ReactNode {
   return (
     <pre
-      className={cn(
-        'max-h-72 overflow-auto border-t border-border p-3 text-muted-foreground',
-        className,
-      )}
+      className={cn('overflow-x-auto border-t border-border p-3 text-muted-foreground', className)}
       {...props}
     >
       {trace}

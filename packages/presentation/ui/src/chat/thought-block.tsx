@@ -11,12 +11,14 @@ export function ThoughtBlock({
   startedAt,
   endedAt,
   summary,
+  constrainHeight = true,
 }: {
   blocks: ContentBlock[];
   isStreaming?: boolean;
   startedAt?: number;
   endedAt?: number;
   summary?: string;
+  constrainHeight?: boolean;
 }): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const elapsedSeconds = thoughtElapsedSeconds(startedAt, endedAt);
@@ -32,7 +34,7 @@ export function ThoughtBlock({
         label={label}
         summary={isStreaming ? publicReasoningSummary(summary) : undefined}
       />
-      <ReasoningContent>
+      <ReasoningContent constrainHeight={constrainHeight}>
         {positionalBlockEntries(blocks).map(({ block, key }) => (
           <ContentBlockView key={key} block={block} />
         ))}

@@ -1,9 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import {
   CheckCircleIcon,
   CircleDashedIcon,
@@ -13,6 +9,8 @@ import {
   MinusCircleIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -100,12 +98,17 @@ export function TaskTrigger({
   );
 }
 
-export type TaskContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type TaskContentProps = ChatDisclosureContentProps;
 
-export function TaskContent({ className, ...props }: TaskContentProps): React.ReactNode {
+export function TaskContent({
+  bodyClassName,
+  className,
+  ...props
+}: TaskContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
-      className={cn('mt-1 space-y-1 border-l-2 border-border pl-3', className)}
+    <ChatDisclosureContent
+      bodyClassName={cn('space-y-1', bodyClassName)}
+      className={cn('mt-1 border-l-2 border-border pl-3', className)}
       {...props}
     />
   );

@@ -166,6 +166,13 @@ describe('ActivityRun', () => {
     header.focus();
     await user.keyboard('{Enter}');
     expect(header.getAttribute('aria-expanded')).toBe('true');
+    const scrollArea = container.querySelector('[data-slot="chat-disclosure-scroll"]');
+    const viewport = scrollArea?.querySelector('[data-slot="scroll-area-viewport"]');
+    expect(scrollArea?.className).toContain('max-h-96');
+    expect(scrollArea?.className).toContain('**:data-[slot=scroll-area-viewport]:max-h-96');
+    expect(viewport?.className).toContain('mask-t-from');
+    expect(viewport?.className).toContain('mask-b-from');
+    expect(container.querySelectorAll('[data-slot="chat-disclosure-scroll"]')).toHaveLength(1);
     await user.keyboard(' ');
     expect(header.getAttribute('aria-expanded')).toBe('false');
   });
@@ -285,6 +292,7 @@ describe('ActivityRun', () => {
     ).toBe(true);
     await user.click(leafHeaders[0]);
     expect(leafHeaders[0].children).toHaveLength(3);
+    expect(container.querySelectorAll('[data-slot="chat-disclosure-scroll"]')).toHaveLength(1);
     expect(panel?.textContent).not.toContain('/repo');
     expect(panel?.textContent).not.toContain(String.raw`C:\repo`);
     expect(leafHeaders[0].textContent).not.toContain('Reasoning first');

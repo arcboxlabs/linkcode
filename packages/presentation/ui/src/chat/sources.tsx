@@ -1,11 +1,9 @@
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { BookOpenIcon, ExternalLinkIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -97,12 +95,17 @@ export function SourcesTrigger({
   );
 }
 
-export type SourcesContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type SourcesContentProps = ChatDisclosureContentProps;
 
-export function SourcesContent({ className, ...props }: SourcesContentProps): React.ReactNode {
+export function SourcesContent({
+  bodyClassName,
+  className,
+  ...props
+}: SourcesContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
-      className={cn('mt-1 flex max-w-full flex-col gap-1 border-l-2 border-border pl-3', className)}
+    <ChatDisclosureContent
+      bodyClassName={cn('flex max-w-full flex-col gap-1', bodyClassName)}
+      className={cn('mt-1 border-l-2 border-border pl-3', className)}
       {...props}
     />
   );

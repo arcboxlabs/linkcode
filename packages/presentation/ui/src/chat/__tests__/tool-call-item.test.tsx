@@ -119,6 +119,12 @@ describe('ToolCallBody', () => {
     expect(screen.queryByText(path)).toBeNull();
 
     await user.click(peekHeader);
+    const scrollArea = container.querySelector('[data-slot="chat-disclosure-scroll"]');
+    const viewport = scrollArea?.querySelector('[data-slot="scroll-area-viewport"]');
+    expect(scrollArea?.className).toContain('max-h-96');
+    expect(scrollArea?.className).toContain('**:data-[slot=scroll-area-viewport]:max-h-96');
+    expect(viewport?.className).toContain('mask-t-from');
+    expect(viewport?.className).toContain('mask-b-from');
     const previewHeader = screen.getByRole('button', { name: RE_ANSWER_SOURCE_HEADER });
     expect(previewHeader.querySelector('[aria-hidden="true"] svg')).not.toBeNull();
     await user.hover(previewHeader);

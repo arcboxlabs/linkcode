@@ -1,13 +1,10 @@
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { useArtifactHostActions } from './artifacts/host-actions';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -62,11 +59,11 @@ export function TurnDiffSummary({
         ))}
         {overflowFiles.length > 0 && (
           <>
-            <CollapsibleContent>
+            <ChatDisclosureContent>
               {overflowFiles.map((file) => (
                 <FileRow key={file.path} file={file} onOpenFile={openFile} />
               ))}
-            </CollapsibleContent>
+            </ChatDisclosureContent>
             <CollapsibleTrigger
               className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full')}
             >

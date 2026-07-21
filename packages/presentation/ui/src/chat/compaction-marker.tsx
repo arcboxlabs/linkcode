@@ -1,14 +1,11 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Separator } from 'coss-ui/components/separator';
 import { Spinner } from 'coss-ui/components/spinner';
 import { FoldVerticalIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -109,9 +106,9 @@ export function CompactionMarker({
         </CollapsibleTrigger>
         <Separator className="min-w-8 flex-1" />
       </div>
-      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3">
+      <ChatDisclosureContent className="mt-1 border-l-2 border-border pl-3">
         <Markdown>{summary}</Markdown>
-      </CollapsibleContent>
+      </ChatDisclosureContent>
     </Collapsible>
   );
 }

@@ -1,10 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
 import { Spinner } from 'coss-ui/components/spinner';
 import {
@@ -15,6 +11,8 @@ import {
   XCircleIcon,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -116,13 +114,13 @@ export function QueueSectionTrigger({
   );
 }
 
-export type QueueSectionContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type QueueSectionContentProps = ChatDisclosureContentProps;
 
 export function QueueSectionContent({
   className,
   ...props
 }: QueueSectionContentProps): React.ReactNode {
-  return <CollapsibleContent className={cn('mt-2', className)} {...props} />;
+  return <ChatDisclosureContent className={cn('mt-2', className)} {...props} />;
 }
 
 export type QueueListProps = React.ComponentProps<typeof ScrollArea>;

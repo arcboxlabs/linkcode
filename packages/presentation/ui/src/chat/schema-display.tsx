@@ -1,10 +1,7 @@
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -184,11 +181,14 @@ export function SchemaDisplayParameters({
       {children ?? (
         <>
           <SchemaDisplaySectionTrigger count={parameters.length} label="Parameters" />
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
             {parameters.map((parameter) => (
               <SchemaDisplayParameter key={parameter.id} parameter={parameter} />
             ))}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </>
       )}
     </Collapsible>
@@ -242,11 +242,14 @@ export function SchemaDisplayProperties({
       {children ?? (
         <>
           <SchemaDisplaySectionTrigger count={properties.length} label={label} />
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
             {properties.map((schemaProperty) => (
               <SchemaDisplayProperty key={schemaProperty.id} schemaProperty={schemaProperty} />
             ))}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </>
       )}
     </Collapsible>
@@ -284,7 +287,11 @@ export function SchemaDisplayProperty({
               {schemaProperty.description}
             </div>
           ) : null}
-          <CollapsibleContent className="divide-y divide-border border-t border-border">
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+            constrainHeight={false}
+          >
             {children ??
               schemaProperty.properties?.map((child) => (
                 <SchemaDisplayProperty key={child.id} depth={depth + 1} schemaProperty={child} />
@@ -292,7 +299,7 @@ export function SchemaDisplayProperty({
             {schemaProperty.items ? (
               <SchemaDisplayProperty depth={depth + 1} schemaProperty={schemaProperty.items} />
             ) : null}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </div>
       </Collapsible>
     );

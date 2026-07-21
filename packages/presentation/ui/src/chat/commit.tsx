@@ -1,14 +1,12 @@
 import { Avatar, AvatarFallback } from 'coss-ui/components/avatar';
 import { Badge } from 'coss-ui/components/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { FileIcon, GitCommitIcon, MinusIcon, PlusIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import { CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, ChatDisclosureChevron } from './disclosure-header';
 
 // TODO(linkcode-schema): Provisional UI-only commit metadata, not yet wired to daemon/client schema.
@@ -161,10 +159,12 @@ export function CommitCopyButton({
   );
 }
 
-export type CommitContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type CommitContentProps = ChatDisclosureContentProps;
 
 export function CommitContent({ className, ...props }: CommitContentProps): React.ReactNode {
-  return <CollapsibleContent className={cn('border-t border-border p-2', className)} {...props} />;
+  return (
+    <ChatDisclosureContent className={cn('border-t border-border p-2', className)} {...props} />
+  );
 }
 
 export type CommitFilesProps = React.ComponentProps<'div'> & {

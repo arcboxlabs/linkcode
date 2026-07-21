@@ -1,10 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import { BotIcon, Maximize2Icon } from 'lucide-react';
 import { useState } from 'react';
@@ -12,6 +8,7 @@ import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
 import { contentDerivedEntries } from './content-derived-keys';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -23,7 +20,6 @@ import {
 import { Message, MessageContent } from './message';
 import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
-import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
 import { toolCallDisplayText } from './tool-result-content';
 import { toolCallFailureMessage } from './tool-utils';
@@ -87,6 +83,7 @@ export function SubagentTranscript({
                 isStreaming={item.isStreaming}
                 startedAt={item.startedAt}
                 summary={item.summary}
+                constrainHeight={false}
               />
             );
           case 'tool':
@@ -208,12 +205,11 @@ function SubagentCardContent({
           </Button>
         ) : null}
       </div>
-      <CollapsibleContent
-        className={cn(
-          'mt-1 space-y-2 border-l-2 border-border pl-3',
-          // Nested task cards share the root card's scroll container to avoid scroll traps.
-          constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
-        )}
+      <ChatDisclosureContent
+        bodyClassName="space-y-2"
+        className="mt-1 border-l-2 border-border pl-3"
+        // Nested task cards share the root card's scroll container to avoid scroll traps.
+        constrainHeight={constrainHeight}
       >
         <SubagentTranscript
           awaitingApproval={awaitingApproval}
@@ -224,7 +220,7 @@ function SubagentCardContent({
           TerminalBlockComponent={TerminalBlockComponent}
           toolCall={toolCall}
         />
-      </CollapsibleContent>
+      </ChatDisclosureContent>
     </Collapsible>
   );
 }

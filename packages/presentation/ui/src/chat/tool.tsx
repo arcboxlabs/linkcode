@@ -1,15 +1,13 @@
 import type { ToolCall } from '@linkcode/schema';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
 import { BanIcon, CircleXIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -20,8 +18,6 @@ import {
 } from './disclosure-header';
 import { TOOL_KIND_ICONS } from './tool-utils';
 import { FilePathTooltip } from './with-tooltip';
-
-export const TOOL_DETAIL_SCROLL_CLASS_NAME = 'max-h-96 overflow-y-auto';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
 
@@ -159,22 +155,19 @@ export function ToolIcon({
   return <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
-export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {
-  constrainHeight?: boolean;
-};
+export type ToolContentProps = ChatDisclosureContentProps;
 
 export function ToolContent({
+  bodyClassName,
   className,
   constrainHeight = true,
   ...props
 }: ToolContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
-      className={cn(
-        'mt-1 space-y-2 border-0',
-        constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
-        className,
-      )}
+    <ChatDisclosureContent
+      bodyClassName={cn('space-y-2', bodyClassName)}
+      className={cn('mt-1 border-0', className)}
+      constrainHeight={constrainHeight}
       {...props}
     />
   );

@@ -1,12 +1,10 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { nullthrow } from 'foxts/guard';
 import { SparklesIcon } from 'lucide-react';
 import { createContext, useContext, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -102,11 +100,11 @@ export function ReasoningTrigger({
   );
 }
 
-export type ReasoningContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type ReasoningContentProps = ChatDisclosureContentProps;
 
 export function ReasoningContent({ className, ...props }: ReasoningContentProps): React.ReactNode {
   return (
-    <CollapsibleContent
+    <ChatDisclosureContent
       className={cn('mt-1 border-l-2 border-border pl-3 text-sm italic opacity-90', className)}
       {...props}
     />

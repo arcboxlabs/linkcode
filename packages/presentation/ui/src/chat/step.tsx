@@ -1,10 +1,8 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { CircleCheckIcon, CircleDashedIcon, CircleIcon, ListTodoIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -55,10 +53,10 @@ export function StepHeader({
   );
 }
 
-export type StepContentProps = React.ComponentProps<typeof CollapsibleContent>;
+export type StepContentProps = ChatDisclosureContentProps;
 
 export function StepContent({ className, ...props }: StepContentProps): React.ReactNode {
-  return <CollapsibleContent className={cn('mt-2', className)} {...props} />;
+  return <ChatDisclosureContent className={cn('mt-2', className)} {...props} />;
 }
 
 export type StepItemStatus = 'pending' | 'in_progress' | 'completed';

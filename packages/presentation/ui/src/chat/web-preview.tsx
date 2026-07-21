@@ -1,11 +1,8 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
   CHAT_DISCLOSURE_TITLE_CLASS_NAME,
@@ -201,7 +198,10 @@ export function WebPreviewConsole({
             ) : null}
             <ChatDisclosureChevron />
           </CollapsibleTrigger>
-          <CollapsibleContent className="max-h-40 overflow-auto border-t border-border p-3 font-mono">
+          <ChatDisclosureContent
+            className="border-t border-border p-3 font-mono"
+            scrollAreaClassName="max-h-40 **:data-[slot=scroll-area-viewport]:max-h-40"
+          >
             {logs.length === 0 ? (
               <div className="text-muted-foreground">No console output</div>
             ) : (
@@ -220,7 +220,7 @@ export function WebPreviewConsole({
                 </div>
               ))
             )}
-          </CollapsibleContent>
+          </ChatDisclosureContent>
         </>
       )}
     </Collapsible>
