@@ -1,4 +1,5 @@
 import type { AgentKind } from '@linkcode/schema';
+import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Input } from 'coss-ui/components/input';
 import { Skeleton } from 'coss-ui/components/skeleton';
@@ -114,17 +115,18 @@ export function AccountMasterList({
                   </span>
                   <span className="mt-1 flex flex-wrap gap-1">
                     {account.boundAgents.length === 0 ? (
-                      <span className="rounded-full border border-border border-dashed px-1.5 text-[10px] text-muted-foreground leading-4">
+                      <Badge
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full border-dashed text-muted-foreground"
+                      >
                         {t('unbound')}
-                      </span>
+                      </Badge>
                     ) : (
                       account.boundAgents.map((kind) => (
-                        <span
-                          key={kind}
-                          className="rounded-full border border-border bg-background px-1.5 text-[10px] leading-4"
-                        >
+                        <Badge key={kind} variant="outline" size="sm" className="rounded-full">
                           {tAgent(kind)}
-                        </span>
+                        </Badge>
                       ))
                     )}
                   </span>
@@ -150,9 +152,13 @@ export function AccountMasterList({
                       <span className="truncate font-medium text-sm">
                         {t(`serviceName.${login.service}`)}
                       </span>
-                      <span className="rounded-full border border-border px-1.5 text-[10px] text-muted-foreground leading-4">
+                      <Badge
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-muted-foreground"
+                      >
                         {t('detected')}
-                      </span>
+                      </Badge>
                     </span>
                     <span className="block truncate text-muted-foreground text-xs">
                       {login.email ?? t('loggedIn')}

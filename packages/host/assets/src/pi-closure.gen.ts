@@ -521,9 +521,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: '@types/node',
-    version: '26.0.1',
+    version: '26.1.1',
     integrity:
-      'sha512-fc3KiUoBt6kie0N9bIW3E47vZsuaMf0PM2AaUpLCLT0s/LvX1nxAim6Fc049cNxODPpGm6qRAuUOB86SkRuPQw==',
+      'sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==',
     path: 'node_modules/@types/node',
   },
   {

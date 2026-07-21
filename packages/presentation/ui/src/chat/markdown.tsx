@@ -1,7 +1,12 @@
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
+import type { Root } from 'hast';
+import { createContext, useContext, useId } from 'react';
+import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
-import { Streamdown } from 'streamdown';
+import { defaultRehypePlugins, Streamdown } from 'streamdown';
+import type { Plugin } from 'unified';
+import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
 import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
@@ -11,6 +16,25 @@ import { artifactFenceLanguages } from './artifacts/registry';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
+const NON_WORD_RE = /\W/g;
+const SANITIZED_HEADING_PREFIX = 'user-content-';
+const HEADING_TAG_NAMES = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const MarkdownHeadingPrefixContext = createContext<string | null>(null);
+
+interface HeadingIdPrefixOptions {
+  prefix: string;
+}
+
+const prefixExplicitHeadingIds: Plugin<[HeadingIdPrefixOptions], Root> =
+  ({ prefix }) =>
+  (tree) => {
+    visit(tree, 'element', (node) => {
+      const id = node.properties.id;
+      if (HEADING_TAG_NAMES.has(node.tagName) && typeof id === 'string' && id.length > 0) {
+        node.properties.id = `${prefix}${id}`;
+      }
+    });
+  };
 
 /** Inline code, upgraded to a file link when the span is a viewer-openable path and the host
  * wires a matching action (video → browser preview, else the file viewer); degrades to plain
@@ -48,19 +72,61 @@ function InlineCode({
   );
 }
 
-// Typography overrides keep the chat-tuned look; fenced code blocks stay on
-// Streamdown's defaults for shiki highlighting and copy controls.
-const components: Components = {
-  a: ({ className, children, node: _node, ...rest }) => (
+function MarkdownLink({
+  className,
+  children,
+  node: _node,
+  href,
+  ...rest
+}: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
+  const headingPrefix = useContext(MarkdownHeadingPrefixContext);
+  const isFragment = href?.[0] === '#';
+  const fragmentHref =
+    isFragment && headingPrefix
+      ? `#${SANITIZED_HEADING_PREFIX}${headingPrefix}${href.slice(1)}`
+      : undefined;
+  return (
     <a
       {...rest}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
-      target="_blank"
-      rel="noreferrer"
+      href={fragmentHref ?? href}
+      target={isFragment ? undefined : '_blank'}
+      rel={isFragment ? undefined : 'noreferrer'}
+      onClick={
+        fragmentHref
+          ? (event) => {
+              const target = event.currentTarget.ownerDocument.getElementById(
+                fragmentHref.slice(1),
+              );
+              if (target) {
+                event.preventDefault();
+                const scrollContainer = event.currentTarget.closest<HTMLElement>(
+                  '[data-markdown-scroll-container]',
+                );
+                if (!scrollContainer) {
+                  target.scrollIntoView({ block: 'start' });
+                  return;
+                }
+                scrollContainer.scrollTo({
+                  top:
+                    scrollContainer.scrollTop +
+                    target.getBoundingClientRect().top -
+                    scrollContainer.getBoundingClientRect().top,
+                });
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </a>
-  ),
+  );
+}
+
+// Typography overrides keep the chat-tuned look; fenced code blocks stay on
+// Streamdown's defaults for shiki highlighting and copy controls.
+const components: Components = {
+  a: MarkdownLink,
   p: ({ className, children, node: _node, ...rest }) => (
     <p className={cn('my-2 first:mt-0 last:mb-0', className)} {...rest}>
       {children}
@@ -144,6 +210,29 @@ const artifactRenderers = [
   { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
 ];
 
+type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
+
+const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
+const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
+
+function createMarkdownRehypePlugins(headingPrefix: string): RehypePlugins {
+  if (rawRehypePluginIndex < 0) {
+    throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
+  }
+  const defaults = Object.values(defaultRehypePlugins);
+  const explicitHeadingIdPlugin: RehypePlugins[number] = [
+    prefixExplicitHeadingIds,
+    { prefix: headingPrefix },
+  ];
+  const headingSlugPlugin: RehypePlugins[number] = [rehypeSlug, { prefix: headingPrefix }];
+  return [
+    ...defaults.slice(0, rawRehypePluginIndex + 1),
+    explicitHeadingIdPlugin,
+    headingSlugPlugin,
+    ...defaults.slice(rawRehypePluginIndex + 1),
+  ];
+}
+
 const INSTANT_STREAM_ANIMATION = {
   duration: 0,
   stagger: 0,
@@ -153,14 +242,22 @@ interface MarkdownProps {
   children: string;
   className?: string;
   animated?: StreamdownProps['animated'];
+  headingAnchors?: boolean;
 }
 
 interface SmoothMarkdownProps extends MarkdownProps {
   isStreaming: boolean;
 }
 
-export function Markdown({ children, className, animated }: MarkdownProps): React.ReactNode {
+export function Markdown({
+  children,
+  className,
+  animated,
+  headingAnchors = false,
+}: MarkdownProps): React.ReactNode {
   const { codeTheme } = useRenderPrefs();
+  const markdownId = useId();
+  const headingPrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
   // The @streamdown/code plugin's getThemes() wins over the shikiTheme prop, so the selected theme
   // must be baked into the plugin. createCodePlugin is cheap — its highlighter is created lazily.
   const plugins: PluginConfig = {
@@ -168,7 +265,7 @@ export function Markdown({ children, className, animated }: MarkdownProps): Reac
     code: createCodePlugin({ themes: codeTheme }),
     renderers: artifactRenderers,
   };
-  return (
+  const content = (
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
       // matching the previous react-markdown renderer.
@@ -176,9 +273,18 @@ export function Markdown({ children, className, animated }: MarkdownProps): Reac
       components={components}
       animated={animated}
       plugins={plugins}
+      mode={headingAnchors ? 'static' : undefined}
+      rehypePlugins={headingAnchors ? createMarkdownRehypePlugins(headingPrefix) : undefined}
     >
       {children}
     </Streamdown>
+  );
+  return headingAnchors ? (
+    <MarkdownHeadingPrefixContext.Provider value={headingPrefix}>
+      {content}
+    </MarkdownHeadingPrefixContext.Provider>
+  ) : (
+    content
   );
 }
 

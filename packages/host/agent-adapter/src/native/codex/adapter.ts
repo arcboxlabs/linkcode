@@ -298,7 +298,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
-    this.model = opts.model;
+    this.model = opts.model ?? undefined;
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();

@@ -95,15 +95,30 @@ The release build is used in dev on purpose, so the daemon's fallback path match
 
 ### One runner
 
-There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` with `environment: 'node'`. Module unit tests stay beside their source under package/app `src/**/__tests__`; workspace-level contract and integration tests live under `tests/{contract,integration}`. Shared fixtures live under `tests/support` and are type-checked but are not test entry points. Test files use `*.test.ts` or `*.test.tsx`; DOM component tests opt in per file with `@vitest-environment jsdom`. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
+There is exactly **one** test runner: root `pnpm test` (= `vitest run`), driven by a single root `vitest.config.ts` with `environment: 'node'`. Test placement follows the boundary under test:
+
+- Module unit and behavior tests stay beside their source under package/app `src/**/__tests__`.
+- `tests/contract` is only for consumer contracts exercised through a workspace's public exports; it must not import private `src` modules.
+- `tests/integration` is for real process or runtime boundaries: loopback network servers, native databases, CLI/child processes, compiled binaries, or multiple runtimes wired together. A temporary filesystem by itself does not make a test an integration test.
+- App `e2e/` tests launch the real app entry and drive it externally; renderer component tests are not E2E.
+
+Shared external-test fixtures live under `tests/support` and are type-checked but are not test entry points. Test files use `*.test.ts` or `*.test.tsx`; DOM component tests opt in per file with `@vitest-environment jsdom`. No app or package has its own `test` script and `turbo.json` has no `test` task, so `turbo run test` does nothing. Run one area by passing a path or name filter:
 
 ```bash
 pnpm test apps/daemon/src/pty     # just the PTY unit tests
 ```
 
-### CI does NOT run vitest
+### CI runs Vitest and process acceptance separately
 
-CI (`.github/workflows/ci.yml`) has three jobs: **typescript** (`format:check`, `lint`, `typecheck`), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over both. None of them runs `pnpm test` — the vitest suite gates nothing in CI, so **run it yourself before every commit**. Do not trust an agent workflow's "all green" self-report: run `pnpm check:ci` and `pnpm test` and re-check anything a review left unfixed. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+CI (`.github/workflows/ci.yml`) has six jobs: **typescript** (`format:check`, `lint`, `typecheck`, a debug `linkcode-pty` build, required-sidecar Vitest, then the compiled-daemon process acceptance), **desktop** (unpackaged Electron entry, window-state persistence, plus an unsigned packaged devshell), **webview** (the production bundle in Chromium, followed by the bundled mock entry and wire-compatible mock host), **mobile** (Android and iOS Expo Router production exports), **rust** (`cargo fmt --check`, `clippy`, `test`), and an **All Green** aggregate gate over all five required jobs. `check:ci` still excludes Vitest and app acceptance, so run the applicable commands below before every commit rather than treating any one command as the complete gate. A `tsconfig` that excludes its own test files silently hides test type errors (agent-adapter once hid 6 this way).
+
+The daemon acceptance driver is deliberately outside Vitest: it starts `dist/index.js` as an external process with an isolated `HOME`, waits for `runtime.json`, checks the HTTP identity, connects a public `LinkCodeClient` through Socket.IO, reads the migrated native SQLite database, and opens a shell through the real PTY sidecar. Run the same boundary locally with:
+
+```bash
+cargo build --locked -p linkcode-pty
+pnpm -F @linkcode/daemon build
+LINKCODE_PTY_SIDECAR_PATH="$PWD/target/debug/linkcode-pty" pnpm -F @linkcode/daemon e2e:startup
+```
 
 Every workspace with a root `tests/` directory must provide `tests/tsconfig.json`, extending its production config with the workspace root as `rootDir`, and the root `tsconfig.json` must reference it. Vitest discovery alone does not type-check every support file.
 
@@ -115,17 +130,17 @@ The PTY subsystem has four layers, and the frame protocol is implemented **twice
 
 1. `apps/daemon/src/pty/__tests__/codec.test.ts` — pure TS frame codec.
 2. `apps/daemon/src/pty/__tests__/sidecar.test.ts` — `SidecarPtyBackend` with `vi.mock('node:child_process')`; no real binary.
-3. `apps/daemon/src/pty/__tests__/sidecar.integration.test.ts` — real backend against the real compiled `linkcode-pty` (cross-boundary wire check).
+3. `apps/daemon/tests/integration/pty-sidecar.test.ts` — real backend against the real compiled `linkcode-pty` (cross-boundary wire check).
 4. `crates/linkcode-pty/tests/smoke.rs` — Rust, unix-only, self-builds via `CARGO_BIN_EXE_linkcode-pty`.
 
-**Silent-skip trap:** layer 3 is `describe.skipIf(!BINARY)` and **silently skips** when `linkcode-pty` isn't built (it looks for `target/debug` then `target/release`, first existing wins, else skip). Plain `pnpm test` therefore passes green **without ever exercising the real wire protocol**. To actually run it, build the binary first:
+**Local silent-skip trap:** layer 3 is `describe.skipIf(!BINARY)` and skips when `linkcode-pty` isn't built (it looks for `target/debug` then `target/release`, first existing wins, else skip), so plain local `pnpm test` may not exercise the real wire protocol. CI builds the debug binary and sets `LINKCODE_REQUIRE_PTY_SIDECAR=1`, which turns a missing binary into a hard failure before either critical suite can skip. To run the same boundary locally, build the binary first:
 
 ```bash
 pnpm -F @linkcode/daemon run build:rust
-pnpm test
+LINKCODE_REQUIRE_PTY_SIDECAR=1 pnpm test apps/daemon/tests/integration/pty-sidecar.test.ts apps/daemon/tests/integration/terminal-flood.test.ts
 ```
 
-CI never builds the binary inside the TypeScript job, so this cross-language test no-ops in CI — you must run it locally. `cargo test --locked` runs `smoke.rs` self-contained.
+`cargo test --locked` also runs `smoke.rs` self-contained in the Rust job; the required TypeScript suites are the separate check that the TS and Rust implementations agree over the real process boundary.
 
 The multi-device terminal contract has a separate in-process integration check. It opens from a
 desktop peer, attaches a late mobile controller through the Hub, verifies replay plus live output,
@@ -143,7 +158,15 @@ intended operation.
 
 ## Desktop E2E procedures
 
-The first committed E2E script is `apps/desktop/e2e/notifications.e2e.mts` (`pnpm -F @linkcode/desktop e2e:notifications`, `playwright-core` devDependency): it self-orchestrates an isolated daemon + built desktop app and asserts the OS-notification chain end to end — use it as the template for new flows (fresh fake `HOME`, `--user-data-dir`, `--use-mock-keychain`, main-process interception via `app.evaluate`). Everything else is still driven ad-hoc the same way. No E2E runs in CI; release only validates packaging (`verify-artifacts`), and the missing CI packaged-boot smoke test is tracked as CODE-89. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
+The CI entry smoke tests are `e2e:unpackaged`, `e2e:window-bounds`, and `e2e:packaged`. The first launches the built main/preload/renderer and calls the sandbox preload bridge. The window check relaunches Electron to prove first-run sizing and persisted normal/maximized bounds; a headless Xvfb run needs a window manager such as Openbox because Linux maximize is a window-manager operation. The packaged check builds and launches the unsigned devshell directory product, proves that its renderer crosses the connection gate, then exercises its preload bridge, supervised bundled daemon, native SQLite migrations, staged PTY sidecar, and graceful app/daemon shutdown. Run all three on Linux with `xvfb-run`; the packaged check is intentionally not evidence for signing or notarization:
+
+```bash
+xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+xvfb-run -a sh -c 'openbox >/tmp/linkcode-openbox.log 2>&1 & wm_pid=$!; trap "kill $wm_pid 2>/dev/null || true" EXIT; pnpm -F @linkcode/desktop e2e:window-bounds'
+xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
+```
+
+The feature E2E `apps/desktop/e2e/notifications.e2e.mts` (`pnpm -F @linkcode/desktop e2e:notifications`, `playwright-core` devDependency) self-orchestrates an isolated daemon + built desktop app and asserts the OS-notification chain end to end — use it as the template for flows that need a real agent (fresh fake `HOME`, `--user-data-dir`, `--use-mock-keychain`, main-process interception via `app.evaluate`). Those agent-dependent E2Es remain manual. Hard rule: **packaging verification must actually launch the packaged product** — launch-only bugs (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a dev-shell exit-0 lock theft) never reproduce in dev.
 
 > Procedure from prior sessions — re-verify each step as you go. Script names and paths below are repo-verified; the keychain service name is observed behavior of the vendored CLI (re-check with `security find-generic-password -s 'Claude Code-credentials'`); the launch/driving switches are memory-sourced Chromium/Electron flags.
 
@@ -168,6 +191,21 @@ Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/Lin
 **Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `node scripts/build.mts --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`scripts/dev.mts --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, and the asar-unpack debug trick. Electron flags such as `--remote-debugging-port` and `--profile` pass through `dev`/`dev:mock` with or without a `--` separator (e.g. `pnpm -F @linkcode/desktop dev --remote-debugging-port=9222`).
 
 **Feature gotchas (memory-sourced).** The composer is disabled with no thread ("Create or pick a thread first") — click the Chats `+` first. "Ask permissions" stalls a Task at approval — switch to "Bypass permissions" before spawning an agent. Clicking a sidebar thread row needs Playwright `force: true`. Match the active row by `classList.contains('bg-sidebar-accent')` exactly (`className.includes` also matches the hover variant). Webview artifact E2E (`pnpm -F @linkcode/webview run dev:mock`): mock `blob:` URLs can't cross the Electron webview process (promotion fails `ERR_FILE_NOT_FOUND`) — use a real http URL.
+
+## Webview and mobile entry smoke tests
+
+The webview browser smoke builds the daemon and production bundle, then launches Chromium against the emitted assets with that isolated daemon as its real Socket.IO host and drives the index/Settings routes. It next starts the Vite app in mock mode and sends prompts through the workbench's real wire-compatible mock transport before and after a full reload. Install Playwright's Chromium shell once, then run:
+
+```bash
+pnpm -F @linkcode/webview exec playwright-core install chromium --only-shell
+pnpm -F @linkcode/webview e2e:browser
+```
+
+The mobile smoke performs separate production exports from the real Expo Router entry for Android and iOS. It requires Hermes bytecode and source maps, then verifies that the root layout, startup route, host route, and terminal route were all included by Metro. This is an app-entry bundle gate, **not** simulator/device E2E and not evidence that native modules load on a device:
+
+```bash
+pnpm -F @linkcode/mobile smoke:export
+```
 
 ## Debugging and triage
 

@@ -36,18 +36,22 @@ class TestAdapter extends BaseAgentAdapter {
   commands(catalog: AgentCommand[]): void {
     this.emitCommands(catalog);
   }
-  askQuestion(): Promise<unknown> {
-    return this.requestQuestion({ toolCallId: 't1' }, [
-      {
-        questionId: 'q0',
-        prompt: 'Which one?',
-        multiSelect: false,
-        options: [
-          { optionId: 'o0', label: 'A' },
-          { optionId: 'o1', label: 'B' },
-        ],
-      },
-    ]);
+  askQuestion(signal?: AbortSignal): Promise<unknown> {
+    return this.requestQuestion(
+      { toolCallId: 't1' },
+      [
+        {
+          questionId: 'q0',
+          prompt: 'Which one?',
+          multiSelect: false,
+          options: [
+            { optionId: 'o0', label: 'A' },
+            { optionId: 'o1', label: 'B' },
+          ],
+        },
+      ],
+      signal,
+    );
   }
 }
 
@@ -155,6 +159,23 @@ describe('BaseAgentAdapter teardown', () => {
 });
 
 describe('BaseAgentAdapter question round-trip', () => {
+  it('resolves only the aborted dialog and emits one session-origin resolution', async () => {
+    const a = new TestAdapter();
+    const controller = new AbortController();
+    const aborted = a.askQuestion(controller.signal);
+    const other = a.askQuestion();
+    controller.abort();
+
+    await expect(aborted).resolves.toEqual({ outcome: 'cancelled' });
+    expect(a.seen.filter((event) => event.type === 'question-resolved')).toHaveLength(1);
+    expect(a.seen.find((event) => event.type === 'question-resolved')).toMatchObject({
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+    await a.send({ type: 'cancel' });
+    await expect(other).resolves.toEqual({ outcome: 'cancelled' });
+  });
+
   it('resolves the pending ask with the answers from a question-response, by requestId', async () => {
     const a = new TestAdapter();
     const pending = a.askQuestion();

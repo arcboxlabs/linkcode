@@ -14,6 +14,7 @@ import type { ConversationComposerController } from './conversation-surface';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type {
+  AgentStartCatalogs,
   AttachmentSupportByAgent,
   NewSessionDraft,
   NewSessionSubmission,
@@ -45,6 +46,7 @@ export interface ShellFrameProps
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
+  agentCatalogs?: AgentStartCatalogs;
   /** Effective daemon-configured default models for new sessions; null while unresolved. */
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
@@ -112,6 +114,7 @@ export function ShellFrame({
   draft,
   runtimeCues,
   attachmentSupport,
+  agentCatalogs,
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
@@ -198,6 +201,7 @@ export function ShellFrame({
             chatWorkspace={chatWorkspace}
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
+            agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
             preferredModels={newSessionPreferredModels}
             preferredEfforts={newSessionPreferredEfforts}

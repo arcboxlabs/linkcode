@@ -1,3 +1,4 @@
+import type { AdapterFactory } from '@linkcode/agent-adapter';
 import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -6,6 +7,7 @@ import { OperationError, RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
+import { applyProviderDefaults } from './provider-config';
 import type { AgentRuntimeService } from './runtime-service';
 
 type AgentRequest = Extract<
@@ -13,6 +15,7 @@ type AgentRequest = Extract<
   {
     kind:
       | 'agent-runtime.list'
+      | 'agent.catalog'
       | 'config.get'
       | 'config.set'
       | 'agent-login.start'
@@ -29,10 +32,43 @@ export class AgentRequestHandler {
     private readonly providers: ProviderConfigStore,
     private readonly logins: AgentLoginService | undefined,
     private readonly responder: WireResponder,
+    private readonly factory: AdapterFactory,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
     switch (payload.kind) {
+      case 'agent.catalog':
+        return this.responder.reply(
+          payload.clientReqId,
+          Effect.tryPromise({
+            try: async () => {
+              const startOptions = applyProviderDefaults(
+                { kind: payload.agentKind, cwd: payload.cwd ?? '.' },
+                this.providers.get(),
+                this.providers.getAccounts(),
+              );
+              const catalog = await this.factory(payload.agentKind).startCatalog({
+                cwd: payload.cwd,
+                model: startOptions.model,
+                config: startOptions.config,
+              });
+              this.transport.send(
+                createWireMessage({
+                  kind: 'agent.cataloged',
+                  replyTo: payload.clientReqId,
+                  catalog,
+                }),
+              );
+            },
+            catch: (cause) =>
+              new OperationError({
+                subsystem: 'agent',
+                operation: 'agent.catalog',
+                publicMessage: 'Failed to load agent catalog',
+                cause,
+              }),
+          }),
+        );
       case 'agent-runtime.list': {
         // A pre-probe snapshot reads as every agent missing, so hold the reply until seeding lands.
         return this.runtimes.snapshot().pipe(

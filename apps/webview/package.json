@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
+    "e2e:browser": "pnpm -F @linkcode/daemon build && pnpm run build && node e2e/browser-smoke.e2e.mts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/webview"
@@ -48,6 +49,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "babel-plugin-react-compiler": "catalog:",
+    "playwright-core": "^1.61.1",
     "tailwindcss": "catalog:",
     "tw-animate-css": "^1.4.0",
     "typescript": "catalog:",

@@ -88,6 +88,19 @@ export class InteractiveRequests {
     return resolution;
   }
 
+  resolveFromAdapter(resolution: AskResolutionEvent): boolean {
+    const ask = this.records.get(resolution.requestId);
+    if (
+      !ask ||
+      ask.state === 'resolved' ||
+      ask.request.type.replace('-request', '-resolved') !== resolution.type
+    ) {
+      return false;
+    }
+    this.records.set(resolution.requestId, { request: ask.request, state: 'resolved', resolution });
+    return true;
+  }
+
   cancelOpen(toolCallId?: string): AskResolutionEvent[] {
     const resolutions: AskResolutionEvent[] = [];
     for (const [requestId, ask] of this.records) {

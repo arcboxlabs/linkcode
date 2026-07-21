@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.cache/tsconfig.e2e.tsbuildinfo",
+    "jsx": "react-jsx",
+    "rootDir": ".."
+  },
+  "include": ["."]
+}

@@ -8,6 +8,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   ContentBlock,
   EffortLevel,
   FileSuggestion,
@@ -70,6 +71,15 @@ export class ControlChannel {
       kind: 'session.start',
       clientReqId,
       opts,
+    }));
+  }
+
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
+    return this.sendCorrelated('agentCatalog', (clientReqId) => ({
+      kind: 'agent.catalog',
+      clientReqId,
+      agentKind,
+      cwd,
     }));
   }
 

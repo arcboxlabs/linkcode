@@ -29,8 +29,8 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
-import { AGENT_EFFORT_OPTIONS } from './agent-efforts';
-import { AGENT_MODEL_OPTIONS } from './agent-models';
+import { effortOptionsForModel } from './agent-efforts';
+import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {
@@ -787,7 +787,10 @@ export function Composer({
       : agentKind
         ? AGENT_MODEL_OPTIONS[agentKind]
         : undefined;
-  const effortOptions = agentKind ? AGENT_EFFORT_OPTIONS[agentKind] : undefined;
+  const effortOptions = effortOptionsForModel(
+    agentKind,
+    resolveModel(modelOptions, currentModel ?? null),
+  );
 
   // Workflow mode and approval policy are orthogonal axes (see session-modes.ts, approval-policy.ts).
   // The active mode is server-reflected; a rejected switch (error banner) leaves the previous active.

@@ -7,6 +7,7 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AgentStartCatalog,
   ContentBlock,
   EffortLevel,
   FileSuggestion,
@@ -300,6 +301,9 @@ export class LinkCodeClient {
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
+      case 'agent.cataloged':
+        this.pending.resolve('agentCatalog', p.replyTo, p.catalog);
+        break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
         break;
@@ -441,6 +445,10 @@ export class LinkCodeClient {
 
   startSession(opts: StartOptions): Promise<SessionId> {
     return this.control.startSession(opts);
+  }
+
+  getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
+    return this.control.getAgentCatalog(agentKind, cwd);
   }
 
   listSessions(): Promise<SessionInfo[]> {

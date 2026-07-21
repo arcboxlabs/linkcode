@@ -17,7 +17,11 @@ describe('terminal wire schema', () => {
     });
 
     expect(parsed.success).toBe(true);
-    if (!parsed.success || parsed.data.payload.kind !== 'terminal.open') return;
+    if (!parsed.success) throw new Error(parsed.error.message);
+    expect(parsed.data.payload.kind).toBe('terminal.open');
+    if (parsed.data.payload.kind !== 'terminal.open') {
+      throw new Error(`expected terminal.open, received ${parsed.data.payload.kind}`);
+    }
     expect(parsed.data.payload.opts).not.toHaveProperty('sessionId');
   });
 

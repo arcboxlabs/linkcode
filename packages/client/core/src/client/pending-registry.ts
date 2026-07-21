@@ -3,6 +3,7 @@ import type {
   AgentHistoryListResult,
   AgentHistoryReadResult,
   AgentRuntimes,
+  AgentStartCatalog,
   FileSuggestion,
   GitDiff,
   GitPullRequestStatus,
@@ -64,6 +65,7 @@ export interface PendingValueMap {
   configGet: ProvidersConfig;
   accountsGet: Accounts;
   agentRuntimeList: AgentRuntimes;
+  agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
@@ -107,6 +109,7 @@ export class PendingRegistry {
     configGet: new Map(),
     accountsGet: new Map(),
     agentRuntimeList: new Map(),
+    agentCatalog: new Map(),
     assetList: new Map(),
     assetEnsure: new Map(),
     gitStatus: new Map(),

@@ -97,10 +97,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="font-semibold text-sm">{t('title')}</h2>
-        <p className="text-muted-foreground text-xs">{t('hint')}</p>
-      </div>
+      {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
+      <p className="text-muted-foreground text-sm">{t('hint')}</p>
       <div className="flex gap-6">
         <AccountMasterList
           {...accountList}

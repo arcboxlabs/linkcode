@@ -30,6 +30,7 @@ jobs:
   typescript:
     name: TypeScript
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -39,10 +40,16 @@ jobs:
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6.4.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -56,9 +63,126 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build PTY sidecar for interoperability tests
+        run: cargo build --locked -p linkcode-pty
+
+      - name: Test
+        env:
+          LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
+          LINKCODE_REQUIRE_PTY_SIDECAR: '1'
+        run: |
+          pnpm test --exclude='apps/daemon/tests/integration/**'
+          pnpm test apps/daemon/tests/integration --no-file-parallelism
+
+      - name: Daemon process acceptance
+        env:
+          LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
+        run: |
+          pnpm -F @linkcode/daemon build
+          pnpm -F @linkcode/daemon e2e:startup
+
+  desktop:
+    name: Desktop App Entry
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Electron system dependencies
+        run: |
+          pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+          sudo apt-get install --no-install-recommends -y openbox
+
+      - name: Test unpackaged app entry
+        run: xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
+
+      - name: Test window state persistence
+        run: |
+          xvfb-run -a sh -c '
+            openbox >/tmp/linkcode-openbox.log 2>&1 &
+            wm_pid=$!
+            trap "kill $wm_pid 2>/dev/null || true" EXIT
+            pnpm -F @linkcode/desktop e2e:window-bounds
+          '
+
+      - name: Test unsigned packaged app entry
+        run: xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
+
+  webview:
+    name: Webview Browser Entry
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm -F @linkcode/webview exec playwright-core install --with-deps chromium --only-shell
+
+      - name: Test production and mock browser entries
+        run: pnpm -F @linkcode/webview e2e:browser
+
+  mobile:
+    name: Mobile Native Bundles
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Export Android and iOS app entries
+        run: pnpm -F @linkcode/mobile smoke:export
+
   rust:
     name: Rust
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -84,14 +208,18 @@ jobs:
   all-green:
     name: All Green
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     needs:
       - typescript
+      - desktop
+      - webview
+      - mobile
       - rust
     if: always()
 
     steps:
       - name: Check required jobs
         run: |
-          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
+          if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.desktop.result }}' != 'success' ] || [ '${{ needs.webview.result }}' != 'success' ] || [ '${{ needs.mobile.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
             exit 1
           fi

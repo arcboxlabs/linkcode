@@ -14,6 +14,7 @@
     "package": "pnpm run build && node scripts/package-daemon.mts",
     "build:rust": "cargo build -p linkcode-pty --release",
     "bench:pty": "pnpm run build:rust && tsx src/pty/bench-throughput.mts",
+    "e2e:startup": "tsx e2e/startup.e2e.ts",
     "start": "node --import ./dist/instrument.js dist/index.js",
     "lint": "eslint --format=sukka ."
   },
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@effect/opentelemetry": "4.0.0-beta.98",
     "@effect/platform-node": "4.0.0-beta.98",
+    "@linkcode/client-core": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "catalog:",

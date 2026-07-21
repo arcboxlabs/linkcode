@@ -9,10 +9,13 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   AgentKind,
+  AgentStartCatalog,
   MessageId,
   StartOptions,
 } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
+
+export type AgentStartCatalogOptions = Partial<Pick<StartOptions, 'cwd' | 'model' | 'config'>>;
 
 /**
  * Unified adapter interface, one per coding agent (docs/ARCHITECTURE.md#key-contracts): no per-SDK
@@ -26,6 +29,7 @@ export interface AgentAdapter {
   /** History support advertised by this adapter. Unsupported operations must reject clearly. */
   readonly historyCapabilities: AgentHistoryCapabilities;
   start(opts: StartOptions): Promise<void>;
+  startCatalog(opts?: AgentStartCatalogOptions): Promise<AgentStartCatalog>;
   /** List provider-local historical sessions, if supported. */
   listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult>;
   /** Read a provider-local historical session as normalized events, if supported. */

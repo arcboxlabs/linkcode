@@ -66,8 +66,13 @@ export function FileViewer({
   switch (kind) {
     case 'markdown':
       return (
-        <div className={cn('h-full overflow-y-auto px-6 py-5', className)}>
-          <Markdown className="mx-auto max-w-3xl">{file.content}</Markdown>
+        <div
+          data-markdown-scroll-container
+          className={cn('h-full overflow-y-auto px-6 py-5', className)}
+        >
+          <Markdown headingAnchors className="mx-auto max-w-3xl">
+            {file.content}
+          </Markdown>
         </div>
       );
     case 'image':
