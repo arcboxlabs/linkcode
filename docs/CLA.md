@@ -1,6 +1,6 @@
 # ArcBox Individual Contributor License Agreement
 
-> **Status: Draft v1.2 (2026-07-21) — pending legal review; not yet in force.**
+> **Status: Draft v1.2 (2026-07-21)**
 > The authoritative copy will be published as a GitHub Gist and linked through cla-assistant.io. This in-repo copy exists for review and history.
 
 Thank you for your interest in contributing to software projects maintained by ArcBox, Inc., a Delaware corporation, d/b/a ArcBox Labs ("ArcBox"), including LinkCode.
