@@ -14,7 +14,7 @@ describe('composer chip DOM export', () => {
     const editor = createHeadlessEditor({
       namespace: 'composer-editor-dom-test',
       nodes: COMPOSER_EDITOR_NODES,
-      onError(error) {
+      onError(error: Error) {
         throw error;
       },
     });
