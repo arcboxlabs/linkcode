@@ -35,6 +35,7 @@ const RE_MOVE = /^Move file/;
 const RE_MOVE_PREVIEW = /^target\.ts → moved\.ts$/;
 const RE_READ = /^Read/;
 const RE_TARGET_PREVIEW_HEADER = /^target\.ts/;
+const RE_THINKING_PUBLIC_SUMMARY = /thinking.*Reviewing public results/;
 const RE_WRITE_PLAN = /^Write PLAN/;
 
 afterEach(() => {
@@ -175,6 +176,86 @@ describe('ToolCallBody', () => {
     expect(tooltipTrigger?.tabIndex).toBe(-1);
   });
 
+  it('keeps a Claude edit receipt outside the structured file diff', () => {
+    const path = '/repo/hello.py';
+    const receipt =
+      'The file /repo/hello.py has been updated successfully. The file state is current.';
+    const toolCall: ToolCall = {
+      toolCallId: 'claude-edit-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'completed',
+      locations: [{ path }],
+      content: [
+        {
+          type: 'diff',
+          path,
+          oldText: 'print("hello")\n',
+          newText: 'print("hello")\n\nhello()\n',
+        },
+        { type: 'content', content: { type: 'text', text: receipt } },
+      ],
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const receiptNode = screen.getByText(receipt);
+    expect(screen.getAllByText('hello.py')).toHaveLength(1);
+    expect(fileCard?.contains(receiptNode)).toBe(false);
+    expect(receiptNode.closest('[data-slot="card"]')?.textContent).toContain('Edit');
+  });
+
+  it('keeps a failed mutation explanation visible without presenting it as file content', () => {
+    const path = '/repo/hello.py';
+    const explanation =
+      'The target changed before the edit could be applied. The user modified the file after it was read.';
+    const toolCall: ToolCall = {
+      toolCallId: 'failed-edit-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'failed',
+      locations: [{ path }],
+      content: [
+        { type: 'diff', path, oldText: 'before\n', newText: 'after\n' },
+        { type: 'content', content: { type: 'text', text: explanation } },
+      ],
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const explanationNode = screen.getByText(explanation);
+    expect(explanationNode).toBeDefined();
+    expect(fileCard?.contains(explanationNode)).toBe(false);
+  });
+
+  it.each([
+    [
+      'OpenCode content',
+      [{ type: 'content' as const, content: { type: 'text' as const, text: 'Updated hello.py' } }],
+      undefined,
+    ],
+    ['Pi raw output', [], { content: [{ type: 'text' as const, text: 'Updated hello.py' }] }],
+  ])('keeps a %s mutation receipt outside the file navigation card', (_label, content, rawOutput) => {
+    const toolCall: ToolCall = {
+      toolCallId: 'mutation-receipt',
+      title: 'Edit',
+      kind: 'edit',
+      status: 'completed',
+      locations: [{ path: '/repo/hello.py' }],
+      content,
+      rawOutput,
+    };
+
+    render(<ToolCallBody toolCall={toolCall} />);
+
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const receiptNode = screen.getByText('Updated hello.py');
+    expect(fileCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(fileCard?.contains(receiptNode)).toBe(false);
+  });
+
   it('surfaces an execute failure message without its raw result envelope', () => {
     const toolCall: ToolCall = {
       toolCallId: 'bash-2',
@@ -232,7 +313,45 @@ describe('ToolCallBody', () => {
 });
 
 describe('ToolCallItem', () => {
-  it('leads with disclosure and names failure without an action-kind badge', () => {
+  it('uses Sparkles for a thinking tool', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'thinking-tool',
+      title: 'Think',
+      kind: 'think',
+      status: 'completed',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(
+      container
+        .querySelector('[data-slot="chat-disclosure-icon"]')
+        ?.querySelector('.lucide-sparkles'),
+    ).not.toBeNull();
+  });
+
+  it('omits the disclosure without leaving a leading placeholder when there is no detail', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'empty-tool',
+      title: 'No details',
+      kind: 'other',
+      status: 'completed',
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    const header = screen.getByText('No details').closest('.group');
+    expect(header?.querySelector('.lucide-chevron-right')).toBeNull();
+    expect(
+      container
+        .querySelector('[data-slot="chat-disclosure-icon"]')
+        ?.querySelector('.lucide-wrench'),
+    ).not.toBeNull();
+  });
+
+  it('ends with disclosure and names failure without an action-kind badge', () => {
     const toolCall: ToolCall = {
       toolCallId: 'bash-failed',
       title: 'Bash',
@@ -245,7 +364,14 @@ describe('ToolCallItem', () => {
     render(<ToolCallItem toolCall={toolCall} />);
 
     const header = screen.getByRole('button', { name: RE_BASH });
-    expect(header.querySelector('svg')?.classList.contains('lucide-chevron-right')).toBe(true);
+    const title = screen.getByText('Bash');
+    const summary = screen.getByText('· false');
+    expect(header.lastElementChild?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(title.className).toContain('shrink-0');
+    expect(summary.className).toContain('shrink');
+    expect(summary.className).toContain('truncate');
+    expect(header.querySelector('[data-slot="chat-disclosure-icon"]')).not.toBeNull();
+    expect(header.querySelector('svg.lucide-circle-x')).not.toBeNull();
     expect(header.textContent).toContain('failed');
     expect(header.textContent).not.toContain('kindExecute');
   });
@@ -567,7 +693,7 @@ describe('SubagentTranscript', () => {
     );
 
     const header = screen.getByRole('button', { name: RE_SUBAGENT_LABEL });
-    expect(header.querySelector('svg')?.classList.contains('lucide-chevron-right')).toBe(true);
+    expect(header.lastElementChild?.classList.contains('lucide-chevron-right')).toBe(true);
     expect(header.textContent).toContain('failed');
     expect(header.textContent).not.toContain('steps');
   });
@@ -635,6 +761,29 @@ describe('SubagentTranscript', () => {
       />,
     );
 
-    expect(screen.getAllByText('Final review report')).toHaveLength(2);
+    expect(screen.getAllByText('Final review report')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'thought' }).textContent).toBe('thought');
+  });
+
+  it('keeps streaming subagent reasoning open and shows only its public summary in the header', () => {
+    render(
+      <SubagentTranscript
+        {...sharedProps}
+        items={[
+          {
+            id: 'reasoning-streaming',
+            kind: 'reasoning',
+            turnId: null,
+            isStreaming: true,
+            summary: 'Reviewing public results',
+            blocks: [{ type: 'text', text: 'api_key=private' }],
+          },
+        ]}
+      />,
+    );
+
+    const header = screen.getByRole('button', { name: RE_THINKING_PUBLIC_SUMMARY });
+    expect(header.getAttribute('aria-expanded')).toBe('true');
+    expect(header.textContent).not.toContain('api_key');
   });
 });

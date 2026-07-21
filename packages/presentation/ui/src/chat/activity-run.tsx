@@ -4,24 +4,27 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import {
-  BrainIcon,
-  ChevronRightIcon,
-  CircleXIcon,
-  PencilIcon,
-  SearchIcon,
-  TerminalIcon,
-  WrenchIcon,
-} from 'lucide-react';
+import { PencilIcon, SearchIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
 import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallItem } from './tool-call-item';
 
 export type ActivityRunEntry = Extract<TimelineEntry, { type: 'run' }>;
+
+const EXACT_ACTIVITY_COUNT_MAX = 10;
 
 /** One terse, user-controlled disclosure for a contiguous burst of reasoning and tool activity. */
 export function ActivityRun({
@@ -38,57 +41,102 @@ export function ActivityRun({
   const t = useTranslations('workbench.activityRun');
   const current = activityRunCurrentDescriptor(run.items);
   const settled = settledActivityRunDescriptor(run.items);
-  const hasFailure = settled.clauses.some((clause) => clause.category === 'failure');
+  const firstClause = settled.clauses[0];
+  const failureClause = firstClause.category === 'failure' ? firstClause : undefined;
+  const hasFailure = failureClause !== undefined;
+  const clauseText = (clause: ActivitySummaryClause): string => {
+    if (clause.category === 'thinking') return t('settled.thinking');
+    if (clause.category === 'failure') {
+      return clause.count <= EXACT_ACTIVITY_COUNT_MAX
+        ? t('failed', { count: clause.count })
+        : t('failedMany');
+    }
+    return clause.count <= EXACT_ACTIVITY_COUNT_MAX
+      ? t(`settled.${clause.category}`, { count: clause.count })
+      : t(`settledMany.${clause.category}`);
+  };
+  const currentSummary = current && 'summary' in current ? current.summary : undefined;
   const summaryClauses = current
     ? [
         {
           key: `running-${current.kind}`,
-          text: withDetail(t(`running.${current.kind}`), current.detail),
+          text: t(`running.${current.kind}`),
           failure: false,
         },
-        ...(hasFailure ? [{ key: 'failure', text: t('failed'), failure: true }] : []),
+        ...(currentSummary
+          ? [{ key: 'running-summary', text: currentSummary, failure: false }]
+          : []),
+        ...(failureClause
+          ? [{ key: 'failure', text: clauseText(failureClause), failure: true }]
+          : []),
       ]
     : settled.clauses.map((clause) =>
         clause.category === 'failure'
-          ? { key: clause.category, text: t('failed'), failure: true }
-          : {
-              key: clause.category,
-              text: withDetail(t(`settled.${clause.category}`), clause.detail),
-              failure: false,
-            },
+          ? { key: clause.category, text: clauseText(clause), failure: true }
+          : { key: clause.category, text: clauseText(clause), failure: false },
       );
   const label = summaryClauses.map((clause) => clause.text).join(' · ');
-  const primaryCategory = primarySettledCategory(settled.clauses);
+  const leadingClause = summaryClauses[0];
+  const lastClause = summaryClauses.at(-1);
+  const trailingFailure = current && lastClause?.failure ? lastClause : undefined;
+  const secondaryClauses = summaryClauses.slice(1).filter((clause) => clause !== trailingFailure);
+  const primaryCategory =
+    primarySettledCategory(settled.clauses) ??
+    (run.items.some((item) => item.kind === 'reasoning' || item.toolCall.kind === 'think')
+      ? 'thinking'
+      : undefined);
+  const iconCategory = current?.category ?? primaryCategory;
   const [open, setOpen] = useState(false);
 
   return (
     <Collapsible className="w-full" onOpenChange={setOpen} open={open}>
       <CollapsibleTrigger
         aria-label={t('ariaLabel', { label })}
-        className="group flex w-full items-center gap-2 py-1 text-left text-sm"
+        className={`${CHAT_DISCLOSURE_TRIGGER_CLASS_NAME} w-full`}
       >
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-        <ActivityRunIcon
-          category={primaryCategory}
-          failed={hasFailure}
-          running={current !== undefined}
-        />
-        <span className="min-w-0 flex-1 truncate text-foreground">
-          {summaryClauses.map((clause, index) => (
-            <span
-              className={clause.failure ? 'text-destructive-foreground' : undefined}
-              key={clause.key}
-            >
-              {index > 0 ? ' · ' : null}
-              {clause.text}
+        <ChatDisclosureIconSlot>
+          <ActivityRunIcon
+            category={iconCategory}
+            failed={hasFailure}
+            running={current !== undefined}
+          />
+        </ChatDisclosureIconSlot>
+        <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+          <span
+            className={cn(
+              CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+              leadingClause.failure && 'text-destructive-foreground',
+            )}
+          >
+            {leadingClause.text}
+          </span>
+          {secondaryClauses.length > 0 ? (
+            <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>
+              {secondaryClauses.map((clause) => (
+                <span key={clause.key}> · {clause.text}</span>
+              ))}
             </span>
-          ))}
+          ) : null}
         </span>
+        {trailingFailure ? (
+          <span className="shrink-0 text-destructive-foreground">
+            {' · '}
+            {trailingFailure.text}
+          </span>
+        ) : null}
+        <ChatDisclosureChevron />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-0.5">
         {run.items.map((item) =>
           item.kind === 'reasoning' ? (
-            <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />
+            <ThoughtBlock
+              key={item.id}
+              blocks={item.blocks}
+              endedAt={item.endedAt}
+              isStreaming={item.isStreaming}
+              startedAt={item.startedAt}
+              summary={item.summary}
+            />
           ) : (
             <ToolCallItem
               key={item.id}
@@ -114,7 +162,7 @@ const ACTIVITY_ICONS: Record<
   integration: WrenchIcon,
   command: TerminalIcon,
   explore: SearchIcon,
-  thinking: BrainIcon,
+  thinking: SparklesIcon,
 };
 
 function ActivityRunIcon({
@@ -126,14 +174,10 @@ function ActivityRunIcon({
   failed: boolean;
   running: boolean;
 }): React.ReactNode {
-  if (running) return <Spinner className="size-3.5 shrink-0 text-foreground" />;
-  if (failed) return <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
+  if (failed) return <Icon className="size-3.5 shrink-0 text-destructive-foreground" />;
+  if (running) return <Spinner className="size-3.5 shrink-0 text-foreground" />;
   return <Icon className="size-3.5 shrink-0 text-muted-foreground" />;
-}
-
-function withDetail(label: string, detail?: string): string {
-  return detail ? `${label} · ${detail}` : label;
 }
 
 function primarySettledCategory(

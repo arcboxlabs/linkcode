@@ -3,9 +3,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
-import { ChevronRightIcon, ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
+import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+} from './disclosure-header';
 import type { TooltipIconButtonProps } from './tooltip-icon-button';
 import { TooltipIconButton } from './tooltip-icon-button';
 
@@ -184,10 +190,16 @@ export function WebPreviewConsole({
     >
       {children ?? (
         <>
-          <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left font-medium">
-            <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-            Console
-            {logs.length > 0 ? <span className="text-muted-foreground">{logs.length}</span> : null}
+          <CollapsibleTrigger
+            className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full px-3 py-2')}
+          >
+            <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+              <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>Console</span>
+            </span>
+            {logs.length > 0 ? (
+              <span className="shrink-0 text-muted-foreground">{logs.length}</span>
+            ) : null}
+            <ChatDisclosureChevron />
           </CollapsibleTrigger>
           <CollapsibleContent className="max-h-40 overflow-auto border-t border-border p-3 font-mono">
             {logs.length === 0 ? (

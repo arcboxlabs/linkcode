@@ -296,7 +296,7 @@ export interface ShowcaseToolBursts {
   commands: ToolCall[];
   /** Mixed tools, a task boundary, then the tool snapshots used by question and permission asks. */
   wrapUp: ToolCall[];
-  /** One six-clause mixed run, followed by text, singleton, and task boundaries. */
+  /** One mixed-priority run, followed by text, singleton, and task boundaries. */
   activityRun: {
     beforeNarration: ToolCall[];
     singleton: ToolCall;
@@ -360,6 +360,12 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
             path: 'packages/presentation/ui/src/chat/conversation-view.tsx',
             oldText: 'case "tool": return null;\n',
             newText: 'case "tool": return <ToolCallItem toolCall={item.toolCall} />;\n',
+          },
+          {
+            type: 'content',
+            content: textBlock(
+              'The file conversation-view.tsx has been updated successfully. The file state is current.',
+            ),
           },
         ],
       },

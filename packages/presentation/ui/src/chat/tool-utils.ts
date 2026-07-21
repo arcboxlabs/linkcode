@@ -1,12 +1,12 @@
 import type { ToolCall } from '@linkcode/schema';
 import {
   BotIcon,
-  BrainIcon,
   FileOutputIcon,
   FileTextIcon,
   GlobeIcon,
   PencilIcon,
   SearchIcon,
+  SparklesIcon,
   TerminalIcon,
   Trash2Icon,
   WrenchIcon,
@@ -234,7 +234,7 @@ export const TOOL_KIND_ICONS: Record<
   move: FileOutputIcon,
   search: SearchIcon,
   execute: TerminalIcon,
-  think: BrainIcon,
+  think: SparklesIcon,
   fetch: GlobeIcon,
   task: BotIcon,
   other: WrenchIcon,

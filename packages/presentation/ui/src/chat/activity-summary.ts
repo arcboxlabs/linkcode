@@ -1,159 +1,138 @@
 import type { ActivityRunItem } from './activity-groups';
-import { contentPreview } from './content-preview';
-import { toolCallFilePresentation } from './file-tool-presentation';
-import { toolCallFetchUrl, toolCallSearchQuery } from './tool-result-content';
-import { mcpToolName, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+import { publicReasoningSummary } from './reasoning-summary';
 
 export type ActivitySummaryCategory =
   | 'failure'
-  | 'files'
   | 'integration'
   | 'command'
+  | 'files'
   | 'explore'
   | 'thinking';
 
 type ActivityCategory = Exclude<ActivitySummaryCategory, 'failure'>;
+type CountedActivityCategory = Exclude<ActivityCategory, 'thinking'>;
 type ActivityToolKind = Extract<ActivityRunItem, { kind: 'tool' }>['toolCall']['kind'];
+type ReasoningActivityItem = Extract<ActivityRunItem, { kind: 'reasoning' }>;
 
-export interface ActivityItemDescriptor {
-  category: ActivityCategory;
-  detail?: string;
-}
+export type ActivityCurrentDescriptor =
+  | { category: 'thinking'; kind: 'reasoning'; summary?: string }
+  | { category: 'thinking'; kind: 'think' }
+  | { category: 'files'; kind: 'edit' | 'delete' | 'move' }
+  | { category: 'integration'; kind: 'other' }
+  | { category: 'command'; kind: 'execute' }
+  | { category: 'explore'; kind: 'read' | 'search' | 'fetch' };
 
-export type ActivityCurrentKind = 'reasoning' | ActivityToolKind;
+export type ActivityCurrentKind = ActivityCurrentDescriptor['kind'];
 
-export interface ActivityCurrentDescriptor extends ActivityItemDescriptor {
-  kind: ActivityCurrentKind;
-}
-
-export type ActivitySummaryClause = ActivityItemDescriptor | { category: 'failure' };
+export type ActivitySummaryClause =
+  | { category: 'failure' | CountedActivityCategory; count: number }
+  | { category: 'thinking' };
 
 export interface SettledActivityRunDescriptor {
   clauses: ActivitySummaryClause[];
 }
 
-const DETAIL_MAX_LENGTH = 160;
-const RE_WHITESPACE = /\s+/gu;
-const SENSITIVE_DETAIL_PATTERN =
-  /authorization|bearer|api[-_\s]?key|token|password|secret|credential|private[-_\s]?key/iu;
+const SETTLED_CATEGORY_PRIORITY = [
+  'integration',
+  'command',
+  'files',
+  'explore',
+] as const satisfies readonly CountedActivityCategory[];
 
-/** Describes the most recent active item without exposing its content or tool payload. */
+/** Describes the most recent active item without reading its content or tool payload. */
 export function activityRunCurrentDescriptor(
   items: readonly ActivityRunItem[],
 ): ActivityCurrentDescriptor | undefined {
+  // Thinking is the user's best signal that the agent is actively deciding what to do. Prefer
+  // the newest streaming reasoning / think call before falling back to another active tool.
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (
-      (item.kind === 'reasoning' && item.isStreaming) ||
-      (item.kind === 'tool' &&
-        (item.toolCall.status === 'pending' || item.toolCall.status === 'in_progress'))
-    ) {
-      return {
-        ...describeActivityItem(item),
-        kind: item.kind === 'reasoning' ? 'reasoning' : item.toolCall.kind,
-      };
+    if (item.kind === 'reasoning' && item.isStreaming) return reasoningDescriptor(item);
+    if (item.kind === 'tool' && item.toolCall.kind === 'think' && isActiveTool(item)) {
+      return toolDescriptor(item.toolCall.kind);
     }
   }
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'tool' && isActiveTool(item)) return toolDescriptor(item.toolCall.kind);
+  }
+
   return undefined;
 }
 
-/** One bounded clause per semantic category; failures lead and the rest keep first-seen order. */
+/** Fixed-priority counted clauses. Thinking is noise in a mixed run and only survives as the
+ * generic fallback for an otherwise empty, successful summary. */
 export function settledActivityRunDescriptor(
   items: readonly ActivityRunItem[],
 ): SettledActivityRunDescriptor {
-  const clauses = new Map<
-    ActivityCategory,
-    { descriptor: ActivityItemDescriptor; repeated: boolean }
-  >();
-  let failed = false;
+  const categoryCounts = new Map<CountedActivityCategory, number>();
+  let failureCount = 0;
+  let hasThinking = false;
 
   for (const item of items) {
-    if (item.kind === 'tool' && item.toolCall.status === 'failed') failed = true;
-
-    const descriptor = describeActivityItem(item);
-    const clause = clauses.get(descriptor.category);
-    if (!clause) {
-      clauses.set(descriptor.category, { descriptor, repeated: false });
+    if (item.kind === 'tool' && item.toolCall.status === 'failed') failureCount += 1;
+    const category = activityCategory(item);
+    if (category === 'thinking') {
+      hasThinking = true;
       continue;
     }
-    clause.repeated = true;
+    categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
   }
 
+  const clauses: ActivitySummaryClause[] = [];
+  if (failureCount > 0) clauses.push({ category: 'failure', count: failureCount });
+  for (const category of SETTLED_CATEGORY_PRIORITY) {
+    const count = categoryCounts.get(category);
+    if (count !== undefined) clauses.push({ category, count });
+  }
+  if (clauses.length === 0 && hasThinking) clauses.push({ category: 'thinking' });
+
   return {
-    clauses: [
-      ...(failed ? [{ category: 'failure' as const }] : []),
-      ...[...clauses.values()].map(({ descriptor, repeated }) =>
-        repeated ? { category: descriptor.category } : descriptor,
-      ),
-    ],
+    clauses,
   };
 }
 
-function describeActivityItem(item: ActivityRunItem): ActivityItemDescriptor {
-  if (item.kind === 'reasoning') {
-    return descriptor('thinking', contentPreview(item.blocks));
-  }
-
-  const category = toolCategory(item.toolCall.kind);
-  return descriptor(category, toolDetail(item));
+function activityCategory(item: ActivityRunItem): ActivityCategory {
+  return item.kind === 'reasoning' ? 'thinking' : toolDescriptor(item.toolCall.kind).category;
 }
 
-function toolDetail(item: Extract<ActivityRunItem, { kind: 'tool' }>): string {
-  const { toolCall } = item;
-  switch (toolCall.kind) {
-    case 'read':
-    case 'edit':
-    case 'delete':
-    case 'move':
-      return toolCallFilePresentation(toolCall)?.label ?? toolCallDisplayTitle(toolCall);
-    case 'search':
-      return toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall);
-    case 'execute':
-      return toolCallCommand(toolCall) ?? toolCallDisplayTitle(toolCall);
-    case 'fetch': {
-      const url = toolCallFetchUrl(toolCall);
-      return url && URL.canParse(url) ? new URL(url).hostname : '';
-    }
-    case 'think':
-      return toolCallDisplayTitle(toolCall);
-    case 'other':
-      return mcpToolName(toolCall.title)?.server ?? toolCallDisplayTitle(toolCall);
-    default:
-      return toolCall.kind satisfies never;
-  }
-}
+type ToolActivityDescriptor = Exclude<ActivityCurrentDescriptor, { kind: 'reasoning' }>;
+type ReasoningActivityDescriptor = Extract<ActivityCurrentDescriptor, { kind: 'reasoning' }>;
 
-function toolCategory(kind: ActivityToolKind): ActivityCategory {
+function toolDescriptor(kind: ActivityToolKind): ToolActivityDescriptor {
   switch (kind) {
     case 'edit':
     case 'delete':
     case 'move':
-      return 'files';
+      return { category: 'files', kind };
     case 'other':
-      return 'integration';
+      return { category: 'integration', kind };
     case 'execute':
-      return 'command';
+      return { category: 'command', kind };
     case 'read':
     case 'search':
     case 'fetch':
-      return 'explore';
+      return { category: 'explore', kind };
     case 'think':
-      return 'thinking';
+      return { category: 'thinking', kind };
     default:
       return kind satisfies never;
   }
 }
 
-function descriptor(category: ActivityCategory, detail: string): ActivityItemDescriptor {
-  const boundedDetail = bounded(detail);
-  return boundedDetail ? { category, detail: boundedDetail } : { category };
+function isActiveTool(item: Extract<ActivityRunItem, { kind: 'tool' }>): boolean {
+  return item.toolCall.status === 'pending' || item.toolCall.status === 'in_progress';
 }
 
-function bounded(value: string): string {
-  const normalized = value.replaceAll(RE_WHITESPACE, ' ').trim();
-  if (SENSITIVE_DETAIL_PATTERN.test(normalized)) return '';
-  const characters = [...normalized];
-  return characters.length <= DETAIL_MAX_LENGTH
-    ? normalized
-    : `${characters.slice(0, DETAIL_MAX_LENGTH - 1).join('')}…`;
+function reasoningDescriptor(item: ReasoningActivityItem): ReasoningActivityDescriptor {
+  const summary = explicitPublicSummary(item);
+  return summary
+    ? { category: 'thinking', kind: 'reasoning', summary }
+    : { category: 'thinking', kind: 'reasoning' };
+}
+
+function explicitPublicSummary(item: ReasoningActivityItem): string | undefined {
+  if (!('summary' in item) || typeof item.summary !== 'string') return undefined;
+  return publicReasoningSummary(item.summary);
 }

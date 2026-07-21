@@ -5,11 +5,19 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import { BanIcon, ChevronRightIcon, CircleXIcon, ShieldIcon } from 'lucide-react';
+import { BanIcon, CircleXIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
 import type { DiffStats } from './diff-utils';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { TOOL_KIND_ICONS } from './tool-utils';
 import { FilePathTooltip } from './with-tooltip';
 
@@ -60,30 +68,26 @@ export function ToolHeader({
   const titleAnchorRef = tooltip && !summary ? tooltipAnchorRef : undefined;
   const content = (
     <>
-      {hasBody ? (
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/header:rotate-90" />
-      ) : (
-        <span aria-hidden className="size-3.5 shrink-0" />
-      )}
-      <ToolIcon
-        awaitingApproval={awaitingApproval}
-        declined={declined}
-        icon={icon}
-        kind={kind}
-        status={status}
-      />
-      <span
-        className={cn('min-w-0 truncate text-foreground', summary ? 'shrink' : 'flex-1')}
-        ref={titleAnchorRef}
-      >
-        {title}
+      <ChatDisclosureIconSlot>
+        <ToolIcon
+          awaitingApproval={awaitingApproval}
+          declined={declined}
+          icon={icon}
+          kind={kind}
+          status={status}
+        />
+      </ChatDisclosureIconSlot>
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME} ref={titleAnchorRef}>
+          {title}
+        </span>
+        {summary ? (
+          <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME} ref={tooltipAnchorRef}>
+            · {summary}
+          </span>
+        ) : null}
       </span>
       {diffStats ? <DiffCounter stats={diffStats} /> : null}
-      {summary ? (
-        <span className="min-w-0 flex-1 truncate text-muted-foreground" ref={tooltipAnchorRef}>
-          · {summary}
-        </span>
-      ) : null}
       {statusLabel ? (
         <span
           className={cn(
@@ -94,10 +98,13 @@ export function ToolHeader({
           {statusLabel}
         </span>
       ) : null}
+      {hasBody ? <ChatDisclosureChevron /> : null}
     </>
   );
   const headerClassName = cn(
-    'group/header flex w-full items-center gap-2 py-1 text-left text-sm',
+    CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+    'w-full',
+    !hasBody && 'cursor-default',
     className,
   );
 
@@ -137,15 +144,19 @@ export function ToolIcon({
   declined?: boolean;
   icon?: React.ReactNode;
 }): React.ReactNode {
-  if (awaitingApproval) return <ShieldIcon className="size-3.5 text-warning-foreground" />;
-  if (declined) return <BanIcon className="size-3.5 text-destructive-foreground" />;
-  if (status === 'failed') return <CircleXIcon className="size-3.5 text-destructive-foreground" />;
+  if (awaitingApproval) {
+    return <ShieldIcon className="size-3.5 shrink-0 text-warning-foreground" />;
+  }
+  if (declined) return <BanIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
+  if (status === 'failed') {
+    return <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
+  }
   if (status === 'pending' || status === 'in_progress') {
-    return <Spinner className="size-3.5 text-foreground" />;
+    return <Spinner className="size-3.5 shrink-0 text-foreground" />;
   }
   if (icon) return icon;
   const KindIcon = TOOL_KIND_ICONS[kind];
-  return <KindIcon className="size-3.5 text-muted-foreground" />;
+  return <KindIcon className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
 export type ToolContentProps = React.ComponentProps<typeof CollapsibleContent> & {

@@ -6,12 +6,20 @@ import {
   CollapsibleTrigger,
 } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import { BotIcon, ChevronRightIcon, Maximize2Icon } from 'lucide-react';
+import { BotIcon, Maximize2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
 import { contentDerivedEntries } from './content-derived-keys';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { Message, MessageContent } from './message';
 import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
@@ -71,7 +79,16 @@ export function SubagentTranscript({
               </Message>
             );
           case 'reasoning':
-            return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={false} />;
+            return (
+              <ThoughtBlock
+                key={item.id}
+                blocks={item.blocks}
+                endedAt={item.endedAt}
+                isStreaming={item.isStreaming}
+                startedAt={item.startedAt}
+                summary={item.summary}
+              />
+            );
           case 'tool':
             if (item.toolCall.kind === 'task') {
               return (
@@ -152,25 +169,30 @@ function SubagentCardContent({
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
       <div className="flex w-full items-center gap-2">
-        <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm">
-          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-          {isRunning ? (
-            <Spinner className="size-3.5 shrink-0 text-foreground" />
-          ) : (
-            <BotIcon
-              className={cn(
-                'size-3.5 shrink-0',
-                hasFailedActivity ? 'text-destructive-foreground' : 'text-muted-foreground',
-              )}
-            />
-          )}
-          <span className="shrink-0 text-foreground">{input.subagentType ?? t('label')}</span>
+        <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'min-w-0 flex-1')}>
+          <ChatDisclosureIconSlot>
+            {isRunning ? (
+              <Spinner className="text-foreground" />
+            ) : (
+              <BotIcon
+                className={cn(
+                  hasFailedActivity ? 'text-destructive-foreground' : 'text-muted-foreground',
+                )}
+              />
+            )}
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>
+              {input.subagentType ?? t('label')}
+            </span>
+            <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>
+              {input.description ?? toolCall.title}
+            </span>
+          </span>
           {hasFailedActivity ? (
             <span className="shrink-0 text-destructive-foreground text-xs">{t('failedBadge')}</span>
           ) : null}
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-            {input.description ?? toolCall.title}
-          </span>
+          <ChatDisclosureChevron />
         </CollapsibleTrigger>
         {onExpand ? (
           <Button

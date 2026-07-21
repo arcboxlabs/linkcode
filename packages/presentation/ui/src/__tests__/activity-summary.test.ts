@@ -8,9 +8,13 @@ import {
 
 type ActivityToolKind = Exclude<ToolCall['kind'], 'task'>;
 type ActivityToolItem = Extract<ActivityRunItem, { kind: 'tool' }>;
+type ReasoningActivityItem = Extract<ActivityRunItem, { kind: 'reasoning' }> & {
+  summary?: string;
+};
+
+const RE_SENSITIVE_ACTIVITY_DETAIL = /user|password|private|token|secret/u;
 
 let seq = 0;
-const RE_SENSITIVE_FRAGMENT = /user|password|private|token|secret/u;
 
 function tool(
   kind: ActivityToolKind,
@@ -32,43 +36,42 @@ function tool(
   };
 }
 
-function reasoning(text: string, isStreaming = false): ActivityRunItem {
+function reasoning(text: string, isStreaming = false, summary?: string): ReasoningActivityItem {
   return {
     kind: 'reasoning',
     id: `reasoning-${seq++}`,
     turnId: 'turn-0',
     blocks: [{ type: 'text', text }],
     isStreaming,
+    summary,
   };
 }
 
 describe('settledActivityRunDescriptor', () => {
-  it('emits one clause per category with failures first and first-seen category order', () => {
+  it('uses fixed priority for reverse input, keeps files penultimate, and omits thinking', () => {
     const descriptor = settledActivityRunDescriptor([
       reasoning('Initial analysis'),
-      tool('search', { rawInput: { query: 'needle' } }),
-      tool('execute', { status: 'failed', rawInput: { command: 'pnpm test' } }),
+      tool('search', { status: 'failed', rawInput: { query: 'needle' } }),
       tool('edit', { locations: [{ path: 'src/app.ts' }] }),
-      tool('fetch', { rawInput: { url: 'https://example.com/docs' } }),
+      tool('execute', { rawInput: { command: 'pnpm test' } }),
       tool('other', { title: 'mcp__github__create_issue' }),
       tool('think', { title: 'Reviewing result' }),
+      tool('fetch', { rawInput: { url: 'https://example.com/docs' } }),
       tool('execute', { rawInput: { command: 'pnpm typecheck' } }),
     ]);
 
     expect(descriptor).toEqual({
       clauses: [
-        { category: 'failure' },
-        { category: 'thinking' },
-        { category: 'explore' },
-        { category: 'command' },
-        { category: 'files', detail: 'app.ts' },
-        { category: 'integration', detail: 'github' },
+        { category: 'failure', count: 1 },
+        { category: 'integration', count: 1 },
+        { category: 'command', count: 2 },
+        { category: 'files', count: 1 },
+        { category: 'explore', count: 2 },
       ],
     });
-    expect(descriptor.clauses).toHaveLength(6);
   });
 
-  it('does not expose raw output in clauses', () => {
+  it('counts repeated activity without exposing titles, input, output, or reasoning text', () => {
     const descriptor = settledActivityRunDescriptor([
       tool('execute', {
         title: 'Run command',
@@ -86,101 +89,102 @@ describe('settledActivityRunDescriptor', () => {
     expect(JSON.stringify(descriptor)).not.toContain('must-not-leak');
     expect(JSON.stringify(descriptor)).not.toContain('other-input-secret');
     expect(JSON.stringify(descriptor)).not.toContain('other-output-secret');
+    expect(JSON.stringify(descriptor)).not.toContain('mcp__github__create_issue');
+    expect(JSON.stringify(descriptor)).not.toContain('Done');
+    expect(descriptor.clauses).toEqual([
+      { category: 'integration', count: 1 },
+      { category: 'command', count: 1 },
+    ]);
+  });
+
+  it('uses an uncounted thinking fallback only for a successful thinking-only run', () => {
+    expect(settledActivityRunDescriptor([reasoning('Private reasoning'), tool('think')])).toEqual({
+      clauses: [{ category: 'thinking' }],
+    });
+
+    expect(
+      settledActivityRunDescriptor([
+        reasoning('Private reasoning'),
+        tool('think', { status: 'failed' }),
+      ]),
+    ).toEqual({ clauses: [{ category: 'failure', count: 1 }] });
   });
 });
 
 describe('activityRunCurrentDescriptor', () => {
-  it.each(['pending', 'in_progress'] as const)('treats %s tools as active', (status) => {
+  it.each([
+    'pending',
+    'in_progress',
+  ] as const)('treats a non-thinking %s tool as active when no thinking item is active', (status) => {
+    expect(
+      activityRunCurrentDescriptor([
+        reasoning('Earlier'),
+        tool('execute', { status, rawInput: { command: 'pnpm test' } }),
+      ]),
+    ).toEqual({ category: 'command', kind: 'execute' });
+  });
+
+  it('prefers the newest active reasoning or think tool over other active tools', () => {
     expect(
       activityRunCurrentDescriptor([
         reasoning('Earlier', true),
-        tool('execute', { status, rawInput: { command: 'pnpm test' } }),
+        tool('execute', { status: 'in_progress' }),
       ]),
-    ).toEqual({ category: 'command', detail: 'pnpm test', kind: 'execute' });
+    ).toEqual({ category: 'thinking', kind: 'reasoning' });
+
+    expect(
+      activityRunCurrentDescriptor([
+        reasoning('Earlier', true),
+        tool('think', { status: 'pending' }),
+        tool('execute', { status: 'in_progress' }),
+      ]),
+    ).toEqual({ category: 'thinking', kind: 'think' });
+
+    expect(
+      activityRunCurrentDescriptor([
+        tool('think', { status: 'pending' }),
+        reasoning('Later', true),
+        tool('execute', { status: 'in_progress' }),
+      ]),
+    ).toEqual({ category: 'thinking', kind: 'reasoning' });
   });
 
-  it('returns the latest streaming reasoning and ignores settled runs', () => {
+  it('uses the latest active tool within the non-thinking tier', () => {
     expect(
-      activityRunCurrentDescriptor([tool('read'), reasoning('  checking\n the result  ', true)]),
-    ).toEqual({ category: 'thinking', detail: 'checking the result', kind: 'reasoning' });
+      activityRunCurrentDescriptor([
+        tool('execute', { status: 'pending' }),
+        tool('fetch', { status: 'in_progress' }),
+      ]),
+    ).toEqual({ category: 'explore', kind: 'fetch' });
+  });
+
+  it('returns a normalized, bounded explicit reasoning summary without projecting blocks', () => {
+    const descriptor = activityRunCurrentDescriptor([
+      reasoning('block-private-secret', true, `  Public\nsummary ${'🙂'.repeat(200)}  `),
+    ]);
+
+    if (descriptor?.kind !== 'reasoning') throw new Error('Expected active reasoning');
+    expect(descriptor.summary).not.toContain('\n');
+    expect(descriptor.summary).not.toContain('  ');
+    expect(descriptor.summary).not.toContain('block-private-secret');
+    expect([...(descriptor.summary ?? '')]).toHaveLength(160);
+    expect(descriptor.summary?.endsWith('…')).toBe(true);
+  });
+
+  it('ignores settled reasoning without reading its blocks', () => {
     expect(activityRunCurrentDescriptor([tool('read'), reasoning('Done')])).toBeUndefined();
   });
 
-  it('omits sensitive command detail and reduces URLs to their hostname', () => {
-    expect(
-      activityRunCurrentDescriptor([
-        tool('execute', {
-          status: 'in_progress',
-          rawInput: { command: 'curl -H "Authorization: Bearer private-token" example.com' },
-        }),
-      ]),
-    ).toEqual({ category: 'command', kind: 'execute' });
-
-    const fetchDescriptor = activityRunCurrentDescriptor([
+  it('never projects sensitive payloads from the active item', () => {
+    const descriptor = activityRunCurrentDescriptor([
       tool('fetch', {
         status: 'in_progress',
+        title: 'private integration title',
         rawInput: { url: 'https://user:password@example.com/private?token=secret' },
       }),
     ]);
-    expect(fetchDescriptor).toEqual({
-      category: 'explore',
-      detail: 'example.com',
-      kind: 'fetch',
-    });
-    expect(JSON.stringify(fetchDescriptor)).not.toMatch(RE_SENSITIVE_FRAGMENT);
-  });
 
-  it('omits sensitive search and reasoning detail', () => {
-    expect(activityRunCurrentDescriptor([reasoning('Using api-key private-value', true)])).toEqual({
-      category: 'thinking',
-      kind: 'reasoning',
-    });
-    expect(
-      activityRunCurrentDescriptor([
-        tool('search', {
-          status: 'in_progress',
-          rawInput: { query: 'password=private-value' },
-        }),
-      ]),
-    ).toEqual({ category: 'explore', kind: 'search' });
-  });
-
-  it.each([
-    ['thinking', () => reasoning(`start\n${'x'.repeat(240)}`, true)],
-    [
-      'command',
-      () =>
-        tool('execute', {
-          status: 'in_progress',
-          rawInput: { command: `run\n${'x'.repeat(240)}` },
-        }),
-    ],
-    [
-      'explore',
-      () =>
-        tool('search', { status: 'in_progress', rawInput: { query: `find\n${'x'.repeat(240)}` } }),
-    ],
-    [
-      'explore',
-      () =>
-        tool('fetch', {
-          status: 'in_progress',
-          rawInput: {
-            url: `https://${'x'.repeat(60)}.${'y'.repeat(60)}.${'z'.repeat(60)}.example.com/path`,
-          },
-        }),
-    ],
-    [
-      'integration',
-      () => tool('other', { status: 'in_progress', title: `integration\n${'x'.repeat(240)}` }),
-    ],
-  ] as const)('bounds and normalizes %s detail', (category, makeItem) => {
-    const descriptor = activityRunCurrentDescriptor([makeItem()]);
-
-    expect(descriptor?.category).toBe(category);
-    expect(descriptor?.detail).not.toContain('\n');
-    expect(descriptor?.detail).not.toContain('  ');
-    expect([...(descriptor?.detail ?? '')]).toHaveLength(160);
-    expect(descriptor?.detail?.endsWith('…')).toBe(true);
+    expect(descriptor).toEqual({ category: 'explore', kind: 'fetch' });
+    expect(JSON.stringify(descriptor)).not.toMatch(RE_SENSITIVE_ACTIVITY_DETAIL);
   });
 });

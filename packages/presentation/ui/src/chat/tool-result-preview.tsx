@@ -1,5 +1,6 @@
 import type { ToolCall, ToolCallContent } from '@linkcode/schema';
 import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
+import { Fragment } from 'react';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
 import { CodeBlock } from './code-block';
 import { ContentBlockView } from './content-block-view';
@@ -115,8 +116,7 @@ function FileCallText({
   );
 }
 
-/** File calls without structured diffs share one identity/navigation header across every block.
- * This matters for Pi resource results and Codex multi-file receipts whose text has no path key. */
+/** File reads share one identity/navigation header across every returned content block. */
 function FileCallPreview({
   content,
   file,
@@ -156,7 +156,8 @@ function FileCallPreview({
   );
 }
 
-function MixedFilePreview({
+/** Mutation result text is a receipt or warning, not a snapshot of the touched file. */
+function FileMutationPreview({
   content,
   file,
   TerminalBlockComponent,
@@ -167,6 +168,18 @@ function MixedFilePreview({
 }): React.ReactNode {
   const receiptContent = content.filter((item) => item.type !== 'diff');
   const firstReceipt = receiptContent[0];
+  const hasDiff = content.some((item) => item.type === 'diff');
+
+  if (content.length === 0) {
+    return (
+      <FilePreviewCard
+        label={file.label}
+        navigation={file.navigation ?? null}
+        path={file.path}
+        tooltip={file.tooltip}
+      />
+    );
+  }
 
   return contentDerivedEntries(content).map(({ item, key }) => {
     if (item.type === 'diff') {
@@ -182,13 +195,21 @@ function MixedFilePreview({
     }
     if (item !== firstReceipt) return null;
     return (
-      <FileCallPreview
-        key={`${toolCall.toolCallId}:receipts`}
-        content={receiptContent}
-        file={file}
-        toolCall={toolCall}
-        TerminalBlockComponent={TerminalBlockComponent}
-      />
+      <Fragment key={`${toolCall.toolCallId}:receipts`}>
+        {!hasDiff || file.ambiguous ? (
+          <FilePreviewCard
+            label={file.label}
+            navigation={file.navigation ?? null}
+            path={file.path}
+            tooltip={file.tooltip}
+          />
+        ) : null}
+        <ContentList
+          content={receiptContent}
+          toolCall={toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      </Fragment>
     );
   });
 }
@@ -314,7 +335,7 @@ export function ToolResultPreview({
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');
-    if (!hasDiff) {
+    if (toolCall.kind === 'read' && !hasDiff) {
       return (
         <FileCallPreview
           content={content}
@@ -324,9 +345,9 @@ export function ToolResultPreview({
         />
       );
     }
-    if (content.some((item) => item.type !== 'diff')) {
+    if (toolCall.kind !== 'read') {
       return (
-        <MixedFilePreview
+        <FileMutationPreview
           content={content}
           file={file}
           toolCall={toolCall}
