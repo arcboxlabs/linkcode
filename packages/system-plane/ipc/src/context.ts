@@ -110,3 +110,6 @@ export interface BrowserDownloadDone {
   filename: string;
   state: 'completed' | 'cancelled' | 'interrupted';
 }
+
+/** Browser command captured from a focused guest WebContents before page dispatch. */
+export type BrowserShortcutAction = 'find' | 'zoom-in' | 'zoom-out' | 'zoom-reset';

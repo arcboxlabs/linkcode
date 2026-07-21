@@ -150,7 +150,7 @@ describe('desktop shell state persistence', () => {
 
   it('seeds a first terminal tab when restoring an open panel showing an empty terminal section', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -169,7 +169,7 @@ describe('desktop shell state persistence', () => {
 
   it('does not seed a terminal tab when the restored panel is closed or on another section', () => {
     const closed = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -184,7 +184,7 @@ describe('desktop shell state persistence', () => {
     expect(closed.rightPanel.terminal.tabs).toEqual([]);
 
     const otherSection = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],

@@ -506,7 +506,7 @@ export function DesktopShell({
       items.push({
         id: tab.id,
         active: activeIsBrowser && tab.id === rightPanel.browser.activeTabId,
-        node: <BrowserWebviewPane tabId={tab.id} url={tab.url} />,
+        node: <BrowserWebviewPane systemBridge={systemBridge} tabId={tab.id} url={tab.url} />,
       });
     }
     return createPortal(<PanelTabContentStack items={items} />, host);

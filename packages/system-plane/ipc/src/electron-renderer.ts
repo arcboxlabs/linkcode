@@ -7,6 +7,7 @@ import type { BrowserDownloadDone, DesktopSettings, UpdaterStatus } from './cont
 import {
   BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
+  BROWSER_SHORTCUT_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
   NOTIFICATION_CLICKED_CHANNEL,
@@ -122,6 +123,20 @@ export function createElectronSystemBridge(
         };
         ipcRenderer.on(BROWSER_DOWNLOAD_DONE_CHANNEL, handler);
         return () => ipcRenderer.removeListener(BROWSER_DOWNLOAD_DONE_CHANNEL, handler);
+      },
+      onShortcut(cb) {
+        const handler: IpcRendererListener = (_event, value: unknown) => {
+          if (
+            value === 'find' ||
+            value === 'zoom-in' ||
+            value === 'zoom-out' ||
+            value === 'zoom-reset'
+          ) {
+            cb(value);
+          }
+        };
+        ipcRenderer.on(BROWSER_SHORTCUT_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(BROWSER_SHORTCUT_CHANNEL, handler);
       },
     },
   };

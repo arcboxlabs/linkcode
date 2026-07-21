@@ -1,10 +1,11 @@
 import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { BrowserDownloadDone } from '@linkcode/ipc';
+import type { BrowserDownloadDone, BrowserShortcutAction } from '@linkcode/ipc';
 import {
   BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
+  BROWSER_SHORTCUT_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   UPDATER_STATUS_CHANNEL,
 } from '@linkcode/ipc';
@@ -140,6 +141,12 @@ function createWindow(): BrowserWindow {
       if (isHttpUrl(url) && !win.isDestroyed()) win.webContents.send(BROWSER_OPEN_TAB_CHANNEL, url);
       return { action: 'deny' };
     });
+    guest.on('before-input-event', (event, input) => {
+      const action = browserShortcutAction(input);
+      if (action === null || win.isDestroyed()) return;
+      event.preventDefault();
+      win.webContents.send(BROWSER_SHORTCUT_CHANNEL, action);
+    });
   });
 
   void loadRenderer(win);
@@ -153,6 +160,39 @@ function isHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function browserShortcutAction(input: Electron.Input): BrowserShortcutAction | null {
+  const primary =
+    process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+  if (
+    input.type !== 'keyDown' ||
+    input.isAutoRepeat ||
+    input.isComposing ||
+    !primary ||
+    input.alt
+  ) {
+    return null;
+  }
+  if ((input.code === 'KeyF' || input.key.toLowerCase() === 'f') && !input.shift) return 'find';
+  if (
+    input.code === 'Equal' ||
+    input.code === 'NumpadAdd' ||
+    input.key === '=' ||
+    input.key === '+'
+  ) {
+    return 'zoom-in';
+  }
+  if (
+    (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') &&
+    !input.shift
+  ) {
+    return 'zoom-out';
+  }
+  if ((input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') && !input.shift) {
+    return 'zoom-reset';
+  }
+  return null;
 }
 
 /** Mirrors {@link loadRenderer}'s allowed targets: the dev server origin, or the packaged entry file. */

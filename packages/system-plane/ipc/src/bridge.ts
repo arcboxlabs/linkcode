@@ -1,5 +1,6 @@
 import type {
   BrowserDownloadDone,
+  BrowserShortcutAction,
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
@@ -67,5 +68,7 @@ export interface SystemBridge {
     onOpenTab(cb: (url: string) => void): () => void;
     /** Subscribe to finished Browser-pane downloads (main default download flow). */
     onDownloadDone(cb: (result: BrowserDownloadDone) => void): () => void;
+    /** Subscribe to app-owned shortcuts captured while a guest webview owns keyboard focus. */
+    onShortcut(cb: (action: BrowserShortcutAction) => void): () => void;
   };
 }

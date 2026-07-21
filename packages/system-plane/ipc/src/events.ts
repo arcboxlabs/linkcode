@@ -23,6 +23,8 @@ export const NOTIFICATION_CLICKED_CHANNEL = 'linkcode.system.notifications.click
 export const BROWSER_OPEN_TAB_CHANNEL = 'linkcode.system.browser.openTab';
 /** Main → renderer push: a Browser-pane download finished (any terminal state). */
 export const BROWSER_DOWNLOAD_DONE_CHANNEL = 'linkcode.system.browser.downloadDone';
+/** Main → renderer push: a browser shortcut was pressed while its guest page owned focus. */
+export const BROWSER_SHORTCUT_CHANNEL = 'linkcode.system.browser.shortcut';
 
 export const systemIpcEvents = {
   windowMinimize: defineInvokeEventa<void>('linkcode.system.window.minimize'),
