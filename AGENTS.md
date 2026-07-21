@@ -18,6 +18,7 @@ Each of these breaks the product, a release, or the build with **no loud error**
 | You're about to… | Read first |
 | --- | --- |
 | Run, test, E2E, or debug the app locally | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
+| Read, add, or override an environment variable | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) |
 | Touch the renderer (React, UI, icons, i18n, client state) | [`.claude/rules/frontend.md`](.claude/rules/frontend.md) |
 | Touch Electron main / preload / CSP / cloud-auth wiring | [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) |
 | Integrate or change an agent (claude-code, codex, opencode, pi), approvals, history | [`packages/host/agent-adapter/AGENTS.md`](packages/host/agent-adapter/AGENTS.md) |
@@ -48,7 +49,7 @@ A change isn't done until you've **observed it running** — preload/IPC/bridge 
 
 ## Tooling
 
-- **The toolchain comes from devenv** (`devenv.nix`: Node 26, pnpm, Rust, prek hooks). If your shell isn't already inside the environment (direnv), run repo commands as `devenv shell -- pnpm …`. The devenv scripts `app` / `daemon` / `desktop` / `mobile` (defined in `devenv.nix`) are the convenience runners — plain commands inside the devenv shell, or `devenv shell -- app` from outside (there is no `devenv run` subcommand).
+- **The toolchain comes from devenv** (`devenv.nix`: Node 26, pnpm, prek hooks, and the Rust toolchain read from `rust-toolchain.toml` — the one pin shared by devenv, rustup, and CI; bumping it also needs `devenv update rust-overlay`). If your shell isn't already inside the environment (direnv), run repo commands as `devenv shell -- pnpm …`. The devenv scripts `app` / `daemon` / `desktop` / `mobile` (defined in `devenv.nix`) are the convenience runners — plain commands inside the devenv shell, or `devenv shell -- app` from outside (there is no `devenv run` subcommand).
 - **pnpm only**, never `npm` / `npx`. Prefer existing npm scripts (e.g. `pnpm -F @linkcode/webview run lint`) over invoking binaries directly. pnpm 11 reads install settings from `pnpm-workspace.yaml`, **not** `.npmrc` (which is nearly inert here): `nodeLinker: hoisted`, shared versions under `catalog:`, security `overrides`, native builds under `allowBuilds:` (Invariant 3), and a `minimumReleaseAgeExclude` allowlist that exempts just-released pins from the release-age install policy.
 - Turbo wraps only `build`/`dev`/`clean`. Root `pnpm typecheck` is one `tsc --build --noEmit` over the root `tsconfig.json` solution file, which lists every workspace project as a `reference` (package tsconfigs stay `incremental` + `noEmit`, never `composite`, and never reference each other — cross-package imports resolve into dep sources directly). There are no per-package typecheck scripts; check one project with `tsc --build --noEmit packages/<scope>/<name>`. `pnpm lint` is one whole-repo `eslint --format=sukka .` and `pnpm test` is one root `vitest run` — all three bypass turbo, so editing turbo's `lint` task changes nothing. A new workspace package must be added to the root `tsconfig.json` `references` or it is silently unchecked.
 - **Lint = ESLint (`eslint-config-sukka`); format = Biome (its linter is disabled — Biome only formats and organizes imports).** Don't fix lint by hand first; finish the task, then run `pnpm lint:fix` and re-check — most issues auto-fix. Biome lowercases hex literals while sukka wants uppercase — write shared constants in decimal. `packages/vendor/coss-ui` is the one exception: vendored, ignored by ESLint **and** excluded from the root Biome config, so upstream formatting is preserved as-synced — never hand-edit or reformat it.
@@ -128,5 +129,5 @@ Fix detail lives in the owning doc, not here.
 
 ## References
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture, package map, contracts, open questions. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — runbook. [`docs/RELEASE.md`](docs/RELEASE.md) — release.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture, package map, contracts, open questions. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — runbook. [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) — environment-variable reference. [`docs/RELEASE.md`](docs/RELEASE.md) — release.
 - [`.claude/rules/frontend.md`](.claude/rules/frontend.md) — renderer conventions (auto-applies to `apps/webview` and the `apps/desktop` renderer). Every app and shared package carries its own `AGENTS.md`.

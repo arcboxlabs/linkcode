@@ -10,13 +10,13 @@ Thanks for your interest in improving LinkCode! This guide covers the practical 
 
 ## Toolchain
 
-[`devenv`](https://devenv.sh) pins everything — Node.js, pnpm, stable Rust, and the pre-commit hooks:
+[`devenv`](https://devenv.sh) pins everything — Node.js, pnpm, the Rust toolchain from [`rust-toolchain.toml`](../rust-toolchain.toml), and the pre-commit hooks:
 
 ```bash
 devenv shell
 ```
 
-Without devenv, install Node.js 24+, pnpm 11, and stable Rust (with `rustfmt` and Clippy) yourself. Either way: **always pnpm, never npm or npx.**
+Without devenv, install Node.js 24+, pnpm 11, and rustup yourself — rustup reads `rust-toolchain.toml` and installs the pinned compiler, `rustfmt`, and Clippy on its own. You also need your platform's native toolchain (Xcode Command Line Tools, VS Build Tools with the C++ workload, or `build-essential`); the per-platform list is in [`docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md#prerequisites). Either way: **always pnpm, never npm or npx.**
 
 ## Build and run
 
