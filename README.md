@@ -1,7 +1,10 @@
 <h4 align="right"><strong>English</strong> | <a href="docs/README.zh-CN.md">简体中文</a></h4>
 
 <p align="center">
-    <img src="./assets/icon.png" width="138" alt="LinkCode"/>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/icon/mark-white.png">
+      <img src="https://static.linkcode.ai/icon/mark-black.png" width="138" alt="LinkCode"/>
+    </picture>
 </p>
 
 <h1 align="center">LinkCode</h1>
@@ -42,7 +45,8 @@ LinkCode is one workspace for all your coding agents. A host on your machine tak
 - **Workspace at hand** — file tree, git panel, and project scripts with dev-server preview, right next to the conversation.
 - **Automations** — schedule agent runs, or loop a prompt until the work is done.
 - **Your history, kept in place** — sessions stay in each agent's own local history; LinkCode lists, imports, and resumes them without copying a transcript.
-- **Local-first** — the host binds to loopback and your code never leaves the machine; remote access is an explicit tunnel through LinkCode Cloud (companion mobile app in active development).
+- **Local-first** — the host binds to loopback and your code never leaves the machine.
+- **Remote & mobile control** *(not ready)* — an explicit tunnel through LinkCode Cloud will let you reach your host from anywhere and drive it from the companion mobile app; both are still in development.
 
 ## Supported Agents
 
@@ -77,7 +81,7 @@ flowchart LR
     CLOUD <--> MOBILE
 
     classDef client fill:#88888826,stroke:#88888880
-    classDef host fill:#FF00001A,stroke:#FF0000,stroke-width:2px
+    classDef host fill:#2F81F71A,stroke:#2F81F7,stroke-width:2px
     classDef muted fill:#88888812,stroke:#88888880,stroke-dasharray:4 3
     class DESKTOP,WEB,MOBILE client
     class DAEMON host
@@ -90,6 +94,10 @@ flowchart LR
 A local daemon hosts the engine and one adapter per agent. Adapters normalize each agent's native events into a single zod-validated data contract, carried over a versioned wire protocol; clients are thin renderers of that one normalized conversation, so desktop, browser, and mobile stay identical whether they connect directly or through the Cloud tunnel. The full picture — layers, contracts, and the data-plane/system-plane split — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Install
+
+<a href="https://linkcode.ai/download"><img src="https://static.linkcode.ai/badge/download.svg" alt="Download LinkCode" height="40"></a>
+
+The button grabs the latest build for your platform. Prefer a package manager or a specific artifact:
 
 ### macOS
 
