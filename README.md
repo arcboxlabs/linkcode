@@ -45,7 +45,8 @@ LinkCode is one workspace for all your coding agents. A host on your machine tak
 - **Workspace at hand** — file tree, git panel, and project scripts with dev-server preview, right next to the conversation.
 - **Automations** — schedule agent runs, or loop a prompt until the work is done.
 - **Your history, kept in place** — sessions stay in each agent's own local history; LinkCode lists, imports, and resumes them without copying a transcript.
-- **Local-first** — the host binds to loopback and your code never leaves the machine; remote access is an explicit tunnel through LinkCode Cloud (companion mobile app in active development).
+- **Local-first** — the host binds to loopback and your code never leaves the machine.
+- **Remote & mobile control** *(not ready)* — an explicit tunnel through LinkCode Cloud will let you reach your host from anywhere and drive it from the companion mobile app; both are still in development.
 
 ## Supported Agents
 
