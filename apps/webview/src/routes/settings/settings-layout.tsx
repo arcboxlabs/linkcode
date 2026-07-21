@@ -142,10 +142,7 @@ export function SettingsLayout(): React.ReactNode {
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {/* The providers page is a master/detail split and needs the extra width. */}
-          <div
-            className={`mx-auto p-6 ${isActive(pathname, 'providers') ? 'max-w-5xl' : 'max-w-2xl'}`}
-          >
+          <div className="mx-auto max-w-2xl p-6">
             {activeLabel === undefined ? null : (
               <SettingsPageTitle>{activeLabel}</SettingsPageTitle>
             )}

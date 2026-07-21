@@ -685,6 +685,8 @@ export const en = {
       customService: 'Custom endpoint',
       unbound: 'Not connected',
       noMatches: 'No matching accounts.',
+      emptyTitle: 'No accounts yet',
+      emptyHint: 'Add a subscription, API key, AI gateway, or custom endpoint.',
       detected: 'Detected',
       accountMenu: 'Account actions',
       edit: 'Edit account',
