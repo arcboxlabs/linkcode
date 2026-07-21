@@ -91,11 +91,13 @@ class FakeCodexServer {
 
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
+  rejectMethod: string | undefined;
   threadResponse: unknown;
   protected override startAppServer(
     opts: Omit<CodexAppServerOptions, 'binaryPath'>,
   ): Promise<CodexServerHandle> {
     const server = new FakeCodexServer(opts);
+    server.rejectMethod = this.rejectMethod;
     if (this.threadResponse !== undefined) server.threadResponse = this.threadResponse;
     this.fakeServers.push(server);
     return Promise.resolve(server);
@@ -275,6 +277,23 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(turn?.params).toMatchObject({ effort });
   });
 
+  it.each([
+    'max',
+    'ultra',
+  ] as const)('defers effort %s validation when optional model discovery is unavailable', async (effort) => {
+    const adapter = new TestCodex();
+    adapter.rejectMethod = 'model/list';
+
+    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+
+    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+      'thread/start',
+    );
+    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ effort });
+  });
+
   it('accepts Luna max but rejects Luna ultra from provider metadata', async () => {
     const accepted = new TestCodex();
     await expect(
@@ -312,14 +331,19 @@ describe('CodexAdapter shell-command passthrough', () => {
 
   it('keeps newer live picks when a previous turn reports stale settings', async () => {
     const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
     await adapter.start(start);
     await adapter.send({ type: 'set-model', model: 'gpt-5.6-luna' });
     await adapter.send({ type: 'set-effort', effort: 'max' });
+    events.length = 0;
 
     adapter.fakeServers[0].notify('thread/settings/updated', {
       threadId: 'thread-1',
       threadSettings: { model: 'gpt-5.6-sol', effort: 'low' },
     });
+    expect(events).not.toContainEqual({ type: 'model-update', model: 'gpt-5.6-sol' });
+    expect(events).not.toContainEqual({ type: 'effort-update', effort: 'low' });
     await adapter.send({ type: 'prompt', content: [textBlock('use my latest picks')] });
 
     const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');

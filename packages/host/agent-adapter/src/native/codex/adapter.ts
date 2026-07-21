@@ -303,6 +303,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Provider catalog refreshed from `model/list`, including per-model effort capabilities. */
   private modelOptions = new Map<string, AgentModelOption>();
   private catalogDefaultModel: string | undefined;
+  /** Whether the current app-server answered `model/list`. When discovery is unavailable, Codex
+   * remains the authority instead of optional metadata blocking an otherwise valid session. */
+  private modelCatalogAvailable = false;
   /** Active approval/sandbox tier; switches ride the next `turn/start` like model/effort. */
   private policyId: CodexPolicyId = INITIAL_POLICY_ID;
   /** True once the user explicitly picked a tier this session; only then may a preset override
@@ -519,7 +522,9 @@ export class CodexAdapter extends BaseAgentAdapter {
    * subsequent turns). Codex has no way to alter the turn already in flight. */
   protected override onSetModel(model: string): Promise<void> {
     invariant(this.opts, 'codex: session not started');
-    if (this.effort !== undefined) this.assertEffortSupported(this.effort, model);
+    if (this.effort !== undefined) {
+      this.assertEffortSupported(this.effort, model, !this.modelCatalogAvailable);
+    }
     this.opts.model = model;
     this.model = model;
     // Reflect the pick now; it applies from the next turn/start.
@@ -530,9 +535,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Effort switching, same next-turn channel as the model. The active model's catalog is the
    * authority; `ultracode` is always rejected because it is a distinct Claude-only mode. */
   protected override onSetEffort(effort: EffortLevel): Promise<void> {
-    const initialCatalogPending =
-      this.server === null && this.activeModel === undefined && this.modelOptions.size === 0;
-    this.assertEffortSupported(effort, this.selectedModel(), initialCatalogPending);
+    this.assertEffortSupported(effort, this.selectedModel(), !this.modelCatalogAvailable);
     this.effort = effort;
     // Reflect the pick now; it applies from the next turn/start.
     this.emitEffort(effort);
@@ -655,13 +658,17 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.resumeFrom = undefined;
     try {
       const modelCatalog = await this.readModelCatalog(server);
+      this.modelCatalogAvailable = modelCatalog !== undefined;
       if (modelCatalog) {
         this.catalogDefaultModel = modelCatalog.defaultModel;
         this.modelOptions = new Map(modelCatalog.models.map((model) => [model.id, model]));
         this.emitModels(modelCatalog.models);
+      } else {
+        this.catalogDefaultModel = undefined;
+        this.modelOptions.clear();
       }
       if (this.effort !== undefined && !resume) {
-        this.assertEffortSupported(this.effort, this.selectedModel());
+        this.assertEffortSupported(this.effort, this.selectedModel(), !this.modelCatalogAvailable);
       }
       const preset = POLICY_PRESETS[this.policyId];
       const params = {
@@ -725,7 +732,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.emitModel(model);
     }
     if (this.effort !== undefined) {
-      this.assertEffortSupported(this.effort, model);
+      this.assertEffortSupported(this.effort, model, !this.modelCatalogAvailable);
       return;
     }
     const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
@@ -868,15 +875,23 @@ export class CodexAdapter extends BaseAgentAdapter {
         const settings = recordField(params, 'threadSettings');
         if (!settings) break;
         const model = stringField(settings, 'model');
+        const modelMatchesPending = this.model === undefined || model === this.model;
         if (model) {
           this.activeModel = model;
-          this.emitModel(model);
+          if (modelMatchesPending) this.emitModel(model);
         }
+        // A previous turn can report after the user has picked next-turn overrides. Keep learning
+        // the effective model above, but do not replace the UI's newer pending model or its effort.
+        if (!modelMatchesPending) break;
         const effort = EffortLevelSchema.safeParse(settings.effort);
+        if (this.effort !== undefined) {
+          if (effort.success && effort.data === this.effort) this.emitEffort(effort.data);
+          break;
+        }
         const effective =
           effort.success && effort.data !== 'ultracode'
             ? effort.data
-            : this.effort === undefined && model
+            : model
               ? this.modelOptions.get(model)?.defaultEffort
               : undefined;
         if (effective) this.emitEffort(effective);
