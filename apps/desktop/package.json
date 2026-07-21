@@ -19,6 +19,7 @@
     "e2e:packaged": "pnpm run package:devshell && pnpm run e2e:packaged:smoke",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
+    "e2e:thread-menu": "node e2e/thread-menu.e2e.mts",
     "e2e:window-bounds": "node e2e/window-bounds.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
