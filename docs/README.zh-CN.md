@@ -19,8 +19,8 @@
     <img alt="GitHub commit" src="https://img.shields.io/github/commit-activity/m/arcboxlabs/linkcode?style=flat"></a>
     <a href="../LICENSE" target="_blank">
     <img alt="License" src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat"></a>
-    <a href="https://twitter.com/arcboxlabs" target="_blank">
-    <img alt="twitter" src="https://img.shields.io/badge/follow-arcboxlabs-green?style=social&logo=Twitter"></a>
+    <a href="https://x.com/linkcodeai" target="_blank">
+    <img alt="follow on X" src="https://img.shields.io/badge/follow-linkcodeai-green?style=social&logo=X"></a>
 </div>
 
 <p align="center">
