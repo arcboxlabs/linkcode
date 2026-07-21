@@ -7,13 +7,18 @@ import { ArtifactHostActionsProvider } from '../context';
 import { HtmlInline } from '../html-inline';
 import type { InlineArtifact } from '../types';
 
+const TRANSLATIONS: Record<string, string> = {
+  expandPreview: 'Preview',
+  hostFailed: 'Failed to host the preview',
+  openInPanel: 'Open in panel',
+};
+
+function translateKey(key: string): string {
+  return TRANSLATIONS[key] ?? key;
+}
+
 vi.mock('use-intl', () => ({
-  useTranslations: () => (key: string) =>
-    ({
-      expandPreview: 'Preview',
-      hostFailed: 'Failed to host the preview',
-      openInPanel: 'Open in panel',
-    })[key] ?? key,
+  useTranslations: () => translateKey,
 }));
 
 afterEach(cleanup);

@@ -30,7 +30,7 @@ const baselineDetector: ArtifactSyntaxDetector = {
   },
 };
 
-const detectors: ArtifactSyntaxDetector[] = [baselineDetector];
+let detectors: ArtifactSyntaxDetector[] = [baselineDetector];
 
 export function getArtifactKind(id: string): ArtifactKindDefinition | undefined {
   return kinds.get(id);
@@ -51,10 +51,10 @@ export function registerArtifactKind(definition: ArtifactKindDefinition): () => 
 /** Later registrations take precedence over the baseline (vendor syntaxes are more
  * specific than the generic fence mapping). Same module-scope constraint as kinds. */
 export function registerArtifactDetector(detector: ArtifactSyntaxDetector): () => void {
-  detectors.unshift(detector);
+  detectors = [detector, ...detectors];
   return () => {
     const index = detectors.indexOf(detector);
-    if (index !== -1) detectors.splice(index, 1);
+    if (index !== -1) detectors = detectors.toSpliced(index, 1);
   };
 }
 

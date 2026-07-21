@@ -109,6 +109,17 @@ export interface NewSessionSurfaceProps {
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
 
+function workspaceById(
+  workspaces: readonly WorkspaceRecord[],
+  workspaceId: WorkspaceId | null,
+): WorkspaceRecord | null {
+  if (workspaceId === null) return null;
+  for (const workspace of workspaces) {
+    if (workspace.workspaceId === workspaceId) return workspace;
+  }
+  return null;
+}
+
 /** Unified new-session page: heading + shared `Composer` + workspace context bar. Model, effort,
  * and workflow-mode picks ride into the submission; the session reflects them from then on. */
 export function NewSessionSurface({
@@ -147,8 +158,7 @@ export function NewSessionSurface({
   const [pending, setPending] = useState(false);
 
   const selectableWorkspaces = chatWorkspace ? [chatWorkspace, ...workspaces] : workspaces;
-  const selected =
-    selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
+  const selected = workspaceById(selectableWorkspaces, workspaceId);
   const isChatSelected = selected != null && selected === chatWorkspace;
   const localModel = selectedModels[provider];
   const selectedModel =

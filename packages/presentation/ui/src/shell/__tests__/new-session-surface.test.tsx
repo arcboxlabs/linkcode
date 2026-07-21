@@ -34,6 +34,9 @@ const RE_MODEL_DEFAULT = /modelDefault/;
 const RE_SONNET_5 = /Sonnet 5/;
 const RE_CONFIGURED_CLAUDE_MODEL = /configured\/claude-model/;
 const RE_OPUS_4_8 = /Opus 4.8/;
+const RE_MEDIUM_EFFORT = /Medium/;
+const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
+const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
 
 describe('NewSessionSurface', () => {
   it.each([
@@ -376,7 +379,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /Medium/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_MEDIUM_EFFORT })).toBeTruthy();
     typeInComposer('hello again');
     await pressInComposer('Enter');
 
@@ -403,7 +406,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /custom\/claude-model/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_CUSTOM_CLAUDE_MODEL })).toBeTruthy();
     typeInComposer('hello');
     await pressInComposer('Enter');
 
@@ -486,7 +489,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /anthropic\/claude-sonnet-4-6/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_DYNAMIC_CLAUDE_MODEL })).toBeTruthy();
     typeInComposer('use remembered dynamic model');
     await pressInComposer('Enter');
 

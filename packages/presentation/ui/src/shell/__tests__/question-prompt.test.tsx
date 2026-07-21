@@ -154,6 +154,9 @@ const CACHE_DESCRIPTION_TEXT =
 const CACHE_DESCRIPTION = /Reuse fetched results/;
 const NODE_CHOICE_NAME = /Node/;
 const STABLE_CHOICE_NAME = /Stable/;
+const RETRY_CHOICE_NAME = /Retry/;
+const BUN_CHOICE_NAME = /Bun/;
+const CANARY_CHOICE_NAME = /Canary/;
 const ALLOW_CHOICE_NAME = /^Allow$/;
 const SUBMIT_BUTTON_NAME = /submit/i;
 const SKIP_BUTTON_NAME = /skip/i;
@@ -267,9 +270,7 @@ describe('QuestionPrompt', () => {
     ).toBe('true');
     await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
     input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
-    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' }).value).toBe(
-      'Run smoke tests',
-    );
+    expect(input.value).toBe('Run smoke tests');
     expect(
       screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
     ).toBe('false');
@@ -293,9 +294,9 @@ describe('QuestionPrompt', () => {
       screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME }).getAttribute('aria-checked'),
     ).toBe('true');
     await user.keyboard('2');
-    expect(screen.getByRole('checkbox', { name: /Retry/ }).getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    expect(
+      screen.getByRole('checkbox', { name: RETRY_CHOICE_NAME }).getAttribute('aria-checked'),
+    ).toBe('true');
 
     await user.click(screen.getByRole('button', { name: 'customPlaceholder' }));
     const input = screen.getByRole<HTMLInputElement>('textbox', { name: 'customPlaceholder' });
@@ -314,7 +315,7 @@ describe('QuestionPrompt', () => {
     const row = choice.closest('label');
     const description = row?.querySelector('.truncate');
     expect(description?.textContent).toBe(CACHE_DESCRIPTION_TEXT);
-    expect(row?.getAttribute('data-slot')).toBe('tooltip-trigger');
+    expect(row?.dataset.slot).toBe('tooltip-trigger');
     expect(row?.contains(choice)).toBe(true);
     expect(document.activeElement).toBe(choice);
   });
@@ -391,7 +392,7 @@ describe('QuestionPrompt', () => {
       <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
     );
     await user.click(screen.getByRole('button', { name: 'next question' }));
-    const bun = screen.getByRole('radio', { name: /Bun/ });
+    const bun = screen.getByRole('radio', { name: BUN_CHOICE_NAME });
     const focusTargets: EventTarget[] = [];
     const record = (event: FocusEvent): void => {
       if (event.target) focusTargets.push(event.target);
@@ -407,7 +408,7 @@ describe('QuestionPrompt', () => {
     // The last question has no page to advance to, so the shortcut focuses the pressed choice.
     await user.keyboard('2');
     expect(screen.getByText('3 of 3')).toBeDefined();
-    expect(document.activeElement).toBe(screen.getByRole('radio', { name: /Canary/ }));
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: CANARY_CHOICE_NAME }));
   });
 
   it('moves focus through choices and the custom row with arrow keys without selecting', async () => {
@@ -416,7 +417,7 @@ describe('QuestionPrompt', () => {
       <QuestionPrompt autoFocusFirstChoice item={ITEM} responding={false} onRespond={vi.fn()} />,
     );
     const cache = screen.getByRole('checkbox', { name: CACHE_CHOICE_NAME });
-    const retry = screen.getByRole('checkbox', { name: /Retry/ });
+    const retry = screen.getByRole('checkbox', { name: RETRY_CHOICE_NAME });
 
     await user.keyboard('{ArrowDown}');
     expect(document.activeElement).toBe(retry);
@@ -438,7 +439,7 @@ describe('QuestionPrompt', () => {
     await user.click(screen.getByRole('button', { name: 'next question' }));
 
     await user.keyboard('{ArrowDown}');
-    const bun = screen.getByRole('radio', { name: /Bun/ });
+    const bun = screen.getByRole('radio', { name: BUN_CHOICE_NAME });
     expect(document.activeElement).toBe(bun);
     expect(bun.getAttribute('aria-checked')).toBe('false');
     expect(screen.getByText('2 of 3')).toBeDefined();
@@ -453,7 +454,7 @@ describe('QuestionPrompt', () => {
     );
 
     await user.keyboard('{ArrowUp}');
-    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: /Retry/ }));
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: RETRY_CHOICE_NAME }));
     // Navigating away only moves focus; the custom answer stays selected.
     expect(screen.getByRole('textbox', { name: 'customPlaceholder' })).toBeDefined();
   });

@@ -38,7 +38,7 @@ export function SubagentViewer({
   const t = useTranslations('workbench.subagent');
 
   // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a conversation holds a handful of subagents at most; a lookup Map would outweigh the scan
-  const selected = tasks.find((task) => task.toolCall.toolCallId === selectedId) ?? tasks[0];
+  const selected = tasks.find((task) => task.toolCall.toolCallId === selectedId) ?? tasks.at(0);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>

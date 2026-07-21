@@ -109,11 +109,11 @@ export function PromptCard({
           </Alert>
         ) : null}
       </FramePanel>
-      {footer !== undefined ? (
+      {footer === undefined ? null : (
         <FrameFooter className="flex items-center justify-between gap-2 px-3 py-1.5">
           {footer}
         </FrameFooter>
-      ) : null}
+      )}
     </Frame>
   );
 }

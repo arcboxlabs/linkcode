@@ -6,9 +6,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CompactionMarker } from '../compaction-marker';
 import { formatElapsed } from '../use-elapsed';
 
+function translateKey(key: string): string {
+  return key;
+}
+
 vi.mock('use-intl', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => translateKey,
 }));
+
+const RE_ELAPSED_SECONDS = /·\s*\d+s/;
 
 afterEach(cleanup);
 
@@ -23,7 +29,7 @@ describe('CompactionMarker', () => {
 
   it('shows a live elapsed counter when a start time is known', () => {
     render(<CompactionMarker inProgress startedAt={Date.now() - 3000} />);
-    expect(screen.getByText(/·\s*\d+s/)).toBeTruthy();
+    expect(screen.getByText(RE_ELAPSED_SECONDS)).toBeTruthy();
   });
 
   it('renders the divider with token detail once completed', () => {
@@ -46,9 +52,9 @@ describe('formatElapsed', () => {
   it('formats seconds, minutes, and hours like codex fmt_elapsed_compact', () => {
     expect(formatElapsed(0)).toBe('0s');
     expect(formatElapsed(999)).toBe('0s');
-    expect(formatElapsed(59_000)).toBe('59s');
-    expect(formatElapsed(60_000)).toBe('1m 00s');
-    expect(formatElapsed(61_000)).toBe('1m 01s');
+    expect(formatElapsed(59000)).toBe('59s');
+    expect(formatElapsed(60000)).toBe('1m 00s');
+    expect(formatElapsed(61000)).toBe('1m 01s');
     expect(formatElapsed((59 * 60 + 59) * 1000)).toBe('59m 59s');
     expect(formatElapsed(3_600_000)).toBe('1h 00m 00s');
     expect(formatElapsed((3600 + 60 + 1) * 1000)).toBe('1h 01m 01s');

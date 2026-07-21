@@ -8,7 +8,7 @@ afterEach(cleanup);
 
 it('retains emitted ANSI colors and decorations inside the scoped terminal palette', () => {
   const { container } = render(
-    <TerminalContent>{'\u001b[1;31mfailed\u001b[0m plain'}</TerminalContent>,
+    <TerminalContent>{'\u{1B}[1;31mfailed\u{1B}[0m plain'}</TerminalContent>,
   );
 
   const output = container.querySelector('pre.chat-terminal-output');

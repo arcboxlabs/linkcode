@@ -108,8 +108,7 @@ function buildConversation(shape: LoadShape): ConversationViewModel {
     // One task + nested children so partitionSubagentItems does real work.
     if (t % 4 === 0) {
       const taskId = `t${t}-task`;
-      items.push(toolItem(turnId, taskId, 'task'));
-      items.push({
+      items.push(toolItem(turnId, taskId, 'task'), {
         kind: 'message',
         id: `sub-${t}`,
         turnId,

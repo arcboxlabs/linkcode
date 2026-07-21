@@ -50,6 +50,10 @@ const PERMISSION_ITEM: PermissionConversationItem = {
   responding: false,
 };
 
+const RE_MODEL_DEFAULT = /modelDefault/;
+const RE_OPUS_4_8 = /Opus 4.8/;
+const RE_MAX_EFFORT = /Max/;
+
 function surface(
   runtimeCues?: AgentRuntimeCues,
   conversation: ConversationViewModel = EMPTY_CONVERSATION,
@@ -95,15 +99,15 @@ function composerText(): string {
 describe('ConversationSurface prompt card', () => {
   it('keeps the model unresolved until the adapter reports its concrete value', () => {
     const { rerender } = render(surface());
-    expect(screen.getByRole('button', { name: /modelDefault/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
 
     rerender(surface(undefined, { ...EMPTY_CONVERSATION, currentModel: 'claude-opus-4-8' }));
-    expect(screen.getByRole('button', { name: /Opus 4.8/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_OPUS_4_8 })).toBeTruthy();
   });
 
   it('shows any reflected normalized effort even when the adapter does not offer it', () => {
     render(surface(undefined, { ...EMPTY_CONVERSATION, currentEffort: 'max' }));
-    expect(screen.getByRole('button', { name: /Max/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_MAX_EFFORT })).toBeTruthy();
   });
 
   it('hides the composer while a prompt card is visible and preserves its draft', () => {
