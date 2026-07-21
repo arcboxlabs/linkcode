@@ -30,7 +30,7 @@ pnpm install
 ### Daemon + desktop together
 
 ```bash
-devenv run app
+devenv shell -- app
 ```
 
 `app` first builds the Rust PTY sidecar, then starts the daemon and desktop dev processes in parallel. Without `devenv`, run the same sequence:
@@ -45,7 +45,7 @@ Root `pnpm dev` (= `turbo run dev`) is different: it starts the three persistent
 ### Daemon only
 
 ```bash
-devenv run daemon
+devenv shell -- daemon
 # without devenv:
 pnpm -F @linkcode/daemon run build:rust
 pnpm -F @linkcode/daemon run dev
@@ -54,7 +54,7 @@ pnpm -F @linkcode/daemon run dev
 ### Desktop only
 
 ```bash
-devenv run desktop
+devenv shell -- desktop
 # without devenv:
 pnpm -F @linkcode/desktop run dev   # scripts/dev.mts: vite builds + dev server + electron
 ```
