@@ -11,6 +11,7 @@ import {
   ProviderConfigSchema,
   parseProfileName,
 } from '@linkcode/schema';
+import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
 
@@ -89,7 +90,7 @@ export function deviceKeysDir(): string {
  * independently — a system-plane invariant enforced regardless of which client is connected.
  */
 export function chatWorkspaceRoot(): string {
-  return join(homedir(), 'LinkCode');
+  return join(homedir(), WORKSPACES_DIRNAME);
 }
 
 export function loadConfig(): DaemonConfig {

@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
+import { linkcodeStateDirName } from '@linkcode/schema/daemon-runtime';
 import crossSpawn from 'cross-spawn';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
@@ -108,7 +109,8 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   constructor(options: OpencodeHistoryServerOptions = {}) {
     this.spawnServer = options.spawnServer ?? defaultSpawnServer;
     this.allocatePort = options.allocatePort ?? allocatePort;
-    this.neutralCwd = options.neutralCwd ?? join(homedir(), '.linkcode', 'opencode-history');
+    this.neutralCwd =
+      options.neutralCwd ?? join(homedir(), linkcodeStateDirName(), 'opencode-history');
     this.idleMs = options.idleMs ?? 60000;
     this.readyTimeoutMs = options.readyTimeoutMs ?? 30000;
     this.shutdownGraceMs = options.shutdownGraceMs ?? 5000;

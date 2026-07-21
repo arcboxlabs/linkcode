@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import type { ManagedAssetId } from '@linkcode/schema';
+import { DATA_DIRNAME } from '@linkcode/schema/product';
 
 /**
  * Store layout `<root>/<namespace>/<name>/<version>/…`: the id's `:` becomes a directory level
@@ -24,11 +25,19 @@ export function assetsRootFor(ctx: RootContext): string {
   if (override) return override;
   switch (ctx.platform) {
     case 'darwin':
-      return join(ctx.home, 'Library', 'Application Support', 'LinkCode', 'assets');
+      return join(ctx.home, 'Library', 'Application Support', DATA_DIRNAME, 'assets');
     case 'win32':
-      return join(ctx.env.LOCALAPPDATA ?? join(ctx.home, 'AppData', 'Local'), 'LinkCode', 'assets');
+      return join(
+        ctx.env.LOCALAPPDATA ?? join(ctx.home, 'AppData', 'Local'),
+        DATA_DIRNAME,
+        'assets',
+      );
     default:
-      return join(ctx.env.XDG_DATA_HOME ?? join(ctx.home, '.local', 'share'), 'linkcode', 'assets');
+      return join(
+        ctx.env.XDG_DATA_HOME ?? join(ctx.home, '.local', 'share'),
+        DATA_DIRNAME.toLowerCase(),
+        'assets',
+      );
   }
 }
 

@@ -1,5 +1,6 @@
 /** Zero-dependency half of the daemon discovery contract (see `model/daemon-discovery.ts`);
  * kept zod-free so the sandboxed Electron preload (no `require('zod')`) can import it. */
+import { STATE_DIR_BASENAME } from './product';
 
 /** Default TCP port of the local daemon: 0x4C43 — ascii "LC". */
 export const DAEMON_DEFAULT_PORT = 19523;
@@ -28,7 +29,7 @@ export function parseProfileName(raw: string | undefined): string | undefined {
  * Validates its input so no caller can interpolate a traversal or separator — safety lives here. */
 export function linkcodeStateDirName(profile?: string): string {
   const parsed = parseProfileName(profile);
-  return parsed === undefined ? '.linkcode' : `.linkcode-${parsed}`;
+  return parsed === undefined ? STATE_DIR_BASENAME : `${STATE_DIR_BASENAME}-${parsed}`;
 }
 
 /** Runtime discovery file the daemon writes after binding, as path segments under the user's home directory. */
