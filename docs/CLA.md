@@ -3,7 +3,7 @@
 > **Status: Draft v1.0 (2026-07-21) — pending legal review; not yet in force.**
 > The authoritative copy will be published as a GitHub Gist and linked through cla-assistant.io. This in-repo copy exists for review and history.
 
-Thank you for your interest in contributing to software projects maintained by ArcBox, Inc., d/b/a ArcBox Labs ("ArcBox"), including LinkCode (each, a "Project").
+Thank you for your interest in contributing to software projects maintained by ArcBox, Inc., a Delaware corporation, d/b/a ArcBox Labs ("ArcBox"), including LinkCode (each, a "Project").
 
 This Contributor License Agreement ("Agreement") documents the rights You grant to ArcBox in Your Contributions. It exists to clarify the intellectual-property license granted with Contributions from any person or entity, for Your protection as a contributor as well as for the protection of ArcBox, the Projects, and their users. It does not change Your rights to use Your own Contributions for any other purpose.
 
@@ -54,7 +54,7 @@ You agree to notify ArcBox of any facts or circumstances of which You become awa
 3. **Moral rights.** To the fullest extent permitted under applicable law, You waive, and agree not to assert, all of Your "moral rights" in or relating to Your Contributions for the benefit of ArcBox, its assigns, and their respective direct and indirect sublicensees.
 4. **Assignment.** ArcBox may assign this Agreement, together with the rights and licenses granted under it, including in connection with a merger, acquisition, or sale of all or substantially all of its assets, or to a successor of the applicable Project.
 5. **Entire agreement; severability.** This Agreement is the entire agreement between You and ArcBox concerning Contributions, and supersedes any prior agreements concerning the same subject matter. If any provision of this Agreement is held to be unenforceable, the remaining provisions shall remain in full force and effect.
-6. **Governing law.** [To be completed by counsel — jurisdiction and venue, e.g. the State of Delaware, excluding its conflict-of-law rules.]
+6. **Governing law.** This Agreement is governed by, and construed in accordance with, the laws of the State of Delaware, without regard to its conflict-of-law rules.
 
 ---
 
