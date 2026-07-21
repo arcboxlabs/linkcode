@@ -92,4 +92,4 @@ brew install --cask arcboxlabs/tap/linkcode
 
 ## 许可证
 
-LinkCode 以 [Business Source License 1.1](../LICENSE) 的 source-available 形式提供;Logo 与品牌资产单独授权(见 [`assets/LICENSE`](../assets/LICENSE) 与 [品牌使用条款](../assets/BRAND.md))。
+LinkCode 以 [Business Source License 1.1](../LICENSE) 的 source-available 形式提供;Logo 与品牌资产单独授权(见 [`assets/LICENSE`](../assets/LICENSE) 与 [品牌使用条款](../assets/BRAND.md))。想 fork?去品牌清单与安全的再分发路径见 [`docs/FORKING.md`](./FORKING.md)。
