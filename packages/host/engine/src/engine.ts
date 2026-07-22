@@ -35,6 +35,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorRequestHandler } from './simulator/request-handler';
 import { SimulatorService } from './simulator/service';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
@@ -102,6 +103,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
+  const simulatorRequests = new SimulatorRequestHandler(simulators, transport, responder);
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
@@ -187,6 +189,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     artifact: artifactRequests,
     automation: automationRequests,
     terminal: terminalRequests,
+    simulator: simulatorRequests,
   });
   let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;

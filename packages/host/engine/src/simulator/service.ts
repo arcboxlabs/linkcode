@@ -1,8 +1,17 @@
 import type { SessionId } from '@linkcode/schema';
 import { Effect } from 'effect';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
 import type { SimulatorBackend, SimulatorDeviceInfo, SimulatorImageFormat } from './backend';
+
+/** Lazily-probed host capability; mirrors the wire's `SimulatorStatus` shape structurally. */
+export interface SimulatorHostStatus {
+  available: boolean;
+  simctlPath?: string;
+  developerDir?: string;
+  reason?: string;
+}
 
 /** Mirrors the reference session model: at most four simulator panes per session. */
 const MAX_DEVICES_PER_SESSION = 4;
@@ -35,6 +44,7 @@ interface DeviceClaim {
 export class SimulatorService {
   private readonly claims = new Map<string, DeviceClaim>();
   private readonly idleReclaimMs: number;
+  private probedStatus?: SimulatorHostStatus;
 
   constructor(
     private readonly backend: SimulatorBackend,
@@ -45,6 +55,22 @@ export class SimulatorService {
 
   probe(): Promise<{ simctlPath: string; developerDir: string }> {
     return this.backend.probe();
+  }
+
+  /**
+   * Whether this host can drive simulators, probed lazily. A success is cached (tooling doesn't
+   * un-install mid-run); a failure is re-probed on the next ask so installing Xcode heals the
+   * capability without a daemon restart.
+   */
+  async status(): Promise<SimulatorHostStatus> {
+    if (this.probedStatus) return this.probedStatus;
+    try {
+      const probe = await this.backend.probe();
+      this.probedStatus = { available: true, ...probe };
+      return this.probedStatus;
+    } catch (error) {
+      return { available: false, reason: extractErrorMessage(error) ?? 'probe failed' };
+    }
   }
 
   /** Read-only; claims are not required to look. */

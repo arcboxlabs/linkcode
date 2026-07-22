@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+/**
+ * iOS Simulator model shapes shared by the wire and clients. The host-side source of truth is
+ * the `linkcode-sim` sidecar (`crates/linkcode-sim/PROTOCOL.md`), reached through the engine's
+ * simulator service — device state is CoreSimulator's, not ours.
+ */
+
+export const SimulatorDeviceSchema = z.object({
+  udid: z.string().min(1),
+  name: z.string(),
+  /** CoreSimulator state string: `Shutdown`, `Booted`, `Booting`, … */
+  state: z.string(),
+  /** Runtime identifier, e.g. `com.apple.CoreSimulator.SimRuntime.iOS-26-5`. */
+  runtime: z.string(),
+  /** Human-readable runtime name (`iOS 26.5`); absent when unknown. */
+  runtimeName: z.string().optional(),
+  deviceType: z.string().nullable(),
+});
+export type SimulatorDevice = z.infer<typeof SimulatorDeviceSchema>;
+
+/** Whether this host can drive simulators at all (macOS + Xcode with the iOS platform). */
+export const SimulatorStatusSchema = z.object({
+  available: z.boolean(),
+  /** Where simctl lives; present when available. */
+  simctlPath: z.string().optional(),
+  developerDir: z.string().optional(),
+  /** Why unavailable (e.g. Xcode missing); present when not available. */
+  reason: z.string().optional(),
+});
+export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
+
+export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
+export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
