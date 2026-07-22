@@ -217,9 +217,9 @@ describe('ToolCallBody', () => {
     );
 
     const resourceLabel = screen.getByText('manifest.json');
-    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceCard = resourceLabel.closest('[data-slot="frame"]');
     const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).not.toBeNull();
+    expect(resourceCard?.querySelector('[data-slot="frame-panel"]')).not.toBeNull();
     expect(resourceHeader?.tabIndex).toBe(0);
     expect(screen.queryByText('https://example.test/manifest.json?token=secret')).toBeNull();
     await user.hover(resourceHeader!);
@@ -267,9 +267,9 @@ describe('ToolCallBody', () => {
     );
 
     const resourceLabel = screen.getByText('resource');
-    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceCard = resourceLabel.closest('[data-slot="frame"]');
     const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(resourceCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     expect(resourceHeader?.tabIndex).toBe(0);
     expect(screen.queryByRole('button', { name: 'resource' })).toBeNull();
     await user.hover(resourceHeader!);
@@ -330,11 +330,11 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const receiptNode = screen.getByText(receipt);
     expect(screen.getAllByText('hello.py')).toHaveLength(1);
     expect(fileCard?.contains(receiptNode)).toBe(false);
-    expect(receiptNode.closest('[data-slot="card"]')?.textContent).toContain('Edit');
+    expect(receiptNode.closest('[data-slot="frame"]')?.textContent).toContain('Edit');
   });
 
   it('renders patch-only moves and textless binary deletes', () => {
@@ -388,7 +388,7 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const explanationNode = screen.getByText(explanation);
     expect(explanationNode).toBeDefined();
     expect(fileCard?.contains(explanationNode)).toBe(false);
@@ -414,9 +414,9 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const receiptNode = screen.getByText('Updated hello.py');
-    expect(fileCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     expect(fileCard?.contains(receiptNode)).toBe(false);
   });
 
@@ -489,9 +489,9 @@ describe('FileArtifactCard', () => {
     );
 
     const header = screen.getByRole('button', { name: 'report.pdf' });
-    const card = header.closest('[data-slot="card"]');
+    const card = header.closest('[data-slot="frame"]');
     expect(card?.className).toContain('max-w-md');
-    expect(card?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(card?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     await user.hover(header);
     expect(await screen.findByText(path)).toBeDefined();
     await user.click(header);

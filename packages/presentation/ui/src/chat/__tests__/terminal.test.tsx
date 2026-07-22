@@ -17,3 +17,9 @@ it('renders output when the ANSI component is wrapped by its CommonJS default ex
 
   expect(screen.getByText('command output')).toBeDefined();
 });
+
+it('drops trailing newlines so PTY tails do not render as blank panel space', () => {
+  const { container } = render(<TerminalContent>{'line one\nline two\n\n\n'}</TerminalContent>);
+
+  expect(container.querySelector('pre')?.textContent).toBe('line one\nline two');
+});
