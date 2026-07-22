@@ -1,4 +1,5 @@
 import { cjk } from '@streamdown/cjk';
+import { Badge } from 'coss-ui/components/badge';
 import { Checkbox } from 'coss-ui/components/checkbox';
 import { Frame } from 'coss-ui/components/frame';
 import { Separator } from 'coss-ui/components/separator';
@@ -147,41 +148,65 @@ function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, ids: strin
   });
 }
 
+type MarkdownAnchorProps = React.ComponentProps<'a'> & {
+  node?: unknown;
+  'data-footnote-ref'?: boolean;
+  'data-footnote-backref'?: boolean;
+};
+
 function MarkdownLink({
   className,
   children,
   node: _node,
   href,
+  'data-footnote-ref': footnoteRef,
+  'data-footnote-backref': footnoteBackref,
   ...rest
-}: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
+}: MarkdownAnchorProps): React.ReactNode {
   const headingPrefix = useContext(MarkdownHeadingPrefixContext);
   const fragment = href?.[0] === '#' ? href.slice(1) : null;
   const fragmentHref =
     fragment !== null && headingPrefix !== null
       ? `#${SANITIZED_ID_PREFIX}${headingPrefix}${fragment}`
       : undefined;
+  const anchorProps: Omit<MarkdownAnchorProps, 'node'> = {
+    ...rest,
+    'data-footnote-ref': footnoteRef,
+    'data-footnote-backref': footnoteBackref,
+    href: fragmentHref ?? href,
+    target: fragment === null ? '_blank' : undefined,
+    rel: fragment === null ? 'noreferrer' : undefined,
+    onClick:
+      fragment === null
+        ? undefined
+        : (event) => {
+            const decoded = decodeFragment(fragment);
+            scrollToFragment(event, [
+              // Heading path: the pipeline prefixed the target id per document instance.
+              ...(fragmentHref ? [decodeFragment(fragmentHref.slice(1))] : []),
+              // Everything else (footnotes, references, raw-HTML ids) keeps the href as
+              // written; only sanitize's clobber prefix separates it from the DOM id.
+              `${SANITIZED_ID_PREFIX}${decoded}`,
+              decoded,
+            ]);
+          },
+  };
+  // Footnote citations and their back-references render as compact badge chips; the badge
+  // supplies its own type scale, so the surrounding sup/section size never distorts them.
+  if (footnoteRef !== undefined || footnoteBackref !== undefined) {
+    return (
+      <Badge
+        size="sm"
+        variant={footnoteRef !== undefined ? 'secondary' : 'outline'}
+        className={cn('tabular-nums', className)}
+        render={<a {...anchorProps}>{children}</a>}
+      />
+    );
+  }
   return (
     <a
-      {...rest}
+      {...anchorProps}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
-      href={fragmentHref ?? href}
-      target={fragment === null ? '_blank' : undefined}
-      rel={fragment === null ? 'noreferrer' : undefined}
-      onClick={
-        fragment === null
-          ? undefined
-          : (event) => {
-              const decoded = decodeFragment(fragment);
-              scrollToFragment(event, [
-                // Heading path: the pipeline prefixed the target id per document instance.
-                ...(fragmentHref ? [decodeFragment(fragmentHref.slice(1))] : []),
-                // Everything else (footnotes, references, raw-HTML ids) keeps the href as
-                // written; only sanitize's clobber prefix separates it from the DOM id.
-                `${SANITIZED_ID_PREFIX}${decoded}`,
-                decoded,
-              ]);
-            }
-      }
     >
       {children}
     </a>
