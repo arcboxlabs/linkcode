@@ -243,9 +243,9 @@ function generateMarkdown(variants) {
 
 // -- main --
 
-const files = fs.readdirSync(WIRE_DIR).filter(
-  (f) => f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts',
-);
+const files = fs
+  .readdirSync(WIRE_DIR)
+  .filter((f) => f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts');
 
 /** @type {Variant[]} */
 let allVariants = [];
