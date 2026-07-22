@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const process = require('node:process');
 
-const { invariant } = require('foxts/guard');
+const assert = require('node:assert/strict');
 
 const WIRE_DIR = path.join(__dirname, '..', 'packages', 'foundation', 'schema', 'src', 'wire');
 const OUTPUT = path.join(__dirname, '..', 'docs', 'SCHEMA-INDEX.md');
@@ -198,7 +198,7 @@ function classifyFromBlock(block, kind) {
   if (hasReplyTo) return 'H->C';
 
   const direction = UNCORRELATED_DIRECTIONS.get(kind);
-  invariant(direction, 'Cannot determine direction for uncorrelated kind: ' + kind);
+  assert(direction, 'Cannot determine direction for uncorrelated kind: ' + kind);
   return direction;
 }
 
