@@ -23,8 +23,9 @@ const navigationIntegration = Sentry.reactNavigationIntegration({
   enableTimeToInitialDisplay: true,
 });
 let mobileTraceSampleRate = DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate.mobile;
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  dsn: sentryDsn,
   integrations: [
     Sentry.reactNativeTracingIntegration({
       traceFetch: false,
@@ -42,7 +43,7 @@ Sentry.init({
   sendDefaultPii: false,
   tracesSampler: ({ inheritOrSampleWith }) => inheritOrSampleWith(mobileTraceSampleRate),
 });
-void fetchTelemetryConfig(expoFetch).then(applyTelemetryConfig);
+if (sentryDsn) void fetchTelemetryConfig(expoFetch).then(applyTelemetryConfig);
 
 /**
  * Root layout. global.css is imported here so Uniwind styles apply to every route;

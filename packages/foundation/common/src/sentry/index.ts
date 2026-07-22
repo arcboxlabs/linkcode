@@ -32,6 +32,7 @@ export interface SentryTransactionPrivacyOptions {
 }
 
 const RE_EVENT_ID = /^[\da-f]{32}$/;
+const RE_PROFILE_ID = /^[\da-f]{32}$/;
 const RE_TRACE_ID = /^[\da-f]{32}$/;
 const RE_SPAN_ID = /^[\da-f]{16}$/;
 const SAFE_OPS = new Set([
@@ -100,6 +101,9 @@ export function sanitizeSentryTransaction<T extends SentryTransactionEvent>(
   const trace = isRecord(event.contexts?.trace)
     ? sanitizeTraceContext(event.contexts.trace)
     : undefined;
+  const profile = isRecord(event.contexts?.profile)
+    ? sanitizeProfileContext(event.contexts.profile)
+    : undefined;
   const spans: TransactionSpan[] = [];
   for (const span of event.spans ?? []) {
     const sanitizedSpan = sanitizeSpan(span, options);
@@ -112,7 +116,8 @@ export function sanitizeSentryTransaction<T extends SentryTransactionEvent>(
     type: 'transaction',
     transaction,
     transaction_info: { source: 'custom' },
-    contexts: trace ? { trace } : undefined,
+    contexts:
+      trace || profile ? { ...(trace && { trace }), ...(profile && { profile }) } : undefined,
     spans: event.spans ? spans : undefined,
     measurements: sanitizeMeasurements(event.measurements, options.safeMeasurementNames),
   };
@@ -160,6 +165,18 @@ function sanitizeTraceContext(trace: Record<string, unknown>): Record<string, un
     parent_span_id: validId(trace.parent_span_id, RE_SPAN_ID),
     op: safeString(trace.op, SAFE_OPS),
     status: safeString(trace.status, SAFE_STATUSES),
+  };
+}
+
+function sanitizeProfileContext(
+  profile: Record<string, unknown>,
+): Record<string, string> | undefined {
+  const profileId = validId(profile.profile_id, RE_PROFILE_ID);
+  const profilerId = validId(profile.profiler_id, RE_PROFILE_ID);
+  if (!profileId && !profilerId) return undefined;
+  return {
+    ...(profileId && { profile_id: profileId }),
+    ...(profilerId && { profiler_id: profilerId }),
   };
 }
 

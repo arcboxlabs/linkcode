@@ -31,9 +31,10 @@ const integrations = [
 const telemetryConfigPath = telemetryConfigCachePath();
 const cachedTelemetryConfig = readCachedTelemetryConfig();
 let daemonTraceSampleRate = DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate.daemon;
+const sentryDsn = process.env.LINKCODE_SENTRY_DSN;
 
 const initOptions: Parameters<typeof Sentry.init>[0] = {
-  dsn: process.env.LINKCODE_SENTRY_DSN,
+  dsn: sentryDsn,
   enableLogs: false,
   sendDefaultPii: false,
   integrations,
@@ -56,7 +57,7 @@ try {
 }
 
 Sentry.init(initOptions);
-void refreshTelemetryConfig();
+if (sentryDsn) void refreshTelemetryConfig();
 
 function readCachedTelemetryConfig(): TelemetryConfig {
   try {

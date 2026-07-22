@@ -20,9 +20,10 @@ import { initAutoUpdates } from './updater';
 import { createDesktopWindow } from './window';
 
 let desktopMainTraceSampleRate = DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate.desktopMain;
+const sentryDsn = import.meta.env.MAIN_VITE_SENTRY_DSN;
 
 Sentry.init({
-  dsn: import.meta.env.MAIN_VITE_SENTRY_DSN,
+  dsn: sentryDsn,
   beforeSendTransaction: (event) =>
     sanitizeSentryTransaction(event, {
       fallbackTransactionName: 'desktop main operation',
@@ -32,7 +33,7 @@ Sentry.init({
   sendDefaultPii: false,
   tracesSampler: ({ inheritOrSampleWith }) => inheritOrSampleWith(desktopMainTraceSampleRate),
 });
-void Sentry.suppressTracing(fetchTelemetryConfig).then(applyTelemetryConfig);
+if (sentryDsn) void Sentry.suppressTracing(fetchTelemetryConfig).then(applyTelemetryConfig);
 
 // settings.ts caches in memory and rewrites the whole file on save, so two instances would
 // last-write-wins clobber each other; a second launch just focuses the existing window.
