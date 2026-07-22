@@ -23,6 +23,7 @@ import type {
   StartOptions,
   ToolKind,
 } from '@linkcode/schema';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { invariant } from 'foxts/guard';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -100,23 +101,27 @@ function modelOptions(models: PiModel[]) {
 function piCommandCatalog(
   loader: Pick<ResourceLoader, 'getPrompts' | 'getSkills'>,
 ): AgentCommand[] {
-  const { prompts } = loader.getPrompts();
-  const { skills } = loader.getSkills();
-  return [
-    ...prompts.map(
-      (prompt): AgentCommand => ({
+  const commands: AgentCommand[] = [];
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getPrompts().prompts.map((prompt) => ({
         name: prompt.name,
         description: prompt.description || undefined,
         argumentHint: prompt.argumentHint,
-      }),
-    ),
-    ...skills.map(
-      (skill): AgentCommand => ({
+      })),
+    );
+  } catch {}
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getSkills().skills.map((skill) => ({
         name: `skill:${skill.name}`,
         description: skill.description || undefined,
-      }),
-    ),
-  ];
+      })),
+    );
+  } catch {}
+  return commands;
 }
 
 function createConfiguredRegistry(
@@ -305,13 +310,9 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       },
     });
-    // Pi has no resource change event in headless mode, so this is a full snapshot. Catalog
-    // discovery is optional session metadata: a failure must hide the menu, not fail the session.
-    try {
-      this.emitCommands(piCommandCatalog(resourceLoader));
-    } catch {
-      this.emitCommands([]);
-    }
+    // Pi has no resource change event in headless mode, so this is a full snapshot. Each resource
+    // category is optional session metadata: discovery failure hides only that category.
+    this.emitCommands(piCommandCatalog(resourceLoader));
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {

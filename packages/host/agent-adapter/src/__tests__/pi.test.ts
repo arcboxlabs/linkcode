@@ -7,7 +7,8 @@ import { agentRuntimeProber } from '../probe';
 let listener: ((event: AgentSessionEvent) => void) | undefined;
 const prompt = vi.fn<AgentSession['prompt']>();
 const resources = {
-  fail: false,
+  promptFail: false,
+  skillFail: false,
   prompts: [] as Array<{ name: string; description: string; argumentHint?: string }>,
   skills: [] as Array<{ name: string; description: string }>,
 };
@@ -31,11 +32,11 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
   DefaultResourceLoader: class {
     reload = vi.fn();
     getPrompts() {
-      if (resources.fail) throw new Error('prompt discovery failed');
+      if (resources.promptFail) throw new Error('prompt discovery failed');
       return { prompts: resources.prompts, diagnostics: [] };
     }
     getSkills() {
-      if (resources.fail) throw new Error('skill discovery failed');
+      if (resources.skillFail) throw new Error('skill discovery failed');
       return { skills: resources.skills, diagnostics: [] };
     }
   },
@@ -81,7 +82,8 @@ describe('PiAdapter lifecycle', () => {
   beforeEach(() => {
     listener = undefined;
     prompt.mockReset();
-    resources.fail = false;
+    resources.promptFail = false;
+    resources.skillFail = false;
     resources.prompts = [];
     resources.skills = [];
     vi.spyOn(agentRuntimeProber, 'resolveEntry').mockReturnValue(undefined);
@@ -112,11 +114,41 @@ describe('PiAdapter lifecycle', () => {
   });
 
   it('publishes an empty catalog without failing the session when discovery fails', async () => {
-    resources.fail = true;
+    resources.promptFail = true;
+    resources.skillFail = true;
 
     const { events } = await startAdapter();
 
     expect(events).toContainEqual({ type: 'available-commands-update', commands: [] });
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+  });
+
+  it.each([
+    {
+      failed: 'prompt templates',
+      configure() {
+        resources.promptFail = true;
+        resources.skills = [{ name: 'pdf', description: 'PDF tools' }];
+      },
+      commands: [{ name: 'skill:pdf', description: 'PDF tools' }],
+    },
+    {
+      failed: 'skills',
+      configure() {
+        resources.skillFail = true;
+        resources.prompts = [{ name: 'review', description: 'Review changes' }];
+      },
+      commands: [{ name: 'review', description: 'Review changes', argumentHint: undefined }],
+    },
+  ])('preserves valid commands when $failed discovery fails', async (testCase) => {
+    testCase.configure();
+
+    const { events } = await startAdapter();
+
+    expect(events).toContainEqual({
+      type: 'available-commands-update',
+      commands: testCase.commands,
+    });
     expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
   });
 
