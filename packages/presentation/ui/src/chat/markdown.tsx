@@ -124,6 +124,18 @@ function decodeFragment(hash: string): string {
   }
 }
 
+/** The nearest ancestor that actually scrolls vertically. Never fall back to scrollIntoView:
+ * it walks every ancestor — overflow-hidden layout boxes included — and shoves the app chrome. */
+function nearestScrollContainer(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+    const { overflowY } = window.getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+  }
+  return null;
+}
+
 function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, ids: string[]): void {
   // Fragment navigation must stay in-page even when nothing resolves: the native fallthrough
   // is a real navigation (hash/router side effects; the desktop untrusted-link surface).
@@ -133,13 +145,10 @@ function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, ids: strin
   // (GitHub-grade tradeoff); scope lookups to a per-instance root marker if it ever matters.
   const target = ids.map((id) => doc.getElementById(id)).find((element) => element !== null);
   if (!target) return;
-  const scrollContainer = event.currentTarget.closest<HTMLElement>(
-    '[data-markdown-scroll-container]',
-  );
-  if (!scrollContainer) {
-    target.scrollIntoView({ block: 'start' });
-    return;
-  }
+  const scrollContainer =
+    event.currentTarget.closest<HTMLElement>('[data-markdown-scroll-container]') ??
+    nearestScrollContainer(target);
+  if (!scrollContainer) return;
   scrollContainer.scrollTo({
     top:
       scrollContainer.scrollTop +
@@ -164,9 +173,12 @@ function MarkdownLink({
   ...rest
 }: MarkdownAnchorProps): React.ReactNode {
   const headingPrefix = useContext(MarkdownHeadingPrefixContext);
+  const isFootnoteAnchor = footnoteRef !== undefined || footnoteBackref !== undefined;
   const fragment = href?.[0] === '#' ? href.slice(1) : null;
+  // Footnote ids are remark-managed and never instance-prefixed, so their hrefs stay as
+  // written; everything else points at ids the pipeline prefixed per document instance.
   const fragmentHref =
-    fragment !== null && headingPrefix !== null
+    fragment !== null && headingPrefix !== null && !isFootnoteAnchor
       ? `#${SANITIZED_ID_PREFIX}${headingPrefix}${fragment}`
       : undefined;
   const anchorProps: Omit<MarkdownAnchorProps, 'node'> = {
@@ -391,6 +403,8 @@ interface MarkdownProps {
   children: string;
   className?: string;
   animated?: StreamdownProps['animated'];
+  /** Parse as one static document so repeated-heading slugs dedupe document-wide (file and
+   * preview surfaces). Heading anchors themselves resolve on every surface. */
   headingAnchors?: boolean;
 }
 
@@ -406,30 +420,27 @@ export function Markdown({
 }: MarkdownProps): React.ReactNode {
   const markdownId = useId();
   const headingPrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
-  const content = (
-    <Streamdown
-      // space-y-0: block rhythm comes from the per-element my-* overrides above,
-      // matching the previous react-markdown renderer.
-      className={cn(
-        'space-y-0 break-words text-sm leading-relaxed',
-        FOOTNOTE_SECTION_CLASS,
-        className,
-      )}
-      components={components}
-      animated={animated}
-      plugins={plugins}
-      mode={headingAnchors ? 'static' : undefined}
-      rehypePlugins={headingAnchors ? createMarkdownRehypePlugins(headingPrefix) : undefined}
-    >
-      {children}
-    </Streamdown>
-  );
-  return headingAnchors ? (
+  return (
     <MarkdownHeadingPrefixContext.Provider value={headingPrefix}>
-      {content}
+      <Streamdown
+        // space-y-0: block rhythm comes from the per-element my-* overrides above,
+        // matching the previous react-markdown renderer.
+        className={cn(
+          'space-y-0 break-words text-sm leading-relaxed',
+          FOOTNOTE_SECTION_CLASS,
+          className,
+        )}
+        components={components}
+        animated={animated}
+        plugins={plugins}
+        // Static mode parses the whole document in one pass, so repeated headings dedupe
+        // across the document; chat stays in streaming mode and slugs per block.
+        mode={headingAnchors ? 'static' : undefined}
+        rehypePlugins={createMarkdownRehypePlugins(headingPrefix)}
+      >
+        {children}
+      </Streamdown>
     </MarkdownHeadingPrefixContext.Provider>
-  ) : (
-    content
   );
 }
 

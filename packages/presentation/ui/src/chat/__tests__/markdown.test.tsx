@@ -92,7 +92,13 @@ it('deduplicates repeated headings across one anchored document', () => {
 // hrefs keep the single prefix; MarkdownLink must bridge that and never let a fragment click
 // reach native navigation (the desktop external-browser surface).
 it('keeps footnote fragment clicks in-page and scrolls between reference and definition', () => {
-  const { container, getByRole } = render(<Markdown>{'Note.[^1]\n\n[^1]: Detail.'}</Markdown>);
+  const { container, getByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'Note.[^1]\n\n[^1]: Detail.'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
 
   const reference = getByRole('link', { name: '1' });
   expect(reference.getAttribute('href')).toBe('#user-content-fn-1');
@@ -102,10 +108,9 @@ it('keeps footnote fragment clicks in-page and scrolls between reference and def
   const definition = container.querySelector<HTMLElement>('#user-content-user-content-fn-1');
   expect(definition).not.toBeNull();
   if (!definition) return;
-  const scrollToDefinition = vi.fn();
-  definition.scrollIntoView = scrollToDefinition;
+  vi.spyOn(definition, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 400 }));
   expect(fireEvent.click(reference)).toBe(false);
-  expect(scrollToDefinition).toHaveBeenCalledWith({ block: 'start' });
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 400 });
 
   const backref = container.querySelector<HTMLElement>('a[data-footnote-backref]');
   const referenceAnchor = container.querySelector<HTMLElement>(
@@ -114,24 +119,59 @@ it('keeps footnote fragment clicks in-page and scrolls between reference and def
   expect(backref).not.toBeNull();
   expect(referenceAnchor).not.toBeNull();
   if (!backref || !referenceAnchor) return;
-  const scrollToReference = vi.fn();
-  referenceAnchor.scrollIntoView = scrollToReference;
+  vi.spyOn(referenceAnchor, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 150 }));
   expect(fireEvent.click(backref)).toBe(false);
-  expect(scrollToReference).toHaveBeenCalledWith({ block: 'start' });
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 150 });
 });
 
-it('resolves footnote targets when heading anchors rewrite fragment hrefs', () => {
+it('resolves footnote targets in heading-anchor mode without href rewriting', () => {
   const { container, getByRole } = render(
-    <Markdown headingAnchors>{'## Title\n\nNote.[^1]\n\n[^1]: Detail.'}</Markdown>,
+    <div data-markdown-scroll-container>
+      <Markdown headingAnchors>{'## Title\n\nNote.[^1]\n\n[^1]: Detail.'}</Markdown>
+    </div>,
   );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
 
-  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
-  expect(definition).not.toBeNull();
-  if (!definition) return;
-  const scrollIntoView = vi.fn();
-  definition.scrollIntoView = scrollIntoView;
-  expect(fireEvent.click(getByRole('link', { name: '1' }))).toBe(false);
-  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+  const reference = getByRole('link', { name: '1' });
+  expect(reference.getAttribute('href')).toBe('#user-content-fn-1');
+  expect(container.querySelector('li[id$="user-content-fn-1"]')).not.toBeNull();
+  expect(fireEvent.click(reference)).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+});
+
+it('scrolls chat heading anchors without heading-anchor mode', () => {
+  const { container, getByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'## Target\n\n[Jump](#target)'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const heading = getByRole('heading', { name: 'Target' });
+  expect(heading.id).not.toBe('');
+  const link = getByRole('link', { name: 'Jump' });
+  expect(link.getAttribute('href')).toBe(`#${heading.id}`);
+  expect(fireEvent.click(link)).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+});
+
+// Without a marked container the scroll targets the nearest scrollable ancestor only —
+// never scrollIntoView, which walks every ancestor and shoves fixed app chrome around.
+it('scrolls only the nearest scrollable ancestor for unmarked containers', () => {
+  const { container, getByRole } = render(
+    <div style={{ overflowY: 'auto' }}>
+      <Markdown>{'## Target\n\n[Jump](#target)'}</Markdown>
+    </div>,
+  );
+  const scroller = container.firstElementChild as HTMLElement;
+  Object.defineProperty(scroller, 'scrollHeight', { value: 200 });
+  Object.defineProperty(scroller, 'clientHeight', { value: 100 });
+  const scrollTo = vi.fn();
+  scroller.scrollTo = scrollTo;
+  expect(fireEvent.click(getByRole('link', { name: 'Jump' }))).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
 });
 
 it('prevents navigation for fragment links with no resolvable target', () => {
