@@ -89,6 +89,7 @@ function InlineCode({
 }
 
 const FENCE_LANGUAGE_RE = /language-(\S+)/;
+const TRAILING_NEWLINES_RE = /\n+$/;
 
 /** The fence text child is a plain string, except while the animate plugin wraps it. */
 function fenceText(children: React.ReactNode): string {
@@ -112,7 +113,7 @@ function FencedCode({
   const metastring = node?.properties.metastring;
   return (
     <ArtifactFenceRenderer
-      code={fenceText(children).replace(/\n+$/, '')}
+      code={fenceText(children).replace(TRAILING_NEWLINES_RE, '')}
       language={language}
       meta={typeof metastring === 'string' ? metastring : undefined}
       isIncomplete={isIncomplete}

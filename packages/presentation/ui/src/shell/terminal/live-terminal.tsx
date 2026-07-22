@@ -247,7 +247,7 @@ export function LiveTerminal({
     },
     // fontFamily/fontSize/colorScheme only seed the initial config (live-synced by the effects
     // below); as deps they would tear the terminal down and rebuild it on every change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: initial seed only
+    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps -- intentional: initial seed only
     [session],
   );
 

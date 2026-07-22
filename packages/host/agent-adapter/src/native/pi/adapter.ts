@@ -89,7 +89,7 @@ function effortLevels(model: PiModel): PiEffort[] {
 function modelOptions(models: PiModel[]) {
   return models.map((model) => ({
     id: `${model.provider}/${model.id}`,
-    label: model.name ?? model.id,
+    label: model.name,
     description: `${model.provider}/${model.id}`,
     effortLevels: effortLevels(model),
   }));
@@ -124,7 +124,7 @@ function createConfiguredRegistry(
     authStorage,
     modelRegistry,
     ref,
-    credentialProviderId: key || cred.baseUrl ? (provider ?? null) : null,
+    credentialProviderId: key || cred.baseUrl ? provider : null,
   };
 }
 
@@ -307,6 +307,7 @@ export class PiAdapter extends BaseAgentAdapter {
         await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
       } else await this.session.prompt(text, imageOptions);
       this.promptInFlight = false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the subscribe handler flips `settlementPending` while prompt() is awaited
       if (this.settlementPending) this.settleTurn();
     } catch (error) {
       this.promptInFlight = false;
@@ -476,12 +477,21 @@ export class PiAdapter extends BaseAgentAdapter {
             kind,
           );
         };
-        if (a.type === 'text_delta') this.emitAssistantText(a.delta, id('message'));
-        else if (a.type === 'thinking_delta') this.emitThought(a.delta, id('thought'));
-        else if (a.type === 'text_end') {
-          this.emitAgentMessage(id('message'), [textBlock(a.content)]);
-        } else if (a.type === 'thinking_end') {
-          this.emitAgentThought(id('thought'), [textBlock(a.content)]);
+        switch (a.type) {
+          case 'text_delta':
+            this.emitAssistantText(a.delta, id('message'));
+            break;
+          case 'thinking_delta':
+            this.emitThought(a.delta, id('thought'));
+            break;
+          case 'text_end':
+            this.emitAgentMessage(id('message'), [textBlock(a.content)]);
+            break;
+          case 'thinking_end':
+            this.emitAgentThought(id('thought'), [textBlock(a.content)]);
+            break;
+          default:
+            break;
         }
         break;
       }
