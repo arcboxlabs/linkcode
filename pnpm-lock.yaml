@@ -7109,8 +7109,8 @@ packages:
     peerDependencies:
       eslint: '>=0.8.0'
 
-  eslint-plugin-sukka@9.17.0:
-    resolution: {integrity: sha512-h74CudyrfLlVQ918cADTzyXYWIZpVxpf7j09u022JNLYvUYEppOepwl4EYnyFnSpq8xspnL03rYEZD3Em6YpxA==}
+  eslint-plugin-sukka@9.17.1:
+    resolution: {integrity: sha512-isBppRAIWU4mxUDmNGyghAFzXPl+I89yUvvlJx7O+S8Hebt6dCc4ZFwExEiDXsYBFP1DCaqvCwWPfogy2XMwKg==}
     peerDependencies:
       eslint: '>=9.29.0'
       typescript: '*'
@@ -12817,7 +12817,7 @@ snapshots:
   '@eslint-sukka/eslint-plugin-sukka-full@8.14.0(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0))':
     dependencies:
       eslint: 10.7.0(jiti@2.7.0)
-      eslint-plugin-sukka: 9.17.0(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0))
+      eslint-plugin-sukka: 9.17.1(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0))
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
@@ -17354,7 +17354,7 @@ snapshots:
       eslint: 10.7.0(jiti@2.7.0)
       globals: 13.24.0
 
-  eslint-plugin-sukka@9.17.0(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0)):
+  eslint-plugin-sukka@9.17.1(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0)):
     dependencies:
       '@typescript-eslint/types': 8.65.0
       '@typescript-eslint/utils': 8.65.0(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0))
