@@ -71,10 +71,14 @@ Off macOS, or when SimulatorKit is unavailable, every P1 op fails with `xcodeMis
 | `type` | Params | Result |
 | --- | --- | --- |
 | `tap` | `udid`, `x`, `y` (normalised 0..1) | `{}` |
+| `touch` | `udid`, `phase` (`down`/`move`/`up`), `x`, `y` | `{}` — one phase of a caller-driven touch stream |
 | `swipe` | `udid`, `x0`, `y0`, `x1`, `y1`, `durationMs?` | `{}` |
 | `button` | `udid`, `button` (`home`/`lock`) | `{}` |
+| `key` | `udid`, `usage` (HID page-7 usage), `modifiers?` (usages `0xE0..`) | `{}` — modifier-downs → key-down → key-up → modifier-ups |
 | `streamStart` | `udid`, `fps?` (60), `quality?` (0.6), `scale?` (1.0), `codec?` (`jpeg` default, `h264`) | `{ streaming, fps, scale, codec }` — frames then arrive on `STREAM_FRAME`s (jpeg) or `STREAM_FRAME_H264`s |
 | `streamStop` | `udid` | `{}` |
+
+`touch` streams a gesture in real time (the client forwards pointer events, so the device sees the finger during a drag — long-press, rubber-banding, icon drags all come from the device's own gesture recognition). The sidecar tracks one active touch identifier per udid (`down` allocates, `up` releases; a `move`/`up` without one no-ops). `touch` and `key` requests are handled **inline on the read loop** — never on a per-request thread — so phases and keystrokes keep stdio order.
 
 `scale` (0.1..1.0) downscales each frame before JPEG encode: at native resolution the encode bounds the frame rate near ~55 fps, so `scale` below 1.0 both lifts the achievable rate toward the display's 60 Hz and cuts bandwidth (e.g. `0.5` ≈ one third the bytes). `tap`/`swipe` stay in normalized 0..1 coordinates, so a downscaled stream needs no coordinate adjustment.
 
