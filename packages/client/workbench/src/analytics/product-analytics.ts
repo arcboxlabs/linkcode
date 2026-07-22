@@ -152,7 +152,7 @@ function applyPreference(enabled: boolean): void {
 
 async function activateProductAnalytics(): Promise<void> {
   const preference = useProductAnalyticsPreference.getState();
-  if (config === null || !preference.enabled || !identityResolved || commonProperties === null) {
+  if (!identityResolved || config === null || commonProperties === null || !preference.enabled) {
     return;
   }
   const activatingIdentityGeneration = identityGeneration;
@@ -160,9 +160,9 @@ async function activateProductAnalytics(): Promise<void> {
 
   const client = await loadPostHogClient();
   if (
-    !useProductAnalyticsPreference.getState().enabled ||
     activatingIdentityGeneration !== identityGeneration ||
-    activatingUserId !== currentUserId
+    activatingUserId !== currentUserId ||
+    !useProductAnalyticsPreference.getState().enabled
   ) {
     return;
   }

@@ -19,13 +19,15 @@ interface AnalyticsSessionState {
   isPending: boolean;
 }
 let analyticsIdentity: string | null | undefined;
-authClient.$store.atoms.session.subscribe((session: AnalyticsSessionState) => {
-  if (session.isPending) return;
-  const nextIdentity = session.data?.user.id ?? null;
-  if (nextIdentity === analyticsIdentity) return;
-  analyticsIdentity = nextIdentity;
-  syncProductAnalyticsIdentity(nextIdentity);
-});
+if (import.meta.env.VITE_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_POSTHOG_HOST) {
+  authClient.$store.atoms.session.subscribe((session: AnalyticsSessionState) => {
+    if (session.isPending) return;
+    const nextIdentity = session.data?.user.id ?? null;
+    if (nextIdentity === analyticsIdentity) return;
+    analyticsIdentity = nextIdentity;
+    syncProductAnalyticsIdentity(nextIdentity);
+  });
+}
 
 /**
  * Root layout: global providers + the daemon connection, rendered once around every route's

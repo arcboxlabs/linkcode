@@ -101,10 +101,10 @@ async function activateMobileProductAnalytics(): Promise<void> {
   const activatingUserId = currentUserId;
   const preference = useAnalyticsPreferenceStore.getState();
   if (
+    !identityResolved ||
     !configured ||
     !useAnalyticsPreferenceStore.persist.hasHydrated() ||
-    !preference.enabled ||
-    !identityResolved
+    !preference.enabled
   ) {
     return;
   }
