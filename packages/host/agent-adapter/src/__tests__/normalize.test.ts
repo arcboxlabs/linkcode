@@ -47,7 +47,7 @@ function row(
   uuid: string,
   content: string | unknown[],
   parentToolUseId: string | null = null,
-  extra?: { timestamp?: string; model?: string },
+  extra?: { timestamp?: string; model?: string; messageId?: string },
 ): SessionMessage {
   return {
     type,
@@ -55,7 +55,11 @@ function row(
     session_id: 'h1',
     parent_tool_use_id: parentToolUseId,
     parent_agent_id: null,
-    message: { content, ...(extra?.model && { model: extra.model }) },
+    message: {
+      content,
+      ...(extra?.model && { model: extra.model }),
+      ...(extra?.messageId && { id: extra.messageId }),
+    },
     ...(extra?.timestamp && { timestamp: extra.timestamp }),
   };
 }
@@ -241,21 +245,27 @@ describe('createClaudeHistoryEventMapper', () => {
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
   });
 
-  it('replays thinking as a thought chunk under the uuid:think id, never inside the message text', () => {
+  it('replays thinking and text under the provider message id used by the live stream', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const events = map(
-      row('assistant', 'u1', [
-        { type: 'thinking', thinking: 'let me reason', signature: 'sig' },
-        { type: 'text', text: 'the answer' },
-      ]),
+      row(
+        'assistant',
+        'u1',
+        [
+          { type: 'thinking', thinking: 'let me reason', signature: 'sig' },
+          { type: 'text', text: 'the answer' },
+        ],
+        null,
+        { messageId: 'provider-message' },
+      ),
     );
     expect(events.map((e) => e.event.type)).toEqual(['agent-thought-chunk', 'agent-message-chunk']);
     expect(events[0].event).toMatchObject({
-      messageId: 'u1:think',
+      messageId: 'provider-message:think',
       content: { type: 'text', text: 'let me reason' },
     });
     expect(events[1].event).toMatchObject({
-      messageId: 'u1',
+      messageId: 'provider-message',
       content: { type: 'text', text: 'the answer' },
     });
   });

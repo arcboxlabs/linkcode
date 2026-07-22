@@ -76,7 +76,6 @@ import {
 import { agentRuntimeProber } from '../probe';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
-type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
 type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
@@ -1039,7 +1038,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg.event, msg.parent_tool_use_id);
+        this.handleStreamEvent(msg);
         break;
       case 'assistant':
         this.handleAssistant(msg);
@@ -1133,19 +1132,27 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     });
   }
 
-  private handleStreamEvent(event: StreamEvent, parentToolUseId: string | null): void {
+  private handleStreamEvent(msg: Extract<SDKMessage, { type: 'stream_event' }>): void {
     // Subagent narration renders message-level from the forwarded assistant frames
     // (handleSubagentAssistant); consuming its deltas here would render the same text twice.
-    if (parentToolUseId) return;
+    if (msg.parent_tool_use_id) return;
+    const event = msg.event;
+    if (event.type === 'message_start') {
+      this.messageId = asMessageId(event.message.id);
+      this.thoughtId = asMessageId(`${event.message.id}:think`);
+      return;
+    }
     if (event.type !== 'content_block_delta') return;
     const delta = event.delta;
+    // message_start's API id is stable across every delta and is persisted inside each transcript
+    // row; the SDK envelope uuid is per-frame and cannot group or reconcile streamed chunks.
     if (delta.type === 'text_delta') this.emitAssistantText(delta.text, this.messageId);
     else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, this.thoughtId);
   }
 
   private handleAssistant(msg: AssistantSDKMessage): void {
     if (msg.parent_tool_use_id) {
-      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id, msg.uuid);
+      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id);
       return;
     }
     const message = msg.message;
@@ -1177,11 +1184,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   /**
    * A subagent's assistant frame (`parent_tool_use_id` set): tool calls carry the spawning Task's
-   * id; text/thinking render message-level under the frame's own uuid (which doubles as the history
-   * mapper's id, so live and cold-resume converge). It never touches the main message/thought
+   * id; text/thinking render message-level under the provider message id (which the history mapper
+   * also reads from the transcript row). It never touches the main message/thought
    * cursors or calls `freshSegment()`, so a mid-turn subagent can't break the main streaming bubble.
    */
-  private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
+  private handleSubagentAssistant(message: AssistantMessage, parent: string): void {
     for (const block of message.content) {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
@@ -1198,9 +1205,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           locations: hostLocationsFromToolInput(block.input),
         });
       } else if (block.type === 'text') {
-        this.emitAssistantText(block.text, asMessageId(uuid), parent);
+        this.emitAssistantText(block.text, asMessageId(message.id), parent);
       } else if (block.type === 'thinking') {
-        this.emitThought(block.thinking, asMessageId(`${uuid}:think`), parent);
+        this.emitThought(block.thinking, asMessageId(`${message.id}:think`), parent);
       }
     }
   }
@@ -1610,6 +1617,10 @@ export function createClaudeHistoryEventMapper(
     const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
+      const providerMessageId = isRecord(message.message)
+        ? stringField(message.message, 'id')
+        : undefined;
+      const messageId = providerMessageId ?? message.uuid;
       // Every assistant row records the model that served it; replay it as the same model-update
       // the live stream emits so seeded messages get their per-turn model stamp. Subagent rows
       // are skipped — their model must not masquerade as the session's.
@@ -1619,28 +1630,20 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
-      // Thinking replays as thought chunks under `${uuid}:think` — the id the live subagent path
-      // already emits, so live-forwarded and cold-replayed thinking converge. Pre-CODE-273
+      // Thinking replays under the provider message id used by the live stream. Pre-CODE-273
       // transcripts store empty thinking text; the helper's empty-drop rule skips those.
       for (const block of blocks) {
         if (!isThinkingBlock(block)) continue;
         const thought = thoughtHistoryEvent(
           historyId,
-          `${message.uuid}:think`,
+          `${messageId}:think`,
           block.thinking,
           ts,
           parent,
         );
         if (thought) events.push(thought);
       }
-      const text = textHistoryEvent(
-        historyId,
-        'assistant',
-        message.uuid,
-        message.message,
-        ts,
-        parent,
-      );
+      const text = textHistoryEvent(historyId, 'assistant', messageId, message.message, ts, parent);
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;

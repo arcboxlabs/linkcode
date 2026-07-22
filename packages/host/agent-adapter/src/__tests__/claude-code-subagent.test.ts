@@ -102,13 +102,14 @@ describe('ClaudeCodeAdapter subagent routing', () => {
     expect(sub[0].kind).toBe('read');
   });
 
-  it('renders subagent text message-level under the frame uuid, thinking under a distinct id', () => {
+  it('renders subagent text under the provider message id, thinking under a distinct id', () => {
     const h = harness();
     h.feed({
       type: 'assistant',
       parent_tool_use_id: TASK_ID,
       uuid: 'uuid-sub-2',
       message: {
+        id: 'provider-sub-2',
         content: [
           { type: 'thinking', thinking: 'hmm' },
           { type: 'text', text: 'found it' },
@@ -117,10 +118,10 @@ describe('ClaudeCodeAdapter subagent routing', () => {
     });
     const [chunk] = h.chunks();
     expect(chunk.content).toEqual({ type: 'text', text: 'found it' });
-    expect(chunk.messageId).toBe('uuid-sub-2');
+    expect(chunk.messageId).toBe('provider-sub-2');
     expect(chunk.parentToolCallId).toBe(TASK_ID);
     const [thought] = h.thoughts();
-    expect(thought.messageId).toBe('uuid-sub-2:think');
+    expect(thought.messageId).toBe('provider-sub-2:think');
     expect(thought.parentToolCallId).toBe(TASK_ID);
   });
 
@@ -128,12 +129,23 @@ describe('ClaudeCodeAdapter subagent routing', () => {
     const h = harness();
     h.feed({
       type: 'stream_event',
+      uuid: 'uuid-sub-delta',
+      session_id: 's1',
       parent_tool_use_id: TASK_ID,
       event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'sub' } },
     });
     expect(h.chunks()).toHaveLength(0);
     h.feed({
       type: 'stream_event',
+      uuid: 'uuid-main-start',
+      session_id: 's1',
+      parent_tool_use_id: null,
+      event: { type: 'message_start', message: { id: 'provider-main' } },
+    });
+    h.feed({
+      type: 'stream_event',
+      uuid: 'uuid-main-delta',
+      session_id: 's1',
       parent_tool_use_id: null,
       event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'main' } },
     });
@@ -142,8 +154,17 @@ describe('ClaudeCodeAdapter subagent routing', () => {
 
   it('keeps the main messageId cursor across an interleaved subagent frame', () => {
     const h = harness();
+    h.feed({
+      type: 'stream_event',
+      uuid: 'uuid-main-start',
+      session_id: 's1',
+      parent_tool_use_id: null,
+      event: { type: 'message_start', message: { id: 'provider-main' } },
+    });
     const mainDelta = (text: string) => ({
       type: 'stream_event',
+      uuid: 'uuid-main-segment',
+      session_id: 's1',
       parent_tool_use_id: null,
       event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
     });
@@ -152,7 +173,7 @@ describe('ClaudeCodeAdapter subagent routing', () => {
       type: 'assistant',
       parent_tool_use_id: TASK_ID,
       uuid: 'uuid-sub-3',
-      message: { content: [{ type: 'text', text: 'subagent says' }] },
+      message: { id: 'provider-sub-3', content: [{ type: 'text', text: 'subagent says' }] },
     });
     h.feed(mainDelta('after'));
     const main = h.chunks().filter((c) => c.parentToolCallId === undefined);

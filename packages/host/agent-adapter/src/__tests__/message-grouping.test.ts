@@ -14,9 +14,14 @@ import { PiAdapter } from '../native/pi';
  */
 
 type AgentMessageChunk = Extract<AgentEvent, { type: 'agent-message-chunk' }>;
+type AgentThoughtChunk = Extract<AgentEvent, { type: 'agent-thought-chunk' }>;
 
 function agentChunks(events: AgentEvent[]): AgentMessageChunk[] {
   return events.filter((e): e is AgentMessageChunk => e.type === 'agent-message-chunk');
+}
+
+function agentThoughts(events: AgentEvent[]): AgentThoughtChunk[] {
+  return events.filter((e): e is AgentThoughtChunk => e.type === 'agent-thought-chunk');
 }
 
 /** Capture every emitted event from an adapter into a flat list. */
@@ -38,9 +43,22 @@ class TestClaude extends ClaudeCodeAdapter {
   }
 }
 
+function claudeMessageStart(messageId: string): object {
+  return {
+    type: 'stream_event',
+    uuid: 'start-frame',
+    session_id: 's1',
+    parent_tool_use_id: null,
+    event: { type: 'message_start', message: { id: messageId } },
+  };
+}
+
 function claudeTextDelta(text: string): object {
   return {
     type: 'stream_event',
+    uuid: `delta-frame-${text}`,
+    session_id: 's1',
+    parent_tool_use_id: null,
     event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
   };
 }
@@ -75,6 +93,7 @@ function piDriver(): AdapterDriver {
 function claudeDriver(): AdapterDriver {
   const adapter = new TestClaude();
   const seen = record(adapter);
+  adapter.feed(claudeMessageStart('claude-before-tool'));
   return {
     seen,
     text: (delta) => adapter.feed(claudeTextDelta(delta)),
@@ -87,6 +106,7 @@ function claudeDriver(): AdapterDriver {
         type: 'user',
         message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
       });
+      adapter.feed(claudeMessageStart('claude-after-tool'));
     },
   };
 }
@@ -128,5 +148,32 @@ describe('PiAdapter message grouping', () => {
     const chunks = agentChunks(seen);
     expect(chunks).toHaveLength(2);
     expect(chunks[0].messageId).toBe(chunks[1].messageId);
+  });
+});
+
+describe('ClaudeCodeAdapter message identity', () => {
+  it('uses the provider message id across SDK frames and history', () => {
+    const adapter = new TestClaude();
+    const seen = record(adapter);
+
+    adapter.feed(claudeMessageStart('provider-message'));
+    adapter.feed(claudeTextDelta('a'));
+    adapter.feed(claudeTextDelta('b'));
+    adapter.feed({
+      type: 'stream_event',
+      uuid: 'thought-delta-frame',
+      session_id: 's1',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'thinking_delta', thinking: 'hmm' },
+      },
+    });
+
+    expect(agentChunks(seen).map((chunk) => chunk.messageId)).toEqual([
+      'provider-message',
+      'provider-message',
+    ]);
+    expect(agentThoughts(seen).map((event) => event.messageId)).toEqual(['provider-message:think']);
   });
 });

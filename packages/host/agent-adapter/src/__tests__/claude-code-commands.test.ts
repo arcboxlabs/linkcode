@@ -185,6 +185,10 @@ class FakeQuery {
   }
 }
 
+function pushMessages(query: FakeQuery, ...messages: WireMessage[]): void {
+  for (const message of messages) query.push(message);
+}
+
 const queries: FakeQuery[] = [];
 let nextQuerySetup: ((q: FakeQuery) => void) | null = null;
 
@@ -343,10 +347,23 @@ describe('ClaudeCodeAdapter slash commands', () => {
     await prompt(adapter);
     const q0 = queries[0];
 
-    q0.push({
-      type: 'stream_event',
-      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before' } },
-    });
+    pushMessages(
+      q0,
+      {
+        type: 'stream_event',
+        uuid: 'before-start-frame',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'message_start', message: { id: 'before-message' } },
+      },
+      {
+        type: 'stream_event',
+        uuid: 'before-row',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before' } },
+      },
+    );
     await vi.waitFor(() => {
       expect(agentChunks(events)).toHaveLength(1);
     });
@@ -366,10 +383,23 @@ describe('ClaudeCodeAdapter slash commands', () => {
     expect(output.content).toEqual(textBlock('Usage: 42% used'));
     expect(output.messageId).not.toBe(before.messageId);
 
-    q0.push({
-      type: 'stream_event',
-      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after' } },
-    });
+    pushMessages(
+      q0,
+      {
+        type: 'stream_event',
+        uuid: 'after-start-frame',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'message_start', message: { id: 'after-message' } },
+      },
+      {
+        type: 'stream_event',
+        uuid: 'after-row',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after' } },
+      },
+    );
     await vi.waitFor(() => {
       expect(agentChunks(events)).toHaveLength(3);
     });
