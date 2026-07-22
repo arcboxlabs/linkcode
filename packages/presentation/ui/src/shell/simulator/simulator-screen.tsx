@@ -52,12 +52,13 @@ export interface SimulatorScreenProps {
 /** Everything the compositor knows about one device feed, in native framebuffer pixels. */
 interface PaintState {
   mask: ImageBitmap | null;
-  /** Screen corner radius measured from the mask's alpha (native px); null until measured. */
-  cornerRadius: number | null;
   /** Last decoded frame, retained so a late-arriving mask can recomposite it. */
   frame: ImageBitmap | null;
   /** Screen-sized scratch layer the mask is composited on before drawing into the chassis. */
   screenLayer: OffscreenCanvas | null;
+  /** Cached chassis artwork (rim + display band), rebuilt when the geometry key changes. */
+  chassis: OffscreenCanvas | null;
+  chassisKey: string;
 }
 
 /**
@@ -77,9 +78,10 @@ export function SimulatorScreen({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const paintRef = useRef<PaintState>({
     mask: null,
-    cornerRadius: null,
     frame: null,
     screenLayer: null,
+    chassis: null,
+    chassisKey: '',
   });
   const pressRef = useRef<{ pointerId: number; start: SimulatorScreenPoint; at: number } | null>(
     null,
@@ -143,7 +145,6 @@ export function SimulatorScreen({
           }
           state.mask?.close();
           state.mask = bitmap;
-          state.cornerRadius = measureCornerRadius(bitmap);
           // Recomposite the held frame so the mask applies without waiting for the next one.
           if (canvasRef.current !== null && state.frame !== null) {
             paintDevice(canvasRef.current, state);
@@ -153,7 +154,6 @@ export function SimulatorScreen({
       return () => {
         state.mask?.close();
         state.mask = null;
-        state.cornerRadius = null;
       };
     },
     [maskUrl],
@@ -205,13 +205,13 @@ export function SimulatorScreen({
   );
 }
 
-/** Paint the whole device in native pixels: titanium rim, black display band, side-button bumps,
- * then the mask-clipped frame. The chassis corners stay concentric with the screen corners. */
+/** Paint the whole device in native pixels: side-button bumps, then the cached chassis (rim +
+ * display band, both grown from the real mask so the band stays even around the corners), then
+ * the mask-clipped frame. */
 function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   const frame = state.frame;
   if (frame === null) return;
   const pad = Math.round(frame.width * PAD_FRACTION);
-  const rim = Math.round(frame.width * RIM_FRACTION);
   const buttonDepth = Math.round(frame.width * BUTTON_DEPTH_FRACTION);
   const width = frame.width + 2 * pad + 2 * buttonDepth;
   const height = frame.height + 2 * pad;
@@ -221,8 +221,6 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   }
   const context = canvas.getContext('2d');
   if (context === null) return;
-
-  const screenRadius = state.cornerRadius ?? frame.width * FALLBACK_CORNER_FRACTION;
   context.clearRect(0, 0, width, height);
 
   // Side buttons first, so the chassis paints over their inner halves.
@@ -245,21 +243,7 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
     context.fill();
   }
 
-  // Titanium rim, then the black display band inside it — both concentric with the screen.
-  context.beginPath();
-  context.roundRect(buttonDepth, 0, width - 2 * buttonDepth, height, screenRadius + pad);
-  context.fillStyle = RIM_COLOR;
-  context.fill();
-  context.beginPath();
-  context.roundRect(
-    buttonDepth + rim,
-    rim,
-    width - 2 * buttonDepth - 2 * rim,
-    height - 2 * rim,
-    screenRadius + pad - rim,
-  );
-  context.fillStyle = BEZEL_COLOR;
-  context.fill();
+  context.drawImage(buildChassis(state, frame), buttonDepth, 0);
 
   // Screen: composite the frame against the mask on a screen-sized layer, then inset it.
   let layer = state.screenLayer;
@@ -273,7 +257,7 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   if (state.mask === null) {
     layerContext.save();
     layerContext.beginPath();
-    layerContext.roundRect(0, 0, layer.width, layer.height, screenRadius);
+    layerContext.roundRect(0, 0, layer.width, layer.height, frame.width * FALLBACK_CORNER_FRACTION);
     layerContext.clip();
     layerContext.drawImage(frame, 0, 0);
     layerContext.restore();
@@ -286,17 +270,81 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   context.drawImage(layer, buttonDepth + pad, pad);
 }
 
-/** First fully-opaque row along the mask's left edge = the screen's corner radius (native px). */
-function measureCornerRadius(mask: ImageBitmap): number | null {
-  const probe = new OffscreenCanvas(1, mask.height);
-  const context = probe.getContext('2d');
-  if (context === null) return null;
-  context.drawImage(mask, 0, 0);
-  const alpha = context.getImageData(0, 0, 1, mask.height).data;
-  for (let y = 0; y < mask.height; y += 1) {
-    if (alpha[y * 4 + 3] > 127) return y;
+/**
+ * The chassis artwork: the titanium rim and the black display band, built by morphologically
+ * dilating the real screen mask (stamping it along a circle of offsets). Growing the true shape
+ * keeps the band width even the whole way around the corner and the outer curvature in the same
+ * family as Apple's continuous-curvature screen corners — a `roundRect`'s circular arcs visibly
+ * diverge from them. Cached per frame-size + mask identity; without a mask a rounded rect stands
+ * in for the shape.
+ */
+function buildChassis(state: PaintState, frame: ImageBitmap): OffscreenCanvas {
+  const pad = Math.round(frame.width * PAD_FRACTION);
+  const rim = Math.round(frame.width * RIM_FRACTION);
+  const width = frame.width + 2 * pad;
+  const height = frame.height + 2 * pad;
+  const key = `${width}x${height}:${state.mask === null ? 'fallback' : 'mask'}`;
+  if (state.chassis !== null && state.chassisKey === key) return state.chassis;
+
+  const chassis = new OffscreenCanvas(width, height);
+  const context = chassis.getContext('2d');
+  if (context === null) return chassis;
+  context.clearRect(0, 0, width, height);
+  const rimShape = growScreenShape(state.mask, frame, pad);
+  const bandShape = growScreenShape(state.mask, frame, pad - rim);
+  colorize(rimShape, RIM_COLOR);
+  colorize(bandShape, BEZEL_COLOR);
+  context.drawImage(rimShape, 0, 0);
+  context.drawImage(bandShape, rim, rim);
+  state.chassis = chassis;
+  state.chassisKey = key;
+  return chassis;
+}
+
+/** The screen shape expanded outward by `grow` px: the mask stamped along a circle of offsets
+ * (morphological dilation); a rounded rect when no mask exists. */
+function growScreenShape(
+  mask: ImageBitmap | null,
+  frame: ImageBitmap,
+  grow: number,
+): OffscreenCanvas {
+  const shape = new OffscreenCanvas(frame.width + 2 * grow, frame.height + 2 * grow);
+  const context = shape.getContext('2d');
+  if (context === null) return shape;
+  if (mask === null) {
+    context.beginPath();
+    context.roundRect(
+      0,
+      0,
+      shape.width,
+      shape.height,
+      frame.width * FALLBACK_CORNER_FRACTION + grow,
+    );
+    context.fill();
+    return shape;
   }
-  return null;
+  const STAMPS = 24;
+  for (let step = 0; step < STAMPS; step += 1) {
+    const angle = (2 * Math.PI * step) / STAMPS;
+    context.drawImage(
+      mask,
+      grow + grow * Math.cos(angle),
+      grow + grow * Math.sin(angle),
+      frame.width,
+      frame.height,
+    );
+  }
+  return shape;
+}
+
+/** Replace every opaque pixel of `shape` with `color` in place. */
+function colorize(shape: OffscreenCanvas, color: string): void {
+  const context = shape.getContext('2d');
+  if (context === null) return;
+  context.globalCompositeOperation = 'source-in';
+  context.fillStyle = color;
+  context.fillRect(0, 0, shape.width, shape.height);
+  context.globalCompositeOperation = 'source-over';
 }
 
 /** The painted device's on-page box (the canvas is `object-contain`, so it may be letterboxed). */
