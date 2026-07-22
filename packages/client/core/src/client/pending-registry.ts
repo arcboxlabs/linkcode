@@ -98,6 +98,7 @@ export interface PendingValueMap {
   simulatorList: SimulatorDevice[];
   simulatorLaunch: number | null;
   simulatorScreenshot: { format: SimulatorImageFormat; data: string };
+  simulatorStreamStart: { fps: number; scale: number };
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
@@ -146,6 +147,7 @@ export class PendingRegistry {
     simulatorList: new Map(),
     simulatorLaunch: new Map(),
     simulatorScreenshot: new Map(),
+    simulatorStreamStart: new Map(),
   };
 
   private readonly randomUUID: RandomUUID;

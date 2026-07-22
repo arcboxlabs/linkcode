@@ -113,6 +113,8 @@ type SimulatorActivityCb = (activity: {
   tool: string;
   phase: 'started' | 'settled';
 }) => void;
+/** A live framebuffer frame: base64-encoded JPEG bytes for one device. */
+type SimulatorFrameCb = (frame: { udid: string; data: string }) => void;
 type ConnectionCloseCb = (error: Error) => void;
 
 /** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
@@ -154,6 +156,8 @@ export class LinkCodeClient {
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
   private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
   private readonly simulatorActivitySubs = new Set<SimulatorActivityCb>();
+  /** Framebuffer-frame listeners keyed by udid, so each panel tab only sees its device's frames. */
+  private readonly simulatorFrameSubs = new Map<string, Set<SimulatorFrameCb>>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
@@ -337,6 +341,14 @@ export class LinkCodeClient {
       case 'simulator.activity':
         for (const cb of this.simulatorActivitySubs) {
           cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
+        }
+        break;
+      case 'simulator.stream.started':
+        this.pending.resolve('simulatorStreamStart', p.replyTo, { fps: p.fps, scale: p.scale });
+        break;
+      case 'simulator.stream.frame':
+        for (const cb of this.simulatorFrameSubs.get(p.udid) ?? []) {
+          cb({ udid: p.udid, data: p.data });
         }
         break;
       case 'asset.listed':
@@ -673,6 +685,57 @@ export class LinkCodeClient {
     format?: SimulatorImageFormat,
   ): Promise<{ format: SimulatorImageFormat; data: string }> {
     return this.control.simulatorScreenshot(sessionId, udid, format);
+  }
+
+  simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
+    return this.control.simulatorTap(sessionId, udid, x, y);
+  }
+
+  simulatorSwipe(
+    sessionId: SessionId,
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<RequestAck> {
+    return this.control.simulatorSwipe(sessionId, udid, from, to, durationMs);
+  }
+
+  simulatorButton(
+    sessionId: SessionId,
+    udid: string,
+    button: 'home' | 'lock',
+  ): Promise<RequestAck> {
+    return this.control.simulatorButton(sessionId, udid, button);
+  }
+
+  /** Start streaming a device's framebuffer; frames arrive via {@link subscribeSimulatorFrames}. */
+  simulatorStreamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: { fps?: number; quality?: number; scale?: number },
+  ): Promise<{ fps: number; scale: number }> {
+    return this.control.simulatorStreamStart(sessionId, udid, options);
+  }
+
+  simulatorStreamStop(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorStreamStop(sessionId, udid);
+  }
+
+  /** Subscribe to a device's live framebuffer frames; pair with {@link simulatorStreamStart}. */
+  subscribeSimulatorFrames(udid: string, cb: SimulatorFrameCb): Unsubscribe {
+    let set = this.simulatorFrameSubs.get(udid);
+    if (!set) {
+      set = new Set();
+      this.simulatorFrameSubs.set(udid, set);
+    }
+    set.add(cb);
+    return () => {
+      const current = this.simulatorFrameSubs.get(udid);
+      if (!current) return;
+      current.delete(cb);
+      if (current.size === 0) this.simulatorFrameSubs.delete(udid);
+    };
   }
 
   /** Pushed after a state-changing simulator command (boot/shutdown) with a fresh device list. */

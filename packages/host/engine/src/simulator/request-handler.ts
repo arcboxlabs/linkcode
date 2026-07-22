@@ -1,4 +1,4 @@
-import type { WirePayload } from '@linkcode/schema';
+import type { SessionId, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -19,7 +19,12 @@ type SimulatorRequest = Extract<
       | 'simulator.launch'
       | 'simulator.terminate'
       | 'simulator.open-url'
-      | 'simulator.screenshot';
+      | 'simulator.screenshot'
+      | 'simulator.tap'
+      | 'simulator.swipe'
+      | 'simulator.button'
+      | 'simulator.stream.start'
+      | 'simulator.stream.stop';
   }
 >;
 
@@ -30,6 +35,9 @@ type SimulatorRequest = Extract<
  * watcher, so its own commands are the only change source it can observe).
  */
 export class SimulatorRequestHandler {
+  /** Active framebuffer fan-out subscriptions, keyed by udid; the value unsubscribes it. */
+  private readonly frameSubs = new Map<string, () => void>();
+
   constructor(
     private readonly simulators: SimulatorService | undefined,
     private readonly transport: Transport,
@@ -134,9 +142,89 @@ export class SimulatorRequestHandler {
             );
           }),
         );
+      case 'simulator.tap':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.tap', 'Failed to tap', async () => {
+            await simulators.tap(payload.sessionId, payload.udid, payload.x, payload.y);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.swipe':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.swipe', 'Failed to swipe', async () => {
+            await simulators.swipe(
+              payload.sessionId,
+              payload.udid,
+              { x: payload.x0, y: payload.y0 },
+              { x: payload.x1, y: payload.y1 },
+              payload.durationMs,
+            );
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.button':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.button', 'Failed to press button', async () => {
+            await simulators.button(payload.sessionId, payload.udid, payload.button);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.stream.start':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.stream.start', 'Failed to start stream', async () => {
+            const result = await simulators.streamStart(payload.sessionId, payload.udid, {
+              fps: payload.fps,
+              quality: payload.quality,
+              scale: payload.scale,
+            });
+            this.subscribeFrames(simulators, payload.sessionId, payload.udid);
+            // `alreadyStreaming` carries no params, so echo the request's (defaulted) values.
+            const fps = 'streaming' in result ? result.fps : (payload.fps ?? 60);
+            const scale = 'streaming' in result ? result.scale : (payload.scale ?? 1);
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.stream.started',
+                replyTo: payload.clientReqId,
+                udid: payload.udid,
+                fps,
+                scale,
+              }),
+            );
+          }),
+        );
+      case 'simulator.stream.stop':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.stream.stop', 'Failed to stop stream', async () => {
+            this.unsubscribeFrames(payload.udid);
+            await simulators.streamStop(payload.sessionId, payload.udid);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
       default:
         return Effect.void;
     }
+  }
+
+  /** Fan the device's frames out to the transport as session-scoped `simulator.stream.frame`s.
+   * Idempotent: a second `streamStart` for a device already fanning out keeps the one subscription. */
+  private subscribeFrames(simulators: SimulatorService, sessionId: SessionId, udid: string): void {
+    if (this.frameSubs.has(udid)) return;
+    const unsubscribe = simulators.onFrame(udid, (image) => {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.stream.frame',
+          sessionId,
+          udid,
+          data: Buffer.from(image).toString('base64'),
+        }),
+      );
+    });
+    this.frameSubs.set(udid, unsubscribe);
+  }
+
+  private unsubscribeFrames(udid: string): void {
+    this.frameSubs.get(udid)?.();
+    this.frameSubs.delete(udid);
   }
 
   /** Best-effort push after a state-changing command; the command itself already succeeded. */

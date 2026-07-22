@@ -8,6 +8,9 @@ import {
 import { WireRequestIdSchema } from './request';
 
 const udid = z.string().min(1);
+/** A normalized screen coordinate, 0..1 from the top-left. */
+const coord = z.number().min(0).max(1);
+const SimulatorButtonSchema = z.enum(['home', 'lock']);
 
 /**
  * iOS Simulator wire variants. Commands are session-scoped: the engine's simulator service
@@ -100,6 +103,69 @@ export const simulatorWireVariants = [
     replyTo: WireRequestIdSchema,
     format: SimulatorImageFormatSchema,
     /** Base64-encoded image bytes. */
+    data: z.string(),
+  }),
+
+  // ── Interactive control + framebuffer streaming (CODE-397; private-API, macOS host only) ──
+  // Void commands reply with the generic `request.succeeded`/`request.failed`. Coordinates are
+  // normalized 0..1, so a downscaled stream needs no adjustment.
+  z.object({
+    kind: z.literal('simulator.tap'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    x: coord,
+    y: coord,
+  }),
+  z.object({
+    kind: z.literal('simulator.swipe'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    x0: coord,
+    y0: coord,
+    x1: coord,
+    y1: coord,
+    durationMs: z.number().int().positive().optional(),
+  }),
+  z.object({
+    kind: z.literal('simulator.button'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    button: SimulatorButtonSchema,
+  }),
+  z.object({
+    kind: z.literal('simulator.stream.start'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    fps: z.number().int().positive().optional(),
+    quality: z.number().min(0).max(1).optional(),
+    scale: z.number().min(0).max(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('simulator.stream.started'),
+    replyTo: WireRequestIdSchema,
+    udid,
+    fps: z.number().int(),
+    scale: z.number(),
+  }),
+  z.object({
+    kind: z.literal('simulator.stream.stop'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+  }),
+  /** An unsolicited framebuffer frame while a stream runs. Routed session-scoped (like
+   * `agent.event`) so only connections attached to `sessionId` receive it — never a global
+   * broadcast, since frames are high-frequency. Base64 rides in JSON like `simulator.screenshotted`;
+   * a binary side-channel is a remote/high-fps concern, not v1's desktop-local path. */
+  z.object({
+    kind: z.literal('simulator.stream.frame'),
+    sessionId: SessionIdSchema,
+    udid,
+    /** Base64-encoded JPEG bytes. */
     data: z.string(),
   }),
 ] as const;

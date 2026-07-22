@@ -44,6 +44,15 @@ function agentEvent(sessionId: SessionId): ValidatedWireMessage {
   });
 }
 
+function streamFrame(sessionId: SessionId): ValidatedWireMessage {
+  return createWireMessage({
+    kind: 'simulator.stream.frame',
+    sessionId,
+    udid: 'U-1',
+    data: 'AAA=',
+  });
+}
+
 describe('Hub subscriptions', () => {
   it('broadcasts agent.event to every connection by default', () => {
     const hub = new Hub();
@@ -78,6 +87,33 @@ describe('Hub subscriptions', () => {
     if (event.payload.kind === 'agent.event') expect(event.payload.sessionId).toBe(S1);
     // The default connection still sees everything.
     expect(normal.sent.map((m) => m.payload.kind)).toEqual(['agent.event', 'agent.event']);
+  });
+
+  it('scopes simulator.stream.frame to attached sessions (never a global broadcast)', () => {
+    const hub = new Hub();
+    const scoped = new FakeConn();
+    const normal = new FakeConn();
+    hub.addConnection(scoped);
+    hub.addConnection(normal);
+
+    scoped.emit(
+      createWireMessage({ kind: 'subscription.set', clientReqId: 'r1', mode: 'attached' }),
+    );
+    scoped.emit(createWireMessage({ kind: 'session.attach', sessionId: S1 }));
+
+    hub.send(streamFrame(S1));
+    hub.send(streamFrame(S2));
+
+    // Scoped connection: the subscription ack plus only its attached session's frame.
+    expect(scoped.sent.map((m) => m.payload.kind)).toEqual([
+      'request.succeeded',
+      'simulator.stream.frame',
+    ]);
+    // A default (mode 'all') connection still receives both frames.
+    expect(normal.sent.map((m) => m.payload.kind)).toEqual([
+      'simulator.stream.frame',
+      'simulator.stream.frame',
+    ]);
   });
 
   it('session.detach removes a session from a scoped subscription', () => {

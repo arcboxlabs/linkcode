@@ -658,6 +658,77 @@ export class ControlChannel {
     }));
   }
 
+  simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.tap',
+      clientReqId,
+      sessionId,
+      udid,
+      x,
+      y,
+    }));
+  }
+
+  simulatorSwipe(
+    sessionId: SessionId,
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.swipe',
+      clientReqId,
+      sessionId,
+      udid,
+      x0: from.x,
+      y0: from.y,
+      x1: to.x,
+      y1: to.y,
+      durationMs,
+    }));
+  }
+
+  simulatorButton(
+    sessionId: SessionId,
+    udid: string,
+    button: 'home' | 'lock',
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.button',
+      clientReqId,
+      sessionId,
+      udid,
+      button,
+    }));
+  }
+
+  /** Resolves with the accepted `{ fps, scale }`; frames then arrive as `simulator.stream.frame`. */
+  simulatorStreamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: { fps?: number; quality?: number; scale?: number },
+  ): Promise<{ fps: number; scale: number }> {
+    return this.sendCorrelated('simulatorStreamStart', (clientReqId) => ({
+      kind: 'simulator.stream.start',
+      clientReqId,
+      sessionId,
+      udid,
+      fps: options?.fps,
+      quality: options?.quality,
+      scale: options?.scale,
+    }));
+  }
+
+  simulatorStreamStop(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.stream.stop',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
   private sendCorrelated<K extends keyof PendingValueMap>(
     kind: K,
     makePayload: (clientReqId: string) => WirePayload,

@@ -9,7 +9,7 @@ import { SimulatorService } from '../simulator/service';
 import { FakeAdapter, settleEngineTasks, startedSessionId } from './fixtures/session-harness';
 import { createTestEngine } from './fixtures/test-engine';
 
-function fakeBackend(): SimulatorBackend {
+function fakeBackend() {
   const devices = [
     {
       udid: 'U-1',
@@ -37,9 +37,9 @@ function fakeBackend(): SimulatorBackend {
     button: vi.fn(asyncNoop),
     streamStart: vi.fn(() => Promise.resolve({ streaming: true as const, fps: 60, scale: 1 })),
     streamStop: vi.fn(asyncNoop),
-    onFrame: vi.fn(() => noop),
+    onFrame: vi.fn((_udid: string, _listener: (image: Uint8Array) => void) => noop),
     close: vi.fn(noop),
-  };
+  } satisfies SimulatorBackend;
 }
 
 function harness(backend?: SimulatorBackend) {
@@ -167,6 +167,46 @@ describe('simulator wire requests', () => {
       url: 'https://example.com',
     });
     expect(h.reply('steal')).toMatchObject({ kind: 'request.failed', code: 'conflict' });
+    await h.engine.stop();
+  });
+
+  it('start subscribes frames and fans them out session-scoped; stop unsubscribes', async () => {
+    const backend = fakeBackend();
+    const h = harness(backend);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'simulator.stream.start',
+      clientReqId: 'ss',
+      sessionId: 'session-1' as never,
+      udid: 'U-1',
+      scale: 0.5,
+    });
+    expect(h.reply('ss')).toMatchObject({
+      kind: 'simulator.stream.started',
+      udid: 'U-1',
+      fps: 60,
+      scale: 1,
+    });
+
+    // The handler subscribed a frame listener; a delivered frame becomes a session-scoped push.
+    const listener = backend.onFrame.mock.calls.at(-1)?.[1];
+    listener?.(new Uint8Array([0xff, 0xd8, 0x01]));
+    expect(h.sent.find((p) => p.kind === 'simulator.stream.frame')).toMatchObject({
+      kind: 'simulator.stream.frame',
+      sessionId: 'session-1',
+      udid: 'U-1',
+      data: Buffer.from([0xff, 0xd8, 0x01]).toString('base64'),
+    });
+
+    await h.inject({
+      kind: 'simulator.stream.stop',
+      clientReqId: 'sx',
+      sessionId: 'session-1' as never,
+      udid: 'U-1',
+    });
+    expect(h.reply('sx')).toMatchObject({ kind: 'request.succeeded' });
+    expect(backend.streamStop).toHaveBeenCalledWith('U-1');
     await h.engine.stop();
   });
 });

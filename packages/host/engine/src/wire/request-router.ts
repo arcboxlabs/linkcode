@@ -137,7 +137,12 @@ export class WireRequestRouter {
       case 'simulator.launch':
       case 'simulator.terminate':
       case 'simulator.open-url':
-      case 'simulator.screenshot': {
+      case 'simulator.screenshot':
+      case 'simulator.tap':
+      case 'simulator.swipe':
+      case 'simulator.button':
+      case 'simulator.stream.start':
+      case 'simulator.stream.stop': {
         return this.handlers.simulator.handle(p);
       }
       case 'agent-login.start':
