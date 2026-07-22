@@ -1074,13 +1074,24 @@ export class CodexAdapter extends BaseAgentAdapter {
     const itemId = stringField(params, 'itemId');
     if (!itemId) return { decision: 'decline' };
     const command = stringField(params, 'command');
+    const cwd = stringField(params, 'cwd') ?? this.opts?.cwd;
     const reason = stringField(params, 'reason');
+    const title = kind === 'edit' ? 'Apply file changes' : 'Run command';
+    this.emitTool({
+      toolCallId: itemId,
+      title,
+      kind,
+      status: 'in_progress',
+      rawInput: { command, cwd, reason },
+    });
     const outcome = await this.requestPermission(
       {
-        toolCallId: itemId,
-        title: command ?? (kind === 'edit' ? 'Apply file changes' : 'Run command'),
-        kind,
-        rawInput: { command, cwd: stringField(params, 'cwd'), reason },
+        title,
+        description: reason,
+        subject:
+          command && cwd
+            ? { type: 'command', command, cwd, toolCallId: itemId }
+            : { type: 'tool-call', toolCallId: itemId },
       },
       PERMISSION_OPTIONS,
     );

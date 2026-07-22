@@ -25,6 +25,19 @@ describe('agent wire variants', () => {
       toolCallId: 'tool-1',
       content: { type: 'content', content: { type: 'text', text: 'done' } },
     },
+    {
+      type: 'permission-request',
+      requestId: 'permission-1',
+      title: 'Run tests',
+      description: 'Verify the current changes',
+      subject: {
+        type: 'command',
+        command: 'pnpm test',
+        cwd: '/repo',
+        toolCallId: 'tool-1',
+      },
+      options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
+    },
   ])('accepts $type through the complete wire envelope', (event) => {
     expect(
       WireMessageSchema.safeParse({

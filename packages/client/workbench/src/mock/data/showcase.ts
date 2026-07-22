@@ -1,4 +1,11 @@
-import type { AgentEvent, ContentBlock, PermissionOption, Plan, ToolCall } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  ContentBlock,
+  PermissionOption,
+  PermissionSubject,
+  Plan,
+  ToolCall,
+} from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { SHOWCASE_TERMINAL_ID } from './sessions';
 
@@ -196,6 +203,9 @@ const SHOWCASE_PERMISSION_EXEC_TOOL: ToolCall = {
 
 export interface ShowcasePermission {
   requestId: string;
+  title: string;
+  description?: string;
+  subject: PermissionSubject;
   toolCall: ToolCall;
   options: PermissionOption[];
 }
@@ -204,11 +214,21 @@ export interface ShowcasePermission {
 export const SHOWCASE_PERMISSIONS: ShowcasePermission[] = [
   {
     requestId: SHOWCASE_PERMISSION_ID,
+    title: 'Apply guarded edit',
+    description: 'Update the permission prompt implementation',
+    subject: { type: 'tool-call', toolCallId: SHOWCASE_PERMISSION_TOOL_ID },
     toolCall: SHOWCASE_PERMISSION_EDIT_TOOL,
     options: SHOWCASE_PERMISSION_OPTIONS,
   },
   {
     requestId: 'mock-permission-exec',
+    title: 'Run database migration',
+    subject: {
+      type: 'command',
+      command: 'pnpm run migrate -- --env=dev',
+      cwd: '/mock/linkcode',
+      toolCallId: 'mock-tool-permission-exec',
+    },
     toolCall: SHOWCASE_PERMISSION_EXEC_TOOL,
     options: SHOWCASE_PERMISSION_OPTIONS,
   },

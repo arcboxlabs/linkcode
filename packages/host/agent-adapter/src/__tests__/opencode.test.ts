@@ -613,7 +613,19 @@ describe('OpenCodeAdapter permission round-trip', () => {
       expect(permissionAsks(events)).toHaveLength(1);
     });
     const ask = permissionAsks(events)[0];
-    expect(ask.toolCall.toolCallId).toBe('prt-1');
+    expect(ask).toMatchObject({
+      title: 'bash',
+      subject: {
+        type: 'command',
+        command: 'echo hi',
+        cwd: '/tmp/repo',
+        toolCallId: 'prt-1',
+      },
+    });
+    expect(ask).not.toHaveProperty('toolCall');
+    expect(
+      events.filter((event) => event.type === 'tool-call' && event.toolCall.toolCallId === 'prt-1'),
+    ).toHaveLength(1);
     expect(ask.options.map((o) => o.optionId)).toEqual(['allow', 'allow_always', 'reject']);
 
     await adapter.send({

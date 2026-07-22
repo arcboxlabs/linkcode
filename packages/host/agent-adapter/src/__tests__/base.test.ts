@@ -33,9 +33,10 @@ class TestAdapter extends BaseAgentAdapter {
     this.appendToolContent(toolCallId, content);
   }
   ask(): Promise<unknown> {
-    return this.requestPermission({ toolCallId: 't1' }, [
-      { optionId: 'ok', name: 'Allow', kind: 'allow_once' },
-    ]);
+    return this.requestPermission(
+      { title: 'Run', subject: { type: 'tool-call', toolCallId: 't1' } },
+      [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    );
   }
   commands(catalog: AgentCommand[]): void {
     this.emitCommands(catalog);
@@ -198,7 +199,14 @@ describe('BaseAgentAdapter teardown', () => {
   it('on cancel: resolves a pending permission ask with cancelled (no hang/leak)', async () => {
     const a = new TestAdapter();
     const pending = a.ask();
-    expect(a.seen.some((e) => e.type === 'permission-request')).toBe(true);
+    const request = a.seen.find((e) => e.type === 'permission-request');
+    expect(request).toMatchObject({
+      type: 'permission-request',
+      title: 'Run',
+      subject: { type: 'tool-call', toolCallId: 't1' },
+      options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    });
+    expect(request).not.toHaveProperty('toolCall');
 
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });

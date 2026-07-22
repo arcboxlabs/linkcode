@@ -1141,11 +1141,20 @@ export class DevMockHost {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,
       });
+      // The tool snapshot is the timeline authority; the following ask only references it.
+      // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
+      const announced = await this.emitShowcaseEvent(session, epoch, {
+        type: 'tool-call',
+        toolCall: permission.toolCall,
+      });
+      if (!announced) return false;
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       const emitted = await this.emitShowcaseEvent(session, epoch, {
         type: 'permission-request',
         requestId: permission.requestId,
-        toolCall: permission.toolCall,
+        title: permission.title,
+        description: permission.description,
+        subject: permission.subject,
         options: permission.options,
       });
       if (!emitted) return false;

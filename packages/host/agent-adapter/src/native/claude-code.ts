@@ -949,12 +949,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
       }
     }
+    const toolCallId = options.toolUseID;
+    const title = options.title ?? toolName;
+    this.emitTool({
+      toolCallId,
+      title,
+      kind: claudeToolKind(toolName),
+      status: 'in_progress',
+      rawInput: input,
+      locations: hostLocationsFromToolInput(input),
+    });
     const outcome = await this.requestPermission(
       {
-        toolCallId: options.toolUseID,
-        title: options.title ?? toolName,
-        kind: claudeToolKind(toolName),
-        rawInput: input,
+        title,
+        subject: { type: 'tool-call', toolCallId },
       },
       PERMISSION_OPTIONS,
     );
