@@ -30,6 +30,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [status, setStatus] = useState<SimulatorStatus | null>(null);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
   const [selectedUdid, setSelectedUdid] = useState<string | null>(null);
+  /** Screen-outline masks by udid; `null` = the host has none (fall back to generic rounding). */
+  const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const leaseRef = useRef<SimulatorStreamLease | null>(null);
@@ -65,6 +67,19 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
   const canStream = sessionId !== null && udid !== null && booted;
+
+  // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
+  // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
+  // land the result for the next switch back.
+  const maskFetchedRef = useRef(new Set<string>());
+  useAbortableEffect(() => {
+    if (udid === null || maskFetchedRef.current.has(udid)) return;
+    maskFetchedRef.current.add(udid);
+    void client
+      .simulatorScreenMask(udid)
+      .then((data) => setMasks((prev) => ({ ...prev, [udid]: `data:image/png;base64,${data}` })))
+      .catch(() => setMasks((prev) => ({ ...prev, [udid]: null })));
+  }, [client, udid]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -190,6 +205,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
             subscribeFrames={subscribeFrames}
             onTap={handleTap}
             onSwipe={handleSwipe}
+            maskUrl={masks[udid] ?? null}
             placeholder={
               <span className="text-muted-foreground text-sm">{t('simulatorConnecting')}</span>
             }

@@ -19,6 +19,10 @@ export interface SimulatorScreenProps {
   onTap?: (point: SimulatorScreenPoint) => void;
   /** Drag in normalized [0,1] device coordinates with its real duration. */
   onSwipe?: (from: SimulatorScreenPoint, to: SimulatorScreenPoint, durationMs: number) => void;
+  /** The device's real screen-outline mask (image URL); clips the stream to the exact screen
+   * shape. Shares the frame's aspect, so `mask-size: contain` tracks the contained bitmap.
+   * Absent → a generic corner rounding. */
+  maskUrl?: string | null;
   /** Shown centered until the first frame arrives. */
   placeholder?: React.ReactNode;
   className?: string;
@@ -34,6 +38,7 @@ export function SimulatorScreen({
   subscribeFrames,
   onTap,
   onSwipe,
+  maskUrl,
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
@@ -124,7 +129,17 @@ export function SimulatorScreen({
       >
         <canvas
           ref={canvasRef}
-          className="size-full touch-none rounded-[24px] object-contain"
+          className={cn('size-full touch-none object-contain', maskUrl == null && 'rounded-[24px]')}
+          style={
+            maskUrl == null
+              ? undefined
+              : {
+                  maskImage: `url(${maskUrl})`,
+                  maskRepeat: 'no-repeat',
+                  maskPosition: 'center',
+                  maskSize: 'contain',
+                }
+          }
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={() => {
