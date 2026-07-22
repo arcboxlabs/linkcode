@@ -68,7 +68,12 @@ export type ConversationItem =
       postTokens?: number;
       summary?: string;
     })
-  | (ConversationItemBase & { kind: 'plan'; plan: Plan })
+  | (ConversationItemBase & {
+      kind: 'plan';
+      /** Turn that most recently emitted this stable plan identity. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    })
   | (ConversationItemBase & {
       kind: 'approval';
       requestId: string;

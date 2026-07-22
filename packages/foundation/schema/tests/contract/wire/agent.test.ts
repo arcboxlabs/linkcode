@@ -13,6 +13,13 @@ describe('agent wire variants', () => {
       messageId: 'thought-1',
     },
     {
+      type: 'plan',
+      plan: {
+        planId: 'current',
+        entries: [{ content: 'No longer needed', priority: 'low', status: 'cancelled' }],
+      },
+    },
+    {
       type: 'prompt-response-status',
       requestId: 'permission-1',
       status: 'responding',

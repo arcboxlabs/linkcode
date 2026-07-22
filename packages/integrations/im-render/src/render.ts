@@ -107,6 +107,7 @@ const PLAN_STATUS_ICON = {
   pending: '○',
   in_progress: '◐',
   completed: '●',
+  cancelled: '×',
 } as const;
 
 export function planMarkdown(plan: Plan): string {

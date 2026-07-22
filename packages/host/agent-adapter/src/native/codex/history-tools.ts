@@ -1,7 +1,13 @@
 import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
 import { isRecord, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
-import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
+import {
+  CODEX_PLAN_ID,
+  codexPlanEntries,
+  execToolCall,
+  fileChangeToolCall,
+  textContent,
+} from './tool-view';
 
 /**
  * Maps rollout tool rows to the same `ToolCall` shapes the live adapter emits (`adapter.ts`
@@ -197,7 +203,7 @@ function parseCodexToolOutput(output: string): {
 function planFromArgs(args: unknown): Plan | null {
   if (!isRecord(args)) return null;
   const entries = codexPlanEntries(args.plan);
-  return entries.length > 0 ? { entries } : null;
+  return entries.length > 0 ? { planId: CODEX_PLAN_ID, entries } : null;
 }
 
 interface ApplyPatchView {
