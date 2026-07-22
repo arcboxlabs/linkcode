@@ -214,9 +214,9 @@ export function DesktopShell({
   // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
   // panel that is never shown. Latched during render — React's prescribed state adjustment.
   const [rightContentMounted, setRightContentMounted] = useState(false);
-  if (rightTransition.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
+  if (!rightContentMounted && rightTransition.phase === 'open') setRightContentMounted(true);
   const [bottomContentMounted, setBottomContentMounted] = useState(false);
-  if (bottomTransition.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
+  if (!bottomContentMounted && bottomTransition.phase === 'open') setBottomContentMounted(true);
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';

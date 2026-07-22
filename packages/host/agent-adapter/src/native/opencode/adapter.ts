@@ -242,7 +242,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
       if (got.data.model) resumedModel = `${got.data.model.providerID}/${got.data.model.id}`;
-      if (!opts.model && resumedModel) opts.model = resumedModel;
+      if (resumedModel && !opts.model) opts.model = resumedModel;
       resumedAgent = got.data.agent ?? null;
       this.emitSessionRef(asHistoryId(got.data.id));
     } else {

@@ -153,7 +153,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                       void handleAdd(account);
                     }}
                   />
-                ) : view.kind === 'account' && selected && selectedDetail ? (
+                ) : selectedDetail && selected && view.kind === 'account' ? (
                   view.editing ? (
                     <EditAccountForm
                       account={selected}

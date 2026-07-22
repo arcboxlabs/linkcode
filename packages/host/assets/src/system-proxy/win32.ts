@@ -56,7 +56,7 @@ export function interpretInternetSettings(
     return { kind: 'pac', pacUrl: autoConfigUrl };
   }
   const proxyServer = values.get('ProxyServer');
-  if (!values.get('ProxyEnable') || typeof proxyServer !== 'string' || !proxyServer) {
+  if (!proxyServer || typeof proxyServer !== 'string' || !values.get('ProxyEnable')) {
     return undefined;
   }
   return {

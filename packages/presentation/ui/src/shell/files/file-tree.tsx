@@ -101,7 +101,7 @@ export function WorkspaceFileTree({
             onChange={(event) => applySearch(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing || event.key === 'Process') return;
-              if (event.key === 'Escape' && searchValue !== '') {
+              if (searchValue !== '' && event.key === 'Escape') {
                 event.stopPropagation();
                 applySearch('');
               }

@@ -185,7 +185,7 @@ export function NewSessionSurface({
   const currentPolicyId =
     selectedPolicies[provider] ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
-    catalog && catalog.policies.length > 0 && currentPolicyId
+    currentPolicyId && catalog && catalog.policies.length > 0
       ? { availablePolicies: catalog.policies, currentPolicyId }
       : undefined;
 

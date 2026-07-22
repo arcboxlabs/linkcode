@@ -48,7 +48,7 @@ export function bindingAvailability(account: Account, kind: AgentKind): BindingA
   if (kind === 'grok-build') {
     // The headless CLI has no base-URL flag: only the xAI catalog entry is known to target its
     // endpoint. Preserve pre-catalog bare keys, whose vendor was never recorded.
-    return account.service === 'xai' || (account.service === undefined && protocol === undefined)
+    return account.service === 'xai' || (protocol === undefined && account.service === undefined)
       ? { tier: 'native' }
       : { tier: 'unavailable', reason: 'protocol-unsupported' };
   }

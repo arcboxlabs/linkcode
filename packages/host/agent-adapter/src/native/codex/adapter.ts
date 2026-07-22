@@ -794,7 +794,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         const effort = EffortLevelSchema.safeParse(settings.effort);
         const effective = effort.success
           ? effort.data
-          : this.effort === undefined && model
+          : model && this.effort === undefined
             ? this.modelDefaultEfforts.get(model)
             : undefined;
         if (effective) this.emitEffort(effective);

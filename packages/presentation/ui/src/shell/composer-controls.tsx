@@ -273,7 +273,7 @@ export function ModelSelectorMenu({
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
-        {providers.length > 0 && provider ? <AgentIcon kind={provider} variant="brand" /> : null}
+        {provider && providers.length > 0 ? <AgentIcon kind={provider} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="flex items-center gap-2 font-normal text-muted-foreground">
@@ -363,7 +363,7 @@ export function ModelSelectorMenu({
             </MenuSub>
           </>
         ) : null}
-        {providers.length > 0 && onSelectProvider ? (
+        {onSelectProvider && providers.length > 0 ? (
           <MenuSub>
             <MenuSubTrigger>
               {provider ? (

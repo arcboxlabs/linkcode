@@ -64,7 +64,7 @@ export class HistoryService {
     const key = listCacheKey(kind, opts);
     const cached = this.listCache.get(key);
     const now = this.now();
-    if (!opts.forceRefresh && cached && cached.expiresAt > now) {
+    if (cached && !opts.forceRefresh && cached.expiresAt > now) {
       return Effect.succeed(cloneListResult(cached.result));
     }
 
@@ -103,8 +103,8 @@ export class HistoryService {
     const now = this.now();
 
     if (
-      !opts.forceRefresh &&
       cached &&
+      !opts.forceRefresh &&
       cached.expiresAt > now &&
       cached.version === HISTORY_CONVERSION_CACHE_VERSION &&
       (!cached.partialCursor || offset < cached.events.length)

@@ -115,7 +115,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // not-yet-listed session resolves; deduped per id so a genuinely gone session doesn't spin.
   const refreshedForRef = useRef<SessionId | null>(null);
   useEffect(() => {
-    if (selectedId == null || draft) return;
+    if (draft || selectedId == null) return;
     if (sessionById(sessions, selectedId)) {
       refreshedForRef.current = null;
       return;

@@ -106,7 +106,7 @@ export function PackageInfoVersion({
   children,
   ...props
 }: PackageInfoVersionProps): React.ReactNode {
-  if (!packageInfo.currentVersion && !packageInfo.newVersion && !children) return null;
+  if (!children && !packageInfo.currentVersion && !packageInfo.newVersion) return null;
 
   return (
     <div

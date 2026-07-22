@@ -42,7 +42,7 @@ export function Checkpoint({
                 {checkpoint.description ?? checkpoint.commitSha ?? checkpoint.createdAt}
               </div>
             </div>
-            {checkpoint.restorable && onRestore ? (
+            {onRestore && checkpoint.restorable ? (
               <CheckpointTrigger
                 tooltip="Restore checkpoint"
                 onClick={() => onRestore(checkpoint)}

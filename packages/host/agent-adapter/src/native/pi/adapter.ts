@@ -103,14 +103,14 @@ function createConfiguredRegistry(
   const authStorage = pi.AuthStorage.create();
   const modelRegistry = pi.ModelRegistry.create(authStorage);
   const ref = opts.model ? parseModel(opts.model) : null;
-  if (opts.model && !ref) {
+  if (!ref && opts.model) {
     throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
   }
 
   const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
   const provider = ref?.provider ?? fallbackProvider ?? modelRegistry.getAvailable()[0]?.provider;
-  if ((key || cred.baseUrl) && !provider) {
+  if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
@@ -224,7 +224,7 @@ export class PiAdapter extends BaseAgentAdapter {
     if (ref && !model) {
       throw new Error(`pi: model '${opts.model}' is not available for provider '${ref.provider}'`);
     }
-    if (opts.model !== null && !model && !manager) model = modelRegistry.getAvailable()[0];
+    if (!manager && !model && opts.model !== null) model = modelRegistry.getAvailable()[0];
     const cwd = manager?.getCwd() ?? opts.cwd;
     const resourceLoader = new pi.DefaultResourceLoader({
       cwd,

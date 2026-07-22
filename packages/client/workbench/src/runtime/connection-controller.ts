@@ -194,7 +194,7 @@ export class WorkbenchConnectionController {
     const generation = await asyncRetry(
       async (bail, attempt) => {
         const source = this.source;
-        if (run.explicit && attempt === 1 && source.onExplicitRetry) {
+        if (attempt === 1 && run.explicit && source.onExplicitRetry) {
           this.explicitHookPending = true;
           try {
             await source.onExplicitRetry();

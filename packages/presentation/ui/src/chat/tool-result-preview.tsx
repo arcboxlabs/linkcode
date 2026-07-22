@@ -313,7 +313,7 @@ function ExecutePreview({
           toolCall={toolCall}
         />
       ))}
-      {terminalContent.length === 0 || output ? (
+      {output || terminalContent.length === 0 ? (
         <Terminal
           title={toolCallCommand(toolCall) ?? toolCallDisplayTitle(toolCall)}
           output={output}
@@ -337,7 +337,7 @@ export function ToolResultPreview({
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');
-    if (toolCall.kind === 'read' && !hasDiff) {
+    if (!hasDiff && toolCall.kind === 'read') {
       return (
         <FileCallPreview
           content={content}
