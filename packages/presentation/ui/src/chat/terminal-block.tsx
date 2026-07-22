@@ -1,5 +1,6 @@
 import { useTranslations } from 'use-intl';
-import { Terminal, TerminalContent, TerminalHeader, TerminalTitle } from './terminal';
+import { ChatCardHeader } from './chat-card';
+import { Terminal, TerminalContent, TerminalTitle } from './terminal';
 
 /** Read-only view of an agent-spawned terminal referenced from tool-call content, streamed live. */
 export function TerminalBlock({
@@ -13,12 +14,12 @@ export function TerminalBlock({
 
   return (
     <Terminal>
-      <TerminalHeader>
+      <ChatCardHeader>
         <TerminalTitle>
           {t('terminal')} <span className="opacity-70">{terminalId}</span>
         </TerminalTitle>
-      </TerminalHeader>
-      {output ? <TerminalContent>{output}</TerminalContent> : null}
+      </ChatCardHeader>
+      {output?.trim() ? <TerminalContent>{output}</TerminalContent> : null}
     </Terminal>
   );
 }

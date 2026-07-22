@@ -25,39 +25,59 @@ vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
 
 afterEach(cleanup);
 
-describe('Chat card radius contract', () => {
-  it('uses coss Card chrome for every top-level card surface', () => {
+describe('Chat card chrome contract', () => {
+  it('uses coss Frame chrome with a frame header for every core card surface', () => {
     const { container } = render(
       <>
-        <Artifact>Artifact</Artifact>
         <ArtifactFrame code="" isIncomplete={false} kindLabel="artifact-frame">
           Frame
         </ArtifactFrame>
         <CodeBlock code="source" title="code-block" />
         <FilePreviewCard path="file.txt" />
+        <Terminal title="terminal" />
+        <ToolPreviewCard icon={FileIcon} title="tool-preview">
+          Tool
+        </ToolPreviewCard>
+        <TurnDiffSummary edits={{ additions: 1, deletions: 0, files: [] }} />
+      </>,
+    );
+
+    const frames = container.querySelectorAll(':scope > [data-slot="frame"]');
+    expect(frames).toHaveLength(6);
+    for (const frame of frames) {
+      expect(frame.classList.contains('rounded-2xl')).toBe(true);
+      // FrameHeader renders a literal <header>; render compositions may override its data-slot.
+      expect(frame.querySelector('header')).not.toBeNull();
+    }
+  });
+
+  it('renders a headerless code block as a bare frame panel', () => {
+    const { container } = render(<CodeBlock code="source" />);
+
+    expect(container.querySelector('[data-slot="frame"]')).toBeNull();
+    const panel = container.querySelector(':scope > [data-slot="frame-panel"]');
+    expect(panel?.classList.contains('rounded-xl')).toBe(true);
+  });
+
+  it('uses coss Card chrome for the remaining card surfaces', () => {
+    const { container } = render(
+      <>
+        <Artifact>Artifact</Artifact>
         <PackageInfo packageInfo={{ id: 'package', name: 'package' }}>Package</PackageInfo>
         <Queue>Queue</Queue>
         <SchemaDisplay endpoint={{ id: 'endpoint', method: 'GET', path: '/status' }}>
           Schema
         </SchemaDisplay>
-        <Terminal title="terminal" />
         <TestResults>Tests</TestResults>
-        <ToolPreviewCard icon={FileIcon} title="tool-preview">
-          Tool
-        </ToolPreviewCard>
         <WebPreview preview={{ id: 'preview', url: 'https://example.test' }}>Preview</WebPreview>
-        <TurnDiffSummary edits={{ additions: 1, deletions: 0, files: [] }} />
       </>,
     );
 
     const cards = container.querySelectorAll(':scope > [data-slot="card"]');
-    expect(cards).toHaveLength(12);
+    expect(cards).toHaveLength(6);
     for (const card of cards) {
       expect(card.classList.contains('rounded-2xl')).toBe(true);
     }
-
-    const turnDiff = screen.getByRole('button', { name: 'undo' }).closest('[data-slot="card"]');
-    expect(turnDiff?.classList.contains('bg-card')).toBe(true);
   });
 
   it('keeps collapsible cards at 2xl without changing nested row and control radii', () => {

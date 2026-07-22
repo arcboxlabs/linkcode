@@ -1,10 +1,11 @@
 import { Button } from 'coss-ui/components/button';
-import { Card } from 'coss-ui/components/card';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { Frame } from 'coss-ui/components/frame';
 import { FileDiffIcon, Undo2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { useArtifactHostActions } from './artifacts/host-actions';
+import { ChatCardActions, ChatCardHeader, ChatCardPanel } from './chat-card';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
   CHAT_DISCLOSURE_TEXT_CLASS_NAME,
@@ -35,60 +36,67 @@ export function TurnDiffSummary({
   const overflowFiles = edits.files.slice(COLLAPSED_FILE_COUNT);
 
   return (
-    <Card className="my-1 bg-card text-sm">
-      <div className="flex items-center pl-4 pr-2 py-2 gap-1">
-        <div className="min-w-0 flex flex-1 gap-2 items-center">
-          <ChatDisclosureIconSlot className="text-muted-foreground">
-            <FileDiffIcon />
-          </ChatDisclosureIconSlot>
-          <div className="min-w-0 shrink truncate font-medium">
-            {t('title', { count: edits.files.length })}
-          </div>
-          <DiffStat additions={edits.additions} deletions={edits.deletions} />
-        </div>
-        <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
-          <Undo2Icon />
-          {t('undo')}
-        </Button>
-        <Button disabled={!onReview} size="sm" type="button" variant="outline" onClick={onReview}>
-          {t('review')}
-        </Button>
-      </div>
-      <Collapsible className="border-border border-t px-3 py-1">
-        {visibleFiles.map((file) => (
-          <FileRow key={file.path} file={file} onOpenFile={openFile} />
-        ))}
-        {overflowFiles.length > 0 && (
-          <>
-            <ChatDisclosureContent>
-              {overflowFiles.map((file) => (
-                <FileRow key={file.path} file={file} onOpenFile={openFile} />
-              ))}
-            </ChatDisclosureContent>
-            <CollapsibleTrigger
-              className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full')}
-            >
-              <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
-                <span
-                  className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'group-data-[panel-open]:hidden')}
+    <Frame className="my-1 text-sm">
+      <ChatCardHeader className="text-sm">
+        <ChatDisclosureIconSlot>
+          <FileDiffIcon />
+        </ChatDisclosureIconSlot>
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {t('title', { count: edits.files.length })}
+        </span>
+        <DiffStat additions={edits.additions} deletions={edits.deletions} />
+        <ChatCardActions>
+          <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
+            <Undo2Icon />
+            {t('undo')}
+          </Button>
+          <Button disabled={!onReview} size="sm" type="button" variant="outline" onClick={onReview}>
+            {t('review')}
+          </Button>
+        </ChatCardActions>
+      </ChatCardHeader>
+      {edits.files.length > 0 ? (
+        <ChatCardPanel className="px-3 py-1">
+          <Collapsible>
+            {visibleFiles.map((file) => (
+              <FileRow key={file.path} file={file} onOpenFile={openFile} />
+            ))}
+            {overflowFiles.length > 0 && (
+              <>
+                <ChatDisclosureContent>
+                  {overflowFiles.map((file) => (
+                    <FileRow key={file.path} file={file} onOpenFile={openFile} />
+                  ))}
+                </ChatDisclosureContent>
+                <CollapsibleTrigger
+                  className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full')}
                 >
-                  {t('showMore', { count: overflowFiles.length })}
-                </span>
-                <span
-                  className={cn(
-                    CHAT_DISCLOSURE_TITLE_CLASS_NAME,
-                    'hidden group-data-[panel-open]:inline',
-                  )}
-                >
-                  {t('showLess')}
-                </span>
-              </span>
-              <ChatDisclosureChevron />
-            </CollapsibleTrigger>
-          </>
-        )}
-      </Collapsible>
-    </Card>
+                  <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+                    <span
+                      className={cn(
+                        CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                        'group-data-[panel-open]:hidden',
+                      )}
+                    >
+                      {t('showMore', { count: overflowFiles.length })}
+                    </span>
+                    <span
+                      className={cn(
+                        CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                        'hidden group-data-[panel-open]:inline',
+                      )}
+                    >
+                      {t('showLess')}
+                    </span>
+                  </span>
+                  <ChatDisclosureChevron />
+                </CollapsibleTrigger>
+              </>
+            )}
+          </Collapsible>
+        </ChatCardPanel>
+      ) : null}
+    </Frame>
   );
 }
 
