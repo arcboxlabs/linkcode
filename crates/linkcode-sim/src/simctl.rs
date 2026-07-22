@@ -1,0 +1,338 @@
+//! The `xcrun simctl` driver: every P0 operation shells out to Apple's public simulator CLI.
+//!
+//! Each call runs under a deadline; a child that outlives it is killed and reported as
+//! [`ErrorCode::Timeout`]. A missing `xcrun` (no Xcode / no Command Line Tools) surfaces as
+//! [`ErrorCode::XcodeMissing`] so the daemon can gate the capability instead of retrying.
+
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::rpc::{ErrorCode, ImageFormat, OpError};
+
+/// Booting waits for the device to finish (`bootstatus -b`), which dominates this deadline.
+const BOOT_TIMEOUT: Duration = Duration::from_secs(180);
+/// Large `.app` bundles take a while to copy into the device's container.
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(120);
+const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Everything else is quick command dispatch against CoreSimulatorService.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Apple's OS-provided shims, by absolute path: PATH can carry non-Apple `xcrun` stand-ins
+/// (e.g. nix xcbuild's) that fail SDK/utility resolution, and the daemon does not control the
+/// environment it was launched from. `/usr/bin/xcrun` ships with macOS itself, not Xcode.
+const XCRUN: &str = "/usr/bin/xcrun";
+const XCODE_SELECT: &str = "/usr/bin/xcode-select";
+
+/// One available simulator device, flattened from `simctl list -j`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Device {
+    pub udid: String,
+    pub name: String,
+    /// CoreSimulator state string: `Shutdown`, `Booted`, `Booting`, …
+    pub state: String,
+    /// Runtime identifier, e.g. `com.apple.CoreSimulator.SimRuntime.iOS-26-5`.
+    pub runtime: String,
+    /// Human-readable runtime name, e.g. `iOS 26.5`, when the runtime section lists it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_name: Option<String>,
+    pub device_type: Option<String>,
+}
+
+/// Check that simulator tooling is usable and report where it lives.
+pub fn probe() -> Result<Value, OpError> {
+    let mut find_simctl = Command::new(XCRUN);
+    find_simctl.args(["--find", "simctl"]);
+    let simctl_path = run_ok(find_simctl, DEFAULT_TIMEOUT).map_err(|e| match e.code {
+        // xcrun exists but cannot find simctl: Xcode's iOS platform is missing.
+        ErrorCode::SimctlFailed => OpError::new(ErrorCode::XcodeMissing, e.message),
+        _ => e,
+    })?;
+    let mut developer_dir_cmd = Command::new(XCODE_SELECT);
+    developer_dir_cmd.arg("-p");
+    let developer_dir = run_ok(developer_dir_cmd, DEFAULT_TIMEOUT)?;
+    Ok(json!({
+        "simctlPath": simctl_path.trim(),
+        "developerDir": developer_dir.trim(),
+    }))
+}
+
+/// List available devices with their runtime names.
+pub fn list() -> Result<Value, OpError> {
+    let raw = run_ok(
+        simctl(["list", "-j", "devices", "available"]),
+        DEFAULT_TIMEOUT,
+    )?;
+    let runtimes_raw = run_ok(simctl(["list", "-j", "runtimes"]), DEFAULT_TIMEOUT)?;
+    let devices = parse_device_list(&raw, &runtimes_raw)
+        .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))?;
+    Ok(json!({ "devices": devices }))
+}
+
+/// Boot a device and wait until it reports fully booted. Already-booted devices succeed.
+pub fn boot(udid: &str) -> Result<Value, OpError> {
+    match run_ok(simctl(["boot", udid]), DEFAULT_TIMEOUT) {
+        Ok(_) => {}
+        // `simctl boot` on a booted device exits non-zero; that state is our goal, not an error.
+        Err(e) if e.message.contains("current state: Booted") => return Ok(json!({})),
+        Err(e) => return Err(e),
+    }
+    run_ok(simctl(["bootstatus", udid, "-b"]), BOOT_TIMEOUT)?;
+    Ok(json!({}))
+}
+
+/// Shut a device down. Already-shutdown devices succeed.
+pub fn shutdown(udid: &str) -> Result<Value, OpError> {
+    match run_ok(simctl(["shutdown", udid]), DEFAULT_TIMEOUT) {
+        Ok(_) => Ok(json!({})),
+        Err(e) if e.message.contains("current state: Shutdown") => Ok(json!({})),
+        Err(e) => Err(e),
+    }
+}
+
+/// Install an `.app` bundle.
+pub fn install(udid: &str, app_path: &str) -> Result<Value, OpError> {
+    run_ok(simctl(["install", udid, app_path]), INSTALL_TIMEOUT)?;
+    Ok(json!({}))
+}
+
+/// Launch an app by bundle id; returns the spawned pid.
+pub fn launch(udid: &str, bundle_id: &str) -> Result<Value, OpError> {
+    let stdout = run_ok(simctl(["launch", udid, bundle_id]), DEFAULT_TIMEOUT)?;
+    Ok(json!({ "pid": parse_launch_pid(&stdout) }))
+}
+
+/// Terminate a running app by bundle id.
+pub fn terminate(udid: &str, bundle_id: &str) -> Result<Value, OpError> {
+    run_ok(simctl(["terminate", udid, bundle_id]), DEFAULT_TIMEOUT)?;
+    Ok(json!({}))
+}
+
+/// Open a URL on the device.
+pub fn open_url(udid: &str, url: &str) -> Result<Value, OpError> {
+    run_ok(simctl(["openurl", udid, url]), DEFAULT_TIMEOUT)?;
+    Ok(json!({}))
+}
+
+/// Capture the device screen and return the encoded image bytes.
+///
+/// simctl writes to a file, not a pipe, so this stages through a unique temp path and always
+/// removes it — including on the error paths.
+pub fn screenshot(udid: &str, format: ImageFormat) -> Result<Vec<u8>, OpError> {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "linkcode-sim-{}-{}.{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed),
+        format.simctl_name(),
+    ));
+    let type_arg = format!("--type={}", format.simctl_name());
+    let mut cmd = simctl(["io", udid, "screenshot", &type_arg]);
+    cmd.arg(&path);
+    let run = run_ok(cmd, SCREENSHOT_TIMEOUT);
+    let read = run.and_then(|_| {
+        std::fs::read(&path)
+            .map_err(|e| OpError::new(ErrorCode::Io, format!("read screenshot {path:?}: {e}")))
+    });
+    let _ = std::fs::remove_file(&path);
+    read
+}
+
+fn simctl<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
+    let mut cmd = Command::new(XCRUN);
+    cmd.arg("simctl").args(args);
+    cmd
+}
+
+/// Run a command to completion under `timeout`; return its stdout on exit code 0, or a
+/// classified [`OpError`] otherwise. stderr rides along in the error message.
+fn run_ok(mut cmd: Command, timeout: Duration) -> Result<String, OpError> {
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                OpError::new(
+                    ErrorCode::XcodeMissing,
+                    format!("{program} not found; install Xcode with the iOS platform"),
+                )
+            } else {
+                OpError::new(ErrorCode::Io, format!("spawn {program}: {e}"))
+            }
+        })?;
+
+    // Drain both pipes on their own threads so a chatty child can never fill a pipe buffer and
+    // deadlock against our exit polling.
+    let stdout = drain(child.stdout.take().expect("stdout piped above"));
+    let stderr = drain(child.stderr.take().expect("stderr piped above"));
+
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(OpError::new(
+                    ErrorCode::Timeout,
+                    format!("{program} timed out after {}s", timeout.as_secs()),
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(e) => {
+                return Err(OpError::new(ErrorCode::Io, format!("wait {program}: {e}")));
+            }
+        }
+    };
+
+    let stdout = join_drained(stdout);
+    let stderr = join_drained(stderr);
+    if status.success() {
+        Ok(stdout)
+    } else {
+        let detail = if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        };
+        Err(OpError::new(
+            ErrorCode::SimctlFailed,
+            format!("{program} exited with {status}: {}", detail.trim()),
+        ))
+    }
+}
+
+fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = pipe.read_to_end(&mut buf);
+        String::from_utf8_lossy(&buf).into_owned()
+    })
+}
+
+fn join_drained(handle: thread::JoinHandle<String>) -> String {
+    handle.join().unwrap_or_default()
+}
+
+/// `simctl launch` prints `<bundle id>: <pid>`; splitting on the last `: ` is safe because
+/// bundle ids never contain one. Absence of a parsable pid maps to `null`.
+fn parse_launch_pid(stdout: &str) -> Option<u32> {
+    stdout.trim().rsplit(": ").next()?.trim().parse().ok()
+}
+
+#[derive(Deserialize)]
+struct RawDeviceList {
+    devices: std::collections::HashMap<String, Vec<RawDevice>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawDevice {
+    udid: String,
+    name: String,
+    state: String,
+    device_type_identifier: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawRuntimeList {
+    runtimes: Vec<RawRuntime>,
+}
+
+#[derive(Deserialize)]
+struct RawRuntime {
+    identifier: String,
+    name: String,
+}
+
+fn parse_device_list(devices_json: &str, runtimes_json: &str) -> Result<Vec<Device>, String> {
+    let raw: RawDeviceList =
+        serde_json::from_str(devices_json).map_err(|e| format!("parse device list: {e}"))?;
+    let runtimes: RawRuntimeList =
+        serde_json::from_str(runtimes_json).map_err(|e| format!("parse runtime list: {e}"))?;
+    let runtime_names: std::collections::HashMap<&str, &str> = runtimes
+        .runtimes
+        .iter()
+        .map(|r| (r.identifier.as_str(), r.name.as_str()))
+        .collect();
+
+    let mut out = Vec::new();
+    for (runtime, devices) in raw.devices {
+        for device in devices {
+            out.push(Device {
+                udid: device.udid,
+                name: device.name,
+                state: device.state,
+                runtime_name: runtime_names.get(runtime.as_str()).map(|s| s.to_string()),
+                runtime: runtime.clone(),
+                device_type: device.device_type_identifier,
+            });
+        }
+    }
+    // simctl's map ordering is unstable; sort so equal worlds serialize equally.
+    out.sort_by(|a, b| (&a.runtime, &a.name).cmp(&(&b.runtime, &b.name)));
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DEVICES: &str = r#"{
+        "devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+                {
+                    "udid": "AAAA",
+                    "name": "iPhone 17 Pro",
+                    "state": "Shutdown",
+                    "isAvailable": true,
+                    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+                }
+            ]
+        }
+    }"#;
+    const RUNTIMES: &str = r#"{
+        "runtimes": [
+            {
+                "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+                "name": "iOS 26.5",
+                "isAvailable": true
+            }
+        ]
+    }"#;
+
+    #[test]
+    fn flattens_devices_and_resolves_runtime_names() {
+        let devices = parse_device_list(DEVICES, RUNTIMES).unwrap();
+        assert_eq!(devices.len(), 1);
+        let device = &devices[0];
+        assert_eq!(device.udid, "AAAA");
+        assert_eq!(device.state, "Shutdown");
+        assert_eq!(device.runtime_name.as_deref(), Some("iOS 26.5"));
+        assert_eq!(
+            device.device_type.as_deref(),
+            Some("com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+        );
+    }
+
+    #[test]
+    fn unknown_runtimes_flatten_without_a_name() {
+        let devices = parse_device_list(DEVICES, r#"{"runtimes":[]}"#).unwrap();
+        assert_eq!(devices[0].runtime_name, None);
+    }
+
+    #[test]
+    fn parses_the_launch_pid() {
+        assert_eq!(parse_launch_pid("com.example.app: 4242\n"), Some(4242));
+        assert_eq!(parse_launch_pid("garbage"), None);
+    }
+}
