@@ -1,4 +1,6 @@
 import type {
+  BrowserDownloadDone,
+  BrowserShortcutAction,
   DesktopSettings,
   DesktopSettingsPatch,
   PickFileOptions,
@@ -59,5 +61,14 @@ export interface SystemBridge {
     notify(notification: SystemNotification): Promise<void>;
     /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
     onClick(cb: (clickToken: string) => void): () => void;
+  };
+  browser: {
+    /** Subscribe to Browser-pane guest popups (window.open / target=_blank) redirected by main;
+     * the renderer opens the URL in a new in-app browser tab. */
+    onOpenTab(cb: (url: string) => void): () => void;
+    /** Subscribe to finished Browser-pane downloads (main default download flow). */
+    onDownloadDone(cb: (result: BrowserDownloadDone) => void): () => void;
+    /** Subscribe to app-owned shortcuts captured while a guest webview owns keyboard focus. */
+    onShortcut(cb: (action: BrowserShortcutAction) => void): () => void;
   };
 }

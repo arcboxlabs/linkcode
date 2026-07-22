@@ -1,9 +1,16 @@
 import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DAEMON_RUNTIME_CHANGED_CHANNEL, UPDATER_STATUS_CHANNEL } from '@linkcode/ipc';
+import type { BrowserDownloadDone, BrowserShortcutAction } from '@linkcode/ipc';
+import {
+  BROWSER_DOWNLOAD_DONE_CHANNEL,
+  BROWSER_OPEN_TAB_CHANNEL,
+  BROWSER_SHORTCUT_CHANNEL,
+  DAEMON_RUNTIME_CHANGED_CHANNEL,
+  UPDATER_STATUS_CHANNEL,
+} from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
-import { BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
+import { BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 // electron-vite resolves `?asset` to a runtime file path. Used as the Win/Linux window icon in dev
 // (packaged builds get the real icon from the bundle). macOS uses a separate Dock image set at bootstrap.
@@ -20,6 +27,9 @@ import {
   persistWindowStateOnClose,
   readWindowState,
 } from './window-state';
+
+/** Must match the renderer's Browser-pane `<webview partition>`. */
+const BROWSER_PARTITION = 'persist:linkcode-browser';
 
 export function createDesktopWindow(): BrowserWindow {
   const win = createWindow();
@@ -40,6 +50,19 @@ export function createDesktopWindow(): BrowserWindow {
     if (!win.isDestroyed()) win.webContents.send(DAEMON_RUNTIME_CHANGED_CHANNEL);
   });
   win.once('closed', unwatchRuntime);
+
+  // Browser-pane downloads keep Electron's default save flow; the renderer only gets a
+  // terminal-state push for its toast.
+  const browserSession = session.fromPartition(BROWSER_PARTITION);
+  const onWillDownload = (_event: Electron.Event, item: Electron.DownloadItem): void => {
+    item.once('done', (_doneEvent, state) => {
+      if (win.isDestroyed()) return;
+      const result: BrowserDownloadDone = { filename: item.getFilename(), state };
+      win.webContents.send(BROWSER_DOWNLOAD_DONE_CHANNEL, result);
+    });
+  };
+  browserSession.on('will-download', onWillDownload);
+  win.once('closed', () => browserSession.removeListener('will-download', onWillDownload));
 
   return win;
 }
@@ -74,15 +97,7 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  // window.open / target=_blank means "the system browser" everywhere in the app
-  // (chat links, preview open-external); nothing may spawn a child Electron window.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) void shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
   persistWindowStateOnClose(win);
-
   const updateBackgroundColor = (): void => {
     win.setBackgroundColor(desktopBackgroundColor());
   };
@@ -118,6 +133,22 @@ function createWindow(): BrowserWindow {
     if (isHttpUrl(url)) void shell.openExternal(url);
   });
 
+  // Browser-pane guests run with `allowpopups`, and popups would otherwise spawn unmanaged
+  // BrowserWindows: keep untrusted content window-less by rerouting http(s) popups into a new
+  // in-app browser tab (renderer push) and denying everything else.
+  win.webContents.on('did-attach-webview', (_event, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isHttpUrl(url) && !win.isDestroyed()) win.webContents.send(BROWSER_OPEN_TAB_CHANNEL, url);
+      return { action: 'deny' };
+    });
+    guest.on('before-input-event', (event, input) => {
+      const action = browserShortcutAction(input);
+      if (action === null || win.isDestroyed()) return;
+      event.preventDefault();
+      win.webContents.send(BROWSER_SHORTCUT_CHANNEL, action);
+    });
+  });
+
   void loadRenderer(win);
   return win;
 }
@@ -129,6 +160,39 @@ function isHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function browserShortcutAction(input: Electron.Input): BrowserShortcutAction | null {
+  const primary =
+    process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+  if (
+    input.type !== 'keyDown' ||
+    input.isAutoRepeat ||
+    input.isComposing ||
+    !primary ||
+    input.alt
+  ) {
+    return null;
+  }
+  if ((input.code === 'KeyF' || input.key.toLowerCase() === 'f') && !input.shift) return 'find';
+  if (
+    input.code === 'Equal' ||
+    input.code === 'NumpadAdd' ||
+    input.key === '=' ||
+    input.key === '+'
+  ) {
+    return 'zoom-in';
+  }
+  if (
+    (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') &&
+    !input.shift
+  ) {
+    return 'zoom-out';
+  }
+  if ((input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') && !input.shift) {
+    return 'zoom-reset';
+  }
+  return null;
 }
 
 /** Mirrors {@link loadRenderer}'s allowed targets: the dev server origin, or the packaged entry file. */
