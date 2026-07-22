@@ -128,6 +128,13 @@ export class SimSidecarClient {
     return image;
   }
 
+  /** The device's screen-outline mask as a transparent PNG (rendered from the local Xcode). */
+  async screenMask(udid: string): Promise<Buffer> {
+    const image = await this.call('screenMask', { udid });
+    if (!Buffer.isBuffer(image)) throw new Error('sim sidecar sent a non-binary screen mask');
+    return image;
+  }
+
   /** Tap at a normalized (0..1) point (private HID; macOS only). */
   async tap(udid: string, x: number, y: number): Promise<void> {
     await this.call('tap', { udid, x, y });

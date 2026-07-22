@@ -138,6 +138,7 @@ export class WireRequestRouter {
       case 'simulator.terminate':
       case 'simulator.open-url':
       case 'simulator.screenshot':
+      case 'simulator.screen-mask':
       case 'simulator.tap':
       case 'simulator.swipe':
       case 'simulator.button':

@@ -29,6 +29,7 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
     terminate: vi.fn(asyncNoop),
     openUrl: vi.fn(asyncNoop),
     screenshot: vi.fn(() => Promise.resolve(new Uint8Array([0xff, 0xd8]))),
+    screenMask: vi.fn(() => Promise.resolve(new Uint8Array([0x89, 0x50]))),
     tap: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),

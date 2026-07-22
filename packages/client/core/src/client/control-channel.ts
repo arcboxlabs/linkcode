@@ -658,6 +658,15 @@ export class ControlChannel {
     }));
   }
 
+  /** Resolves with the device's screen-outline mask as base64 PNG (no session claim). */
+  simulatorScreenMask(udid: string): Promise<string> {
+    return this.sendCorrelated('simulatorScreenMask', (clientReqId) => ({
+      kind: 'simulator.screen-mask',
+      clientReqId,
+      udid,
+    }));
+  }
+
   simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.tap',

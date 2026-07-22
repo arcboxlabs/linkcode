@@ -105,6 +105,19 @@ export const simulatorWireVariants = [
     /** Base64-encoded image bytes. */
     data: z.string(),
   }),
+  /** Read-only devicetype metadata (no session claim): the device's screen-outline mask,
+   * rendered host-side from the local Xcode's devicetype bundle. */
+  z.object({
+    kind: z.literal('simulator.screen-mask'),
+    clientReqId: WireRequestIdSchema,
+    udid,
+  }),
+  z.object({
+    kind: z.literal('simulator.screen-masked'),
+    replyTo: WireRequestIdSchema,
+    /** Base64-encoded transparent PNG. */
+    data: z.string(),
+  }),
 
   // ── Interactive control + framebuffer streaming (CODE-397; private-API, macOS host only) ──
   // Void commands reply with the generic `request.succeeded`/`request.failed`. Coordinates are

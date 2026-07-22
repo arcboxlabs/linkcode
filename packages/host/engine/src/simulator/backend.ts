@@ -64,6 +64,8 @@ export interface SimulatorBackend {
   terminate(udid: string, bundleId: string): Promise<void>;
   openUrl(udid: string, url: string): Promise<void>;
   screenshot(udid: string, format?: SimulatorImageFormat): Promise<Uint8Array>;
+  /** The device's screen-outline mask as a transparent PNG (rendered from the local Xcode). */
+  screenMask(udid: string): Promise<Uint8Array>;
   /** Tap at a normalized (0..1) point (private HID; macOS only). */
   tap(udid: string, x: number, y: number): Promise<void>;
   /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */

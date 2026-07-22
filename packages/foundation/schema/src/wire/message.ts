@@ -16,7 +16,8 @@ import { WirePayloadSchema } from './payload';
 // 44 adds the simulator.* variants (CODE-394).
 // 45 adds the simulator.activity broadcast (CODE-395).
 // 46 adds the simulator interactive + framebuffer-stream variants (CODE-397).
-export const WIRE_PROTOCOL_VERSION = 46 as const;
+// 47 adds the simulator screen-mask wire (CODE-397).
+export const WIRE_PROTOCOL_VERSION = 47 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

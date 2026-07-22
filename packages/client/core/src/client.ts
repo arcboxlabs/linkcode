@@ -332,6 +332,9 @@ export class LinkCodeClient {
       case 'simulator.launched':
         this.pending.resolve('simulatorLaunch', p.replyTo, p.pid);
         break;
+      case 'simulator.screen-masked':
+        this.pending.resolve('simulatorScreenMask', p.replyTo, p.data);
+        break;
       case 'simulator.screenshotted':
         this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
         break;
@@ -685,6 +688,11 @@ export class LinkCodeClient {
     format?: SimulatorImageFormat,
   ): Promise<{ format: SimulatorImageFormat; data: string }> {
     return this.control.simulatorScreenshot(sessionId, udid, format);
+  }
+
+  /** The device's screen-outline mask as base64 PNG — clip the stream to the real screen shape. */
+  simulatorScreenMask(udid: string): Promise<string> {
+    return this.control.simulatorScreenMask(udid);
   }
 
   simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {

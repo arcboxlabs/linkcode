@@ -96,6 +96,11 @@ export class SimulatorService {
     return this.backend.list();
   }
 
+  /** Read-only devicetype metadata (screen outline PNG); claims are not required. */
+  screenMask(udid: string): Promise<Uint8Array> {
+    return this.backend.screenMask(udid);
+  }
+
   /** Boot a device for a session, claiming it. Booting a device the user already booted claims
    * it without marking it reclaimable. */
   async boot(sessionId: SessionId, udid: string): Promise<void> {

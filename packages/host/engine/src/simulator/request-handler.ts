@@ -20,6 +20,7 @@ type SimulatorRequest = Extract<
       | 'simulator.terminate'
       | 'simulator.open-url'
       | 'simulator.screenshot'
+      | 'simulator.screen-mask'
       | 'simulator.tap'
       | 'simulator.swipe'
       | 'simulator.button'
@@ -138,6 +139,19 @@ export class SimulatorRequestHandler {
                 replyTo: payload.clientReqId,
                 format,
                 data: Buffer.from(image).toString('base64'),
+              }),
+            );
+          }),
+        );
+      case 'simulator.screen-mask':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.screen-mask', 'Failed to load screen mask', async () => {
+            const mask = await simulators.screenMask(payload.udid);
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.screen-masked',
+                replyTo: payload.clientReqId,
+                data: Buffer.from(mask).toString('base64'),
               }),
             );
           }),
