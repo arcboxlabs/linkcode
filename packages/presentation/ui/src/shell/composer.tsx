@@ -278,7 +278,7 @@ export function Composer({
 
   const textTrigger = useMemo(() => {
     const trigger = snapshot.trigger;
-    return trigger && trigger.flatStart !== dismissedStart && !shellActive ? trigger : null;
+    return !shellActive && trigger && trigger.flatStart !== dismissedStart ? trigger : null;
   }, [dismissedStart, shellActive, snapshot.trigger]);
   const commandSource: ComposerCommandSource | null =
     plusCommandStart === null
@@ -445,11 +445,11 @@ export function Composer({
   function submit(): void {
     const editor = editorRef.current;
     if (
+      hasPendingAttachment ||
+      sendBlocked ||
       !editor ||
       interactionDisabled ||
-      submissionPendingRef.current ||
-      sendBlocked ||
-      hasPendingAttachment
+      submissionPendingRef.current
     ) {
       return;
     }
@@ -651,7 +651,7 @@ export function Composer({
     const retainedSelection = editor.getEditorState().read(() => $getSelection()?.clone() ?? null);
     editor.update(
       () => {
-        if ($getSelection() === null && retainedSelection !== null) {
+        if (retainedSelection !== null && $getSelection() === null) {
           $setSelection(retainedSelection);
         }
         mutate(editor);

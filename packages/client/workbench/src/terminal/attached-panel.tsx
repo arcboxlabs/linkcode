@@ -2,7 +2,7 @@ import type { TerminalAttachResult } from '@linkcode/client-core';
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { Button } from 'coss-ui/components/button';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
@@ -56,7 +56,7 @@ export function AttachedTerminalPanel({
   const fontSize = useTerminalPrefsStore((state) => state.fontSize);
   const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       let attached = false;
       void client

@@ -35,12 +35,12 @@ export function SectionTabButton({
           : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
       onAuxClick={(event) => {
-        if (event.button !== 1 || !onMiddleClick) return;
+        if (!onMiddleClick || event.button !== 1) return;
         event.preventDefault();
         onMiddleClick();
       }}
       onMouseDown={(event) => {
-        if (event.button === 1 && onMiddleClick) event.preventDefault();
+        if (onMiddleClick && event.button === 1) event.preventDefault();
       }}
     >
       <button

@@ -1,6 +1,6 @@
 import type { HighlightResult } from '@streamdown/code';
 import { createCodePlugin } from '@streamdown/code';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import type { BundledLanguage } from 'streamdown';
 import { cn } from '../lib/cn';
@@ -93,7 +93,7 @@ export function HighlightedCode({
   const normalizedLanguage = supportedLanguage(language);
   const [highlighted, setHighlighted] = useState<HighlightedState | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!normalizedLanguage) return;
       const themes = [lightTheme, darkTheme] as const;

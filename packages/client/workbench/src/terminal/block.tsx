@@ -1,6 +1,6 @@
 import { useLinkCodeClient, useTerminalOutput } from '@linkcode/client-core';
 import { TerminalBlock } from '@linkcode/ui';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -11,7 +11,7 @@ export function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): Re
   const output = useTerminalOutput(terminalId);
   const [failedTerminalId, setFailedTerminalId] = useState<string | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       let attached = false;
       void client

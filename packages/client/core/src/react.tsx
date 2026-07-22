@@ -7,7 +7,7 @@ import type {
 } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import type * as React from 'react';
 import {
   createContext,
@@ -153,7 +153,7 @@ export function useSessions(): SessionsApi {
     setLoading(false);
   }, [client]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       refresh()
         .catch(noop)

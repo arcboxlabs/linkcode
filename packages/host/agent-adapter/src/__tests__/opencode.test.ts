@@ -287,6 +287,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-user-part',
       type: 'message.part.updated',
@@ -302,6 +303,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-msg',
       type: 'message.updated',
@@ -323,6 +325,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-part',
       type: 'message.part.updated',

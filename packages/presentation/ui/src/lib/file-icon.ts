@@ -210,10 +210,10 @@ function iconForSemanticHint(
   if (kind === 'pdf') return MATERIAL_EXTENSION_ICONS.pdf;
 
   if (mimeType === 'application/pdf') return MATERIAL_EXTENSION_ICONS.pdf;
-  if (mimeType?.includes('wordprocessingml') || mimeType === 'application/msword') {
+  if (mimeType === 'application/msword' || mimeType?.includes('wordprocessingml')) {
     return MATERIAL_EXTENSION_ICONS.doc;
   }
-  if (mimeType?.includes('presentationml') || mimeType === 'application/vnd.ms-powerpoint') {
+  if (mimeType === 'application/vnd.ms-powerpoint' || mimeType?.includes('presentationml')) {
     return MATERIAL_EXTENSION_ICONS.ppt;
   }
   if (mimeType?.includes('json')) return FileJson2Icon;

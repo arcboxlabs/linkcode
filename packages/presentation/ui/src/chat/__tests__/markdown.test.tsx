@@ -192,8 +192,10 @@ it('scrolls only the nearest scrollable ancestor for unmarked containers', () =>
     </div>,
   );
   const scroller = container.firstElementChild as HTMLElement;
-  Object.defineProperty(scroller, 'scrollHeight', { value: 200 });
-  Object.defineProperty(scroller, 'clientHeight', { value: 100 });
+  Object.defineProperties(scroller, {
+    scrollHeight: { value: 200 },
+    clientHeight: { value: 100 },
+  });
   const scrollTo = vi.fn();
   scroller.scrollTo = scrollTo;
   expect(fireEvent.click(getByRole('link', { name: 'Jump' }))).toBe(false);

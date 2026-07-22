@@ -956,7 +956,7 @@ export class DevMockHost {
     content: ContentBlock[],
   ): Promise<void> {
     const text = promptText(content);
-    if (!session.title && text) session.title = text.slice(0, 80);
+    if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
     this.emit(session.sessionId, {
       type: 'user-message',

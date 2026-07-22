@@ -230,8 +230,9 @@ function verifyNoAgentBinaries(resourceDir: string, asarPath: string, problems: 
       'app.asar.unpacked',
       ...prefix.split('/').slice(0, -1),
     );
-    const base = prefix.split('/').at(-1)!;
     if (!existsSync(dir)) continue;
+
+    const base = prefix.split('/').at(-1)!;
     for (const entry of readdirSync(dir)) {
       if (entry.startsWith(base)) {
         problems.push(`${resourceDir}/app.asar.unpacked: agent platform package shipped: ${entry}`);

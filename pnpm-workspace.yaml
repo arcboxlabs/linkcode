@@ -109,15 +109,15 @@ minimumReleaseAgeExclude:
   # First-party mobile terminal view, released same-day as the integration.
   - expo-libghostty@0.8.1
   # codex platform artifacts are versions of @openai/codex keyed <ver>-<platform>-<arch>.
-  - '@openai/codex@0.144.1-darwin-arm64 || 0.144.1-darwin-x64 || 0.144.1-linux-arm64 || 0.144.1-linux-x64 || 0.144.1-win32-arm64 || 0.144.1-win32-x64 || 0.144.1'
-  - '@earendil-works/pi-agent-core@0.80.6'
-  - '@earendil-works/pi-ai@0.80.6'
-  - '@earendil-works/pi-coding-agent@0.80.6'
+  - "@openai/codex@0.144.1-darwin-arm64 || 0.144.1-darwin-x64 || 0.144.1-linux-arm64 || 0.144.1-linux-x64 || 0.144.1-win32-arm64 || 0.144.1-win32-x64 || 0.144.1"
+  - "@earendil-works/pi-agent-core@0.80.6"
+  - "@earendil-works/pi-ai@0.80.6"
+  - "@earendil-works/pi-coding-agent@0.80.6"
   # Expo SDK 57 point releases land in lockstep with the SDK's expectations;
   # these pins were published hours before adoption (CODE-195).
-  - 'expo-apple-authentication@57.0.1'
-  - 'expo-crypto@57.0.1'
-  - '@earendil-works/pi-tui@0.80.6'
+  - "expo-apple-authentication@57.0.1"
+  - "expo-crypto@57.0.1"
+  - "@earendil-works/pi-tui@0.80.6"
   - electron@42.4.1
   - react-router@7.18.0
   - "@shikijs/core@4.3.0"
@@ -154,30 +154,33 @@ minimumReleaseAgeExclude:
   - undici@8.5.0
   - linkify-it@5.0.1
   - tayori@0.3.8
-  - '@arcboxlabs/deviceid-darwin-arm64@0.1.0'
-  - '@arcboxlabs/deviceid@0.1.0'
-  - '@linkcode/tunnel@0.1.0'
-  - '@typescript/typescript-aix-ppc64@7.0.2'
-  - '@typescript/typescript-darwin-arm64@7.0.2'
-  - '@typescript/typescript-darwin-x64@7.0.2'
-  - '@typescript/typescript-freebsd-arm64@7.0.2'
-  - '@typescript/typescript-freebsd-x64@7.0.2'
-  - '@typescript/typescript-linux-arm64@7.0.2'
-  - '@typescript/typescript-linux-arm@7.0.2'
-  - '@typescript/typescript-linux-loong64@7.0.2'
-  - '@typescript/typescript-linux-mips64el@7.0.2'
-  - '@typescript/typescript-linux-ppc64@7.0.2'
-  - '@typescript/typescript-linux-riscv64@7.0.2'
-  - '@typescript/typescript-linux-s390x@7.0.2'
-  - '@typescript/typescript-linux-x64@7.0.2'
-  - '@typescript/typescript-netbsd-arm64@7.0.2'
-  - '@typescript/typescript-netbsd-x64@7.0.2'
-  - '@typescript/typescript-openbsd-arm64@7.0.2'
-  - '@typescript/typescript-openbsd-x64@7.0.2'
-  - '@typescript/typescript-sunos-x64@7.0.2'
-  - '@typescript/typescript-win32-arm64@7.0.2'
-  - '@typescript/typescript-win32-x64@7.0.2'
+  - "@arcboxlabs/deviceid-darwin-arm64@0.1.0"
+  - "@arcboxlabs/deviceid@0.1.0"
+  - "@linkcode/tunnel@0.1.0"
+  - "@typescript/typescript-aix-ppc64@7.0.2"
+  - "@typescript/typescript-darwin-arm64@7.0.2"
+  - "@typescript/typescript-darwin-x64@7.0.2"
+  - "@typescript/typescript-freebsd-arm64@7.0.2"
+  - "@typescript/typescript-freebsd-x64@7.0.2"
+  - "@typescript/typescript-linux-arm64@7.0.2"
+  - "@typescript/typescript-linux-arm@7.0.2"
+  - "@typescript/typescript-linux-loong64@7.0.2"
+  - "@typescript/typescript-linux-mips64el@7.0.2"
+  - "@typescript/typescript-linux-ppc64@7.0.2"
+  - "@typescript/typescript-linux-riscv64@7.0.2"
+  - "@typescript/typescript-linux-s390x@7.0.2"
+  - "@typescript/typescript-linux-x64@7.0.2"
+  - "@typescript/typescript-netbsd-arm64@7.0.2"
+  - "@typescript/typescript-netbsd-x64@7.0.2"
+  - "@typescript/typescript-openbsd-arm64@7.0.2"
+  - "@typescript/typescript-openbsd-x64@7.0.2"
+  - "@typescript/typescript-sunos-x64@7.0.2"
+  - "@typescript/typescript-win32-arm64@7.0.2"
+  - "@typescript/typescript-win32-x64@7.0.2"
   - typescript@7.0.2
+  - "@eslint-sukka/*"
+  - "eslint-*-sukka"
+  - "@next/eslint-plugin-next@16.2.11"
   # Upstream fixes for our terminal font reports, adopted same-day: restty#24/#25 + text-shaper#3
   # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
   - restty@0.2.3 || 0.2.5

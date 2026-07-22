@@ -111,6 +111,7 @@ export function QuestionPrompt({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
     if (
+      responding ||
       event.defaultPrevented ||
       event.repeat ||
       event.nativeEvent.isComposing ||
@@ -119,7 +120,6 @@ export function QuestionPrompt({
       event.ctrlKey ||
       event.altKey ||
       event.shiftKey ||
-      responding ||
       !isWithinPrompt(event) ||
       isEditableTarget(event.target)
     ) {
@@ -140,7 +140,7 @@ export function QuestionPrompt({
     updateResponse({ selectedIds });
     // Single-select auto-advance remounts the page and focuses its first choice; focusing the
     // outgoing page's control here would announce an element about to be torn down.
-    if (question.multiSelect || isLastQuestion) {
+    if (isLastQuestion || question.multiSelect) {
       event.currentTarget
         .querySelectorAll<HTMLElement>('[data-prompt-choice]')
         .item(optionIndex)
@@ -154,13 +154,13 @@ export function QuestionPrompt({
   function handleArrowKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     if (
+      responding ||
       event.defaultPrevented ||
       event.nativeEvent.isComposing ||
       event.metaKey ||
       event.ctrlKey ||
       event.altKey ||
       event.shiftKey ||
-      responding ||
       !isWithinPrompt(event)
     ) {
       return;

@@ -73,13 +73,16 @@ export const SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES = [
   'image/gif',
   'image/webp',
 ] as const;
+const SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPE_SET = new Set<string>(
+  SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES,
+);
 export type SupportedAttachmentImageMimeType =
   (typeof SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES)[number];
 
 export function isSupportedAttachmentImageMimeType(
   mimeType: string,
 ): mimeType is SupportedAttachmentImageMimeType {
-  return (SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+  return SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPE_SET.has(mimeType);
 }
 
 /** Hard cap on one image/audio/resource block's raw payload — base64-inflated it crosses the

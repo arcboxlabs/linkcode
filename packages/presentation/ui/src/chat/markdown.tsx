@@ -46,7 +46,7 @@ const scopeFragmentIdentifiers: Plugin<[ScopeFragmentIdentifiersOptions], Root> 
         node.properties.id = `${prefix}${id}`;
       }
       const href = node.properties.href;
-      if (node.tagName === 'a' && typeof href === 'string' && href[0] === '#') {
+      if (typeof href === 'string' && node.tagName === 'a' && href[0] === '#') {
         node.properties.href = `#${SANITIZED_ID_PREFIX}${prefix}${href.slice(1)}`;
       }
     });
@@ -197,7 +197,7 @@ function MarkdownLink({
     return (
       <Badge
         size="sm"
-        variant={footnoteRef !== undefined ? 'secondary' : 'outline'}
+        variant={footnoteRef === undefined ? 'outline' : 'secondary'}
         className={cn('tabular-nums', className)}
         render={<a {...anchorProps}>{children}</a>}
       />

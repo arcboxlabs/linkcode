@@ -235,7 +235,7 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
       updatePath !== null &&
       oldLines !== null &&
       newLines !== null &&
-      (oldLines.length > 0 || newLines.length > 0 || change === 'move')
+      (change === 'move' || oldLines.length > 0 || newLines.length > 0)
     ) {
       content.push({
         type: 'diff',
