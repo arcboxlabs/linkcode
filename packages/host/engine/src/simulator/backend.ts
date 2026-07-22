@@ -30,6 +30,9 @@ export type SimulatorImageFormat = 'jpeg' | 'png';
 /** A hardware button the private HID layer can press. */
 export type SimulatorButton = 'home' | 'lock';
 
+/** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
+export type SimulatorTouchPhase = 'down' | 'move' | 'up';
+
 /** A normalized (0..1) point on the device screen. */
 export interface SimulatorPoint {
   x: number;
@@ -79,10 +82,14 @@ export interface SimulatorBackend {
   screenMask(udid: string): Promise<Uint8Array>;
   /** Tap at a normalized (0..1) point (private HID; macOS only). */
   tap(udid: string, x: number, y: number): Promise<void>;
+  /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
+  touch(udid: string, phase: SimulatorTouchPhase, x: number, y: number): Promise<void>;
   /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
   swipe(udid: string, from: SimulatorPoint, to: SimulatorPoint, durationMs?: number): Promise<void>;
   /** Press a hardware button (private HID; macOS only). */
   button(udid: string, button: SimulatorButton): Promise<void>;
+  /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
+  key(udid: string, usage: number, modifiers: number[]): Promise<void>;
   /** Start streaming `udid`'s framebuffer; frames arrive via {@link onFrame} listeners. */
   streamStart(udid: string, options?: SimulatorStreamOptions): Promise<SimulatorStreamStartResult>;
   /** Stop a running framebuffer stream. */

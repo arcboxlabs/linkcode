@@ -1,6 +1,11 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SimulatorDevice, SimulatorStatus } from '@linkcode/schema';
-import type { SimulatorScreenFrame, SimulatorScreenPoint } from '@linkcode/ui/shell/simulator';
+import type {
+  SimulatorKeyPress,
+  SimulatorScreenFrame,
+  SimulatorScreenPoint,
+  SimulatorScreenTouchPhase,
+} from '@linkcode/ui/shell/simulator';
 import { SimulatorScreen } from '@linkcode/ui/shell/simulator';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -121,17 +126,15 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
   }
 
-  const handleTap = (point: SimulatorScreenPoint): void => {
+  const handleTouch = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {
     if (ownerSessionId === null || udid === null) return;
-    void client.simulatorTap(ownerSessionId, udid, point.x, point.y).catch(flagBusy);
+    const request = client.simulatorTouch(ownerSessionId, udid, phase, point.x, point.y);
+    // Surface a claim conflict once per gesture, not per 60 Hz move.
+    void request.catch(phase === 'down' ? flagBusy : noop);
   };
-  const handleSwipe = (
-    from: SimulatorScreenPoint,
-    to: SimulatorScreenPoint,
-    durationMs: number,
-  ): void => {
+  const handleKey = (press: SimulatorKeyPress): void => {
     if (ownerSessionId === null || udid === null) return;
-    void client.simulatorSwipe(ownerSessionId, udid, from, to, durationMs).catch(flagBusy);
+    void client.simulatorKey(ownerSessionId, udid, press.usage, press.modifiers).catch(flagBusy);
   };
   const pressButton = (button: 'home' | 'lock'): void => {
     if (ownerSessionId === null || udid === null) return;
@@ -207,8 +210,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           <SimulatorScreen
             key={udid}
             subscribeFrames={subscribeFrames}
-            onTap={handleTap}
-            onSwipe={handleSwipe}
+            onTouch={handleTouch}
+            onKey={handleKey}
             maskUrl={masks[udid] ?? null}
             placeholder={
               <span className="text-muted-foreground text-sm">{t('simulatorConnecting')}</span>

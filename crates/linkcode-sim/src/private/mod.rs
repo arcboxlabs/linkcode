@@ -13,7 +13,7 @@ mod screen;
 mod vt;
 
 pub use device::SimDevice;
-pub use input::{Button, Input};
+pub use input::{Button, Input, Phase};
 pub use screen::{Screen, bench_encode};
 pub use vt::VtEncoder;
 

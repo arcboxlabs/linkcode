@@ -3,14 +3,21 @@ import { clamp } from 'foxts/clamp';
 import { noop } from 'foxts/noop';
 import { useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import type { SimulatorKeyPress } from './keymap';
+import { simulatorKeyPress } from './keymap';
 
 export interface SimulatorScreenPoint {
   x: number;
   y: number;
 }
 
-/** Below this pointer travel (in element px) a press counts as a tap, not a swipe. */
-const SWIPE_THRESHOLD_PX = 8;
+/** One phase of a streamed touch gesture. */
+export type SimulatorScreenTouchPhase = 'down' | 'move' | 'up';
+
+/** Minimum interval between forwarded `move` phases (≈60 Hz). */
+const TOUCH_MOVE_INTERVAL_MS = 16;
+/** A wheel stream idle for this long ends its synthetic drag gesture. */
+const WHEEL_IDLE_MS = 120;
 
 // Chassis proportions as fractions of the native screen width, matched against Simulator.app's
 // iPhone chrome: a thin black display band inside a titanium rim, with side-button bumps.
@@ -44,10 +51,12 @@ export interface SimulatorScreenProps {
   /** Feed of stream frames; returns the unsubscribe. H.264 units decode through WebCodecs
    * (hardware, GPU-resident output); JPEG frames decode via `createImageBitmap`. */
   subscribeFrames: (onFrame: (frame: SimulatorScreenFrame) => void) => () => void;
-  /** Press in normalized [0,1] device coordinates. */
-  onTap?: (point: SimulatorScreenPoint) => void;
-  /** Drag in normalized [0,1] device coordinates with its real duration. */
-  onSwipe?: (from: SimulatorScreenPoint, to: SimulatorScreenPoint, durationMs: number) => void;
+  /** A streamed touch phase in normalized [0,1] device coordinates: exactly one `down`, any
+   * number of `move`s, one final `up` per gesture. Forwarded in real time, so the device's own
+   * gesture recognition decides tap vs drag vs long-press. */
+  onTouch?: (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint) => void;
+  /** A key press (typed on the focused screen) decomposed to HID usages — see {@link simulatorKeyPress}. */
+  onKey?: (press: SimulatorKeyPress) => void;
   /** The device's real screen-outline mask (image URL, framebuffer-sized): clips the stream to
    * the exact screen shape, and its measured corner radius keeps the chassis curve concentric.
    * Absent → a generic rounding. */
@@ -89,8 +98,8 @@ interface PaintState {
  */
 export function SimulatorScreen({
   subscribeFrames,
-  onTap,
-  onSwipe,
+  onTouch,
+  onKey,
   maskUrl,
   placeholder,
   className,
@@ -103,9 +112,11 @@ export function SimulatorScreen({
     chassis: null,
     chassisKey: '',
   });
-  const pressRef = useRef<{ pointerId: number; start: SimulatorScreenPoint; at: number } | null>(
-    null,
-  );
+  const pressRef = useRef<{
+    pointerId: number;
+    last: SimulatorScreenPoint;
+    moveSentAt: number;
+  } | null>(null);
   /** `w / h` of the whole painted device (screen + bezel); sizes the canvas box. */
   const [deviceAspect, setDeviceAspect] = useState<string | null>(null);
 
@@ -229,43 +240,95 @@ export function SimulatorScreen({
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    pressRef.current = {
-      pointerId: event.pointerId,
-      start: normalizedPoint(event),
-      at: performance.now(),
-    };
+    const point = normalizedPoint(event);
+    pressRef.current = { pointerId: event.pointerId, last: point, moveSentAt: performance.now() };
+    onTouch?.('down', point);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    const press = pressRef.current;
+    if (press?.pointerId !== event.pointerId) return;
+    const now = performance.now();
+    if (now - press.moveSentAt < TOUCH_MOVE_INTERVAL_MS) return;
+    const point = normalizedPoint(event);
+    press.last = point;
+    press.moveSentAt = now;
+    onTouch?.('move', point);
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const press = pressRef.current;
     if (press?.pointerId !== event.pointerId) return;
     pressRef.current = null;
-    const end = normalizedPoint(event);
+    onTouch?.('up', normalizedPoint(event));
+  };
+
+  const handlePointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    const press = pressRef.current;
+    if (press?.pointerId !== event.pointerId) return;
+    pressRef.current = null;
+    // End the gesture where it last was — a stuck touch would keep the device pressed forever.
+    onTouch?.('up', press.last);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>): void => {
+    if (onKey === undefined || event.nativeEvent.isComposing) return;
+    const press = simulatorKeyPress(event);
+    if (press === null) return;
+    event.preventDefault();
+    onKey(press);
+  };
+
+  // Trackpad/wheel scrolling becomes a synthetic drag: touch down where the cursor sits, move
+  // opposite the scroll deltas (finger-follows-content, like the real device), up after idle.
+  const wheelRef = useRef<{
+    pos: SimulatorScreenPoint;
+    endTimer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>): void => {
+    if (pressRef.current !== null) return;
     const screen = screenRectOnPage(event.currentTarget);
-    const travelPx = Math.hypot(
-      (end.x - press.start.x) * screen.width,
-      (end.y - press.start.y) * screen.height,
-    );
-    if (travelPx < SWIPE_THRESHOLD_PX) onTap?.(end);
-    else onSwipe?.(press.start, end, Math.round(performance.now() - press.at));
+    const endGesture = (): void => {
+      const wheel = wheelRef.current;
+      wheelRef.current = null;
+      if (wheel) onTouch?.('up', wheel.pos);
+    };
+    let wheel = wheelRef.current;
+    if (wheel === null) {
+      const start = normalizedPoint(event);
+      wheel = { pos: start, endTimer: setTimeout(endGesture, WHEEL_IDLE_MS) };
+      wheelRef.current = wheel;
+      onTouch?.('down', start);
+    } else {
+      clearTimeout(wheel.endTimer);
+      wheel.endTimer = setTimeout(endGesture, WHEEL_IDLE_MS);
+    }
+    wheel.pos = {
+      x: clamp(wheel.pos.x - event.deltaX / screen.width, 0, 1),
+      y: clamp(wheel.pos.y - event.deltaY / screen.height, 0, 1),
+    };
+    onTouch?.('move', wheel.pos);
   };
 
   return (
     <div
       className={cn('flex h-full w-full items-center justify-center overflow-hidden', className)}
     >
+      {/* Focusable so plain typing reaches the device; app-level chords (⌘…) pass through. */}
       <canvas
         ref={canvasRef}
+        tabIndex={0}
         className={cn(
-          'w-full max-h-full max-w-full touch-none object-contain drop-shadow-xl',
+          'w-full max-h-full max-w-full touch-none object-contain outline-none drop-shadow-xl',
           deviceAspect === null && 'hidden',
         )}
         style={deviceAspect === null ? undefined : { aspectRatio: deviceAspect }}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={() => {
-          pressRef.current = null;
-        }}
+        onPointerCancel={handlePointerCancel}
+        onWheel={handleWheel}
+        onKeyDown={handleKeyDown}
       />
       {deviceAspect === null && placeholder}
     </div>
@@ -453,7 +516,11 @@ function screenRectOnPage(canvas: HTMLCanvasElement): {
   };
 }
 
-function normalizedPoint(event: React.PointerEvent<HTMLCanvasElement>): SimulatorScreenPoint {
+function normalizedPoint(event: {
+  clientX: number;
+  clientY: number;
+  currentTarget: HTMLCanvasElement;
+}): SimulatorScreenPoint {
   const screen = screenRectOnPage(event.currentTarget);
   return {
     x: clamp((event.clientX - screen.left) / screen.width, 0, 1),

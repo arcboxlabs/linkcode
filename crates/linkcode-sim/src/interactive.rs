@@ -11,7 +11,7 @@ use std::sync::mpsc::Sender;
 use serde_json::{Value, json};
 
 use crate::OutMsg;
-use crate::rpc::{ButtonKind, ErrorCode, OpError};
+use crate::rpc::{ButtonKind, ErrorCode, OpError, TouchPhase};
 
 fn unsupported() -> OpError {
     OpError::new(
@@ -21,7 +21,7 @@ fn unsupported() -> OpError {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{available, button, stream_start, stream_stop, swipe, tap};
+pub use imp::{available, button, key, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(not(target_os = "macos"))]
 mod stubs {
@@ -31,6 +31,9 @@ mod stubs {
         false
     }
     pub fn tap(_udid: &str, _x: f64, _y: f64) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
+    pub fn touch(_udid: &str, _phase: TouchPhase, _x: f64, _y: f64) -> Result<Value, OpError> {
         Err(unsupported())
     }
     pub fn swipe(
@@ -44,6 +47,9 @@ mod stubs {
         Err(unsupported())
     }
     pub fn button(_udid: &str, _button: ButtonKind) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
+    pub fn key(_udid: &str, _usage: u32, _modifiers: &[u32]) -> Result<Value, OpError> {
         Err(unsupported())
     }
     pub fn stream_start(
@@ -62,7 +68,7 @@ mod stubs {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub use stubs::{available, button, stream_start, stream_stop, swipe, tap};
+pub use stubs::{available, button, key, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -89,6 +95,8 @@ mod imp {
     struct Registry {
         inputs: HashMap<String, Arc<Input>>,
         streams: HashMap<String, StreamHandle>,
+        /// Active streamed-touch identifiers by udid (down allocates, up removes).
+        touches: HashMap<String, u32>,
     }
 
     struct StreamHandle {
@@ -106,6 +114,7 @@ mod imp {
             Mutex::new(Registry {
                 inputs: HashMap::new(),
                 streams: HashMap::new(),
+                touches: HashMap::new(),
             })
         })
     }
@@ -133,6 +142,36 @@ mod imp {
             Ok(json!({}))
         } else {
             Err(OpError::new(ErrorCode::SimctlFailed, "tap failed"))
+        }
+    }
+
+    /// One phase of a streamed touch gesture. A `move`/`up` without an active stream is a benign
+    /// race (a duplicate up, a move after cancel) and no-ops successfully.
+    pub fn touch(udid: &str, phase: TouchPhase, x: f64, y: f64) -> Result<Value, OpError> {
+        let input = input_for(udid)?;
+        let mut reg = registry().lock().expect("interactive registry poisoned");
+        let identifier = match phase {
+            TouchPhase::Down => {
+                let id = input.allocate_touch();
+                reg.touches.insert(udid.to_owned(), id);
+                Some(id)
+            }
+            TouchPhase::Move => reg.touches.get(udid).copied(),
+            TouchPhase::Up => reg.touches.remove(udid),
+        };
+        drop(reg);
+        let Some(identifier) = identifier else {
+            return Ok(json!({}));
+        };
+        let hid_phase = match phase {
+            TouchPhase::Down => private::Phase::Down,
+            TouchPhase::Move => private::Phase::Move,
+            TouchPhase::Up => private::Phase::Up,
+        };
+        if input.touch_phase(x, y, identifier, hid_phase) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "touch failed"))
         }
     }
 
@@ -167,6 +206,14 @@ mod imp {
             Ok(json!({}))
         } else {
             Err(OpError::new(ErrorCode::SimctlFailed, "button press failed"))
+        }
+    }
+
+    pub fn key(udid: &str, usage: u32, modifiers: &[u32]) -> Result<Value, OpError> {
+        if input_for(udid)?.key(usage, modifiers, Duration::from_millis(20)) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "key press failed"))
         }
     }
 

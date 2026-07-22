@@ -162,13 +162,20 @@ fn main() {
         }
         match serde_json::from_slice::<Request>(&body) {
             Ok(request) => {
-                gate.acquire();
-                let tx = tx.clone();
-                let gate = Arc::clone(&gate);
-                thread::spawn(move || {
+                // Touch phases and key presses must keep stdio order — a per-request thread would
+                // race a gesture's down/move/up or reorder typed characters. Each is a handful of
+                // fast HID sends, so inline handling is cheap and stays off the inflight gate.
+                if matches!(request.op, Op::Touch { .. } | Op::Key { .. }) {
                     serve(request, &tx);
-                    gate.release();
-                });
+                } else {
+                    gate.acquire();
+                    let tx = tx.clone();
+                    let gate = Arc::clone(&gate);
+                    thread::spawn(move || {
+                        serve(request, &tx);
+                        gate.release();
+                    });
+                }
             }
             Err(err) => {
                 eprintln!("invalid REQUEST frame: {err}");
@@ -248,6 +255,7 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             }
         }
         Op::Tap { udid, x, y } => interactive::tap(&udid, x, y),
+        Op::Touch { udid, phase, x, y } => interactive::touch(&udid, phase, x, y),
         Op::Swipe {
             udid,
             x0,
@@ -257,6 +265,11 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             duration_ms,
         } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
         Op::Button { udid, button } => interactive::button(&udid, button),
+        Op::Key {
+            udid,
+            usage,
+            modifiers,
+        } => interactive::key(&udid, usage, &modifiers),
         Op::StreamStart {
             udid,
             fps,

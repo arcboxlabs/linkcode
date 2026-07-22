@@ -35,6 +35,8 @@ function fakeBackend(): SimulatorBackend {
     screenshot: vi.fn(() => Promise.resolve(new Uint8Array([0xff, 0xd8, 0x02]))),
     screenMask: vi.fn(() => Promise.resolve(new Uint8Array([0x89, 0x50]))),
     tap: vi.fn(asyncNoop),
+    touch: vi.fn(asyncNoop),
+    key: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     streamStart: vi.fn(() =>

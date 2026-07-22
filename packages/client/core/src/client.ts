@@ -42,6 +42,7 @@ import type {
   SimulatorImageFormat,
   SimulatorStatus,
   SimulatorStreamCodec,
+  SimulatorTouchPhase,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -707,6 +708,27 @@ export class LinkCodeClient {
 
   simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
     return this.control.simulatorTap(sessionId, udid, x, y);
+  }
+
+  /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
+  simulatorKey(
+    sessionId: SessionId,
+    udid: string,
+    usage: number,
+    modifiers: number[],
+  ): Promise<RequestAck> {
+    return this.control.simulatorKey(sessionId, udid, usage, modifiers);
+  }
+
+  /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
+  simulatorTouch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<RequestAck> {
+    return this.control.simulatorTouch(sessionId, udid, phase, x, y);
   }
 
   simulatorSwipe(

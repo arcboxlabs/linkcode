@@ -5,6 +5,7 @@ import {
   SimulatorImageFormatSchema,
   SimulatorStatusSchema,
   SimulatorStreamCodecSchema,
+  SimulatorTouchPhaseSchema,
 } from '../model/simulator';
 import { WireRequestIdSchema } from './request';
 
@@ -131,6 +132,17 @@ export const simulatorWireVariants = [
     x: coord,
     y: coord,
   }),
+  /** One phase of a streamed touch gesture — the panel forwards pointer events in real time so
+   * the device sees the finger during a drag (long-press, rubber-banding, icon drags). */
+  z.object({
+    kind: z.literal('simulator.touch'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    phase: SimulatorTouchPhaseSchema,
+    x: coord,
+    y: coord,
+  }),
   z.object({
     kind: z.literal('simulator.swipe'),
     clientReqId: WireRequestIdSchema,
@@ -148,6 +160,16 @@ export const simulatorWireVariants = [
     sessionId: SessionIdSchema,
     udid,
     button: SimulatorButtonSchema,
+  }),
+  /** One keyboard key press: an HID usage on page 7 with modifier usages (`0xE0..`) held
+   * around it. Clients decompose typed characters (US layout) before sending. */
+  z.object({
+    kind: z.literal('simulator.key'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    usage: z.number().int().nonnegative(),
+    modifiers: z.array(z.number().int().nonnegative()).max(8),
   }),
   z.object({
     kind: z.literal('simulator.stream.start'),

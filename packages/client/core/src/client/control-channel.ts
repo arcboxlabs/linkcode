@@ -39,6 +39,7 @@ import type {
   SimulatorImageFormat,
   SimulatorStatus,
   SimulatorStreamCodec,
+  SimulatorTouchPhase,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -674,6 +675,40 @@ export class ControlChannel {
       clientReqId,
       sessionId,
       udid,
+      x,
+      y,
+    }));
+  }
+
+  simulatorKey(
+    sessionId: SessionId,
+    udid: string,
+    usage: number,
+    modifiers: number[],
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.key',
+      clientReqId,
+      sessionId,
+      udid,
+      usage,
+      modifiers,
+    }));
+  }
+
+  simulatorTouch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.touch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
       x,
       y,
     }));

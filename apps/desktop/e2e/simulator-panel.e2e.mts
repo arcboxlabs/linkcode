@@ -29,7 +29,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 47;
+const WIRE_VERSION = 48;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -260,6 +260,65 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       const safariShot = join(tmpdir(), `linkcode-e2e-simulator-safari-${process.pid}.png`);
       await win.screenshot({ path: safariShot });
       console.log(`screenshot: ${safariShot}`);
+
+      // Interactive drive-through: the panel's Home button and a canvas tap must actually move
+      // the device. Each step is asserted by the painted canvas changing (downsampled hash).
+      const deviceCanvas = win.locator('canvas:visible').first();
+      const canvasHash = (): Promise<number> =>
+        deviceCanvas.evaluate((el) => {
+          const source = el as HTMLCanvasElement;
+          const probe = document.createElement('canvas');
+          probe.width = 32;
+          probe.height = 64;
+          const ctx = probe.getContext('2d');
+          if (ctx === null) return -1;
+          ctx.drawImage(source, 0, 0, 32, 64);
+          const data = ctx.getImageData(0, 0, 32, 64).data;
+          let hash = 0;
+          for (let i = 0; i < data.length; i += 16) hash = ((hash * 31 + data[i]) & 0xffffff) >>> 0;
+          return hash;
+        });
+      const waitForHashChange = async (previous: number, label: string): Promise<number> => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const next = await canvasHash();
+          if (next !== previous && next !== -1) return next;
+          await wait(500);
+        }
+        fail(`device screen did not change after ${label}`);
+      };
+
+      const onSafari = await canvasHash();
+      await win.getByRole('button', { name: 'Home', exact: true }).click();
+      const onHome = await waitForHashChange(onSafari, 'pressing Home');
+      console.log('panel Home button returned the device to the home screen');
+
+      // Tap Safari in the dock through the canvas (device-normalized ≈ (0.41, 0.93), mapped
+      // into the canvas box across the painted chassis margins).
+      const box = await deviceCanvas.boundingBox();
+      if (!box) fail('device canvas has no bounding box');
+      await deviceCanvas.click({
+        position: { x: box.width * 0.416, y: box.height * 0.919 },
+      });
+      const onSafariAgain = await waitForHashChange(onHome, 'tapping the dock');
+      console.log('canvas tap reopened Safari from the dock');
+
+      // Streamed-touch drag: press, move upward in real time, release — the page must scroll.
+      await win.waitForTimeout(1500);
+      const dragX = box.x + box.width * 0.5;
+      const dragY = box.y + box.height * 0.6;
+      await win.mouse.move(dragX, dragY);
+      await win.mouse.down();
+      for (let step = 1; step <= 10; step += 1) {
+        await win.mouse.move(dragX, dragY - step * box.height * 0.03);
+        await win.waitForTimeout(20);
+      }
+      await win.mouse.up();
+      await waitForHashChange(onSafariAgain, 'dragging to scroll');
+      console.log('streamed-touch drag scrolled the page');
+      const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
+      await win.screenshot({ path: tapShot });
+      console.log(`screenshot: ${tapShot}`);
     }
     console.log('holding the window open for 30s for manual inspection…');
     await win.waitForTimeout(30000);

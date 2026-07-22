@@ -8,4 +8,5 @@ export type {
   SimProbe,
   SimStreamCodec,
   SimStreamStartResult,
+  SimTouchPhase,
 } from './schema';

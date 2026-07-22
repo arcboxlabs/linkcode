@@ -37,3 +37,7 @@ export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
  * access units (Annex-B, native resolution — decoded client-side with WebCodecs). */
 export const SimulatorStreamCodecSchema = z.enum(['jpeg', 'h264']);
 export type SimulatorStreamCodec = z.infer<typeof SimulatorStreamCodecSchema>;
+
+/** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
+export const SimulatorTouchPhaseSchema = z.enum(['down', 'move', 'up']);
+export type SimulatorTouchPhase = z.infer<typeof SimulatorTouchPhaseSchema>;

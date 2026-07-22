@@ -62,4 +62,7 @@ export type SimStreamStartResult = z.infer<typeof SimStreamStartResultSchema>;
 /** A hardware button the private HID layer can press. */
 export type SimButton = 'home' | 'lock';
 
+/** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
+export type SimTouchPhase = 'down' | 'move' | 'up';
+
 export type SimImageFormat = 'jpeg' | 'png';

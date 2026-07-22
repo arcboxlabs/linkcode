@@ -12,6 +12,7 @@ import type {
   SimulatorPoint,
   SimulatorStreamOptions,
   SimulatorStreamStartResult,
+  SimulatorTouchPhase,
 } from './backend';
 
 /** Lazily-probed host capability; mirrors the wire's `SimulatorStatus` shape structurally. */
@@ -173,6 +174,17 @@ export class SimulatorService {
     return this.backend.tap(udid, x, y);
   }
 
+  async touch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.touch(udid, phase, x, y);
+  }
+
   async swipe(
     sessionId: SessionId,
     udid: string,
@@ -187,6 +199,11 @@ export class SimulatorService {
   async button(sessionId: SessionId, udid: string, button: SimulatorButton): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.button(udid, button);
+  }
+
+  async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.key(udid, usage, modifiers);
   }
 
   /** Start streaming a device's framebuffer for a session, claiming it. */

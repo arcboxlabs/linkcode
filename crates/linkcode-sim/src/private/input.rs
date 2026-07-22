@@ -61,6 +61,9 @@ type CreateFingerFn = unsafe extern "C" fn(
 type AppendEventFn = unsafe extern "C" fn(*mut c_void, *mut c_void, u32);
 type TrackpadWrapFn = unsafe extern "C" fn(*const c_void) -> *mut c_void;
 type ButtonFn = unsafe extern "C" fn(u32, u32, u32) -> *mut c_void;
+/// `IndigoHIDMessageForHIDArbitrary(target, page, usage, operation)` — routes any HID
+/// (page, usage) pair; operation 1=down, 2=up. No timestamp arg.
+type HidArbitraryFn = unsafe extern "C" fn(u32, u32, u32, u32) -> *mut c_void;
 type ServiceFn = unsafe extern "C" fn() -> *mut c_void;
 
 unsafe extern "C" {
@@ -114,9 +117,13 @@ struct Symbols {
     append_event: AppendEventFn,
     trackpad_wrap: TrackpadWrapFn,
     button: ButtonFn,
+    hid_arbitrary: Option<HidArbitraryFn>,
     create_pointer_service: Option<ServiceFn>,
     create_mouse_service: Option<ServiceFn>,
 }
+
+/// HID keyboard/keypad usage page (the page every key press below lives on).
+const KEYBOARD_USAGE_PAGE: u32 = 7;
 
 /// A warmed HID client bound to one device, plus the resolved private symbols. Created lazily; a
 /// resolution failure means this host cannot inject input (the caller degrades to view-only).
@@ -144,6 +151,17 @@ impl Input {
         };
         input.warm_services();
         Some(input)
+    }
+
+    /// Allocate the shared identifier for one caller-driven touch stream (down → moves → up).
+    pub fn allocate_touch(&self) -> u32 {
+        self.next_identifier()
+    }
+
+    /// Inject one phase of a caller-driven touch stream. The caller owns the cadence and the
+    /// down/move/up sequencing; `identifier` ties the phases into one gesture.
+    pub fn touch_phase(&self, x: f64, y: f64, identifier: u32, phase: Phase) -> bool {
+        self.send_touch(x, y, identifier, phase)
     }
 
     /// Single-finger tap at a normalised (0..1) point, holding for `hold`.
@@ -175,6 +193,37 @@ impl Input {
         }
         sleep(step);
         self.send_touch(x1, y1, id, Phase::Up) && ok >= steps / 2
+    }
+
+    /// Press one keyboard key (HID usage on page 7) with `modifiers` (usages `0xE0..=0xE7`)
+    /// bracketed around it: modifier-downs → key-down → hold → key-up → modifier-ups.
+    pub fn key(&self, usage: u32, modifiers: &[u32], hold: Duration) -> bool {
+        let Some(hid) = self.symbols.hid_arbitrary else {
+            return false;
+        };
+        let send_op = |usage: u32, operation: u32| -> bool {
+            // SAFETY: symbol resolved above; returns a malloc'd message consumed by send.
+            let message = unsafe { hid(TOUCH_TARGET, KEYBOARD_USAGE_PAGE, usage, operation) };
+            if message.is_null() {
+                return false;
+            }
+            self.send_message(message);
+            true
+        };
+        for modifier in modifiers {
+            if !send_op(*modifier, 1) {
+                return false;
+            }
+        }
+        if !send_op(usage, 1) {
+            return false;
+        }
+        sleep(hold.max(Duration::from_millis(20)));
+        let mut ok = send_op(usage, 2);
+        for modifier in modifiers.iter().rev() {
+            ok = send_op(*modifier, 2) && ok;
+        }
+        ok
     }
 
     /// Press a hardware button (home/lock) for `hold`.
@@ -366,6 +415,7 @@ fn resolve_symbols() -> Option<Symbols> {
         let trackpad_wrap =
             framework::dlsym(kit, "IndigoHIDMessageForTrackpadEventFromHIDEventRef")?;
         let button = framework::dlsym(kit, "IndigoHIDMessageForButton")?;
+        let hid_arbitrary = framework::dlsym(kit, "IndigoHIDMessageForHIDArbitrary");
         Some(Symbols {
             create_digitizer: std::mem::transmute::<*mut c_void, CreateDigitizerFn>(
                 create_digitizer,
@@ -374,6 +424,8 @@ fn resolve_symbols() -> Option<Symbols> {
             append_event: std::mem::transmute::<*mut c_void, AppendEventFn>(append_event),
             trackpad_wrap: std::mem::transmute::<*mut c_void, TrackpadWrapFn>(trackpad_wrap),
             button: std::mem::transmute::<*mut c_void, ButtonFn>(button),
+            hid_arbitrary: hid_arbitrary
+                .map(|p| std::mem::transmute::<*mut c_void, HidArbitraryFn>(p)),
             create_pointer_service: framework::dlsym(kit, "IndigoHIDMessageToCreatePointerService")
                 .map(|p| std::mem::transmute::<*mut c_void, ServiceFn>(p)),
             create_mouse_service: framework::dlsym(kit, "IndigoHIDMessageToCreateMouseService")

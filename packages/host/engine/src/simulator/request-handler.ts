@@ -22,8 +22,10 @@ type SimulatorRequest = Extract<
       | 'simulator.screenshot'
       | 'simulator.screen-mask'
       | 'simulator.tap'
+      | 'simulator.touch'
       | 'simulator.swipe'
       | 'simulator.button'
+      | 'simulator.key'
       | 'simulator.stream.start'
       | 'simulator.stream.stop';
   }
@@ -163,6 +165,19 @@ export class SimulatorRequestHandler {
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );
+      case 'simulator.touch':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.touch', 'Failed to inject touch', async () => {
+            await simulators.touch(
+              payload.sessionId,
+              payload.udid,
+              payload.phase,
+              payload.x,
+              payload.y,
+            );
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
       case 'simulator.swipe':
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.swipe', 'Failed to swipe', async () => {
@@ -180,6 +195,13 @@ export class SimulatorRequestHandler {
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.button', 'Failed to press button', async () => {
             await simulators.button(payload.sessionId, payload.udid, payload.button);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.key':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.key', 'Failed to press key', async () => {
+            await simulators.key(payload.sessionId, payload.udid, payload.usage, payload.modifiers);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );

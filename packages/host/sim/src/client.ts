@@ -22,6 +22,7 @@ import type {
   SimProbe,
   SimStreamCodec,
   SimStreamStartResult,
+  SimTouchPhase,
 } from './schema';
 import {
   SimLaunchResultSchema,
@@ -151,6 +152,11 @@ export class SimSidecarClient {
     await this.call('tap', { udid, x, y });
   }
 
+  /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
+  async touch(udid: string, phase: SimTouchPhase, x: number, y: number): Promise<void> {
+    await this.call('touch', { udid, phase, x, y });
+  }
+
   /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
   async swipe(
     udid: string,
@@ -171,6 +177,11 @@ export class SimSidecarClient {
   /** Press a hardware button (private HID; macOS only). */
   async button(udid: string, button: SimButton): Promise<void> {
     await this.call('button', { udid, button });
+  }
+
+  /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
+  async key(udid: string, usage: number, modifiers: number[]): Promise<void> {
+    await this.call('key', { udid, usage, modifiers });
   }
 
   /**
