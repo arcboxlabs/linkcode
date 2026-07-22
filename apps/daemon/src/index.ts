@@ -173,7 +173,7 @@ async function main(): Promise<void> {
       const store = createProviderConfigStore(
         config.providers ?? {},
         config.accounts ?? [],
-        config.plugins ?? { units: [], connectors: [] },
+        config.plugins ?? { units: [], serviceBindings: {}, connectors: [] },
       );
       // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
       // store into spawn resolution — managed wins over detected as soon as an install lands.

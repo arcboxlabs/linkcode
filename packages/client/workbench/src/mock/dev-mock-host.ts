@@ -11,6 +11,7 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   McpPluginCatalog,
+  McpPluginService,
   MessageId,
   PermissionOutcome,
   PluginConfig,
@@ -107,8 +108,7 @@ const MOCK_PLUGIN_CATALOG: McpPluginCatalog = [
     id: 'github-read',
     labelKey: 'units.githubRead.label',
     descriptionKey: 'units.githubRead.description',
-    service: 'github',
-    backing: { type: 'managed-connector', name: 'linkcode-github' },
+    servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
   },
 ];
 
@@ -178,7 +178,7 @@ export class DevMockHost {
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
-  private plugins: PluginConfig = { units: [], connectors: [] };
+  private plugins: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -1388,6 +1388,7 @@ export class DevMockHost {
 function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
   return {
     units: structuredClone(config.units),
+    serviceBindings: structuredClone(config.serviceBindings),
     connectors: config.connectors.map(({ credential, ...connector }) => ({
       ...connector,
       credential:
@@ -1399,7 +1400,8 @@ function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
 }
 
 function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
-  let units = structuredClone(patch.units ?? current.units);
+  const units = structuredClone(patch.units ?? current.units);
+  const serviceBindings = structuredClone(patch.serviceBindings ?? current.serviceBindings);
   let connectors = structuredClone(current.connectors);
   for (const operation of patch.connectorOperations ?? []) {
     switch (operation.type) {
@@ -1420,17 +1422,18 @@ function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): Pl
         break;
       case 'delete':
         connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
-        units = units.map((unit) =>
-          unit.binding?.type === 'local' && unit.binding.connectorId === operation.connectorId
-            ? { ...unit, enabled: false, binding: undefined }
-            : unit,
-        );
+        for (const service of Object.keys(serviceBindings) as McpPluginService[]) {
+          const binding = serviceBindings[service];
+          if (binding?.type === 'local' && binding.connectorId === operation.connectorId) {
+            delete serviceBindings[service];
+          }
+        }
         break;
       default:
         break;
     }
   }
-  return { units, connectors };
+  return { units, serviceBindings, connectors };
 }
 
 function promptText(content: readonly ContentBlock[]): string {

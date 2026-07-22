@@ -7,6 +7,7 @@ describe('engine plugin config', () => {
     const store = new InMemoryProviderConfigStore();
     store.setPlugins({
       units: [],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
       connectors: [
         {
           id: 'github-personal',
@@ -27,6 +28,7 @@ describe('engine plugin config', () => {
       accounts: [],
       plugins: {
         units: [],
+        serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
         connectors: [
           {
             id: 'github-personal',
@@ -79,7 +81,8 @@ describe('engine plugin config', () => {
   it('emits a typed warning when an enabled managed unit cannot be resolved', async () => {
     const store = new InMemoryProviderConfigStore();
     store.setPlugins({
-      units: [{ unitId: 'github-read', enabled: true, binding: { type: 'managed' } }],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'managed' } },
       connectors: [],
     });
     const h = createSessionHarness(undefined, undefined, undefined, undefined, undefined, store);
@@ -98,7 +101,12 @@ describe('engine plugin config', () => {
     expect(h.sent).toContainEqual({
       kind: 'agent.event',
       sessionId: started?.kind === 'session.started' ? started.sessionId : '',
-      event: { type: 'plugin-warning', unitId: 'github-read', reason: 'broker-unavailable' },
+      event: {
+        type: 'plugin-warning',
+        unitId: 'github-read',
+        service: 'github',
+        reason: 'broker-unavailable',
+      },
     });
     expect(JSON.stringify(await h.store.load())).not.toContain('credential');
   });

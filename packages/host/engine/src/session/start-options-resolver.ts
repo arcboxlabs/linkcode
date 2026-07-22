@@ -1,11 +1,14 @@
 import type {
   AgentEvent,
   McpPluginCatalog,
+  McpPluginServer,
   McpServer,
   PluginConfig,
   StartOptions,
 } from '@linkcode/schema';
+import { mcpPluginServerName } from '@linkcode/schema';
 import { Effect } from 'effect';
+import { nullthrow } from 'foxts/guard';
 import type { ProviderConfigStore } from '../agent/provider-config';
 import { applyProviderDefaults } from '../agent/provider-config';
 import type { TranslatorService } from '../agent/translator';
@@ -83,8 +86,7 @@ export function resolvePluginServers(
   for (const unit of config.units) {
     if (!unit.enabled) continue;
     const descriptor = catalogById.get(unit.unitId);
-    const binding = unit.binding;
-    if (!descriptor || !binding) {
+    if (!descriptor) {
       warnings.push({ type: 'plugin-warning', unitId: unit.unitId, reason: 'unsatisfied-binding' });
       continue;
     }
@@ -96,27 +98,59 @@ export function resolvePluginServers(
       });
       continue;
     }
-    const serverName =
-      descriptor.backing.type === 'preset'
-        ? descriptor.backing.server.name
-        : descriptor.backing.name;
-    if (clientNames.has(serverName)) continue;
-    if (binding.type === 'managed') {
-      warnings.push({ type: 'plugin-warning', unitId: unit.unitId, reason: 'broker-unavailable' });
-      continue;
+    // A plugin composes several servers; each resolves independently, so one unsatisfied service
+    // dependency degrades the unit to a warning without dropping its satisfied servers.
+    for (const entry of descriptor.servers) {
+      if (clientNames.has(mcpPluginServerName(entry))) continue;
+      if (entry.type === 'managed') {
+        // Managed servers only exist through the CODE-96 broker.
+        warnings.push({
+          type: 'plugin-warning',
+          unitId: unit.unitId,
+          service: entry.service,
+          reason: 'broker-unavailable',
+        });
+        continue;
+      }
+      if (entry.credentialSlots.length === 0) {
+        pluginServers.push(entry.server);
+        continue;
+      }
+      // Credential slots require a service (schema-enforced); route through its binding.
+      const service = nullthrow(entry.service, 'credential slots require a service');
+      const binding = config.serviceBindings[service];
+      if (!binding) {
+        warnings.push({
+          type: 'plugin-warning',
+          unitId: unit.unitId,
+          service,
+          reason: 'unsatisfied-binding',
+        });
+        continue;
+      }
+      if (binding.type === 'managed') {
+        warnings.push({
+          type: 'plugin-warning',
+          unitId: unit.unitId,
+          service,
+          reason: 'broker-unavailable',
+        });
+        continue;
+      }
+      const connector = config.connectors.find(
+        (candidate) => candidate.id === binding.connectorId && candidate.service === service,
+      );
+      if (!connector) {
+        warnings.push({
+          type: 'plugin-warning',
+          unitId: unit.unitId,
+          service,
+          reason: 'unsatisfied-binding',
+        });
+        continue;
+      }
+      pluginServers.push(injectCredential(entry, connector.credential.secret));
     }
-    const connector = config.connectors.find(
-      (entry) => entry.id === binding.connectorId && entry.service === descriptor.service,
-    );
-    if (!connector) {
-      warnings.push({ type: 'plugin-warning', unitId: unit.unitId, reason: 'unsatisfied-binding' });
-      continue;
-    }
-    if (descriptor.backing.type === 'managed-connector') {
-      warnings.push({ type: 'plugin-warning', unitId: unit.unitId, reason: 'broker-unavailable' });
-      continue;
-    }
-    pluginServers.push(injectCredential(descriptor.backing, connector.credential.secret));
   }
 
   return {
@@ -129,24 +163,13 @@ export function resolvePluginServers(
 }
 
 function injectCredential(
-  backing: Extract<McpPluginCatalog[number]['backing'], { type: 'preset' }>,
+  entry: Extract<McpPluginServer, { type: 'preset' }>,
   secret: string,
 ): McpServer {
-  const server = backing.server;
+  const server = entry.server;
+  const slots = Object.fromEntries(entry.credentialSlots.map((slot) => [slot.name, secret]));
   if (server.type === 'stdio') {
-    return {
-      ...server,
-      env: {
-        ...server.env,
-        ...Object.fromEntries(backing.credentialSlots.map((slot) => [slot.name, secret])),
-      },
-    };
+    return { ...server, env: { ...server.env, ...slots } };
   }
-  return {
-    ...server,
-    headers: {
-      ...server.headers,
-      ...Object.fromEntries(backing.credentialSlots.map((slot) => [slot.name, secret])),
-    },
-  };
+  return { ...server, headers: { ...server.headers, ...slots } };
 }

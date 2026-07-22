@@ -7,7 +7,6 @@ export const MCP_PLUGIN_CATALOG = McpPluginCatalogSchema.parse([
     id: 'github-read',
     labelKey: 'units.githubRead.label',
     descriptionKey: 'units.githubRead.description',
-    service: 'github',
-    backing: { type: 'managed-connector', name: 'linkcode-github' },
+    servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
   },
 ]);

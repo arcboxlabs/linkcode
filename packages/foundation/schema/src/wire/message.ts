@@ -13,8 +13,9 @@ import { WirePayloadSchema } from './payload';
 // schema it does not speak.
 // 43 combines 42's agent.catalog/agent.cataloged with CODE-316's parallel 42 bump for
 // file.host/file.hosted, keeping every distinct schema on a distinct protocol version.
-// 44 adds the plugin catalog/config contracts and plugin resolution warning event (CODE-382).
-export const WIRE_PROTOCOL_VERSION = 44 as const;
+// 44 added the plugin catalog/config contracts and plugin resolution warning event (CODE-382).
+// 45 recasts plugins as multi-server compositions bound to connectors per service (CODE-382).
+export const WIRE_PROTOCOL_VERSION = 45 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ContentBlockSchema } from '../content';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from '../permission';
 import { PlanSchema } from '../plan';
-import { McpPluginIdSchema, PluginWarningReasonSchema } from '../plugin';
+import { McpPluginIdSchema, McpPluginServiceSchema, PluginWarningReasonSchema } from '../plugin';
 import {
   AgentHistoryIdSchema,
   MessageIdSchema,
@@ -129,6 +129,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('plugin-warning'),
     unitId: McpPluginIdSchema,
+    /** The service dependency that failed, when the reason is service-scoped. */
+    service: McpPluginServiceSchema.optional(),
     reason: PluginWarningReasonSchema,
   }),
 

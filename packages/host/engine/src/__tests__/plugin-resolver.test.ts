@@ -8,29 +8,31 @@ const PRESET_CATALOG: McpPluginCatalog = [
     id: 'github-read',
     labelKey: 'units.githubRead.label',
     descriptionKey: 'units.githubRead.description',
-    service: 'github',
-    backing: {
-      type: 'preset',
-      server: {
-        type: 'stdio',
-        name: 'linkcode-github',
-        command: 'github-mcp-server',
-        args: ['stdio'],
-        env: { LOG_LEVEL: 'warn' },
+    servers: [
+      {
+        type: 'preset',
+        server: {
+          type: 'stdio',
+          name: 'linkcode-github',
+          command: 'github-mcp-server',
+          args: ['stdio'],
+          env: { LOG_LEVEL: 'warn' },
+        },
+        service: 'github',
+        credentialSlots: [{ target: 'env', name: 'GITHUB_TOKEN' }],
       },
-      credentialSlots: [{ target: 'env', name: 'GITHUB_TOKEN' }],
-    },
+      {
+        type: 'preset',
+        server: { type: 'http', name: 'github-docs', url: 'https://docs.test/mcp' },
+        credentialSlots: [],
+      },
+    ],
   },
 ];
 
 const LOCAL_CONFIG: PluginConfig = {
-  units: [
-    {
-      unitId: 'github-read',
-      enabled: true,
-      binding: { type: 'local', connectorId: 'github-personal' },
-    },
-  ],
+  units: [{ unitId: 'github-read', enabled: true }],
+  serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
   connectors: [
     {
       id: 'github-personal',
@@ -43,7 +45,7 @@ const LOCAL_CONFIG: PluginConfig = {
 const OPTIONS: StartOptions = { kind: 'codex', cwd: '/repo' };
 
 describe('resolvePluginServers', () => {
-  it('materializes a preset and injects its local credential only at session start', () => {
+  it('materializes every composed server, routing credentials through the service binding', () => {
     const resolved = resolvePluginServers(
       {
         ...OPTIONS,
@@ -65,11 +67,12 @@ describe('resolvePluginServers', () => {
             args: ['stdio'],
             env: { LOG_LEVEL: 'warn', GITHUB_TOKEN: 'github-secret' },
           },
+          { type: 'http', name: 'github-docs', url: 'https://docs.test/mcp' },
         ],
       },
       warnings: [],
     });
-    expect(PRESET_CATALOG[0]?.backing).not.toHaveProperty('server.env.GITHUB_TOKEN');
+    expect(PRESET_CATALOG[0]?.servers[0]).not.toHaveProperty('server.env.GITHUB_TOKEN');
   });
 
   it('lets a client-supplied server win by name without injecting the stored secret', () => {
@@ -80,15 +83,69 @@ describe('resolvePluginServers', () => {
     };
     const resolved = resolvePluginServers(
       { ...OPTIONS, mcpServers: [clientServer] },
-      { ...LOCAL_CONFIG, connectors: [] },
+      { ...LOCAL_CONFIG, serviceBindings: {}, connectors: [] },
       PRESET_CATALOG,
     );
 
     expect(resolved).toEqual({
-      options: { ...OPTIONS, mcpServers: [clientServer] },
+      options: {
+        ...OPTIONS,
+        mcpServers: [
+          clientServer,
+          { type: 'http', name: 'github-docs', url: 'https://docs.test/mcp' },
+        ],
+      },
       warnings: [],
     });
     expect(JSON.stringify(resolved)).not.toContain('github-secret');
+  });
+
+  it('degrades an unsatisfied service dependency to a warning without dropping satisfied servers', () => {
+    const resolved = resolvePluginServers(
+      OPTIONS,
+      { ...LOCAL_CONFIG, serviceBindings: {} },
+      PRESET_CATALOG,
+    );
+
+    expect(resolved.warnings).toEqual([
+      {
+        type: 'plugin-warning',
+        unitId: 'github-read',
+        service: 'github',
+        reason: 'unsatisfied-binding',
+      },
+    ]);
+    expect(resolved.options.mcpServers).toEqual([
+      { type: 'http', name: 'github-docs', url: 'https://docs.test/mcp' },
+    ]);
+  });
+
+  it('treats a service-mismatched connector as unsatisfied', () => {
+    const resolved = resolvePluginServers(
+      OPTIONS,
+      {
+        ...LOCAL_CONFIG,
+        connectors: [
+          {
+            id: 'github-personal',
+            // @ts-expect-error -- future service value simulated for the mismatch path
+            service: 'jira',
+            credential: { type: 'auth-token', secret: 'jira-secret' },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+    );
+
+    expect(resolved.warnings).toEqual([
+      {
+        type: 'plugin-warning',
+        unitId: 'github-read',
+        service: 'github',
+        reason: 'unsatisfied-binding',
+      },
+    ]);
+    expect(JSON.stringify(resolved.options)).not.toContain('jira-secret');
   });
 
   it('reports unsupported agents instead of silently dropping an enabled unit', () => {
@@ -107,13 +164,19 @@ describe('resolvePluginServers', () => {
     const resolved = resolvePluginServers(
       OPTIONS,
       {
-        units: [{ unitId: 'github-read', enabled: true, binding: { type: 'managed' } }],
+        units: [{ unitId: 'github-read', enabled: true }],
+        serviceBindings: { github: { type: 'managed' } },
         connectors: [],
       },
       MCP_PLUGIN_CATALOG,
     );
     expect(resolved.warnings).toEqual([
-      { type: 'plugin-warning', unitId: 'github-read', reason: 'broker-unavailable' },
+      {
+        type: 'plugin-warning',
+        unitId: 'github-read',
+        service: 'github',
+        reason: 'broker-unavailable',
+      },
     ]);
   });
 });

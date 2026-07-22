@@ -129,16 +129,14 @@ describe('dev mock transport', () => {
     const client = await connectedClient();
 
     expect(await client.getPluginCatalog()).toEqual([
-      expect.objectContaining({ id: 'github-read', service: 'github' }),
+      expect.objectContaining({
+        id: 'github-read',
+        servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
+      }),
     ]);
     await client.setPluginConfig({
-      units: [
-        {
-          unitId: 'github-read',
-          enabled: true,
-          binding: { type: 'local', connectorId: 'github-personal' },
-        },
-      ],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
       connectorOperations: [
         {
           type: 'create',
@@ -152,13 +150,8 @@ describe('dev mock transport', () => {
       ],
     });
     expect(await client.getPluginConfig()).toEqual({
-      units: [
-        {
-          unitId: 'github-read',
-          enabled: true,
-          binding: { type: 'local', connectorId: 'github-personal' },
-        },
-      ],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
       connectors: [
         {
           id: 'github-personal',
@@ -193,7 +186,8 @@ describe('dev mock transport', () => {
       connectorOperations: [{ type: 'delete', connectorId: 'github-personal' }],
     });
     expect(await client.getPluginConfig()).toEqual({
-      units: [{ unitId: 'github-read', enabled: false }],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: {},
       connectors: [],
     });
 

@@ -9,8 +9,7 @@ describe('engine plugin catalog', () => {
         id: 'github-read',
         labelKey: 'units.githubRead.label',
         descriptionKey: 'units.githubRead.description',
-        service: 'github',
-        backing: { type: 'managed-connector', name: 'linkcode-github' },
+        servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
       },
     ]);
     expect(JSON.stringify(MCP_PLUGIN_CATALOG)).not.toContain('token');

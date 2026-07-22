@@ -99,12 +99,12 @@ describe('LinkCodeClient control API', () => {
         id: 'github-read',
         labelKey: 'units.githubRead.label',
         descriptionKey: 'units.githubRead.description',
-        service: 'github',
-        backing: { type: 'managed-connector', name: 'linkcode-github' },
+        servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
       },
     ];
     const plugins: PluginConfigPublic = {
-      units: [{ unitId: 'github-read', enabled: true, binding: { type: 'managed' } }],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'managed' } },
       connectors: [],
     };
 

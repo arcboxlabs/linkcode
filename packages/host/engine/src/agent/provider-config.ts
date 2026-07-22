@@ -8,6 +8,7 @@ import type {
   ProvidersConfig,
   StartOptions,
 } from '@linkcode/schema';
+import { McpPluginServiceSchema } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 
 /**
@@ -29,7 +30,7 @@ export interface ProviderConfigStore {
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
-  private plugins: PluginConfig = { units: [], connectors: [] };
+  private plugins: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
 
   get(): ProvidersConfig {
     return this.providers;
@@ -57,10 +58,12 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
 }
 
 /** Apply one validated plugin patch without mutating the stored snapshot. Connector deletion also
- * disables and unbinds every unit that referenced it, so a successful write cannot create stale
- * references through deletion. */
+ * drops every service binding that referenced it, so a successful write cannot create stale
+ * references through deletion; units stay enabled and surface a resolution warning instead. */
 export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
-  let units = patch.units === undefined ? current.units : patch.units;
+  const units = patch.units === undefined ? current.units : patch.units;
+  let serviceBindings =
+    patch.serviceBindings === undefined ? current.serviceBindings : patch.serviceBindings;
   let connectors = current.connectors;
 
   for (const operation of patch.connectorOperations ?? []) {
@@ -95,21 +98,25 @@ export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigS
         );
         break;
       }
-      case 'delete':
+      case 'delete': {
         nullthrow(existing, `Plugin connector does not exist: ${operation.connectorId}`);
         connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
-        units = units.map((unit) =>
-          unit.binding?.type === 'local' && unit.binding.connectorId === operation.connectorId
-            ? { unitId: unit.unitId, enabled: false }
-            : unit,
-        );
+        const remaining = { ...serviceBindings };
+        for (const service of McpPluginServiceSchema.options) {
+          const binding = remaining[service];
+          if (binding?.type === 'local' && binding.connectorId === operation.connectorId) {
+            delete remaining[service];
+          }
+        }
+        serviceBindings = remaining;
         break;
+      }
       default:
         break;
     }
   }
 
-  return { units, connectors };
+  return { units, serviceBindings, connectors };
 }
 
 /** Remove connector secrets at the data-plane boundary. A configured credential is represented by
@@ -117,6 +124,7 @@ export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigS
 export function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
   return {
     units: config.units,
+    serviceBindings: config.serviceBindings,
     connectors: config.connectors.map(({ credential, ...connector }) => ({
       ...connector,
       credential: {

@@ -117,13 +117,8 @@ describe('applyProviderDefaults account pool', () => {
 
 describe('plugin config', () => {
   const config: PluginConfig = {
-    units: [
-      {
-        unitId: 'github-read',
-        enabled: true,
-        binding: { type: 'local', connectorId: 'github-personal' },
-      },
-    ],
+    units: [{ unitId: 'github-read', enabled: true }],
+    serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
     connectors: [
       {
         id: 'github-personal',
@@ -161,13 +156,14 @@ describe('plugin config', () => {
     expect(replaced.connectors[0]?.credential.secret).toBe('new-secret');
   });
 
-  it('deletes a connector and atomically disables and unbinds every referencing unit', () => {
+  it('deletes a connector and atomically drops every service binding that referenced it', () => {
     expect(
       applyPluginConfigSet(config, {
         connectorOperations: [{ type: 'delete', connectorId: 'github-personal' }],
       }),
     ).toEqual({
-      units: [{ unitId: 'github-read', enabled: false }],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: {},
       connectors: [],
     });
   });

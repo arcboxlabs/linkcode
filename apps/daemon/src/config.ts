@@ -8,7 +8,9 @@ import {
   AgentKindSchema,
   DAEMON_DEFAULT_PORT,
   linkcodeStateDirName,
+  McpPluginServiceSchema,
   PluginConnectorSchema,
+  PluginServiceBindingSchema,
   PluginUnitStateSchema,
   ProviderConfigSchema,
   parseProfileName,
@@ -124,15 +126,37 @@ export function loadConfig(): DaemonConfig {
 }
 
 function parsePlugins(raw: unknown): PluginConfig {
-  if (raw === undefined) return { units: [], connectors: [] };
+  const empty: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
+  if (raw === undefined) return empty;
   if (!isRecord(raw)) {
     logger.warn({ operation: 'config.load' }, 'Invalid plugins config: expected an object');
-    return { units: [], connectors: [] };
+    return empty;
   }
   return {
     units: parsePluginEntries(raw.units, PluginUnitStateSchema, 'unit'),
+    serviceBindings: parseServiceBindings(raw.serviceBindings),
     connectors: parsePluginEntries(raw.connectors, PluginConnectorSchema, 'connector'),
   };
+}
+
+/** Parse binding by binding: an invalid entry is dropped and logged, never blanking the map. */
+function parseServiceBindings(raw: unknown): PluginConfig['serviceBindings'] {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    logger.warn(
+      { operation: 'config.load' },
+      'Invalid plugin service bindings config: expected an object',
+    );
+    return {};
+  }
+  const bindings: PluginConfig['serviceBindings'] = {};
+  for (const service of McpPluginServiceSchema.options) {
+    if (!(service in raw)) continue;
+    const parsed = PluginServiceBindingSchema.safeParse(raw[service]);
+    if (parsed.success) bindings[service] = parsed.data;
+    else logger.warn({ operation: 'config.load' }, 'Dropping invalid plugin service binding');
+  }
+  return bindings;
 }
 
 function parsePluginEntries<T>(

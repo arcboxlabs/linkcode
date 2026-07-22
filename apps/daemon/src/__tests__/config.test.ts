@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PluginConfig } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -188,25 +189,20 @@ describe('loadConfig plugins', () => {
     writeRawConfig({
       plugins: {
         units: [
-          {
-            unitId: 'github-read',
-            enabled: true,
-            binding: { type: 'local', connectorId: connector.id },
-          },
+          { unitId: 'github-read', enabled: true },
           { unitId: 'unknown-unit', enabled: true },
         ],
+        serviceBindings: {
+          github: { type: 'local', connectorId: connector.id },
+          jira: { type: 'local', connectorId: 'stale' },
+        },
         connectors: [connector, { id: 'bad', service: 'github' }],
       },
     });
 
     expect(loadConfig().plugins).toEqual({
-      units: [
-        {
-          unitId: 'github-read',
-          enabled: true,
-          binding: { type: 'local', connectorId: connector.id },
-        },
-      ],
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: connector.id } },
       connectors: [connector],
     });
     expect(warnSpy).toHaveBeenCalledTimes(2);
@@ -214,7 +210,11 @@ describe('loadConfig plugins', () => {
 
   it('round-trips credentials at mode 0600 without overwriting providers or accounts', () => {
     writeRawConfig({ providers: { codex: { enabled: true } }, accounts: [validAccount] });
-    const plugins = { units: [], connectors: [connector] };
+    const plugins: PluginConfig = {
+      units: [],
+      serviceBindings: { github: { type: 'local', connectorId: connector.id } },
+      connectors: [connector],
+    };
 
     savePlugins(plugins);
 
@@ -230,6 +230,6 @@ describe('loadConfig plugins', () => {
 
   it('defaults an older config without a plugins section to empty state', () => {
     writeRawConfig({ providers: {} });
-    expect(loadConfig().plugins).toEqual({ units: [], connectors: [] });
+    expect(loadConfig().plugins).toEqual({ units: [], serviceBindings: {}, connectors: [] });
   });
 });
