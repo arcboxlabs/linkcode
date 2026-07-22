@@ -98,7 +98,7 @@ client configuration or new build.
 
 ## Release-only secrets
 
-Set as GitHub repository/environment secrets, never locally. Signing and notarization secrets live in the protected `release` environment; unsigned PR builds get empty values and skip signing. Full context in [`RELEASE.md`](./RELEASE.md).
+Set as GitHub repository/environment secrets, never locally. Signing and notarization secrets live in the protected `release` environment; unsigned PR builds get empty values and skip signing. The release automation GitHub App credentials are repository/org secrets because release-please must maintain PRs before entering that environment. Full context in [`RELEASE.md`](./RELEASE.md).
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
@@ -109,4 +109,4 @@ Set as GitHub repository/environment secrets, never locally. Signing and notariz
 | `AZURE_PUBLISHER_NAME`, `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERTIFICATE_PROFILE` | `build-desktop.yml` | Windows Trusted Signing identifiers (not credentials, but kept as secrets so the public repo doesn't advertise the signing infrastructure). `AZURE_PUBLISHER_NAME` must match the certificate subject CN exactly. |
 | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` | `build-desktop.yml` | `azure/login` **inputs** for OIDC federation. No `AZURE_*` credential env exists during packaging on purpose, so `DefaultAzureCredential` falls through to the Azure CLI entry. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `release-desktop.yml` | Cloudflare R2 credentials for publishing the electron-updater feed. `AWS_REQUEST_CHECKSUM_CALCULATION`/`AWS_RESPONSE_CHECKSUM_VALIDATION` are pinned to `WHEN_REQUIRED` because R2 doesn't implement the checksums recent aws-cli sends. |
-| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | `release-desktop.yml` | GitHub App credentials for the Homebrew cask bump. **Empty makes the bump steps self-skip** — a missing secret is a silent no-op, not a failure. |
+| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | `release-please.yml`, `finalize-releases.yml`, `release-desktop.yml` | Repository/org-scoped GitHub App credentials. The App needs Contents, Issues, and Pull requests read/write on this repo so release-please can maintain PRs, draft Releases, and tags; the release environment also uses it for the Homebrew cask bump. Missing credentials fail release automation before any tag is created; only the Homebrew-only use remains an optional self-skip. |
