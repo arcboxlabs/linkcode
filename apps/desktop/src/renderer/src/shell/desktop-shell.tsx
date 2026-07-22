@@ -25,7 +25,7 @@ import {
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
@@ -226,7 +226,7 @@ export function DesktopShell({
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void systemBridge.app.version().then((value) => {
         if (!signal.aborted) setAppVersion(`v${value}`);

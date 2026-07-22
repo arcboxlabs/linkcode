@@ -9,7 +9,7 @@ import type {
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { withoutAutomationSessions } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useRef } from 'react';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
@@ -114,7 +114,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
   // not-yet-listed session resolves; deduped per id so a genuinely gone session doesn't spin.
   const refreshedForRef = useRef<SessionId | null>(null);
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (selectedId == null || draft) return;
     if (sessionById(sessions, selectedId)) {
       refreshedForRef.current = null;

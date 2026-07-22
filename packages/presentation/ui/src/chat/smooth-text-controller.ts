@@ -1,4 +1,4 @@
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useEffect, useRef, useState } from 'react';
 import { useRenderPrefs } from '../render-prefs';
 
@@ -87,7 +87,7 @@ export function useSmoothText(source: string, isStreaming: boolean): string {
 
   const active =
     !immediate && (isStreaming || source !== current.source || current.pending.length > 0);
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!active) return;
       const timer = window.setInterval(() => {

@@ -1,6 +1,6 @@
 import type { ThemedToken } from '@shikijs/core';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { ScrollView, Text, useColorScheme, View } from 'react-native';
 
@@ -25,7 +25,7 @@ export function CodeBlock({ code, lang }: { code: string; lang?: string }): Reac
       ? highlighted.tokens
       : null;
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!lang) return;
       void import('./highlight')

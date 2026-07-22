@@ -10,7 +10,7 @@ import {
   WorkbenchAppProviders,
   WorkbenchProviders,
 } from '@linkcode/workbench';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { DesktopAutomationsView } from './automations/automations-view';
 import { desktopDaemonConnectionSource } from './daemon-connection-source';
@@ -93,7 +93,7 @@ function DesktopConnectionFallback(): React.ReactNode {
   const [withinStartupGrace, setWithinStartupGrace] = useState(
     () => Date.now() - RENDERER_BOOT_AT < MANAGED_STARTUP_GRACE_MS,
   );
-  useAbortableEffect((signal) => {
+  useEffect((signal) => {
     const remaining = MANAGED_STARTUP_GRACE_MS - (Date.now() - RENDERER_BOOT_AT);
     if (remaining <= 0) return;
     const timer = setTimeout(() => {
@@ -110,7 +110,7 @@ function DesktopConnectionFallback(): React.ReactNode {
 function useDaemonIsManaged(): boolean {
   const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
   const [managed, setManaged] = useState(false);
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void systemBridge.daemon.isManaged().then((value) => {
         if (!signal.aborted) setManaged(value);
