@@ -71,7 +71,7 @@ mod imp {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::capture::CaptureStream;
+    use crate::capture::{CaptureStream, FrameClock};
     use crate::private::{self, Button, Input, SimDevice};
     use crate::proto::{STREAM_FRAME, encode_stream_frame};
 
@@ -227,14 +227,16 @@ mod imp {
         stop: &AtomicBool,
         tx: &Sender<OutMsg>,
     ) {
-        let interval = Duration::from_millis(1000 / u64::from(fps));
+        // Poll the private stream on a drift-free clock so a locked worker fps reaches the wire
+        // without the per-frame sleep overshoot that would otherwise sample it below target.
+        let mut clock = FrameClock::new(fps);
         // simctl screenshots cost ~200-400ms, so poll them well below the private fps.
         let fallback_interval = Duration::from_millis(500);
         let mut last: Option<*const Vec<u8>> = None;
         while !stop.load(Ordering::Relaxed) {
-            let tick = Instant::now();
             if stream.is_dead() {
                 // Degraded path: capture via the public simctl screenshot and push it.
+                let tick = Instant::now();
                 if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
                     && let Ok(body) = encode_stream_frame(udid, &jpeg)
                     && tx
@@ -267,9 +269,7 @@ mod imp {
                     }
                 }
             }
-            if let Some(rest) = interval.checked_sub(tick.elapsed()) {
-                thread::sleep(rest);
-            }
+            clock.tick();
         }
     }
 }

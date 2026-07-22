@@ -22,6 +22,84 @@ use std::time::{Duration, Instant};
 /// One framebuffer JPEG frame.
 pub type Frame = Arc<Vec<u8>>;
 
+/// A drift-free, precise frame pacer (macOS). It advances an absolute deadline by a fixed interval
+/// each tick and waits to it with `mach_wait_until`, whose accuracy is well under a millisecond.
+/// `thread::sleep` on macOS coalesces timers and overshoots by several ms — enough that even a
+/// deadline loop built on it caps 60 fps near 55. `mach_wait_until` does not busy-spin, so locking to
+/// the target rate costs no CPU beyond encoding the frames themselves. Times are in mach ticks.
+#[cfg(target_os = "macos")]
+pub(crate) struct FrameClock {
+    interval_ticks: u64,
+    next: u64,
+}
+
+#[cfg(target_os = "macos")]
+impl FrameClock {
+    pub(crate) fn new(fps: u32) -> FrameClock {
+        let interval_ns = 1_000_000_000u64 / u64::from(fps.max(1));
+        FrameClock {
+            interval_ticks: mach_time::ns_to_ticks(interval_ns),
+            next: mach_time::now(),
+        }
+    }
+
+    /// Wait until the next frame deadline. If a stall put us more than a full frame behind, resync to
+    /// now instead of emitting a catch-up burst of duplicate frames.
+    pub(crate) fn tick(&mut self) {
+        self.next = self.next.wrapping_add(self.interval_ticks);
+        let now = mach_time::now();
+        if self.next > now {
+            mach_time::wait_until(self.next);
+        } else if now - self.next > self.interval_ticks {
+            self.next = now;
+        }
+    }
+}
+
+/// Minimal `mach_absolute_time` timebase wrappers for precise pacing (see [`FrameClock`]).
+#[cfg(target_os = "macos")]
+mod mach_time {
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    struct Timebase {
+        numer: u32,
+        denom: u32,
+    }
+
+    unsafe extern "C" {
+        fn mach_absolute_time() -> u64;
+        fn mach_wait_until(deadline: u64) -> i32;
+        fn mach_timebase_info(info: *mut Timebase) -> i32;
+    }
+
+    /// `(numer, denom)`: mach ticks → nanoseconds is `ticks * numer / denom`. Constant per boot.
+    fn timebase() -> (u64, u64) {
+        static TB: OnceLock<(u64, u64)> = OnceLock::new();
+        *TB.get_or_init(|| {
+            let mut tb = Timebase { numer: 0, denom: 0 };
+            // SAFETY: fills a valid out-param; returns KERN_SUCCESS with a nonzero denom on macOS.
+            unsafe { mach_timebase_info(&mut tb) };
+            (u64::from(tb.numer.max(1)), u64::from(tb.denom.max(1)))
+        })
+    }
+
+    pub(super) fn now() -> u64 {
+        // SAFETY: reads the monotonic mach clock; no preconditions.
+        unsafe { mach_absolute_time() }
+    }
+
+    pub(super) fn ns_to_ticks(ns: u64) -> u64 {
+        let (numer, denom) = timebase();
+        (u128::from(ns) * u128::from(denom) / u128::from(numer)) as u64
+    }
+
+    pub(super) fn wait_until(deadline_ticks: u64) {
+        // SAFETY: blocks the calling thread until the absolute mach-time deadline.
+        unsafe { mach_wait_until(deadline_ticks) };
+    }
+}
+
 /// Largest accepted worker frame (a JPEG at simulator resolution is well under this).
 const MAX_WORKER_FRAME: usize = 32 * 1024 * 1024;
 /// Backoff between worker respawns after a crash.
@@ -189,10 +267,9 @@ pub fn run_worker() -> ! {
         std::process::exit(3);
     };
 
-    let interval = Duration::from_millis(1000 / u64::from(fps));
+    let mut clock = FrameClock::new(fps);
     let mut stdout = io::stdout().lock();
     loop {
-        let tick = Instant::now();
         if let Some(jpeg) = screen.capture_jpeg(quality) {
             let len = u32::try_from(jpeg.len()).unwrap_or(0);
             if len == 0
@@ -203,9 +280,7 @@ pub fn run_worker() -> ! {
                 break; // parent closed the pipe
             }
         }
-        if let Some(rest) = interval.checked_sub(tick.elapsed()) {
-            thread::sleep(rest);
-        }
+        clock.tick();
     }
     std::process::exit(0);
 }
