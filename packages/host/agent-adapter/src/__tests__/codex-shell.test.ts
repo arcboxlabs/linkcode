@@ -350,16 +350,17 @@ describe('CodexAdapter shell-command passthrough', () => {
     );
   });
 
-  it('keeps newer live picks when a previous turn reports stale settings', async () => {
+  it('keeps live picks until confirmation, then reflects provider corrections', async () => {
     const adapter = new TestCodex();
     const events: AgentEvent[] = [];
     adapter.onEvent((event) => events.push(event));
     await adapter.start(start);
-    await adapter.send({ type: 'set-model', model: 'gpt-5.6-luna' });
-    await adapter.send({ type: 'set-effort', effort: 'max' });
+    await adapter.send({ type: 'set-model', model: 'gpt-5.6-terra' });
+    await adapter.send({ type: 'set-effort', effort: 'high' });
     events.length = 0;
 
-    adapter.fakeServers[0].notify('thread/settings/updated', {
+    const server = adapter.fakeServers[0];
+    server.notify('thread/settings/updated', {
       threadId: 'thread-1',
       threadSettings: { model: 'gpt-5.6-sol', effort: 'low' },
     });
@@ -367,8 +368,19 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(events).not.toContainEqual({ type: 'effort-update', effort: 'low' });
     await adapter.send({ type: 'prompt', content: [textBlock('use my latest picks')] });
 
-    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
-    expect(turn?.params).toMatchObject({ model: 'gpt-5.6-luna', effort: 'max' });
+    const turn = server.requests.find((request) => request.method === 'turn/start');
+    expect(turn?.params).toMatchObject({ model: 'gpt-5.6-terra', effort: 'high' });
+
+    server.notify('thread/settings/updated', {
+      threadId: 'thread-1',
+      threadSettings: { model: 'gpt-5.6-terra', effort: 'high' },
+    });
+    server.notify('thread/settings/updated', {
+      threadId: 'thread-1',
+      threadSettings: { model: 'gpt-5.6-luna', effort: 'medium' },
+    });
+    expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-luna' });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
   });
 
   it('keeps a pending model pick when recovery resumes the previously active model', async () => {
@@ -401,6 +413,34 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(events).not.toContainEqual({ type: 'model-update', model: 'gpt-5.6-luna' });
     const turn = resumed.requests.find((request) => request.method === 'turn/start');
     expect(turn?.params).toMatchObject({ model: 'gpt-5.6-terra', effort: 'ultra' });
+  });
+
+  it('reflects corrections after thread/resume confirms a pending model', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1' },
+      model: 'gpt-5.6-luna',
+      reasoningEffort: 'medium',
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    await adapter.send({ type: 'set-model', model: 'gpt-5.6-terra' });
+
+    adapter.fakeServers[0].exit();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1' },
+      model: 'gpt-5.6-terra',
+      reasoningEffort: 'medium',
+    };
+    await adapter.send({ type: 'prompt', content: [textBlock('recover')] });
+    events.length = 0;
+
+    adapter.fakeServers[1].notify('thread/settings/updated', {
+      threadId: 'thread-1',
+      threadSettings: { model: 'gpt-5.6-luna', effort: 'medium' },
+    });
+    expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-luna' });
   });
 
   it('rejects Claude-only effort levels before starting app-server', async () => {

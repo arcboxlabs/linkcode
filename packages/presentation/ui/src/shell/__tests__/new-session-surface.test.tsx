@@ -471,6 +471,34 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('drops remembered Codex ultra when the fallback model switches to Luna', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        preferredEfforts={{ codex: 'ultra' }}
+        preferredModels={{ codex: 'gpt-5.6-sol' }}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /GPT-5.6-Sol/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'GPT-5.6-Sol' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'GPT-5.6-Luna' }));
+    typeInComposer('use Luna');
+    await pressInComposer('Enter');
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ model: 'gpt-5.6-luna' }));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
+  });
+
   it('submits a remembered dynamic-provider model even without a draft catalog', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(

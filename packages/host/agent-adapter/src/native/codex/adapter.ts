@@ -297,9 +297,13 @@ export class CodexAdapter extends BaseAgentAdapter {
   private resumeFrom: string | undefined;
   /** Model/effort for the next `turn/start`; `turn/start` overrides stick for subsequent turns. */
   private model: string | undefined;
+  /** Live selections awaiting a matching settings update. Kept separate from the sticky turn
+   * overrides so a later provider correction is reflected after the selection is confirmed. */
+  private pendingModel: string | undefined;
   /** Model last confirmed by thread/start or thread/settings/updated. */
   private activeModel: string | undefined;
   private effort: EffortLevel | undefined;
+  private pendingEffort: EffortLevel | undefined;
   /** Provider catalog refreshed from `model/list`, including per-model effort capabilities. */
   private modelOptions = new Map<string, AgentModelOption>();
   private catalogDefaultModel: string | undefined;
@@ -329,6 +333,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model ?? undefined;
+    if (this.resumeFrom !== undefined) this.pendingModel = this.model;
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
@@ -527,6 +532,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
     this.opts.model = model;
     this.model = model;
+    this.pendingModel = model;
     // Reflect the pick now; it applies from the next turn/start.
     this.emitModel(model);
     return Promise.resolve();
@@ -537,6 +543,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   protected override onSetEffort(effort: EffortLevel): Promise<void> {
     this.assertEffortSupported(effort, this.selectedModel(), !this.modelCatalogAvailable);
     this.effort = effort;
+    this.pendingEffort = effort;
     // Reflect the pick now; it applies from the next turn/start.
     this.emitEffort(effort);
     return Promise.resolve();
@@ -727,20 +734,20 @@ export class CodexAdapter extends BaseAgentAdapter {
   private reflectThreadSettings(response: unknown, fallbackModel?: string, resumed = false): void {
     if (!isRecord(response)) return;
     const model = stringField(response, 'model') ?? fallbackModel;
-    const pendingModel = resumed ? this.model : undefined;
     if (model) {
       this.activeModel = model;
-      if (pendingModel === undefined) {
-        if (this.model !== undefined) this.model = model;
+      if (this.pendingModel === undefined) {
+        if (!resumed && this.model !== undefined) this.model = model;
         this.emitModel(model);
       } else {
-        this.emitModel(pendingModel);
+        this.emitModel(this.pendingModel);
+        if (model === this.pendingModel) this.pendingModel = undefined;
       }
     }
     if (this.effort !== undefined) {
-      this.assertEffortSupported(this.effort, pendingModel ?? model, !this.modelCatalogAvailable);
-      return;
+      this.assertEffortSupported(this.effort, this.model ?? model, !this.modelCatalogAvailable);
     }
+    if (this.pendingEffort !== undefined) return;
     const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
     const effective = effort.success
       ? effort.data
@@ -881,17 +888,23 @@ export class CodexAdapter extends BaseAgentAdapter {
         const settings = recordField(params, 'threadSettings');
         if (!settings) break;
         const model = stringField(settings, 'model');
-        const modelMatchesPending = this.model === undefined || model === this.model;
+        const modelMatchesPending = this.pendingModel === undefined || model === this.pendingModel;
         if (model) {
           this.activeModel = model;
-          if (modelMatchesPending) this.emitModel(model);
+          if (modelMatchesPending) {
+            this.emitModel(model);
+            if (model === this.pendingModel) this.pendingModel = undefined;
+          }
         }
         // A previous turn can report after the user has picked next-turn overrides. Keep learning
         // the effective model above, but do not replace the UI's newer pending model or its effort.
         if (!modelMatchesPending) break;
         const effort = EffortLevelSchema.safeParse(settings.effort);
-        if (this.effort !== undefined) {
-          if (effort.success && effort.data === this.effort) this.emitEffort(effort.data);
+        if (this.pendingEffort !== undefined) {
+          if (effort.success && effort.data === this.pendingEffort) {
+            this.emitEffort(effort.data);
+            this.pendingEffort = undefined;
+          }
           break;
         }
         const effective =
