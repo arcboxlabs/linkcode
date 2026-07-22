@@ -100,17 +100,17 @@ export class AssetManager {
   /** Synchronous: the managed executable path when the wanted version is fully installed. */
   managedBinary(id: ManagedAssetId): string | undefined {
     const descriptor = this.descriptors.get(id);
-    const version = this.wanted.get(id);
     // A closure installs an importable module tree, not a spawnable binary (see managedEntry).
     if (!descriptor || isClosureDescriptor(descriptor)) return undefined;
+    const version = this.wanted.get(id);
     return version ? installedPath(descriptor, version) : undefined;
   }
 
   /** Synchronous: the entry module of an installed closure asset (in-process import target). */
   managedEntry(id: ManagedAssetId): string | undefined {
     const descriptor = this.descriptors.get(id);
-    const version = this.wanted.get(id);
     if (!descriptor || !isClosureDescriptor(descriptor)) return undefined;
+    const version = this.wanted.get(id);
     return version ? installedPath(descriptor, version) : undefined;
   }
 

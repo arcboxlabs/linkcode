@@ -472,8 +472,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.turnEpoch += 1;
     // Captured NOW, not when the wait cap fires: a repeat cancel inside the wait window must not
     // let this cancel's late-failure watcher mistake itself for the current flag owner.
-    const epoch = this.turnEpoch;
     if (!this.client || !this.sessionId) return;
+
+    const epoch = this.turnEpoch;
     const abort = this.client.session.abort({
       sessionID: this.sessionId,
       directory: this.directory,
