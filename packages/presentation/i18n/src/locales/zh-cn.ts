@@ -209,6 +209,7 @@ export const zhCN = {
       declined: '已拒绝',
       file: '文件',
       command: '命令',
+      workingDirectory: '工作目录',
       url: 'URL',
       arguments: '参数',
       question: '要允许「{action}」吗？',

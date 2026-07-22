@@ -290,7 +290,7 @@ describe('buildConversation', () => {
     expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
   });
 
-  it('tracks a permission until its authoritative resolution', () => {
+  it('links a modern permission subject to its full tool snapshot until authoritative resolution', () => {
     const base: AgentEvent[] = [
       userText('run'),
       {
@@ -301,17 +301,32 @@ describe('buildConversation', () => {
           kind: 'execute',
           status: 'pending',
           content: [],
+          rawInput: { command: 'pnpm test', cwd: '/repo' },
         },
       },
       {
         type: 'permission-request',
         requestId: 'p1',
-        toolCall: { toolCallId: 't1', title: 'Run' },
+        title: 'Run tests',
+        description: 'Verify the changes',
+        subject: { type: 'tool-call', toolCallId: 't1' },
         options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
       },
     ];
-    expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
-    expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
+    const open = buildConversation(base);
+    expect(open.pendingPermissionIds).toEqual(['p1']);
+    expect(open.items.find((item) => item.kind === 'approval')).toMatchObject({
+      title: 'Run tests',
+      description: 'Verify the changes',
+      subject: { type: 'tool-call', toolCallId: 't1' },
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Run',
+        kind: 'execute',
+        status: 'pending',
+        rawInput: { command: 'pnpm test', cwd: '/repo' },
+      },
+    });
 
     const toolSettled = buildConversation([
       ...base,
@@ -343,6 +358,25 @@ describe('buildConversation', () => {
         outcome: { outcome: 'selected', optionId: 'ok' },
         source: 'user',
       },
+    });
+  });
+
+  it('keeps reading legacy permission requests with an embedded tool call', () => {
+    const conversation = buildConversation([
+      userText('run'),
+      {
+        type: 'permission-request',
+        requestId: 'legacy-p1',
+        toolCall: { toolCallId: 'legacy-t1', title: 'Legacy run', kind: 'execute' },
+        options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+      },
+    ]);
+
+    expect(conversation.pendingPermissionIds).toEqual(['legacy-p1']);
+    expect(conversation.items.find((item) => item.kind === 'approval')).toMatchObject({
+      title: 'Legacy run',
+      subject: { type: 'tool-call', toolCallId: 'legacy-t1' },
+      toolCall: { toolCallId: 'legacy-t1', title: 'Legacy run', kind: 'execute' },
     });
   });
 
