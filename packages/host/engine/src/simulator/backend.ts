@@ -84,6 +84,15 @@ export interface SimulatorBackend {
   tap(udid: string, x: number, y: number): Promise<void>;
   /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
   touch(udid: string, phase: SimulatorTouchPhase, x: number, y: number): Promise<void>;
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  pinch(
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: SimulatorPoint,
+    b: SimulatorPoint,
+  ): Promise<void>;
+  /** Set the device pasteboard; pair with a Cmd+V key press to inject arbitrary Unicode. */
+  paste(udid: string, text: string): Promise<void>;
   /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
   swipe(udid: string, from: SimulatorPoint, to: SimulatorPoint, durationMs?: number): Promise<void>;
   /** Press a hardware button (private HID; macOS only). */

@@ -21,7 +21,7 @@ fn unsupported() -> OpError {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{available, button, key, stream_start, stream_stop, swipe, tap, touch};
+pub use imp::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(not(target_os = "macos"))]
 mod stubs {
@@ -34,6 +34,14 @@ mod stubs {
         Err(unsupported())
     }
     pub fn touch(_udid: &str, _phase: TouchPhase, _x: f64, _y: f64) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
+    pub fn pinch(
+        _udid: &str,
+        _phase: TouchPhase,
+        _a: (f64, f64),
+        _b: (f64, f64),
+    ) -> Result<Value, OpError> {
         Err(unsupported())
     }
     pub fn swipe(
@@ -68,7 +76,7 @@ mod stubs {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub use stubs::{available, button, key, stream_start, stream_stop, swipe, tap, touch};
+pub use stubs::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -97,6 +105,8 @@ mod imp {
         streams: HashMap<String, StreamHandle>,
         /// Active streamed-touch identifiers by udid (down allocates, up removes).
         touches: HashMap<String, u32>,
+        /// Active two-finger identifiers by udid (pinch streams).
+        pinches: HashMap<String, [u32; 2]>,
     }
 
     struct StreamHandle {
@@ -115,12 +125,21 @@ mod imp {
                 inputs: HashMap::new(),
                 streams: HashMap::new(),
                 touches: HashMap::new(),
+                pinches: HashMap::new(),
             })
         })
     }
 
     pub fn available() -> bool {
         private::interactive_available()
+    }
+
+    fn to_hid_phase(phase: TouchPhase) -> private::Phase {
+        match phase {
+            TouchPhase::Down => private::Phase::Down,
+            TouchPhase::Move => private::Phase::Move,
+            TouchPhase::Up => private::Phase::Up,
+        }
     }
 
     /// Resolve (and cache) a warmed HID client for `udid`.
@@ -163,15 +182,41 @@ mod imp {
         let Some(identifier) = identifier else {
             return Ok(json!({}));
         };
-        let hid_phase = match phase {
-            TouchPhase::Down => private::Phase::Down,
-            TouchPhase::Move => private::Phase::Move,
-            TouchPhase::Up => private::Phase::Up,
-        };
-        if input.touch_phase(x, y, identifier, hid_phase) {
+        if input.touch_phase(x, y, identifier, to_hid_phase(phase)) {
             Ok(json!({}))
         } else {
             Err(OpError::new(ErrorCode::SimctlFailed, "touch failed"))
+        }
+    }
+
+    /// One phase of a streamed two-finger gesture (pinch/zoom). Identifiers are allocated on
+    /// `down` and released on `up`; a stray `move`/`up` no-ops like [`touch`].
+    pub fn pinch(
+        udid: &str,
+        phase: TouchPhase,
+        a: (f64, f64),
+        b: (f64, f64),
+    ) -> Result<Value, OpError> {
+        let input = input_for(udid)?;
+        let mut reg = registry().lock().expect("interactive registry poisoned");
+        let ids = match phase {
+            TouchPhase::Down => {
+                let ids = [input.allocate_touch(), input.allocate_touch()];
+                reg.pinches.insert(udid.to_owned(), ids);
+                Some(ids)
+            }
+            TouchPhase::Move => reg.pinches.get(udid).copied(),
+            TouchPhase::Up => reg.pinches.remove(udid),
+        };
+        drop(reg);
+        let Some([id0, id1]) = ids else {
+            return Ok(json!({}));
+        };
+        let hid_phase = to_hid_phase(phase);
+        if input.touch_pair([(a.0, a.1, id0), (b.0, b.1, id1)], hid_phase) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "pinch failed"))
         }
     }
 

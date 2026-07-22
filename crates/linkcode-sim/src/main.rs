@@ -165,7 +165,10 @@ fn main() {
                 // Touch phases and key presses must keep stdio order — a per-request thread would
                 // race a gesture's down/move/up or reorder typed characters. Each is a handful of
                 // fast HID sends, so inline handling is cheap and stays off the inflight gate.
-                if matches!(request.op, Op::Touch { .. } | Op::Key { .. }) {
+                if matches!(
+                    request.op,
+                    Op::Touch { .. } | Op::Pinch { .. } | Op::Key { .. }
+                ) {
                     serve(request, &tx);
                 } else {
                     gate.acquire();
@@ -256,6 +259,15 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
         }
         Op::Tap { udid, x, y } => interactive::tap(&udid, x, y),
         Op::Touch { udid, phase, x, y } => interactive::touch(&udid, phase, x, y),
+        Op::Pinch {
+            udid,
+            phase,
+            x0,
+            y0,
+            x1,
+            y1,
+        } => interactive::pinch(&udid, phase, (x0, y0), (x1, y1)),
+        Op::Paste { udid, text } => simctl::set_pasteboard(&udid, &text),
         Op::Swipe {
             udid,
             x0,

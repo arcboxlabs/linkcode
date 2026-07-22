@@ -29,7 +29,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 48;
+const WIRE_VERSION = 49;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -316,6 +316,22 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       await win.mouse.up();
       await waitForHashChange(onSafariAgain, 'dragging to scroll');
       console.log('streamed-touch drag scrolled the page');
+
+      // Option-drag pinch: two mirrored fingers (wire `simulator.pinch`). The page may or may not
+      // zoom, so this only proves the two-finger pipeline drives the device without erroring.
+      const cx = box.x + box.width * 0.5;
+      const cy = box.y + box.height * 0.45;
+      await win.keyboard.down('Alt');
+      await win.mouse.move(cx, cy);
+      await win.mouse.down();
+      for (let step = 1; step <= 8; step += 1) {
+        await win.mouse.move(cx + step * box.width * 0.03, cy + step * box.height * 0.03);
+        await win.waitForTimeout(20);
+      }
+      await win.mouse.up();
+      await win.keyboard.up('Alt');
+      if ((await sectionTab.count()) === 0) fail('the panel died during the pinch gesture');
+      console.log('option-drag pinch drove a two-finger gesture');
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });
       console.log(`screenshot: ${tapShot}`);

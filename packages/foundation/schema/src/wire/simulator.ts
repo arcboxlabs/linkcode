@@ -143,6 +143,27 @@ export const simulatorWireVariants = [
     x: coord,
     y: coord,
   }),
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  z.object({
+    kind: z.literal('simulator.pinch'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    phase: SimulatorTouchPhaseSchema,
+    x0: coord,
+    y0: coord,
+    x1: coord,
+    y1: coord,
+  }),
+  /** Set the device pasteboard; clients pair it with a Cmd+V key press to inject arbitrary
+   * Unicode (IME output, emoji) the US-ASCII key path cannot type. */
+  z.object({
+    kind: z.literal('simulator.paste'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    text: z.string(),
+  }),
   z.object({
     kind: z.literal('simulator.swipe'),
     clientReqId: WireRequestIdSchema,

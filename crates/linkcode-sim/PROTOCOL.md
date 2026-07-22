@@ -72,9 +72,11 @@ Off macOS, or when SimulatorKit is unavailable, every P1 op fails with `xcodeMis
 | --- | --- | --- |
 | `tap` | `udid`, `x`, `y` (normalised 0..1) | `{}` |
 | `touch` | `udid`, `phase` (`down`/`move`/`up`), `x`, `y` | `{}` — one phase of a caller-driven touch stream |
+| `pinch` | `udid`, `phase`, `x0`, `y0`, `x1`, `y1` | `{}` — one phase of a caller-driven **two-finger** stream |
 | `swipe` | `udid`, `x0`, `y0`, `x1`, `y1`, `durationMs?` | `{}` |
 | `button` | `udid`, `button` (`home`/`lock`) | `{}` |
 | `key` | `udid`, `usage` (HID page-7 usage), `modifiers?` (usages `0xE0..`) | `{}` — modifier-downs → key-down → key-up → modifier-ups |
+| `paste` | `udid`, `text` | `{}` — sets the device pasteboard via public `simctl pbcopy` (stdin); pair with a Cmd+V `key` to inject arbitrary Unicode |
 | `streamStart` | `udid`, `fps?` (60), `quality?` (0.6), `scale?` (1.0), `codec?` (`jpeg` default, `h264`) | `{ streaming, fps, scale, codec }` — frames then arrive on `STREAM_FRAME`s (jpeg) or `STREAM_FRAME_H264`s |
 | `streamStop` | `udid` | `{}` |
 

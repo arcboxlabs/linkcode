@@ -55,8 +55,17 @@ export interface SimulatorScreenProps {
    * number of `move`s, one final `up` per gesture. Forwarded in real time, so the device's own
    * gesture recognition decides tap vs drag vs long-press. */
   onTouch?: (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint) => void;
+  /** A streamed two-finger phase (pinch/zoom): both fingers in normalized coordinates. Driven by
+   * Option-drag, mirroring Simulator.app — the two fingers are symmetric about the drag origin. */
+  onPinch?: (
+    phase: SimulatorScreenTouchPhase,
+    a: SimulatorScreenPoint,
+    b: SimulatorScreenPoint,
+  ) => void;
   /** A key press (typed on the focused screen) decomposed to HID usages — see {@link simulatorKeyPress}. */
   onKey?: (press: SimulatorKeyPress) => void;
+  /** Text committed by the OS IME (composition end / non-ASCII input): pasted onto the device. */
+  onText?: (text: string) => void;
   /** The device's real screen-outline mask (image URL, framebuffer-sized): clips the stream to
    * the exact screen shape, and its measured corner radius keeps the chassis curve concentric.
    * Absent → a generic rounding. */
@@ -99,12 +108,15 @@ interface PaintState {
 export function SimulatorScreen({
   subscribeFrames,
   onTouch,
+  onPinch,
   onKey,
+  onText,
   maskUrl,
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const paintRef = useRef<PaintState>({
     mask: null,
     frame: null,
@@ -114,6 +126,9 @@ export function SimulatorScreen({
   });
   const pressRef = useRef<{
     pointerId: number;
+    /** True while this drag is an Option-pinch (two mirrored fingers about `origin`). */
+    pinch: boolean;
+    origin: SimulatorScreenPoint;
     last: SimulatorScreenPoint;
     moveSentAt: number;
   } | null>(null);
@@ -237,12 +252,34 @@ export function SimulatorScreen({
     [maskUrl],
   );
 
+  // Option-drag pinches (Simulator.app convention): the two fingers mirror about the press
+  // origin, so the cursor drives one finger and its reflection drives the other.
+  const mirror = (
+    origin: SimulatorScreenPoint,
+    point: SimulatorScreenPoint,
+  ): SimulatorScreenPoint => ({
+    x: clamp(2 * origin.x - point.x, 0, 1),
+    y: clamp(2 * origin.y - point.y, 0, 1),
+  });
+  const emitGesture = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {
+    const press = pressRef.current;
+    if (press?.pinch) onPinch?.(phase, point, mirror(press.origin, point));
+    else onTouch?.(phase, point);
+  };
+
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    inputRef.current?.focus({ preventScroll: true });
     const point = normalizedPoint(event);
-    pressRef.current = { pointerId: event.pointerId, last: point, moveSentAt: performance.now() };
-    onTouch?.('down', point);
+    pressRef.current = {
+      pointerId: event.pointerId,
+      pinch: event.altKey && onPinch !== undefined,
+      origin: point,
+      last: point,
+      moveSentAt: performance.now(),
+    };
+    emitGesture('down', point);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
@@ -253,30 +290,38 @@ export function SimulatorScreen({
     const point = normalizedPoint(event);
     press.last = point;
     press.moveSentAt = now;
-    onTouch?.('move', point);
+    emitGesture('move', point);
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const press = pressRef.current;
     if (press?.pointerId !== event.pointerId) return;
+    emitGesture('up', normalizedPoint(event));
     pressRef.current = null;
-    onTouch?.('up', normalizedPoint(event));
   };
 
   const handlePointerCancel = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const press = pressRef.current;
     if (press?.pointerId !== event.pointerId) return;
-    pressRef.current = null;
     // End the gesture where it last was — a stuck touch would keep the device pressed forever.
-    onTouch?.('up', press.last);
+    emitGesture('up', press.last);
+    pressRef.current = null;
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>): void => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     if (onKey === undefined || event.nativeEvent.isComposing) return;
     const press = simulatorKeyPress(event);
     if (press === null) return;
     event.preventDefault();
     onKey(press);
+  };
+
+  // IME / non-ASCII commits arrive here (the hidden input is where composition happens). Route
+  // them through the pasteboard; clear the input so it never accumulates.
+  const handleInput = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    const value = event.currentTarget.value;
+    event.currentTarget.value = '';
+    if (value.length > 0) onText?.(value);
   };
 
   // Trackpad/wheel scrolling becomes a synthetic drag: touch down where the cursor sits, move
@@ -314,12 +359,10 @@ export function SimulatorScreen({
     <div
       className={cn('flex h-full w-full items-center justify-center overflow-hidden', className)}
     >
-      {/* Focusable so plain typing reaches the device; app-level chords (⌘…) pass through. */}
       <canvas
         ref={canvasRef}
-        tabIndex={0}
         className={cn(
-          'w-full max-h-full max-w-full touch-none object-contain outline-none drop-shadow-xl',
+          'w-full max-h-full max-w-full touch-none object-contain drop-shadow-xl',
           deviceAspect === null && 'hidden',
         )}
         style={deviceAspect === null ? undefined : { aspectRatio: deviceAspect }}
@@ -328,7 +371,20 @@ export function SimulatorScreen({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onWheel={handleWheel}
+      />
+      {/* Off-screen editable that owns keyboard focus: ASCII keydowns become HID key presses,
+          IME/non-ASCII commits become pasteboard text. A tap on the canvas focuses it. App-level
+          chords (⌘…) fall through `simulatorKeyPress` untouched. */}
+      <input
+        ref={inputRef}
+        aria-label="Simulator keyboard input"
+        className="pointer-events-none absolute size-0 opacity-0"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         onKeyDown={handleKeyDown}
+        onChange={handleInput}
       />
       {deviceAspect === null && placeholder}
     </div>

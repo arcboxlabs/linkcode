@@ -164,6 +164,12 @@ impl Input {
         self.send_touch(x, y, identifier, phase)
     }
 
+    /// Inject one phase of a caller-driven **two-finger** stream (pinch/zoom). Both fingers share
+    /// the phase; the caller owns the pair of identifiers and the cadence.
+    pub fn touch_pair(&self, fingers: [(f64, f64, u32); 2], phase: Phase) -> bool {
+        self.send_fingers(&fingers, phase)
+    }
+
     /// Single-finger tap at a normalised (0..1) point, holding for `hold`.
     pub fn tap(&self, x: f64, y: f64, hold: Duration) -> bool {
         let id = self.next_identifier();
@@ -256,10 +262,18 @@ impl Input {
         if id == 0 { 1 } else { id }
     }
 
-    /// Build one digitizer parent+finger event, wrap it, patch the target/edge byte slots, and send.
+    /// Single-finger convenience over [`send_fingers`].
     fn send_touch(&self, x: f64, y: f64, identifier: u32, phase: Phase) -> bool {
-        let x = clamp01(x);
-        let y = clamp01(y);
+        self.send_fingers(&[(x, y, identifier)], phase)
+    }
+
+    /// Build one digitizer parent with a finger child per `(x, y, id)`, wrap it, patch the
+    /// target/edge byte slots, and send. The parent carries the first finger's position; each
+    /// child gets its own index/identifier so the device tracks the fingers independently.
+    fn send_fingers(&self, fingers: &[(f64, f64, u32)], phase: Phase) -> bool {
+        let Some(&(px, py, parent_id)) = fingers.first() else {
+            return false;
+        };
         let mask = phase.event_mask();
         let range = phase.range();
         let touch = phase.touch();
@@ -273,11 +287,11 @@ impl Input {
                 now,
                 TRANSDUCER_FINGER,
                 0,
-                identifier,
+                parent_id,
                 mask,
                 0,
-                x,
-                y,
+                clamp01(px),
+                clamp01(py),
                 0.0,
                 0.0,
                 0.0,
@@ -289,32 +303,37 @@ impl Input {
         if parent.is_null() {
             return false;
         }
-        let finger = unsafe {
-            (self.symbols.create_finger)(
-                ptr::null(),
-                now,
-                0,
-                identifier,
-                mask,
-                x,
-                y,
-                0.0,
-                0.0,
-                0.0,
-                range,
-                touch,
-                0,
-            )
-        };
-        if !finger.is_null() {
-            // SAFETY: append copies the child into the parent; both stay valid here.
-            unsafe { (self.symbols.append_event)(parent, finger, 0) };
+        let mut children = Vec::with_capacity(fingers.len());
+        for (index, &(x, y, id)) in fingers.iter().enumerate() {
+            // SAFETY: same ABI as the digitizer creator; +1 ref appended and released below.
+            let finger = unsafe {
+                (self.symbols.create_finger)(
+                    ptr::null(),
+                    now,
+                    index as u32,
+                    id,
+                    mask,
+                    clamp01(x),
+                    clamp01(y),
+                    0.0,
+                    0.0,
+                    0.0,
+                    range,
+                    touch,
+                    0,
+                )
+            };
+            if !finger.is_null() {
+                // SAFETY: append copies the child into the parent; both stay valid here.
+                unsafe { (self.symbols.append_event)(parent, finger, 0) };
+                children.push(finger);
+            }
         }
         // SAFETY: wrapper reads the parent event and returns a malloc'd Indigo message (or null).
         let message = unsafe { (self.symbols.trackpad_wrap)(parent.cast_const()) };
         // The wrapper has copied out what it needs; release the events regardless of outcome.
         unsafe {
-            if !finger.is_null() {
+            for finger in children {
                 CFRelease(finger.cast_const());
             }
             CFRelease(parent.cast_const());

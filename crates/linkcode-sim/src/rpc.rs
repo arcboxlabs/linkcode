@@ -66,6 +66,18 @@ pub enum Op {
         x: f64,
         y: f64,
     },
+    /// One phase of a caller-driven **two-finger** stream (pinch/zoom); private API. Both finger
+    /// positions are normalised. Sequencing and stdio ordering match `touch`.
+    Pinch {
+        udid: String,
+        phase: TouchPhase,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+    },
+    /// Set the device pasteboard (public `simctl pbcopy`); pair with a Cmd+V key press.
+    Paste { udid: String, text: String },
     /// Swipe between two normalised (0..1) points over `duration_ms` (private API; P1).
     Swipe {
         udid: String,

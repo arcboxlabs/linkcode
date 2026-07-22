@@ -157,6 +157,21 @@ export class SimSidecarClient {
     await this.call('touch', { udid, phase, x, y });
   }
 
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  async pinch(
+    udid: string,
+    phase: SimTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<void> {
+    await this.call('pinch', { udid, phase, x0: a.x, y0: a.y, x1: b.x, y1: b.y });
+  }
+
+  /** Set the device pasteboard; pair with a Cmd+V key press to inject arbitrary Unicode. */
+  async paste(udid: string, text: string): Promise<void> {
+    await this.call('paste', { udid, text });
+  }
+
   /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
   async swipe(
     udid: string,

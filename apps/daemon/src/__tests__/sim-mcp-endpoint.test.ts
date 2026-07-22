@@ -36,6 +36,8 @@ function fakeBackend(): SimulatorBackend {
     screenMask: vi.fn(() => Promise.resolve(new Uint8Array([0x89, 0x50]))),
     tap: vi.fn(asyncNoop),
     touch: vi.fn(asyncNoop),
+    pinch: vi.fn(asyncNoop),
+    paste: vi.fn(asyncNoop),
     key: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),

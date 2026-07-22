@@ -4,7 +4,7 @@
 //! [`ErrorCode::Timeout`]. A missing `xcrun` (no Xcode / no Command Line Tools) surfaces as
 //! [`ErrorCode::XcodeMissing`] so the daemon can gate the capability instead of retrying.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
@@ -160,6 +160,46 @@ pub fn device_type_bundle_path(udid: &str) -> Result<std::path::PathBuf, OpError
         .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))
 }
 
+/// Set the device pasteboard to `text` (public `simctl pbcopy`, fed on stdin). The client pairs
+/// this with a Cmd+V key press to inject arbitrary Unicode — the path US-ASCII key decomposition
+/// cannot cover (IME output, emoji, pasted blocks).
+pub fn set_pasteboard(udid: &str, text: &str) -> Result<Value, OpError> {
+    let mut child = simctl(["pbcopy", udid])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => OpError::new(
+                ErrorCode::XcodeMissing,
+                format!("{XCRUN} not found; install Xcode with the iOS platform"),
+            ),
+            _ => OpError::new(ErrorCode::Io, format!("spawn {XCRUN} pbcopy: {e}")),
+        })?;
+    // Write on a thread so a full pipe buffer can never deadlock against exit polling.
+    let stdin = child.stdin.take().expect("stdin piped above");
+    let bytes = text.as_bytes().to_vec();
+    let writer = thread::spawn(move || {
+        let mut stdin = stdin;
+        let _ = stdin.write_all(&bytes);
+        // Drop closes the pipe so pbcopy sees EOF.
+    });
+    let stderr = drain(child.stderr.take().expect("stderr piped above"));
+    let status = wait_with_timeout(&mut child, XCRUN, DEFAULT_TIMEOUT)?;
+    let _ = writer.join();
+    if status.success() {
+        Ok(json!({}))
+    } else {
+        Err(OpError::new(
+            ErrorCode::SimctlFailed,
+            format!(
+                "{XCRUN} pbcopy exited with {status}: {}",
+                join_drained(stderr).trim()
+            ),
+        ))
+    }
+}
+
 fn simctl<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
     let mut cmd = apple_tool(XCRUN);
     cmd.arg("simctl").args(args);
@@ -202,24 +242,7 @@ fn run_ok(mut cmd: Command, timeout: Duration) -> Result<String, OpError> {
     let stdout = drain(child.stdout.take().expect("stdout piped above"));
     let stderr = drain(child.stderr.take().expect("stderr piped above"));
 
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(OpError::new(
-                    ErrorCode::Timeout,
-                    format!("{program} timed out after {}s", timeout.as_secs()),
-                ));
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
-            Err(e) => {
-                return Err(OpError::new(ErrorCode::Io, format!("wait {program}: {e}")));
-            }
-        }
-    };
+    let status = wait_with_timeout(&mut child, &program, timeout)?;
 
     let stdout = join_drained(stdout);
     let stderr = join_drained(stderr);
@@ -235,6 +258,30 @@ fn run_ok(mut cmd: Command, timeout: Duration) -> Result<String, OpError> {
             ErrorCode::SimctlFailed,
             format!("{program} exited with {status}: {}", detail.trim()),
         ))
+    }
+}
+
+/// Wait for `child` under `timeout`; kill and report `Timeout` if it overruns.
+fn wait_with_timeout(
+    child: &mut std::process::Child,
+    program: &str,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, OpError> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(OpError::new(
+                    ErrorCode::Timeout,
+                    format!("{program} timed out after {}s", timeout.as_secs()),
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(e) => return Err(OpError::new(ErrorCode::Io, format!("wait {program}: {e}"))),
+        }
     }
 }
 

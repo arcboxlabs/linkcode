@@ -731,6 +731,22 @@ export class LinkCodeClient {
     return this.control.simulatorTouch(sessionId, udid, phase, x, y);
   }
 
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  simulatorPinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<RequestAck> {
+    return this.control.simulatorPinch(sessionId, udid, phase, a, b);
+  }
+
+  /** Set the device pasteboard; pair with a Cmd+V key press to inject arbitrary Unicode. */
+  simulatorPaste(sessionId: SessionId, udid: string, text: string): Promise<RequestAck> {
+    return this.control.simulatorPaste(sessionId, udid, text);
+  }
+
   simulatorSwipe(
     sessionId: SessionId,
     udid: string,

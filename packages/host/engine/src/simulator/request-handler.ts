@@ -23,6 +23,8 @@ type SimulatorRequest = Extract<
       | 'simulator.screen-mask'
       | 'simulator.tap'
       | 'simulator.touch'
+      | 'simulator.pinch'
+      | 'simulator.paste'
       | 'simulator.swipe'
       | 'simulator.button'
       | 'simulator.key'
@@ -175,6 +177,26 @@ export class SimulatorRequestHandler {
               payload.x,
               payload.y,
             );
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.pinch':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.pinch', 'Failed to pinch', async () => {
+            await simulators.pinch(
+              payload.sessionId,
+              payload.udid,
+              payload.phase,
+              { x: payload.x0, y: payload.y0 },
+              { x: payload.x1, y: payload.y1 },
+            );
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.paste':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.paste', 'Failed to set pasteboard', async () => {
+            await simulators.paste(payload.sessionId, payload.udid, payload.text);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );

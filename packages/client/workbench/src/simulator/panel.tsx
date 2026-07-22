@@ -132,9 +132,27 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     // Surface a claim conflict once per gesture, not per 60 Hz move.
     void request.catch(phase === 'down' ? flagBusy : noop);
   };
+  const handlePinch = (
+    phase: SimulatorScreenTouchPhase,
+    a: SimulatorScreenPoint,
+    b: SimulatorScreenPoint,
+  ): void => {
+    if (ownerSessionId === null || udid === null) return;
+    void client
+      .simulatorPinch(ownerSessionId, udid, phase, a, b)
+      .catch(phase === 'down' ? flagBusy : noop);
+  };
   const handleKey = (press: SimulatorKeyPress): void => {
     if (ownerSessionId === null || udid === null) return;
     void client.simulatorKey(ownerSessionId, udid, press.usage, press.modifiers).catch(flagBusy);
+  };
+  const handleText = (text: string): void => {
+    if (ownerSessionId === null || udid === null) return;
+    // Set the pasteboard, then Cmd+V (Left GUI usage 0xE3 + V usage 0x19) so iOS pastes it.
+    void client
+      .simulatorPaste(ownerSessionId, udid, text)
+      .then(() => client.simulatorKey(ownerSessionId, udid, 0x19, [0xe3]))
+      .catch(flagBusy);
   };
   const pressButton = (button: 'home' | 'lock'): void => {
     if (ownerSessionId === null || udid === null) return;
@@ -211,7 +229,9 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
             key={udid}
             subscribeFrames={subscribeFrames}
             onTouch={handleTouch}
+            onPinch={handlePinch}
             onKey={handleKey}
+            onText={handleText}
             maskUrl={masks[udid] ?? null}
             placeholder={
               <span className="text-muted-foreground text-sm">{t('simulatorConnecting')}</span>

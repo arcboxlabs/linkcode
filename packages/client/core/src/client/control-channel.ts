@@ -714,6 +714,36 @@ export class ControlChannel {
     }));
   }
 
+  simulatorPinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.pinch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
+      x0: a.x,
+      y0: a.y,
+      x1: b.x,
+      y1: b.y,
+    }));
+  }
+
+  simulatorPaste(sessionId: SessionId, udid: string, text: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.paste',
+      clientReqId,
+      sessionId,
+      udid,
+      text,
+    }));
+  }
+
   simulatorSwipe(
     sessionId: SessionId,
     udid: string,

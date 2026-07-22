@@ -185,6 +185,22 @@ export class SimulatorService {
     return this.backend.touch(udid, phase, x, y);
   }
 
+  async pinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: SimulatorPoint,
+    b: SimulatorPoint,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.pinch(udid, phase, a, b);
+  }
+
+  async paste(sessionId: SessionId, udid: string, text: string): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.paste(udid, text);
+  }
+
   async swipe(
     sessionId: SessionId,
     udid: string,
