@@ -18,7 +18,6 @@ const GROUPS = [
   ]),
   group('integrations', [
     { key: 'agents', label: 'Agents', keywords: ['Enabled'] },
-    { key: 'plugins', label: 'Tools', keywords: ['GitHub read-only', 'Personal access token'] },
     { key: 'messaging', label: 'Messaging', keywords: ['Connect Telegram'] },
   ]),
 ];
@@ -31,7 +30,7 @@ describe('filterSettingsNavGroups', () => {
   it('returns every group untouched for an empty or whitespace query', () => {
     expect(visibleKeys(filterSettingsNavGroups(GROUPS, ''))).toEqual([
       ['general', 'appearance', 'notifications'],
-      ['agents', 'plugins', 'messaging'],
+      ['agents', 'messaging'],
     ]);
     expect(visibleKeys(filterSettingsNavGroups(GROUPS, '   '))).toEqual(
       visibleKeys(filterSettingsNavGroups(GROUPS, '')),
@@ -45,7 +44,6 @@ describe('filterSettingsNavGroups', () => {
   it('matches field-level keywords, not just the tab label', () => {
     expect(visibleKeys(filterSettingsNavGroups(GROUPS, 'dark'))).toEqual([['appearance'], []]);
     expect(visibleKeys(filterSettingsNavGroups(GROUPS, 'telegram'))).toEqual([[], ['messaging']]);
-    expect(visibleKeys(filterSettingsNavGroups(GROUPS, 'github'))).toEqual([[], ['plugins']]);
   });
 
   it('preserves declaration order even when a later item scores higher', () => {

@@ -5,7 +5,6 @@ import {
   BotIcon,
   CodeXmlIcon,
   KeyRoundIcon,
-  PlugIcon,
   SendIcon,
   SettingsIcon,
   SunMoonIcon,
@@ -22,7 +21,6 @@ const SETTINGS_ROUTES: Record<string, string> = {
   notifications: '/settings/notifications',
   agents: '/settings/agents',
   providers: '/settings/providers',
-  plugins: '/settings/plugins',
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
@@ -95,14 +93,6 @@ export function SettingsLayout(): React.ReactNode {
           render: <Link to="/settings/providers" />,
         },
         {
-          key: 'plugins',
-          icon: <PlugIcon className="size-4" />,
-          label: t('tabs.plugins'),
-          keywords: searchKeywords.plugins,
-          active: isActive(pathname, 'plugins'),
-          render: <Link to="/settings/plugins" />,
-        },
-        {
           key: 'messaging',
           icon: <SendIcon className="size-4" />,
           label: t('tabs.imChannel'),
@@ -173,7 +163,6 @@ function isActive(
     | 'developer'
     | 'notifications'
     | 'providers'
-    | 'plugins'
     | 'agents'
     | 'messaging',
 ): boolean {
