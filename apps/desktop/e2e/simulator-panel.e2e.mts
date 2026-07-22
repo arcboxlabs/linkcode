@@ -49,15 +49,17 @@ async function waitForDaemon(): Promise<void> {
   fail(`daemon did not come up on port ${PORT}`);
 }
 
-function bootedDeviceCount(): number {
+function bootedUdids(): string[] {
   try {
     const raw = execFileSync('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], {
       encoding: 'utf8',
     });
-    const parsed = JSON.parse(raw) as { devices: Record<string, unknown[]> };
-    return Object.values(parsed.devices).reduce((sum, list) => sum + list.length, 0);
+    const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ udid: string }>> };
+    return Object.values(parsed.devices)
+      .flat()
+      .map((device) => device.udid);
   } catch {
-    return 0;
+    return [];
   }
 }
 
@@ -70,33 +72,27 @@ function piOnPath(): boolean {
   }
 }
 
-/** Seed the stream-claim session over the wire: the panel binds to the active thread. */
-function seedPiSession(cwd: string): Promise<string> {
+/** One correlated request over a fresh wire connection; resolves with the reply payload. */
+function wireRequest(
+  payload: Record<string, unknown> & { clientReqId: string },
+): Promise<Record<string, unknown>> {
   const socket = io(`http://127.0.0.1:${PORT}`, { transports: ['websocket'] });
-  return new Promise<string>((_resolve, reject) => {
+  return new Promise<Record<string, unknown>>((_resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error('session.start timed out (stale WIRE_VERSION pin?)'));
+      reject(new Error(`${String(payload.kind)} timed out (stale WIRE_VERSION pin?)`));
     }, 60000);
     socket.on('frame', (raw: unknown) => {
-      const payload = (raw as { payload?: Record<string, unknown> }).payload;
-      if (payload?.replyTo !== 'e2e-session') return;
+      const reply = (raw as { payload?: Record<string, unknown> }).payload;
+      if (reply?.replyTo !== payload.clientReqId) return;
       clearTimeout(timer);
-      if (payload.kind === 'session.started' && typeof payload.sessionId === 'string') {
-        _resolve(payload.sessionId);
-      } else {
-        reject(new Error(`session.start failed: ${JSON.stringify(payload)}`));
-      }
+      _resolve(reply);
     });
     socket.on('connect', () => {
       socket.emit('frame', {
         v: WIRE_VERSION,
         id: `e2e-${Date.now().toString(36)}`,
         ts: Date.now(),
-        payload: {
-          kind: 'session.start',
-          clientReqId: 'e2e-session',
-          opts: { kind: 'pi', cwd },
-        },
+        payload,
       });
     });
     socket.on('connect_error', (error: Error) => {
@@ -104,6 +100,19 @@ function seedPiSession(cwd: string): Promise<string> {
       reject(error);
     });
   }).finally(() => socket.close());
+}
+
+/** Seed the stream-claim session over the wire: the panel binds to the active thread. */
+async function seedPiSession(cwd: string): Promise<string> {
+  const reply = await wireRequest({
+    kind: 'session.start',
+    clientReqId: 'e2e-session',
+    opts: { kind: 'pi', cwd },
+  });
+  if (reply.kind === 'session.started' && typeof reply.sessionId === 'string') {
+    return reply.sessionId;
+  }
+  throw new Error(`session.start failed: ${JSON.stringify(reply)}`);
 }
 
 async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void> {
@@ -234,6 +243,26 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
     const streamShot = join(tmpdir(), `linkcode-e2e-simulator-stream-${process.pid}.png`);
     await win.screenshot({ path: streamShot });
     console.log(`screenshot: ${streamShot}`);
+
+    // Drive Safari to a real page through the claim session, then hold the window open for
+    // manual inspection/screenshots of the live stream.
+    const bootedUdid = bootedUdids()[0];
+    if (bootedUdid !== undefined) {
+      const opened = await wireRequest({
+        kind: 'simulator.open-url',
+        clientReqId: 'e2e-open-url',
+        sessionId,
+        udid: bootedUdid,
+        url: 'http://linkcode.ai',
+      });
+      console.log(`open-url reply: ${JSON.stringify(opened.kind)}`);
+      await win.waitForTimeout(5000);
+      const safariShot = join(tmpdir(), `linkcode-e2e-simulator-safari-${process.pid}.png`);
+      await win.screenshot({ path: safariShot });
+      console.log(`screenshot: ${safariShot}`);
+    }
+    console.log('holding the window open for 30s for manual inspection…');
+    await win.waitForTimeout(30000);
   } else {
     console.log('no booted simulator — skipping the live-stream pass');
   }
@@ -282,7 +311,7 @@ async function main(): Promise<void> {
     join(appSupport, 'settings.json'),
     `${JSON.stringify({ locale: 'en', historyImportOnboardingHandled: true }, null, 2)}\n`,
   );
-  const deepPass = bootedDeviceCount() > 0 && piOnPath();
+  const deepPass = bootedUdids().length > 0 && piOnPath();
   console.log(`live-stream pass (booted device + pi CLI): ${deepPass ? 'yes' : 'no'}`);
 
   let daemon: ChildProcess | null = null;
