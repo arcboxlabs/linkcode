@@ -233,6 +233,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       content: textBlock(text),
     });
   }
+  /** Replace a complete assistant message by identity. Omitted content preserves the current body. */
+  protected emitAgentMessage(
+    messageId: MessageId,
+    content?: ContentBlock[],
+    parentToolCallId?: string,
+  ): void {
+    this.emit({ type: 'agent-message', messageId, parentToolCallId, content });
+  }
   protected emitThought(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
     this.emit({
@@ -241,6 +249,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       parentToolCallId,
       content: textBlock(text),
     });
+  }
+  /** Replace a complete thought by identity. Omitted content preserves the current body. */
+  protected emitAgentThought(
+    messageId: MessageId,
+    content?: ContentBlock[],
+    parentToolCallId?: string,
+  ): void {
+    this.emit({ type: 'agent-thought', messageId, parentToolCallId, content });
   }
 
   /**

@@ -75,7 +75,7 @@ describe('createClaudeHistoryEventMapper', () => {
         { type: 'tool_use', id: 'toolu_1', name: 'Read', input: { file: 'a.ts' } },
       ]),
     );
-    expect(announce.map((e) => e.event.type)).toEqual(['agent-message-chunk', 'tool-call']);
+    expect(announce.map((e) => e.event.type)).toEqual(['agent-message', 'tool-call']);
     expect(announce[1].itemId).toBe('toolu_1');
     if (announce[1].event.type === 'tool-call') {
       expect(announce[1].event.toolCall).toMatchObject({
@@ -191,7 +191,7 @@ describe('createClaudeHistoryEventMapper', () => {
     );
     expect(first.map((e) => `${e.event.type}@${e.ts ?? ''}`)).toEqual([
       `model-update@${Date.parse(at)}`,
-      `agent-message-chunk@${Date.parse(at)}`,
+      `agent-message@${Date.parse(at)}`,
     ]);
     if (first[0].event.type === 'model-update') {
       expect(first[0].event.model).toBe('claude-opus-4-8');
@@ -203,7 +203,7 @@ describe('createClaudeHistoryEventMapper', () => {
         model: 'claude-opus-4-8',
       }),
     );
-    expect(second.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+    expect(second.map((e) => e.event.type)).toEqual(['agent-message']);
 
     // A switch re-announces; a subagent row's model never does.
     const switched = map(
@@ -211,13 +211,13 @@ describe('createClaudeHistoryEventMapper', () => {
         model: 'claude-sonnet-5',
       }),
     );
-    expect(switched.map((e) => e.event.type)).toEqual(['model-update', 'agent-message-chunk']);
+    expect(switched.map((e) => e.event.type)).toEqual(['model-update', 'agent-message']);
     const subagent = map(
       row('assistant', 'u4', [{ type: 'text', text: 'sub' }], 'toolu_task', {
         model: 'claude-haiku-4-5',
       }),
     );
-    expect(subagent.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+    expect(subagent.map((e) => e.event.type)).toEqual(['agent-message']);
   });
 
   it('stamps ts on user prompts and tool settles', () => {
@@ -242,7 +242,7 @@ describe('createClaudeHistoryEventMapper', () => {
     expect(prompt[0].event).toMatchObject({ messageId: 'u1' });
 
     const reply = map(row('assistant', 'u2', [{ type: 'text', text: 'done' }]));
-    expect(reply.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+    expect(reply.map((e) => e.event.type)).toEqual(['agent-message']);
   });
 
   it('replays thinking and text under the provider message id used by the live stream', () => {
@@ -259,14 +259,14 @@ describe('createClaudeHistoryEventMapper', () => {
         { messageId: 'provider-message' },
       ),
     );
-    expect(events.map((e) => e.event.type)).toEqual(['agent-thought-chunk', 'agent-message-chunk']);
+    expect(events.map((e) => e.event.type)).toEqual(['agent-thought', 'agent-message']);
     expect(events[0].event).toMatchObject({
       messageId: 'provider-message:think',
-      content: { type: 'text', text: 'let me reason' },
+      content: [{ type: 'text', text: 'let me reason' }],
     });
     expect(events[1].event).toMatchObject({
       messageId: 'provider-message',
-      content: { type: 'text', text: 'the answer' },
+      content: [{ type: 'text', text: 'the answer' }],
     });
   });
 
@@ -278,7 +278,7 @@ describe('createClaudeHistoryEventMapper', () => {
         { type: 'text', text: 'done' },
       ]),
     );
-    expect(events.map((e) => e.event.type)).toEqual(['agent-message-chunk']);
+    expect(events.map((e) => e.event.type)).toEqual(['agent-message']);
   });
 
   it('stamps parentToolCallId on subagent thinking so it renders inside the subagent card', () => {
@@ -286,7 +286,7 @@ describe('createClaudeHistoryEventMapper', () => {
     const events = map(
       row('assistant', 'u1', [{ type: 'thinking', thinking: 'child reasoning' }], 'toolu_task'),
     );
-    expect(events.map((e) => e.event.type)).toEqual(['agent-thought-chunk']);
+    expect(events.map((e) => e.event.type)).toEqual(['agent-thought']);
     expect(events[0].event).toMatchObject({
       messageId: 'u1:think',
       parentToolCallId: 'toolu_task',
@@ -308,7 +308,7 @@ describe('createClaudeHistoryEventMapper', () => {
       row('assistant', 'u2', [{ type: 'text', text: 'looking around' }], 'toolu_task'),
     );
     expect(subText[0].event).toMatchObject({
-      type: 'agent-message-chunk',
+      type: 'agent-message',
       parentToolCallId: 'toolu_task',
     });
 
@@ -753,6 +753,38 @@ describe('CodexAdapter tool content', () => {
           content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
         }),
       }),
+    ]);
+  });
+});
+
+describe('CodexAdapter message snapshots', () => {
+  it('preserves streamed text when a completed item omits its body', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'codex', cwd: '/repo' });
+    const server = adapter.fakeServers[0];
+
+    server.notify('item/agentMessage/delta', { itemId: 'message-1', delta: 'streamed' });
+    server.notify('item/completed', { item: { type: 'agentMessage', id: 'message-1' } });
+
+    expect(
+      events.filter(
+        (event) => event.type === 'agent-message-chunk' || event.type === 'agent-message',
+      ),
+    ).toEqual([
+      {
+        type: 'agent-message-chunk',
+        messageId: 'message-1',
+        parentToolCallId: undefined,
+        content: { type: 'text', text: 'streamed' },
+      },
+      {
+        type: 'agent-message',
+        messageId: 'message-1',
+        parentToolCallId: undefined,
+        content: undefined,
+      },
     ]);
   });
 });
