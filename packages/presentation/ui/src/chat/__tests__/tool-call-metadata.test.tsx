@@ -201,7 +201,10 @@ describe('tool metadata policy', () => {
       <ToolCallBody TerminalBlockComponent={LiveTerminal} toolCall={toolCall} />,
     );
 
-    expect(LiveTerminal).toHaveBeenCalledWith({ terminalId: 'terminal-live' }, undefined);
+    expect(LiveTerminal).toHaveBeenCalledWith(
+      { terminalId: 'terminal-live', command: 'pnpm test' },
+      undefined,
+    );
     expect(container.textContent).toBe('terminal-live');
     expect(container.textContent).not.toContain('description');
   });

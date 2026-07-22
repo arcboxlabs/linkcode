@@ -18,14 +18,10 @@ export function ChatCardHeader({ className, ...props }: ChatCardHeaderProps): Re
 
 export type ChatCardTitleProps = React.ComponentProps<'span'>;
 
-/** Header title with the chat cards' mono label look; a span so headers can render as buttons. */
+/** Header title label; a span so headers can render as buttons. Sans by design — only
+ * terminal/execute headers opt into mono for the command they display. */
 export function ChatCardTitle({ className, ...props }: ChatCardTitleProps): React.ReactNode {
-  return (
-    <span
-      className={cn('min-w-0 truncate font-mono text-xs leading-normal', className)}
-      {...props}
-    />
-  );
+  return <span className={cn('min-w-0 truncate text-xs leading-normal', className)} {...props} />;
 }
 
 export type ChatCardActionsProps = React.ComponentProps<'span'>;

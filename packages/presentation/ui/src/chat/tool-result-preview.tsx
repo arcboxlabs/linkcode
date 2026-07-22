@@ -24,9 +24,15 @@ import {
 } from './tool-result-content';
 import { TOOL_KIND_ICONS, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
 
+/** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
+export type TerminalBlockComponent = React.ComponentType<{
+  terminalId: string;
+  command?: string;
+}>;
+
 interface ToolResultPreviewProps {
   toolCall: ToolCall;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
 }
 
 function RenderedContent({
@@ -35,7 +41,7 @@ function RenderedContent({
   toolCall,
 }: {
   content: ToolCallContent;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
   toolCall: ToolCall;
 }): React.ReactNode {
   if (content.type === 'content') return <ContentBlockView block={content.content} />;
@@ -51,10 +57,11 @@ function RenderedContent({
       />
     );
   }
+  const command = toolCallCommand(toolCall);
   if (TerminalBlockComponent) {
-    return <TerminalBlockComponent terminalId={content.terminalId} />;
+    return <TerminalBlockComponent command={command} terminalId={content.terminalId} />;
   }
-  return <TerminalBlock terminalId={content.terminalId} />;
+  return <TerminalBlock command={command} terminalId={content.terminalId} />;
 }
 
 function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): React.ReactNode {

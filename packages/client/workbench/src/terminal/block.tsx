@@ -5,7 +5,13 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 /** Adapter subscribing a rendered `TerminalBlock` to the daemon-backed terminal output stream. */
-export function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
+export function RuntimeTerminalBlock({
+  terminalId,
+  command,
+}: {
+  terminalId: string;
+  command?: string;
+}): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
   const output = useTerminalOutput(terminalId);
@@ -44,5 +50,5 @@ export function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): Re
       </div>
     );
   }
-  return <TerminalBlock terminalId={terminalId} output={output} />;
+  return <TerminalBlock command={command} terminalId={terminalId} output={output} />;
 }
