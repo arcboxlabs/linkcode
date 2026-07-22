@@ -65,7 +65,7 @@ function boundary(
   const id = `boundary-${seq++}`;
   switch (kind) {
     case 'plan':
-      return { kind, id, turnId: 'turn-0', plan: { entries: [] } };
+      return { kind, id, turnId: 'turn-0', plan: { planId: id, entries: [] } };
     case 'approval':
       return approvalFor(`unrelated-${id}`);
     case 'question':

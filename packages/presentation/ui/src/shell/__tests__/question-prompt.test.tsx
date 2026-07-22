@@ -533,6 +533,7 @@ describe('ConversationPromptDock', () => {
       id: 'plan-1',
       turnId: 'turn-1',
       plan: {
+        planId: 'plan-1',
         entries: [
           { content: 'Done', priority: 'high', status: 'completed' },
           { content: 'Review prompt', priority: 'high', status: 'in_progress' },

@@ -296,13 +296,20 @@ describe('buildConversation', () => {
     });
   });
 
-  it('keeps only the latest plan per turn', () => {
+  it('replaces plans by stable identity and keeps distinct plans separate', () => {
     const c = buildConversation([
       userText('first'),
-      { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
       {
         type: 'plan',
         plan: {
+          planId: 'plan-1',
+          entries: [{ content: 'a', priority: 'high', status: 'pending' }],
+        },
+      },
+      {
+        type: 'plan',
+        plan: {
+          planId: 'plan-1',
           entries: [
             { content: 'a', priority: 'high', status: 'completed' },
             { content: 'b', priority: 'low', status: 'pending' },
@@ -312,7 +319,20 @@ describe('buildConversation', () => {
       userText('second'),
       {
         type: 'plan',
-        plan: { entries: [{ content: 'c', priority: 'medium', status: 'pending' }] },
+        plan: {
+          planId: 'plan-1',
+          entries: [
+            { content: 'a', priority: 'high', status: 'completed' },
+            { content: 'b', priority: 'low', status: 'cancelled' },
+          ],
+        },
+      },
+      {
+        type: 'plan',
+        plan: {
+          planId: 'plan-2',
+          entries: [{ content: 'c', priority: 'medium', status: 'pending' }],
+        },
       },
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
@@ -323,6 +343,8 @@ describe('buildConversation', () => {
     expect(firstPlan.plan.entries[0]?.status).toBe('completed');
     expect(secondPlan.plan.entries).toHaveLength(1);
     expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
+    expect(firstPlan.updatedTurnId).toBe(secondPlan.turnId);
+    expect(secondPlan.updatedTurnId).toBe(secondPlan.turnId);
   });
 
   it('links a modern permission subject to its full tool snapshot until authoritative resolution', () => {
@@ -744,7 +766,13 @@ describe('createConversationBuilder', () => {
         content: [],
       },
     },
-    { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
+    {
+      type: 'plan',
+      plan: {
+        planId: 'plan-1',
+        entries: [{ content: 'a', priority: 'high', status: 'pending' }],
+      },
+    },
     text(' done', 'a1'),
     { type: 'token-usage', usage: { inputTokens: 10, outputTokens: 5 } },
     { type: 'stop', stopReason: 'end_turn' },

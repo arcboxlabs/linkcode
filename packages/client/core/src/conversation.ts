@@ -79,7 +79,15 @@ export type ConversationItem = (
       postTokens?: number;
       summary?: string;
     }
-  | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
+  | {
+      kind: 'plan';
+      id: string;
+      /** Timeline placement stays fixed at first sight so turn segments remain contiguous. */
+      turnId: ConversationTurnId;
+      /** Turn that most recently emitted this plan, used by current-plan selectors. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    }
   | {
       kind: 'approval';
       id: string;
@@ -193,7 +201,7 @@ export function createConversationBuilder(): ConversationBuilder {
   const messageIndex = new Map<string, number>();
   // compactionId → item index, so partial compaction re-emits merge into one marker.
   const compactionIndex = new Map<string, number>();
-  const planIndexByTurn = new Map<ConversationTurnId, number>();
+  const planIndexById = new Map<string, number>();
   /** Asks in arrival order; explicit resolution events are their only settlement authority. */
   const approvals: string[] = [];
   const questionAsks: string[] = [];
@@ -453,23 +461,25 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'plan': {
-        const planIndex = planIndexByTurn.get(currentTurnId);
+        const planIndex = planIndexById.get(event.plan.planId);
         if (planIndex === undefined) {
           endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'plan',
-            id: genId('plan'),
+            id: event.plan.planId,
             turnId: currentTurnId,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt,
           });
-          planIndexByTurn.set(currentTurnId, items.length - 1);
+          planIndexById.set(event.plan.planId, items.length - 1);
           break;
         }
         const item = items[planIndex];
         if (item.kind === 'plan') {
           items[planIndex] = {
             ...item,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt: receivedAt ?? item.receivedAt,
           };

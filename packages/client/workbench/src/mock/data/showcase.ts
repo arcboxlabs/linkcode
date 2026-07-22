@@ -83,6 +83,7 @@ export const SHOWCASE_ARTIFACTS_CONTENT = textBlock(
 );
 
 export const SHOWCASE_PLAN: Plan = {
+  planId: 'mock-showcase-plan',
   entries: [
     {
       content: 'Seed representative conversation events',

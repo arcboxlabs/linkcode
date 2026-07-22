@@ -105,10 +105,12 @@ describe('renderAgentEvents', () => {
       {
         type: 'plan',
         plan: {
+          planId: 'plan-1',
           entries: [
             { content: 'read code', priority: 'high', status: 'completed' },
             { content: 'edit code', priority: 'high', status: 'in_progress' },
             { content: 'run tests', priority: 'medium', status: 'pending' },
+            { content: 'obsolete step', priority: 'low', status: 'cancelled' },
           ],
         },
       },
@@ -123,7 +125,9 @@ describe('renderAgentEvents', () => {
       },
       { type: 'error', message: 'adapter crashed', code: 'E_ADAPTER', recoverable: true },
     ]);
-    expect(markdown).toContain('📋 **Plan**\n● read code\n◐ edit code\n○ run tests');
+    expect(markdown).toContain(
+      '📋 **Plan**\n● read code\n◐ edit code\n○ run tests\n× obsolete step',
+    );
     expect(markdown).toContain('🔐 **Permission required** — Run pnpm test\n• Allow\n• Reject');
     expect(markdown).toContain('⚠\u{FE0F} **Error:** adapter crashed (E_ADAPTER)');
   });

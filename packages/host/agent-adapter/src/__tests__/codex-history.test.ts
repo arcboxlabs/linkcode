@@ -492,7 +492,7 @@ describe('mapCodexHistoryEvents', () => {
         type: 'function_call',
         name: 'update_plan',
         arguments:
-          '{"plan":[{"step":"read the code","status":"completed"},{"step":"fix it","status":"in_progress"}]}',
+          '{"plan":[{"step":"read the code","status":"completed"},{"step":"fix it","status":"in_progress"},{"step":"skip it","status":"cancelled"}]}',
         call_id: 'call_plan1',
       }),
       responseItem({
@@ -505,9 +505,11 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'plan',
       plan: {
+        planId: 'codex-current',
         entries: [
           { content: 'read the code', priority: 'medium', status: 'completed' },
           { content: 'fix it', priority: 'medium', status: 'in_progress' },
+          { content: 'skip it', priority: 'medium', status: 'cancelled' },
         ],
       },
     });

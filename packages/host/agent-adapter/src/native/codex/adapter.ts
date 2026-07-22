@@ -50,7 +50,7 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
+import { CODEX_PLAN_ID, codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
@@ -850,7 +850,10 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'turn/plan/updated': {
         const plan = params.plan;
         if (!Array.isArray(plan)) break;
-        this.emit({ type: 'plan', plan: { entries: codexPlanEntries(plan) } });
+        this.emit({
+          type: 'plan',
+          plan: { planId: CODEX_PLAN_ID, entries: codexPlanEntries(plan) },
+        });
         break;
       }
       case 'thread/tokenUsage/updated': {
