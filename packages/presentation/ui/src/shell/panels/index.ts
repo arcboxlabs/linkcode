@@ -13,6 +13,7 @@ export { PanelRegion } from './panel-region';
 export type { SectionPanelRegionProps, SectionPanelState } from './section-panel';
 export { SectionPanelRegion } from './section-panel';
 export type {
+  OptionalPanelSection,
   PanelControl,
   PanelSection,
   PanelSectionTab,
@@ -20,4 +21,9 @@ export type {
   PanelTab,
   PanelWindowType,
 } from './vocabulary';
-export { PANEL_SECTIONS, PANEL_WINDOW_ICONS, PANEL_WINDOW_TYPES } from './vocabulary';
+export {
+  OPTIONAL_PANEL_SECTIONS,
+  PANEL_SECTIONS,
+  PANEL_WINDOW_ICONS,
+  PANEL_WINDOW_TYPES,
+} from './vocabulary';
