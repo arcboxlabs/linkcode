@@ -1,9 +1,10 @@
-# Builds the PTY sidecar (crates/linkcode-pty) for both release arches of the current platform
-# and stages the binaries under apps/desktop/sidecar/${arch}, where electron-builder's
-# extraResources expects them. Must run in the same job as the packaging step — the staged files
-# feed it directly. The per-platform cross-target matrix lives in stage-sidecar.mts.
-name: Build PTY sidecar
-description: Cargo-build linkcode-pty for both arches and stage it for electron-builder
+# Builds the sidecar binaries (crates/linkcode-pty everywhere; crates/linkcode-sim on macOS) for
+# both release arches of the current platform and stages them under apps/desktop/sidecar/${arch},
+# where electron-builder's extraResources expects them. Must run in the same job as the packaging
+# step — the staged files feed it directly. The per-platform cross-target matrix and the
+# per-platform crate list live in stage-sidecar.mts.
+name: Build sidecars
+description: Cargo-build the sidecar crates for both arches and stage them for electron-builder
 
 runs:
   using: composite
