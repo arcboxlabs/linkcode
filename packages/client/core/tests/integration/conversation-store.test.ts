@@ -139,6 +139,32 @@ describe('createConversationStore', () => {
     close();
   });
 
+  // CODE-328: once history flushes a completed block under the same provider id, a reseed must
+  // replace its buffered live chunks rather than render the transcript row beside a second copy.
+  it('deduplicates live chunks that the snapshot covers by message id', async () => {
+    const { client, send, close } = await harness();
+    const chunk = (text: string): AgentEvent => ({
+      type: 'agent-message-chunk',
+      messageId: 'history-row' as MessageId,
+      content: { type: 'text', text },
+    });
+    send(userText('tell a story'));
+    send({ type: 'status', status: 'running' });
+    send(chunk('Once upon '));
+    send(chunk('a time'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('tell a story') }, { event: chunk('Once upon a time') }],
+      uptoSeq: 4,
+    });
+
+    const messages = store.getSnapshot().items.filter((item) => item.kind === 'message');
+    expect(messages).toHaveLength(2);
+    expect(messages[1].blocks).toEqual([{ type: 'text', text: 'Once upon a time' }]);
+    close();
+  });
+
   it('keeps an in-flight tool call the snapshot has not flushed yet', async () => {
     const { client, send, close } = await harness();
     const announce: AgentEvent = {
