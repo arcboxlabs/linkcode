@@ -198,6 +198,9 @@ importers:
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../packages/foundation/schema
+      '@linkcode/sim':
+        specifier: workspace:*
+        version: link:../../packages/host/sim
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/foundation/transport

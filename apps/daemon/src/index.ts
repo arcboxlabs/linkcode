@@ -11,6 +11,7 @@ import {
 } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
+import { SimSidecarClient } from '@linkcode/sim';
 import { Hub } from '@linkcode/transport/server';
 import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
@@ -36,6 +37,7 @@ import {
 } from './runtime';
 import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
+import { resolveSimSidecarPath } from './sim/backend';
 import { createWorkspaceStore } from './workspace-store';
 
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
@@ -206,9 +208,13 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
+      const simSidecarPath = resolveSimSidecarPath();
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
+        // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
+        // simulator surface at all, which is what the capability gate reads.
+        simulatorBackend: simSidecarPath ? new SimSidecarClient(simSidecarPath) : undefined,
         sessionStore: createSessionStore(databasePath()),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
