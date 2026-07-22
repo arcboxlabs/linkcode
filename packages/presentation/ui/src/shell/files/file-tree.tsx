@@ -1,7 +1,5 @@
-import type { FileTree as PierreFileTreeModel } from '@pierre/trees';
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
-import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
 import { SearchIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -42,14 +40,6 @@ export function WorkspaceFileTree({
 }: WorkspaceFileTreeProps): React.ReactNode {
   const t = useTranslations('workbench.files');
   const [searchValue, setSearchValue] = useState('');
-  const modelRef = useRef<PierreFileTreeModel | null>(null);
-  const handleSelectionChange = useStableHandler((selected: readonly string[]) => {
-    const path = selected.at(0);
-    if (path === undefined) return;
-    // isDirectory() !== false also drops paths the model no longer knows (mid-reset clicks).
-    if (modelRef.current?.getItem(path)?.isDirectory() !== false) return;
-    onFileOpen(path);
-  });
 
   const { model } = useFileTree({
     paths,
@@ -59,12 +49,14 @@ export function WorkspaceFileTree({
     initialExpansion: 1,
     density: 'compact',
     fileTreeSearchMode: 'hide-non-matches',
-    onSelectionChange: handleSelectionChange,
+    onSelectionChange(selected) {
+      const path = selected.at(0);
+      if (path === undefined) return;
+      // isDirectory() !== false also drops paths the model no longer knows (mid-reset clicks).
+      if (model.getItem(path)?.isDirectory() !== false) return;
+      onFileOpen(path);
+    },
   });
-
-  useEffect(() => {
-    modelRef.current = model;
-  }, [model]);
 
   // The model is constructed once per mount (useFileTree ignores option changes);
   // later path lists — refresh, SWR revalidation — are synced imperatively.
