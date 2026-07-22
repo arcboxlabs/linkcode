@@ -22,6 +22,7 @@ export type {
   PanelWindowType,
 } from './vocabulary';
 export {
+  ALL_PANEL_SECTIONS,
   OPTIONAL_PANEL_SECTIONS,
   PANEL_SECTIONS,
   PANEL_WINDOW_ICONS,

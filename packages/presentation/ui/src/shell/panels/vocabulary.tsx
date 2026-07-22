@@ -20,7 +20,10 @@ export const OPTIONAL_PANEL_SECTIONS = ['simulator'] as const;
 
 export type OptionalPanelSection = (typeof OPTIONAL_PANEL_SECTIONS)[number];
 
-export type PanelSection = (typeof PANEL_SECTIONS)[number];
+/** Every section the right panel can show — the fixed strip plus the on-demand extras. */
+export const ALL_PANEL_SECTIONS = [...PANEL_SECTIONS, ...OPTIONAL_PANEL_SECTIONS] as const;
+
+export type PanelSection = (typeof ALL_PANEL_SECTIONS)[number];
 
 export interface PanelTab {
   id: string;
