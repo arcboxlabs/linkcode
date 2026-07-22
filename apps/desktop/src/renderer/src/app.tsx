@@ -13,6 +13,7 @@ import {
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { DesktopAutomationsView } from './automations/automations-view';
+import { cloudDataBridge } from './cloud-auth/bridges';
 import { desktopDaemonConnectionSource } from './daemon-connection-source';
 import { systemBridge } from './ipc';
 import { presentDesktopNotification } from './notifications';
@@ -23,9 +24,9 @@ import { ConnectionSkeleton } from './shell/connection-skeleton';
 import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
 /** Cloud data comes from main (it holds the keychain session); see preload's bridge. */
-const listCloudHosts = (): Promise<CloudHost[]> => window.linkcodeCloud.listHosts();
+const listCloudHosts = (): Promise<CloudHost[]> => cloudDataBridge.listHosts();
 // The preload bridge implements CloudImSource verbatim; hand it to the provider as-is.
-const cloudImSource = window.linkcodeCloud.im;
+const cloudImSource = cloudDataBridge.im;
 
 export function DesktopApp(): React.ReactNode {
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
