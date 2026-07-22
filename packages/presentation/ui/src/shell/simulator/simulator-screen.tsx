@@ -33,9 +33,17 @@ const FALLBACK_CORNER_FRACTION = 0.11;
 const RIM_COLOR = '#3a3a3c';
 const BEZEL_COLOR = '#000000';
 
+/** One stream frame: a base64 JPEG image, or one ordered base64 Annex-B H.264 access unit. */
+export interface SimulatorScreenFrame {
+  codec: 'jpeg' | 'h264';
+  key: boolean;
+  data: string;
+}
+
 export interface SimulatorScreenProps {
-  /** Feed of JPEG frames (base64, no data-URL prefix); returns the unsubscribe. */
-  subscribeFrames: (onFrame: (jpegBase64: string) => void) => () => void;
+  /** Feed of stream frames; returns the unsubscribe. H.264 units decode through WebCodecs
+   * (hardware, GPU-resident output); JPEG frames decode via `createImageBitmap`. */
+  subscribeFrames: (onFrame: (frame: SimulatorScreenFrame) => void) => () => void;
   /** Press in normalized [0,1] device coordinates. */
   onTap?: (point: SimulatorScreenPoint) => void;
   /** Drag in normalized [0,1] device coordinates with its real duration. */
@@ -49,11 +57,23 @@ export interface SimulatorScreenProps {
   className?: string;
 }
 
+/** A decoded frame the compositor can draw: a bitmap (JPEG path) or a GPU-resident VideoFrame
+ * (H.264 path). Both close() and drawImage() uniformly; only the size accessors differ. */
+type DecodedFrame = ImageBitmap | VideoFrame;
+
+function frameWidth(frame: DecodedFrame): number {
+  return 'displayWidth' in frame ? frame.displayWidth : frame.width;
+}
+
+function frameHeight(frame: DecodedFrame): number {
+  return 'displayHeight' in frame ? frame.displayHeight : frame.height;
+}
+
 /** Everything the compositor knows about one device feed, in native framebuffer pixels. */
 interface PaintState {
   mask: ImageBitmap | null;
   /** Last decoded frame, retained so a late-arriving mask can recomposite it. */
-  frame: ImageBitmap | null;
+  frame: DecodedFrame | null;
   /** Screen-sized scratch layer the mask is composited on before drawing into the chassis. */
   screenLayer: OffscreenCanvas | null;
   /** Cached chassis artwork (rim + display band), rebuilt when the geometry key changes. */
@@ -92,39 +112,86 @@ export function SimulatorScreen({
   useAbortableEffect(
     (signal) => {
       const state = paintRef.current;
-      let latest: string | null = null;
+
+      const adopt = (frame: DecodedFrame): void => {
+        if (signal.aborted || canvasRef.current === null) {
+          frame.close();
+          return;
+        }
+        state.frame?.close();
+        state.frame = frame;
+        paintDevice(canvasRef.current, state);
+        const canvas = canvasRef.current;
+        const aspect = `${canvas.width} / ${canvas.height}`;
+        setDeviceAspect((previous) => (previous === aspect ? previous : aspect));
+      };
+
+      // JPEG path: latest-wins decode via createImageBitmap.
+      let latestJpeg: string | null = null;
       let decoding = false;
-      const drawNext = (): void => {
-        if (decoding || latest === null || signal.aborted) return;
-        const encoded = latest;
-        latest = null;
+      const drawNextJpeg = (): void => {
+        if (decoding || latestJpeg === null || signal.aborted) return;
+        const encoded = latestJpeg;
+        latestJpeg = null;
         decoding = true;
         void createImageBitmap(new Blob([base64Bytes(encoded)], { type: 'image/jpeg' }))
-          .then((bitmap) => {
-            if (signal.aborted || canvasRef.current === null) {
-              bitmap.close();
-              return;
-            }
-            state.frame?.close();
-            state.frame = bitmap;
-            paintDevice(canvasRef.current, state);
-            const canvas = canvasRef.current;
-            const aspect = `${canvas.width} / ${canvas.height}`;
-            setDeviceAspect((previous) => (previous === aspect ? previous : aspect));
-          })
+          .then(adopt)
           // A corrupt frame is dropped; the next one repaints.
           .catch(noop)
           .finally(() => {
             decoding = false;
-            drawNext();
+            drawNextJpeg();
           });
       };
+
+      // H.264 path: hardware decode via WebCodecs; output VideoFrames stay GPU-resident. The
+      // decoder configures lazily, consumes only from a keyframe, and resets (waiting for the
+      // next key, ≤2s away) on any decode error.
+      let decoder: VideoDecoder | null = null;
+      let awaitingKey = true;
+      let timestamp = 0;
+      const resetDecoder = (): void => {
+        if (decoder !== null && decoder.state !== 'closed') decoder.close();
+        decoder = null;
+        awaitingKey = true;
+      };
+      const decodeH264 = (frame: SimulatorScreenFrame): void => {
+        if (decoder === null) {
+          const created = new VideoDecoder({
+            output: adopt,
+            error: resetDecoder,
+          });
+          // High profile at a level comfortably above any simulator resolution; the in-band
+          // SPS/PPS on each keyframe governs the actual stream parameters.
+          created.configure({ codec: 'avc1.640034', optimizeForLatency: true });
+          decoder = created;
+          awaitingKey = true;
+        }
+        if (awaitingKey && !frame.key) return;
+        awaitingKey = false;
+        decoder.decode(
+          new EncodedVideoChunk({
+            type: frame.key ? 'key' : 'delta',
+            // Synthetic monotonic clock; frames present as they arrive, so only order matters.
+            timestamp: timestamp++,
+            data: base64Bytes(frame.data),
+          }),
+        );
+      };
+
       const unsubscribe = subscribeFrames((frame) => {
-        latest = frame;
-        drawNext();
+        if (frame.codec === 'h264') {
+          decodeH264(frame);
+          return;
+        }
+        // A JPEG frame amid an h264 stream means the host degraded; drop the decoder.
+        resetDecoder();
+        latestJpeg = frame.data;
+        drawNextJpeg();
       });
       return () => {
         unsubscribe();
+        resetDecoder();
         state.frame?.close();
         state.frame = null;
       };
@@ -211,10 +278,12 @@ export function SimulatorScreen({
 function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   const frame = state.frame;
   if (frame === null) return;
-  const pad = Math.round(frame.width * PAD_FRACTION);
-  const buttonDepth = Math.round(frame.width * BUTTON_DEPTH_FRACTION);
-  const width = frame.width + 2 * pad + 2 * buttonDepth;
-  const height = frame.height + 2 * pad;
+  const screenW = frameWidth(frame);
+  const screenH = frameHeight(frame);
+  const pad = Math.round(screenW * PAD_FRACTION);
+  const buttonDepth = Math.round(screenW * BUTTON_DEPTH_FRACTION);
+  const width = screenW + 2 * pad + 2 * buttonDepth;
+  const height = screenH + 2 * pad;
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
@@ -228,27 +297,27 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   const buttonWidth = buttonDepth * 3;
   for (const [top, size] of LEFT_BUTTONS) {
     context.beginPath();
-    context.roundRect(0, pad + top * frame.height, buttonWidth, size * frame.height, buttonDepth);
+    context.roundRect(0, pad + top * screenH, buttonWidth, size * screenH, buttonDepth);
     context.fill();
   }
   for (const [top, size] of RIGHT_BUTTONS) {
     context.beginPath();
     context.roundRect(
       width - buttonWidth,
-      pad + top * frame.height,
+      pad + top * screenH,
       buttonWidth,
-      size * frame.height,
+      size * screenH,
       buttonDepth,
     );
     context.fill();
   }
 
-  context.drawImage(buildChassis(state, frame), buttonDepth, 0);
+  context.drawImage(buildChassis(state, screenW, screenH), buttonDepth, 0);
 
   // Screen: composite the frame against the mask on a screen-sized layer, then inset it.
   let layer = state.screenLayer;
-  if (layer?.width !== frame.width || layer.height !== frame.height) {
-    layer = new OffscreenCanvas(frame.width, frame.height);
+  if (layer?.width !== screenW || layer.height !== screenH) {
+    layer = new OffscreenCanvas(screenW, screenH);
     state.screenLayer = layer;
   }
   const layerContext = layer.getContext('2d');
@@ -257,7 +326,7 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
   if (state.mask === null) {
     layerContext.save();
     layerContext.beginPath();
-    layerContext.roundRect(0, 0, layer.width, layer.height, frame.width * FALLBACK_CORNER_FRACTION);
+    layerContext.roundRect(0, 0, layer.width, layer.height, screenW * FALLBACK_CORNER_FRACTION);
     layerContext.clip();
     layerContext.drawImage(frame, 0, 0);
     layerContext.restore();
@@ -278,11 +347,11 @@ function paintDevice(canvas: HTMLCanvasElement, state: PaintState): void {
  * diverge from them. Cached per frame-size + mask identity; without a mask a rounded rect stands
  * in for the shape.
  */
-function buildChassis(state: PaintState, frame: ImageBitmap): OffscreenCanvas {
-  const pad = Math.round(frame.width * PAD_FRACTION);
-  const rim = Math.round(frame.width * RIM_FRACTION);
-  const width = frame.width + 2 * pad;
-  const height = frame.height + 2 * pad;
+function buildChassis(state: PaintState, screenW: number, screenH: number): OffscreenCanvas {
+  const pad = Math.round(screenW * PAD_FRACTION);
+  const rim = Math.round(screenW * RIM_FRACTION);
+  const width = screenW + 2 * pad;
+  const height = screenH + 2 * pad;
   const key = `${width}x${height}:${state.mask === null ? 'fallback' : 'mask'}`;
   if (state.chassis !== null && state.chassisKey === key) return state.chassis;
 
@@ -290,8 +359,8 @@ function buildChassis(state: PaintState, frame: ImageBitmap): OffscreenCanvas {
   const context = chassis.getContext('2d');
   if (context === null) return chassis;
   context.clearRect(0, 0, width, height);
-  const rimShape = growScreenShape(state.mask, frame, pad);
-  const bandShape = growScreenShape(state.mask, frame, pad - rim);
+  const rimShape = growScreenShape(state.mask, screenW, screenH, pad);
+  const bandShape = growScreenShape(state.mask, screenW, screenH, pad - rim);
   colorize(rimShape, RIM_COLOR);
   colorize(bandShape, BEZEL_COLOR);
   context.drawImage(rimShape, 0, 0);
@@ -305,21 +374,16 @@ function buildChassis(state: PaintState, frame: ImageBitmap): OffscreenCanvas {
  * (morphological dilation); a rounded rect when no mask exists. */
 function growScreenShape(
   mask: ImageBitmap | null,
-  frame: ImageBitmap,
+  screenW: number,
+  screenH: number,
   grow: number,
 ): OffscreenCanvas {
-  const shape = new OffscreenCanvas(frame.width + 2 * grow, frame.height + 2 * grow);
+  const shape = new OffscreenCanvas(screenW + 2 * grow, screenH + 2 * grow);
   const context = shape.getContext('2d');
   if (context === null) return shape;
   if (mask === null) {
     context.beginPath();
-    context.roundRect(
-      0,
-      0,
-      shape.width,
-      shape.height,
-      frame.width * FALLBACK_CORNER_FRACTION + grow,
-    );
+    context.roundRect(0, 0, shape.width, shape.height, screenW * FALLBACK_CORNER_FRACTION + grow);
     context.fill();
     return shape;
   }
@@ -330,8 +394,8 @@ function growScreenShape(
       mask,
       grow + grow * Math.cos(angle),
       grow + grow * Math.sin(angle),
-      frame.width,
-      frame.height,
+      screenW,
+      screenH,
     );
   }
   return shape;

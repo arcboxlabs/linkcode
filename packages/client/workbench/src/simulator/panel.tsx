@@ -1,6 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SimulatorDevice, SimulatorStatus } from '@linkcode/schema';
-import type { SimulatorScreenPoint } from '@linkcode/ui/shell/simulator';
+import type { SimulatorScreenFrame, SimulatorScreenPoint } from '@linkcode/ui/shell/simulator';
 import { SimulatorScreen } from '@linkcode/ui/shell/simulator';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -102,8 +102,12 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const ownerSessionId = snapshot?.sessionId ?? null;
 
   const subscribeFrames = useCallback(
-    (onFrame: (jpegBase64: string) => void) =>
-      udid === null ? noop : client.subscribeSimulatorFrames(udid, (frame) => onFrame(frame.data)),
+    (onFrame: (frame: SimulatorScreenFrame) => void) =>
+      udid === null
+        ? noop
+        : client.subscribeSimulatorFrames(udid, (frame) =>
+            onFrame({ codec: frame.codec, key: frame.key, data: frame.data }),
+          ),
     [client, udid],
   );
 
