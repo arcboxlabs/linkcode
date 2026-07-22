@@ -41,7 +41,7 @@ export interface PluginSettingsPanelProps {
   busy: boolean;
   onEnabledChange: (unitId: string, enabled: boolean) => void;
   onConnectionChange: (unitId: string, connectionId: string) => void;
-  onAddConnection: () => void;
+  onAddConnection: (unitId?: string) => void;
   onEditConnection: (connectionId: string) => void;
   onRemoveConnection: (connectionId: string) => void;
 }
@@ -98,14 +98,23 @@ export function PluginSettingsPanel({
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground text-xs">{t('usesConnection')}</span>
                   {unit.connectionOptions.length === 0 ? (
-                    <span className="text-muted-foreground text-xs">{t('noConnection')}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => onAddConnection(unit.id)}
+                    >
+                      <PlusIcon />
+                      {t('addConnection')}
+                    </Button>
                   ) : (
                     <Select
                       items={unit.connectionOptions.map((connection) => ({
                         value: connection.id,
                         label: connection.label,
                       }))}
-                      value={unit.connectionId ?? null}
+                      value={unit.connectionId}
                       disabled={busy}
                       onValueChange={(connectionId) => {
                         if (connectionId !== null) onConnectionChange(unit.id, connectionId);
@@ -137,7 +146,7 @@ export function PluginSettingsPanel({
           ) : connections.length === 0 ? (
             <div className="flex items-center justify-between gap-4 px-4 py-4">
               <p className="text-muted-foreground text-sm">{t('connectionsEmpty')}</p>
-              <AddConnectionButton disabled={busy} onClick={onAddConnection} />
+              <AddConnectionButton disabled={busy} onClick={() => onAddConnection()} />
             </div>
           ) : (
             <>
@@ -175,7 +184,7 @@ export function PluginSettingsPanel({
                 </div>
               ))}
               <div className="flex justify-end px-4 py-3">
-                <AddConnectionButton disabled={busy} onClick={onAddConnection} />
+                <AddConnectionButton disabled={busy} onClick={() => onAddConnection()} />
               </div>
             </>
           )}
