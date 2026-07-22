@@ -809,6 +809,15 @@ export const en = {
         protocolNone: 'Default',
       },
     },
+    plugins: {
+      units: {
+        githubRead: {
+          label: 'GitHub read-only tools',
+          description:
+            'Reads repositories, issues, and pull requests without creating, changing, or deleting GitHub content.',
+        },
+      },
+    },
     notifications: {
       title: 'Notifications',
       hint: 'Send system notifications when a session finishes a turn in the background or needs approval.',

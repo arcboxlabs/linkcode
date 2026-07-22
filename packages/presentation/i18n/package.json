@@ -12,6 +12,7 @@
     "lint": "eslint --format=sukka ."
   },
   "devDependencies": {
+    "@linkcode/schema": "workspace:*",
     "typescript": "catalog:"
   }
 }

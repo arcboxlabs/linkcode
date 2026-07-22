@@ -789,6 +789,14 @@ export const zhCN = {
         protocolNone: '默认',
       },
     },
+    plugins: {
+      units: {
+        githubRead: {
+          label: 'GitHub 只读能力',
+          description: '读取仓库、Issue 和 Pull Request 信息；不会创建、修改或删除 GitHub 内容。',
+        },
+      },
+    },
     notifications: {
       title: '通知',
       hint: '会话在后台完成回复或需要审批时发送系统通知。',

@@ -4,6 +4,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
+import { MCP_PLUGIN_CATALOG } from '../plugin/catalog';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
@@ -16,6 +17,7 @@ type AgentRequest = Extract<
     kind:
       | 'agent-runtime.list'
       | 'agent.catalog'
+      | 'plugin.catalog.get'
       | 'config.get'
       | 'config.set'
       | 'agent-login.start'
@@ -37,6 +39,22 @@ export class AgentRequestHandler {
 
   handle(payload: AgentRequest): Effect.Effect<void> {
     switch (payload.kind) {
+      case 'plugin.catalog.get':
+        return this.responder.reply(
+          payload.clientReqId,
+          Effect.try({
+            try: () =>
+              this.transport.send(
+                createWireMessage({
+                  kind: 'plugin.catalog.result',
+                  replyTo: payload.clientReqId,
+                  catalog: MCP_PLUGIN_CATALOG,
+                }),
+              ),
+            catch: (cause) =>
+              providerFailure('plugin.catalog.get', 'Failed to load plugin catalog', cause),
+          }),
+        );
       case 'agent.catalog':
         return this.responder.reply(
           payload.clientReqId,
