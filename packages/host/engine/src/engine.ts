@@ -35,6 +35,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorService } from './simulator/service';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
 import { WireRequestRouter } from './wire/request-router';
@@ -82,6 +83,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runTask,
   );
   let terminals: TerminalService | undefined;
+  const simulators = deps.simulatorBackend
+    ? new SimulatorService(deps.simulatorBackend)
+    : undefined;
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -89,7 +93,10 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runtimes,
     scope,
     runTask,
-    (sessionId) => terminals?.killBySession(sessionId),
+    (sessionId) => {
+      terminals?.killBySession(sessionId);
+      simulators?.releaseSession(sessionId);
+    },
   );
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
@@ -273,6 +280,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalize('file-host.shutdown', () => fileHost.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
+      yield* finalizeEffect('simulators.shutdown', simulators?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());
