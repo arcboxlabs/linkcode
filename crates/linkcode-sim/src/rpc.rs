@@ -53,6 +53,9 @@ pub enum Op {
         #[serde(default)]
         format: ImageFormat,
     },
+    /// Render the devicetype's framebuffer-mask PDF (the exact screen outline) as a transparent
+    /// PNG; bytes come back on a `SCREENSHOT` frame.
+    ScreenMask { udid: String },
     /// Single-finger tap at a normalised (0..1) point (private API; P1).
     Tap { udid: String, x: f64, y: f64 },
     /// Swipe between two normalised (0..1) points over `duration_ms` (private API; P1).

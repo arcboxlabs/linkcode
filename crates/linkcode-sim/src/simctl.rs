@@ -144,6 +144,22 @@ pub fn screenshot(udid: &str, format: ImageFormat) -> Result<Vec<u8>, OpError> {
     read
 }
 
+/// Resolve a device's devicetype bundle directory (`…/DeviceTypes/<name>.simdevicetype`),
+/// joining `list devices` (udid → devicetype identifier) with `list devicetypes` (identifier →
+/// `bundlePath`). Public simctl surface only.
+pub fn device_type_bundle_path(udid: &str) -> Result<std::path::PathBuf, OpError> {
+    let devices_raw = run_ok(
+        simctl(["list", "-j", "devices", "available"]),
+        DEFAULT_TIMEOUT,
+    )?;
+    let identifier = parse_device_type_identifier(&devices_raw, udid)
+        .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))?;
+    let types_raw = run_ok(simctl(["list", "-j", "devicetypes"]), DEFAULT_TIMEOUT)?;
+    parse_device_type_bundle_path(&types_raw, &identifier)
+        .map(std::path::PathBuf::from)
+        .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))
+}
+
 fn simctl<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
     let mut cmd = apple_tool(XCRUN);
     cmd.arg("simctl").args(args);
@@ -238,6 +254,41 @@ fn join_drained(handle: thread::JoinHandle<String>) -> String {
 /// bundle ids never contain one. Absence of a parsable pid maps to `null`.
 fn parse_launch_pid(stdout: &str) -> Option<u32> {
     stdout.trim().rsplit(": ").next()?.trim().parse().ok()
+}
+
+fn parse_device_type_identifier(devices_json: &str, udid: &str) -> Result<String, String> {
+    let raw: RawDeviceList =
+        serde_json::from_str(devices_json).map_err(|e| format!("parse device list: {e}"))?;
+    raw.devices
+        .into_values()
+        .flatten()
+        .find(|device| device.udid == udid)
+        .ok_or_else(|| format!("no device {udid}"))?
+        .device_type_identifier
+        .ok_or_else(|| format!("device {udid} reports no devicetype identifier"))
+}
+
+#[derive(Deserialize)]
+struct RawDeviceTypeList {
+    devicetypes: Vec<RawDeviceType>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawDeviceType {
+    identifier: String,
+    bundle_path: Option<String>,
+}
+
+fn parse_device_type_bundle_path(types_json: &str, identifier: &str) -> Result<String, String> {
+    let raw: RawDeviceTypeList =
+        serde_json::from_str(types_json).map_err(|e| format!("parse devicetype list: {e}"))?;
+    raw.devicetypes
+        .into_iter()
+        .find(|entry| entry.identifier == identifier)
+        .ok_or_else(|| format!("no devicetype {identifier}"))?
+        .bundle_path
+        .ok_or_else(|| format!("devicetype {identifier} reports no bundle path"))
 }
 
 #[derive(Deserialize)]
@@ -345,5 +396,36 @@ mod tests {
     fn parses_the_launch_pid() {
         assert_eq!(parse_launch_pid("com.example.app: 4242\n"), Some(4242));
         assert_eq!(parse_launch_pid("garbage"), None);
+    }
+
+    #[test]
+    fn resolves_a_device_type_identifier_by_udid() {
+        assert_eq!(
+            parse_device_type_identifier(DEVICES, "AAAA").unwrap(),
+            "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+        );
+        assert!(parse_device_type_identifier(DEVICES, "missing").is_err());
+    }
+
+    #[test]
+    fn resolves_a_device_type_bundle_path() {
+        let types = r#"{
+            "devicetypes": [
+                {
+                    "identifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+                    "bundlePath": "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17 Pro.simdevicetype",
+                    "name": "iPhone 17 Pro"
+                }
+            ]
+        }"#;
+        assert_eq!(
+            parse_device_type_bundle_path(
+                types,
+                "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+            )
+            .unwrap(),
+            "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17 Pro.simdevicetype"
+        );
+        assert!(parse_device_type_bundle_path(types, "other").is_err());
     }
 }

@@ -14,6 +14,7 @@
 
 mod capture;
 mod interactive;
+mod mask;
 #[cfg(target_os = "macos")]
 mod private;
 mod proto;
@@ -113,6 +114,11 @@ fn main() {
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("bench-encode") {
         bench_encode();
+        return;
+    }
+    // Diagnostic: render a device's screen mask to a PNG file: `linkcode-sim diag-mask <udid> [out]`.
+    if subcommand.as_deref() == Some("diag-mask") {
+        diag_mask();
         return;
     }
 
@@ -229,6 +235,18 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
                 Err(e) => Err(e),
             }
         }
+        Op::ScreenMask { udid } => {
+            match mask::screen_mask(&udid).and_then(|image| {
+                encode_screenshot(&request_id, &image)
+                    .map_err(|e| OpError::new(ErrorCode::Io, e.to_string()))
+            }) {
+                Ok(body) => {
+                    send(tx, SCREENSHOT, body);
+                    return;
+                }
+                Err(e) => Err(e),
+            }
+        }
         Op::Tap { udid, x, y } => interactive::tap(&udid, x, y),
         Op::Swipe {
             udid,
@@ -264,6 +282,26 @@ fn probe_with_capabilities() -> Result<serde_json::Value, OpError> {
 
 fn send(tx: &Sender<OutMsg>, type_byte: u8, body: Vec<u8>) {
     let _ = tx.send(OutMsg::Frame { type_byte, body });
+}
+
+/// Diagnostic entry: render the screen mask for a device to a PNG file.
+fn diag_mask() {
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-mask <udid> [out.png]");
+    let out = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "mask.png".to_owned());
+    match mask::screen_mask(&udid) {
+        Ok(bytes) => {
+            std::fs::write(&out, &bytes).expect("write mask png");
+            eprintln!("wrote {} bytes to {out}", bytes.len());
+        }
+        Err(error) => {
+            eprintln!("mask failed: {}", error.message);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn send_error(tx: &Sender<OutMsg>, request_id: &str, error: &OpError) {
