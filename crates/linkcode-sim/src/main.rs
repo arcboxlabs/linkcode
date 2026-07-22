@@ -100,6 +100,13 @@ fn main() {
         diag_interactive();
         return;
     }
+    // Benchmark the JPEG encode ceiling (the capture stream's single-thread frame-rate bound):
+    // `linkcode-sim bench-encode [iters]`. No simulator needed.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("bench-encode") {
+        bench_encode();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -298,4 +305,46 @@ fn diag_interactive() {
         "stream dead={} frames-seen={frames} last={last_len} bytes; wrote {out}",
         stream.is_dead()
     );
+}
+
+/// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the
+/// implied max frame rate. `linkcode-sim bench-encode [iters]` (default 120). The encode runs on one
+/// reader thread, so `1000 / avg_ms` is the sustainable stream ceiling; the capture memcpy runs on a
+/// separate thread and is not the bound.
+#[cfg(target_os = "macos")]
+fn bench_encode() {
+    let iters: u32 = std::env::args()
+        .nth(2)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(120);
+    // Native iPhone 17 Pro framebuffer is 1206×2622; sweep it and progressive downscales at the
+    // default stream quality, then the same full res at a lower quality to show quality is not the
+    // bound.
+    let configs = [
+        (1206usize, 2622usize, 0.6f64),
+        (904, 1966, 0.6),
+        (603, 1311, 0.6),
+        (402, 874, 0.6),
+        (1206, 2622, 0.3),
+    ];
+    println!(
+        "encode bench — {iters} iters/config (single reader thread = stream fps ceiling)\n{:>11}  {:>5}  {:>8}  {:>8}  {:>7}  {:>9}  {:>8}",
+        "resolution", "q", "avg ms", "p95 ms", "size", "fps(avg)", "fps(peak)"
+    );
+    for (w, h, q) in configs {
+        match private::bench_encode(w, h, q, iters) {
+            Some(b) => println!(
+                "{:>4}x{:<6}  {:>5.2}  {:>8.2}  {:>8.2}  {:>6}K  {:>9.1}  {:>8.1}",
+                b.width,
+                b.height,
+                b.quality,
+                b.avg_ms,
+                b.p95_ms,
+                b.out_kib,
+                b.fps(),
+                b.peak_fps()
+            ),
+            None => println!("{w}x{h} q{q}: encode failed"),
+        }
+    }
 }

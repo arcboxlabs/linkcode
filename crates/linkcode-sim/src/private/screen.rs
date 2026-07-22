@@ -555,6 +555,93 @@ fn encode_bgra_jpeg(frame: &RawFrame, quality: f64) -> Option<Vec<u8>> {
     }
 }
 
+/// The measured cost of encoding one framebuffer at a given resolution/quality, with the frame rate
+/// it implies (a single reader thread does the encode, so `1000 / avg_ms` is the sustainable ceiling).
+pub struct EncodeBench {
+    pub width: usize,
+    pub height: usize,
+    pub quality: f64,
+    pub avg_ms: f64,
+    pub best_ms: f64,
+    pub p95_ms: f64,
+    pub out_kib: usize,
+}
+
+impl EncodeBench {
+    /// Sustainable frames per second at the average encode cost.
+    pub fn fps(&self) -> f64 {
+        if self.avg_ms > 0.0 {
+            1000.0 / self.avg_ms
+        } else {
+            0.0
+        }
+    }
+
+    /// Best-case frames per second (fastest encode observed).
+    pub fn peak_fps(&self) -> f64 {
+        if self.best_ms > 0.0 {
+            1000.0 / self.best_ms
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Benchmark the JPEG encode hot path (the capture pipeline's single-thread ceiling) on a synthetic
+/// BGRA frame of `width`×`height`, timing `iters` encodes at `quality` after a warmup. No simulator
+/// is needed — this isolates the CoreGraphics/ImageIO cost that bounds the stream's frame rate.
+pub fn bench_encode(width: usize, height: usize, quality: f64, iters: u32) -> Option<EncodeBench> {
+    let stride = width * 4;
+    // A gradient plus a per-pixel wobble so the JPEG has realistic entropy (a flat frame would
+    // compress trivially and understate the encode cost).
+    let mut pixels = vec![0u8; stride * height];
+    for y in 0..height {
+        let row = &mut pixels[y * stride..y * stride + width * 4];
+        for x in 0..width {
+            let p = &mut row[x * 4..x * 4 + 4];
+            p[0] = (x ^ y) as u8; // B
+            p[1] = (x.wrapping_add(y)) as u8; // G
+            p[2] = (x.wrapping_mul(3) ^ y) as u8; // R
+            p[3] = 0xFF; // A
+        }
+    }
+    let frame = RawFrame {
+        width,
+        height,
+        stride,
+        pixels,
+    };
+    let q = quality.clamp(0.1, 1.0);
+
+    // Warm up: the first encode pays one-time ImageIO/CoreGraphics setup.
+    let mut out_len = 0usize;
+    for _ in 0..3 {
+        out_len = encode_bgra_jpeg(&frame, q)?.len();
+    }
+
+    let mut samples = Vec::with_capacity(iters as usize);
+    for _ in 0..iters {
+        let start = std::time::Instant::now();
+        let jpeg = encode_bgra_jpeg(&frame, q)?;
+        samples.push(start.elapsed().as_secs_f64() * 1000.0);
+        out_len = jpeg.len();
+    }
+    samples.sort_by(|a, b| a.partial_cmp(b).expect("no NaN durations"));
+    let avg_ms = samples.iter().sum::<f64>() / samples.len() as f64;
+    let best_ms = samples[0];
+    let p95_ms = samples[(samples.len() * 95 / 100).min(samples.len() - 1)];
+
+    Some(EncodeBench {
+        width,
+        height,
+        quality: q,
+        avg_ms,
+        best_ms,
+        p95_ms,
+        out_kib: out_len / 1024,
+    })
+}
+
 /// Write a `CGImage` to JPEG via ImageIO at `quality`.
 ///
 /// # Safety

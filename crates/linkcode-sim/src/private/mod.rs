@@ -13,7 +13,7 @@ mod screen;
 
 pub use device::SimDevice;
 pub use input::{Button, Input};
-pub use screen::Screen;
+pub use screen::{Screen, bench_encode};
 
 /// Whether this host can drive simulators interactively (private frameworks resolved).
 pub fn interactive_available() -> bool {
