@@ -1,7 +1,8 @@
 # Desktop release: build signed artifacts (build-desktop.yml, sign: true), upload the
 # electron-updater feed to Cloudflare R2 (served at https://releases.linkcode.ai/desktop), then
 # publish a GitHub Release for human downloads — the updater never reads it.
-# Triggered by pushing a v*.*.* tag, or manually with a dry-run option.
+# Normally triggered by Finalize Releases pushing a release-please v*.*.* tag after CI succeeds;
+# workflow_dispatch remains available for a signed dry run.
 
 name: Release Desktop
 
@@ -76,6 +77,30 @@ jobs:
             echo "tag=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify release-please Release exists
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          releases="$(
+            gh api --paginate --method GET "repos/${GITHUB_REPOSITORY}/releases" -f per_page=100 |
+              jq -sc --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)]'
+          )"
+          release_count="$(jq 'length' <<< "$releases")"
+          if [ "$release_count" != 1 ]; then
+            echo "::error::Expected one release-please Release for ${TAG}, found ${release_count}"
+            exit 1
+          fi
+
+          release_sha="$(jq -r '.[0].target_commitish' <<< "$releases")"
+          if [ "$release_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::${TAG} Release targets ${release_sha}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
+
       - name: Publish update feed to R2
         # The live updater feed (installers + latest*.yml + *.blockmap), public via
         # https://releases.linkcode.ai — the publish.url baked into shipped apps.
@@ -102,9 +127,10 @@ jobs:
         uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
+          # release-please creates this as a draft before the tag push. action-gh-release reuses
+          # that draft, uploads assets first, then publishes it when draft is false.
           draft: false
           prerelease: ${{ contains(steps.meta.outputs.tag, '-') }} # v1.2.3-beta.1 => prerelease
-          generate_release_notes: true
           files: |
             artifacts/*.dmg
             artifacts/*.zip

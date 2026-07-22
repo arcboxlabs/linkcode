@@ -1,11 +1,13 @@
 # Desktop Release & Packaging Runbook
 
-How to cut, sign, notarize, and publish the Electron desktop app, plus the packaging trap catalog. Desktop-scoped packaging invariants (asar layout, preload, the `extraResources` runtime contract, `electron-builder.yml` structure) live in [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md); local dev/test/E2E in [`docs/DEVELOPMENT.md`](DEVELOPMENT.md). Only the desktop app has a release pipeline — there is none for webview, mobile, or daemon.
+How to cut, sign, notarize, and publish the Electron desktop app, plus the packaging trap catalog. Desktop-scoped packaging invariants (asar layout, preload, the `extraResources` runtime contract, `electron-builder.yml` structure) live in [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md); local dev/test/E2E in [`docs/DEVELOPMENT.md`](DEVELOPMENT.md). Only the desktop app has a delivery pipeline — release-please is manifest-based so mobile can become a separate release component later, but no webview, mobile, or daemon publish workflow exists yet.
 
 ## Release surface
 
-- Three GitHub Actions workflows plus one composite action — nothing else releases anything:
+- Five GitHub Actions workflows plus one composite action own the release path:
   - `.github/workflows/ci.yml` ("CI") — runs on every PR.
+  - `.github/workflows/release-please.yml` ("Release Please") — maintains release PRs after pushes to `master`; it never tags or publishes.
+  - `.github/workflows/finalize-releases.yml` ("Finalize Releases") — after a successful `master` CI, turns a merged release PR into a draft Release and pushes its validated tag.
   - `.github/workflows/build-desktop.yml` ("Build Desktop") — reusable packaging workflow; **not** PR-triggered.
   - `.github/workflows/release-desktop.yml` ("Release Desktop") — tag-triggered publish.
   - `.github/actions/build-sidecar` — composite action that builds the PTY sidecar per arch.
@@ -19,9 +21,16 @@ How to cut, sign, notarize, and publish the Electron desktop app, plus the packa
 
 ## Cutting a release
 
-- Bump `apps/desktop/package.json` `version` (currently `0.2.1`), then push a `v*.*.*` tag. electron-builder derives artifact names and the updater feed from **package.json, not the tag**, so `build-desktop.yml`'s **"Assert package version matches release tag"** step fails unless `v${version}` == `GITHUB_REF_NAME`. Moving an *unpublished* tag is safe.
-- `release-desktop.yml` fires on the tag push (or `workflow_dispatch` with `dry_run`, default `true`). Its **build** job calls `build-desktop.yml` with `sign: true` + `secrets: inherit`; its **release** job (`environment: release`) syncs `desktop-*` artifacts to R2 and creates a GitHub Release. A dispatch with `dry_run: true` builds + signs but publishes nothing.
-- The **GitHub Release** (`softprops/action-gh-release@v3`, `generate_release_notes: true`) is for human downloads only — the updater reads the R2 feed, not the Release. Tags containing `-` (e.g. `v1.2.3-beta.1`) publish as prerelease. `release-desktop.yml` concurrency is `cancel-in-progress: false` — never cancel a release mid-flight (CI and PR builds do cancel).
+- **Never hand-edit a release version or push a release tag.** `release-please-config.json` and `.release-please-manifest.json` bootstrap Desktop at the last published version; conventional `fix` / `feat` / breaking commits update a dedicated release PR, including `apps/desktop/package.json` and `apps/desktop/CHANGELOG.md`. Desktop is a root product component so daemon, sidecar, and shared-package changes count, while pure `apps/mobile` and `apps/webview` commits are excluded. Merge that PR when the accumulated notes and proposed version are ready to ship.
+- The release PR merge runs normal `master` CI. Only after **All Green** succeeds does `finalize-releases.yml` bind the pending release PR to that exact tested SHA, verify `v${version}` against `apps/desktop/package.json`, and ask release-please to create the lightweight tag plus a draft GitHub Release. `force-tag-creation` makes release-please push the tag even though the Release stays draft. The App token is load-bearing: a tag created with `GITHUB_TOKEN` would not start another workflow.
+- `release-desktop.yml` fires on the tag push (or `workflow_dispatch` with `dry_run`, default `true`). Its **build** job calls `build-desktop.yml` with `sign: true` + `secrets: inherit`; its **release** job (`environment: release`) syncs `desktop-*` artifacts to R2, reuses the release-please draft, uploads all assets, and then publishes it. A dispatch with `dry_run: true` builds + signs but publishes nothing.
+- electron-builder derives artifact names and the updater feed from **package.json, not the tag**, so `build-desktop.yml` independently fails unless `v${version}` equals `GITHUB_REF_NAME`. The **GitHub Release** is for human downloads only — the updater reads the R2 feed. Tags containing `-` (e.g. `v1.2.3-beta.1`) publish as prerelease. `release-desktop.yml` concurrency is `cancel-in-progress: false` — never cancel a release mid-flight.
+
+## Adding mobile releases
+
+Desktop deliberately remains the only active package in `release-please-config.json` until the EAS build/submit workflow and store credentials exist. Activating mobile is then a separate atomic change: add `apps/mobile` to the manifest at the current `expo.version`, configure release-please's `expo` strategy with component tags (`mobile-v*.*.*`), and teach `finalize-releases.yml` to start only the matching Mobile workflow. Keep `v*.*.*` unprefixed tags reserved for Desktop so existing updater and GitHub download links remain stable.
+
+The Expo strategy updates both `apps/mobile/package.json` and `apps/mobile/app.json`: align their starting versions when activating it. Marketing SemVer belongs in `expo.version`; iOS `buildNumber` and Android `versionCode` are monotonically increasing store build identifiers and should be remote EAS-owned rather than release-please-owned. Native store builds and `expo-updates` production-channel OTA publishes remain separate delivery actions.
 
 ## Signing & notarization
 

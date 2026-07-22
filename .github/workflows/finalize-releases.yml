@@ -1,0 +1,217 @@
+name: Finalize Releases
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# A release PR merge starts CI and this workflow. Never cancel a finalizer after release-please has
+# created its tag: that ref is what starts the non-cancelable signed build.
+concurrency:
+  group: finalize-releases-master
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  finalize:
+    name: Finalize merged release PRs
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Mint release bot token
+        id: release-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      # Bind release-please to the exact commit that this successful CI run tested. Normal master
+      # pushes are no-ops, and release-please may only see this one pending Desktop release PR.
+      - name: Resolve tested release candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ steps.release-token.outputs.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          pulls="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/commits/${TESTED_SHA}/pulls")"
+          candidates="$(
+            jq -c --arg sha "$TESTED_SHA" '
+              [.[] | select(
+                .base.ref == "master" and
+                .merge_commit_sha == $sha and
+                (.head.ref | startswith("release-please--"))
+              )]
+            ' <<< "$pulls"
+          )"
+          candidate_count="$(jq 'length' <<< "$candidates")"
+
+          if [ "$candidate_count" = 0 ]; then
+            echo "state=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$candidate_count" != 1 ]; then
+            echo "::error::Expected one release-please PR for ${TESTED_SHA}, found ${candidate_count}"
+            exit 1
+          fi
+
+          pending="$(jq '[.[0].labels[].name] | contains(["autorelease: pending"])' <<< "$candidates")"
+          tagged="$(jq '[.[0].labels[].name] | contains(["autorelease: tagged"])' <<< "$candidates")"
+
+          version="$({
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/contents/apps/desktop/package.json" \
+              -f "ref=${TESTED_SHA}" --jq .content
+          } | tr -d '\n' | base64 --decode | jq -r .version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Invalid Desktop release version: ${version}"
+            exit 1
+          fi
+          tag="v${version}"
+          releases="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/releases" -f per_page=100 |
+              jq -c --arg tag "$tag" '[.[] | select(.tag_name == $tag)]'
+          )"
+          release_count="$(jq 'length' <<< "$releases")"
+          if [ "$release_count" -gt 1 ]; then
+            echo "::error::Found multiple matching releases for ${tag}"
+            exit 1
+          fi
+
+          existing_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq .object.sha 2>/dev/null || true
+          )"
+          if [ -n "$existing_sha" ] && [ "$existing_sha" != "$TESTED_SHA" ]; then
+            echo "::error::${tag} already points to ${existing_sha}, expected ${TESTED_SHA}"
+            exit 1
+          fi
+
+          candidate_number="$(jq -r '.[0].number' <<< "$candidates")"
+          echo "sha=${TESTED_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if [ -n "$existing_sha" ] && [ "$release_count" = 1 ]; then
+            release_sha="$(jq -r '.[0].target_commitish' <<< "$releases")"
+            if [ "$release_sha" != "$TESTED_SHA" ]; then
+              echo "::error::${tag} Release targets ${release_sha}, expected ${TESTED_SHA}"
+              exit 1
+            fi
+            if [ "$tagged" != true ]; then
+              gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${candidate_number}/labels" \
+                -f 'labels[]=autorelease: tagged' >/dev/null
+            fi
+            if [ "$pending" = true ]; then
+              gh api --method DELETE \
+                "repos/${GITHUB_REPOSITORY}/issues/${candidate_number}/labels/autorelease%3A%20pending" \
+                >/dev/null
+            fi
+            echo "state=done" >> "$GITHUB_OUTPUT"
+          elif [ "$pending" = true ]; then
+            pending_releases="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls" \
+                -f state=closed -f base=master -f sort=updated -f direction=desc -f per_page=100 |
+                jq -c '[.[] | select(
+                  .merged_at != null and
+                  (.head.ref | startswith("release-please--")) and
+                  ([.labels[].name] | contains(["autorelease: pending"]))
+                )]'
+            )"
+            pending_count="$(jq 'length' <<< "$pending_releases")"
+            pending_sha="$(jq -r '.[0].merge_commit_sha // ""' <<< "$pending_releases")"
+            if [ "$pending_count" != 1 ] || [ "$pending_sha" != "$TESTED_SHA" ]; then
+              echo "::error::Pending release PR does not uniquely match CI-tested ${TESTED_SHA}"
+              exit 1
+            fi
+            echo "state=pending" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tagged release PR has no matching Release and tag"
+            exit 1
+          fi
+
+      - name: Verify tested release candidate is still master
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        env:
+          GH_TOKEN: ${{ steps.release-token.outputs.token }}
+          TESTED_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          master_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/master" --jq .object.sha
+          )"
+          if [ "$master_sha" != "$TESTED_SHA" ]; then
+            echo "::error::master advanced to ${master_sha}; refusing to release tested ${TESTED_SHA}"
+            exit 1
+          fi
+
+      # release-please recovers the version and notes from a merged release PR. Configured Releases
+      # stay draft, so users never see a release before its signed artifacts have been verified.
+      - name: Create draft releases
+        id: release
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          token: ${{ steps.release-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: master
+          skip-github-pull-request: true
+
+      # force-tag-creation makes release-please create the lightweight ref with the App token before
+      # it creates the draft. That tag push starts release-desktop.yml; validate that release-please
+      # acted on exactly the commit this CI run tested.
+      - name: Verify started Desktop release
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        env:
+          GH_TOKEN: ${{ steps.release-token.outputs.token }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.sha }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          RELEASE_PLEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_PLEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid release SHA: $RELEASE_SHA"
+            exit 1
+          fi
+
+          if [ "$RELEASE_CREATED" != true ]; then
+            echo "::error::release-please did not create the expected Desktop draft"
+            exit 1
+          fi
+          if [ "$RELEASE_PLEASE_SHA" != "$RELEASE_SHA" ] || [ "$RELEASE_PLEASE_TAG" != "$RELEASE_TAG" ]; then
+            echo "::error::release-please output does not match the CI-tested release candidate"
+            exit 1
+          fi
+
+          draft_count="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/releases" -f per_page=100 |
+              jq --arg sha "$RELEASE_SHA" --arg tag "$RELEASE_TAG" \
+                '[.[] | select(.draft and .target_commitish == $sha and .tag_name == $tag)] | length'
+          )"
+          if [ "$draft_count" != 1 ]; then
+            echo "::error::Expected one draft Release for ${RELEASE_TAG}, found ${draft_count}"
+            exit 1
+          fi
+
+          existing_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq .object.sha
+          )"
+          if [ "$existing_sha" != "$RELEASE_SHA" ]; then
+            echo "::error::${RELEASE_TAG} points to ${existing_sha}, expected ${RELEASE_SHA}"
+            exit 1
+          fi
+
+          echo "Started signed Desktop release for ${RELEASE_TAG} at ${RELEASE_SHA}" >> "$GITHUB_STEP_SUMMARY"
