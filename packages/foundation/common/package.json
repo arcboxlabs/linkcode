@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./node": "./src/node/index.ts",
+    "./sentry": "./src/sentry/index.ts",
+    "./telemetry-config": "./src/telemetry-config/index.ts",
     "./zustand": "./src/zustand/index.ts"
   },
   "scripts": {
