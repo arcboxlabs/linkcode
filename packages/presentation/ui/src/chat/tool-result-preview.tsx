@@ -22,7 +22,7 @@ import {
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
-import { TOOL_KIND_ICONS, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+import { toolCallCommand, toolCallDisplayTitle } from './tool-utils';
 
 /** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
 export type TerminalBlockComponent = React.ComponentType<{
@@ -235,16 +235,6 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
         </ToolPreviewCard>
       );
     }
-    case 'edit':
-    case 'delete':
-    case 'move': {
-      const Icon = TOOL_KIND_ICONS[toolCall.kind];
-      return (
-        <ToolPreviewCard icon={Icon} title={displayTitle}>
-          <Markdown>{text}</Markdown>
-        </ToolPreviewCard>
-      );
-    }
     case 'search':
       return <SearchRows text={text} toolCall={toolCall} />;
     case 'fetch': {
@@ -269,6 +259,10 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
         </ToolPreviewCard>
       );
     }
+    // Mutation receipts and reasoning summaries are auxiliary prose, not artifacts — no card.
+    case 'edit':
+    case 'delete':
+    case 'move':
     case 'think':
     case 'task':
       return <Markdown>{text}</Markdown>;

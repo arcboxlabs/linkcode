@@ -334,7 +334,8 @@ describe('ToolCallBody', () => {
     const receiptNode = screen.getByText(receipt);
     expect(screen.getAllByText('hello.py')).toHaveLength(1);
     expect(fileCard?.contains(receiptNode)).toBe(false);
-    expect(receiptNode.closest('[data-slot="frame"]')?.textContent).toContain('Edit');
+    // Receipts are auxiliary prose, not artifacts — they render outside any card.
+    expect(receiptNode.closest('[data-slot="frame"]')).toBeNull();
   });
 
   it('renders patch-only moves and textless binary deletes', () => {
