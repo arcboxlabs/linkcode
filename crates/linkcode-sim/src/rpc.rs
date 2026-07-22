@@ -53,6 +53,45 @@ pub enum Op {
         #[serde(default)]
         format: ImageFormat,
     },
+    /// Single-finger tap at a normalised (0..1) point (private API; P1).
+    Tap { udid: String, x: f64, y: f64 },
+    /// Swipe between two normalised (0..1) points over `duration_ms` (private API; P1).
+    Swipe {
+        udid: String,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        #[serde(default)]
+        duration_ms: u64,
+    },
+    /// Press a hardware button (private API; P1).
+    Button { udid: String, button: ButtonKind },
+    /// Start streaming the device framebuffer as JPEG `FRAME`s at `fps` (private API; P1).
+    StreamStart {
+        udid: String,
+        #[serde(default = "default_fps")]
+        fps: u32,
+        #[serde(default = "default_quality")]
+        quality: f64,
+    },
+    /// Stop a running framebuffer stream.
+    StreamStop { udid: String },
+}
+
+fn default_fps() -> u32 {
+    10
+}
+fn default_quality() -> f64 {
+    0.6
+}
+
+/// Hardware buttons exposable over the wire (extended as the private HID layer grows).
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ButtonKind {
+    Home,
+    Lock,
 }
 
 /// Screenshot encodings supported by `simctl io screenshot --type`.

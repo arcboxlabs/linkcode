@@ -4,6 +4,10 @@
 //! protocol (see [`proto`]). Requests arrive on stdin; results go to stdout. Each request runs
 //! on its own thread so a slow boot never blocks a screenshot.
 
+mod capture;
+mod interactive;
+#[cfg(target_os = "macos")]
+mod private;
 mod proto;
 mod rpc;
 mod simctl;
@@ -23,7 +27,7 @@ use crate::proto::{
 use crate::rpc::{ErrorCode, Op, OpError, Request, RequestIdOnly, error_body, success_body};
 
 /// A frame bound for the daemon, or the sentinel that tells the writer thread to stop.
-enum OutMsg {
+pub(crate) enum OutMsg {
     Frame { type_byte: u8, body: Vec<u8> },
     Stop,
 }
@@ -83,6 +87,20 @@ impl InflightGate {
 }
 
 fn main() {
+    let subcommand = std::env::args().nth(1);
+    // The crash-isolated framebuffer capture worker (spawned by the sidecar itself).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("capture-worker") {
+        capture::run_worker();
+    }
+    // Hidden diagnostic path to exercise the private-framework layer against a real booted device:
+    // `linkcode-sim diag-interactive <udid> <out.jpg>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-interactive") {
+        diag_interactive();
+        return;
+    }
+
     let (tx, rx) = channel::<OutMsg>();
 
     // Sole stdout owner: serializes frames from every request thread.
@@ -163,7 +181,7 @@ fn main() {
 fn serve(request: Request, tx: &Sender<OutMsg>) {
     let request_id = request.request_id;
     let outcome = match request.op {
-        Op::Probe => simctl::probe(),
+        Op::Probe => probe_with_capabilities(),
         Op::List => simctl::list(),
         Op::Boot { udid } => simctl::boot(&udid),
         Op::Shutdown { udid } => simctl::shutdown(&udid),
@@ -196,11 +214,34 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
                 Err(e) => Err(e),
             }
         }
+        Op::Tap { udid, x, y } => interactive::tap(&udid, x, y),
+        Op::Swipe {
+            udid,
+            x0,
+            y0,
+            x1,
+            y1,
+            duration_ms,
+        } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
+        Op::Button { udid, button } => interactive::button(&udid, button),
+        Op::StreamStart { udid, fps, quality } => {
+            interactive::stream_start(&udid, fps, quality, tx)
+        }
+        Op::StreamStop { udid } => interactive::stream_stop(&udid),
     };
     match outcome {
         Ok(result) => send(tx, RESULT, success_body(&request_id, result)),
         Err(error) => send_error(tx, &request_id, &error),
     }
+}
+
+/// The probe result augmented with the interactive (private-API framebuffer + HID) capability bit.
+fn probe_with_capabilities() -> Result<serde_json::Value, OpError> {
+    let mut result = simctl::probe()?;
+    if let Some(object) = result.as_object_mut() {
+        object.insert("interactive".to_owned(), interactive::available().into());
+    }
+    Ok(result)
 }
 
 fn send(tx: &Sender<OutMsg>, type_byte: u8, body: Vec<u8>) {
@@ -209,4 +250,52 @@ fn send(tx: &Sender<OutMsg>, type_byte: u8, body: Vec<u8>) {
 
 fn send_error(tx: &Sender<OutMsg>, request_id: &str, error: &OpError) {
     send(tx, RESULT, error_body(request_id, error));
+}
+
+/// Diagnostic entry (macOS only): drive the SUPERVISED capture stream (crash-isolated worker) plus
+/// input injection against a real device. `linkcode-sim diag-interactive <udid> <out.jpg> [x] [y]`.
+/// Verifies the stream survives worker crashes and keeps delivering frames.
+#[cfg(target_os = "macos")]
+fn diag_interactive() {
+    use std::time::Duration;
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-interactive <udid> <out.jpg>");
+    let out = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "diag.jpg".to_owned());
+    let x: f64 = std::env::args()
+        .nth(4)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(0.5);
+    let y: f64 = std::env::args()
+        .nth(5)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(0.5);
+    eprintln!(
+        "interactive available: {}",
+        private::interactive_available()
+    );
+
+    let device = private::SimDevice::resolve(&udid).expect("device not found");
+    let input = private::Input::warm(&device).expect("HID warm failed");
+    let stream = capture::CaptureStream::start(udid.clone(), 0.6, 12);
+    eprintln!("supervised capture stream started; driving input for ~5s");
+
+    let start = std::time::Instant::now();
+    let mut frames = 0u32;
+    let mut last_len = 0usize;
+    while start.elapsed() < Duration::from_secs(5) && !stream.is_dead() {
+        input.tap(x, y, Duration::from_millis(30));
+        if let Some(frame) = stream.latest() {
+            frames += 1;
+            last_len = frame.len();
+            std::fs::write(&out, &**frame).expect("write jpeg");
+        }
+        std::thread::sleep(Duration::from_millis(80));
+    }
+    eprintln!(
+        "stream dead={} frames-seen={frames} last={last_len} bytes; wrote {out}",
+        stream.is_dead()
+    );
 }
