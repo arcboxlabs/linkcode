@@ -17,7 +17,9 @@ import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 const NON_WORD_RE = /\W/g;
-const SANITIZED_HEADING_PREFIX = 'user-content-';
+/** Streamdown's bundled rehype-sanitize clobbers every id (headings, footnotes, raw HTML)
+ * with this prefix, while hrefs keep the unprefixed form the author or remark-gfm wrote. */
+const SANITIZED_ID_PREFIX = 'user-content-';
 const HEADING_TAG_NAMES = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 const MarkdownHeadingPrefixContext = createContext<string | null>(null);
 
@@ -72,6 +74,39 @@ function InlineCode({
   );
 }
 
+/** Anchor hashes may be percent-encoded (CJK heading slugs) while element ids are not. */
+function decodeFragment(hash: string): string {
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    return hash;
+  }
+}
+
+function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, ids: string[]): void {
+  // Fragment navigation must stay in-page even when nothing resolves: the native fallthrough
+  // is a real navigation (hash/router side effects; the desktop untrusted-link surface).
+  event.preventDefault();
+  const doc = event.currentTarget.ownerDocument;
+  // ponytail: duplicate ids across chat messages resolve to the first document-order match
+  // (GitHub-grade tradeoff); scope lookups to a per-instance root marker if it ever matters.
+  const target = ids.map((id) => doc.getElementById(id)).find((element) => element !== null);
+  if (!target) return;
+  const scrollContainer = event.currentTarget.closest<HTMLElement>(
+    '[data-markdown-scroll-container]',
+  );
+  if (!scrollContainer) {
+    target.scrollIntoView({ block: 'start' });
+    return;
+  }
+  scrollContainer.scrollTo({
+    top:
+      scrollContainer.scrollTop +
+      target.getBoundingClientRect().top -
+      scrollContainer.getBoundingClientRect().top,
+  });
+}
+
 function MarkdownLink({
   className,
   children,
@@ -80,42 +115,32 @@ function MarkdownLink({
   ...rest
 }: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
   const headingPrefix = useContext(MarkdownHeadingPrefixContext);
-  const isFragment = href?.[0] === '#';
+  const fragment = href?.[0] === '#' ? href.slice(1) : null;
   const fragmentHref =
-    isFragment && headingPrefix
-      ? `#${SANITIZED_HEADING_PREFIX}${headingPrefix}${href.slice(1)}`
+    fragment !== null && headingPrefix !== null
+      ? `#${SANITIZED_ID_PREFIX}${headingPrefix}${fragment}`
       : undefined;
   return (
     <a
       {...rest}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
       href={fragmentHref ?? href}
-      target={isFragment ? undefined : '_blank'}
-      rel={isFragment ? undefined : 'noreferrer'}
+      target={fragment === null ? '_blank' : undefined}
+      rel={fragment === null ? 'noreferrer' : undefined}
       onClick={
-        fragmentHref
-          ? (event) => {
-              const target = event.currentTarget.ownerDocument.getElementById(
-                fragmentHref.slice(1),
-              );
-              if (target) {
-                event.preventDefault();
-                const scrollContainer = event.currentTarget.closest<HTMLElement>(
-                  '[data-markdown-scroll-container]',
-                );
-                if (!scrollContainer) {
-                  target.scrollIntoView({ block: 'start' });
-                  return;
-                }
-                scrollContainer.scrollTo({
-                  top:
-                    scrollContainer.scrollTop +
-                    target.getBoundingClientRect().top -
-                    scrollContainer.getBoundingClientRect().top,
-                });
-              }
+        fragment === null
+          ? undefined
+          : (event) => {
+              const decoded = decodeFragment(fragment);
+              scrollToFragment(event, [
+                // Heading path: the pipeline prefixed the target id per document instance.
+                ...(fragmentHref ? [decodeFragment(fragmentHref.slice(1))] : []),
+                // Everything else (footnotes, references, raw-HTML ids) keeps the href as
+                // written; only sanitize's clobber prefix separates it from the DOM id.
+                `${SANITIZED_ID_PREFIX}${decoded}`,
+                decoded,
+              ]);
             }
-          : undefined
       }
     >
       {children}

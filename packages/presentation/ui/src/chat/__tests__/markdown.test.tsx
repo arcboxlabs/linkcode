@@ -85,6 +85,59 @@ it('deduplicates repeated headings across one anchored document', () => {
   expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${headings[1]?.id}`);
 });
 
+// Footnote ids get double-prefixed (remark-rehype's clobber prefix, then sanitize's), while
+// hrefs keep the single prefix; MarkdownLink must bridge that and never let a fragment click
+// reach native navigation (the desktop external-browser surface).
+it('keeps footnote fragment clicks in-page and scrolls between reference and definition', () => {
+  const { container, getByRole } = render(<Markdown>{'Note.[^1]\n\n[^1]: Detail.'}</Markdown>);
+
+  const reference = getByRole('link', { name: '1' });
+  expect(reference.getAttribute('href')).toBe('#user-content-fn-1');
+  expect(reference.getAttribute('target')).toBeNull();
+  expect(reference.getAttribute('rel')).toBeNull();
+
+  const definition = container.querySelector<HTMLElement>('#user-content-user-content-fn-1');
+  expect(definition).not.toBeNull();
+  if (!definition) return;
+  const scrollToDefinition = vi.fn();
+  definition.scrollIntoView = scrollToDefinition;
+  expect(fireEvent.click(reference)).toBe(false);
+  expect(scrollToDefinition).toHaveBeenCalledWith({ block: 'start' });
+
+  const backref = container.querySelector<HTMLElement>('a[data-footnote-backref]');
+  const referenceAnchor = container.querySelector<HTMLElement>(
+    '#user-content-user-content-fnref-1',
+  );
+  expect(backref).not.toBeNull();
+  expect(referenceAnchor).not.toBeNull();
+  if (!backref || !referenceAnchor) return;
+  const scrollToReference = vi.fn();
+  referenceAnchor.scrollIntoView = scrollToReference;
+  expect(fireEvent.click(backref)).toBe(false);
+  expect(scrollToReference).toHaveBeenCalledWith({ block: 'start' });
+});
+
+it('resolves footnote targets when heading anchors rewrite fragment hrefs', () => {
+  const { container, getByRole } = render(
+    <Markdown headingAnchors>{'## Title\n\nNote.[^1]\n\n[^1]: Detail.'}</Markdown>,
+  );
+
+  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definition).not.toBeNull();
+  if (!definition) return;
+  const scrollIntoView = vi.fn();
+  definition.scrollIntoView = scrollIntoView;
+  expect(fireEvent.click(getByRole('link', { name: '1' }))).toBe(false);
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+});
+
+it('prevents navigation for fragment links with no resolvable target', () => {
+  const { getByRole } = render(<Markdown>{'[missing](#nowhere)'}</Markdown>);
+  const link = getByRole('link', { name: 'missing' });
+  expect(link.getAttribute('target')).toBeNull();
+  expect(fireEvent.click(link)).toBe(false);
+});
+
 // Pins the @streamdown/code ↔ shiki contract: the workspace override forces shiki 4 under the
 // plugin (which pins ^3) to keep a single copy in the renderer bundle (CODE-215). If the plugin's
 // createHighlighter/bundledLanguages usage ever breaks against the resolved shiki major, the
