@@ -29,7 +29,9 @@
     "format:check": "biome check .",
     "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck",
     "test": "vitest run",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "schema:index": "node tools/gen-schema-index.cjs",
+    "schema:index:check": "node tools/gen-schema-index.cjs --check"
   },
   "keywords": [
     "ai",
