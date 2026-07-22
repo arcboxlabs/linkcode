@@ -416,11 +416,14 @@ export class PiAdapter extends BaseAgentAdapter {
       locations: locationsFromToolInput(event.input),
     };
     this.emitTool({ ...card, status: 'in_progress' });
-    const outcome = await this.requestPermission(card, [
-      { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
-      { optionId: 'always', name: 'Always allow this session', kind: 'allow_always' },
-      { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-    ]);
+    const outcome = await this.requestPermission(
+      { title: event.toolName, subject: { type: 'tool-call', toolCallId: event.toolCallId } },
+      [
+        { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'always', name: 'Always allow this session', kind: 'allow_always' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+      ],
+    );
     if (this.lifecycle !== generation) return { block: true, reason: 'The Pi session has stopped' };
     if (outcome.outcome === 'cancelled') {
       this.emitTool({ toolCallId: event.toolCallId, status: 'failed' });

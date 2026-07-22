@@ -19,6 +19,7 @@ import type {
   MessageId,
   PermissionOption,
   PermissionOutcome,
+  PermissionPrompt,
   Question,
   QuestionOutcome,
   SessionStatus,
@@ -362,13 +363,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   // ── Permission round-trip (resolved by a `permission-response` AgentInput, by id) ──
   protected requestPermission(
-    toolCall: ToolCallUpdate,
+    prompt: PermissionPrompt,
     options: PermissionOption[],
   ): Promise<PermissionOutcome> {
     const requestId = nextRequestId();
     return new Promise<PermissionOutcome>((resolve) => {
       this.pending.set(requestId, resolve);
-      this.emit({ type: 'permission-request', requestId, toolCall, options });
+      this.emit({ type: 'permission-request', requestId, ...prompt, options });
     });
   }
   private resolvePending(requestId: string, outcome: PermissionOutcome): void {

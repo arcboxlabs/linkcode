@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   EffortLevel,
   PermissionOption,
+  PermissionSubject,
   Plan,
   Question,
   SessionStatus,
@@ -84,6 +85,9 @@ export type ConversationItem = (
       id: string;
       turnId: ConversationTurnId;
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;
@@ -483,17 +487,39 @@ export function createConversationBuilder(): ConversationBuilder {
         });
         break;
 
-      case 'permission-request':
+      case 'permission-request': {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
-        endActiveReasoning(event.toolCall.parentToolCallId ?? undefined, receivedAt);
+        const subject = event.subject ?? {
+          type: 'tool-call' as const,
+          toolCallId: event.toolCall?.toolCallId ?? event.requestId,
+        };
+        const linkedIndex = subject.toolCallId ? toolIndex.get(subject.toolCallId) : undefined;
+        const linkedItem = linkedIndex === undefined ? undefined : items[linkedIndex];
+        const linkedToolCall = linkedItem?.kind === 'tool' ? linkedItem.toolCall : undefined;
+        const title = event.title ?? event.toolCall?.title ?? event.requestId;
+        const toolCall =
+          linkedToolCall ??
+          event.toolCall ??
+          (subject.type === 'command'
+            ? {
+                toolCallId: subject.toolCallId ?? event.requestId,
+                title,
+                kind: 'execute' as const,
+                rawInput: { command: subject.command, cwd: subject.cwd },
+              }
+            : { toolCallId: subject.toolCallId, title });
+        endActiveReasoning(toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'approval',
           id: event.requestId,
           turnId: currentTurnId,
           requestId: event.requestId,
-          toolCall: event.toolCall,
+          title,
+          description: event.description,
+          subject,
+          toolCall,
           options: event.options,
           responding:
             !permissionResolutions.has(event.requestId) &&
@@ -504,6 +530,7 @@ export function createConversationBuilder(): ConversationBuilder {
         approvalIndex.set(event.requestId, items.length - 1);
         approvals.push(event.requestId);
         break;
+      }
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);

@@ -133,7 +133,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // Agent → client requests await a reply via AgentInput, correlated by requestId.
-  PermissionRequestSchema.extend({
+  PermissionRequestSchema.safeExtend({
     type: z.literal('permission-request'),
     requestId: z.string().min(1),
   }),

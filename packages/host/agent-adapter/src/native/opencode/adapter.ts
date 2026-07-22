@@ -25,7 +25,12 @@ import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
-import { contentToText, imageBlocksFrom, toolKindFromName } from '../../util';
+import {
+  contentToText,
+  imageBlocksFrom,
+  locationsFromToolInput,
+  toolKindFromName,
+} from '../../util';
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
@@ -860,16 +865,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * Always allow→`always` (persisted server-side), Reject→`reject`. A teardown-cancelled ask also
    * replies `reject` — an unanswered ask would otherwise gate the turn server-side forever. */
   private async handlePermissionAsked(props: PermissionAsked): Promise<void> {
-    const toolCallId =
-      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
-      props.tool?.callID ??
-      nextToolCallId();
-    const outcome = await this.requestPermission(
-      {
+    const linkedToolCallId = props.tool
+      ? this.toolPartIdByCallId.get(props.tool.callID)
+      : undefined;
+    const rawInput = props.metadata;
+    const rawCommand = rawInput.command;
+    const command =
+      typeof rawCommand === 'string' && rawCommand.length > 0 ? rawCommand : undefined;
+    const commandSubject =
+      command && this.directory
+        ? { type: 'command' as const, command, cwd: this.directory, toolCallId: linkedToolCallId }
+        : undefined;
+    const toolCallId = linkedToolCallId ?? (commandSubject ? undefined : nextToolCallId());
+    if (!linkedToolCallId && toolCallId) {
+      this.emitTool({
         toolCallId,
         title: props.permission,
         kind: toolKindFromName(props.permission),
-        rawInput: props.metadata,
+        status: 'in_progress',
+        rawInput,
+        locations: locationsFromToolInput(rawInput),
+      });
+    }
+    const outcome = await this.requestPermission(
+      {
+        title: props.permission,
+        subject: commandSubject ?? {
+          type: 'tool-call',
+          toolCallId: toolCallId ?? nextToolCallId(),
+        },
       },
       PERMISSION_OPTIONS,
     );
