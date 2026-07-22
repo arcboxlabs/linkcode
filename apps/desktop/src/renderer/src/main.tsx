@@ -64,7 +64,7 @@ sentryInit(
   },
   reactInit,
 );
-void fetchTelemetryConfig().then(applyTelemetryConfig);
+if (__LINKCODE_SENTRY_ENABLED__) void fetchTelemetryConfig().then(applyTelemetryConfig);
 const rendererStartupSpan = startInactiveSpan({
   name: 'desktop renderer bootstrap',
   op: 'ui.load',

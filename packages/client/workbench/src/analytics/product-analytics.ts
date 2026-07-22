@@ -132,7 +132,11 @@ export function captureProductEvent<Event extends keyof ProductAnalyticsEvents>(
   ) {
     return;
   }
-  posthogClient.capture(event, properties);
+  try {
+    posthogClient.capture(event, properties);
+  } catch {
+    // Analytics is best-effort and must never alter the surrounding application flow.
+  }
 }
 
 function applyPreference(enabled: boolean): void {

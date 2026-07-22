@@ -88,7 +88,11 @@ export function captureMobileProductEvent<Event extends keyof MobileProductAnaly
   ) {
     return;
   }
-  activeMobileProductAnalytics.capture(event, properties);
+  try {
+    activeMobileProductAnalytics.capture(event, properties);
+  } catch {
+    // Analytics is best-effort and must never alter the surrounding application flow.
+  }
 }
 
 function enqueue(task: () => Promise<void>): void {

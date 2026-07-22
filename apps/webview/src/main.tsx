@@ -28,11 +28,12 @@ initializeProductAnalytics({
 });
 
 let webviewTraceSampleRate = DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate.webview;
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 
 // The DSN is a publishable identifier (not a secret); injected per-build via Vite's VITE_ env prefix.
 // With no DSN the SDK no-ops, so local dev reports nothing unless VITE_SENTRY_DSN is set.
 Sentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN,
+  dsn: sentryDsn,
   integrations: [
     Sentry.reactRouterBrowserTracingIntegration({
       useEffect,
@@ -58,7 +59,7 @@ Sentry.init({
   sendDefaultPii: false,
   tracesSampler: ({ inheritOrSampleWith }) => inheritOrSampleWith(webviewTraceSampleRate),
 });
-void fetchTelemetryConfig().then(applyTelemetryConfig);
+if (sentryDsn) void fetchTelemetryConfig().then(applyTelemetryConfig);
 const rendererStartupSpan = Sentry.startInactiveSpan({
   name: 'webview bootstrap',
   op: 'ui.load',

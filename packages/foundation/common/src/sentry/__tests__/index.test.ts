@@ -22,6 +22,11 @@ describe('sanitizeSentryTransaction', () => {
           status: privateValues[2],
           data: { url: privateValues[1] },
         },
+        profile: {
+          profile_id: 'c'.repeat(32),
+          profiler_id: 'd'.repeat(32),
+          private: privateValues[0],
+        },
         response: { body: privateValues[2] },
       },
       request: { url: privateValues[1] },
@@ -65,6 +70,10 @@ describe('sanitizeSentryTransaction', () => {
 
     expect(sanitized.transaction).toBe('app navigation');
     expect(sanitized.contexts).toEqual({
+      profile: {
+        profile_id: 'c'.repeat(32),
+        profiler_id: 'd'.repeat(32),
+      },
       trace: {
         trace_id: 'a'.repeat(32),
         span_id: 'b'.repeat(16),
