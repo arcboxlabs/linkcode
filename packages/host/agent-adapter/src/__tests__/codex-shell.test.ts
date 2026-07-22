@@ -133,11 +133,15 @@ describe('CodexAdapter shell-command passthrough', () => {
 
     expect(events[0]).toMatchObject({
       type: 'tool-call',
-      toolCall: { toolCallId: 'command-approval-1', status: 'in_progress' },
+      toolCall: {
+        toolCallId: 'command-approval-1',
+        title: 'pnpm test',
+        status: 'in_progress',
+      },
     });
     const request = events.find((event) => event.type === 'permission-request');
     expect(request).toMatchObject({
-      title: 'Run command',
+      title: 'pnpm test',
       description: 'Run the test suite',
       subject: {
         type: 'command',
