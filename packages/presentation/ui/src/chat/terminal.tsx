@@ -3,6 +3,7 @@ import { Frame } from 'coss-ui/components/frame';
 import { TerminalIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { ChatCardActions, ChatCardHeader, ChatCardPanel, ChatCardTitle } from './chat-card';
+import { CopyIconButton } from './copy-icon-button';
 import { Shimmer } from './shimmer';
 
 type AnsiComponent = typeof AnsiImport;
@@ -34,11 +35,10 @@ export function Terminal({
         <>
           <ChatCardHeader>
             <TerminalTitle>{title}</TerminalTitle>
-            {isStreaming ? (
-              <ChatCardActions>
-                <Shimmer className="text-xs">running</Shimmer>
-              </ChatCardActions>
-            ) : null}
+            <ChatCardActions>
+              {isStreaming ? <Shimmer className="text-xs">running</Shimmer> : null}
+              {title ? <CopyIconButton label="command" value={title} /> : null}
+            </ChatCardActions>
           </ChatCardHeader>
           {output?.trim() ? <TerminalContent>{output}</TerminalContent> : null}
         </>
@@ -55,7 +55,7 @@ export function TerminalTitle({
   ...props
 }: TerminalTitleProps): React.ReactNode {
   return (
-    <ChatCardTitle className={cn('flex items-center gap-2', className)} {...props}>
+    <ChatCardTitle className={cn('flex items-center gap-2 font-mono', className)} {...props}>
       <TerminalIcon className="size-3.5 shrink-0" />
       <span className="truncate">{children ?? 'Terminal'}</span>
     </ChatCardTitle>

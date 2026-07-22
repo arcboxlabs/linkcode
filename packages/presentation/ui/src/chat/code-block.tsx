@@ -1,6 +1,6 @@
 import { Frame } from 'coss-ui/components/frame';
 import { cn } from '../lib/cn';
-import { ChatCardHeader, ChatCardPanel, ChatCardTitle } from './chat-card';
+import { ChatCardActions, ChatCardHeader, ChatCardPanel, ChatCardTitle } from './chat-card';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
 import { HighlightedCode } from './highlighted-code';
@@ -35,7 +35,11 @@ export function CodeBlock({
     <Frame className={cn('my-2', className)} data-language={language} {...props}>
       <ChatCardHeader>
         <ChatCardTitle>{title ?? language}</ChatCardTitle>
-        {children}
+        {children ?? (
+          <ChatCardActions>
+            <CodeBlockCopyButton code={code} />
+          </ChatCardActions>
+        )}
       </ChatCardHeader>
       <ChatCardPanel className="overflow-hidden p-0">
         <HighlightedCode className="p-3" code={code} language={language} />
