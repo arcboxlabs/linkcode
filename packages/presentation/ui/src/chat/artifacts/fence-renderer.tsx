@@ -28,8 +28,8 @@ class ArtifactErrorBoundary extends Component<BoundaryProps, { errorKey: string 
   }
 }
 
-/** Streamdown custom renderer covering every fence language the artifact registry
- * claims: detect → look up the kind → render inline, degrading to a plain code block. */
+/** Renders every Markdown fence: detect an artifact kind → render it inline, degrading
+ * to the coss-ui code block (FenceFallback) for plain code and failures. */
 export function ArtifactFenceRenderer({
   code,
   language,

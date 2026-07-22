@@ -4,6 +4,9 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Markdown } from '../markdown';
 
+// Fences render through ArtifactFenceRenderer, which resolves failure notes via use-intl.
+vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
+
 afterEach(cleanup);
 
 const FENCE = '```ts\nconst greeting: string = "hello";\n```';

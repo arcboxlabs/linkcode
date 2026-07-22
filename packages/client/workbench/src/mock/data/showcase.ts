@@ -22,6 +22,29 @@ export const SHOWCASE_INTRO_CONTENT = textBlock(
   'Here is a mocked transcript that uses the same wire events as the daemon.',
 );
 
+export const SHOWCASE_MARKDOWN_CONTENT = textBlock(
+  [
+    'Markdown tour: tables, task lists, fences, and footnotes[^wire] share the chat pipeline.',
+    '',
+    '| Surface | Primitive | Status |',
+    '| ------- | --------- | ------ |',
+    '| Tables | `coss-ui` Table | wired |',
+    '| Rules | Separator | wired |',
+    '| Task lists | Checkbox | wired |',
+    '',
+    '- [x] Fragment links stay in-page',
+    '- [ ] Vendor syntax detectors (CODE-64)',
+    '',
+    '```ts',
+    'const target = ids.map((id) => doc.getElementById(id)).find((el) => el !== null);',
+    '```',
+    '',
+    '---',
+    '',
+    '[^wire]: Footnote references scroll to this definition instead of navigating.',
+  ].join('\n'),
+);
+
 export const SHOWCASE_ARCHITECTURE_LINK: ContentBlock = {
   type: 'resource_link',
   uri: 'file:///mock/linkcode/docs/ARCHITECTURE.md',

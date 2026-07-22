@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  artifactFenceLanguages,
-  registerArtifactDetector,
-  registerArtifactKind,
-  resolveFencedArtifact,
-} from '../registry';
+import { registerArtifactDetector, registerArtifactKind, resolveFencedArtifact } from '../registry';
 import type { FencedBlock } from '../types';
 
 function fence(language: string, code = 'graph TD;\nA-->B'): FencedBlock {
@@ -134,11 +129,5 @@ describe('registerArtifactDetector', () => {
     }
 
     expect(resolveFencedArtifact(fence('mermaid'))!.artifact.kind).toBe('mermaid');
-  });
-});
-
-describe('artifactFenceLanguages', () => {
-  it('collects the union of registered fence languages', () => {
-    expect(artifactFenceLanguages()).toEqual(expect.arrayContaining(['mermaid', 'svg']));
   });
 });
