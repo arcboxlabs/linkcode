@@ -111,8 +111,10 @@ function seedHistory(shape: LoadShape): AgentEvent[] {
       });
     }
     const messageId = 'asst-' + String(t);
-    events.push(textChunk(messageId, 'Summary of turn ' + String(t) + '.\n'));
-    events.push(textChunk(messageId, lines(8, 'detail-' + String(t) + '-')));
+    events.push(
+      textChunk(messageId, 'Summary of turn ' + String(t) + '.\n'),
+      textChunk(messageId, lines(8, 'detail-' + String(t) + '-')),
+    );
   }
   return events;
 }

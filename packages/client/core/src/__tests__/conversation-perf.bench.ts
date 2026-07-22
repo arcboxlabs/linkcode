@@ -113,8 +113,10 @@ function seedHistory(shape: LoadShape): AgentEvent[] {
       });
     }
     const messageId = `asst-${t}`;
-    events.push(textChunk(messageId, `Summary of turn ${t}.\n`));
-    events.push(textChunk(messageId, lines(8, `detail-${t}-`)));
+    events.push(
+      textChunk(messageId, `Summary of turn ${t}.\n`),
+      textChunk(messageId, lines(8, `detail-${t}-`)),
+    );
   }
   return events;
 }
