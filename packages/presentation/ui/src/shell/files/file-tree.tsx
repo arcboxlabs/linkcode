@@ -1,7 +1,7 @@
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { SearchIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useImperativeHandle, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 
@@ -10,6 +10,11 @@ export interface WorkspaceFileTreeProps {
   paths: readonly string[];
   onFileOpen: (path: string) => void;
   className?: string;
+  ref?: React.Ref<WorkspaceFileTreeHandle>;
+}
+
+export interface WorkspaceFileTreeHandle {
+  resetPaths(paths: readonly string[]): void;
 }
 
 /** Blend the shadow-DOM tree into the app theme: the `--trees-*-override` hooks are the
@@ -37,6 +42,7 @@ export function WorkspaceFileTree({
   paths,
   onFileOpen,
   className,
+  ref,
 }: WorkspaceFileTreeProps): React.ReactNode {
   const t = useTranslations('workbench.files');
   const [searchValue, setSearchValue] = useState('');
@@ -58,14 +64,11 @@ export function WorkspaceFileTree({
     },
   });
 
-  // The model is constructed once per mount (useFileTree ignores option changes);
-  // later path lists — refresh, SWR revalidation — are synced imperatively.
-  const appliedPathsRef = useRef(paths);
-  useEffect(() => {
-    if (appliedPathsRef.current === paths) return;
-    appliedPathsRef.current = paths;
-    model.resetPaths(paths);
-  }, [model, paths]);
+  // The model is constructed once per mount (useFileTree ignores option changes). The workbench
+  // container invokes this handle from Tayori's onSuccess callback for later path lists.
+  useImperativeHandle(ref, () => ({ resetPaths: (nextPaths) => model.resetPaths(nextPaths) }), [
+    model,
+  ]);
 
   function applySearch(next: string): void {
     setSearchValue(next);
