@@ -1,7 +1,8 @@
 import type { TerminalViewRef } from 'expo-libghostty';
 import { TerminalView } from 'expo-libghostty';
+import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useEffect, useImperativeHandle, useRef } from 'react';
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useRef } from 'react';
 import type { TerminalRendererProps } from './terminal-renderer.types';
 
 /**
@@ -21,24 +22,15 @@ export default function TerminalRenderer({
   onError,
 }: TerminalRendererProps): React.ReactNode {
   const terminalRef = useRef<TerminalViewRef>(null);
-  const canControlRef = useRef(canControl);
   const readyRef = useRef(false);
   const lastGridRef = useRef<{ cols: number; rows: number } | null>(null);
-  const onInputRef = useRef(onInput);
-  const onResizeRef = useRef(onResize);
-  const onReadyRef = useRef(onReady);
-  const onErrorRef = useRef(onError);
 
-  useEffect(() => {
-    onInputRef.current = onInput;
-    onResizeRef.current = onResize;
-    onReadyRef.current = onReady;
-    onErrorRef.current = onError;
-  }, [onError, onInput, onReady, onResize]);
+  const handleResize = useEffectEvent(onResize);
+  const handleError = useStableHandler(onError);
 
-  const reportError = (error: unknown) => {
-    onErrorRef.current(extractErrorMessage(error, false) ?? 'Unknown terminal renderer error');
-  };
+  const reportError = useCallback((error: unknown) => {
+    handleError(extractErrorMessage(error, false) ?? 'Unknown terminal renderer error');
+  }, [handleError]);
 
   useImperativeHandle(
     ref,
@@ -56,14 +48,13 @@ export default function TerminalRenderer({
         terminalRef.current?.finish(code ?? 0).catch(reportError);
       },
     }),
-    [],
+    [reportError],
   );
 
   useEffect(() => {
-    canControlRef.current = canControl;
     // On gaining control, claim the PTY size for the local grid.
     const grid = lastGridRef.current;
-    if (canControl && grid) onResizeRef.current(grid.cols, grid.rows);
+    if (canControl && grid) handleResize(grid.cols, grid.rows);
   }, [canControl]);
 
   return (
@@ -73,7 +64,7 @@ export default function TerminalRenderer({
       fontSize={fontSize}
       theme={theme}
       onInput={({ nativeEvent }) => {
-        if (canControlRef.current) onInputRef.current(nativeEvent.text);
+        if (canControl) onInput(nativeEvent.text);
       }}
       onResize={({ nativeEvent }) => {
         lastGridRef.current = { cols: nativeEvent.cols, rows: nativeEvent.rows };
@@ -81,9 +72,9 @@ export default function TerminalRenderer({
         // before that would be dropped, so replay is gated on readiness.
         if (!readyRef.current) {
           readyRef.current = true;
-          onReadyRef.current();
+          onReady();
         }
-        if (canControlRef.current) onResizeRef.current(nativeEvent.cols, nativeEvent.rows);
+        if (canControl) onResize(nativeEvent.cols, nativeEvent.rows);
       }}
     />
   );

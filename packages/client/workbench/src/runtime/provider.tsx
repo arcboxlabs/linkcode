@@ -98,8 +98,7 @@ export function useWorkbenchSdkClient(): LinkCodeSdkClient {
  * contexts together per connection generation. Connection state does not gate those contexts
  * (ungated surfaces stay mounted during recovery); gating is `WorkbenchConnectionGate`'s job.
  */
-export function WorkbenchRuntimeProvider(props: WorkbenchRuntimeProviderProps): React.ReactNode {
-  const { connectionSource, children, noGenerationFallback = null } = props;
+export function WorkbenchRuntimeProvider({ connectionSource, children, noGenerationFallback = null }: WorkbenchRuntimeProviderProps): React.ReactNode {
   const { current: controller } = useSingleton(
     () => new WorkbenchConnectionController(connectionSource),
   );
