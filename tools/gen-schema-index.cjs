@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-/* eslint-disable */
-
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -10,7 +8,7 @@ const OUTPUT = path.join(__dirname, '..', 'docs', 'SCHEMA-INDEX.md');
 
 // Fire-and-forget and broadcast messages without clientReqId or replyTo.
 // Every uncorrelated kind must be listed here; missing = error.
-var UNCORRELATED_DIRECTIONS = new Map([
+const UNCORRELATED_DIRECTIONS = new Map([
   ['ping', 'C->H'],
   ['pong', 'H->C'],
 
@@ -54,32 +52,46 @@ var UNCORRELATED_DIRECTIONS = new Map([
   ['script.status', 'H->C'],
 ]);
 
-function parseWireFile(filePath) {
-  var text = fs.readFileSync(filePath, 'utf-8');
-  var fileName = path.basename(filePath);
-  var lines = text.split('\n');
-  var variants = [];
+/**
+ * @typedef {{ kind: string, file: string, direction: string, doc: string }} Variant
+ */
 
-  for (var i = 0; i < lines.length; i++) {
-    var match = lines[i].match(/kind:\s*z\.literal\('([^']+)'\)/);
+/**
+ * @param {string} filePath
+ * @returns {Variant[]}
+ */
+function parseWireFile(filePath) {
+  const text = fs.readFileSync(filePath, 'utf-8');
+  const fileName = path.basename(filePath);
+  const lines = text.split('\n');
+  const variants = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/kind:\s*z\.literal\('([^']+)'\)/);
     if (!match) continue;
 
-    var kind = match[1];
-    var objStart = findObjectStart(lines, i);
-    var objBlock = objStart >= 0 ? extractBlock(lines, objStart) : '';
-    var doc = objStart >= 0 ? extractDoc(lines, objStart - 1) : '';
-    var direction = classifyFromBlock(objBlock, kind);
+    const kind = match[1];
+    const objStart = findObjectStart(lines, i);
+    const objBlock = objStart >= 0 ? extractBlock(lines, objStart) : '';
+    const doc = objStart >= 0 ? extractDoc(lines, objStart - 1) : '';
+    const direction = classifyFromBlock(objBlock, kind);
 
-    variants.push({ kind: kind, file: fileName, direction: direction, doc: doc });
+    variants.push({ kind, file: fileName, direction, doc });
   }
 
   return variants;
 }
 
+/**
+ * Walk backwards from `idx` to find the line containing `z.object({`.
+ * @param {string[]} lines
+ * @param {number} idx
+ * @returns {number}
+ */
 function findObjectStart(lines, idx) {
   if (lines[idx].includes('z.object({')) return idx;
 
-  var cursor = idx - 1;
+  let cursor = idx - 1;
   while (cursor >= 0) {
     if (lines[cursor].includes('z.object({')) return cursor;
     if (lines[cursor].trim() === ']);') return -1;
@@ -88,41 +100,58 @@ function findObjectStart(lines, idx) {
   return -1;
 }
 
+/**
+ * Extract the balanced `z.object({...})` block starting at `start` line.
+ * @param {string[]} lines
+ * @param {number} start
+ * @returns {string}
+ */
 function extractBlock(lines, start) {
-  var depth = 0;
-  var found = false;
-  var blockLines = [];
+  let depth = 0;
+  let found = false;
+  const blockLines = [];
 
-  for (var j = start; j < lines.length; j++) {
+  for (let j = start; j < lines.length; j++) {
     blockLines.push(lines[j]);
-    for (var k = 0; k < lines[j].length; k++) {
-      var ch = lines[j][k];
-      if (ch === '{') { depth++; found = true; }
-      else if (ch === '}') depth--;
+    for (let k = 0; k < lines[j].length; k++) {
+      const ch = lines[j][k];
+      if (ch === '{') {
+        depth++;
+        found = true;
+      } else if (ch === '}') {
+        depth--;
+      }
       if (found && depth === 0) return blockLines.join('\n');
     }
   }
   return blockLines.join('\n');
 }
 
+/**
+ * Extract JSDoc or line comment ending at line `idx`.
+ * Collects consecutive `//` lines and `/**` blocks.
+ * @param {string[]} lines
+ * @param {number} idx
+ * @returns {string}
+ */
 function extractDoc(lines, idx) {
   if (idx < 0) return '';
-  var docLines = [];
-  var cursor = idx;
+  const docLines = [];
+  let cursor = idx;
   while (cursor >= 0) {
-    var trimmed = lines[cursor].trim();
+    const trimmed = lines[cursor].trim();
     if (trimmed.startsWith('*') && !trimmed.startsWith('*/')) {
       docLines.unshift(trimmed.replace(/^\*\s?/, '').replace(/\s*\*\/$/, ''));
     } else if (trimmed === '*/') {
       cursor--;
       while (cursor >= 0) {
-        var inner = lines[cursor].trim();
+        const inner = lines[cursor].trim();
         if (inner.startsWith('/**')) {
           docLines.unshift(inner.replace(/^\/\*\*\s*/, ''));
           break;
         }
         if (inner.startsWith('*')) {
-          docLines.unshift(inner.replace(/^\*\s?/, ''));
+          docLines.unshift(inner.replace(/^\*\s?/, '').replace(/\s*\*\/$/, ''));
         }
         cursor--;
       }
@@ -140,47 +169,70 @@ function extractDoc(lines, idx) {
   return docLines.join(' ').trim();
 }
 
+/**
+ * Determine direction from the zod object block.
+ * - has clientReqId: C to H (request)
+ * - has replyTo:     H to C (response)
+ * - neither:         look up UNCORRELATED_DIRECTIONS, error if unknown
+ * @param {string} block
+ * @param {string} kind
+ * @returns {string}
+ */
 function classifyFromBlock(block, kind) {
-  var hasClientReqId = /clientReqId/.test(block);
-  var hasReplyTo = /replyTo/.test(block);
+  const hasClientReqId = /clientReqId/.test(block);
+  const hasReplyTo = /replyTo/.test(block);
 
   if (hasClientReqId && hasReplyTo) return 'C<->H';
   if (hasClientReqId) return 'C->H';
   if (hasReplyTo) return 'H->C';
 
-  var direction = UNCORRELATED_DIRECTIONS.get(kind);
+  const direction = UNCORRELATED_DIRECTIONS.get(kind);
   if (!direction) {
     throw new Error('Cannot determine direction for uncorrelated kind: ' + kind);
   }
   return direction;
 }
 
+/**
+ * @param {Variant[]} variants
+ * @returns {string}
+ */
 function generateMarkdown(variants) {
-  var sorted = variants.slice().sort(function (a, b) {
-    return a.kind.localeCompare(b.kind);
-  });
+  const sorted = variants.slice().sort((a, b) => a.kind.localeCompare(b.kind));
 
-  var c2h = 0, h2c = 0, ch = 0;
-  for (var i = 0; i < sorted.length; i++) {
-    var d = sorted[i].direction;
+  let c2h = 0;
+  let h2c = 0;
+  let ch = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const d = sorted[i].direction;
     if (d === 'C->H') c2h++;
     else if (d === 'H->C') h2c++;
     else ch++;
   }
 
-  var rows = sorted.map(function (v) {
-    var doc = v.doc ? ' ' + v.doc : '';
-    return '| `' + v.kind + '` | ' + v.direction + ' | `' + v.file + '` |' + doc;
-  }).join('\n');
+  const rows = sorted
+    .map((v) => {
+      const doc = v.doc ? ' ' + v.doc : '';
+      return '| `' + v.kind + '` | ' + v.direction + ' | `' + v.file + '` |' + doc;
+    })
+    .join('\n');
 
   return [
     '<!-- GENERATED by tools/gen-schema-index.cjs -- DO NOT EDIT MANUALLY -->',
     '',
     '# Wire Schema Index',
     '',
-    'Every `WirePayload` variant, sorted by `kind`. Generated from `packages/foundation/schema/src/wire/*.ts`.',
+    'Every `WirePayload` variant, sorted by `kind`.',
+    'Generated from `packages/foundation/schema/src/wire/*.ts`.',
     '',
-    '**' + sorted.length + '** message kinds . C->H: ' + c2h + ' . H->C: ' + h2c + ' . C<->H: ' + ch,
+    '**' +
+      sorted.length +
+      '** message kinds . C->H: ' +
+      c2h +
+      ' . H->C: ' +
+      h2c +
+      ' . C<->H: ' +
+      ch,
     '',
     '| kind | direction | source file | description |',
     '|------|-----------|-------------|-------------|',
@@ -191,25 +243,30 @@ function generateMarkdown(variants) {
 
 // -- main --
 
-var files = fs.readdirSync(WIRE_DIR).filter(function (f) {
-  return f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts';
-});
+const files = fs.readdirSync(WIRE_DIR).filter(
+  (f) => f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts',
+);
 
-var allVariants = [];
-for (var i = 0; i < files.length; i++) {
+/** @type {Variant[]} */
+let allVariants = [];
+for (let i = 0; i < files.length; i++) {
   allVariants = allVariants.concat(parseWireFile(path.join(WIRE_DIR, files[i])));
 }
 
-var markdown = generateMarkdown(allVariants);
+const markdown = generateMarkdown(allVariants);
 
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(OUTPUT)) {
-    console.error('ERROR: docs/SCHEMA-INDEX.md does not exist. Run `node tools/gen-schema-index.cjs` to generate it.');
+    console.error(
+      'ERROR: docs/SCHEMA-INDEX.md does not exist. Run `node tools/gen-schema-index.cjs` to generate it.',
+    );
     process.exit(1);
   }
-  var existing = fs.readFileSync(OUTPUT, 'utf-8');
+  const existing = fs.readFileSync(OUTPUT, 'utf-8');
   if (existing !== markdown) {
-    console.error('ERROR: docs/SCHEMA-INDEX.md is out of date. Run `node tools/gen-schema-index.cjs` to regenerate it.');
+    console.error(
+      'ERROR: docs/SCHEMA-INDEX.md is out of date. Run `node tools/gen-schema-index.cjs` to regenerate it.',
+    );
     process.exit(1);
   }
   console.log('docs/SCHEMA-INDEX.md is up to date.');
