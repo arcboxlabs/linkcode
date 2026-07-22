@@ -170,7 +170,11 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
+      const store = createProviderConfigStore(
+        config.providers ?? {},
+        config.accounts ?? [],
+        config.plugins ?? { units: [], connectors: [] },
+      );
       // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
       // store into spawn resolution — managed wins over detected as soon as an install lands.
       const assets = new AssetManager();

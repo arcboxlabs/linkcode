@@ -1,10 +1,14 @@
 import type {
   Account,
   Accounts,
+  PluginConfig,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProviderConfig,
   ProvidersConfig,
   StartOptions,
 } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 
 /**
  * Daemon-owned data-plane config store: per-agent provider settings plus the global account pool,
@@ -17,11 +21,15 @@ export interface ProviderConfigStore {
   /** The global account pool bound by `providers[kind].activeAccountId`. */
   getAccounts(): Accounts;
   setAccounts(next: Accounts): void | Promise<void>;
+  /** Global MCP plugin enablement and daemon-local connector credentials. */
+  getPlugins(): PluginConfig;
+  setPlugins(next: PluginConfig): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  private plugins: PluginConfig = { units: [], connectors: [] };
 
   get(): ProvidersConfig {
     return this.providers;
@@ -38,6 +46,86 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
   setAccounts(next: Accounts): void {
     this.accounts = next;
   }
+
+  getPlugins(): PluginConfig {
+    return this.plugins;
+  }
+
+  setPlugins(next: PluginConfig): void {
+    this.plugins = next;
+  }
+}
+
+/** Apply one validated plugin patch without mutating the stored snapshot. Connector deletion also
+ * disables and unbinds every unit that referenced it, so a successful write cannot create stale
+ * references through deletion. */
+export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
+  let units = patch.units === undefined ? current.units : patch.units;
+  let connectors = current.connectors;
+
+  for (const operation of patch.connectorOperations ?? []) {
+    const connectorId =
+      operation.type === 'create' ? operation.connector.id : operation.connectorId;
+    const existing = connectors.find((connector) => connector.id === connectorId);
+    switch (operation.type) {
+      case 'create':
+        if (existing !== undefined) {
+          throw new TypeError(`Plugin connector already exists: ${operation.connector.id}`);
+        }
+        connectors = [...connectors, operation.connector];
+        break;
+      case 'update': {
+        const existingConnector = nullthrow(
+          existing,
+          `Plugin connector does not exist: ${operation.connectorId}`,
+        );
+        const next = { ...existingConnector };
+        if (operation.label !== undefined) {
+          if (operation.label === null) {
+            delete next.label;
+          } else {
+            next.label = operation.label;
+          }
+        }
+        if (operation.credential !== undefined) {
+          next.credential = operation.credential;
+        }
+        connectors = connectors.map((connector) =>
+          connector.id === operation.connectorId ? next : connector,
+        );
+        break;
+      }
+      case 'delete':
+        nullthrow(existing, `Plugin connector does not exist: ${operation.connectorId}`);
+        connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
+        units = units.map((unit) =>
+          unit.binding?.type === 'local' && unit.binding.connectorId === operation.connectorId
+            ? { unitId: unit.unitId, enabled: false }
+            : unit,
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  return { units, connectors };
+}
+
+/** Remove connector secrets at the data-plane boundary. A configured credential is represented by
+ * metadata only; no mask string is ever returned or eligible to be written back as a secret. */
+export function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
+  return {
+    units: config.units,
+    connectors: config.connectors.map(({ credential, ...connector }) => ({
+      ...connector,
+      credential: {
+        type: credential.type,
+        configured: true,
+        ...(credential.expiresAt !== undefined && { expiresAt: credential.expiresAt }),
+      },
+    })),
+  };
 }
 
 /**

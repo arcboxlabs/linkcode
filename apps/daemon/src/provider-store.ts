@@ -1,6 +1,6 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
-import { saveAccounts, saveProviders } from './config';
+import type { Accounts, PluginConfig, ProvidersConfig } from '@linkcode/schema';
+import { saveAccounts, savePlugins, saveProviders } from './config';
 
 /**
  * Daemon-backed data-plane config store: in-memory providers + account pool seeded at boot, each
@@ -10,9 +10,11 @@ import { saveAccounts, saveProviders } from './config';
 export function createProviderConfigStore(
   initialProviders: ProvidersConfig,
   initialAccounts: Accounts,
+  initialPlugins: PluginConfig,
 ): ProviderConfigStore {
   let providers = initialProviders;
   let accounts = initialAccounts;
+  let plugins = initialPlugins;
   return {
     get: () => providers,
     set(next) {
@@ -23,6 +25,11 @@ export function createProviderConfigStore(
     setAccounts(next) {
       accounts = next;
       saveAccounts(next);
+    },
+    getPlugins: () => plugins,
+    setPlugins(next) {
+      savePlugins(next);
+      plugins = next;
     },
   };
 }

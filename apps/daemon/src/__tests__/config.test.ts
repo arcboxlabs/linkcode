@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { noop } from 'foxts/noop';
@@ -9,6 +9,7 @@ import {
   hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  savePlugins,
 } from '../config';
 import { logger } from '../logger';
 
@@ -36,6 +37,12 @@ function writeAccountsConfig(accounts: unknown): void {
   const dir = join(process.env.HOME ?? '', '.linkcode');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ accounts }));
+}
+
+function writeRawConfig(config: unknown): void {
+  const dir = join(process.env.HOME ?? '', '.linkcode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify(config));
 }
 
 const validAccount = {
@@ -165,5 +172,64 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadConfig plugins', () => {
+  const connector = {
+    id: 'github-personal',
+    label: 'Personal GitHub',
+    service: 'github',
+    credential: { type: 'auth-token', secret: 'github-secret' },
+  } as const;
+
+  it('keeps valid entries and drops malformed entries independently', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeRawConfig({
+      plugins: {
+        units: [
+          {
+            unitId: 'github-read',
+            enabled: true,
+            binding: { type: 'local', connectorId: connector.id },
+          },
+          { unitId: 'unknown-unit', enabled: true },
+        ],
+        connectors: [connector, { id: 'bad', service: 'github' }],
+      },
+    });
+
+    expect(loadConfig().plugins).toEqual({
+      units: [
+        {
+          unitId: 'github-read',
+          enabled: true,
+          binding: { type: 'local', connectorId: connector.id },
+        },
+      ],
+      connectors: [connector],
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('round-trips credentials at mode 0600 without overwriting providers or accounts', () => {
+    writeRawConfig({ providers: { codex: { enabled: true } }, accounts: [validAccount] });
+    const plugins = { units: [], connectors: [connector] };
+
+    savePlugins(plugins);
+
+    expect(loadConfig()).toMatchObject({
+      providers: { codex: { enabled: true } },
+      accounts: [validAccount],
+      plugins,
+    });
+    expect(statSync(join(process.env.HOME ?? '', '.linkcode', 'config.json')).mode & 0o777).toBe(
+      0o600,
+    );
+  });
+
+  it('defaults an older config without a plugins section to empty state', () => {
+    writeRawConfig({ providers: {} });
+    expect(loadConfig().plugins).toEqual({ units: [], connectors: [] });
   });
 });
