@@ -35,6 +35,9 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorDevice,
+  SimulatorImageFormat,
+  SimulatorStatus,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -560,6 +563,98 @@ export class ControlChannel {
       kind: 'loop.inspect',
       clientReqId,
       loopId,
+    }));
+  }
+
+  // iOS Simulator (CODE-394). Commands are session-scoped: the engine claims the device for
+  // `sessionId` (ownership/cap rules) before touching it. Gate the whole surface on
+  // `simulatorStatus().available`.
+
+  simulatorStatus(): Promise<SimulatorStatus> {
+    return this.sendCorrelated('simulatorStatus', (clientReqId) => ({
+      kind: 'simulator.status',
+      clientReqId,
+    }));
+  }
+
+  simulatorList(): Promise<SimulatorDevice[]> {
+    return this.sendCorrelated('simulatorList', (clientReqId) => ({
+      kind: 'simulator.list',
+      clientReqId,
+    }));
+  }
+
+  simulatorBoot(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.boot',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  simulatorShutdown(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shutdown',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  simulatorInstall(sessionId: SessionId, udid: string, appPath: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install',
+      clientReqId,
+      sessionId,
+      udid,
+      appPath,
+    }));
+  }
+
+  /** Resolves with the launched pid (`null` when the host could not report one). */
+  simulatorLaunch(sessionId: SessionId, udid: string, bundleId: string): Promise<number | null> {
+    return this.sendCorrelated('simulatorLaunch', (clientReqId) => ({
+      kind: 'simulator.launch',
+      clientReqId,
+      sessionId,
+      udid,
+      bundleId,
+    }));
+  }
+
+  simulatorTerminate(sessionId: SessionId, udid: string, bundleId: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.terminate',
+      clientReqId,
+      sessionId,
+      udid,
+      bundleId,
+    }));
+  }
+
+  simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.open-url',
+      clientReqId,
+      sessionId,
+      udid,
+      url,
+    }));
+  }
+
+  /** Resolves with base64-encoded image bytes in the requested format (default jpeg). */
+  simulatorScreenshot(
+    sessionId: SessionId,
+    udid: string,
+    format?: SimulatorImageFormat,
+  ): Promise<{ format: SimulatorImageFormat; data: string }> {
+    return this.sendCorrelated('simulatorScreenshot', (clientReqId) => ({
+      kind: 'simulator.screenshot',
+      clientReqId,
+      sessionId,
+      udid,
+      format,
     }));
   }
 

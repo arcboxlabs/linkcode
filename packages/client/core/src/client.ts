@@ -38,6 +38,9 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorDevice,
+  SimulatorImageFormat,
+  SimulatorStatus,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -103,6 +106,7 @@ export interface AssetSettledEvent {
 type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
+type SimulatorDevicesChangedCb = (devices: SimulatorDevice[]) => void;
 type ConnectionCloseCb = (error: Error) => void;
 
 /** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
@@ -142,6 +146,7 @@ export class LinkCodeClient {
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
+  private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
@@ -306,6 +311,21 @@ export class LinkCodeClient {
         break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
+        break;
+      case 'simulator.status.result':
+        this.pending.resolve('simulatorStatus', p.replyTo, p.status);
+        break;
+      case 'simulator.listed':
+        this.pending.resolve('simulatorList', p.replyTo, p.devices);
+        break;
+      case 'simulator.launched':
+        this.pending.resolve('simulatorLaunch', p.replyTo, p.pid);
+        break;
+      case 'simulator.screenshotted':
+        this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
+        break;
+      case 'simulator.devices.changed':
+        for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
         break;
       case 'asset.listed':
         this.pending.resolve('assetList', p.replyTo, p.assets);
@@ -600,6 +620,53 @@ export class LinkCodeClient {
   subscribeAgentRuntimesChanged(cb: AgentRuntimesChangedCb): Unsubscribe {
     this.agentRuntimesChangedSubs.add(cb);
     return () => this.agentRuntimesChangedSubs.delete(cb);
+  }
+
+  /** Whether this host can drive iOS Simulators; gate the whole simulator surface on it. */
+  simulatorStatus(): Promise<SimulatorStatus> {
+    return this.control.simulatorStatus();
+  }
+
+  simulatorList(): Promise<SimulatorDevice[]> {
+    return this.control.simulatorList();
+  }
+
+  simulatorBoot(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorBoot(sessionId, udid);
+  }
+
+  simulatorShutdown(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorShutdown(sessionId, udid);
+  }
+
+  simulatorInstall(sessionId: SessionId, udid: string, appPath: string): Promise<RequestAck> {
+    return this.control.simulatorInstall(sessionId, udid, appPath);
+  }
+
+  simulatorLaunch(sessionId: SessionId, udid: string, bundleId: string): Promise<number | null> {
+    return this.control.simulatorLaunch(sessionId, udid, bundleId);
+  }
+
+  simulatorTerminate(sessionId: SessionId, udid: string, bundleId: string): Promise<RequestAck> {
+    return this.control.simulatorTerminate(sessionId, udid, bundleId);
+  }
+
+  simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
+    return this.control.simulatorOpenUrl(sessionId, udid, url);
+  }
+
+  simulatorScreenshot(
+    sessionId: SessionId,
+    udid: string,
+    format?: SimulatorImageFormat,
+  ): Promise<{ format: SimulatorImageFormat; data: string }> {
+    return this.control.simulatorScreenshot(sessionId, udid, format);
+  }
+
+  /** Pushed after a state-changing simulator command (boot/shutdown) with a fresh device list. */
+  subscribeSimulatorDevicesChanged(cb: SimulatorDevicesChangedCb): Unsubscribe {
+    this.simulatorDevicesChangedSubs.add(cb);
+    return () => this.simulatorDevicesChangedSubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
