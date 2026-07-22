@@ -13,8 +13,6 @@ type AnsiComponent = typeof AnsiImport;
 const ansiModule = AnsiImport as AnsiComponent | { default: AnsiComponent };
 const Ansi = typeof ansiModule === 'function' ? ansiModule : ansiModule.default;
 
-const RE_TRAILING_WHITESPACE = /\s+$/;
-
 export interface TerminalProps extends React.ComponentProps<typeof Frame> {
   title?: string;
   output?: string;
@@ -82,7 +80,7 @@ export function TerminalContent({
         {typeof children === 'string' ? (
           <Ansi useClasses linkify={false}>
             {/* PTY buffers and stdout end in newlines; blank tail lines read as dead space. */}
-            {children.replace(RE_TRAILING_WHITESPACE, '')}
+            {children.trimEnd()}
           </Ansi>
         ) : (
           children
