@@ -2,8 +2,10 @@ import { Button } from 'coss-ui/components/button';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Frame } from 'coss-ui/components/frame';
 import { FileDiffIcon, Undo2Icon } from 'lucide-react';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { fileBasename } from './artifacts/file-kind';
 import { useArtifactHostActions } from './artifacts/host-actions';
 import { ChatCardActions, ChatCardHeader, ChatCardPanel } from './chat-card';
 import { ChatDisclosureContent } from './disclosure-content';
@@ -14,7 +16,9 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
+import { FileIdentityIcon } from './file-identity-icon';
 import type { TurnEdits, TurnFileEdit } from './turn-edits';
+import { FilePathTooltip } from './with-tooltip';
 
 const COLLAPSED_FILE_COUNT = 3;
 
@@ -56,7 +60,7 @@ export function TurnDiffSummary({
         </ChatCardActions>
       </ChatCardHeader>
       {edits.files.length > 0 ? (
-        <ChatCardPanel className="px-3 py-1">
+        <ChatCardPanel className="overflow-hidden px-0 py-1">
           <Collapsible>
             {visibleFiles.map((file) => (
               <FileRow key={file.path} file={file} onOpenFile={openFile} />
@@ -69,7 +73,7 @@ export function TurnDiffSummary({
                   ))}
                 </ChatDisclosureContent>
                 <CollapsibleTrigger
-                  className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full')}
+                  className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full px-3')}
                 >
                   <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
                     <span
@@ -89,7 +93,8 @@ export function TurnDiffSummary({
                       {t('showLess')}
                     </span>
                   </span>
-                  <ChatDisclosureChevron />
+                  {/* Expands downward, collapses upward — not the tree-node right→down chevron. */}
+                  <ChatDisclosureChevron className="rotate-90 group-data-[panel-open]:-rotate-90" />
                 </CollapsibleTrigger>
               </>
             )}
@@ -100,6 +105,7 @@ export function TurnDiffSummary({
   );
 }
 
+/** Basename row with the file-identity icon; the full path lives in the hover tooltip. */
 function FileRow({
   file,
   onOpenFile,
@@ -107,29 +113,33 @@ function FileRow({
   file: TurnFileEdit;
   onOpenFile?: (path: string) => void;
 }): React.ReactNode {
-  const basenameStart = file.path.lastIndexOf('/') + 1;
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
+  const rowClassName =
+    'flex w-full items-center gap-2 px-3 py-1 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
   const body = (
     <>
-      <span className="min-w-0 flex-1 truncate text-ellipsis text-sm">
-        <span className="text-muted-foreground transition-colors group-hover/file:text-foreground">
-          {file.path.slice(0, basenameStart)}
-        </span>
-        <span className="text-foreground">{file.path.slice(basenameStart)}</span>
-      </span>
+      <FileIdentityIcon className="shrink-0" path={file.path} ref={tooltipAnchorRef} />
+      <span className="min-w-0 flex-1 truncate">{fileBasename(file.path)}</span>
       <DiffStat additions={file.additions} deletions={file.deletions} />
     </>
   );
 
-  if (!onOpenFile) return <div className="flex items-center gap-2 py-1">{body}</div>;
-
   return (
-    <Button
-      className="group/file h-auto w-full justify-start rounded-none border-0 px-0 py-1 text-left font-normal text-sm hover:bg-transparent sm:text-sm"
-      variant="ghost"
-      onClick={() => onOpenFile(file.path)}
-    >
-      {body}
-    </Button>
+    <FilePathTooltip anchor={tooltipAnchorRef} tooltip={file.path}>
+      {onOpenFile ? (
+        <button
+          className={cn(rowClassName, 'cursor-pointer transition-colors hover:bg-muted')}
+          type="button"
+          onClick={() => onOpenFile(file.path)}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={rowClassName} tabIndex={0}>
+          {body}
+        </div>
+      )}
+    </FilePathTooltip>
   );
 }
 
