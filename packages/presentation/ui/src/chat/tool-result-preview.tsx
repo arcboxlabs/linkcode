@@ -42,10 +42,12 @@ function RenderedContent({
   if (content.type === 'diff') {
     return (
       <DiffBlock
-        navigation={toolCallDiffNavigation(toolCall, content.path, content.newText)}
+        navigation={toolCallDiffNavigation(toolCall, content)}
         path={content.path}
+        oldPath={content.oldPath}
         oldText={content.oldText}
         newText={content.newText}
+        patch={content.patch?.text}
       />
     );
   }

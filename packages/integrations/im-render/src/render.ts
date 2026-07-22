@@ -62,17 +62,29 @@ function toolContentMarkdown(content: ToolCallContent, opts: RenderOptions): str
         : text;
     }
     case 'diff': {
-      const patch = structuredPatch(
-        content.path,
-        content.path,
-        content.oldText ?? '',
-        content.newText,
-      );
-      const lines = patch.hunks.flatMap((hunk) => [
-        `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
-        ...hunk.lines,
-      ]);
-      return `✏\u{FE0F} \`${content.path}\`\n${fence(capLines(lines.join('\n'), opts.maxCodeBlockLines), 'diff')}`;
+      const label = content.oldPath ? `${content.oldPath} → ${content.path}` : content.path;
+      const suppliedPatch = content.patch?.text;
+      const generatedPatch =
+        suppliedPatch === undefined &&
+        (content.oldText !== undefined || content.newText !== undefined)
+          ? structuredPatch(
+              content.oldPath ?? content.path,
+              content.path,
+              content.oldText ?? '',
+              content.newText ?? '',
+            )
+          : undefined;
+      const patchText =
+        suppliedPatch ??
+        generatedPatch?.hunks
+          .flatMap((hunk) => [
+            `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+            ...hunk.lines,
+          ])
+          .join('\n');
+      return patchText
+        ? `✏\u{FE0F} \`${label}\`\n${fence(capLines(patchText, opts.maxCodeBlockLines), 'diff')}`
+        : `✏\u{FE0F} \`${label}\``;
     }
     case 'terminal':
       // Terminal buffers live on the host; over IM only the fact of the terminal is visible.

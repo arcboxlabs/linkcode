@@ -37,7 +37,11 @@ function isCompletedDeletion(toolCall: ToolCall, path: string): boolean {
   // delete kind, leaving either an empty new side or the exact history receipt as the signal.
   return toolCall.content.some((content) => {
     if (content.type === 'diff') {
-      return content.path === path && content.oldText !== undefined && content.newText.length === 0;
+      return (
+        content.path === path &&
+        (content.change === 'delete' ||
+          (content.oldText !== undefined && content.newText?.length === 0))
+      );
     }
     return content.type === 'content' && content.content.type === 'text'
       ? content.content.text === `Deleted ${path}`
@@ -101,10 +105,11 @@ export function toolCallFilePresentation(toolCall: ToolCall): ToolCallFilePresen
 /** Structured diff blocks identify their own path, unlike adapter text receipts. */
 export function toolCallDiffNavigation(
   toolCall: ToolCall,
-  path: string,
-  newText: string,
+  content: Extract<ToolCall['content'][number], { type: 'diff' }>,
 ): ArtifactNavigation {
-  return toolCall.status === 'completed' && newText.length === 0
+  return toolCall.status === 'completed' &&
+    (content.change === 'delete' ||
+      (content.oldText !== undefined && content.newText?.length === 0))
     ? { kind: 'review' }
-    : { kind: 'file', path };
+    : { kind: 'file', path: content.path };
 }
