@@ -49,6 +49,8 @@ export * from './settings/search';
 export * from './settings/terminal-prefs-store';
 export * from './settings/terminal-settings';
 export * from './sidebar/runtime-thread-im-menu';
+export * from './simulator/panel';
+export * from './simulator/stream-registry';
 export * from './surface/selection-store';
 export * from './surface/shell';
 export * from './surface/use-workbench-sessions';
