@@ -29,7 +29,7 @@ jobs:
       contains(github.event.comment.body, '/fast-forward')
     # Pin to a 40-char commit SHA: whoever can change that repo can effectively
     # push straight to this repository's default branch.
-    uses: arcboxlabs/actions/.github/workflows/fast-forward.yml@086869fedf5c303a86521ac17d5fa34ec8e5d408 # ff-v1
+    uses: arcboxlabs/actions/.github/workflows/fast-forward.yml@d4cfe773a715f7d9c6b383269332bf90952f6971 # ff-v1
     secrets:
       app_id: ${{ secrets.BOT_APP_ID }}
       app_private_key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
