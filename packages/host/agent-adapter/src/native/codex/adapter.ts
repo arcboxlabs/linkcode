@@ -1074,7 +1074,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const command = stringField(params, 'command');
     const cwd = stringField(params, 'cwd') ?? this.opts?.cwd;
     const reason = stringField(params, 'reason');
-    const title = kind === 'edit' ? 'Apply file changes' : 'Run command';
+    const title = kind === 'edit' ? 'Apply file changes' : (command ?? 'Run command');
     this.emitTool({
       toolCallId: itemId,
       title,
