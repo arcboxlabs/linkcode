@@ -5,19 +5,39 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { Frame } from './codec';
 import {
   decodeScreenshotFrame,
+  decodeStreamFrame,
   FrameDecoder,
   REQUEST,
   RESULT,
   SCREENSHOT,
+  STREAM_FRAME,
   writeFrame,
 } from './codec';
-import type { SimDevice, SimImageFormat, SimProbe } from './schema';
+import type {
+  SimButton,
+  SimDevice,
+  SimImageFormat,
+  SimProbe,
+  SimStreamStartResult,
+} from './schema';
 import {
   SimLaunchResultSchema,
   SimListResultSchema,
   SimProbeSchema,
   SimResultSchema,
+  SimStreamStartResultSchema,
 } from './schema';
+
+/** A live framebuffer frame: JPEG bytes for one device. */
+export type SimFrameListener = (image: Buffer) => void;
+
+/** Options for {@link SimSidecarClient.streamStart}; omitted fields take the sidecar defaults. */
+export interface SimStreamOptions {
+  fps?: number;
+  quality?: number;
+  /** Downscale factor before encode (0..1; 1.0 = native). Lower trades resolution for rate/bandwidth. */
+  scale?: number;
+}
 
 /** The sidecar child: piped stdin/stdout, inherited stderr (its logs go to the host's stderr). */
 type SidecarChild = ChildProcessByStdio<Writable, Readable, null>;
@@ -62,6 +82,8 @@ export class SimSidecarClient {
   private child: SidecarChild | null = null;
   private readonly decoder = new FrameDecoder();
   private readonly pending = new Map<string, Pending>();
+  /** Per-udid framebuffer listeners; `STREAM_FRAME`s are fanned out to the matching set. */
+  private readonly frameListeners = new Map<string, Set<SimFrameListener>>();
   private seq = 0;
   private closed = false;
 
@@ -106,6 +128,65 @@ export class SimSidecarClient {
     return image;
   }
 
+  /** Tap at a normalized (0..1) point (private HID; macOS only). */
+  async tap(udid: string, x: number, y: number): Promise<void> {
+    await this.call('tap', { udid, x, y });
+  }
+
+  /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
+  async swipe(
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<void> {
+    await this.call('swipe', {
+      udid,
+      x0: from.x,
+      y0: from.y,
+      x1: to.x,
+      y1: to.y,
+      ...(durationMs !== undefined && { durationMs }),
+    });
+  }
+
+  /** Press a hardware button (private HID; macOS only). */
+  async button(udid: string, button: SimButton): Promise<void> {
+    await this.call('button', { udid, button });
+  }
+
+  /**
+   * Start streaming `udid`'s framebuffer as JPEG frames delivered to {@link onFrame} listeners.
+   * Frames are pushed until {@link streamStop} (or the client closes).
+   */
+  async streamStart(udid: string, options: SimStreamOptions = {}): Promise<SimStreamStartResult> {
+    return SimStreamStartResultSchema.parse(await this.call('streamStart', { udid, ...options }));
+  }
+
+  /** Stop a running framebuffer stream. */
+  async streamStop(udid: string): Promise<void> {
+    await this.call('streamStop', { udid });
+  }
+
+  /**
+   * Subscribe to `udid`'s framebuffer frames; returns an unsubscribe function. Subscribing does not
+   * itself start the stream — pair it with {@link streamStart}.
+   */
+  onFrame(udid: string, listener: SimFrameListener): () => void {
+    let set = this.frameListeners.get(udid);
+    if (!set) {
+      set = new Set();
+      this.frameListeners.set(udid, set);
+    }
+    set.add(listener);
+    return () => {
+      const current = this.frameListeners.get(udid);
+      if (!current) return;
+      current.delete(listener);
+      if (current.size === 0) this.frameListeners.delete(udid);
+    };
+  }
+
   /** Release the client and its sidecar. Booted devices keep running server-side. */
   close(): void {
     if (this.closed) return;
@@ -113,12 +194,13 @@ export class SimSidecarClient {
     const child = this.child;
     this.child = null;
     this.decoder.reset();
+    this.frameListeners.clear();
     this.failAll(new Error('sim client closed'));
     // Close stdin (EOF) rather than kill: the sidecar drains queued replies before exiting.
     child?.stdin.end();
   }
 
-  private call(type: string, params: Record<string, string>): Promise<unknown> {
+  private call(type: string, params: Record<string, unknown>): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('sim client closed'));
     // Unconfigured binary (see the daemon's `resolveSimSidecarPath`): fail with a clear, stable
     // message instead of `spawn('')`, which would surface as a confusing crash on every call.
@@ -197,6 +279,12 @@ export class SimSidecarClient {
       case SCREENSHOT: {
         const { requestId, image } = decodeScreenshotFrame(frame.body);
         this.take(requestId)?.resolve(image);
+        break;
+      }
+      case STREAM_FRAME: {
+        const { udid, image } = decodeStreamFrame(frame.body);
+        const listeners = this.frameListeners.get(udid);
+        if (listeners) for (const listener of listeners) listener(image);
         break;
       }
       default:

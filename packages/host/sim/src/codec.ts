@@ -11,6 +11,8 @@ export const REQUEST = 0x01;
 // Sidecar → daemon.
 export const RESULT = 0x81;
 export const SCREENSHOT = 0x82;
+/** Unsolicited JPEG frame pushed while a `streamStart` stream runs. */
+export const STREAM_FRAME = 0x83;
 
 export const MAX_FRAME_LEN = 16 * 1024 * 1024;
 
@@ -64,5 +66,16 @@ export function decodeScreenshotFrame(body: Buffer): { requestId: string; image:
   return {
     requestId: body.subarray(2, 2 + idLen).toString('utf8'),
     image: body.subarray(2 + idLen),
+  };
+}
+
+/** Decode a `STREAM_FRAME` body: `[u16 LE udid_len][udid][image bytes]`. */
+export function decodeStreamFrame(body: Buffer): { udid: string; image: Buffer } {
+  if (body.length < 2) throw new Error('short stream frame');
+  const udidLen = body.readUInt16LE(0);
+  if (body.length < 2 + udidLen) throw new Error('truncated stream udid');
+  return {
+    udid: body.subarray(2, 2 + udidLen).toString('utf8'),
+    image: body.subarray(2 + udidLen),
   };
 }

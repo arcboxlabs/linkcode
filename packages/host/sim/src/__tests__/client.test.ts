@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimSidecarClient, SimSidecarError } from '../client';
-import { REQUEST, SCREENSHOT } from '../codec';
+import { REQUEST, SCREENSHOT, STREAM_FRAME } from '../codec';
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
@@ -20,6 +20,11 @@ function frame(type: number, body: Buffer): Buffer {
 
 function resultFrame(payload: unknown): Buffer {
   return frame(0x81, Buffer.from(JSON.stringify(payload)));
+}
+
+function streamFrameBytes(type: number, udid: string, image: number[]): Buffer {
+  const u = Buffer.from(udid);
+  return frame(type, Buffer.concat([Buffer.from([u.length, 0]), u, Buffer.from(image)]));
 }
 
 type FakeChild = PassThrough & {
@@ -139,6 +144,43 @@ describe('SimSidecarClient', () => {
     );
     await expect(retried).resolves.toEqual([]);
     expect(mocks.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends interactive coordinates as JSON numbers', async () => {
+    const child = fakeChild();
+    mocks.spawn.mockReturnValue(child);
+    const client = new SimSidecarClient('/bin/sim');
+
+    void client.tap('U-1', 0.25, 0.5);
+    await tick();
+    const chunk = child.stdin.read() as Buffer;
+    const request = JSON.parse(chunk.subarray(5).toString('utf8')) as {
+      op: { type: string; x: unknown; y: unknown };
+    };
+    expect(request.op).toMatchObject({ type: 'tap', x: 0.25, y: 0.5 });
+    expect(typeof request.op.x).toBe('number');
+  });
+
+  it('fans STREAM_FRAMEs out to per-udid listeners until unsubscribed', async () => {
+    const child = fakeChild();
+    mocks.spawn.mockReturnValue(child);
+    const client = new SimSidecarClient('/bin/sim');
+    // Touch the child so the sidecar's stdout is wired up.
+    void client.streamStart('U-1');
+    await tick();
+
+    const seen: Buffer[] = [];
+    const unsubscribe = client.onFrame('U-1', (image) => seen.push(image));
+
+    child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-1', [0xff, 0xd8, 0x01]));
+    child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-2', [0x00])); // other device: ignored
+    await tick();
+    expect(seen.map((b) => [...b])).toEqual([[0xff, 0xd8, 0x01]]);
+
+    unsubscribe();
+    child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-1', [0x02]));
+    await tick();
+    expect(seen).toHaveLength(1);
   });
 
   it('rejects calls without a configured binary and after close', async () => {

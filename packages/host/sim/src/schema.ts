@@ -43,4 +43,14 @@ export type SimProbe = z.infer<typeof SimProbeSchema>;
 
 export const SimLaunchResultSchema = z.object({ pid: z.number().int().nullable() });
 
+/** `streamStart` reply: the accepted stream, or a no-op when one is already running. */
+export const SimStreamStartResultSchema = z.union([
+  z.object({ streaming: z.literal(true), fps: z.number().int(), scale: z.number() }),
+  z.object({ alreadyStreaming: z.literal(true) }),
+]);
+export type SimStreamStartResult = z.infer<typeof SimStreamStartResultSchema>;
+
+/** A hardware button the private HID layer can press. */
+export type SimButton = 'home' | 'lock';
+
 export type SimImageFormat = 'jpeg' | 'png';
