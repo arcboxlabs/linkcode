@@ -1,0 +1,12 @@
+{
+  "apps/mobile/src/app/host/[hostId]/_layout.tsx": {
+    "sukka/react-no-use-effect-watching": {
+      "count": 1
+    }
+  },
+  "packages/presentation/ui/src/shell/composer-editor/editor.tsx": {
+    "sukka/react-no-use-effect-watching": {
+      "count": 2
+    }
+  }
+}
