@@ -28,9 +28,12 @@ export default function TerminalRenderer({
   const handleResize = useEffectEvent(onResize);
   const handleError = useStableHandler(onError);
 
-  const reportError = useCallback((error: unknown) => {
-    handleError(extractErrorMessage(error, false) ?? 'Unknown terminal renderer error');
-  }, [handleError]);
+  const reportError = useCallback(
+    (error: unknown) => {
+      handleError(extractErrorMessage(error, false) ?? 'Unknown terminal renderer error');
+    },
+    [handleError],
+  );
 
   useImperativeHandle(
     ref,

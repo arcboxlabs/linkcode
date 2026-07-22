@@ -272,74 +272,75 @@ describe('OpenCodeAdapter.consumeEvents', () => {
 
     // opencode streams message.part.updated for the user's own prompt too; the role arrives first
     // on message.updated (observed live on 1.17.11).
-    client.stream.push(
-      {
-        id: 'e-user-msg',
-        type: 'message.updated',
-        properties: {
+    client.stream.push({
+      id: 'e-user-msg',
+      type: 'message.updated',
+      properties: {
+        sessionID: 'sess-1',
+        info: {
+          id: 'msg-user',
           sessionID: 'sess-1',
-          info: {
-            id: 'msg-user',
-            sessionID: 'sess-1',
-            role: 'user',
-            time: { created: 0 },
-            agent: 'build',
-            model: { providerID: 'openai', modelID: 'gpt-5.5' },
-          },
+          role: 'user',
+          time: { created: 0 },
+          agent: 'build',
+          model: { providerID: 'openai', modelID: 'gpt-5.5' },
         },
       },
-      {
-        id: 'e-user-part',
-        type: 'message.part.updated',
-        properties: {
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
+    client.stream.push({
+      id: 'e-user-part',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-user',
           sessionID: 'sess-1',
-          time: 0,
-          part: {
-            id: 'p-user',
-            sessionID: 'sess-1',
-            messageID: 'msg-user',
-            type: 'text',
-            text: 'my prompt',
-          },
+          messageID: 'msg-user',
+          type: 'text',
+          text: 'my prompt',
         },
       },
-      {
-        id: 'e-assistant-msg',
-        type: 'message.updated',
-        properties: {
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
+    client.stream.push({
+      id: 'e-assistant-msg',
+      type: 'message.updated',
+      properties: {
+        sessionID: 'sess-1',
+        info: {
+          id: 'msg-assist',
           sessionID: 'sess-1',
-          info: {
-            id: 'msg-assist',
-            sessionID: 'sess-1',
-            role: 'assistant',
-            time: { created: 0 },
-            parentID: 'msg-user',
-            modelID: 'gpt-5.6-sol',
-            providerID: 'openai',
-            mode: 'build',
-            agent: 'build',
-            path: { cwd: '/tmp/repo', root: '/tmp/repo' },
-            cost: 0,
-            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          },
+          role: 'assistant',
+          time: { created: 0 },
+          parentID: 'msg-user',
+          modelID: 'gpt-5.6-sol',
+          providerID: 'openai',
+          mode: 'build',
+          agent: 'build',
+          path: { cwd: '/tmp/repo', root: '/tmp/repo' },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
         },
       },
-      {
-        id: 'e-assistant-part',
-        type: 'message.part.updated',
-        properties: {
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
+    client.stream.push({
+      id: 'e-assistant-part',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          id: 'p-assist',
           sessionID: 'sess-1',
-          time: 0,
-          part: {
-            id: 'p-assist',
-            sessionID: 'sess-1',
-            messageID: 'msg-assist',
-            type: 'text',
-            text: 'reply',
-          },
+          messageID: 'msg-assist',
+          type: 'text',
+          text: 'reply',
         },
       },
-    );
+    });
 
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'agent-message-chunk')).toBe(true);

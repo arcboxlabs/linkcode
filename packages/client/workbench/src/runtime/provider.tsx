@@ -103,15 +103,13 @@ export function WorkbenchRuntimeProvider({
   children,
   noGenerationFallback = null,
 }: WorkbenchRuntimeProviderProps): React.ReactNode {
-  const { current: controller } = useSingleton(
-    () => {
-      const controller = new WorkbenchConnectionController(connectionSource);
-      // connectionSource is immutable across the entire app
-      // so we just call it once during initialization here
-      controller.setSource(connectionSource);
-      return controller;
-    },
-  );
+  const { current: controller } = useSingleton(() => {
+    const controller = new WorkbenchConnectionController(connectionSource);
+    // connectionSource is immutable across the entire app
+    // so we just call it once during initialization here
+    controller.setSource(connectionSource);
+    return controller;
+  });
 
   useEffect(() => {
     controller.start();
