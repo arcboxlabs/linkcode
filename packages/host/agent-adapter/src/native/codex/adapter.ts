@@ -17,7 +17,7 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
-import { EffortLevelSchema } from '@linkcode/schema';
+import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
@@ -919,25 +919,20 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!type || !id) return;
     switch (type) {
       case 'agentMessage': {
-        // Text streams via item/agentMessage/delta; on completion emit whatever the deltas
-        // missed so the message survives even if the delta channel dropped.
+        // Text streams via deltas; the completed full snapshot corrects a dropped/mutated delta.
         if (!completed) break;
-        const text = stringField(item, 'text') ?? '';
-        const seen = this.streamedTextLen.get(id) ?? 0;
-        if (text.length > seen) this.emitAssistantText(text.slice(seen), asMessageId(id));
+        const text = stringField(item, 'text');
+        this.emitAgentMessage(asMessageId(id), text ? [textBlock(text)] : undefined);
         break;
       }
       case 'reasoning': {
-        // On completion emit whatever the summary deltas missed (delta lengths + the '\n\n'
-        // separators add up to the joined summary). When raw-content deltas streamed
-        // (item/reasoning/textDelta), the streamed length exceeds the summary and this is a no-op.
+        // The provider's public summary is the authoritative completed thought snapshot.
         if (!completed) break;
         const summary = item.summary;
         const text = Array.isArray(summary)
           ? summary.filter((part): part is string => typeof part === 'string').join('\n\n')
           : '';
-        const seen = this.streamedTextLen.get(id) ?? 0;
-        if (text.length > seen) this.emitThought(text.slice(seen), asMessageId(id));
+        if (text) this.emitAgentThought(asMessageId(id), [textBlock(text)]);
         break;
       }
       case 'commandExecution': {
@@ -1034,7 +1029,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         // assistant prose, emitted once on completion (its deltas are not subscribed).
         if (!completed) break;
         const text = stringField(item, 'text');
-        if (text) this.emitAssistantText(text, asMessageId(id));
+        if (text) this.emitAgentMessage(asMessageId(id), [textBlock(text)]);
         break;
       }
       case 'contextCompaction': {

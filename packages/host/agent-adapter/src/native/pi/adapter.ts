@@ -21,6 +21,7 @@ import type {
   StartOptions,
   ToolKind,
 } from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -39,6 +40,7 @@ import {
   lastPiModelChange,
   listPiHistory,
   piAgentDir,
+  piMessageBlockId,
   readPiHistory,
 } from './history';
 import { createPiUiContext } from './ui-bridge';
@@ -463,8 +465,24 @@ export class PiAdapter extends BaseAgentAdapter {
         break;
       case 'message_update': {
         const a = ev.assistantMessageEvent;
-        if (a.type === 'text_delta') this.emitAssistantText(a.delta, this.messageId);
-        else if (a.type === 'thinking_delta') this.emitThought(a.delta, this.thoughtId);
+        const id = (kind: 'message' | 'thought') => {
+          const fallbackId = kind === 'message' ? this.messageId : this.thoughtId;
+          if (!('partial' in a)) return fallbackId;
+          return piMessageBlockId(
+            a.partial.responseId,
+            a.partial.timestamp,
+            fallbackId,
+            'contentIndex' in a ? a.contentIndex : 0,
+            kind,
+          );
+        };
+        if (a.type === 'text_delta') this.emitAssistantText(a.delta, id('message'));
+        else if (a.type === 'thinking_delta') this.emitThought(a.delta, id('thought'));
+        else if (a.type === 'text_end') {
+          this.emitAgentMessage(id('message'), [textBlock(a.content)]);
+        } else if (a.type === 'thinking_end') {
+          this.emitAgentThought(id('thought'), [textBlock(a.content)]);
+        }
         break;
       }
       case 'tool_execution_start':

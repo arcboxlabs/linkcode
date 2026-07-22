@@ -43,10 +43,7 @@ describe('mapCodexHistoryEvents', () => {
         content: [{ type: 'output_text', text: 'hi there' }],
       }),
     ]);
-    expect(events.map((event) => event.event.type)).toEqual([
-      'user-message',
-      'agent-message-chunk',
-    ]);
+    expect(events.map((event) => event.event.type)).toEqual(['user-message', 'agent-message']);
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
   });
 
@@ -628,7 +625,7 @@ describe('mapCodexHistoryEvents', () => {
       'user-message',
       'tool-call',
       'tool-call',
-      'agent-message-chunk',
+      'agent-message',
     ]);
   });
 
@@ -653,7 +650,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events.map((event) => event.event.type)).toEqual([
       'user-message',
       'compaction',
-      'agent-message-chunk',
+      'agent-message',
     ]);
     expect(events[1]).toMatchObject({
       itemId: 'w-2',

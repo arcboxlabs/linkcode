@@ -13,8 +13,13 @@ import { PiAdapter } from '../native/pi';
  * the SDK loop, so test subclasses expose them.
  */
 
+type AgentMessage = Extract<AgentEvent, { type: 'agent-message' }>;
 type AgentMessageChunk = Extract<AgentEvent, { type: 'agent-message-chunk' }>;
 type AgentThoughtChunk = Extract<AgentEvent, { type: 'agent-thought-chunk' }>;
+
+function agentMessages(events: AgentEvent[]): AgentMessage[] {
+  return events.filter((e): e is AgentMessage => e.type === 'agent-message');
+}
 
 function agentChunks(events: AgentEvent[]): AgentMessageChunk[] {
   return events.filter((e): e is AgentMessageChunk => e.type === 'agent-message-chunk');
@@ -138,16 +143,63 @@ describe('PiAdapter message grouping', () => {
     adapter.feed({ type: 'agent_start' });
     adapter.feed({
       type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'a' },
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 0,
+        delta: 'a',
+        partial: { responseId: 'pi-response-1', timestamp: 42 },
+      },
     });
     adapter.feed({
       type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'b' },
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 0,
+        delta: 'b',
+        partial: { responseId: 'pi-response-1', timestamp: 42 },
+      },
     });
 
     const chunks = agentChunks(seen);
     expect(chunks).toHaveLength(2);
     expect(chunks[0].messageId).toBe(chunks[1].messageId);
+    expect(chunks[0].messageId).toBe('pi-response-1:message:0');
+  });
+
+  it('uses one provider block id for live deltas and the completed whole message', () => {
+    const adapter = new TestPi();
+    const seen = record(adapter);
+    const partial = { responseId: 'pi-response-1', timestamp: 42 };
+
+    adapter.feed({ type: 'agent_start' });
+    adapter.feed({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 1,
+        delta: 'draft',
+        partial,
+      },
+    });
+    adapter.feed({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'text_end',
+        contentIndex: 1,
+        content: 'final',
+        partial,
+      },
+    });
+
+    expect(agentChunks(seen)[0].messageId).toBe('pi-response-1:message:1');
+    expect(agentMessages(seen)).toEqual([
+      {
+        type: 'agent-message',
+        messageId: 'pi-response-1:message:1',
+        parentToolCallId: undefined,
+        content: [{ type: 'text', text: 'final' }],
+      },
+    ]);
   });
 });
 

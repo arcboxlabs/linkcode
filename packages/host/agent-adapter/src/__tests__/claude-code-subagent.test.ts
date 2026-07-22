@@ -308,19 +308,19 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       'user-message:u0',
       `tool-call:${TASK_ID}:in_progress`,
       // Spliced subagent transcript (injected prompt skipped, rest parent-linked):
-      'agent-message-chunk:s1',
+      'agent-message:s1',
       'tool-call:toolu_sub:in_progress',
       'tool-call:toolu_sub:completed',
       // Main transcript resumes:
       `tool-call:${TASK_ID}:completed`,
-      'agent-message-chunk:u3',
+      'agent-message:u3',
     ]);
 
     for (const e of result.events) {
       if (e.event.type === 'tool-call' && e.event.toolCall.toolCallId === 'toolu_sub') {
         expect(e.event.toolCall.parentToolCallId).toBe(TASK_ID);
       }
-      if (e.event.type === 'agent-message-chunk' && e.itemId === 's1') {
+      if (e.event.type === 'agent-message' && e.itemId === 's1') {
         expect(e.event.parentToolCallId).toBe(TASK_ID);
       }
     }
@@ -373,7 +373,7 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
     ]);
     const grandchild = result.events.find((e) => e.itemId === 'n1');
     expect(grandchild?.event).toMatchObject({
-      type: 'agent-message-chunk',
+      type: 'agent-message',
       parentToolCallId: INNER_ID,
     });
   });
@@ -385,7 +385,7 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       'user-message',
       'tool-call',
       'tool-call',
-      'agent-message-chunk',
+      'agent-message',
     ]);
   });
 });
