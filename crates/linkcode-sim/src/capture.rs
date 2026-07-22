@@ -109,6 +109,16 @@ const HEALTHY_AFTER: Duration = Duration::from_secs(5);
 /// Consecutive fast crashes before the stream gives up and reports unavailable.
 const MAX_FAST_CRASHES: u32 = 6;
 
+/// Encoder/pacing parameters for a capture stream, threaded from `streamStart` down to the worker
+/// (and across the process boundary as CLI args). Clamping happens at the boundary, not here.
+#[derive(Clone, Copy)]
+pub struct StreamParams {
+    pub fps: u32,
+    pub quality: f64,
+    /// Downscale factor applied before JPEG encode (0..1; 1.0 = native resolution).
+    pub scale: f64,
+}
+
 /// A supervised framebuffer stream for one device. Holds the latest delivered frame; the worker
 /// subprocess is spawned, read, and respawned by a background manager thread.
 pub struct CaptureStream {
@@ -120,8 +130,8 @@ pub struct CaptureStream {
 }
 
 impl CaptureStream {
-    /// Start streaming device `udid` at `fps` and JPEG `quality` by supervising a capture worker.
-    pub fn start(udid: String, quality: f64, fps: u32) -> CaptureStream {
+    /// Start streaming device `udid` with `params` by supervising a capture worker.
+    pub fn start(udid: String, params: StreamParams) -> CaptureStream {
         let latest = Arc::new(Mutex::new(None));
         let stopped = Arc::new(AtomicBool::new(false));
         let dead = Arc::new(AtomicBool::new(false));
@@ -129,7 +139,7 @@ impl CaptureStream {
             let latest = Arc::clone(&latest);
             let stopped = Arc::clone(&stopped);
             let dead = Arc::clone(&dead);
-            move || supervise(&udid, quality, fps, &latest, &stopped, &dead)
+            move || supervise(&udid, params, &latest, &stopped, &dead)
         });
         CaptureStream {
             latest,
@@ -166,8 +176,7 @@ impl Drop for CaptureStream {
 /// too many fast crashes.
 fn supervise(
     udid: &str,
-    quality: f64,
-    fps: u32,
+    params: StreamParams,
     latest: &Arc<Mutex<Option<Frame>>>,
     stopped: &Arc<AtomicBool>,
     dead: &Arc<AtomicBool>,
@@ -175,7 +184,7 @@ fn supervise(
     let mut fast_crashes = 0u32;
     while !stopped.load(Ordering::Relaxed) {
         let started = Instant::now();
-        match spawn_worker(udid, quality, fps) {
+        match spawn_worker(udid, params) {
             Ok(mut child) => {
                 pump_worker(&mut child, latest, stopped);
                 let _ = child.wait();
@@ -202,13 +211,14 @@ fn supervise(
     }
 }
 
-fn spawn_worker(udid: &str, quality: f64, fps: u32) -> io::Result<Child> {
+fn spawn_worker(udid: &str, params: StreamParams) -> io::Result<Child> {
     let exe = std::env::current_exe()?;
     Command::new(exe)
         .arg("capture-worker")
         .arg(udid)
-        .arg(format!("{quality}"))
-        .arg(format!("{fps}"))
+        .arg(format!("{}", params.quality))
+        .arg(format!("{}", params.fps))
+        .arg(format!("{}", params.scale))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -238,9 +248,10 @@ fn pump_worker(child: &mut Child, latest: &Arc<Mutex<Option<Frame>>>, stopped: &
     }
 }
 
-/// The worker entry point (`linkcode-sim capture-worker <udid> <quality> <fps>`): open the device's
-/// framebuffer and stream length-prefixed JPEG frames to stdout at `fps`. Exits non-zero on any
-/// failure; the parent respawns. A hard `SIGABRT` from the private path also just ends this process.
+/// The worker entry point (`linkcode-sim capture-worker <udid> <quality> <fps> <scale>`): open the
+/// device's framebuffer and stream length-prefixed JPEG frames to stdout at `fps`, each downscaled by
+/// `scale`. Exits non-zero on any failure; the parent respawns. A hard `SIGABRT` from the private
+/// path also just ends this process.
 #[cfg(target_os = "macos")]
 pub fn run_worker() -> ! {
     use crate::private::{Screen, SimDevice};
@@ -253,6 +264,11 @@ pub fn run_worker() -> ! {
         .and_then(|a| a.parse().ok())
         .unwrap_or(60)
         .clamp(1, 60);
+    let scale: f64 = args
+        .next()
+        .and_then(|a| a.parse::<f64>().ok())
+        .unwrap_or(1.0)
+        .clamp(0.1, 1.0);
 
     let Some(device) = SimDevice::resolve(&udid) else {
         eprintln!("sim capture-worker: device {udid} not found");
@@ -270,7 +286,7 @@ pub fn run_worker() -> ! {
     let mut clock = FrameClock::new(fps);
     let mut stdout = io::stdout().lock();
     loop {
-        if let Some(jpeg) = screen.capture_jpeg(quality) {
+        if let Some(jpeg) = screen.capture_jpeg(quality, scale) {
             let len = u32::try_from(jpeg.len()).unwrap_or(0);
             if len == 0
                 || stdout.write_all(&len.to_le_bytes()).is_err()

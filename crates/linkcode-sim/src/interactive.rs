@@ -50,6 +50,7 @@ mod stubs {
         _udid: &str,
         _fps: u32,
         _quality: f64,
+        _scale: f64,
         _tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         Err(unsupported())
@@ -165,6 +166,7 @@ mod imp {
         udid: &str,
         fps: u32,
         quality: f64,
+        scale: f64,
         tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         if !available() {
@@ -173,14 +175,18 @@ mod imp {
         // Warming the HID connection first stabilizes the framebuffer worker's cold open.
         let _ = input_for(udid);
         let fps = fps.clamp(1, 60);
+        let scale = scale.clamp(0.1, 1.0);
         let mut reg = registry().lock().expect("interactive registry poisoned");
         if reg.streams.contains_key(udid) {
             return Ok(json!({ "alreadyStreaming": true }));
         }
         let stream = Arc::new(CaptureStream::start(
             udid.to_owned(),
-            quality.clamp(0.1, 1.0),
-            fps,
+            crate::capture::StreamParams {
+                fps,
+                quality: quality.clamp(0.1, 1.0),
+                scale,
+            },
         ));
         let stop = Arc::new(AtomicBool::new(false));
         let pusher = thread::spawn({
@@ -198,7 +204,7 @@ mod imp {
                 pusher: Some(pusher),
             },
         );
-        Ok(json!({ "streaming": true, "fps": fps }))
+        Ok(json!({ "streaming": true, "fps": fps, "scale": scale }))
     }
 
     pub fn stream_stop(udid: &str) -> Result<Value, OpError> {

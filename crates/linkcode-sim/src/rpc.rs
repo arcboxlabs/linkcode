@@ -74,6 +74,8 @@ pub enum Op {
         fps: u32,
         #[serde(default = "default_quality")]
         quality: f64,
+        #[serde(default = "default_scale")]
+        scale: f64,
     },
     /// Stop a running framebuffer stream.
     StreamStop { udid: String },
@@ -84,6 +86,9 @@ fn default_fps() -> u32 {
 }
 fn default_quality() -> f64 {
     0.6
+}
+fn default_scale() -> f64 {
+    1.0
 }
 
 /// Hardware buttons exposable over the wire (extended as the private HID layer grows).

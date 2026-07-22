@@ -352,8 +352,30 @@ unsafe extern "C" {
     ) -> *mut c_void;
     fn CGBitmapContextCreateImage(context: *mut c_void) -> *mut c_void;
     fn CGContextRelease(context: *mut c_void);
+    fn CGContextDrawImage(context: *mut c_void, rect: CGRect, image: *mut c_void);
+    fn CGContextSetInterpolationQuality(context: *mut c_void, quality: i32);
     fn CGImageRelease(image: *mut c_void);
 }
+
+#[repr(C)]
+struct CGPoint {
+    x: f64,
+    y: f64,
+}
+#[repr(C)]
+struct CGSize {
+    width: f64,
+    height: f64,
+}
+#[repr(C)]
+struct CGRect {
+    origin: CGPoint,
+    size: CGSize,
+}
+
+/// `kCGInterpolationHigh` — best downscale quality (Lanczos-ish), worth it since the encode of the
+/// smaller image is what we saved time on.
+const KCG_INTERPOLATION_HIGH: i32 = 3;
 
 // ImageIO (public framework).
 #[link(name = "ImageIO", kind = "framework")]
@@ -515,22 +537,26 @@ impl Screen {
         false
     }
 
-    /// The latest copied framebuffer encoded as JPEG at `quality` (0..1), or `None` if no frame has
-    /// been copied yet. The frame callback did the surface copy on the delivery queue; this reader
-    /// thread only encodes the owned pixels — the CoreSimulator proxy is never messaged on this path.
-    pub fn capture_jpeg(&self, quality: f64) -> Option<Vec<u8>> {
+    /// The latest copied framebuffer encoded as JPEG at `quality` (0..1), downscaled by `scale`
+    /// (0..1; 1.0 = native), or `None` if no frame has been copied yet. The frame callback did the
+    /// surface copy on the delivery queue; this reader thread only encodes the owned pixels — the
+    /// CoreSimulator proxy is never messaged on this path.
+    pub fn capture_jpeg(&self, quality: f64, scale: f64) -> Option<Vec<u8>> {
         let frame = self.sink.latest()?;
-        encode_bgra_jpeg(&frame, quality.clamp(0.1, 1.0))
+        encode_bgra_jpeg(&frame, quality.clamp(0.1, 1.0), scale.clamp(0.1, 1.0))
     }
 }
 
-/// Encode an owned BGRA [`RawFrame`] to JPEG bytes via CoreGraphics + ImageIO. Runs on the reader
-/// thread from owned pixels — no live surface involved.
-fn encode_bgra_jpeg(frame: &RawFrame, quality: f64) -> Option<Vec<u8>> {
+/// Encode an owned BGRA [`RawFrame`] to JPEG bytes via CoreGraphics + ImageIO, optionally downscaled
+/// by `scale`. Runs on the reader thread from owned pixels — no live surface involved. Downscaling
+/// (CoreGraphics resample into a smaller context) cuts the JPEG encode cost roughly by `scale²`,
+/// which is the lever for a higher locked frame rate and lower bandwidth.
+fn encode_bgra_jpeg(frame: &RawFrame, quality: f64, scale: f64) -> Option<Vec<u8>> {
     // SAFETY: pixels back a `width×height`, `stride`-padded BGRA buffer; every CF/CG object created
     // here is released on all paths.
     unsafe {
         let color_space = CGColorSpaceCreateDeviceRGB();
+        let bitmap_info = KCG_ALPHA_PREMULTIPLIED_FIRST | KCG_BYTE_ORDER_32_LITTLE;
         let context = CGBitmapContextCreate(
             frame.pixels.as_ptr().cast_mut().cast::<c_void>(),
             frame.width,
@@ -538,20 +564,75 @@ fn encode_bgra_jpeg(frame: &RawFrame, quality: f64) -> Option<Vec<u8>> {
             8,
             frame.stride,
             color_space,
-            KCG_ALPHA_PREMULTIPLIED_FIRST | KCG_BYTE_ORDER_32_LITTLE,
+            bitmap_info,
         );
-        CGColorSpaceRelease(color_space);
         if context.is_null() {
+            CGColorSpaceRelease(color_space);
             return None;
         }
         let image = CGBitmapContextCreateImage(context);
         CGContextRelease(context);
         if image.is_null() {
+            CGColorSpaceRelease(color_space);
             return None;
         }
-        let bytes = encode_cgimage_jpeg(image, quality);
+        // Optionally resample into a smaller context before encoding.
+        let scaled = if scale < 0.999 {
+            downscale_image(
+                image,
+                frame.width,
+                frame.height,
+                scale,
+                color_space,
+                bitmap_info,
+            )
+        } else {
+            ptr::null_mut()
+        };
+        CGColorSpaceRelease(color_space);
+        let target = if scaled.is_null() { image } else { scaled };
+        let bytes = encode_cgimage_jpeg(target, quality);
+        if !scaled.is_null() {
+            CGImageRelease(scaled);
+        }
         CGImageRelease(image);
         bytes
+    }
+}
+
+/// Draw `image` into a `scale`-sized context and return the resampled `CGImage` (caller releases), or
+/// null on failure. `color_space`/`bitmap_info` must match the source so colors are preserved.
+///
+/// # Safety
+/// `image` must be a live CGImageRef and `color_space` a live CGColorSpaceRef.
+unsafe fn downscale_image(
+    image: *mut c_void,
+    width: usize,
+    height: usize,
+    scale: f64,
+    color_space: *mut c_void,
+    bitmap_info: u32,
+) -> *mut c_void {
+    unsafe {
+        let w = (((width as f64) * scale).round() as usize).max(1);
+        let h = (((height as f64) * scale).round() as usize).max(1);
+        // bytes_per_row 0 lets CoreGraphics pick an aligned stride for the allocation it owns.
+        let ctx = CGBitmapContextCreate(ptr::null_mut(), w, h, 8, 0, color_space, bitmap_info);
+        if ctx.is_null() {
+            return ptr::null_mut();
+        }
+        CGContextSetInterpolationQuality(ctx, KCG_INTERPOLATION_HIGH);
+        let rect = CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize {
+                width: w as f64,
+                height: h as f64,
+            },
+        };
+        CGContextDrawImage(ctx, rect, image);
+        let scaled = CGBitmapContextCreateImage(ctx);
+        CGContextRelease(ctx);
+        scaled
     }
 }
 
@@ -613,16 +694,17 @@ pub fn bench_encode(width: usize, height: usize, quality: f64, iters: u32) -> Op
     };
     let q = quality.clamp(0.1, 1.0);
 
-    // Warm up: the first encode pays one-time ImageIO/CoreGraphics setup.
+    // Warm up: the first encode pays one-time ImageIO/CoreGraphics setup. The sweep sizes the frame
+    // directly, so encode at native scale here.
     let mut out_len = 0usize;
     for _ in 0..3 {
-        out_len = encode_bgra_jpeg(&frame, q)?.len();
+        out_len = encode_bgra_jpeg(&frame, q, 1.0)?.len();
     }
 
     let mut samples = Vec::with_capacity(iters as usize);
     for _ in 0..iters {
         let start = std::time::Instant::now();
-        let jpeg = encode_bgra_jpeg(&frame, q)?;
+        let jpeg = encode_bgra_jpeg(&frame, q, 1.0)?;
         samples.push(start.elapsed().as_secs_f64() * 1000.0);
         out_len = jpeg.len();
     }

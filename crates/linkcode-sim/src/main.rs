@@ -231,9 +231,12 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             duration_ms,
         } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
         Op::Button { udid, button } => interactive::button(&udid, button),
-        Op::StreamStart { udid, fps, quality } => {
-            interactive::stream_start(&udid, fps, quality, tx)
-        }
+        Op::StreamStart {
+            udid,
+            fps,
+            quality,
+            scale,
+        } => interactive::stream_start(&udid, fps, quality, scale, tx),
         Op::StreamStop { udid } => interactive::stream_stop(&udid),
     };
     match outcome {
@@ -286,7 +289,14 @@ fn diag_interactive() {
 
     let device = private::SimDevice::resolve(&udid).expect("device not found");
     let input = private::Input::warm(&device).expect("HID warm failed");
-    let stream = capture::CaptureStream::start(udid.clone(), 0.6, 12);
+    let stream = capture::CaptureStream::start(
+        udid.clone(),
+        capture::StreamParams {
+            fps: 12,
+            quality: 0.6,
+            scale: 1.0,
+        },
+    );
     eprintln!("supervised capture stream started; driving input for ~5s");
 
     let start = std::time::Instant::now();

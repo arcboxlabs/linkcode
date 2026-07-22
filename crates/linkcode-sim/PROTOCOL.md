@@ -70,8 +70,10 @@ Off macOS, or when SimulatorKit is unavailable, every P1 op fails with `xcodeMis
 | `tap` | `udid`, `x`, `y` (normalised 0..1) | `{}` |
 | `swipe` | `udid`, `x0`, `y0`, `x1`, `y1`, `durationMs?` | `{}` |
 | `button` | `udid`, `button` (`home`/`lock`) | `{}` |
-| `streamStart` | `udid`, `fps?` (60), `quality?` (0.6) | `{ streaming, fps }` — JPEG frames then arrive on `STREAM_FRAME`s |
+| `streamStart` | `udid`, `fps?` (60), `quality?` (0.6), `scale?` (1.0) | `{ streaming, fps, scale }` — JPEG frames then arrive on `STREAM_FRAME`s |
 | `streamStop` | `udid` | `{}` |
+
+`scale` (0.1..1.0) downscales each frame before JPEG encode: at native resolution the encode bounds the frame rate near ~55 fps, so `scale` below 1.0 both lifts the achievable rate toward the display's 60 Hz and cuts bandwidth (e.g. `0.5` ≈ one third the bytes). `tap`/`swipe` stay in normalized 0..1 coordinates, so a downscaled stream needs no coordinate adjustment.
 
 Input (`tap`/`swipe`/`button`) runs in the sidecar's main process via a per-udid warmed HID client and is stable. Framebuffer streaming runs in a **crash-isolated worker subprocess**: the sidecar spawns it, reads its frames, and respawns it on the intermittent hard crashes of the private framebuffer path. If the worker crash-loops and gives up, the stream degrades to `simctl io screenshot` frames — slower, but frames never stop and the sidecar never crashes.
 
