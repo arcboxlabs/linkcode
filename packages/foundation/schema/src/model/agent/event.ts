@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ContentBlockSchema } from '../content';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from '../permission';
 import { PlanSchema } from '../plan';
+import { McpPluginIdSchema, PluginWarningReasonSchema } from '../plugin';
 import {
   AgentHistoryIdSchema,
   MessageIdSchema,
@@ -124,6 +125,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     message: z.string(),
     code: z.string().optional(),
     recoverable: z.boolean().default(true),
+  }),
+  z.object({
+    type: z.literal('plugin-warning'),
+    unitId: McpPluginIdSchema,
+    reason: PluginWarningReasonSchema,
   }),
 
   // Agent → client requests await a reply via AgentInput, correlated by requestId.

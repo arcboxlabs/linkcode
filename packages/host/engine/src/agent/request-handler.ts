@@ -98,6 +98,7 @@ export class AgentRequestHandler {
                   replyTo: payload.clientReqId,
                   providers: this.providers.get(),
                   accounts: this.providers.getAccounts(),
+                  plugins: { units: [], connectors: [] },
                 }),
               ),
             catch: (cause) =>

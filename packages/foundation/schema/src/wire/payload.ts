@@ -11,6 +11,7 @@ import { historyWireVariants } from './history';
 import { keepAliveWireVariants } from './keep-alive';
 import { loopWireVariants } from './loop';
 import { managedAssetWireVariants } from './managed-asset';
+import { pluginWireVariants } from './plugin';
 import { requestWireVariants } from './request';
 import { scheduleWireVariants } from './schedule';
 import { scriptWireVariants } from './script';
@@ -27,6 +28,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...agentRuntimeWireVariants,
   ...agentCatalogWireVariants,
   ...agentLoginWireVariants,
+  ...pluginWireVariants,
   ...managedAssetWireVariants,
   ...workspaceWireVariants,
   ...gitWireVariants,

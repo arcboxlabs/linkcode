@@ -323,6 +323,7 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
+          plugins: { units: [], connectors: [] },
         });
         break;
       case 'agent-runtime.list':
