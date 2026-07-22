@@ -27,7 +27,7 @@
     "lint:fix": "eslint --concurrency=2 --format=sukka --fix .",
     "format": "biome check --write .",
     "format:check": "biome check .",
-    "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck",
+    "check:ci": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm schema:index:check",
     "test": "vitest run",
     "clean": "turbo run clean",
     "schema:index": "node tools/gen-schema-index.cjs",

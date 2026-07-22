@@ -1,14 +1,6 @@
 #!/usr/bin/env node
 
-/**
- * Generate docs/SCHEMA-INDEX.md from packages/foundation/schema/src/wire/*.ts.
- *
- * Walks every wire-variant file, extracts `kind: z.literal('…')` with its JSDoc,
- * classifies direction (C→H / H→C), and writes a sorted Markdown table.
- *
- * Usage:  node tools/gen-schema-index.cjs
- * Check:  node tools/gen-schema-index.cjs --check   (exit 1 if the file changed)
- */
+/* eslint-disable */
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,48 +8,78 @@ const path = require('node:path');
 const WIRE_DIR = path.join(__dirname, '..', 'packages', 'foundation', 'schema', 'src', 'wire');
 const OUTPUT = path.join(__dirname, '..', 'docs', 'SCHEMA-INDEX.md');
 
-/**
- * @typedef {{ kind: string, file: string, direction: string, doc: string }} Variant
- */
+// Fire-and-forget and broadcast messages without clientReqId or replyTo.
+// Every uncorrelated kind must be listed here; missing = error.
+var UNCORRELATED_DIRECTIONS = new Map([
+  ['ping', 'C->H'],
+  ['pong', 'H->C'],
 
-/**
- * @param {string} filePath
- * @returns {Variant[]}
- */
+  ['terminal.detach', 'C->H'],
+  ['terminal.input', 'C->H'],
+  ['terminal.resize', 'C->H'],
+  ['terminal.close', 'C->H'],
+  ['terminal.ack', 'C->H'],
+
+  ['terminal.output', 'H->C'],
+  ['terminal.resized', 'H->C'],
+  ['terminal.controller.changed', 'H->C'],
+  ['terminal.exit', 'H->C'],
+
+  ['session.attach', 'C->H'],
+  ['session.detach', 'C->H'],
+
+  ['session.notification', 'H->C'],
+
+  ['agent-login.url', 'H->C'],
+  ['agent-login.submit-code', 'C->H'],
+  ['agent-login.cancel', 'C->H'],
+  ['agent-login.settled', 'H->C'],
+
+  ['agent.event', 'H->C'],
+
+  ['agent-runtime.changed', 'H->C'],
+
+  ['asset.progress', 'H->C'],
+  ['asset.settled', 'H->C'],
+
+  ['loop.changed', 'H->C'],
+  ['loop.removed', 'H->C'],
+  ['loop.iteration', 'H->C'],
+  ['loop.log', 'H->C'],
+
+  ['schedule.changed', 'H->C'],
+  ['schedule.removed', 'H->C'],
+  ['schedule.run', 'H->C'],
+
+  ['script.status', 'H->C'],
+]);
+
 function parseWireFile(filePath) {
-  const text = fs.readFileSync(filePath, 'utf-8');
-  const fileName = path.basename(filePath);
-  const lines = text.split('\n');
-  const variants = [];
+  var text = fs.readFileSync(filePath, 'utf-8');
+  var fileName = path.basename(filePath);
+  var lines = text.split('\n');
+  var variants = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/kind:\s*z\.literal\('([^']+)'\)/);
+  for (var i = 0; i < lines.length; i++) {
+    var match = lines[i].match(/kind:\s*z\.literal\('([^']+)'\)/);
     if (!match) continue;
 
-    const kind = match[1];
+    var kind = match[1];
+    var objStart = findObjectStart(lines, i);
+    var objBlock = objStart >= 0 ? extractBlock(lines, objStart) : '';
+    var doc = objStart >= 0 ? extractDoc(lines, objStart - 1) : '';
+    var direction = classifyFromBlock(objBlock, kind);
 
-    // Find the enclosing z.object({...})
-    const objStart = findObjectStart(lines, i);
-    const objBlock = objStart >= 0 ? extractBlock(lines, objStart) : '';
-
-    // JSDoc is immediately before z.object({
-    const doc = objStart >= 0 ? extractDoc(lines, objStart - 1) : '';
-
-    const direction = classifyFromBlock(objBlock, kind, lines, i);
-
-    variants.push({ kind, file: fileName, direction, doc });
+    variants.push({ kind: kind, file: fileName, direction: direction, doc: doc });
   }
 
   return variants;
 }
 
-/**
- * Walk backwards from `idx` to find the line containing `z.object({`.
- */
 function findObjectStart(lines, idx) {
   if (lines[idx].includes('z.object({')) return idx;
 
-  let cursor = idx - 1;
+  var cursor = idx - 1;
   while (cursor >= 0) {
     if (lines[cursor].includes('z.object({')) return cursor;
     if (lines[cursor].trim() === ']);') return -1;
@@ -66,18 +88,15 @@ function findObjectStart(lines, idx) {
   return -1;
 }
 
-/**
- * Extract the balanced `z.object({...})` block starting at `start` line.
- */
 function extractBlock(lines, start) {
-  // Find the first `{` on or after startLine
-  let depth = 0;
-  let found = false;
-  const blockLines = [];
+  var depth = 0;
+  var found = false;
+  var blockLines = [];
 
-  for (let j = start; j < lines.length; j++) {
+  for (var j = start; j < lines.length; j++) {
     blockLines.push(lines[j]);
-    for (const ch of lines[j]) {
+    for (var k = 0; k < lines[j].length; k++) {
+      var ch = lines[j][k];
       if (ch === '{') { depth++; found = true; }
       else if (ch === '}') depth--;
       if (found && depth === 0) return blockLines.join('\n');
@@ -86,21 +105,18 @@ function extractBlock(lines, start) {
   return blockLines.join('\n');
 }
 
-/**
- * Extract JSDoc comment ending at line `idx`.
- */
 function extractDoc(lines, idx) {
   if (idx < 0) return '';
-  const docLines = [];
-  let cursor = idx;
+  var docLines = [];
+  var cursor = idx;
   while (cursor >= 0) {
-    const trimmed = lines[cursor].trim();
+    var trimmed = lines[cursor].trim();
     if (trimmed.startsWith('*') && !trimmed.startsWith('*/')) {
       docLines.unshift(trimmed.replace(/^\*\s?/, ''));
     } else if (trimmed === '*/') {
       cursor--;
       while (cursor >= 0) {
-        const inner = lines[cursor].trim();
+        var inner = lines[cursor].trim();
         if (inner.startsWith('/**')) {
           docLines.unshift(inner.replace(/^\/\*\*\s*/, ''));
           break;
@@ -116,7 +132,6 @@ function extractDoc(lines, idx) {
       break;
     } else if (trimmed.startsWith('//')) {
       docLines.unshift(trimmed.replace(/^\/\/\s*/, ''));
-      break;
     } else if (trimmed !== '') {
       break;
     }
@@ -125,79 +140,74 @@ function extractDoc(lines, idx) {
   return docLines.join(' ').trim();
 }
 
-/**
- * Determine direction from the exact zod object block.
- */
-function classifyFromBlock(block, kind, _lines, _idx) {
-  const hasClientReqId = /clientReqId/.test(block);
-  const hasReplyTo = /replyTo/.test(block);
+function classifyFromBlock(block, kind) {
+  var hasClientReqId = /clientReqId/.test(block);
+  var hasReplyTo = /replyTo/.test(block);
 
-  if (hasClientReqId && hasReplyTo) return 'C↔H';
-  if (hasClientReqId) return 'C→H';
-  if (hasReplyTo) return 'H→C';
+  if (hasClientReqId && hasReplyTo) return 'C<->H';
+  if (hasClientReqId) return 'C->H';
+  if (hasReplyTo) return 'H->C';
 
-  if (kind === 'ping') return 'C→H';
-  if (kind === 'pong') return 'H→C';
-
-  return 'H→C';
+  var direction = UNCORRELATED_DIRECTIONS.get(kind);
+  if (!direction) {
+    throw new Error('Cannot determine direction for uncorrelated kind: ' + kind);
+  }
+  return direction;
 }
 
-/**
- * @param {Variant[]} variants
- */
 function generateMarkdown(variants) {
-  variants.sort((a, b) => a.kind.localeCompare(b.kind));
+  var sorted = variants.slice().sort(function (a, b) {
+    return a.kind.localeCompare(b.kind);
+  });
 
-  const grouped = {};
-  let c2h = 0, h2c = 0, ch = 0;
-  for (const v of variants) {
-    const prefix = v.kind.split('.')[0];
-    if (!grouped[prefix]) grouped[prefix] = [];
-    grouped[prefix].push(v);
-    if (v.direction === 'C→H') c2h++;
-    else if (v.direction === 'H→C') h2c++;
+  var c2h = 0, h2c = 0, ch = 0;
+  for (var i = 0; i < sorted.length; i++) {
+    var d = sorted[i].direction;
+    if (d === 'C->H') c2h++;
+    else if (d === 'H->C') h2c++;
     else ch++;
   }
 
-  const rows = variants.map((v) => {
-    const doc = v.doc ? ` ${v.doc}` : '';
-    return `| \`${v.kind}\` | ${v.direction} | \`${v.file}\` |${doc}`;
+  var rows = sorted.map(function (v) {
+    var doc = v.doc ? ' ' + v.doc : '';
+    return '| `' + v.kind + '` | ' + v.direction + ' | `' + v.file + '` |' + doc;
   }).join('\n');
 
-  return `<!-- GENERATED by tools/gen-schema-index.cjs — DO NOT EDIT MANUALLY -->
-
-# Wire Schema Index
-
-Every \`WirePayload\` variant, sorted by \`kind\`. Generated from \`packages/foundation/schema/src/wire/*.ts\`.
-
-**${variants.length}** message kinds · C→H: ${c2h} · H→C: ${h2c} · C↔H: ${ch}
-
-| kind | direction | source file | description |
-|------|-----------|-------------|-------------|
-${rows}
-`;
+  return [
+    '<!-- GENERATED by tools/gen-schema-index.cjs -- DO NOT EDIT MANUALLY -->',
+    '',
+    '# Wire Schema Index',
+    '',
+    'Every `WirePayload` variant, sorted by `kind`. Generated from `packages/foundation/schema/src/wire/*.ts`.',
+    '',
+    '**' + sorted.length + '** message kinds . C->H: ' + c2h + ' . H->C: ' + h2c + ' . C<->H: ' + ch,
+    '',
+    '| kind | direction | source file | description |',
+    '|------|-----------|-------------|-------------|',
+    rows,
+    '',
+  ].join('\n');
 }
 
-// ── main ──────────────────────────────────────────────────────────────────────
+// -- main --
 
-const files = fs.readdirSync(WIRE_DIR).filter(
-  (f) => f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts',
-);
+var files = fs.readdirSync(WIRE_DIR).filter(function (f) {
+  return f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts';
+});
 
-/** @type {Variant[]} */
-const allVariants = [];
-for (const file of files.sort()) {
-  allVariants.push(...parseWireFile(path.join(WIRE_DIR, file)));
+var allVariants = [];
+for (var i = 0; i < files.length; i++) {
+  allVariants = allVariants.concat(parseWireFile(path.join(WIRE_DIR, files[i])));
 }
 
-const markdown = generateMarkdown(allVariants);
+var markdown = generateMarkdown(allVariants);
 
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(OUTPUT)) {
     console.error('ERROR: docs/SCHEMA-INDEX.md does not exist. Run `node tools/gen-schema-index.cjs` to generate it.');
     process.exit(1);
   }
-  const existing = fs.readFileSync(OUTPUT, 'utf-8');
+  var existing = fs.readFileSync(OUTPUT, 'utf-8');
   if (existing !== markdown) {
     console.error('ERROR: docs/SCHEMA-INDEX.md is out of date. Run `node tools/gen-schema-index.cjs` to regenerate it.');
     process.exit(1);
@@ -205,5 +215,5 @@ if (process.argv.includes('--check')) {
   console.log('docs/SCHEMA-INDEX.md is up to date.');
 } else {
   fs.writeFileSync(OUTPUT, markdown, 'utf-8');
-  console.log(`Generated ${OUTPUT} — ${allVariants.length} message kinds.`);
+  console.log('Generated ' + OUTPUT + ' -- ' + allVariants.length + ' message kinds.');
 }
