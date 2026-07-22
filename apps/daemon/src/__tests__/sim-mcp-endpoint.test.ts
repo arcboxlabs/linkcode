@@ -33,6 +33,12 @@ function fakeBackend(): SimulatorBackend {
     terminate: vi.fn(asyncNoop),
     openUrl: vi.fn(asyncNoop),
     screenshot: vi.fn(() => Promise.resolve(new Uint8Array([0xff, 0xd8, 0x02]))),
+    tap: vi.fn(asyncNoop),
+    swipe: vi.fn(asyncNoop),
+    button: vi.fn(asyncNoop),
+    streamStart: vi.fn(() => Promise.resolve({ streaming: true as const, fps: 60, scale: 1 })),
+    streamStop: vi.fn(asyncNoop),
+    onFrame: vi.fn(() => noop),
     close: vi.fn(noop),
   };
 }
