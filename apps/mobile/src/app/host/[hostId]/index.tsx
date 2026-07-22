@@ -1,6 +1,6 @@
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useSessions } from '@linkcode/client-core';
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, SessionId } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
 import {
   EmptyState,
@@ -20,6 +20,7 @@ import { HostBar } from '../../../components/host-bar';
 import { HeaderIconButton } from '../../../components/navigation';
 import { NewThreadSheet } from '../../../components/new-thread-sheet';
 import { ThreadRow } from '../../../components/thread-row';
+import { captureMobileProductEvent } from '../../../runtime/product-analytics';
 import { useWorkspaces } from '../../../runtime/use-workspaces';
 import { useHostRegistryStore } from '../../../stores/host-store';
 
@@ -59,9 +60,23 @@ export default function ThreadsScreen(): React.ReactNode {
 
   const onCreate = async (kind: AgentKind, cwd: string) => {
     if (creating) return;
+    const startedAt = Date.now();
     setCreating(true);
     try {
-      const sessionId = await create({ kind, cwd });
+      let sessionId: SessionId;
+      try {
+        sessionId = await create({ kind, cwd });
+        captureMobileProductEvent('thread created', {
+          agent_kind: kind,
+          duration_ms: Date.now() - startedAt,
+        });
+      } catch (error) {
+        captureMobileProductEvent('thread create failed', {
+          agent_kind: kind,
+          duration_ms: Date.now() - startedAt,
+        });
+        throw error;
+      }
       await refreshWorkspaces();
       sheetRef.current?.dismiss();
       router.push(`/host/${hostId}/session/${sessionId}`);
