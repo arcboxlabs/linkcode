@@ -169,13 +169,15 @@ describe('SimSidecarClient', () => {
     void client.streamStart('U-1');
     await tick();
 
-    const seen: Buffer[] = [];
-    const unsubscribe = client.onFrame('U-1', (image) => seen.push(image));
+    const seen: Array<{ codec: string; key: boolean; bytes: number[] }> = [];
+    const unsubscribe = client.onFrame('U-1', (frame) =>
+      seen.push({ codec: frame.codec, key: frame.key, bytes: [...frame.data] }),
+    );
 
     child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-1', [0xff, 0xd8, 0x01]));
     child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-2', [0x00])); // other device: ignored
     await tick();
-    expect(seen.map((b) => [...b])).toEqual([[0xff, 0xd8, 0x01]]);
+    expect(seen).toEqual([{ codec: 'jpeg', key: true, bytes: [0xff, 0xd8, 0x01] }]);
 
     unsubscribe();
     child.stdout.write(streamFrameBytes(STREAM_FRAME, 'U-1', [0x02]));

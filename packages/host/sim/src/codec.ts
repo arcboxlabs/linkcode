@@ -13,6 +13,8 @@ export const RESULT = 0x81;
 export const SCREENSHOT = 0x82;
 /** Unsolicited JPEG frame pushed while a `streamStart` stream runs. */
 export const STREAM_FRAME = 0x83;
+/** Unsolicited H.264 access unit (Annex-B) pushed while an h264 stream runs. */
+export const STREAM_FRAME_H264 = 0x84;
 
 export const MAX_FRAME_LEN = 16 * 1024 * 1024;
 
@@ -77,5 +79,17 @@ export function decodeStreamFrame(body: Buffer): { udid: string; image: Buffer }
   return {
     udid: body.subarray(2, 2 + udidLen).toString('utf8'),
     image: body.subarray(2 + udidLen),
+  };
+}
+
+/** Decode a `STREAM_FRAME_H264` body: `[u16 LE udid_len][udid][u8 key][Annex-B access unit]`. */
+export function decodeStreamFrameH264(body: Buffer): { udid: string; key: boolean; data: Buffer } {
+  if (body.length < 3) throw new Error('short h264 stream frame');
+  const udidLen = body.readUInt16LE(0);
+  if (body.length < 3 + udidLen) throw new Error('truncated h264 stream udid');
+  return {
+    udid: body.subarray(2, 2 + udidLen).toString('utf8'),
+    key: body[2 + udidLen] === 1,
+    data: body.subarray(3 + udidLen),
   };
 }

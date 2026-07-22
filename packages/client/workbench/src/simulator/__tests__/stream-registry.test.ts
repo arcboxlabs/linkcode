@@ -23,7 +23,7 @@ function createFakeClient(): FakeClient {
         return Promise.reject(new Error('conflict'));
       }
       started.push({ sessionId, udid });
-      return Promise.resolve({ fps: 30, scale: 0.5 });
+      return Promise.resolve({ fps: 30, scale: 0.5, codec: 'h264' as const });
     },
     simulatorStreamStop(sessionId, udid) {
       stopped.push({ sessionId, udid });
@@ -98,7 +98,7 @@ describe('simulator stream registry', () => {
     let resolveStart: () => void = noop;
     client.simulatorStreamStart = () =>
       new Promise((resolve) => {
-        resolveStart = () => resolve({ fps: 30, scale: 0.5 });
+        resolveStart = () => resolve({ fps: 30, scale: 0.5, codec: 'h264' });
       });
     const lease = acquireSimulatorStream(client, 'U-1', S1);
     lease.release();

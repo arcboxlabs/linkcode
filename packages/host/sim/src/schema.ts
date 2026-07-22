@@ -43,9 +43,18 @@ export type SimProbe = z.infer<typeof SimProbeSchema>;
 
 export const SimLaunchResultSchema = z.object({ pid: z.number().int().nullable() });
 
-/** `streamStart` reply: the accepted stream, or a no-op when one is already running. */
+export const SimStreamCodecSchema = z.enum(['jpeg', 'h264']);
+export type SimStreamCodec = z.infer<typeof SimStreamCodecSchema>;
+
+/** `streamStart` reply: the accepted stream, or a no-op when one is already running. `codec` is
+ * absent from sidecars predating h264 support — those always stream JPEG. */
 export const SimStreamStartResultSchema = z.union([
-  z.object({ streaming: z.literal(true), fps: z.number().int(), scale: z.number() }),
+  z.object({
+    streaming: z.literal(true),
+    fps: z.number().int(),
+    scale: z.number(),
+    codec: SimStreamCodecSchema.default('jpeg'),
+  }),
   z.object({ alreadyStreaming: z.literal(true) }),
 ]);
 export type SimStreamStartResult = z.infer<typeof SimStreamStartResultSchema>;

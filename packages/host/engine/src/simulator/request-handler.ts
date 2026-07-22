@@ -190,11 +190,13 @@ export class SimulatorRequestHandler {
               fps: payload.fps,
               quality: payload.quality,
               scale: payload.scale,
+              codec: payload.codec,
             });
             this.subscribeFrames(simulators, payload.sessionId, payload.udid);
             // `alreadyStreaming` carries no params, so echo the request's (defaulted) values.
             const fps = 'streaming' in result ? result.fps : (payload.fps ?? 60);
             const scale = 'streaming' in result ? result.scale : (payload.scale ?? 1);
+            const codec = 'streaming' in result ? result.codec : (payload.codec ?? 'jpeg');
             this.transport.send(
               createWireMessage({
                 kind: 'simulator.stream.started',
@@ -202,6 +204,7 @@ export class SimulatorRequestHandler {
                 udid: payload.udid,
                 fps,
                 scale,
+                codec,
               }),
             );
           }),
@@ -223,13 +226,15 @@ export class SimulatorRequestHandler {
    * Idempotent: a second `streamStart` for a device already fanning out keeps the one subscription. */
   private subscribeFrames(simulators: SimulatorService, sessionId: SessionId, udid: string): void {
     if (this.frameSubs.has(udid)) return;
-    const unsubscribe = simulators.onFrame(udid, (image) => {
+    const unsubscribe = simulators.onFrame(udid, (frame) => {
       this.transport.send(
         createWireMessage({
           kind: 'simulator.stream.frame',
           sessionId,
           udid,
-          data: Buffer.from(image).toString('base64'),
+          codec: frame.codec,
+          key: frame.key,
+          data: Buffer.from(frame.data).toString('base64'),
         }),
       );
     });

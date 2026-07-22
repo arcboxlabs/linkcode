@@ -38,6 +38,7 @@ import type {
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
+  SimulatorStreamCodec,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -712,12 +713,12 @@ export class ControlChannel {
     }));
   }
 
-  /** Resolves with the accepted `{ fps, scale }`; frames then arrive as `simulator.stream.frame`. */
+  /** Resolves with the accepted `{ fps, scale, codec }`; frames then arrive as `simulator.stream.frame`. */
   simulatorStreamStart(
     sessionId: SessionId,
     udid: string,
-    options?: { fps?: number; quality?: number; scale?: number },
-  ): Promise<{ fps: number; scale: number }> {
+    options?: { fps?: number; quality?: number; scale?: number; codec?: SimulatorStreamCodec },
+  ): Promise<{ fps: number; scale: number; codec: SimulatorStreamCodec }> {
     return this.sendCorrelated('simulatorStreamStart', (clientReqId) => ({
       kind: 'simulator.stream.start',
       clientReqId,
@@ -726,6 +727,7 @@ export class ControlChannel {
       fps: options?.fps,
       quality: options?.quality,
       scale: options?.scale,
+      codec: options?.codec,
     }));
   }
 

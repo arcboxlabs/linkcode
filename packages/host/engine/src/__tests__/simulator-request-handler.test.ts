@@ -4,7 +4,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
-import type { SimulatorBackend } from '../simulator/backend';
+import type { SimulatorBackend, SimulatorFrameListener } from '../simulator/backend';
 import { SimulatorService } from '../simulator/service';
 import { FakeAdapter, settleEngineTasks, startedSessionId } from './fixtures/session-harness';
 import { createTestEngine } from './fixtures/test-engine';
@@ -36,9 +36,11 @@ function fakeBackend() {
     tap: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
-    streamStart: vi.fn(() => Promise.resolve({ streaming: true as const, fps: 60, scale: 1 })),
+    streamStart: vi.fn(() =>
+      Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
+    ),
     streamStop: vi.fn(asyncNoop),
-    onFrame: vi.fn((_udid: string, _listener: (image: Uint8Array) => void) => noop),
+    onFrame: vi.fn((_udid: string, _listener: SimulatorFrameListener) => noop),
     close: vi.fn(noop),
   } satisfies SimulatorBackend;
 }
@@ -192,11 +194,13 @@ describe('simulator wire requests', () => {
 
     // The handler subscribed a frame listener; a delivered frame becomes a session-scoped push.
     const listener = backend.onFrame.mock.calls.at(-1)?.[1];
-    listener?.(new Uint8Array([0xff, 0xd8, 0x01]));
+    listener?.({ codec: 'jpeg', data: new Uint8Array([0xff, 0xd8, 0x01]), key: true });
     expect(h.sent.find((p) => p.kind === 'simulator.stream.frame')).toMatchObject({
       kind: 'simulator.stream.frame',
       sessionId: 'session-1',
       udid: 'U-1',
+      codec: 'jpeg',
+      key: true,
       data: Buffer.from([0xff, 0xd8, 0x01]).toString('base64'),
     });
 

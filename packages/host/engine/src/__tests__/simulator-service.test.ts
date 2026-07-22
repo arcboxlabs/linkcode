@@ -38,6 +38,7 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
         streaming: true,
         fps: 60,
         scale: 1,
+        codec: 'jpeg',
       }),
     ),
     streamStop: vi.fn(asyncNoop),

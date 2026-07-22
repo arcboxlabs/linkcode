@@ -22,6 +22,7 @@ import type {
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
+  SimulatorStreamCodec,
   TerminalMetadata,
   WirePayload,
   WorkspaceFile,
@@ -99,7 +100,7 @@ export interface PendingValueMap {
   simulatorLaunch: number | null;
   simulatorScreenshot: { format: SimulatorImageFormat; data: string };
   simulatorScreenMask: string;
-  simulatorStreamStart: { fps: number; scale: number };
+  simulatorStreamStart: { fps: number; scale: number; codec: SimulatorStreamCodec };
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };

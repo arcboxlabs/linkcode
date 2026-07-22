@@ -36,21 +36,32 @@ export interface SimulatorPoint {
   y: number;
 }
 
+/** Framebuffer stream encodings: independently-decodable JPEG frames, or ordered hardware H.264
+ * access units (native resolution, ~10× less bandwidth). */
+export type SimulatorStreamCodec = 'jpeg' | 'h264';
+
 /** Framebuffer stream tuning; omitted fields take the sidecar defaults. */
 export interface SimulatorStreamOptions {
   fps?: number;
   quality?: number;
   /** Downscale factor before encode (0..1; 1.0 = native). Lower trades resolution for rate/bandwidth. */
   scale?: number;
+  codec?: SimulatorStreamCodec;
 }
 
 /** `streamStart` outcome: the accepted stream, or a no-op when one is already running. */
 export type SimulatorStreamStartResult =
-  | { streaming: true; fps: number; scale: number }
+  | { streaming: true; fps: number; scale: number; codec: SimulatorStreamCodec }
   | { alreadyStreaming: true };
 
-/** A live framebuffer frame: JPEG bytes for one device. */
-export type SimulatorFrameListener = (image: Uint8Array) => void;
+/** One live stream frame; H.264 units are ordered and delta-dependent (`key` on sync frames). */
+export interface SimulatorStreamFrame {
+  codec: SimulatorStreamCodec;
+  data: Uint8Array;
+  key: boolean;
+}
+
+export type SimulatorFrameListener = (frame: SimulatorStreamFrame) => void;
 
 export interface SimulatorBackend {
   probe(): Promise<SimulatorProbe>;

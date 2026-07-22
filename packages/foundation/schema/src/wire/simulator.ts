@@ -4,6 +4,7 @@ import {
   SimulatorDeviceSchema,
   SimulatorImageFormatSchema,
   SimulatorStatusSchema,
+  SimulatorStreamCodecSchema,
 } from '../model/simulator';
 import { WireRequestIdSchema } from './request';
 
@@ -156,6 +157,7 @@ export const simulatorWireVariants = [
     fps: z.number().int().positive().optional(),
     quality: z.number().min(0).max(1).optional(),
     scale: z.number().min(0).max(1).optional(),
+    codec: SimulatorStreamCodecSchema.optional(),
   }),
   z.object({
     kind: z.literal('simulator.stream.started'),
@@ -163,6 +165,7 @@ export const simulatorWireVariants = [
     udid,
     fps: z.number().int(),
     scale: z.number(),
+    codec: SimulatorStreamCodecSchema,
   }),
   z.object({
     kind: z.literal('simulator.stream.stop'),
@@ -178,7 +181,10 @@ export const simulatorWireVariants = [
     kind: z.literal('simulator.stream.frame'),
     sessionId: SessionIdSchema,
     udid,
-    /** Base64-encoded JPEG bytes. */
+    codec: SimulatorStreamCodecSchema,
+    /** Sync frame (always true for JPEG; H.264 deltas depend on every frame since the last key). */
+    key: z.boolean(),
+    /** Base64-encoded frame bytes (JPEG image or Annex-B H.264 access unit). */
     data: z.string(),
   }),
 ] as const;

@@ -49,6 +49,8 @@ function streamFrame(sessionId: SessionId): ValidatedWireMessage {
     kind: 'simulator.stream.frame',
     sessionId,
     udid: 'U-1',
+    codec: 'jpeg',
+    key: true,
     data: 'AAA=',
   });
 }

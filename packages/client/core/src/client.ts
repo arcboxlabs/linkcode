@@ -41,6 +41,7 @@ import type {
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
+  SimulatorStreamCodec,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -113,8 +114,13 @@ type SimulatorActivityCb = (activity: {
   tool: string;
   phase: 'started' | 'settled';
 }) => void;
-/** A live framebuffer frame: base64-encoded JPEG bytes for one device. */
-type SimulatorFrameCb = (frame: { udid: string; data: string }) => void;
+/** A live stream frame: base64 bytes (JPEG image or Annex-B H.264 access unit) for one device. */
+type SimulatorFrameCb = (frame: {
+  udid: string;
+  codec: SimulatorStreamCodec;
+  key: boolean;
+  data: string;
+}) => void;
 type ConnectionCloseCb = (error: Error) => void;
 
 /** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
@@ -347,11 +353,15 @@ export class LinkCodeClient {
         }
         break;
       case 'simulator.stream.started':
-        this.pending.resolve('simulatorStreamStart', p.replyTo, { fps: p.fps, scale: p.scale });
+        this.pending.resolve('simulatorStreamStart', p.replyTo, {
+          fps: p.fps,
+          scale: p.scale,
+          codec: p.codec,
+        });
         break;
       case 'simulator.stream.frame':
         for (const cb of this.simulatorFrameSubs.get(p.udid) ?? []) {
-          cb({ udid: p.udid, data: p.data });
+          cb({ udid: p.udid, codec: p.codec, key: p.key, data: p.data });
         }
         break;
       case 'asset.listed':
@@ -721,8 +731,8 @@ export class LinkCodeClient {
   simulatorStreamStart(
     sessionId: SessionId,
     udid: string,
-    options?: { fps?: number; quality?: number; scale?: number },
-  ): Promise<{ fps: number; scale: number }> {
+    options?: { fps?: number; quality?: number; scale?: number; codec?: SimulatorStreamCodec },
+  ): Promise<{ fps: number; scale: number; codec: SimulatorStreamCodec }> {
     return this.control.simulatorStreamStart(sessionId, udid, options);
   }
 

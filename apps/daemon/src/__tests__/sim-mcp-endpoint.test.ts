@@ -37,7 +37,9 @@ function fakeBackend(): SimulatorBackend {
     tap: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
-    streamStart: vi.fn(() => Promise.resolve({ streaming: true as const, fps: 60, scale: 1 })),
+    streamStart: vi.fn(() =>
+      Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
+    ),
     streamStop: vi.fn(asyncNoop),
     onFrame: vi.fn(() => noop),
     close: vi.fn(noop),

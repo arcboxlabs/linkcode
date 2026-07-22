@@ -32,3 +32,8 @@ export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
 
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
+
+/** Framebuffer stream encodings: independently-decodable JPEG frames, or ordered hardware H.264
+ * access units (Annex-B, native resolution — decoded client-side with WebCodecs). */
+export const SimulatorStreamCodecSchema = z.enum(['jpeg', 'h264']);
+export type SimulatorStreamCodec = z.infer<typeof SimulatorStreamCodecSchema>;

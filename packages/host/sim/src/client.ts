@@ -6,11 +6,13 @@ import type { Frame } from './codec';
 import {
   decodeScreenshotFrame,
   decodeStreamFrame,
+  decodeStreamFrameH264,
   FrameDecoder,
   REQUEST,
   RESULT,
   SCREENSHOT,
   STREAM_FRAME,
+  STREAM_FRAME_H264,
   writeFrame,
 } from './codec';
 import type {
@@ -18,6 +20,7 @@ import type {
   SimDevice,
   SimImageFormat,
   SimProbe,
+  SimStreamCodec,
   SimStreamStartResult,
 } from './schema';
 import {
@@ -28,8 +31,14 @@ import {
   SimStreamStartResultSchema,
 } from './schema';
 
-/** A live framebuffer frame: JPEG bytes for one device. */
-export type SimFrameListener = (image: Buffer) => void;
+/** One live stream frame: a JPEG image, or one ordered H.264 access unit (`key` on sync frames). */
+export interface SimStreamFrame {
+  codec: SimStreamCodec;
+  data: Buffer;
+  key: boolean;
+}
+
+export type SimFrameListener = (frame: SimStreamFrame) => void;
 
 /** Options for {@link SimSidecarClient.streamStart}; omitted fields take the sidecar defaults. */
 export interface SimStreamOptions {
@@ -37,6 +46,8 @@ export interface SimStreamOptions {
   quality?: number;
   /** Downscale factor before encode (0..1; 1.0 = native). Lower trades resolution for rate/bandwidth. */
   scale?: number;
+  /** `h264` streams ordered hardware-encoded access units at native resolution; default `jpeg`. */
+  codec?: SimStreamCodec;
 }
 
 /** The sidecar child: piped stdin/stdout, inherited stderr (its logs go to the host's stderr). */
@@ -179,6 +190,11 @@ export class SimSidecarClient {
    * Subscribe to `udid`'s framebuffer frames; returns an unsubscribe function. Subscribing does not
    * itself start the stream — pair it with {@link streamStart}.
    */
+  private fanOutFrame(udid: string, frame: SimStreamFrame): void {
+    const listeners = this.frameListeners.get(udid);
+    if (listeners) for (const listener of listeners) listener(frame);
+  }
+
   onFrame(udid: string, listener: SimFrameListener): () => void {
     let set = this.frameListeners.get(udid);
     if (!set) {
@@ -290,8 +306,12 @@ export class SimSidecarClient {
       }
       case STREAM_FRAME: {
         const { udid, image } = decodeStreamFrame(frame.body);
-        const listeners = this.frameListeners.get(udid);
-        if (listeners) for (const listener of listeners) listener(image);
+        this.fanOutFrame(udid, { codec: 'jpeg', data: image, key: true });
+        break;
+      }
+      case STREAM_FRAME_H264: {
+        const { udid, key, data } = decodeStreamFrameH264(frame.body);
+        this.fanOutFrame(udid, { codec: 'h264', data, key });
         break;
       }
       default:
