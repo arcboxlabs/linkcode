@@ -64,6 +64,7 @@ import {
   SHOWCASE_FILES_NARRATION,
   SHOWCASE_IMAGE,
   SHOWCASE_INTRO_CONTENT,
+  SHOWCASE_MARKDOWN_CONTENT,
   SHOWCASE_PERMISSION_DENIED_CONTENT,
   SHOWCASE_PERMISSION_GRANTED_CONTENT,
   SHOWCASE_PERMISSIONS,
@@ -1072,6 +1073,11 @@ export class DevMockHost {
         type: 'agent-message-chunk',
         messageId: this.nextMessageId('mock-showcase-image'),
         content: SHOWCASE_IMAGE,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-markdown'),
+        content: SHOWCASE_MARKDOWN_CONTENT,
       },
       {
         type: 'agent-message-chunk',

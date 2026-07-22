@@ -4,6 +4,9 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Markdown } from '../markdown';
 
+// Fences render through ArtifactFenceRenderer, which resolves failure notes via use-intl.
+vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
+
 afterEach(cleanup);
 
 const FENCE = '```ts\nconst greeting: string = "hello";\n```';
@@ -83,6 +86,125 @@ it('deduplicates repeated headings across one anchored document', () => {
   const headings = getAllByRole('heading', { name: 'Repeat' });
   expect(headings[0]?.id).not.toBe(headings[1]?.id);
   expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${headings[1]?.id}`);
+});
+
+// Every fragment href is rewritten to its target's exact DOM id (instance scope prefix plus
+// sanitize's clobber prefix), and a fragment click must never reach native navigation (the
+// desktop external-browser surface).
+it('keeps footnote fragment clicks in-page and scrolls between reference and definition', () => {
+  const { container, getByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'Note.[^1]\n\n[^1]: Detail.'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const reference = getByRole('link', { name: '1' });
+  expect(reference.getAttribute('target')).toBeNull();
+  expect(reference.getAttribute('rel')).toBeNull();
+
+  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definition).not.toBeNull();
+  if (!definition) return;
+  expect(reference.getAttribute('href')).toBe(`#${definition.id}`);
+  vi.spyOn(definition, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 400 }));
+  expect(fireEvent.click(reference)).toBe(false);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 400 });
+
+  const backref = container.querySelector<HTMLElement>('a[data-footnote-backref]');
+  const referenceAnchor = container.querySelector<HTMLElement>('[id$="user-content-fnref-1"]');
+  expect(backref).not.toBeNull();
+  expect(referenceAnchor).not.toBeNull();
+  if (!backref || !referenceAnchor) return;
+  expect(backref.getAttribute('href')).toBe(`#${referenceAnchor.id}`);
+  vi.spyOn(referenceAnchor, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 150 }));
+  expect(fireEvent.click(backref)).toBe(false);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 150 });
+});
+
+// The review-reported regression: two messages both defining [^1] must not share footnote ids,
+// and a click must land on the clicked message's own definition, not the first in the document.
+it('scopes footnote targets to their own Markdown instance', () => {
+  const { container, getAllByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'One.[^1]\n\n[^1]: First definition.'}</Markdown>
+      <Markdown>{'Two.[^1]\n\n[^1]: Second definition.'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const definitions = container.querySelectorAll<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definitions).toHaveLength(2);
+  expect(definitions[0]?.id).not.toBe(definitions[1]?.id);
+  if (!definitions[0] || !definitions[1]) return;
+
+  vi.spyOn(definitions[0], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 111 }));
+  vi.spyOn(definitions[1], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 333 }));
+  const references = getAllByRole('link', { name: '1' });
+  expect(references).toHaveLength(2);
+  if (!references[1]) return;
+  expect(fireEvent.click(references[1])).toBe(false);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 333 });
+});
+
+it('resolves footnote targets in heading-anchor mode', () => {
+  const { container, getByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown headingAnchors>{'## Title\n\nNote.[^1]\n\n[^1]: Detail.'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const reference = getByRole('link', { name: '1' });
+  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definition).not.toBeNull();
+  expect(reference.getAttribute('href')).toBe(`#${definition?.id}`);
+  expect(fireEvent.click(reference)).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+});
+
+it('scrolls chat heading anchors without heading-anchor mode', () => {
+  const { container, getByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'## Target\n\n[Jump](#target)'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const heading = getByRole('heading', { name: 'Target' });
+  expect(heading.id).not.toBe('');
+  const link = getByRole('link', { name: 'Jump' });
+  expect(link.getAttribute('href')).toBe(`#${heading.id}`);
+  expect(fireEvent.click(link)).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+});
+
+// Without a marked container the scroll targets the nearest scrollable ancestor only —
+// never scrollIntoView, which walks every ancestor and shoves fixed app chrome around.
+it('scrolls only the nearest scrollable ancestor for unmarked containers', () => {
+  const { container, getByRole } = render(
+    <div style={{ overflowY: 'auto' }}>
+      <Markdown>{'## Target\n\n[Jump](#target)'}</Markdown>
+    </div>,
+  );
+  const scroller = container.firstElementChild as HTMLElement;
+  Object.defineProperty(scroller, 'scrollHeight', { value: 200 });
+  Object.defineProperty(scroller, 'clientHeight', { value: 100 });
+  const scrollTo = vi.fn();
+  scroller.scrollTo = scrollTo;
+  expect(fireEvent.click(getByRole('link', { name: 'Jump' }))).toBe(false);
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+});
+
+it('prevents navigation for fragment links with no resolvable target', () => {
+  const { getByRole } = render(<Markdown>{'[missing](#nowhere)'}</Markdown>);
+  const link = getByRole('link', { name: 'missing' });
+  expect(link.getAttribute('target')).toBeNull();
+  expect(fireEvent.click(link)).toBe(false);
 });
 
 // Pins the @streamdown/code ↔ shiki contract: the workspace override forces shiki 4 under the
