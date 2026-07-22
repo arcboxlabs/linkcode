@@ -6,6 +6,7 @@ import { DeveloperSettings } from '@webview/routes/settings/developer';
 import { GeneralSettings } from '@webview/routes/settings/general';
 import { MessagingSettings } from '@webview/routes/settings/messaging';
 import { NotificationsSettings } from '@webview/routes/settings/notifications';
+import { PluginsSettings } from '@webview/routes/settings/plugins';
 import { ProvidersSettings } from '@webview/routes/settings/providers';
 import { SettingsLayout } from '@webview/routes/settings/settings-layout';
 import { TerminalSettings } from '@webview/routes/settings/terminal';
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
           { path: 'developer', element: <DeveloperSettings /> },
           { path: 'notifications', element: <NotificationsSettings /> },
           { path: 'providers', element: <ProvidersSettings /> },
+          { path: 'plugins', element: <PluginsSettings /> },
           { path: 'agents', element: <AgentsSettings /> },
           { path: 'messaging', element: <MessagingSettings /> },
         ],

@@ -26,6 +26,7 @@ export interface SettingsSearchKeywords {
   about: readonly string[];
   agents: readonly string[];
   providers: readonly string[];
+  plugins: readonly string[];
   imChannel: readonly string[];
   historyImport: readonly string[];
 }
@@ -85,6 +86,14 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('providers.endpoint'),
       t('providers.accountModel'),
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
+    ],
+    plugins: [
+      t('plugins.toolsTitle'),
+      t('plugins.units.githubRead.label'),
+      t('plugins.units.githubRead.description'),
+      t('plugins.connectionsTitle'),
+      t('plugins.addConnection'),
+      t('plugins.credentialType.auth-token'),
     ],
     imChannel: [t('imChannel.connectTitle'), t('imChannel.bindings'), t('imChannel.autoMirror')],
     historyImport: [t('historyImport.portalLabel')],
