@@ -2,9 +2,20 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const process = require('node:process');
+
+const { invariant } = require('foxts/guard');
 
 const WIRE_DIR = path.join(__dirname, '..', 'packages', 'foundation', 'schema', 'src', 'wire');
 const OUTPUT = path.join(__dirname, '..', 'docs', 'SCHEMA-INDEX.md');
+
+const RE_KIND_LITERAL = /kind:\s*z\.literal\('([^']+)'\)/;
+const RE_LEADING_STAR = /^\*\s?/;
+const RE_TRAILING_DOC_END = /\s*\*\/$/;
+const RE_LEADING_DOC_START = /^\/\*\*\s*/;
+const RE_LEADING_SLASHES = /^\/\/\s*/;
+const RE_CLIENT_REQ_ID = /clientReqId/;
+const RE_REPLY_TO = /replyTo/;
 
 // Fire-and-forget and broadcast messages without clientReqId or replyTo.
 // Every uncorrelated kind must be listed here; missing = error.
@@ -67,7 +78,7 @@ function parseWireFile(filePath) {
   const variants = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/kind:\s*z\.literal\('([^']+)'\)/);
+    const match = lines[i].match(RE_KIND_LITERAL);
     if (!match) continue;
 
     const kind = match[1];
@@ -129,7 +140,7 @@ function extractBlock(lines, start) {
 
 /**
  * Extract JSDoc or line comment ending at line `idx`.
- * Collects consecutive `//` lines and `/**` blocks.
+ * Scans backwards, collects in reverse order, reverses at the end.
  * @param {string[]} lines
  * @param {number} idx
  * @returns {string}
@@ -140,33 +151,33 @@ function extractDoc(lines, idx) {
   let cursor = idx;
   while (cursor >= 0) {
     const trimmed = lines[cursor].trim();
-    if (trimmed.startsWith('*') && !trimmed.startsWith('*/')) {
-      docLines.unshift(trimmed.replace(/^\*\s?/, '').replace(/\s*\*\/$/, ''));
+    if (trimmed[0] === '*' && !trimmed.startsWith('*/')) {
+      docLines.push(trimmed.replace(RE_LEADING_STAR, '').replace(RE_TRAILING_DOC_END, ''));
     } else if (trimmed === '*/') {
       cursor--;
       while (cursor >= 0) {
         const inner = lines[cursor].trim();
         if (inner.startsWith('/**')) {
-          docLines.unshift(inner.replace(/^\/\*\*\s*/, ''));
+          docLines.push(inner.replace(RE_LEADING_DOC_START, ''));
           break;
         }
-        if (inner.startsWith('*')) {
-          docLines.unshift(inner.replace(/^\*\s?/, '').replace(/\s*\*\/$/, ''));
+        if (inner[0] === '*') {
+          docLines.push(inner.replace(RE_LEADING_STAR, '').replace(RE_TRAILING_DOC_END, ''));
         }
         cursor--;
       }
       break;
     } else if (trimmed.startsWith('/**')) {
-      docLines.unshift(trimmed.replace(/^\/\*\*\s*/, '').replace(/\s*\*\/$/, ''));
+      docLines.push(trimmed.replace(RE_LEADING_DOC_START, '').replace(RE_TRAILING_DOC_END, ''));
       break;
     } else if (trimmed.startsWith('//')) {
-      docLines.unshift(trimmed.replace(/^\/\/\s*/, ''));
+      docLines.push(trimmed.replace(RE_LEADING_SLASHES, ''));
     } else if (trimmed !== '') {
       break;
     }
     cursor--;
   }
-  return docLines.join(' ').trim();
+  return docLines.reverse().join(' ').trim();
 }
 
 /**
@@ -179,17 +190,15 @@ function extractDoc(lines, idx) {
  * @returns {string}
  */
 function classifyFromBlock(block, kind) {
-  const hasClientReqId = /clientReqId/.test(block);
-  const hasReplyTo = /replyTo/.test(block);
+  const hasClientReqId = RE_CLIENT_REQ_ID.test(block);
+  const hasReplyTo = RE_REPLY_TO.test(block);
 
   if (hasClientReqId && hasReplyTo) return 'C<->H';
   if (hasClientReqId) return 'C->H';
   if (hasReplyTo) return 'H->C';
 
   const direction = UNCORRELATED_DIRECTIONS.get(kind);
-  if (!direction) {
-    throw new Error('Cannot determine direction for uncorrelated kind: ' + kind);
-  }
+  invariant(direction, 'Cannot determine direction for uncorrelated kind: ' + kind);
   return direction;
 }
 
@@ -203,8 +212,8 @@ function generateMarkdown(variants) {
   let c2h = 0;
   let h2c = 0;
   let ch = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    const d = sorted[i].direction;
+  for (const variant of sorted) {
+    const d = variant.direction;
     if (d === 'C->H') c2h++;
     else if (d === 'H->C') h2c++;
     else ch++;
@@ -248,29 +257,26 @@ const files = fs
   .filter((f) => f.endsWith('.ts') && f !== 'index.ts' && f !== 'message.ts' && f !== 'payload.ts');
 
 /** @type {Variant[]} */
-let allVariants = [];
-for (let i = 0; i < files.length; i++) {
-  allVariants = allVariants.concat(parseWireFile(path.join(WIRE_DIR, files[i])));
-}
+const allVariants = files.flatMap((file) => parseWireFile(path.join(WIRE_DIR, file)));
 
 const markdown = generateMarkdown(allVariants);
 
 if (process.argv.includes('--check')) {
   if (!fs.existsSync(OUTPUT)) {
-    console.error(
-      'ERROR: docs/SCHEMA-INDEX.md does not exist. Run `node tools/gen-schema-index.cjs` to generate it.',
+    process.stderr.write(
+      'ERROR: docs/SCHEMA-INDEX.md does not exist. Run `node tools/gen-schema-index.cjs` to generate it.\n',
     );
     process.exit(1);
   }
   const existing = fs.readFileSync(OUTPUT, 'utf-8');
   if (existing !== markdown) {
-    console.error(
-      'ERROR: docs/SCHEMA-INDEX.md is out of date. Run `node tools/gen-schema-index.cjs` to regenerate it.',
+    process.stderr.write(
+      'ERROR: docs/SCHEMA-INDEX.md is out of date. Run `node tools/gen-schema-index.cjs` to regenerate it.\n',
     );
     process.exit(1);
   }
-  console.log('docs/SCHEMA-INDEX.md is up to date.');
+  process.stdout.write('docs/SCHEMA-INDEX.md is up to date.\n');
 } else {
   fs.writeFileSync(OUTPUT, markdown, 'utf-8');
-  console.log('Generated ' + OUTPUT + ' -- ' + allVariants.length + ' message kinds.');
+  process.stdout.write('Generated ' + OUTPUT + ' -- ' + allVariants.length + ' message kinds.\n');
 }
