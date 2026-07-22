@@ -241,11 +241,12 @@ export function createConversationBuilder(): ConversationBuilder {
     }
   };
 
-  // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
-  const openAgentStream = (
+  // Upsert one agent message/thought identity. Whole snapshots replace; chunks append.
+  const upsertAgentContent = (
     kind: 'message' | 'reasoning',
     messageId: string,
-    block: ContentBlock,
+    content: readonly ContentBlock[] | undefined,
+    mode: 'append' | 'replace',
     receivedAt: number | undefined,
     parentToolCallId: string | undefined,
   ): void => {
@@ -255,8 +256,17 @@ export function createConversationBuilder(): ConversationBuilder {
       if (item.kind === kind) {
         items[existing] = {
           ...item,
-          blocks: appendBlock(item.blocks, block),
+          blocks:
+            content === undefined
+              ? item.blocks
+              : mode === 'replace'
+                ? [...content]
+                : content.reduce<ContentBlock[]>(
+                    (blocks, block) => appendBlock(blocks, block),
+                    item.blocks,
+                  ),
           receivedAt: receivedAt ?? item.receivedAt,
+          parentToolCallId: parentToolCallId ?? item.parentToolCallId,
           // Backfill a model the adapter only reported after this message opened.
           ...(item.kind === 'message' && { model: item.model ?? currentModel ?? undefined }),
         };
@@ -270,7 +280,7 @@ export function createConversationBuilder(): ConversationBuilder {
         id: messageId,
         turnId: currentTurnId,
         role: 'assistant',
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
         receivedAt,
@@ -281,7 +291,7 @@ export function createConversationBuilder(): ConversationBuilder {
         kind: 'reasoning',
         id: messageId,
         turnId: currentTurnId,
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
         startedAt: receivedAt,
@@ -296,35 +306,70 @@ export function createConversationBuilder(): ConversationBuilder {
     cached = null;
     switch (event.type) {
       case 'user-message': {
-        // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
+        const existing = messageIndex.get(event.messageId);
+        if (existing !== undefined) {
+          const item = items[existing];
+          if (item.kind === 'message' && item.role === 'user') {
+            items[existing] = {
+              ...item,
+              blocks: [...event.content],
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+          break;
+        }
+        // A new complete message opens a turn; replay of the same id replaces it above.
         endAllActiveReasoning(receivedAt);
         turnStopped = false;
         currentTurnId = genId('turn');
         items.push({
           kind: 'message',
-          id: event.messageId ?? genId('user-message'),
+          id: event.messageId,
           turnId: currentTurnId,
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
           receivedAt,
         });
+        messageIndex.set(event.messageId, items.length - 1);
         break;
       }
-      case 'agent-message-chunk':
-        openAgentStream(
+      case 'agent-message':
+        upsertAgentContent(
           'message',
           event.messageId,
           event.content,
+          'replace',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-message-chunk':
+        upsertAgentContent(
+          'message',
+          event.messageId,
+          [event.content],
+          'append',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-thought':
+        upsertAgentContent(
+          'reasoning',
+          event.messageId,
+          event.content,
+          'replace',
           receivedAt,
           event.parentToolCallId,
         );
         break;
       case 'agent-thought-chunk':
-        openAgentStream(
+        upsertAgentContent(
           'reasoning',
           event.messageId,
-          event.content,
+          [event.content],
+          'append',
           receivedAt,
           event.parentToolCallId,
         );

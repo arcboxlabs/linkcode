@@ -173,7 +173,7 @@ describe('dev mock transport', () => {
     await expect(client.invokeCommand(sessionId, 'review', 'src/app.ts')).resolves.toEqual({
       ok: true,
     });
-    expect(events.slice(mark)).toEqual([
+    expect(events.slice(mark)).toMatchObject([
       {
         type: 'user-message',
         content: [{ type: 'text', text: '/review src/app.ts' }],
@@ -197,7 +197,7 @@ describe('dev mock transport', () => {
       'usage-report',
       'status',
     ]);
-    expect(usageEvents[0]).toEqual({
+    expect(usageEvents[0]).toMatchObject({
       type: 'user-message',
       content: [{ type: 'text', text: '/cost' }],
     });
@@ -212,7 +212,7 @@ describe('dev mock transport', () => {
 
     mark = events.length;
     await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });
-    expect(events.slice(mark)).toEqual([
+    expect(events.slice(mark)).toMatchObject([
       {
         type: 'user-message',
         content: [{ type: 'text', text: '$ git status' }],

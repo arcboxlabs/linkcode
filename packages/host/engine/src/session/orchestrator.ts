@@ -1,4 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentInput,
   ContentBlock,
@@ -129,7 +130,9 @@ export class SessionOrchestrator {
       const content: ContentBlock[] = [{ type: 'text', text }];
       return session.run(
         Effect.sync(() => {
-          this.events.broadcast(sessionId, [{ type: 'user-message', content }]);
+          this.events.broadcast(sessionId, [
+            { type: 'user-message', messageId: nextMessageId(), content },
+          ]);
           this.records.setTitleFromContent(sessionId, content);
         }).pipe(
           Effect.andThen(

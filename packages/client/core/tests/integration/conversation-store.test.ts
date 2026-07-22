@@ -7,7 +7,11 @@ import { createConnectedLocalClient } from '../support/local-client';
 const sessionId = 'sess-store' as SessionId;
 
 function userText(text: string): AgentEvent {
-  return { type: 'user-message', content: [{ type: 'text', text }] };
+  return {
+    type: 'user-message',
+    messageId: `user:${text}` as MessageId,
+    content: [{ type: 'text', text }],
+  };
 }
 
 function tick(): Promise<void> {
@@ -39,13 +43,14 @@ describe('createConversationStore', () => {
     close();
   });
 
-  it('folds the seed once and appends only live events past the uptoSeq cut', async () => {
+  it('folds the seed once and treats provider-id prompts as covering host-id live echoes', async () => {
     const { client, send, close } = await harness();
     send(userText('covered by transcript'));
     send(userText('also covered'));
     await tick();
 
     const store = createConversationStore(client, sessionId, {
+      // Provider history ids intentionally differ from the host-generated live echo ids.
       events: [{ event: userText('from transcript'), ts: 1_700_000_000_000 }],
       uptoSeq: 2,
     });

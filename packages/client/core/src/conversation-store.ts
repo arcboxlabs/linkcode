@@ -45,17 +45,19 @@ function coveredBySeed(
   seedToolIds: ReadonlySet<string>,
 ): boolean {
   switch (event.type) {
+    case 'agent-message':
     case 'agent-message-chunk':
+    case 'agent-thought':
     case 'agent-thought-chunk':
       return seedMessageIds.has(event.messageId);
+    case 'user-message':
+      // The host echoes prompts before providers assign their persisted ids. Providers flush the
+      // prompt row at accept, so a pre-cut echo is covered even though its live id cannot match.
+      return true;
     case 'tool-call':
       return seedToolIds.has(event.toolCall.toolCallId);
     case 'tool-call-content-chunk':
       return seedToolIds.has(event.toolCallId);
-    case 'user-message':
-      // No reliable cross-source id; providers flush the prompt row at accept, and the
-      // fresh-session race is handled by the adapters' session-ref deferral.
-      return true;
     default:
       return false;
   }
@@ -85,8 +87,11 @@ export function createConversationStore(
   if (seed) {
     for (const { event } of seed.events) {
       switch (event.type) {
+        case 'agent-message':
         case 'agent-message-chunk':
+        case 'agent-thought':
         case 'agent-thought-chunk':
+        case 'user-message':
           seedMessageIds.add(event.messageId);
           break;
         case 'tool-call':

@@ -36,12 +36,25 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('user-message'),
     // Identity / dedup only — a user message is whole, so this never drives grouping.
-    messageId: MessageIdSchema.optional(),
+    messageId: MessageIdSchema,
     // The full message, same shape as `AgentInput.prompt`'s content.
     content: z.array(ContentBlockSchema),
   }),
 
-  // Agent output: streaming chunks, bucketed and concatenated by messageId.
+  // Agent output: whole snapshots replace by messageId; chunks append to the same identity.
+  // Omitting whole-event content confirms/backfills identity without changing the current body.
+  z.object({
+    type: z.literal('agent-message'),
+    messageId: MessageIdSchema,
+    parentToolCallId: z.string().min(1).optional(),
+    content: z.array(ContentBlockSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('agent-thought'),
+    messageId: MessageIdSchema,
+    parentToolCallId: z.string().min(1).optional(),
+    content: z.array(ContentBlockSchema).optional(),
+  }),
   z.object({
     type: z.literal('agent-message-chunk'),
     // Required: the grouping authority (chunks with the same id form one bubble).
