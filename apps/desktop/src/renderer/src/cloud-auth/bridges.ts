@@ -5,6 +5,7 @@
  */
 
 import type { CloudHost, CloudImSource } from '@linkcode/workbench';
+import { traceRendererIpc } from '../ipc';
 
 /** The authenticated user, as normalized by the electron plugin. Extra IdP fields are preserved. */
 export interface CloudUser {
@@ -39,6 +40,33 @@ export interface CloudDataBridges {
     im: CloudImSource;
   };
 }
+
+const cloudSource = window.linkcodeCloud;
+
+/** First-party cloud IPC with fixed span names and no payload/result attributes. */
+export const cloudDataBridge: CloudDataBridges['linkcodeCloud'] = {
+  listHosts: () => traceRendererIpc('cloud.list-hosts', () => cloudSource.listHosts()),
+  claimDeepLink: () => traceRendererIpc('cloud.claim-deep-link', () => cloudSource.claimDeepLink()),
+  im: {
+    overview: () => traceRendererIpc('cloud.im.overview', () => cloudSource.im.overview()),
+    bindings: () => traceRendererIpc('cloud.im.bindings', () => cloudSource.im.bindings()),
+    linkTelegram: (code) =>
+      traceRendererIpc('cloud.im.link-telegram', () => cloudSource.im.linkTelegram(code)),
+    unlinkTelegram: () =>
+      traceRendererIpc('cloud.im.unlink-telegram', () => cloudSource.im.unlinkTelegram()),
+    createBinding: (input) =>
+      traceRendererIpc('cloud.im.create-binding', () => cloudSource.im.createBinding(input)),
+    updateBinding: (sessionId, patch) =>
+      traceRendererIpc('cloud.im.update-binding', () =>
+        cloudSource.im.updateBinding(sessionId, patch),
+      ),
+    deleteBinding: (sessionId) =>
+      traceRendererIpc('cloud.im.delete-binding', () => cloudSource.im.deleteBinding(sessionId)),
+    preferences: () => traceRendererIpc('cloud.im.preferences', () => cloudSource.im.preferences()),
+    setPreferences: (pref) =>
+      traceRendererIpc('cloud.im.set-preferences', () => cloudSource.im.setPreferences(pref)),
+  },
+};
 
 export interface CloudAuthBridges {
   /** Current user from the persisted session, or null when signed out. Used to seed on boot. */
