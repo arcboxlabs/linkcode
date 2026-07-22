@@ -70,7 +70,7 @@ Off macOS, or when SimulatorKit is unavailable, every P1 op fails with `xcodeMis
 | `tap` | `udid`, `x`, `y` (normalised 0..1) | `{}` |
 | `swipe` | `udid`, `x0`, `y0`, `x1`, `y1`, `durationMs?` | `{}` |
 | `button` | `udid`, `button` (`home`/`lock`) | `{}` |
-| `streamStart` | `udid`, `fps?` (10), `quality?` (0.6) | `{ streaming, fps }` — JPEG frames then arrive on `STREAM_FRAME`s |
+| `streamStart` | `udid`, `fps?` (60), `quality?` (0.6) | `{ streaming, fps }` — JPEG frames then arrive on `STREAM_FRAME`s |
 | `streamStop` | `udid` | `{}` |
 
 Input (`tap`/`swipe`/`button`) runs in the sidecar's main process via a per-udid warmed HID client and is stable. Framebuffer streaming runs in a **crash-isolated worker subprocess**: the sidecar spawns it, reads its frames, and respawns it on the intermittent hard crashes of the private framebuffer path. If the worker crash-loops and gives up, the stream degrades to `simctl io screenshot` frames — slower, but frames never stop and the sidecar never crashes.

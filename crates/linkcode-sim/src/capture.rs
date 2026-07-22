@@ -173,7 +173,7 @@ pub fn run_worker() -> ! {
     let fps: u32 = args
         .next()
         .and_then(|a| a.parse().ok())
-        .unwrap_or(10)
+        .unwrap_or(60)
         .clamp(1, 60);
 
     let Some(device) = SimDevice::resolve(&udid) else {

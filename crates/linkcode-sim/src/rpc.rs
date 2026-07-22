@@ -80,7 +80,7 @@ pub enum Op {
 }
 
 fn default_fps() -> u32 {
-    10
+    60
 }
 fn default_quality() -> f64 {
     0.6
