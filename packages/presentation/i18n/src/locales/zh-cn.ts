@@ -611,6 +611,8 @@ export const zhCN = {
       language: '语言',
       languageHint: '界面语言。「自动」跟随系统。',
       languageAuto: '自动',
+      analytics: '共享使用分析',
+      analyticsHint: '发送功能使用事件，不包含对话、代码、路径或终端内容。默认关闭。',
     },
     appearance: {
       theme: '主题',
@@ -980,6 +982,9 @@ export const zhCN = {
       signIn: '登录 LinkCode Cloud',
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',
+      privacy: '隐私',
+      analytics: '共享使用分析',
+      analyticsHint: '发送功能使用事件，不包含对话、代码、路径或终端内容。默认关闭。',
       legalAndSupport: '法律与支持',
       privacyPolicy: '隐私政策',
       termsOfService: '服务条款',

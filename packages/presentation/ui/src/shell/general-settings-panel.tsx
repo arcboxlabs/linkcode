@@ -5,18 +5,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { Switch } from 'coss-ui/components/switch';
 import { useTranslations } from 'use-intl';
 import { SettingsCard, SettingsRow } from './settings-page';
 
 export interface GeneralSettingsPanelProps {
   /** Locale override, or null to follow the platform default. */
   locale: string | null;
+  productAnalyticsEnabled: boolean;
   onLocaleChange: (locale: string | null) => void;
+  onProductAnalyticsEnabledChange: (enabled: boolean) => void;
 }
 
 export function GeneralSettingsPanel({
   locale,
+  productAnalyticsEnabled,
   onLocaleChange,
+  onProductAnalyticsEnabledChange,
 }: GeneralSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.general');
 
@@ -46,6 +51,14 @@ export function GeneralSettingsPanel({
               ))}
             </SelectPopup>
           </Select>
+        </SettingsRow>
+      </SettingsCard>
+      <SettingsCard>
+        <SettingsRow title={t('analytics')} description={t('analyticsHint')}>
+          <Switch
+            checked={productAnalyticsEnabled}
+            onCheckedChange={onProductAnalyticsEnabledChange}
+          />
         </SettingsRow>
       </SettingsCard>
     </div>
