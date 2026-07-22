@@ -112,7 +112,7 @@ function extractDoc(lines, idx) {
   while (cursor >= 0) {
     var trimmed = lines[cursor].trim();
     if (trimmed.startsWith('*') && !trimmed.startsWith('*/')) {
-      docLines.unshift(trimmed.replace(/^\*\s?/, ''));
+      docLines.unshift(trimmed.replace(/^\*\s?/, '').replace(/\s*\*\/$/, ''));
     } else if (trimmed === '*/') {
       cursor--;
       while (cursor >= 0) {

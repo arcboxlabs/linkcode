@@ -95,12 +95,12 @@ Every `WirePayload` variant, sorted by `kind`. Generated from `packages/foundati
 | `session.imported` | H->C | `session.ts` |
 | `session.list` | C->H | `session.ts` |
 | `session.listed` | H->C | `session.ts` |
-| `session.notification` | H->C | `session.ts` | Broadcast on a notification-worthy session moment: no replyTo, fanned out to every client. Must stay a broadcast even once per-connection subscription modes exist (CODE-72) — background sessions on other devices drive OS notifications through this frame. */
+| `session.notification` | H->C | `session.ts` | Broadcast on a notification-worthy session moment: no replyTo, fanned out to every client. Must stay a broadcast even once per-connection subscription modes exist (CODE-72) — background sessions on other devices drive OS notifications through this frame.
 | `session.resume` | C->H | `session.ts` | Resume a persisted (cold) session by its Link Code id; replies `session.started` with the SAME id.
 | `session.start` | C->H | `session.ts` |
 | `session.started` | H->C | `session.ts` |
 | `session.stop` | C->H | `session.ts` |
-| `subscription.set` | C->H | `session.ts` | Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the default for every new connection — is the historical broadcast behavior; `attached` narrows delivery to sessions the connection subscribed via `session.attach`. */
+| `subscription.set` | C->H | `session.ts` | Connection-scoped `agent.event` delivery (answered by the Hub, not the Engine). `all` — the default for every new connection — is the historical broadcast behavior; `attached` narrows delivery to sessions the connection subscribed via `session.attach`.
 | `terminal.ack` | C->H | `terminal.ts` | Flow control: cumulative UTF-16 length of live output this attachment has consumed since its attach baseline (replayed events don't count). The host clamps delivery to the slowest attachment's unacknowledged window and propagates the freed budget to the PTY as read credit.
 | `terminal.attach` | C->H | `terminal.ts` |
 | `terminal.attached` | H->C | `terminal.ts` |
