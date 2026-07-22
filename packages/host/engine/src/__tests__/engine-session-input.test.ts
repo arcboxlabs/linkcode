@@ -136,10 +136,11 @@ describe('engine session input', () => {
       input: { type: 'shell-command', command: 'git status' },
     });
     const echoes = eventsAfter(sent, mark).filter((e) => e.type === 'user-message');
-    expect(echoes).toEqual([
+    expect(echoes).toMatchObject([
       { type: 'user-message', content: [{ type: 'text', text: '/review src/index.ts' }] },
       { type: 'user-message', content: [{ type: 'text', text: '$ git status' }] },
     ]);
+    expect(new Set(echoes.map((event) => event.messageId)).size).toBe(2);
   });
 
   it('accepts a command invoked by a catalog alias, echoing the typed alias', async () => {
@@ -160,7 +161,10 @@ describe('engine session input', () => {
       input: { type: 'command', name: 'cost' },
     });
     const echoes = eventsAfter(sent, mark).filter((e) => e.type === 'user-message');
-    expect(echoes).toEqual([{ type: 'user-message', content: [{ type: 'text', text: '/cost' }] }]);
+    expect(echoes).toMatchObject([
+      { type: 'user-message', content: [{ type: 'text', text: '/cost' }] },
+    ]);
+    expect(echoes[0]?.messageId).toBeTruthy();
     expect(sent.slice(mark).some((payload) => payload.kind === 'request.failed')).toBe(false);
   });
 

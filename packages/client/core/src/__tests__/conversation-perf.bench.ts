@@ -61,6 +61,7 @@ function seedHistory(shape: LoadShape): AgentEvent[] {
   for (let t = 0; t < shape.turns; t += 1) {
     events.push({
       type: 'user-message',
+      messageId: `user-${t}` as MessageId,
       content: [{ type: 'text', text: `Please work on task ${t}` }],
     });
     for (let k = 0; k < shape.toolsPerTurn; k += 1) {

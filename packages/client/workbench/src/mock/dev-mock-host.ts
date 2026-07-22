@@ -902,6 +902,7 @@ export class DevMockHost {
       case 'shell-command':
         this.emit(sessionId, {
           type: 'user-message',
+          messageId: this.nextMessageId('mock-user'),
           content: [textBlock(`$ ${input.command}`)],
         });
         this.sendSuccess(replyTo);
@@ -929,6 +930,7 @@ export class DevMockHost {
 
     this.emit(session.sessionId, {
       type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
       content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
     });
     session.status = 'running';
@@ -956,7 +958,11 @@ export class DevMockHost {
     const text = promptText(content);
     if (!session.title && text) session.title = text.slice(0, 80);
     session.status = 'running';
-    this.emit(session.sessionId, { type: 'user-message', content });
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
+      content,
+    });
     this.emit(session.sessionId, { type: 'status', status: 'running' });
 
     // Cancel/stop bump the session epoch; a stale epoch means this turn was cancelled and the
@@ -1047,7 +1053,11 @@ export class DevMockHost {
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
       { type: 'current-mode-update', currentModeId: 'mock-showcase' },
-      { type: 'user-message', content: SHOWCASE_USER_CONTENT },
+      {
+        type: 'user-message',
+        messageId: this.nextMessageId('mock-showcase-user'),
+        content: SHOWCASE_USER_CONTENT,
+      },
       {
         type: 'agent-thought-chunk',
         messageId: this.nextMessageId('mock-showcase-thought'),

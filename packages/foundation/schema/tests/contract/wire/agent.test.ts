@@ -4,6 +4,15 @@ import { describe, expect, it } from 'vitest';
 describe('agent wire variants', () => {
   it.each([
     {
+      type: 'agent-message',
+      messageId: 'message-1',
+      content: [{ type: 'text', text: 'authoritative body' }],
+    },
+    {
+      type: 'agent-thought',
+      messageId: 'thought-1',
+    },
+    {
       type: 'prompt-response-status',
       requestId: 'permission-1',
       status: 'responding',
@@ -47,5 +56,20 @@ describe('agent wire variants', () => {
         payload: { kind: 'agent.event', sessionId: 'session-1', event },
       }).success,
     ).toBe(true);
+  });
+
+  it('requires identity on user messages', () => {
+    expect(
+      WireMessageSchema.safeParse({
+        v: WIRE_PROTOCOL_VERSION,
+        id: 'message-1',
+        ts: 0,
+        payload: {
+          kind: 'agent.event',
+          sessionId: 'session-1',
+          event: { type: 'user-message', content: [{ type: 'text', text: 'hello' }] },
+        },
+      }).success,
+    ).toBe(false);
   });
 });

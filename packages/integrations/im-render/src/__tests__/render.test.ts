@@ -21,7 +21,11 @@ function thought(text: string, messageId = 'th1'): AgentEvent {
 }
 
 function userText(text: string): AgentEvent {
-  return { type: 'user-message', content: [{ type: 'text', text }] };
+  return {
+    type: 'user-message',
+    messageId: `user:${text}` as MessageId,
+    content: [{ type: 'text', text }],
+  };
 }
 
 function tool(overrides: Partial<ToolCall>): AgentEvent {

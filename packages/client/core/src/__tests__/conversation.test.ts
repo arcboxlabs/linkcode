@@ -18,6 +18,7 @@ function text(t: string, messageId = 'm1'): AgentEvent {
 function userText(t: string): AgentEvent {
   return {
     type: 'user-message',
+    messageId: `user:${t}` as MessageId,
     content: [{ type: 'text', text: t }],
   };
 }
@@ -259,6 +260,40 @@ describe('buildConversation', () => {
     if (message.kind === 'message') expect(message.parentToolCallId).toBe('toolu_task');
     if (reasoning.kind === 'reasoning') expect(reasoning.parentToolCallId).toBe('toolu_task');
     if (tool.kind === 'tool') expect(tool.toolCall.parentToolCallId).toBe('toolu_task');
+  });
+
+  it('replaces whole message content, preserves omitted bodies, then resumes appending chunks', () => {
+    const messageId = 'm-whole' as MessageId;
+    const c = buildConversation([
+      text('draft', messageId),
+      {
+        type: 'agent-message',
+        messageId,
+        content: [{ type: 'text', text: 'corrected' }],
+      },
+      { type: 'agent-message', messageId },
+      text(' final', messageId),
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    expect(c.items[0]).toMatchObject({
+      id: messageId,
+      blocks: [{ type: 'text', text: 'corrected final' }],
+    });
+  });
+
+  it('upserts replayed user messages by stable identity', () => {
+    const messageId = 'user-stable' as MessageId;
+    const c = buildConversation([
+      { type: 'user-message', messageId, content: [{ type: 'text', text: 'draft' }] },
+      { type: 'user-message', messageId, content: [{ type: 'text', text: 'final' }] },
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    expect(c.items[0]).toMatchObject({
+      id: messageId,
+      blocks: [{ type: 'text', text: 'final' }],
+    });
   });
 
   it('keeps only the latest plan per turn', () => {
