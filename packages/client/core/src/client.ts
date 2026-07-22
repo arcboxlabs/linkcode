@@ -26,7 +26,10 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
   PermissionOutcome,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -296,6 +299,7 @@ export class LinkCodeClient {
       case 'config.get.result':
         // One result carries both; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
+        this.pending.resolve('pluginConfigGet', p.replyTo, p.plugins);
         this.pending.resolve('accountsGet', p.replyTo, p.accounts);
         break;
       case 'agent-runtime.listed':
@@ -303,6 +307,9 @@ export class LinkCodeClient {
         break;
       case 'agent.cataloged':
         this.pending.resolve('agentCatalog', p.replyTo, p.catalog);
+        break;
+      case 'plugin.catalog.result':
+        this.pending.resolve('pluginCatalog', p.replyTo, p.catalog);
         break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
@@ -451,6 +458,10 @@ export class LinkCodeClient {
     return this.control.getAgentCatalog(agentKind, cwd);
   }
 
+  getPluginCatalog(): Promise<McpPluginCatalog> {
+    return this.control.getPluginCatalog();
+  }
+
   listSessions(): Promise<SessionInfo[]> {
     return this.control.listSessions();
   }
@@ -567,6 +578,10 @@ export class LinkCodeClient {
     return this.control.getProviderConfig();
   }
 
+  getPluginConfig(): Promise<PluginConfigPublic> {
+    return this.control.getPluginConfig();
+  }
+
   getAccounts(): Promise<Accounts> {
     return this.control.getAccounts();
   }
@@ -604,6 +619,10 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
+  }
+
+  setPluginConfig(plugins: PluginConfigSet): Promise<RequestAck> {
+    return this.control.setPluginConfig(plugins);
   }
 
   setAccounts(accounts: Accounts): Promise<RequestAck> {

@@ -125,6 +125,81 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('serves and mutates masked plugin settings', async () => {
+    const client = await connectedClient();
+
+    expect(await client.getPluginCatalog()).toEqual([
+      expect.objectContaining({ id: 'github-read', service: 'github' }),
+    ]);
+    await client.setPluginConfig({
+      units: [
+        {
+          unitId: 'github-read',
+          enabled: true,
+          binding: { type: 'local', connectorId: 'github-personal' },
+        },
+      ],
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            label: 'Personal GitHub',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+    expect(await client.getPluginConfig()).toEqual({
+      units: [
+        {
+          unitId: 'github-read',
+          enabled: true,
+          binding: { type: 'local', connectorId: 'github-personal' },
+        },
+      ],
+      connectors: [
+        {
+          id: 'github-personal',
+          label: 'Personal GitHub',
+          service: 'github',
+          credential: { type: 'auth-token', configured: true },
+        },
+      ],
+    });
+    expect(JSON.stringify(await client.getPluginConfig())).not.toContain('github-secret');
+
+    // Updating metadata without a credential keeps the stored secret; replacing it remains masked.
+    await client.setPluginConfig({
+      connectorOperations: [
+        { type: 'update', connectorId: 'github-personal', label: 'Work GitHub' },
+      ],
+    });
+    await client.setPluginConfig({
+      connectorOperations: [
+        {
+          type: 'update',
+          connectorId: 'github-personal',
+          credential: { type: 'auth-token', secret: 'rotated-secret' },
+        },
+      ],
+    });
+    expect(await client.getPluginConfig()).toMatchObject({
+      connectors: [{ label: 'Work GitHub', credential: { configured: true } }],
+    });
+
+    await client.setPluginConfig({
+      connectorOperations: [{ type: 'delete', connectorId: 'github-personal' }],
+    });
+    expect(await client.getPluginConfig()).toEqual({
+      units: [{ unitId: 'github-read', enabled: false }],
+      connectors: [],
+    });
+
+    client.dispose();
+  });
+
   it('advertises and handles composer directives', async () => {
     const client = await connectedClient();
     const sessionId = await client.startSession({

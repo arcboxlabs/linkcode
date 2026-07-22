@@ -13,6 +13,8 @@ import type {
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
+  McpPluginCatalog,
+  PluginConfigPublic,
   ProvidersConfig,
   Schedule,
   ScheduleRun,
@@ -63,9 +65,11 @@ export interface PendingValueMap {
   historyList: AgentHistoryListResult;
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
+  pluginConfigGet: PluginConfigPublic;
   accountsGet: Accounts;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
+  pluginCatalog: McpPluginCatalog;
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
@@ -107,9 +111,11 @@ export class PendingRegistry {
     historyList: new Map(),
     historyRead: new Map(),
     configGet: new Map(),
+    pluginConfigGet: new Map(),
     accountsGet: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),
+    pluginCatalog: new Map(),
     assetList: new Map(),
     assetEnsure: new Map(),
     gitStatus: new Map(),

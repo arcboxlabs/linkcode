@@ -22,7 +22,10 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
   PermissionOutcome,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -55,6 +58,10 @@ export function getAgentCatalog(
   options: Options<{ agentKind: AgentKind; cwd?: string }>,
 ): RequestResult<AgentStartCatalog> {
   return resolveClient(options).getAgentCatalog(options.agentKind, options.cwd);
+}
+
+export function getPluginCatalog(options?: Options): RequestResult<McpPluginCatalog> {
+  return resolveClient(options).getPluginCatalog();
 }
 
 export function stopSession(
@@ -167,6 +174,16 @@ export function respondQuestion(
 
 export function getProviderConfig(options?: Options): RequestResult<ProvidersConfig> {
   return resolveClient(options).getProviderConfig();
+}
+
+export function getPluginConfig(options?: Options): RequestResult<PluginConfigPublic> {
+  return resolveClient(options).getPluginConfig();
+}
+
+export function setPluginConfig(
+  options: Options<{ plugins: PluginConfigSet }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setPluginConfig(options.plugins);
 }
 
 export function setProviderConfig(

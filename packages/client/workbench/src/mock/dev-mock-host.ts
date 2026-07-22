@@ -10,8 +10,12 @@ import type {
   EffortLevel,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
   MessageId,
   PermissionOutcome,
+  PluginConfig,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   SessionId,
@@ -98,6 +102,16 @@ const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = 
   'grok-build': 'high',
 };
 
+const MOCK_PLUGIN_CATALOG: McpPluginCatalog = [
+  {
+    id: 'github-read',
+    labelKey: 'units.githubRead.label',
+    descriptionKey: 'units.githubRead.description',
+    service: 'github',
+    backing: { type: 'managed-connector', name: 'linkcode-github' },
+  },
+];
+
 interface MockSession extends SessionInfo {
   /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
@@ -164,6 +178,7 @@ export class DevMockHost {
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  private plugins: PluginConfig = { units: [], connectors: [] };
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -323,7 +338,15 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
-          plugins: { units: [], connectors: [] },
+          plugins: publicPluginConfig(this.plugins),
+        });
+        break;
+      case 'plugin.catalog.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin.catalog.result',
+          replyTo: p.clientReqId,
+          catalog: MOCK_PLUGIN_CATALOG,
         });
         break;
       case 'agent-runtime.list':
@@ -349,6 +372,7 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
+        if (p.plugins !== undefined) this.plugins = applyPluginConfigSet(this.plugins, p.plugins);
         this.sendSuccess(p.clientReqId);
         break;
       case 'workspace.list':
@@ -1359,6 +1383,54 @@ export class DevMockHost {
     this.workspaceSeq += 1;
     return `mock-ws-${Date.now().toString(36)}-${this.workspaceSeq.toString(36)}` as WorkspaceId;
   }
+}
+
+function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
+  return {
+    units: structuredClone(config.units),
+    connectors: config.connectors.map(({ credential, ...connector }) => ({
+      ...connector,
+      credential:
+        credential.expiresAt === undefined
+          ? { type: credential.type, configured: true }
+          : { type: credential.type, configured: true, expiresAt: credential.expiresAt },
+    })),
+  };
+}
+
+function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
+  let units = structuredClone(patch.units ?? current.units);
+  let connectors = structuredClone(current.connectors);
+  for (const operation of patch.connectorOperations ?? []) {
+    switch (operation.type) {
+      case 'create':
+        connectors.push(structuredClone(operation.connector));
+        break;
+      case 'update':
+        connectors = connectors.map((connector) => {
+          if (connector.id !== operation.connectorId) return connector;
+          const label =
+            operation.label === undefined ? connector.label : (operation.label ?? undefined);
+          return {
+            ...connector,
+            ...(label === undefined ? { label: undefined } : { label }),
+            credential: operation.credential ?? connector.credential,
+          };
+        });
+        break;
+      case 'delete':
+        connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
+        units = units.map((unit) =>
+          unit.binding?.type === 'local' && unit.binding.connectorId === operation.connectorId
+            ? { ...unit, enabled: false, binding: undefined }
+            : unit,
+        );
+        break;
+      default:
+        break;
+    }
+  }
+  return { units, connectors };
 }
 
 function promptText(content: readonly ContentBlock[]): string {
