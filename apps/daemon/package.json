@@ -25,6 +25,7 @@
     "@linkcode/common": "workspace:*",
     "@linkcode/engine": "workspace:*",
     "@linkcode/schema": "workspace:*",
+    "@linkcode/sim": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@sentry/node": "10.62.0",
     "@sentry/profiling-node": "10.62.0",
