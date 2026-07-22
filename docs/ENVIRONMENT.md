@@ -53,7 +53,14 @@ Point a client at something other than production LinkCode Cloud. All default to
 
 ## Observability
 
-DSNs are publishable ids, not secrets. Unset means the SDK no-ops — the default for local development.
+DSNs and PostHog project tokens are publishable ids, not secrets. Unset means the SDK no-ops — the default for local development. Product analytics also requires an explicit user opt-in in each client.
+
+These changes do not client-sample Sentry error events. Performance root traces use client-side
+sampling: 10% in desktop, webview, and mobile, and 5% in the daemon. On each daemon start, optional
+CPU profiling is enabled with a 1% probability; in selected runs it follows sampled trace activity.
+Sentry project-level dynamic sampling can reduce retained trace volume remotely, but it does not
+prevent the client from uploading a sampled trace, so bandwidth-sensitive changes still require a
+client configuration or new build.
 
 | Variable | Surface | Notes |
 | --- | --- | --- |
@@ -62,6 +69,9 @@ DSNs are publishable ids, not secrets. Unset means the SDK no-ops — the defaul
 | `VITE_SENTRY_DSN` | Webview | Build-time inlined; declared in `apps/webview/turbo.json` `build.env`. |
 | `EXPO_PUBLIC_SENTRY_DSN` | Mobile | Inlined by Metro/EAS at bundle time. |
 | `SENTRY_ALLOW_FAILURE` | EAS `preview` profile | `apps/mobile/eas.json`; keeps a failed sourcemap upload from failing the build. |
+| `RENDERER_VITE_POSTHOG_PROJECT_TOKEN`, `RENDERER_VITE_POSTHOG_HOST` | Desktop renderer | Build-time inlined; both are required and declared in `apps/desktop/turbo.json`. Accepts only an HTTPS PostHog Cloud host (`*.posthog.com`) because Electron CSP is locked to that origin family. Only explicit app, connection, thread-lifecycle, turn-submission, and identity events are allowed; autocapture and replay are disabled. |
+| `VITE_POSTHOG_PROJECT_TOKEN`, `VITE_POSTHOG_HOST` | Webview | Build-time inlined; both are required and declared in `apps/webview/turbo.json`. Uses the same explicit-event policy as desktop. |
+| `EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN`, `EXPO_PUBLIC_POSTHOG_HOST` | Mobile | Inlined by Metro/EAS. Both are required; local development remains disabled even when set. Autocapture, lifecycle capture, replay, error tracking, and remote flags are disabled. |
 
 ## Tests and E2E
 

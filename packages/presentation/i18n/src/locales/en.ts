@@ -627,6 +627,9 @@ export const en = {
       language: 'Language',
       languageHint: 'Interface language. Auto follows your system.',
       languageAuto: 'Auto',
+      analytics: 'Share usage analytics',
+      analyticsHint:
+        'Send feature usage events without conversations, code, paths, or terminal content. Off by default.',
     },
     appearance: {
       theme: 'Theme',
@@ -1007,6 +1010,10 @@ export const en = {
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
+      privacy: 'Privacy',
+      analytics: 'Share usage analytics',
+      analyticsHint:
+        'Send feature usage events without conversations, code, paths, or terminal content. Off by default.',
       legalAndSupport: 'Legal & Support',
       privacyPolicy: 'Privacy Policy',
       termsOfService: 'Terms of Service',
