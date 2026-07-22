@@ -43,7 +43,6 @@ export * from './settings/appearance-render-prefs';
 export * from './settings/appearance-settings';
 export * from './settings/appearance-store';
 export * from './settings/plugins/hooks';
-export * from './settings/plugins/plugins-settings';
 export * from './settings/providers/providers-settings';
 export * from './settings/providers/store';
 export * from './settings/search';
