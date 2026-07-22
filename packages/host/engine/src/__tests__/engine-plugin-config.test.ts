@@ -75,4 +75,31 @@ describe('engine plugin config', () => {
     expect(store.getPlugins().connectors[0]?.credential.secret).toBe('github-secret');
     expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'plugin-config-set' });
   });
+
+  it('emits a typed warning when an enabled managed unit cannot be resolved', async () => {
+    const store = new InMemoryProviderConfigStore();
+    store.setPlugins({
+      units: [{ unitId: 'github-read', enabled: true, binding: { type: 'managed' } }],
+      connectors: [],
+    });
+    const h = createSessionHarness(undefined, undefined, undefined, undefined, undefined, store);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'plugin-session-start',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+
+    const started = h.sent.find(
+      (payload) => payload.kind === 'session.started' && payload.replyTo === 'plugin-session-start',
+    );
+    expect(started?.kind).toBe('session.started');
+    expect(h.sent).toContainEqual({
+      kind: 'agent.event',
+      sessionId: started?.kind === 'session.started' ? started.sessionId : '',
+      event: { type: 'plugin-warning', unitId: 'github-read', reason: 'broker-unavailable' },
+    });
+    expect(JSON.stringify(await h.store.load())).not.toContain('credential');
+  });
 });

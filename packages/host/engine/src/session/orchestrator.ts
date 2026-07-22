@@ -1,5 +1,6 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentInput,
   ContentBlock,
   SessionId,
@@ -157,6 +158,7 @@ export class SessionOrchestrator {
     replyTo: string | undefined,
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+    initialEvents: Iterable<AgentEvent> = [],
   ): Effect.Effect<void, EngineFailure> {
     const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
@@ -179,6 +181,7 @@ export class SessionOrchestrator {
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
+          events.broadcast(sessionId, initialEvents);
           if (replyTo !== undefined) {
             transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
           }

@@ -57,7 +57,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolved = yield* startOptions.resolve(options);
+      const { options: resolved, warnings } = yield* startOptions.resolve(options);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -70,8 +70,11 @@ export class SessionLifecycleService {
         runs: [{ startedAt: now }],
       };
       if (resolved.cwd) yield* workspaceTouch(workspaces, resolved.cwd);
-      yield* sessions.startLive(replyTo, record, (adapter) =>
-        sessions.startAdapter(adapter, resolved),
+      yield* sessions.startLive(
+        replyTo,
+        record,
+        (adapter) => sessions.startAdapter(adapter, resolved),
+        warnings,
       );
     });
   }
@@ -122,7 +125,7 @@ export class SessionLifecycleService {
     const { history, sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({ ...options, kind });
+      const { options: startOptions, warnings } = yield* resolver.resolve({ ...options, kind });
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -134,8 +137,11 @@ export class SessionLifecycleService {
         runs: [{ historyId, startedAt: now }],
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
-      yield* sessions.startLive(replyTo, record, (adapter) =>
-        history.resume(adapter, historyId, startOptions),
+      yield* sessions.startLive(
+        replyTo,
+        record,
+        (adapter) => history.resume(adapter, historyId, startOptions),
+        warnings,
       );
     });
   }
@@ -165,15 +171,22 @@ export class SessionLifecycleService {
       const historyId = this.records.historyId(sessionId);
       const { history, sessions, startOptions: resolver, workspaces } = this;
       return Effect.gen(function* () {
-        const startOptions = yield* resolver.resolve({ kind: record.kind, cwd: record.cwd });
+        const { options: startOptions, warnings } = yield* resolver.resolve({
+          kind: record.kind,
+          cwd: record.cwd,
+        });
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
         if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
         record.runs.push({ historyId, startedAt: Date.now() });
-        yield* sessions.startLive(replyTo, record, (adapter) =>
-          historyId === undefined
-            ? sessions.startAdapter(adapter, startOptions)
-            : history.resume(adapter, historyId, startOptions),
+        yield* sessions.startLive(
+          replyTo,
+          record,
+          (adapter) =>
+            historyId === undefined
+              ? sessions.startAdapter(adapter, startOptions)
+              : history.resume(adapter, historyId, startOptions),
+          warnings,
         );
       });
     });
@@ -189,7 +202,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({
+      const { options: startOptions, warnings } = yield* resolver.resolve({
         kind: options.kind,
         cwd: options.cwd,
         model: options.model,
@@ -207,8 +220,11 @@ export class SessionLifecycleService {
         runs: [{ startedAt: now }],
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
-      yield* sessions.startLive(undefined, record, (adapter) =>
-        sessions.startAdapter(adapter, startOptions),
+      yield* sessions.startLive(
+        undefined,
+        record,
+        (adapter) => sessions.startAdapter(adapter, startOptions),
+        warnings,
       );
       return record.sessionId;
     });
