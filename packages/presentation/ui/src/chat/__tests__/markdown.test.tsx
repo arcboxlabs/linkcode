@@ -88,9 +88,9 @@ it('deduplicates repeated headings across one anchored document', () => {
   expect(getByRole('link', { name: 'Jump' }).getAttribute('href')).toBe(`#${headings[1]?.id}`);
 });
 
-// Footnote ids get double-prefixed (remark-rehype's clobber prefix, then sanitize's), while
-// hrefs keep the single prefix; MarkdownLink must bridge that and never let a fragment click
-// reach native navigation (the desktop external-browser surface).
+// Every fragment href is rewritten to its target's exact DOM id (instance scope prefix plus
+// sanitize's clobber prefix), and a fragment click must never reach native navigation (the
+// desktop external-browser surface).
 it('keeps footnote fragment clicks in-page and scrolls between reference and definition', () => {
   const { container, getByRole } = render(
     <div data-markdown-scroll-container>
@@ -101,30 +101,55 @@ it('keeps footnote fragment clicks in-page and scrolls between reference and def
   (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
 
   const reference = getByRole('link', { name: '1' });
-  expect(reference.getAttribute('href')).toBe('#user-content-fn-1');
   expect(reference.getAttribute('target')).toBeNull();
   expect(reference.getAttribute('rel')).toBeNull();
 
-  const definition = container.querySelector<HTMLElement>('#user-content-user-content-fn-1');
+  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
   expect(definition).not.toBeNull();
   if (!definition) return;
+  expect(reference.getAttribute('href')).toBe(`#${definition.id}`);
   vi.spyOn(definition, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 400 }));
   expect(fireEvent.click(reference)).toBe(false);
   expect(scrollTo).toHaveBeenLastCalledWith({ top: 400 });
 
   const backref = container.querySelector<HTMLElement>('a[data-footnote-backref]');
-  const referenceAnchor = container.querySelector<HTMLElement>(
-    '#user-content-user-content-fnref-1',
-  );
+  const referenceAnchor = container.querySelector<HTMLElement>('[id$="user-content-fnref-1"]');
   expect(backref).not.toBeNull();
   expect(referenceAnchor).not.toBeNull();
   if (!backref || !referenceAnchor) return;
+  expect(backref.getAttribute('href')).toBe(`#${referenceAnchor.id}`);
   vi.spyOn(referenceAnchor, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 150 }));
   expect(fireEvent.click(backref)).toBe(false);
   expect(scrollTo).toHaveBeenLastCalledWith({ top: 150 });
 });
 
-it('resolves footnote targets in heading-anchor mode without href rewriting', () => {
+// The review-reported regression: two messages both defining [^1] must not share footnote ids,
+// and a click must land on the clicked message's own definition, not the first in the document.
+it('scopes footnote targets to their own Markdown instance', () => {
+  const { container, getAllByRole } = render(
+    <div data-markdown-scroll-container>
+      <Markdown>{'One.[^1]\n\n[^1]: First definition.'}</Markdown>
+      <Markdown>{'Two.[^1]\n\n[^1]: Second definition.'}</Markdown>
+    </div>,
+  );
+  const scrollTo = vi.fn();
+  (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+
+  const definitions = container.querySelectorAll<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definitions).toHaveLength(2);
+  expect(definitions[0]?.id).not.toBe(definitions[1]?.id);
+  if (!definitions[0] || !definitions[1]) return;
+
+  vi.spyOn(definitions[0], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 111 }));
+  vi.spyOn(definitions[1], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 333 }));
+  const references = getAllByRole('link', { name: '1' });
+  expect(references).toHaveLength(2);
+  if (!references[1]) return;
+  expect(fireEvent.click(references[1])).toBe(false);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 333 });
+});
+
+it('resolves footnote targets in heading-anchor mode', () => {
   const { container, getByRole } = render(
     <div data-markdown-scroll-container>
       <Markdown headingAnchors>{'## Title\n\nNote.[^1]\n\n[^1]: Detail.'}</Markdown>
@@ -134,8 +159,9 @@ it('resolves footnote targets in heading-anchor mode without href rewriting', ()
   (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
 
   const reference = getByRole('link', { name: '1' });
-  expect(reference.getAttribute('href')).toBe('#user-content-fn-1');
-  expect(container.querySelector('li[id$="user-content-fn-1"]')).not.toBeNull();
+  const definition = container.querySelector<HTMLElement>('li[id$="user-content-fn-1"]');
+  expect(definition).not.toBeNull();
+  expect(reference.getAttribute('href')).toBe(`#${definition?.id}`);
   expect(fireEvent.click(reference)).toBe(false);
   expect(scrollTo).toHaveBeenCalledTimes(1);
 });

@@ -12,7 +12,7 @@ import {
   TableRow,
 } from 'coss-ui/components/table';
 import type { Element, Root } from 'hast';
-import { createContext, isValidElement, useContext, useId } from 'react';
+import { isValidElement, useId } from 'react';
 import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
 import { defaultRehypePlugins, Streamdown, useIsCodeFenceIncomplete } from 'streamdown';
@@ -26,23 +26,28 @@ import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 const NON_WORD_RE = /\W/g;
-/** Streamdown's bundled rehype-sanitize clobbers every id (headings, footnotes, raw HTML)
- * with this prefix, while hrefs keep the unprefixed form the author or remark-gfm wrote. */
+/** Streamdown's bundled rehype-sanitize clobbers every id with this prefix; hrefs are not
+ * clobbered, so scopeFragmentIdentifiers bakes it into rewritten fragment hrefs up front. */
 const SANITIZED_ID_PREFIX = 'user-content-';
-const HEADING_TAG_NAMES = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-const MarkdownHeadingPrefixContext = createContext<string | null>(null);
 
-interface HeadingIdPrefixOptions {
+interface ScopeFragmentIdentifiersOptions {
   prefix: string;
 }
 
-const prefixExplicitHeadingIds: Plugin<[HeadingIdPrefixOptions], Root> =
+/** Scope every id — heading slugs, footnote ids, raw-HTML ids — to one Markdown instance, and
+ * rewrite fragment hrefs to the exact form those ids take once sanitize clobbers them. Ids can
+ * then never collide across chat messages, and every fragment href equals its target's DOM id. */
+const scopeFragmentIdentifiers: Plugin<[ScopeFragmentIdentifiersOptions], Root> =
   ({ prefix }) =>
   (tree) => {
     visit(tree, 'element', (node) => {
       const id = node.properties.id;
-      if (HEADING_TAG_NAMES.has(node.tagName) && typeof id === 'string' && id.length > 0) {
+      if (typeof id === 'string' && id.length > 0) {
         node.properties.id = `${prefix}${id}`;
+      }
+      const href = node.properties.href;
+      if (node.tagName === 'a' && typeof href === 'string' && href[0] === '#') {
+        node.properties.href = `#${SANITIZED_ID_PREFIX}${prefix}${href.slice(1)}`;
       }
     });
   };
@@ -136,14 +141,11 @@ function nearestScrollContainer(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, ids: string[]): void {
+function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, id: string): void {
   // Fragment navigation must stay in-page even when nothing resolves: the native fallthrough
   // is a real navigation (hash/router side effects; the desktop untrusted-link surface).
   event.preventDefault();
-  const doc = event.currentTarget.ownerDocument;
-  // ponytail: duplicate ids across chat messages resolve to the first document-order match
-  // (GitHub-grade tradeoff); scope lookups to a per-instance root marker if it ever matters.
-  const target = ids.map((id) => doc.getElementById(id)).find((element) => element !== null);
+  const target = event.currentTarget.ownerDocument.getElementById(id);
   if (!target) return;
   const scrollContainer =
     event.currentTarget.closest<HTMLElement>('[data-markdown-scroll-container]') ??
@@ -172,35 +174,21 @@ function MarkdownLink({
   'data-footnote-backref': footnoteBackref,
   ...rest
 }: MarkdownAnchorProps): React.ReactNode {
-  const headingPrefix = useContext(MarkdownHeadingPrefixContext);
-  const isFootnoteAnchor = footnoteRef !== undefined || footnoteBackref !== undefined;
   const fragment = href?.[0] === '#' ? href.slice(1) : null;
-  // Footnote ids are remark-managed and never instance-prefixed, so their hrefs stay as
-  // written; everything else points at ids the pipeline prefixed per document instance.
-  const fragmentHref =
-    fragment !== null && headingPrefix !== null && !isFootnoteAnchor
-      ? `#${SANITIZED_ID_PREFIX}${headingPrefix}${fragment}`
-      : undefined;
   const anchorProps: Omit<MarkdownAnchorProps, 'node'> = {
     ...rest,
     'data-footnote-ref': footnoteRef,
     'data-footnote-backref': footnoteBackref,
-    href: fragmentHref ?? href,
+    href,
     target: fragment === null ? '_blank' : undefined,
     rel: fragment === null ? 'noreferrer' : undefined,
     onClick:
       fragment === null
         ? undefined
         : (event) => {
-            const decoded = decodeFragment(fragment);
-            scrollToFragment(event, [
-              // Heading path: the pipeline prefixed the target id per document instance.
-              ...(fragmentHref ? [decodeFragment(fragmentHref.slice(1))] : []),
-              // Everything else (footnotes, references, raw-HTML ids) keeps the href as
-              // written; only sanitize's clobber prefix separates it from the DOM id.
-              `${SANITIZED_ID_PREFIX}${decoded}`,
-              decoded,
-            ]);
+            // scopeFragmentIdentifiers rewrote every fragment href to its target's exact
+            // DOM id, so resolution is a single lookup (decoded: CJK slugs percent-encode).
+            scrollToFragment(event, decodeFragment(fragment));
           },
   };
   // Footnote citations and their back-references render as compact badge chips; the badge
@@ -376,20 +364,17 @@ type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
 const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
 const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
 
-function createMarkdownRehypePlugins(headingPrefix: string): RehypePlugins {
+function createMarkdownRehypePlugins(scopePrefix: string): RehypePlugins {
   if (rawRehypePluginIndex < 0) {
     throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
   }
   const defaults = Object.values(defaultRehypePlugins);
-  const explicitHeadingIdPlugin: RehypePlugins[number] = [
-    prefixExplicitHeadingIds,
-    { prefix: headingPrefix },
-  ];
-  const headingSlugPlugin: RehypePlugins[number] = [rehypeSlug, { prefix: headingPrefix }];
+  const scopePlugin: RehypePlugins[number] = [scopeFragmentIdentifiers, { prefix: scopePrefix }];
   return [
     ...defaults.slice(0, rawRehypePluginIndex + 1),
-    explicitHeadingIdPlugin,
-    headingSlugPlugin,
+    // Slug headings first so freshly assigned ids get scoped along with everything else.
+    rehypeSlug,
+    scopePlugin,
     ...defaults.slice(rawRehypePluginIndex + 1),
   ];
 }
@@ -419,28 +404,26 @@ export function Markdown({
   headingAnchors = false,
 }: MarkdownProps): React.ReactNode {
   const markdownId = useId();
-  const headingPrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
+  const scopePrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
   return (
-    <MarkdownHeadingPrefixContext.Provider value={headingPrefix}>
-      <Streamdown
-        // space-y-0: block rhythm comes from the per-element my-* overrides above,
-        // matching the previous react-markdown renderer.
-        className={cn(
-          'space-y-0 break-words text-sm leading-relaxed',
-          FOOTNOTE_SECTION_CLASS,
-          className,
-        )}
-        components={components}
-        animated={animated}
-        plugins={plugins}
-        // Static mode parses the whole document in one pass, so repeated headings dedupe
-        // across the document; chat stays in streaming mode and slugs per block.
-        mode={headingAnchors ? 'static' : undefined}
-        rehypePlugins={createMarkdownRehypePlugins(headingPrefix)}
-      >
-        {children}
-      </Streamdown>
-    </MarkdownHeadingPrefixContext.Provider>
+    <Streamdown
+      // space-y-0: block rhythm comes from the per-element my-* overrides above,
+      // matching the previous react-markdown renderer.
+      className={cn(
+        'space-y-0 break-words text-sm leading-relaxed',
+        FOOTNOTE_SECTION_CLASS,
+        className,
+      )}
+      components={components}
+      animated={animated}
+      plugins={plugins}
+      // Static mode parses the whole document in one pass, so repeated headings dedupe
+      // across the document; chat stays in streaming mode and slugs per block.
+      mode={headingAnchors ? 'static' : undefined}
+      rehypePlugins={createMarkdownRehypePlugins(scopePrefix)}
+    >
+      {children}
+    </Streamdown>
   );
 }
 
