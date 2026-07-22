@@ -6,6 +6,8 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
+  AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -21,6 +23,8 @@ import { EffortLevelSchema } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
+import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
@@ -94,25 +98,45 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-interface CodexModelDefaults {
+interface CodexModelCatalog {
   defaultModel: string | undefined;
-  efforts: Map<string, EffortLevel>;
+  models: AgentModelOption[];
 }
 
-/** Read model-specific defaults from `model/list` without pinning them as thread/turn overrides.
- * The response is an external JSON-RPC boundary, so accept only the verified fields. */
-function codexModelDefaults(response: unknown): CodexModelDefaults {
-  const defaults: CodexModelDefaults = { defaultModel: undefined, efforts: new Map() };
-  if (!isRecord(response) || !Array.isArray(response.data)) return defaults;
+/** Normalize the app-server's model catalog. `supportedReasoningEfforts` is an array of
+ * `{reasoningEffort, description}` objects (not strings); unknown provider values such as
+ * `minimal` stay out of LinkCode's closed vocabulary, and Claude's `ultracode` never crosses into
+ * Codex even if a malformed server advertises it. */
+function codexModelCatalog(response: unknown): CodexModelCatalog {
+  const catalog: CodexModelCatalog = { defaultModel: undefined, models: [] };
+  if (!isRecord(response) || !Array.isArray(response.data)) return catalog;
   for (const candidate of response.data) {
     if (!isRecord(candidate)) continue;
     const model = stringField(candidate, 'model') ?? stringField(candidate, 'id');
     if (!model) continue;
-    const effort = EffortLevelSchema.safeParse(candidate.defaultReasoningEffort);
-    if (effort.success) defaults.efforts.set(model, effort.data);
-    if (candidate.isDefault === true) defaults.defaultModel = model;
+    const advertised = candidate.supportedReasoningEfforts;
+    let effortLevels: EffortLevel[] | undefined;
+    if (Array.isArray(advertised)) {
+      const supported = new Set<EffortLevel>();
+      for (const option of advertised) {
+        if (!isRecord(option)) continue;
+        const effort = EffortLevelSchema.safeParse(stringField(option, 'reasoningEffort'));
+        if (effort.success && effort.data !== 'ultracode') supported.add(effort.data);
+      }
+      effortLevels = [...supported];
+    }
+    const parsedDefault = EffortLevelSchema.safeParse(candidate.defaultReasoningEffort);
+    const defaultEffort =
+      parsedDefault.success && parsedDefault.data !== 'ultracode' ? parsedDefault.data : undefined;
+    catalog.models.push({
+      id: model,
+      label: stringField(candidate, 'displayName') ?? model,
+      ...(effortLevels !== undefined && { effortLevels }),
+      ...(defaultEffort && { defaultEffort }),
+    });
+    if (candidate.isDefault === true) catalog.defaultModel = model;
   }
-  return defaults;
+  return catalog;
 }
 
 /** The slice of `CodexAppServer` the adapter drives — narrow so a test fake can satisfy it
@@ -273,9 +297,19 @@ export class CodexAdapter extends BaseAgentAdapter {
   private resumeFrom: string | undefined;
   /** Model/effort for the next `turn/start`; `turn/start` overrides stick for subsequent turns. */
   private model: string | undefined;
+  /** Live selections awaiting a matching settings update. Kept separate from the sticky turn
+   * overrides so a later provider correction is reflected after the selection is confirmed. */
+  private pendingModel: string | undefined;
+  /** Model last confirmed by thread/start or thread/settings/updated. */
+  private activeModel: string | undefined;
   private effort: EffortLevel | undefined;
-  /** Provider defaults keyed by model, refreshed from `model/list` for effective-effort fallback. */
-  private modelDefaultEfforts = new Map<string, EffortLevel>();
+  private pendingEffort: EffortLevel | undefined;
+  /** Provider catalog refreshed from `model/list`, including per-model effort capabilities. */
+  private modelOptions = new Map<string, AgentModelOption>();
+  private catalogDefaultModel: string | undefined;
+  /** Whether the current app-server answered `model/list`. When discovery is unavailable, Codex
+   * remains the authority instead of optional metadata blocking an otherwise valid session. */
+  private modelCatalogAvailable = false;
   /** Active approval/sandbox tier; switches ride the next `turn/start` like model/effort. */
   private policyId: CodexPolicyId = INITIAL_POLICY_ID;
   /** True once the user explicitly picked a tier this session; only then may a preset override
@@ -299,9 +333,24 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model ?? undefined;
+    if (this.resumeFrom !== undefined) this.pendingModel = this.model;
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
+  }
+
+  override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
+    const server = await this.startAppServer({
+      env: codexEnv(readAgentCredential(opts.config)),
+      onNotification: noop,
+      onExit: noop,
+    });
+    try {
+      const catalog = codexModelCatalog(await server.request('model/list', {}));
+      return { models: catalog.models, policies: [] };
+    } finally {
+      server.close();
+    }
   }
 
   override async resumeHistory(
@@ -483,25 +532,54 @@ export class CodexAdapter extends BaseAgentAdapter {
    * subsequent turns). Codex has no way to alter the turn already in flight. */
   protected override onSetModel(model: string): Promise<void> {
     invariant(this.opts, 'codex: session not started');
+    if (this.effort !== undefined) {
+      this.assertEffortSupported(this.effort, model, !this.modelCatalogAvailable);
+    }
     this.opts.model = model;
     this.model = model;
+    this.pendingModel = model;
     // Reflect the pick now; it applies from the next turn/start.
     this.emitModel(model);
     return Promise.resolve();
   }
 
-  /** Effort switching, same next-turn channel as the model. Codex accepts low–xhigh;
-   * `max`/`ultracode` are claude-code concepts with no codex equivalent. */
+  /** Effort switching, same next-turn channel as the model. The active model's catalog is the
+   * authority; `ultracode` is always rejected because it is a distinct Claude-only mode. */
   protected override onSetEffort(effort: EffortLevel): Promise<void> {
-    if (effort === 'max' || effort === 'ultracode') {
-      return Promise.reject(
-        new Error(`codex: effort '${effort}' is not supported (codex accepts low through xhigh)`),
-      );
-    }
+    this.assertEffortSupported(effort, this.selectedModel(), !this.modelCatalogAvailable);
     this.effort = effort;
+    this.pendingEffort = effort;
     // Reflect the pick now; it applies from the next turn/start.
     this.emitEffort(effort);
     return Promise.resolve();
+  }
+
+  private selectedModel(): string | undefined {
+    return (
+      this.model ?? this.activeModel ?? this.catalogDefaultModel ?? this.opts?.model ?? undefined
+    );
+  }
+
+  private assertEffortSupported(
+    effort: EffortLevel,
+    model: string | undefined,
+    allowUnknown = false,
+  ): void {
+    if (effort === 'ultracode') {
+      throw new Error("codex: effort 'ultracode' is not supported");
+    }
+    const supported = model ? this.modelOptions.get(model)?.effortLevels : undefined;
+    if (supported?.includes(effort)) return;
+    if (supported === undefined && (allowUnknown || (effort !== 'max' && effort !== 'ultra'))) {
+      return;
+    }
+    invariant(
+      supported,
+      `codex: effort '${effort}' cannot be validated because${model ? ` model '${model}'` : ' the active model'} did not advertise effort capabilities`,
+    );
+    throw new Error(
+      `codex: effort '${effort}' is not supported${model ? ` by model '${model}'` : ''}`,
+    );
   }
 
   private approvalPolicyState(): ApprovalPolicyState {
@@ -588,31 +666,42 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.server = server;
     // A fresh process re-read the on-disk credentials — its auth state is unknown again.
     this.authFailed = false;
-    const modelDefaultsPromise = this.readModelDefaults(server);
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
-    const preset = POLICY_PRESETS[this.policyId];
-    const params = {
-      cwd: opts.cwd,
-      model: this.model,
-      approvalPolicy: preset.approvalPolicy,
-      ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
-      ...(opts.additionalDirectories?.length && {
-        config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
-      }),
-    };
-    // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger the
-    // clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the
-    // announcement until the first turn is running; a resumed thread's rollout is complete, so
-    // announce immediately. Set before the request: thread/started can outrun the response.
-    this.holdSessionRef = !resume;
     try {
+      const modelCatalog = await this.readModelCatalog(server);
+      if (modelCatalog && modelCatalog.models.length > 0) {
+        this.modelCatalogAvailable = true;
+        this.catalogDefaultModel = modelCatalog.defaultModel;
+        this.modelOptions = new Map(modelCatalog.models.map((model) => [model.id, model]));
+        this.emitModels(modelCatalog.models);
+      } else {
+        this.modelCatalogAvailable = false;
+        this.catalogDefaultModel = undefined;
+        this.modelOptions.clear();
+      }
+      if (this.effort !== undefined && !resume) {
+        this.assertEffortSupported(this.effort, this.selectedModel(), !this.modelCatalogAvailable);
+      }
+      const preset = POLICY_PRESETS[this.policyId];
+      const params = {
+        cwd: opts.cwd,
+        model: this.model,
+        approvalPolicy: preset.approvalPolicy,
+        ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
+        ...(opts.additionalDirectories?.length && {
+          config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
+        }),
+      };
+      // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger
+      // the clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the
+      // announcement until the first turn is running; a resumed thread's rollout is complete, so
+      // announce immediately. Set before the request: thread/started can outrun the response.
+      this.holdSessionRef = !resume;
       const response = resume
         ? await server.request('thread/resume', { ...params, threadId: resume, excludeTurns: true })
         : await server.request('thread/start', params);
-      const modelDefaults = await modelDefaultsPromise;
-      this.modelDefaultEfforts = modelDefaults.efforts;
-      this.reflectThreadSettings(response, modelDefaults.defaultModel);
+      this.reflectThreadSettings(response, modelCatalog?.defaultModel, resume !== undefined);
       const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
@@ -632,31 +721,45 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Best-effort provider defaults. Older detected app-server builds may lack `model/list`; the
-   * thread response can still reflect any explicit configured effort without this catalog. */
-  private async readModelDefaults(server: CodexServerHandle): Promise<CodexModelDefaults> {
+  /** Best-effort provider catalog. Older detected app-server builds may lack `model/list`; the
+   * thread response can still reflect an explicit configured effort without this metadata. */
+  private async readModelCatalog(
+    server: CodexServerHandle,
+  ): Promise<CodexModelCatalog | undefined> {
     try {
-      return codexModelDefaults(await server.request('model/list', {}));
+      return codexModelCatalog(await server.request('model/list', {}));
     } catch {
-      return { defaultModel: undefined, efforts: new Map() };
+      return undefined;
     }
   }
 
-  /** Reflect the app-server's effective model and effort. A null effort means no override, so the
-   * selected model's catalog default is the actual value. An explicit user pick remains pending
-   * until `thread/settings/updated` confirms what the next turn accepted. */
-  private reflectThreadSettings(response: unknown, fallbackModel?: string): void {
+  /** Reflect the app-server's effective model and effort. A resumed thread can report its
+   * previously active model, so keep any next-turn override that was selected before recovery.
+   * A null effort means no override, so the selected model's catalog default is the actual value. */
+  private reflectThreadSettings(response: unknown, fallbackModel?: string, resumed = false): void {
     if (!isRecord(response)) return;
     const model = stringField(response, 'model') ?? fallbackModel;
-    if (model) this.emitModel(model);
-    if (this.effort !== undefined) return;
+    if (model) {
+      this.activeModel = model;
+      if (this.pendingModel === undefined) {
+        if (!resumed && this.model !== undefined) this.model = model;
+        this.emitModel(model);
+      } else {
+        this.emitModel(this.pendingModel);
+        if (model === this.pendingModel) this.pendingModel = undefined;
+      }
+    }
+    if (this.effort !== undefined) {
+      this.assertEffortSupported(this.effort, this.model ?? model, !this.modelCatalogAvailable);
+    }
+    if (this.pendingEffort !== undefined) return;
     const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
     const effective = effort.success
       ? effort.data
       : model
-        ? this.modelDefaultEfforts.get(model)
+        ? this.modelOptions.get(model)?.defaultEffort
         : null;
-    if (effective) this.emitEffort(effective);
+    if (effective && effective !== 'ultracode') this.emitEffort(effective);
   }
 
   /** Best-effort full catalog refresh. `skills/changed` invalidates every cached provider path, so
@@ -790,13 +893,31 @@ export class CodexAdapter extends BaseAgentAdapter {
         const settings = recordField(params, 'threadSettings');
         if (!settings) break;
         const model = stringField(settings, 'model');
-        if (model) this.emitModel(model);
+        const modelMatchesPending = this.pendingModel === undefined || model === this.pendingModel;
+        if (model) {
+          this.activeModel = model;
+          if (modelMatchesPending) {
+            this.emitModel(model);
+            if (model === this.pendingModel) this.pendingModel = undefined;
+          }
+        }
+        // A previous turn can report after the user has picked next-turn overrides. Keep learning
+        // the effective model above, but do not replace the UI's newer pending model or its effort.
+        if (!modelMatchesPending) break;
         const effort = EffortLevelSchema.safeParse(settings.effort);
-        const effective = effort.success
-          ? effort.data
-          : this.effort === undefined && model
-            ? this.modelDefaultEfforts.get(model)
-            : undefined;
+        if (this.pendingEffort !== undefined) {
+          if (effort.success && effort.data === this.pendingEffort) {
+            this.emitEffort(effort.data);
+            this.pendingEffort = undefined;
+          }
+          break;
+        }
+        const effective =
+          effort.success && effort.data !== 'ultracode'
+            ? effort.data
+            : model
+              ? this.modelOptions.get(model)?.defaultEffort
+              : undefined;
         if (effective) this.emitEffort(effective);
         break;
       }

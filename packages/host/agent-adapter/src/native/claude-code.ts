@@ -229,7 +229,7 @@ class AsyncMessageQueue implements AsyncIterable<SDKUserMessage> {
  * pinned at xhigh. `max` never comes through here — it can't travel flag-settings (see `onSetEffort`).
  */
 function effortFlagSettings(
-  effort: Exclude<EffortLevel, 'max'>,
+  effort: Exclude<EffortLevel, 'max' | 'ultra'>,
 ): Parameters<Query['applyFlagSettings']>[0] {
   if (effort === 'ultracode') return { ultracode: true };
   return { ultracode: null, effortLevel: effort };
@@ -474,7 +474,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private readonly reflectEffortHook: HookCallback = (input) => {
     if (input.effort?.level) {
       const parsed = EffortLevelSchema.safeParse(input.effort.level);
-      if (parsed.success) {
+      if (parsed.success && parsed.data !== 'ultra') {
         const ultracode = this.effort === 'ultracode' || this.settingsUltracode;
         this.emitEffort(ultracode && parsed.data === 'xhigh' ? 'ultracode' : parsed.data);
       }
@@ -698,7 +698,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // Catalog discovery is optional and may wait on CLI initialization indefinitely. Do not hold
     // session.start behind it; publish whenever the snapshot becomes available.
     void this.publishCommands(q);
-    if (this.effort !== undefined && this.effort !== 'max') {
+    if (this.effort !== undefined && this.effort !== 'max' && this.effort !== 'ultra') {
       try {
         await q.applyFlagSettings(effortFlagSettings(this.effort));
         this.emitEffort(this.effort);
@@ -854,6 +854,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * transition into or out of `max` closes the process and lets the next prompt rebuild the
    * `Query`, resuming in place via the session id sniffed off the last SDK message. */
   protected override async onSetEffort(effort: EffortLevel): Promise<void> {
+    if (effort === 'ultra') {
+      throw new Error("claude-code: effort 'ultra' is not supported");
+    }
     const previous = this.effort;
     // Re-picking the current level is a no-op — it must not restart a live `max` process.
     if (effort === previous) return;

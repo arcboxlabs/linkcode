@@ -35,7 +35,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_DEFAULT_MODELS } from './agent-models';
+import { AGENT_DEFAULT_MODELS, AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -178,7 +178,7 @@ export function NewSessionSurface({
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const catalog = agentCatalogs?.[provider];
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOption = dynamicModels?.find((option) => option.id === displayedModel);
+  const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
