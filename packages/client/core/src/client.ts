@@ -107,6 +107,12 @@ type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
 type SimulatorDevicesChangedCb = (devices: SimulatorDevice[]) => void;
+type SimulatorActivityCb = (activity: {
+  sessionId: SessionId;
+  udid?: string;
+  tool: string;
+  phase: 'started' | 'settled';
+}) => void;
 type ConnectionCloseCb = (error: Error) => void;
 
 /** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
@@ -147,6 +153,7 @@ export class LinkCodeClient {
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
   private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
+  private readonly simulatorActivitySubs = new Set<SimulatorActivityCb>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
@@ -326,6 +333,11 @@ export class LinkCodeClient {
         break;
       case 'simulator.devices.changed':
         for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
+        break;
+      case 'simulator.activity':
+        for (const cb of this.simulatorActivitySubs) {
+          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
+        }
         break;
       case 'asset.listed':
         this.pending.resolve('assetList', p.replyTo, p.assets);
@@ -667,6 +679,12 @@ export class LinkCodeClient {
   subscribeSimulatorDevicesChanged(cb: SimulatorDevicesChangedCb): Unsubscribe {
     this.simulatorDevicesChangedSubs.add(cb);
     return () => this.simulatorDevicesChangedSubs.delete(cb);
+  }
+
+  /** Agent MCP tool activity on simulators — drives the "agent is using this device" badge. */
+  subscribeSimulatorActivity(cb: SimulatorActivityCb): Unsubscribe {
+    this.simulatorActivitySubs.add(cb);
+    return () => this.simulatorActivitySubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

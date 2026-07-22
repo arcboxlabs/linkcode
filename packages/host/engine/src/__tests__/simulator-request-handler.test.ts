@@ -5,6 +5,7 @@ import { nullthrow } from 'foxts/guard';
 import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { SimulatorBackend } from '../simulator/backend';
+import { SimulatorService } from '../simulator/service';
 import { FakeAdapter, settleEngineTasks, startedSessionId } from './fixtures/session-harness';
 import { createTestEngine } from './fixtures/test-engine';
 
@@ -51,7 +52,7 @@ function harness(backend?: SimulatorBackend) {
     close: noop,
   };
   const engine = createTestEngine(transport, {
-    simulatorBackend: backend,
+    simulators: backend ? new SimulatorService(backend) : undefined,
     factory: () => new FakeAdapter(),
   });
   async function inject(payload: WirePayload): Promise<void> {

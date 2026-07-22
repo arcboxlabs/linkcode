@@ -44,7 +44,7 @@ interface DeviceClaim {
 export class SimulatorService {
   private readonly claims = new Map<string, DeviceClaim>();
   private readonly idleReclaimMs: number;
-  private readonly hasSession?: (sessionId: SessionId) => boolean;
+  private hasSession?: (sessionId: SessionId) => boolean;
   private probedStatus?: SimulatorHostStatus;
 
   constructor(
@@ -53,6 +53,13 @@ export class SimulatorService {
   ) {
     this.idleReclaimMs = opts?.idleReclaimMs ?? IDLE_RECLAIM_MS;
     this.hasSession = opts?.hasSession;
+  }
+
+  /** Install the live-session predicate. The daemon builds this service (to share it with the MCP
+   * endpoint) before the engine's session registry exists, so the engine wires the validator here
+   * once it has one; `claim()` then rejects operations from sessions the engine never started. */
+  setSessionValidator(hasSession: (sessionId: SessionId) => boolean): void {
+    this.hasSession = hasSession;
   }
 
   probe(): Promise<{ simctlPath: string; developerDir: string }> {

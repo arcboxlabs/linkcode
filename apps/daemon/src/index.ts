@@ -8,10 +8,12 @@ import {
   EngineService,
   makeEngineInfrastructureLayer,
   PreviewRouteRegistry,
+  SimulatorService,
 } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
 import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
 import { SimSidecarClient } from '@linkcode/sim';
+import { createWireMessage } from '@linkcode/transport';
 import { Hub } from '@linkcode/transport/server';
 import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
@@ -38,6 +40,7 @@ import {
 import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
+import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
 
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
@@ -208,13 +211,34 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
+      // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
+      // simulator surface at all, which is what the capability gate reads. The daemon owns the
+      // service (not just the sidecar client) so the MCP endpoint and the engine share one
+      // device-claims registry.
       const simSidecarPath = resolveSimSidecarPath();
+      const simulators = simSidecarPath
+        ? new SimulatorService(new SimSidecarClient(simSidecarPath))
+        : undefined;
+      const simulatorMcp = simulators
+        ? yield* Effect.promise(() =>
+            SimulatorMcpEndpoint.create(simulators, {
+              activity(activity) {
+                hub.send(createWireMessage({ kind: 'simulator.activity', ...activity }));
+              },
+              devicesChanged(devices) {
+                hub.send(createWireMessage({ kind: 'simulator.devices.changed', devices }));
+              },
+            }),
+          )
+        : undefined;
+      if (simulatorMcp) {
+        yield* Effect.addFinalizer(() => finalize(() => simulatorMcp.close()));
+      }
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
-        // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
-        // simulator surface at all, which is what the capability gate reads.
-        simulatorBackend: simSidecarPath ? new SimSidecarClient(simSidecarPath) : undefined,
+        simulators,
+        simulatorMcp,
         sessionStore: createSessionStore(databasePath()),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),

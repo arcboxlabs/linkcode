@@ -204,6 +204,9 @@ importers:
       '@linkcode/transport':
         specifier: workspace:*
         version: link:../../packages/foundation/transport
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
       '@sentry/node':
         specifier: 10.62.0
         version: 10.62.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
@@ -219,6 +222,9 @@ importers:
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@effect/opentelemetry':
         specifier: 4.0.0-beta.98
