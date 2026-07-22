@@ -50,7 +50,7 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
+import { codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
@@ -964,13 +964,31 @@ export class CodexAdapter extends BaseAgentAdapter {
           // holding the pre-rename identity. Cite (and label the diff with) the destination.
           const kind = recordField(change, 'kind');
           const movePath = kind ? stringField(kind, 'move_path') : undefined;
+          const changeType = kind ? stringField(kind, 'type') : undefined;
           const displayPath = movePath ?? path;
           locations.push({ path: displayPath });
           const diff = stringField(change, 'diff');
+          const structuredChange =
+            changeType === 'add' || changeType === 'delete'
+              ? changeType
+              : movePath
+                ? 'move'
+                : 'modify';
           if (diff) {
-            appendArrayInPlace(content, diffContentFromUnified(displayPath, diff));
-          } else if (movePath) {
-            appendArrayInPlace(content, textContent(`Renamed ${path} → ${movePath}`));
+            appendArrayInPlace(
+              content,
+              diffContentFromUnified(displayPath, diff, {
+                change: structuredChange,
+                oldPath: movePath ? path : undefined,
+              }),
+            );
+          } else {
+            content.push({
+              type: 'diff',
+              change: structuredChange,
+              path: displayPath,
+              oldPath: movePath ? path : undefined,
+            });
           }
         }
         this.emitTool(

@@ -1302,12 +1302,12 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
       return undefined;
     }
     // The CLI on Windows reports MSYS drive-form paths (`/c/…`) — rewrite to native form.
-    return [{ type: 'diff', path: toHostPath(path), oldText, newText }];
+    return [{ type: 'diff', change: 'modify', path: toHostPath(path), oldText, newText }];
   }
   if (toolName === 'Write') {
     const { file_path: path, content: newText } = input;
     if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
-    return [{ type: 'diff', path: toHostPath(path), newText }];
+    return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
 }

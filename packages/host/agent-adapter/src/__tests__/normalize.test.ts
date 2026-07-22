@@ -130,7 +130,7 @@ describe('createClaudeHistoryEventMapper', () => {
     );
     if (announce[0].event.type === 'tool-call') {
       expect(announce[0].event.toolCall.content).toEqual([
-        { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' },
+        { type: 'diff', change: 'modify', path: 'src/a.ts', oldText: 'a', newText: 'b' },
       ]);
     }
 
@@ -139,7 +139,7 @@ describe('createClaudeHistoryEventMapper', () => {
     );
     if (settle[0].event.type === 'tool-call') {
       expect(settle[0].event.toolCall.content).toEqual([
-        { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' },
+        { type: 'diff', change: 'modify', path: 'src/a.ts', oldText: 'a', newText: 'b' },
         { type: 'content', content: { type: 'text', text: 'updated' } },
       ]);
     }
@@ -416,7 +416,13 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
       message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'updated' }] },
     });
 
-    const diff = { type: 'diff', path: 'src/a.ts', oldText: 'a', newText: 'b' };
+    const diff = {
+      type: 'diff',
+      change: 'modify',
+      path: 'src/a.ts',
+      oldText: 'a',
+      newText: 'b',
+    };
     const tools = toolSnapshots(seen);
     expect(tools).toHaveLength(2);
     expect(tools[0].toolCall.content).toEqual([diff]);
@@ -488,7 +494,12 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
     const tools = toolSnapshots(seen);
     expect(tools).toHaveLength(1);
     expect(tools[0].toolCall.content).toEqual([
-      { type: 'diff', path: 'src/new.ts', newText: 'export const a = 1;\n' },
+      {
+        type: 'diff',
+        change: 'add',
+        path: 'src/new.ts',
+        newText: 'export const a = 1;\n',
+      },
     ]);
   });
 
@@ -738,7 +749,7 @@ describe('CodexAdapter turn queueing', () => {
 });
 
 describe('diffContentFromUnified', () => {
-  it('splits hunks into old/new sides with context', () => {
+  it('keeps the patch authoritative with old/new text as fallback', () => {
     const diff = [
       'diff --git a/src/a.ts b/src/a.ts',
       '--- a/src/a.ts',
@@ -752,28 +763,64 @@ describe('diffContentFromUnified', () => {
     expect(diffContentFromUnified('src/a.ts', diff)).toEqual([
       {
         type: 'diff',
+        change: 'modify',
         path: 'src/a.ts',
         oldText: 'const a = 1;\nconst b = 2;\nconst c = 4;',
         newText: 'const a = 1;\nconst b = 3;\nconst c = 4;',
+        patch: { format: 'git_patch', text: diff },
       },
     ]);
   });
-  it('emits one block per hunk', () => {
+  it('combines hunk fallbacks without duplicating the patch', () => {
     const diff = ['@@ -1 +1 @@', '-a', '+b', '@@ -10 +10 @@', '-x', '+y'].join('\n');
     expect(diffContentFromUnified('f', diff)).toEqual([
-      { type: 'diff', path: 'f', oldText: 'a', newText: 'b' },
-      { type: 'diff', path: 'f', oldText: 'x', newText: 'y' },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'f',
+        oldText: 'a\nx',
+        newText: 'b\ny',
+        patch: { format: 'git_patch', text: diff },
+      },
     ]);
   });
-  it('renders a pure insertion without oldText, like a Write', () => {
+  it('retains move identity and removes codex move metadata from the patch', () => {
+    const diff = '@@ -1 +1 @@\n-old\n+new\n\nMoved to: new.ts';
+    expect(diffContentFromUnified('new.ts', diff, { change: 'move', oldPath: 'old.ts' })).toEqual([
+      {
+        type: 'diff',
+        change: 'move',
+        path: 'new.ts',
+        oldPath: 'old.ts',
+        oldText: 'old',
+        newText: 'new',
+        patch: { format: 'git_patch', text: '@@ -1 +1 @@\n-old\n+new' },
+      },
+    ]);
+  });
+  it('renders a pure insertion fallback without oldText', () => {
     const diff = ['@@ -0,0 +1,2 @@', '+line 1', '+line 2', ''].join('\n');
     expect(diffContentFromUnified('new.ts', diff)).toEqual([
-      { type: 'diff', path: 'new.ts', oldText: undefined, newText: 'line 1\nline 2' },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'new.ts',
+        oldText: undefined,
+        newText: 'line 1\nline 2',
+        patch: { format: 'git_patch', text: diff },
+      },
     ]);
   });
-  it('falls back to all-added content when no hunk header is present', () => {
+  it('keeps non-hunk provider text as a patch-only record', () => {
     expect(diffContentFromUnified('raw.txt', 'plain content')).toEqual([
-      { type: 'diff', path: 'raw.txt', newText: 'plain content' },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'raw.txt',
+        oldText: undefined,
+        newText: undefined,
+        patch: { format: 'git_patch', text: 'plain content' },
+      },
     ]);
   });
 });

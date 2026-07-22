@@ -1,42 +1,38 @@
-import type { ToolCallContent } from '@linkcode/schema';
+import type { ToolCallContent, ToolDiffChange } from '@linkcode/schema';
 
 const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
+const MOVE_TRAILER_RE = /\n\nMoved to: [^\n]+$/;
+
+interface UnifiedDiffOptions {
+  change?: ToolDiffChange;
+  oldPath?: string;
+}
 
 /**
- * Convert one file's unified diff (codex app-server `fileChange.changes[].diff`) into structured
- * diff blocks, one per hunk: old side (context + removed) vs new side (context + added), the same
- * shape claude-code's Edit input produces. A pure-insertion hunk with no context omits `oldText`
- * (renders all-added, like a Write); text without any hunk header falls back to one all-added block.
+ * Convert one file's unified diff (codex app-server `fileChange.changes[].diff`) into one
+ * structured diff. The original patch remains authoritative for rendering; old/new hunk text is
+ * retained as a legacy fallback without requiring whole-file snapshots.
  */
-export function diffContentFromUnified(path: string, diff: string): ToolCallContent[] {
+export function diffContentFromUnified(
+  path: string,
+  diff: string,
+  options: UnifiedDiffOptions = {},
+): ToolCallContent[] {
   if (diff.length === 0) return [];
-  const lines = diff.split('\n');
+  const patchText = diff.replace(MOVE_TRAILER_RE, '');
+  const lines = patchText.split('\n');
   // A diff ending in '\n' splits into a trailing '' that is not a content line.
   if (lines.at(-1) === '') lines.pop();
-  const blocks: ToolCallContent[] = [];
-  let oldLines: string[] | null = null;
-  let newLines: string[] | null = null;
-
-  const flush = (): void => {
-    if (oldLines === null || newLines === null) return;
-    blocks.push({
-      type: 'diff',
-      path,
-      oldText: oldLines.length > 0 ? oldLines.join('\n') : undefined,
-      newText: newLines.join('\n'),
-    });
-    oldLines = null;
-    newLines = null;
-  };
+  const oldLines: string[] = [];
+  const newLines: string[] = [];
+  let inHunk = false;
 
   for (const line of lines) {
     if (HUNK_HEADER_RE.test(line)) {
-      flush();
-      oldLines = [];
-      newLines = [];
+      inHunk = true;
       continue;
     }
-    if (oldLines === null || newLines === null) continue; // file headers before the first hunk
+    if (!inHunk) continue; // file headers before the first hunk
     if (line[0] === '+') {
       newLines.push(line.slice(1));
     } else if (line[0] === '-') {
@@ -49,10 +45,16 @@ export function diffContentFromUnified(path: string, diff: string): ToolCallCont
     }
     // '\ No newline at end of file' and any other marker lines are dropped.
   }
-  flush();
 
-  if (blocks.length === 0) {
-    return [{ type: 'diff', path, newText: diff }];
-  }
-  return blocks;
+  return [
+    {
+      type: 'diff',
+      change: options.change ?? 'modify',
+      path,
+      oldPath: options.oldPath,
+      oldText: oldLines.length > 0 ? oldLines.join('\n') : undefined,
+      newText: inHunk ? newLines.join('\n') : undefined,
+      patch: { format: 'git_patch', text: patchText },
+    },
+  ];
 }
