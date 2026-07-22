@@ -100,7 +100,8 @@ describe('engine interactive requests', () => {
   const PERMISSION_ASK: AgentEvent = {
     type: 'permission-request',
     requestId: 'perm-1',
-    toolCall: { toolCallId: 't2', title: 'Run' },
+    title: 'Run',
+    subject: { type: 'tool-call', toolCallId: 't2' },
     options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
   };
 
@@ -682,6 +683,32 @@ describe('engine interactive requests', () => {
     expect(eventsAfter(sent, mark)).toContainEqual({
       type: 'question-resolved',
       requestId: 'ask-1',
+      outcome: { outcome: 'cancelled' },
+      source: 'session',
+    });
+  });
+
+  it('cancels a modern permission request when its referenced tool settles', async () => {
+    const { sent, inject, adapter, sessionId } = await startedHarness();
+    adapter.emit({ type: 'status', status: 'running' });
+    adapter.emit(PERMISSION_ASK);
+    adapter.emit({
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 't2',
+        title: 'Run',
+        kind: 'execute',
+        status: 'completed',
+        content: [],
+      },
+    });
+
+    const mark = sent.length;
+    await inject({ kind: 'session.attach', sessionId });
+    expect(eventsAfter(sent, mark)).not.toContainEqual(PERMISSION_ASK);
+    expect(eventsAfter(sent, mark)).toContainEqual({
+      type: 'permission-resolved',
+      requestId: 'perm-1',
       outcome: { outcome: 'cancelled' },
       source: 'session',
     });

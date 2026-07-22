@@ -1,4 +1,4 @@
-import type { PermissionOption, ToolCallUpdate } from '@linkcode/schema';
+import type { PermissionOption } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { ShieldAlertIcon } from 'lucide-react';
@@ -26,7 +26,7 @@ export function PermissionPrompt({
   const [lastDecision, setLastDecision] = useState<PermissionDecision | null>(null);
   const selectedOptionId =
     lastDecision?.outcome === 'selected' ? lastDecision.option.optionId : undefined;
-  const rawTitle = item.toolCall.title ?? item.toolCall.toolCallId;
+  const rawTitle = item.title ?? item.toolCall.title ?? item.toolCall.toolCallId;
   const mcp = mcpToolName(rawTitle);
   // A permission judgment needs provenance, so the MCP server rides along with the tool name.
   const title = mcp ? `${mcp.tool} · ${mcp.server}` : rawTitle;
@@ -44,8 +44,8 @@ export function PermissionPrompt({
   return (
     <PromptCard
       busyLabel={lastDecision ? undefined : t('responding')}
-      description={t('reviewDescription')}
-      details={permissionDetails(item.toolCall).map((detail) => ({
+      description={item.description ?? t('reviewDescription')}
+      details={permissionDetails(item).map((detail) => ({
         label: t(detail.label),
         value: detail.value,
         monospace: true,
@@ -145,11 +145,12 @@ function permissionOptionPriority(option: PermissionOption): number {
 }
 
 interface PermissionDetail {
-  label: 'arguments' | 'file' | 'command' | 'url';
+  label: 'arguments' | 'command' | 'file' | 'url' | 'workingDirectory';
   value: string;
 }
 
-function permissionDetails(toolCall: ToolCallUpdate): PermissionDetail[] {
+function permissionDetails(item: PermissionConversationItem): PermissionDetail[] {
+  const { subject, toolCall } = item;
   const raw = isRecord(toolCall.rawInput) ? toolCall.rawInput : undefined;
   // Unrecognized tools show their whole input as one JSON row; extracting raw fields into
   // dedicated rows as well would render the same data twice.
@@ -169,8 +170,11 @@ function permissionDetails(toolCall: ToolCallUpdate): PermissionDetail[] {
   if (showRawArguments) {
     details.push({ label: 'arguments', value: JSON.stringify(raw, null, 2) });
   } else {
-    const command = stringField(raw, 'command');
+    const command = subject?.type === 'command' ? subject.command : stringField(raw, 'command');
     if (command) details.push({ label: 'command', value: command });
+    if (subject?.type === 'command') {
+      details.push({ label: 'workingDirectory', value: subject.cwd });
+    }
     const url = stringField(raw, 'url');
     if (url) details.push({ label: 'url', value: url });
   }

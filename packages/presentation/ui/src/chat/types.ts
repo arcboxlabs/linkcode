@@ -7,6 +7,7 @@ import type {
   EffortLevel,
   PermissionOption,
   PermissionOutcome,
+  PermissionSubject,
   Plan,
   PromptResolutionSource,
   Question,
@@ -71,6 +72,9 @@ export type ConversationItem =
   | (ConversationItemBase & {
       kind: 'approval';
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;

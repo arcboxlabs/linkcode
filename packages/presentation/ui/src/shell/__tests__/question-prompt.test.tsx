@@ -46,6 +46,9 @@ function translateKey(namespace: string, key: string, values?: Record<string, un
   if (namespace === 'workbench.permission' && key === 'reviewDescription') {
     return 'Review the details before allowing it.';
   }
+  if (namespace === 'workbench.permission' && key === 'workingDirectory') {
+    return 'working directory';
+  }
   if (namespace === 'workbench.permission' && key === 'responding') return 'Submitting…';
   if (namespace === 'workbench.prompt' && key === 'responding') return 'Submitting…';
   return key;
@@ -736,5 +739,43 @@ describe('ConversationPromptDock', () => {
 
     expect(screen.getByText('command').nextElementSibling?.textContent).toBe('pnpm migrate');
     expect(screen.queryByText('arguments')).toBeNull();
+  });
+
+  it('renders modern command prompt copy and authoritative subject details', () => {
+    const commandPermission: PermissionConversationItem = {
+      ...PERMISSION_ITEM,
+      title: 'Deploy preview',
+      description: 'Publish the current branch for review.',
+      subject: {
+        type: 'command',
+        command: 'pnpm deploy:preview',
+        cwd: '/repo/linkcode',
+        toolCallId: 'command-1',
+      },
+      toolCall: {
+        toolCallId: 'command-1',
+        title: 'Outdated tool title',
+        kind: 'execute',
+        rawInput: { command: 'stale command' },
+      },
+    };
+    render(
+      <ConversationPromptDock
+        conversation={conversation([commandPermission], {
+          pendingPermissionIds: [commandPermission.requestId],
+        })}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Allow Deploy preview?')).toBeDefined();
+    expect(screen.getByText('Publish the current branch for review.')).toBeDefined();
+    expect(screen.getByText('command').nextElementSibling?.textContent).toBe('pnpm deploy:preview');
+    expect(screen.getByText('working directory').nextElementSibling?.textContent).toBe(
+      '/repo/linkcode',
+    );
+    expect(screen.queryByText('stale command')).toBeNull();
   });
 });

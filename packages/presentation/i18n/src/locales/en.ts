@@ -214,6 +214,7 @@ export const en = {
       declined: 'Declined',
       file: 'File',
       command: 'Command',
+      workingDirectory: 'Working directory',
       url: 'URL',
       arguments: 'Arguments',
       question: 'Do you want to allow "{action}"?',
