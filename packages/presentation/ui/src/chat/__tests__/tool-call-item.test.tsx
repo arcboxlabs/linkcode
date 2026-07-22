@@ -337,6 +337,39 @@ describe('ToolCallBody', () => {
     expect(receiptNode.closest('[data-slot="card"]')?.textContent).toContain('Edit');
   });
 
+  it('renders patch-only moves and textless binary deletes', () => {
+    const moved: ToolCall = {
+      toolCallId: 'move-patch',
+      title: 'Move file',
+      kind: 'edit',
+      status: 'completed',
+      content: [
+        {
+          type: 'diff',
+          change: 'move',
+          oldPath: '/repo/old.ts',
+          path: '/repo/new.ts',
+          patch: { format: 'git_patch', text: '@@ -1 +1 @@\n-old\n+new' },
+        },
+      ],
+    };
+    const deleted: ToolCall = {
+      toolCallId: 'delete-binary',
+      title: 'Delete binary',
+      kind: 'edit',
+      status: 'completed',
+      content: [{ type: 'diff', change: 'delete', path: '/repo/logo.bin', isBinary: true }],
+    };
+
+    const { rerender } = render(<ToolCallBody toolCall={moved} />);
+    expect(screen.getByText('/repo/old.ts → /repo/new.ts')).toBeDefined();
+    expect(screen.getByText('old')).toBeDefined();
+    expect(screen.getByText('new')).toBeDefined();
+
+    rerender(<ToolCallBody toolCall={deleted} />);
+    expect(screen.getByText('logo.bin')).toBeDefined();
+  });
+
   it('keeps a failed mutation explanation visible without presenting it as file content', () => {
     const path = '/repo/hello.py';
     const explanation =
