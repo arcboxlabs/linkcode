@@ -37,6 +37,10 @@ export function BrowserWebviewPane(): React.ReactNode {
     (state) => state.rightPanel.open && state.rightPanel.activeSection === 'browser',
   );
   const [webview, setWebview] = useState<WebviewTag | null>(null);
+  // The guest that reached `dom-ready`, held by identity rather than as a boolean: a replacement
+  // element is then simply not the ready one, with no reset to keep in sync.
+  const [readyGuest, setReadyGuest] = useState<WebviewTag | null>(null);
+  const guestReady = webview !== null && readyGuest === webview;
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
@@ -72,12 +76,17 @@ export function BrowserWebviewPane(): React.ReactNode {
           failure: t('loadFailed', { error: event.errorDescription }),
         }));
       };
+      const onReady = (): void => {
+        if (!signal.aborted) setReadyGuest(webview);
+      };
+      webview.addEventListener('dom-ready', onReady);
       webview.addEventListener('did-start-loading', sync);
       webview.addEventListener('did-stop-loading', sync);
       webview.addEventListener('did-navigate', onNavigate);
       webview.addEventListener('did-navigate-in-page', onNavigate);
       webview.addEventListener('did-fail-load', onFail);
       return () => {
+        webview.removeEventListener('dom-ready', onReady);
         webview.removeEventListener('did-start-loading', sync);
         webview.removeEventListener('did-stop-loading', sync);
         webview.removeEventListener('did-navigate', onNavigate);
@@ -91,13 +100,18 @@ export function BrowserWebviewPane(): React.ReactNode {
   // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
   // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
   // restarts it on their next visit.
+  //
+  // Gated on `dom-ready`: the resident webview normally mounts hidden, and `executeJavaScript`
+  // THROWS SYNCHRONOUSLY on a guest that isn't attached yet (no rejected promise, so `.catch`
+  // can't see it) — the escaping error used to unmount the whole renderer (CODE-380). A guest
+  // that never became ready has nothing playing anyway.
   useAbortableEffect(() => {
-    if (webview === null || visible) return;
-    // Guest may be mid-navigation or detached, in which case there is nothing to pause.
+    if (webview === null || visible || !guestReady) return;
+    // Still fallible once ready: the guest may be mid-navigation or already gone.
     webview
       .executeJavaScript('document.querySelectorAll("video,audio").forEach((m) => m.pause())')
       .catch(noop);
-  }, [webview, visible]);
+  }, [webview, visible, guestReady]);
 
   return (
     <BrowserPane
