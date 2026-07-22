@@ -20,6 +20,11 @@ describe('agent wire variants', () => {
       outcome: { outcome: 'cancelled' },
       source: 'session',
     },
+    {
+      type: 'tool-call-content-chunk',
+      toolCallId: 'tool-1',
+      content: { type: 'content', content: { type: 'text', text: 'done' } },
+    },
   ])('accepts $type through the complete wire envelope', (event) => {
     expect(
       WireMessageSchema.safeParse({

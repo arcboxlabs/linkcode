@@ -351,6 +351,22 @@ export function createConversationBuilder(): ConversationBuilder {
         }
         break;
       }
+      case 'tool-call-content-chunk': {
+        const existing = toolIndex.get(event.toolCallId);
+        if (existing === undefined) break;
+        const item = items[existing];
+        if (item.kind === 'tool') {
+          items[existing] = {
+            ...item,
+            toolCall: {
+              ...item.toolCall,
+              content: [...item.toolCall.content, event.content],
+            },
+            receivedAt: receivedAt ?? item.receivedAt,
+          };
+        }
+        break;
+      }
 
       case 'compaction': {
         // The boundary arrives more than once (metadata first, summary later; history replay
@@ -471,7 +487,7 @@ export function createConversationBuilder(): ConversationBuilder {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
-        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
+        endActiveReasoning(event.toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'approval',
           id: event.requestId,
@@ -491,7 +507,7 @@ export function createConversationBuilder(): ConversationBuilder {
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
-        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
+        endActiveReasoning(event.toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'question',
           id: event.requestId,

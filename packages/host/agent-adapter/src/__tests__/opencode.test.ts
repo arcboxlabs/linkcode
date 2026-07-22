@@ -203,6 +203,70 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     }
   });
 
+  it('appends terminal tool output before emitting the completed snapshot', async () => {
+    const { events } = await makeAdapter();
+    const basePart = {
+      id: 'prt-1',
+      sessionID: 'sess-1',
+      messageID: 'msg-1',
+      type: 'tool' as const,
+      callID: 'call-1',
+      tool: 'bash',
+    };
+    client.stream.push({
+      id: 'e-tool-running',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          ...basePart,
+          state: { status: 'running', input: { command: 'echo hi' }, time: { start: 0 } },
+        },
+      },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-tool-completed',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 1,
+        part: {
+          ...basePart,
+          state: {
+            status: 'completed',
+            input: { command: 'echo hi' },
+            output: 'hi\n',
+            title: 'echo hi',
+            metadata: {},
+            time: { start: 0, end: 1 },
+          },
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'tool-call-content-chunk')).toBe(true);
+    });
+    expect(events.filter((event) => event.type.startsWith('tool-call'))).toEqual([
+      expect.objectContaining({ type: 'tool-call' }),
+      {
+        type: 'tool-call-content-chunk',
+        toolCallId: 'prt-1',
+        content: { type: 'content', content: { type: 'text', text: 'hi\n' } },
+      },
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCall: expect.objectContaining({
+          toolCallId: 'prt-1',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
+        }),
+      }),
+    ]);
+  });
+
   it('skips parts of a user message, so the prompt text is not replayed as agent output', async () => {
     const { events } = await makeAdapter();
 

@@ -71,15 +71,17 @@ export const ToolCallSchema = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
-/** Incremental tool-call update (everything optional except the id). */
+/** Incremental adapter-side tool-call update (everything optional except the id).
+ * Omitted fields preserve the running snapshot. Null clears optional snapshot fields; null content
+ * resets the required content array to empty. */
 export const ToolCallUpdateSchema = z.object({
   toolCallId: z.string().min(1),
   title: z.string().optional(),
   kind: ToolKindSchema.optional(),
   status: ToolCallStatusSchema.optional(),
-  parentToolCallId: z.string().min(1).optional(),
-  content: z.array(ToolCallContentSchema).optional(),
-  locations: z.array(ToolCallLocationSchema).optional(),
+  parentToolCallId: z.string().min(1).nullable().optional(),
+  content: z.array(ToolCallContentSchema).nullable().optional(),
+  locations: z.array(ToolCallLocationSchema).nullable().optional(),
   rawInput: z.unknown().optional(),
   rawOutput: z.unknown().optional(),
 });

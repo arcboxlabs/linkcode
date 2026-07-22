@@ -941,16 +941,20 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'commandExecution': {
-        this.emitTool(
-          execToolCall({
-            toolCallId: id,
-            command: stringField(item, 'command'),
-            cwd: stringField(item, 'cwd'),
-            status: mapCodexItemStatus(stringField(item, 'status')),
-            output: stringField(item, 'aggregatedOutput'),
-            rawOutput: numberField(item, 'exitCode'),
-          }),
-        );
+        const toolCall = execToolCall({
+          toolCallId: id,
+          command: stringField(item, 'command'),
+          cwd: stringField(item, 'cwd'),
+          status: mapCodexItemStatus(stringField(item, 'status')),
+          output: stringField(item, 'aggregatedOutput'),
+          rawOutput: numberField(item, 'exitCode'),
+        });
+        if (!completed) {
+          this.emitTool(toolCall);
+          break;
+        }
+        for (const content of toolCall.content) this.appendToolContent(id, content);
+        this.emitTool({ ...toolCall, content: undefined });
         break;
       }
       case 'fileChange': {

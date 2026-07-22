@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   ContentBlock,
   EffortLevel,
+  ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
@@ -27,6 +28,9 @@ class TestAdapter extends BaseAgentAdapter {
 
   tool(patch: ToolCallUpdate): void {
     this.emitTool(patch);
+  }
+  append(toolCallId: string, content: ToolCallContent): void {
+    this.appendToolContent(toolCallId, content);
   }
   ask(): Promise<unknown> {
     return this.requestPermission({ toolCallId: 't1' }, [
@@ -94,6 +98,57 @@ describe('BaseAgentAdapter.emitTool', () => {
     });
   });
 
+  it('distinguishes omitted fields from explicit clears', () => {
+    const a = new TestAdapter();
+    a.tool({
+      toolCallId: 't1',
+      parentToolCallId: 'parent',
+      content: [{ type: 'content', content: { type: 'text', text: 'output' } }],
+      locations: [{ path: '/repo/a.ts' }],
+      rawInput: { command: 'run' },
+      rawOutput: 'done',
+    });
+    a.tool({
+      toolCallId: 't1',
+      parentToolCallId: null,
+      content: null,
+      locations: null,
+      rawInput: null,
+      rawOutput: null,
+    });
+
+    expect(toolEvents(a).at(-1)?.toolCall).toMatchObject({
+      toolCallId: 't1',
+      content: [],
+      parentToolCallId: undefined,
+      locations: undefined,
+      rawInput: undefined,
+      rawOutput: undefined,
+    });
+  });
+
+  it('accumulates append chunks around authoritative content replacements', () => {
+    const a = new TestAdapter();
+    const first = { type: 'content' as const, content: { type: 'text' as const, text: 'first' } };
+    const replacement = {
+      type: 'content' as const,
+      content: { type: 'text' as const, text: 'replacement' },
+    };
+    const last = { type: 'content' as const, content: { type: 'text' as const, text: 'last' } };
+
+    a.tool({ toolCallId: 't1', content: [] });
+    a.append('t1', first);
+    a.tool({ toolCallId: 't1', content: [replacement] });
+    a.append('t1', last);
+    a.tool({ toolCallId: 't1', status: 'completed' });
+
+    expect(a.seen.filter((event) => event.type === 'tool-call-content-chunk')).toEqual([
+      { type: 'tool-call-content-chunk', toolCallId: 't1', content: first },
+      { type: 'tool-call-content-chunk', toolCallId: 't1', content: last },
+    ]);
+    expect(toolEvents(a).at(-1)?.toolCall.content).toEqual([replacement, last]);
+  });
+
   it('fills defaults on first sight (title=id, kind=other, status=in_progress, content=[])', () => {
     const a = new TestAdapter();
     a.tool({ toolCallId: 't9' });
@@ -114,6 +169,7 @@ describe('BaseAgentAdapter.emitTool', () => {
     a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'completed' });
     const before = a.seen.length;
     a.tool({ toolCallId: 't1', status: 'in_progress' }); // late/stray update — must be dropped
+    a.append('t1', { type: 'content', content: { type: 'text', text: 'late' } });
     expect(a.seen.length).toBe(before);
   });
 });

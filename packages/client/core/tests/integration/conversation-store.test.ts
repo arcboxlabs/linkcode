@@ -167,6 +167,7 @@ describe('createConversationStore', () => {
 
   it('keeps an in-flight tool call the snapshot has not flushed yet', async () => {
     const { client, send, close } = await harness();
+    const output = { type: 'content' as const, content: { type: 'text' as const, text: 'done' } };
     const announce: AgentEvent = {
       type: 'tool-call',
       toolCall: {
@@ -179,14 +180,17 @@ describe('createConversationStore', () => {
     };
     send(userText('run echo'));
     send(announce);
+    send({ type: 'tool-call-content-chunk', toolCallId: 't1', content: output });
     await tick();
 
     const store = createConversationStore(client, sessionId, {
       events: [{ event: userText('run echo') }],
-      uptoSeq: 2,
+      uptoSeq: 3,
     });
     const items = store.getSnapshot().items;
-    expect(items.filter((i) => i.kind === 'tool')).toHaveLength(1);
+    const tool = items.find((item) => item.kind === 'tool');
+    expect(tool?.kind).toBe('tool');
+    if (tool?.kind === 'tool') expect(tool.toolCall.content).toEqual([output]);
     close();
   });
 
