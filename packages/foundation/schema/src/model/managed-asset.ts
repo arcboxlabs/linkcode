@@ -6,15 +6,24 @@ import { z } from 'zod';
  * eventually the signed compat manifest (CODE-77), which will carry these shapes with a signature.
  */
 
-/** First-batch managed assets. `agent:` ids pair a CLI with its in-repo SDK (`agent:pi` is an
- * npm closure the daemon imports in-process, CODE-219); `tool:` ids stand alone. */
-export const ManagedAssetIdSchema = z.enum([
+/** Agent runtime assets pair a CLI with its in-repo SDK (`agent:pi` is an npm closure the daemon
+ * imports in-process, CODE-219). */
+export const ManagedAgentAssetIdSchema = z.enum([
   'agent:claude-code',
   'agent:codex',
   'agent:opencode',
   'agent:pi',
-  'tool:tectonic',
-  'tool:aigateway',
+]);
+export type ManagedAgentAssetId = z.infer<typeof ManagedAgentAssetIdSchema>;
+
+/** Standalone tools managed by the daemon; these may be runtime dependencies of plugins. */
+export const ManagedToolAssetIdSchema = z.enum(['tool:tectonic', 'tool:aigateway']);
+export type ManagedToolAssetId = z.infer<typeof ManagedToolAssetIdSchema>;
+
+/** Every asset understood by the managed-asset store and wire control surface. */
+export const ManagedAssetIdSchema = z.enum([
+  ...ManagedAgentAssetIdSchema.options,
+  ...ManagedToolAssetIdSchema.options,
 ]);
 export type ManagedAssetId = z.infer<typeof ManagedAssetIdSchema>;
 
