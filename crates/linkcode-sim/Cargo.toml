@@ -15,7 +15,6 @@ path = "src/main.rs"
 
 [dependencies]
 block2 = "0.6.2"
-dispatch2 = "0.3.1"
 libc = "0.2.189"
 objc2 = { version = "0.6.4", features = ["exception"] }
 objc2-core-foundation = "0.3.2"

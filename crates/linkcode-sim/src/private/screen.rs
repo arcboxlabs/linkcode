@@ -1,20 +1,33 @@
 //! Capturing the simulator framebuffer as JPEG.
 //!
-//! Recipe ported from baguette's `SimulatorKitScreen.swift` + `JPEGEncoder.swift` (Apache-2.0; see
-//! crate NOTICE): `device.io` → `deviceIOPorts` → the `com.apple.framebuffer.display` descriptor(s),
-//! whose `framebufferSurface` is a live `IOSurface`. Registering frame callbacks is what makes
-//! CoreSimulator composite and deliver frames without a Simulator.app viewer; the callback copies the
-//! surface pixels out (the reader thread encodes them) — surfaces are recycled buffers that cannot be
-//! held past the callback, and the CoreGraphics/ImageIO encode is unstable on the callback thread.
+//! Uses CoreSimulator's `SimDisplayIOSurfaceRenderable` screen: `device.io` → `deviceIOPorts` → the
+//! `com.apple.framebuffer.display` descriptor(s), then
+//! `registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:`.
+//! Registering those callbacks is what makes CoreSimulator composite the framebuffer headlessly (no
+//! Simulator.app viewer needed) — `framebufferSurface` stays nil until delivery is active.
 //!
-//! This path is fragile on the Xcode 26 / iOS 26 `SimStreamProcessor` era — it intermittently aborts
-//! hard inside CoreSimulator's XPC-proxy machinery — so it is only ever driven from the crash-isolated
-//! worker subprocess ([`crate::capture`]), never in the sidecar's main process.
+//! The delivery model on the Xcode 26 `SimStreamProcessor` era is: `surfacesChangedCallback` fires
+//! once at activation (and again only on a resize/realloc) with the live `IOSurface`; `frameCallback`
+//! fires per composited frame; and the display surface then updates in place. So the surfaces
+//! callback retains the delivered surface, and the frame callback (on the same serial queue,
+//! synchronized with frame production) locks-and-copies it into an owned buffer; the reader thread
+//! then does the CoreGraphics/ImageIO encode off the queue. The hot per-frame path therefore touches
+//! only local IOSurface C calls — it never re-messages the CoreSimulator XPC proxy, which is what
+//! made the earlier "poll `framebufferSurface` every frame" recipe abort intermittently inside the
+//! proxy machinery.
+//!
+//! Two things this path must get right or it crashes hard: the callback blocks must be captureless
+//! and reach state through a process global (`CURRENT_SINK`), because ROCK's XPC delivery does not
+//! preserve a pointer captured in the block body; and the ImageIO options dictionary must use the
+//! standard CFType callbacks, because ImageIO deep-copies and validates it. The path is still driven
+//! only from the crash-isolated worker subprocess ([`crate::capture`]), never in the sidecar's main
+//! process, so any residual hard abort (e.g. a cold-connect class race) is contained.
 
 use std::ffi::{CString, c_ulong, c_void};
 use std::ptr;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
-use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::sel;
@@ -23,34 +36,48 @@ use objc2_foundation::{NSString, NSUUID};
 use super::debug::dbg_log;
 use super::device::SimDevice;
 
-// A hand-rolled ObjC block that captures a `*const FrameSink` context, used as the framebuffer
-// frame/surfaces callbacks. This mirrors baguette's model exactly: `framebufferSurface` only returns
-// a live surface once delivery is active, and delivery only activates when a real callback fires —
-// so the callback must grab the surface when SimulatorKit signals a frame. block2's `RcBlock`
-// crashes the SimulatorKit callback path; a hand-rolled block with a POD capture and a signature is
-// what the API accepts. It is registered as a copyable global block whose captured pointer aims at a
-// process-lifetime (leaked-with-registration) sink.
+// Hand-rolled ObjC blocks for the three screen callbacks. block2's `RcBlock` crashes the
+// CoreSimulator callback path; a hand-rolled global block with a signature is what the API accepts.
+// The blocks are captureless: ROCK's XPC delivery does not preserve a pointer captured in the block
+// body (it reads back null in the callback), so the callbacks reach state through [`CURRENT_SINK`]
+// instead. All three share one layout so a single builder and invoke-pointer cast serve them.
 #[repr(C)]
 struct BlockDescriptor {
     reserved: c_ulong,
     size: c_ulong,
     /// Objective-C type encoding of the block signature; required with `BLOCK_HAS_SIGNATURE`.
-    /// SimulatorKit reads it, so a signature-less block makes registration throw.
+    /// CoreSimulator reads it, so a signature-less block makes registration throw.
     signature: *const i8,
 }
 
-// SAFETY: the descriptor is immutable; its signature points at a static NUL-terminated string.
+// SAFETY: descriptors are immutable; each signature points at a static NUL-terminated string.
 unsafe impl Sync for BlockDescriptor {}
 
 #[repr(C)]
-struct CaptureBlock {
+struct CallbackBlock {
     isa: *const c_void,
     flags: i32,
     reserved: i32,
-    invoke: unsafe extern "C" fn(*mut CaptureBlock),
+    /// One of the three invoke fns below, stored type-erased; the descriptor's signature tells the
+    /// runtime the real ABI to call it with.
+    invoke: *const c_void,
     descriptor: *const BlockDescriptor,
-    /// Captured context: the sink the callback stashes the latest surface into.
-    sink: *const FrameSink,
+}
+
+/// The active stream's sink, reached by the callbacks. The blocks are handed to a CoreSimulator
+/// `ROCKRemoteProxy` and delivered back through `ROCKInvocation`/XPC, which does NOT preserve a
+/// pointer captured in the block body — a captured `sink` field reads back null in the callback and
+/// segfaults. So the sink is reached through this process-global pointer instead, read from the
+/// callback's own address space. `Screen::open` runs once per (worker) process, so a single global is
+/// exactly right; it is set at registration and cleared on drop.
+static CURRENT_SINK: AtomicPtr<FrameSink> = AtomicPtr::new(ptr::null_mut());
+
+/// The active sink, or `None` if no stream is registered.
+fn current_sink() -> Option<&'static FrameSink> {
+    let ptr = CURRENT_SINK.load(Ordering::Acquire);
+    // SAFETY: when non-null, `ptr` is the boxed sink owned by the live `Screen` that set it; it is
+    // cleared to null in `Screen::drop` before the box is freed, so a non-null read is valid.
+    unsafe { ptr.as_ref() }
 }
 
 unsafe extern "C" {
@@ -59,24 +86,55 @@ unsafe extern "C" {
 
 const BLOCK_IS_GLOBAL: i32 = 1 << 28;
 const BLOCK_HAS_SIGNATURE: i32 = 1 << 30;
-/// `void (^)(void)`: void return (`v`), 8-byte frame, block self at offset 0 (`@?`).
-const BLOCK_SIGNATURE: &[u8] = b"v8@?0\0";
+/// `void (^)(void)` — the per-frame callback (we copy on the reader, so this is a no-op).
+const FRAME_SIGNATURE: &[u8] = b"v8@?0\0";
+/// `void (^)(IOSurface *unmasked, IOSurface *masked)` — the surfaces-changed callback.
+const SURFACES_SIGNATURE: &[u8] = b"v24@?0@8@16\0";
+/// `void (^)(id<SimScreenProperties>)` — the properties-changed callback (no-op).
+const PROPS_SIGNATURE: &[u8] = b"v16@?0@8\0";
 
-static CAPTURE_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
-    reserved: 0,
-    size: size_of::<CaptureBlock>() as c_ulong,
-    signature: BLOCK_SIGNATURE.as_ptr().cast::<i8>(),
-};
+static FRAME_DESCRIPTOR: BlockDescriptor = block_descriptor(FRAME_SIGNATURE);
+static SURFACES_DESCRIPTOR: BlockDescriptor = block_descriptor(SURFACES_SIGNATURE);
+static PROPS_DESCRIPTOR: BlockDescriptor = block_descriptor(PROPS_SIGNATURE);
 
-/// The callback: SimulatorKit signalled a frame, so grab the current largest surface into the sink.
-unsafe extern "C" fn capture_invoke(block: *mut CaptureBlock) {
-    // SAFETY: block is our own CaptureBlock; sink is a live FrameSink for the registration lifetime.
-    let sink = unsafe { &*(*block).sink };
-    sink.grab_latest();
+const fn block_descriptor(signature: &'static [u8]) -> BlockDescriptor {
+    BlockDescriptor {
+        reserved: 0,
+        size: size_of::<CallbackBlock>() as c_ulong,
+        signature: signature.as_ptr().cast::<i8>(),
+    }
 }
 
-/// A raw BGRA frame copied out of an `IOSurface`. Owned pixels, so it outlives the surface and can
-/// be encoded off the callback thread.
+/// Per-composited-frame callback: copy the current surface into an owned frame. Runs on
+/// CoreSimulator's serial delivery queue, synchronized with frame production, so the surface backing
+/// is valid here — it is NOT valid to retain and read later on another thread (recycled buffer). Only
+/// the memcpy happens here; the reader thread does the CoreGraphics/ImageIO encode.
+unsafe extern "C" fn frame_invoke(_block: *mut CallbackBlock) {
+    if let Some(sink) = current_sink() {
+        sink.grab_current();
+    }
+}
+
+/// Surfaces-changed callback: retain the delivered unmasked (full, bezel-free) surface as the current
+/// framebuffer; ignore the masked one (rounded-corner alpha we don't want). Also copies it once right
+/// away — the frame callback only fires on *new* composited frames, so a static screen (no motion
+/// after boot) would otherwise never yield a first frame.
+unsafe extern "C" fn surfaces_invoke(
+    _block: *mut CallbackBlock,
+    unmasked: *mut c_void,
+    _masked: *mut c_void,
+) {
+    if let Some(sink) = current_sink() {
+        sink.set_current(unmasked);
+        sink.grab_current();
+    }
+}
+
+/// Properties-changed callback: no-op.
+unsafe extern "C" fn props_invoke(_block: *mut CallbackBlock, _props: *mut c_void) {}
+
+/// A raw BGRA frame copied out of an `IOSurface`. Owned pixels, so it outlives the surface lock and
+/// can be encoded off the callback queue.
 struct RawFrame {
     width: usize,
     height: usize,
@@ -84,62 +142,69 @@ struct RawFrame {
     pixels: Vec<u8>,
 }
 
-/// Shared state between the framebuffer callbacks (SimulatorKit's queue thread) and the capture
-/// reader (the sidecar's request thread). The framebuffer surfaces are live, recycled buffers that
-/// must NOT be held past the callback — and the CoreGraphics/ImageIO JPEG encode intermittently
-/// aborts when run on the callback thread. So the callback does only the minimal safe work (lock →
-/// memcpy the pixels → unlock) and the reader thread encodes the owned copy, where it is stable.
-struct FrameSink {
-    descriptors: Vec<*mut AnyObject>,
-    /// Gate: callbacks can fire for one descriptor while `register` is still wiring the next, so
-    /// `grab_latest` must not touch a descriptor until every registration has completed. Set true
-    /// only after the registration loop finishes.
-    active: std::sync::atomic::AtomicBool,
-    latest: std::sync::Mutex<Option<std::sync::Arc<RawFrame>>>,
+/// A CFRetained `IOSurface`, released on drop. The surfaces callback delivers the surface borrowed
+/// (valid only for that call), so we retain it to hold across later frame callbacks — the way
+/// `SimDisplayView` retains the surface it renders each display frame. Its content updates in place.
+struct Held(*mut c_void);
+
+// SAFETY: a retained IOSurface is safe to reference until released; it is only locked/copied on the
+// serial delivery queue.
+unsafe impl Send for Held {}
+
+impl Held {
+    fn new(surface: *mut c_void) -> Held {
+        // SAFETY: surface is a live IOSurface (CFType) for the duration of the delivering callback;
+        // retain to hold it past that call.
+        unsafe { CFRetain(surface.cast_const()) };
+        Held(surface)
+    }
 }
 
-// SAFETY: `latest` is mutex-guarded; the descriptor pointers are only messaged (thread-safe reads).
+impl Drop for Held {
+    fn drop(&mut self) {
+        // SAFETY: balances the CFRetain in `new`.
+        unsafe { CFRelease(self.0.cast_const()) };
+    }
+}
+
+/// Shared state between the callbacks (CoreSimulator's serial delivery queue) and the capture reader
+/// (the sidecar's request thread). `current` is the retained live surface, swapped by the surfaces
+/// callback and copied by the frame callback — both on the same serial queue. `latest` is the owned
+/// copy the reader encodes.
+struct FrameSink {
+    current: Mutex<Option<Held>>,
+    latest: Mutex<Option<std::sync::Arc<RawFrame>>>,
+}
+
+// SAFETY: both fields are mutex-guarded; the surface is only locked/copied on the delivery queue.
 unsafe impl Send for FrameSink {}
 unsafe impl Sync for FrameSink {}
 
 impl FrameSink {
-    /// Pick the largest live surface across descriptors and copy its pixels into `latest`. Runs on
-    /// SimulatorKit's callback thread; only a lock + memcpy touch the surface.
-    fn grab_latest(&self) {
-        // Ignore callbacks that race the registration loop — a not-yet-registered descriptor aborts
-        // when messaged for its surface.
-        if !self.active.load(std::sync::atomic::Ordering::Acquire) {
+    /// Adopt a freshly delivered surface as current, retaining it and releasing the previous one.
+    fn set_current(&self, surface: *mut c_void) {
+        if surface.is_null() {
             return;
         }
-        let frame = objc2::rc::autoreleasepool(|_| {
-            let mut best: *mut c_void = ptr::null_mut();
-            let mut best_area = 0usize;
-            for &descriptor in &self.descriptors {
-                // SAFETY: framebufferSurface returns the current IOSurface (or nil).
-                let surface =
-                    unsafe { send_obj(descriptor, sel!(framebufferSurface)) }.cast::<c_void>();
-                if surface.is_null() {
-                    continue;
-                }
-                // SAFETY: surface is a live IOSurface.
-                let area = unsafe { IOSurfaceGetWidth(surface) * IOSurfaceGetHeight(surface) };
-                if area > best_area {
-                    best = surface;
-                    best_area = area;
-                }
-            }
-            if best.is_null() {
-                return None;
-            }
-            copy_surface(best)
-        });
+        *self.current.lock().expect("frame sink mutex poisoned") = Some(Held::new(surface));
+    }
+
+    /// Copy the current surface into `latest`. Called from the frame callback on the delivery queue,
+    /// where the retained surface's backing is live and coherent with the just-composited frame.
+    fn grab_current(&self) {
+        let frame = {
+            let guard = self.current.lock().expect("frame sink mutex poisoned");
+            let Some(held) = guard.as_ref() else {
+                return;
+            };
+            copy_surface(held.0)
+        };
         if let Some(frame) = frame {
             *self.latest.lock().expect("frame sink mutex poisoned") =
                 Some(std::sync::Arc::new(frame));
         }
     }
 
-    /// The most recent raw frame, or `None` if none has arrived.
     fn latest(&self) -> Option<std::sync::Arc<RawFrame>> {
         self.latest
             .lock()
@@ -151,6 +216,9 @@ impl FrameSink {
 /// Copy the pixels of a locked BGRA surface into an owned [`RawFrame`]. Minimal surface access: read
 /// dimensions, lock read-only, memcpy row by row (surfaces can be padded), unlock.
 fn copy_surface(surface: *mut c_void) -> Option<RawFrame> {
+    if surface.is_null() {
+        return None;
+    }
     // SAFETY: surface is a live IOSurface; read-only lock, bounded row copies, matching unlock.
     unsafe {
         const READ_ONLY: u32 = 1;
@@ -178,24 +246,25 @@ fn copy_surface(surface: *mut c_void) -> Option<RawFrame> {
     }
 }
 
-/// Build a leaked capturing block bound to `sink` for the registration callbacks.
-fn capture_block(sink: *const FrameSink) -> *mut c_void {
-    let block = Box::new(CaptureBlock {
+/// Build a leaked, captureless callback block with `invoke`/`descriptor`. It carries no context —
+/// the callbacks reach the sink through [`CURRENT_SINK`], since a captured pointer does not survive
+/// ROCK's XPC delivery.
+fn callback_block(invoke: *const c_void, descriptor: *const BlockDescriptor) -> *mut c_void {
+    let block = Box::new(CallbackBlock {
         isa: (&raw const _NSConcreteGlobalBlock).cast::<c_void>(),
         flags: BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
         reserved: 0,
-        invoke: capture_invoke,
-        descriptor: &raw const CAPTURE_DESCRIPTOR,
-        sink,
+        invoke,
+        descriptor,
     });
-    // Leak: SimulatorKit retains the block for the whole registration; the sink outlives it too.
+    // Leak: CoreSimulator retains the block for the whole registration.
     (Box::into_raw(block) as *mut c_void).cast()
 }
 
 // The framebuffer ports are CoreSimulator XPC proxies (`ROCKRemoteProxy`) that answer via
 // `forwardInvocation:` — the messaged selectors are not in their class method lists, so objc2's
 // `msg_send!` (which verifies against the method list) rejects them. Raw `objc_msgSend` uses the
-// runtime's real dispatch, which honors forwarding — the same path baguette's ObjC `perform:` takes.
+// runtime's real dispatch, which honors forwarding.
 unsafe extern "C" {
     fn objc_msgSend();
 }
@@ -303,6 +372,7 @@ unsafe extern "C" {
 // CoreFoundation (public framework).
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
+    fn CFRetain(cf: *const c_void) -> *const c_void;
     fn CFRelease(cf: *const c_void);
     fn CFDataCreateMutable(allocator: *const c_void, capacity: isize) -> *mut c_void;
     fn CFDataGetLength(data: *const c_void) -> isize;
@@ -325,6 +395,13 @@ unsafe extern "C" {
         key_callbacks: *const c_void,
         value_callbacks: *const c_void,
     ) -> *const c_void;
+    static kCFTypeDictionaryKeyCallBacks: c_void;
+    static kCFTypeDictionaryValueCallBacks: c_void;
+}
+
+// dispatch (public): a serial queue for CoreSimulator to deliver the screen callbacks on.
+unsafe extern "C" {
+    fn dispatch_queue_create(label: *const i8, attr: *const c_void) -> *mut c_void;
 }
 
 const KCG_ALPHA_PREMULTIPLIED_FIRST: u32 = 2;
@@ -332,28 +409,35 @@ const KCG_BYTE_ORDER_32_LITTLE: u32 = 2 << 12;
 const KCF_NUMBER_DOUBLE_TYPE: isize = 13;
 const KCF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
 
-/// The framebuffer of one booted device, held for a streaming session. Registration (which the
-/// leaked no-op block backs) makes CoreSimulator composite the framebuffer headlessly; the
-/// descriptor's `framebufferSurface` is then polled on demand under a per-capture autorelease pool.
-/// The registration UUID is retained to unregister on drop.
+/// How long [`Screen::open`] waits for the first surface to be delivered before giving up.
+const ACTIVATION_TIMEOUT_MS: u64 = 2000;
+
+/// The framebuffer of one booted device, held for a streaming session. Registration makes
+/// CoreSimulator composite the framebuffer headlessly and push the display surface into the sink; the
+/// reader copies that held surface on demand. The registration UUID is retained to unregister on drop.
 pub struct Screen {
-    /// Every `com.apple.framebuffer.display` descriptor, retained. A device exposes several (main
-    /// LCD plus secondary/overlay planes); the sink polls all and keeps the largest live surface.
+    /// Every `com.apple.framebuffer.display` descriptor we registered on, retained. A device exposes
+    /// several (main LCD plus secondary/overlay planes); we register on all and hold the surface each
+    /// delivers.
     descriptors: Vec<Retained<AnyObject>>,
     uuid: Retained<NSUUID>,
-    /// The callbacks stash the latest surface here; capture reads it. Boxed so the callback's
-    /// captured raw pointer stays valid, and dropped only after callbacks are unregistered.
+    /// The surfaces callback stashes the current surface here; the reader copies it. Boxed so the
+    /// callback's captured raw pointer stays valid, and dropped only after callbacks are unregistered.
     sink: Box<FrameSink>,
-    /// Held to keep the callback dispatch queue alive for the registration's lifetime.
-    _queue: dispatch2::DispatchRetained<DispatchQueue>,
+    /// The serial dispatch queue CoreSimulator delivers callbacks on; retained for the registration.
+    queue: *mut c_void,
 }
 
-// SAFETY: the descriptors are messaged read-only and the sink is internally synchronized.
+// SAFETY: the descriptors are messaged read-only, the sink is internally synchronized, and the queue
+// is only handed to CoreSimulator and released on drop.
 unsafe impl Send for Screen {}
 
 impl Drop for Screen {
     fn drop(&mut self) {
-        // Unregister first so no further callback can fire into the sink we are about to drop.
+        // Stop the callbacks from reaching the sink, then unregister. Cleared before the boxed sink is
+        // freed so an in-flight callback either sees the live sink or (after this) sees null.
+        CURRENT_SINK.store(ptr::null_mut(), Ordering::Release);
+        // Unregister so no further callback can fire.
         let uuid = Retained::as_ptr(&self.uuid).cast_mut().cast::<AnyObject>();
         for descriptor in &self.descriptors {
             let descriptor = Retained::as_ptr(descriptor).cast_mut();
@@ -364,19 +448,26 @@ impl Drop for Screen {
                 unsafe { f(descriptor, sel!(unregisterScreenCallbacksWithUUID:), uuid) };
             }
         }
+        if !self.queue.is_null() {
+            // SAFETY: the queue was created +1 by dispatch_queue_create and handed to CoreSimulator,
+            // which retained it for the registration we just tore down; release our reference.
+            unsafe { CFRelease(self.queue.cast_const()) };
+        }
     }
 }
 
 impl Screen {
-    /// Resolve the largest framebuffer descriptor for a booted device. `None` when the device has no
-    /// framebuffer (not booted) or the IO plumbing is unavailable.
+    /// Open the framebuffer of a booted device and start surface delivery. `None` when the device has
+    /// no framebuffer (not booted), the IO plumbing is unavailable, no descriptor supports the screen
+    /// callbacks, or no surface is delivered within the activation timeout (the caller degrades to
+    /// simctl).
     pub fn open(device: &SimDevice) -> Option<Screen> {
         // The framebuffer probe messages CoreSimulator XPC proxies whose forwarding autoreleases
         // reply objects; hold a pool for the whole probe, and retain the descriptors (they survive
         // the drain) before returning.
         objc2::rc::autoreleasepool(|_| {
             let io = io_client(device)?;
-            // Populate the port list lazily, as SimulatorKitScreen does.
+            // Populate the port list lazily.
             // SAFETY: io is a live SimDeviceIOClient that handles updateIOPorts (returns void).
             unsafe { send_obj(Retained::as_ptr(&io).cast_mut(), sel!(updateIOPorts)) };
             let ports = value_for_key(&io, "deviceIOPorts")?;
@@ -384,8 +475,6 @@ impl Screen {
             // SAFETY: deviceIOPorts is an NSArray.
             let count = unsafe { array_count(ports_ptr) };
             dbg_log!("open: {count} io ports");
-            // Collect every framebuffer.display descriptor: a device exposes several planes and only
-            // the active one(s) carry a live surface, so we register on all and pick the largest.
             let mut descriptors = Vec::new();
             for index in 0..count {
                 // SAFETY: index < count.
@@ -400,23 +489,38 @@ impl Screen {
             if descriptors.is_empty() {
                 return None;
             }
-            Some(register(descriptors))
+            let screen = register(descriptors)?;
+            // Wait for delivery to activate (the surfaces callback fires ~once at activation, and the
+            // proxy also exposes `framebufferSurface` once live). If neither yields a surface, the
+            // connection is dead/degraded — report None so the caller degrades to simctl.
+            if screen.await_first_surface() {
+                Some(screen)
+            } else {
+                dbg_log!("open: no surface within activation timeout");
+                None
+            }
         })
     }
 
-    /// The latest framebuffer frame encoded as JPEG at `quality` (0..1), or `None` if none has been
-    /// delivered yet. The callback copies raw pixels; this reader thread does the CoreGraphics/ImageIO
-    /// encode (stable off the callback thread).
-    pub fn capture_jpeg(&self, quality: f64) -> Option<Vec<u8>> {
-        // The first frame arrives asynchronously after registration; poll the sink briefly so the
-        // first read doesn't spuriously fail. Steady-state reads find a frame immediately.
-        for _ in 0..60 {
-            if let Some(frame) = self.sink.latest() {
-                return encode_bgra_jpeg(&frame, quality.clamp(0.1, 1.0));
+    /// Wait for the first frame to be copied out by the frame callback, up to
+    /// [`ACTIVATION_TIMEOUT_MS`]. A copied frame (not just a delivered surface pointer) proves the
+    /// whole delivery path is live.
+    fn await_first_surface(&self) -> bool {
+        for _ in 0..(ACTIVATION_TIMEOUT_MS / 10) {
+            if self.sink.latest().is_some() {
+                return true;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        None
+        false
+    }
+
+    /// The latest copied framebuffer encoded as JPEG at `quality` (0..1), or `None` if no frame has
+    /// been copied yet. The frame callback did the surface copy on the delivery queue; this reader
+    /// thread only encodes the owned pixels — the CoreSimulator proxy is never messaged on this path.
+    pub fn capture_jpeg(&self, quality: f64) -> Option<Vec<u8>> {
+        let frame = self.sink.latest()?;
+        encode_bgra_jpeg(&frame, quality.clamp(0.1, 1.0))
     }
 }
 
@@ -496,11 +600,12 @@ unsafe fn encode_cgimage_jpeg(image: *mut c_void, quality: f64) -> Option<Vec<u8
 }
 
 /// A one-entry `{ kCGImageDestinationLossyCompressionQuality: quality }` dictionary, or null on
-/// failure. Uses null CF callbacks — legal for a transient dict whose keys/values we release after.
+/// failure. Uses the standard CFType key/value callbacks so the dict properly retains its CF
+/// members — ImageIO deep-copies and validates the properties dict, which crashes on a dict built
+/// with null callbacks (its members are then treated as opaque, non-CF pointers).
 ///
 /// # Safety
-/// Caller releases the returned dictionary (which owns nothing under null callbacks) and must keep
-/// the quality value alive only until this returns.
+/// Caller releases the returned dictionary.
 unsafe fn quality_dictionary(quality: f64) -> *const c_void {
     unsafe {
         let number = CFNumberCreate(
@@ -518,31 +623,30 @@ unsafe fn quality_dictionary(quality: f64) -> *const c_void {
             keys.as_ptr(),
             values.as_ptr(),
             1,
-            ptr::null(),
-            ptr::null(),
+            (&raw const kCFTypeDictionaryKeyCallBacks).cast(),
+            (&raw const kCFTypeDictionaryValueCallBacks).cast(),
         );
+        // The dict retained the number under the CFType callbacks; drop our reference.
         CFRelease(number);
         dict
     }
 }
 
-/// Register frame/surfaces callbacks on every framebuffer descriptor so CoreSimulator composites and
-/// delivers frames (no Simulator.app viewer needed); each delivery stashes the largest live surface
-/// into the shared sink. Returns the assembled `Screen`.
-fn register(descriptors: Vec<Retained<AnyObject>>) -> Screen {
+/// Register the three screen callbacks on every framebuffer descriptor so CoreSimulator composites
+/// and delivers the display surface (no Simulator.app viewer needed). Returns the assembled `Screen`,
+/// or `None` if no descriptor supports the registration.
+fn register(descriptors: Vec<Retained<AnyObject>>) -> Option<Screen> {
     let uuid = NSUUID::new();
-    let queue = DispatchQueue::new("ai.linkcode.sim.framebuffer", None);
-    // The sink is boxed and its pointer captured by the callback blocks; it must not move and must
-    // outlive the registration (Screen drops it only after unregistering).
+    let label = c"ai.linkcode.sim.framebuffer";
+    // SAFETY: dispatch_queue_create with a static label and null (serial) attr returns a +1 queue.
+    let queue = unsafe { dispatch_queue_create(label.as_ptr(), ptr::null()) };
+    // The sink is boxed (stable address) and owned by the Screen; the callbacks reach it through
+    // CURRENT_SINK. Publish it before registering so an immediately-delivered callback finds it.
     let sink = Box::new(FrameSink {
-        descriptors: descriptors
-            .iter()
-            .map(|d| Retained::as_ptr(d).cast_mut())
-            .collect(),
-        active: std::sync::atomic::AtomicBool::new(false),
-        latest: std::sync::Mutex::new(None),
+        current: Mutex::new(None),
+        latest: Mutex::new(None),
     });
-    let sink_ptr: *const FrameSink = &*sink;
+    CURRENT_SINK.store((&*sink as *const FrameSink).cast_mut(), Ordering::Release);
     let register_sel = sel!(registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:);
     let mut registered = 0;
     for descriptor in &descriptors {
@@ -550,13 +654,14 @@ fn register(descriptors: Vec<Retained<AnyObject>>) -> Screen {
         if !unsafe { responds_to(descriptor_ptr, register_sel) } {
             continue;
         }
-        // A fresh capturing block per callback slot, all pointing at the one sink.
-        let frame = capture_block(sink_ptr);
-        let surfaces = capture_block(sink_ptr);
-        let props = capture_block(sink_ptr);
-        // SAFETY: the 5-object-argument registration selector. UUID stays alive in the Screen; the
-        // dispatch queue is retained by CoreSimulator for the registration; the blocks are leaked
-        // and point at the boxed sink which outlives the registration.
+        let frame = callback_block(frame_invoke as *const c_void, &raw const FRAME_DESCRIPTOR);
+        let surfaces = callback_block(
+            surfaces_invoke as *const c_void,
+            &raw const SURFACES_DESCRIPTOR,
+        );
+        let props = callback_block(props_invoke as *const c_void, &raw const PROPS_DESCRIPTOR);
+        // SAFETY: the 5-object-argument registration selector. UUID + queue stay alive in the Screen;
+        // the blocks are leaked captureless globals; the sink is reached via CURRENT_SINK.
         unsafe {
             let f: unsafe extern "C" fn(
                 *mut AnyObject,
@@ -571,9 +676,7 @@ fn register(descriptors: Vec<Retained<AnyObject>>) -> Screen {
                 descriptor_ptr,
                 register_sel,
                 Retained::as_ptr(&uuid).cast_mut().cast::<AnyObject>(),
-                dispatch2::DispatchRetained::as_ptr(&queue)
-                    .as_ptr()
-                    .cast::<c_void>(),
+                queue,
                 frame,
                 surfaces,
                 props,
@@ -581,16 +684,21 @@ fn register(descriptors: Vec<Retained<AnyObject>>) -> Screen {
         }
         registered += 1;
     }
-    // All descriptors registered — callbacks may now safely touch any of them.
-    sink.active
-        .store(true, std::sync::atomic::Ordering::Release);
     dbg_log!("registered {registered} framebuffer descriptors");
-    Screen {
+    if registered == 0 {
+        CURRENT_SINK.store(ptr::null_mut(), Ordering::Release);
+        if !queue.is_null() {
+            // SAFETY: nothing adopted the queue; release the +1 from dispatch_queue_create.
+            unsafe { CFRelease(queue.cast_const()) };
+        }
+        return None;
+    }
+    Some(Screen {
         descriptors,
         uuid,
         sink,
-        _queue: queue,
-    }
+        queue,
+    })
 }
 
 /// Probe one IO port: if it is the `com.apple.framebuffer.display` port, retain and return its

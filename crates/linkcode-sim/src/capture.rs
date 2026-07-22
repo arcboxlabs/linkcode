@@ -1,15 +1,16 @@
 //! Crash-isolated framebuffer streaming.
 //!
-//! The private-framework framebuffer path (see [`crate::private::screen`]) intermittently aborts
-//! hard inside CoreSimulator's XPC-proxy machinery ("Attempt to use unknown class") — a
-//! not-in-process-catchable `SIGABRT`. Rather than let that take down the sidecar (which also serves
-//! the simctl lifecycle RPCs), the capture runs in a disposable **worker subprocess**: the sidecar
-//! spawns `linkcode-sim capture-worker <udid> <quality> <fps>`, reads length-prefixed JPEG frames
-//! from its stdout, and respawns it with backoff if it dies. Input injection and lifecycle RPCs stay
-//! in the parent and are never affected by a capture crash.
+//! The steady-state framebuffer path (see [`crate::private::screen`]) is stable, but the private
+//! frameworks can still abort hard in ways that are not catchable in-process — most of all a cold
+//! CoreSimulator XPC connection racing class registration ("Attempt to use unknown class", a
+//! `SIGABRT`). Rather than let that take down the sidecar (which also serves the simctl lifecycle
+//! RPCs), the capture runs in a disposable **worker subprocess**: the sidecar spawns
+//! `linkcode-sim capture-worker <udid> <quality> <fps>`, reads length-prefixed JPEG frames from its
+//! stdout, and respawns it with backoff if it dies. Input injection and lifecycle RPCs stay in the
+//! parent and are never affected by a capture crash.
 //!
 //! This is the standard isolation pattern for fragile native code (GPU/plugin sandboxes): contain
-//! the crash, supervise, recover.
+//! the crash, supervise, recover — defense in depth around a path that is now stable in steady state.
 
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, Stdio};
