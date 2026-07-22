@@ -178,7 +178,8 @@ export function NewSessionSurface({
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const catalog = agentCatalogs?.[provider];
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOption = dynamicModels?.find((option) => option.id === displayedModel);
+  const modelOptionById = new Map(dynamicModels?.map((option) => [option.id, option] as const));
+  const modelOption = displayedModel === null ? undefined : modelOptionById.get(displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;

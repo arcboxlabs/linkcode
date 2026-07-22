@@ -18,6 +18,8 @@ const INTERNET_SETTINGS = String.raw`HKEY_CURRENT_USER\Software\Microsoft\Window
 /** A `reg.exe query` value row: 4-space indent, then name / REG_* type / data, 4-space separated. */
 const VALUE_ROW = /^ {4}(.+?) {4}(REG_[A-Z_]+) {4}(.*)$/;
 
+const NEWLINE = /\r?\n/;
+
 export function getWin32SystemProxy(): SystemProxyDetection | undefined {
   const regExe = join(process.env.SystemRoot ?? String.raw`C:\Windows`, 'System32', 'reg.exe');
   const output = execFileSync(regExe, ['query', INTERNET_SETTINGS], {
@@ -33,7 +35,7 @@ export function getWin32SystemProxy(): SystemProxyDetection | undefined {
  */
 export function parseRegQueryOutput(output: string): Map<string, string | number> {
   const values = new Map<string, string | number>();
-  for (const line of output.split(/\r?\n/)) {
+  for (const line of output.split(NEWLINE)) {
     const row = VALUE_ROW.exec(line);
     if (!row) continue;
     const [, name, type, data] = row;

@@ -5,7 +5,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Markdown } from '../markdown';
 
 // Fences render through ArtifactFenceRenderer, which resolves failure notes via use-intl.
-vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
+// A function declaration: its hoisting is what lets the hoisted vi.mock factory reference it.
+function identityTranslator(key: string): string {
+  return key;
+}
+vi.mock('use-intl', () => ({ useTranslations: () => identityTranslator }));
 
 afterEach(cleanup);
 
@@ -137,11 +141,11 @@ it('scopes footnote targets to their own Markdown instance', () => {
 
   const definitions = container.querySelectorAll<HTMLElement>('li[id$="user-content-fn-1"]');
   expect(definitions).toHaveLength(2);
-  expect(definitions[0]?.id).not.toBe(definitions[1]?.id);
-  if (!definitions[0] || !definitions[1]) return;
+  const [firstDefinition, secondDefinition] = definitions;
+  expect(firstDefinition.id).not.toBe(secondDefinition.id);
 
-  vi.spyOn(definitions[0], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 111 }));
-  vi.spyOn(definitions[1], 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 333 }));
+  vi.spyOn(firstDefinition, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 111 }));
+  vi.spyOn(secondDefinition, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ y: 333 }));
   const references = getAllByRole('link', { name: '1' });
   expect(references).toHaveLength(2);
   if (!references[1]) return;

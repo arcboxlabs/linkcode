@@ -90,7 +90,7 @@ function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T
     detail = result.error;
   } else {
     try {
-      detail = JSON.stringify(result.error) ?? 'unknown error';
+      detail = JSON.stringify(result.error);
     } catch {
       detail = extractErrorMessage(result.error) ?? 'unknown error';
     }
@@ -188,7 +188,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const sessionID = this.resumeFrom;
       try {
         const got = await this.withHistoryClient((client) => client.session.get({ sessionID }));
-        if (got.error === undefined && got.data?.model) {
+        if (got.error === undefined && got.data.model) {
           opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
         }
       } catch {
@@ -233,7 +233,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // Adopt the existing provider session and announce its id right away — a resumed session's
       // transcript is real, so the seed read is safe immediately (unlike the fresh path below).
       const got = await this.client.session.get({ sessionID: this.resumeFrom });
-      if (got.error !== undefined || !got.data) {
+      if (got.error !== undefined) {
         throw new Error(`opencode: history '${this.resumeFrom}' was not found`);
       }
       this.sessionId = got.data.id;
@@ -564,7 +564,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         client.session.get({ sessionID: opts.historyId }),
         client.session.messages({ sessionID: opts.historyId }),
       ]);
-      if (got.error !== undefined || !got.data) {
+      if (got.error !== undefined) {
         throw new Error(`opencode: history '${opts.historyId}' was not found`);
       }
       okOrThrow(messages, 'opencode: session.messages');
@@ -686,8 +686,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       try {
         // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
         // instance's bus and silently misses every session event (verified live on 1.17.11).
+        // eslint-disable-next-line no-await-in-loop -- each pass replaces the one live subscription; sequential by design
         const sub = await this.client.event.subscribe({ directory: this.directory });
+        // eslint-disable-next-line no-await-in-loop -- the await IS the next-event signal
         for await (const ev of sub.stream) {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- onStop flips `stopped` across the awaits
           if (this.stopped) break;
           // Every successful subscription starts with this synthetic greeting, including a broken
           // stream that immediately closes. Only a real bus event proves the replacement is healthy.
@@ -697,6 +700,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } catch (err) {
         caught = err;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- onStop flips `stopped` across the awaits
       if (this.stopped) return;
       const fatal = !this.cancelling && (caught !== undefined || this.turnActive);
       if (fatal) {
@@ -716,6 +720,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // receiving lifecycle events immediately. Back off only after an empty replacement also
       // closes, preventing a hot loop without adding a gap after a healthy turn's stream.
       emptyCloses = sawProgress ? 0 : emptyCloses + 1;
+      // eslint-disable-next-line no-await-in-loop -- backoff before the replacement subscribe
       if (emptyCloses > 0) await wait(EVENT_RESUBSCRIBE_DELAY_MS);
     }
   }
@@ -813,6 +818,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // Normally the previous turn's straggler; but if the server never emits `session.status`
         // (busy-precedes-idle is only live-verified on 1.17.11), this WAS the real settle and the
         // turn will hang at `running` — leave a trace so a stuck turn is attributable.
+        // eslint-disable-next-line no-console -- deliberate daemon-log trace, not a session event
         console.warn(
           'opencode: absorbed a session.idle that preceded the busy acknowledgement (straggler, or a server that never emits session.status)',
         );

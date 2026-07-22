@@ -707,30 +707,30 @@ describe('OpenCodeAdapter permission round-trip', () => {
   });
 });
 
-describe('OpenCodeAdapter question round-trip', () => {
-  function pushQuestionAsked(): void {
-    client.stream.push({
-      id: 'e-question',
-      type: 'question.asked',
-      properties: {
-        id: 'que-1',
-        sessionID: 'sess-1',
-        questions: [
-          {
-            question: 'Proceed?',
-            header: 'Proceed',
-            options: [
-              { label: 'Yes', description: 'Go ahead.' },
-              { label: 'No', description: 'Stop here.' },
-            ],
-            multiple: false,
-          },
-        ],
-        tool: { messageID: 'msg-1', callID: 'call-1' },
-      },
-    });
-  }
+function pushQuestionAsked(): void {
+  client.stream.push({
+    id: 'e-question',
+    type: 'question.asked',
+    properties: {
+      id: 'que-1',
+      sessionID: 'sess-1',
+      questions: [
+        {
+          question: 'Proceed?',
+          header: 'Proceed',
+          options: [
+            { label: 'Yes', description: 'Go ahead.' },
+            { label: 'No', description: 'Stop here.' },
+          ],
+          multiple: false,
+        },
+      ],
+      tool: { messageID: 'msg-1', callID: 'call-1' },
+    },
+  });
+}
 
+describe('OpenCodeAdapter question round-trip', () => {
   it('surfaces question.asked as a question-request and replies with the selected labels', async () => {
     const { adapter, events } = await makeAdapter();
     pushQuestionAsked();
@@ -777,6 +777,18 @@ describe('OpenCodeAdapter question round-trip', () => {
   });
 });
 
+/** A non-abort `session.error` as the server emits it mid-turn AND re-fires post-settle. */
+function pushUnknownSessionError(): void {
+  client.stream.push({
+    id: 'e-err',
+    type: 'session.error',
+    properties: {
+      sessionID: 'sess-1',
+      error: { name: 'UnknownError', data: { message: 'model not found' } },
+    },
+  });
+}
+
 describe('OpenCodeAdapter session.error and turn settle', () => {
   it('maps ProviderAuthError to a non-recoverable authentication_failed error, and the idle settle skips end_turn', async () => {
     const { adapter, events } = await makeAdapter();
@@ -813,24 +825,14 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     events.length = 0;
     pushBusy();
 
-    const push = () => {
-      client.stream.push({
-        id: 'e-err',
-        type: 'session.error',
-        properties: {
-          sessionID: 'sess-1',
-          error: { name: 'UnknownError', data: { message: 'model not found' } },
-        },
-      });
-    };
-    push();
+    pushUnknownSessionError();
     pushIdle();
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
     });
     events.length = 0;
 
-    push();
+    pushUnknownSessionError();
     await drained();
     expect(events).toHaveLength(0);
   });
@@ -933,21 +935,10 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it("drops the previous turn's re-fired session.error instead of failing the next un-started turn", async () => {
     const { adapter, events } = await makeAdapter();
 
-    const pushError = () => {
-      client.stream.push({
-        id: 'e-err',
-        type: 'session.error',
-        properties: {
-          sessionID: 'sess-1',
-          error: { name: 'UnknownError', data: { message: 'model not found' } },
-        },
-      });
-    };
-
     // Turn 1 fails and settles.
     await adapter.send({ type: 'prompt', content: [] });
     pushBusy();
-    pushError();
+    pushUnknownSessionError();
     pushIdle();
     await vi.waitFor(() => {
       expect(errors(events)).toHaveLength(1);
@@ -956,7 +947,7 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     // Turn 2 dispatched; turn 1's stale re-fire lands before turn 2's busy acknowledgement.
     await adapter.send({ type: 'prompt', content: [] });
     events.length = 0;
-    pushError();
+    pushUnknownSessionError();
     pushBusy();
     pushIdle();
     await vi.waitFor(() => {
@@ -1372,6 +1363,33 @@ describe('OpenCodeAdapter server spawn retry', () => {
   });
 });
 
+/** Seed the agent catalog the way a real `app.agents` responds: primaries, an `all`-mode
+ * agent, plus the two kinds that must be filtered out (hidden, subagent). */
+function seedAgents(): void {
+  sdkMock.createOpencode = () => {
+    client = new FakeClient();
+    client.app.agents.mockReturnValue({
+      data: [
+        { name: 'build', mode: 'primary', description: 'Default implementation agent' },
+        { name: 'plan', mode: 'primary' },
+        { name: 'helper', mode: 'all' },
+        { name: 'stealth', mode: 'primary', hidden: true },
+        { name: 'reviewer', mode: 'subagent' },
+      ],
+    });
+    return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+  };
+}
+
+function policyUpdates(
+  events: AgentEvent[],
+): Array<Extract<AgentEvent, { type: 'approval-policy-update' }>> {
+  return events.filter(
+    (e): e is Extract<AgentEvent, { type: 'approval-policy-update' }> =>
+      e.type === 'approval-policy-update',
+  );
+}
+
 describe('OpenCodeAdapter control plane (CODE-224)', () => {
   afterEach(() => {
     // Restore the default fresh-client factory (same discipline as the command-catalog block).
@@ -1380,33 +1398,6 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
       return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
     };
   });
-
-  /** Seed the agent catalog the way a real `app.agents` responds: primaries, an `all`-mode
-   * agent, plus the two kinds that must be filtered out (hidden, subagent). */
-  function seedAgents(): void {
-    sdkMock.createOpencode = () => {
-      client = new FakeClient();
-      client.app.agents.mockReturnValue({
-        data: [
-          { name: 'build', mode: 'primary', description: 'Default implementation agent' },
-          { name: 'plan', mode: 'primary' },
-          { name: 'helper', mode: 'all' },
-          { name: 'stealth', mode: 'primary', hidden: true },
-          { name: 'reviewer', mode: 'subagent' },
-        ],
-      });
-      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
-    };
-  }
-
-  function policyUpdates(
-    events: AgentEvent[],
-  ): Array<Extract<AgentEvent, { type: 'approval-policy-update' }>> {
-    return events.filter(
-      (e): e is Extract<AgentEvent, { type: 'approval-policy-update' }> =>
-        e.type === 'approval-policy-update',
-    );
-  }
 
   it('advertises selectable agents as the approval-policy axis at start', async () => {
     seedAgents();
