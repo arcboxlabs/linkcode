@@ -13,6 +13,15 @@ type AnsiComponent = typeof AnsiImport;
 const ansiModule = AnsiImport as AnsiComponent | { default: AnsiComponent };
 const Ansi = typeof ansiModule === 'function' ? ansiModule : ansiModule.default;
 
+/** Drops blank tail lines only — trailing spaces on the last content line stay (prompt
+ * padding, ANSI-colored blocks). A scan, not a regex: output is unbounded input and
+ * `q+$`-style patterns backtrack polynomially on it. */
+function trimTrailingNewlines(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === '\n' || text[end - 1] === '\r')) end -= 1;
+  return text.slice(0, end);
+}
+
 export interface TerminalProps extends React.ComponentProps<typeof Frame> {
   title?: string;
   output?: string;
@@ -80,7 +89,7 @@ export function TerminalContent({
         {typeof children === 'string' ? (
           <Ansi useClasses linkify={false}>
             {/* PTY buffers and stdout end in newlines; blank tail lines read as dead space. */}
-            {children.trimEnd()}
+            {trimTrailingNewlines(children)}
           </Ansi>
         ) : (
           children
