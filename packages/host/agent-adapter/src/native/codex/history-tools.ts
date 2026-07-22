@@ -1,5 +1,4 @@
 import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
-import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { isRecord, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
 import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
@@ -217,24 +216,28 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
   const content: ToolCallContent[] = [];
   const locations: ToolCallLocation[] = [];
   let updatePath: string | null = null;
+  let oldPath: string | null = null;
+  let change: 'modify' | 'add' | 'delete' | 'move' = 'modify';
   let oldLines: string[] | null = null;
   let newLines: string[] | null = null;
   let addLines: string[] | null = null;
 
   const flush = (): void => {
     if (addLines !== null && updatePath !== null) {
-      content.push({ type: 'diff', path: updatePath, newText: addLines.join('\n') });
+      content.push({ type: 'diff', change, path: updatePath, newText: addLines.join('\n') });
     } else if (
       updatePath !== null &&
       oldLines !== null &&
       newLines !== null &&
-      (oldLines.length > 0 || newLines.length > 0)
+      (oldLines.length > 0 || newLines.length > 0 || change === 'move')
     ) {
       content.push({
         type: 'diff',
+        change,
         path: updatePath,
+        oldPath: oldPath ?? undefined,
         oldText: oldLines.length > 0 ? oldLines.join('\n') : undefined,
-        newText: newLines.join('\n'),
+        newText: newLines.length > 0 ? newLines.join('\n') : undefined,
       });
     }
     oldLines = null;
@@ -249,6 +252,8 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
     if (line.startsWith('*** Update File: ')) {
       flush();
       updatePath = line.slice('*** Update File: '.length);
+      oldPath = null;
+      change = 'modify';
       locations.push({ path: updatePath });
       oldLines = [];
       newLines = [];
@@ -257,16 +262,20 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
     if (line.startsWith('*** Add File: ')) {
       flush();
       updatePath = line.slice('*** Add File: '.length);
+      oldPath = null;
+      change = 'add';
       locations.push({ path: updatePath });
       addLines = [];
       continue;
     }
     if (line.startsWith('*** Delete File: ')) {
       flush();
+      updatePath = line.slice('*** Delete File: '.length);
+      oldPath = null;
+      change = 'delete';
+      locations.push({ path: updatePath });
+      content.push({ type: 'diff', change, path: updatePath });
       updatePath = null;
-      const path = line.slice('*** Delete File: '.length);
-      locations.push({ path });
-      appendArrayInPlace(content, textContent(`Deleted ${path}`));
       continue;
     }
     if (line.startsWith('*** Move to: ')) {
@@ -275,14 +284,16 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
       if (updatePath !== null && locations.at(-1)?.path === updatePath) {
         locations[locations.length - 1] = { path: dest };
       }
+      oldPath = updatePath;
       updatePath = dest;
+      change = 'move';
       continue;
     }
     if (line.startsWith('*** ')) continue; // Begin/End Patch, End of File markers
     if (line.startsWith('@@')) {
       // Hunk boundary within the current update file.
       if (updatePath !== null && addLines === null) {
-        flush();
+        if ((oldLines?.length ?? 0) > 0 || (newLines?.length ?? 0) > 0) flush();
         // flush() cleared the file cursor's buffers, not the file itself.
         oldLines = [];
         newLines = [];
