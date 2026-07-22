@@ -50,6 +50,8 @@ function coveredBySeed(
       return seedMessageIds.has(event.messageId);
     case 'tool-call':
       return seedToolIds.has(event.toolCall.toolCallId);
+    case 'tool-call-content-chunk':
+      return seedToolIds.has(event.toolCallId);
     case 'user-message':
       // No reliable cross-source id; providers flush the prompt row at accept, and the
       // fresh-session race is handled by the adapters' session-ref deferral.
@@ -82,10 +84,19 @@ export function createConversationStore(
   const seedToolIds = new Set<string>();
   if (seed) {
     for (const { event } of seed.events) {
-      if (event.type === 'agent-message-chunk' || event.type === 'agent-thought-chunk') {
-        seedMessageIds.add(event.messageId);
-      } else if (event.type === 'tool-call') {
-        seedToolIds.add(event.toolCall.toolCallId);
+      switch (event.type) {
+        case 'agent-message-chunk':
+        case 'agent-thought-chunk':
+          seedMessageIds.add(event.messageId);
+          break;
+        case 'tool-call':
+          seedToolIds.add(event.toolCall.toolCallId);
+          break;
+        case 'tool-call-content-chunk':
+          seedToolIds.add(event.toolCallId);
+          break;
+        default:
+          break;
       }
     }
   }

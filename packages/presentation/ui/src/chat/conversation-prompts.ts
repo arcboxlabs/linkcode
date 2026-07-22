@@ -94,7 +94,7 @@ export function declinedToolCall(update: ToolCallUpdate): ToolCall {
     kind: update.kind ?? 'other',
     status: 'failed',
     content: update.content ?? [],
-    locations: update.locations,
+    locations: update.locations ?? undefined,
     rawInput: update.rawInput,
     rawOutput: update.rawOutput,
   };

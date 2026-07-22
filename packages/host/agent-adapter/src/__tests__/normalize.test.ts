@@ -431,6 +431,11 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
       diff,
       { type: 'content', content: { type: 'text', text: 'updated' } },
     ]);
+    expect(seen).toContainEqual({
+      type: 'tool-call-content-chunk',
+      toolCallId: 't1',
+      content: { type: 'content', content: { type: 'text', text: 'updated' } },
+    });
   });
 
   it('projects the live tool_use_result envelope onto the settle rawOutput', () => {
@@ -608,6 +613,9 @@ class FakeCodexServer {
   completeTurn(id: string): void {
     this.opts.onNotification('turn/completed', { turn: { id, status: 'completed' } });
   }
+  notify(method: string, params: Record<string, unknown>): void {
+    this.opts.onNotification(method, params);
+  }
   setRequestHandler(): void {
     // Approvals are not exercised here.
   }
@@ -704,6 +712,47 @@ describe('CodexAdapter image prompts', () => {
 
     expect(adapter.turnStarts()[0].input).toEqual([
       { type: 'text', text: 'hello\nworld', text_elements: [] },
+    ]);
+  });
+});
+
+describe('CodexAdapter tool content', () => {
+  it('appends completed command output before emitting the terminal snapshot', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'codex', cwd: '/repo' });
+    const server = adapter.fakeServers[0];
+
+    server.notify('item/started', {
+      item: { type: 'commandExecution', id: 'cmd-1', command: 'echo hi', status: 'inProgress' },
+    });
+    server.notify('item/completed', {
+      item: {
+        type: 'commandExecution',
+        id: 'cmd-1',
+        command: 'echo hi',
+        status: 'completed',
+        aggregatedOutput: 'hi\n',
+        exitCode: 0,
+      },
+    });
+
+    expect(events.filter((event) => event.type.startsWith('tool-call'))).toEqual([
+      expect.objectContaining({ type: 'tool-call' }),
+      {
+        type: 'tool-call-content-chunk',
+        toolCallId: 'cmd-1',
+        content: { type: 'content', content: { type: 'text', text: 'hi\n' } },
+      },
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCall: expect.objectContaining({
+          toolCallId: 'cmd-1',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
+        }),
+      }),
     ]);
   });
 });

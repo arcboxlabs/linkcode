@@ -987,8 +987,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       case 'tool': {
         this.toolPartIdByCallId.set(part.callID, part.id);
-        // Same part→snapshot mapping history replay uses, so live and cold cards converge by id.
-        this.emitTool(toolCallFromPart(part));
+        // History emits one full snapshot. Live terminal output appends separately, so repeated
+        // cumulative part updates do not retransmit an ever-growing content array.
+        const toolCall = toolCallFromPart(part);
+        if (toolCall.status === 'completed' || toolCall.status === 'failed') {
+          for (const content of toolCall.content) this.appendToolContent(part.id, content);
+          this.emitTool({ ...toolCall, content: undefined });
+        } else {
+          this.emitTool(toolCall);
+        }
 
         break;
       }

@@ -187,11 +187,16 @@ describe('buildConversation', () => {
     }
   });
 
-  it('replaces a tool call by id with each full snapshot', () => {
+  it('appends tool content chunks until the next full snapshot replaces them', () => {
     const c = buildConversation([
       {
         type: 'tool-call',
         toolCall: { toolCallId: 't1', title: 'Edit', kind: 'edit', status: 'pending', content: [] },
+      },
+      {
+        type: 'tool-call-content-chunk',
+        toolCallId: 't1',
+        content: { type: 'content', content: { type: 'text', text: 'superseded' } },
       },
       {
         type: 'tool-call',
@@ -200,27 +205,26 @@ describe('buildConversation', () => {
           title: 'Edit',
           kind: 'edit',
           status: 'in_progress',
-          content: [],
+          content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
         },
       },
       {
-        type: 'tool-call',
-        toolCall: {
-          toolCallId: 't1',
-          title: 'Edit',
-          kind: 'edit',
-          status: 'completed',
-          content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
-        },
+        type: 'tool-call-content-chunk',
+        toolCallId: 't1',
+        content: { type: 'content', content: { type: 'text', text: 'updated' } },
       },
     ]);
     expect(c.items).toHaveLength(1);
     const item = c.items[0];
     expect(item.kind).toBe('tool');
     if (item.kind === 'tool') {
-      expect(item.toolCall.status).toBe('completed');
+      expect(item.toolCall.status).toBe('in_progress');
       expect(item.toolCall.title).toBe('Edit');
       expect(toolCallDiffs(item.toolCall)).toHaveLength(1);
+      expect(item.toolCall.content).toEqual([
+        { type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' },
+        { type: 'content', content: { type: 'text', text: 'updated' } },
+      ]);
     }
   });
 

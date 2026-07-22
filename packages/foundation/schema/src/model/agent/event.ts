@@ -11,7 +11,7 @@ import {
 import { QuestionOutcomeSchema, QuestionRequestSchema } from '../question';
 import { ApprovalPolicyStateSchema, SessionModeIdSchema } from '../session/control';
 import { SessionStatusSchema, StopReasonSchema } from '../session/lifecycle';
-import { ToolCallSchema } from '../tool-call';
+import { ToolCallContentSchema, ToolCallSchema } from '../tool-call';
 import { TokenUsageSchema, UsageReportSchema } from '../usage';
 import {
   AgentCapabilitiesSchema,
@@ -58,8 +58,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     content: ContentBlockSchema,
   }),
 
-  // Tools: one event per state change, each carrying the full current ToolCall snapshot.
+  // Tools: state patches carry a full snapshot; content chunks append one item without resending
+  // the accumulated array. A later full snapshot remains authoritative and replaces by id.
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
+  z.object({
+    type: z.literal('tool-call-content-chunk'),
+    toolCallId: z.string().min(1),
+    content: ToolCallContentSchema,
+  }),
 
   /** Emitted at the compaction boundary and again once the swapped-in summary text is learned.
    * Consumers merge events by `compactionId` (the provider's own boundary id), so partial emits,
