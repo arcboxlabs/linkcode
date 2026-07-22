@@ -10,10 +10,12 @@ mod device;
 mod framework;
 mod input;
 mod screen;
+mod vt;
 
 pub use device::SimDevice;
 pub use input::{Button, Input};
 pub use screen::{Screen, bench_encode};
+pub use vt::VtEncoder;
 
 /// Whether this host can drive simulators interactively (private frameworks resolved).
 pub fn interactive_available() -> bool {

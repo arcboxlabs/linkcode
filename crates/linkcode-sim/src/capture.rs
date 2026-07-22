@@ -12,15 +12,25 @@
 //! This is the standard isolation pattern for fragile native code (GPU/plugin sandboxes): contain
 //! the crash, supervise, recover — defense in depth around a path that is now stable in steady state.
 
+use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// One framebuffer JPEG frame.
+use crate::rpc::StreamCodec;
+
+/// One encoded frame payload (JPEG image or H.264 access unit).
 pub type Frame = Arc<Vec<u8>>;
+
+/// One H.264 access unit in delivery order. Unlike JPEG frames, deltas must not be dropped
+/// individually — a gap desyncs the decoder until the next keyframe.
+pub struct EncodedUnit {
+    pub data: Frame,
+    pub key: bool,
+}
 
 /// A drift-free, precise frame pacer (macOS). It advances an absolute deadline by a fixed interval
 /// each tick and waits to it with `mach_wait_until`, whose accuracy is well under a millisecond.
@@ -115,14 +125,76 @@ const MAX_FAST_CRASHES: u32 = 6;
 pub struct StreamParams {
     pub fps: u32,
     pub quality: f64,
-    /// Downscale factor applied before JPEG encode (0..1; 1.0 = native resolution).
+    /// Downscale factor applied before JPEG encode (0..1; 1.0 = native resolution). H.264 always
+    /// encodes at native resolution — bitrate, not resolution, carries its bandwidth budget.
     pub scale: f64,
+    pub codec: StreamCodec,
 }
 
-/// A supervised framebuffer stream for one device. Holds the latest delivered frame; the worker
-/// subprocess is spawned, read, and respawned by a background manager thread.
+/// Bounded H.264 delivery queue. On overflow (a stalled consumer) the whole queue is dropped and
+/// delivery resumes at the next keyframe — the only safe resync point.
+struct EncodedQueue {
+    state: Mutex<QueueState>,
+    ready: Condvar,
+}
+
+struct QueueState {
+    units: VecDeque<EncodedUnit>,
+    need_key: bool,
+}
+
+/// ~4s at 60 fps before the overflow resync kicks in.
+const MAX_QUEUED_UNITS: usize = 240;
+
+impl EncodedQueue {
+    fn new() -> EncodedQueue {
+        EncodedQueue {
+            state: Mutex::new(QueueState {
+                units: VecDeque::new(),
+                need_key: false,
+            }),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn push(&self, data: Vec<u8>, key: bool) {
+        let mut state = self.state.lock().expect("encoded queue poisoned");
+        if state.need_key {
+            if !key {
+                return;
+            }
+            state.need_key = false;
+        }
+        if state.units.len() >= MAX_QUEUED_UNITS {
+            state.units.clear();
+            if !key {
+                state.need_key = true;
+                return;
+            }
+        }
+        state.units.push_back(EncodedUnit {
+            data: Arc::new(data),
+            key,
+        });
+        self.ready.notify_one();
+    }
+
+    fn pop(&self, timeout: Duration) -> Option<EncodedUnit> {
+        let state = self.state.lock().expect("encoded queue poisoned");
+        let (mut state, _) = self
+            .ready
+            .wait_timeout_while(state, timeout, |state| state.units.is_empty())
+            .expect("encoded queue poisoned");
+        state.units.pop_front()
+    }
+}
+
+/// A supervised framebuffer stream for one device. JPEG mode holds the latest delivered frame
+/// (latest-wins); H.264 mode delivers ordered access units. The worker subprocess is spawned,
+/// read, and respawned by a background manager thread.
 pub struct CaptureStream {
     latest: Arc<Mutex<Option<Frame>>>,
+    encoded: Arc<EncodedQueue>,
     stopped: Arc<AtomicBool>,
     /// Set true once the manager gives up after a crash loop, so callers can degrade.
     dead: Arc<AtomicBool>,
@@ -136,18 +208,21 @@ impl CaptureStream {
     /// Start streaming device `udid` with `params` by supervising a capture worker.
     pub fn start(udid: String, params: StreamParams) -> CaptureStream {
         let latest = Arc::new(Mutex::new(None));
+        let encoded = Arc::new(EncodedQueue::new());
         let stopped = Arc::new(AtomicBool::new(false));
         let dead = Arc::new(AtomicBool::new(false));
         let worker_pid = Arc::new(AtomicU32::new(0));
         let manager = thread::spawn({
             let latest = Arc::clone(&latest);
+            let encoded = Arc::clone(&encoded);
             let stopped = Arc::clone(&stopped);
             let dead = Arc::clone(&dead);
             let worker_pid = Arc::clone(&worker_pid);
-            move || supervise(&udid, params, &latest, &stopped, &dead, &worker_pid)
+            move || supervise(&udid, params, &latest, &encoded, &stopped, &dead, &worker_pid)
         });
         CaptureStream {
             latest,
+            encoded,
             stopped,
             dead,
             worker_pid,
@@ -155,12 +230,17 @@ impl CaptureStream {
         }
     }
 
-    /// The most recently delivered frame, or `None` before the first frame (or once dead).
+    /// The most recently delivered JPEG frame, or `None` before the first frame (or once dead).
     pub fn latest(&self) -> Option<Frame> {
         self.latest
             .lock()
             .expect("capture stream mutex poisoned")
             .clone()
+    }
+
+    /// The next H.264 access unit in order, waiting up to `timeout` for one to arrive.
+    pub fn next_encoded(&self, timeout: Duration) -> Option<EncodedUnit> {
+        self.encoded.pop(timeout)
     }
 
     /// Whether the worker crash-looped and the stream gave up.
@@ -194,6 +274,7 @@ fn supervise(
     udid: &str,
     params: StreamParams,
     latest: &Arc<Mutex<Option<Frame>>>,
+    encoded: &Arc<EncodedQueue>,
     stopped: &Arc<AtomicBool>,
     dead: &Arc<AtomicBool>,
     worker_pid: &Arc<AtomicU32>,
@@ -213,7 +294,7 @@ fn supervise(
                     // SAFETY: our own just-spawned, un-reaped child pid.
                     unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
                 }
-                pump_worker(&mut child, latest, stopped);
+                pump_worker(&mut child, params.codec, latest, encoded, stopped);
                 let _ = child.wait();
                 worker_pid.store(0, Ordering::Relaxed);
             }
@@ -247,14 +328,22 @@ fn spawn_worker(udid: &str, params: StreamParams) -> io::Result<Child> {
         .arg(format!("{}", params.quality))
         .arg(format!("{}", params.fps))
         .arg(format!("{}", params.scale))
+        .arg(params.codec.cli_name())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
 }
 
-/// Read length-prefixed JPEG frames from the worker until EOF (worker exit/crash) or stop.
-fn pump_worker(child: &mut Child, latest: &Arc<Mutex<Option<Frame>>>, stopped: &Arc<AtomicBool>) {
+/// Read `[u32 LE len][u8 flags][payload]` frames from the worker until EOF (worker exit/crash) or
+/// stop. JPEG payloads replace the latest slot; H.264 payloads append to the ordered queue.
+fn pump_worker(
+    child: &mut Child,
+    codec: StreamCodec,
+    latest: &Arc<Mutex<Option<Frame>>>,
+    encoded: &Arc<EncodedQueue>,
+    stopped: &Arc<AtomicBool>,
+) {
     let Some(stdout) = child.stdout.take() else {
         return;
     };
@@ -265,24 +354,32 @@ fn pump_worker(child: &mut Child, latest: &Arc<Mutex<Option<Frame>>>, stopped: &
             break; // worker gone
         }
         let len = u32::from_le_bytes(header) as usize;
-        if len == 0 || len > MAX_WORKER_FRAME {
+        if !(2..=MAX_WORKER_FRAME).contains(&len) {
             break; // corrupt stream
         }
         let mut frame = vec![0u8; len];
         if reader.read_exact(&mut frame).is_err() {
             break;
         }
-        *latest.lock().expect("capture stream mutex poisoned") = Some(Arc::new(frame));
+        let flags = frame[0];
+        frame.drain(..1);
+        match codec {
+            StreamCodec::Jpeg => {
+                *latest.lock().expect("capture stream mutex poisoned") = Some(Arc::new(frame));
+            }
+            StreamCodec::H264 => encoded.push(frame, flags & 1 != 0),
+        }
     }
 }
 
-/// The worker entry point (`linkcode-sim capture-worker <udid> <quality> <fps> <scale>`): open the
-/// device's framebuffer and stream length-prefixed JPEG frames to stdout at `fps`, each downscaled by
-/// `scale`. Exits non-zero on any failure; the parent respawns. A hard `SIGABRT` from the private
-/// path also just ends this process.
+/// The worker entry point (`linkcode-sim capture-worker <udid> <quality> <fps> <scale> <codec>`):
+/// open the device's framebuffer and stream `[u32 len][u8 flags][payload]` frames to stdout at
+/// `fps` — JPEG images (downscaled by `scale`) or H.264 access units (native resolution, encoded
+/// straight from the retained `IOSurface` by VideoToolbox). Exits non-zero on any failure; the
+/// parent respawns. A hard `SIGABRT` from the private path also just ends this process.
 #[cfg(target_os = "macos")]
 pub fn run_worker() -> ! {
-    use crate::private::{Screen, SimDevice};
+    use crate::private::{Screen, SimDevice, VtEncoder};
 
     let mut args = std::env::args().skip(2);
     let udid = args.next().unwrap_or_default();
@@ -297,6 +394,10 @@ pub fn run_worker() -> ! {
         .and_then(|a| a.parse::<f64>().ok())
         .unwrap_or(1.0)
         .clamp(0.1, 1.0);
+    let codec = match args.next().as_deref() {
+        Some("h264") => StreamCodec::H264,
+        _ => StreamCodec::Jpeg,
+    };
 
     let Some(device) = SimDevice::resolve(&udid) else {
         eprintln!("sim capture-worker: device {udid} not found");
@@ -313,18 +414,55 @@ pub fn run_worker() -> ! {
 
     let mut clock = FrameClock::new(fps);
     let mut stdout = io::stdout().lock();
-    loop {
-        if let Some(jpeg) = screen.capture_jpeg(quality, scale) {
-            let len = u32::try_from(jpeg.len()).unwrap_or(0);
-            if len == 0
-                || stdout.write_all(&len.to_le_bytes()).is_err()
-                || stdout.write_all(&jpeg).is_err()
-                || stdout.flush().is_err()
+    match codec {
+        StreamCodec::Jpeg => loop {
+            if let Some(jpeg) = screen.capture_jpeg(quality, scale)
+                && !write_worker_frame(&mut stdout, 1, &jpeg)
             {
                 break; // parent closed the pipe
             }
+            clock.tick();
+        },
+        StreamCodec::H264 => {
+            // Lazy per-dimension encoder: a rotation changes the surface size mid-stream.
+            let mut encoder: Option<(VtEncoder, usize, usize)> = None;
+            'stream: loop {
+                if let Some(surface) = screen.capture_surface() {
+                    let (width, height) = (surface.width(), surface.height());
+                    if encoder
+                        .as_ref()
+                        .is_none_or(|(_, w, h)| *w != width || *h != height)
+                    {
+                        encoder = VtEncoder::new(width, height, fps).map(|e| (e, width, height));
+                        if encoder.is_none() {
+                            eprintln!("sim capture-worker: VideoToolbox session failed");
+                            std::process::exit(4);
+                        }
+                    }
+                    if let Some((vt, _, _)) = encoder.as_mut() {
+                        for unit in vt.encode(&surface) {
+                            if !write_worker_frame(&mut stdout, u8::from(unit.key), &unit.data) {
+                                break 'stream; // parent closed the pipe
+                            }
+                        }
+                    }
+                }
+                clock.tick();
+            }
         }
-        clock.tick();
     }
     std::process::exit(0);
+}
+
+/// Write one `[u32 LE len][u8 flags][payload]` worker frame; false once the parent is gone.
+#[cfg(target_os = "macos")]
+fn write_worker_frame(stdout: &mut impl Write, flags: u8, payload: &[u8]) -> bool {
+    let Ok(len) = u32::try_from(payload.len() + 1) else {
+        return false;
+    };
+    len != 1
+        && stdout.write_all(&len.to_le_bytes()).is_ok()
+        && stdout.write_all(&[flags]).is_ok()
+        && stdout.write_all(payload).is_ok()
+        && stdout.flush().is_ok()
 }

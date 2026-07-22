@@ -51,6 +51,7 @@ mod stubs {
         _fps: u32,
         _quality: f64,
         _scale: f64,
+        _codec: crate::rpc::StreamCodec,
         _tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         Err(unsupported())
@@ -74,7 +75,10 @@ mod imp {
     use super::*;
     use crate::capture::{CaptureStream, Frame, FrameClock};
     use crate::private::{self, Button, Input, SimDevice};
-    use crate::proto::{STREAM_FRAME, encode_stream_frame};
+    use crate::proto::{
+        STREAM_FRAME, STREAM_FRAME_H264, encode_stream_frame, encode_stream_frame_h264,
+    };
+    use crate::rpc::StreamCodec;
 
     /// A live-but-silent private worker (framebuffer registration produced no callbacks) is treated
     /// as unusable after this long with no new frame, and the pusher degrades to simctl.
@@ -171,6 +175,7 @@ mod imp {
         fps: u32,
         quality: f64,
         scale: f64,
+        codec: StreamCodec,
         tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         if !available() {
@@ -195,6 +200,7 @@ mod imp {
                 fps,
                 quality: quality.clamp(0.1, 1.0),
                 scale,
+                codec,
             },
         ));
         let stop = Arc::new(AtomicBool::new(false));
@@ -203,7 +209,10 @@ mod imp {
             let stop = Arc::clone(&stop);
             let tx = tx.clone();
             let udid = udid.to_owned();
-            move || push_frames(&udid, fps, &stream, &stop, &tx)
+            move || match codec {
+                StreamCodec::Jpeg => push_frames(&udid, fps, &stream, &stop, &tx),
+                StreamCodec::H264 => push_h264(&udid, &stream, &stop, &tx),
+            }
         });
         reg.streams.insert(
             udid.to_owned(),
@@ -213,7 +222,7 @@ mod imp {
                 pusher: Some(pusher),
             },
         );
-        Ok(json!({ "streaming": true, "fps": fps, "scale": scale }))
+        Ok(json!({ "streaming": true, "fps": fps, "scale": scale, "codec": codec }))
     }
 
     pub fn stream_stop(udid: &str) -> Result<Value, OpError> {
@@ -293,6 +302,46 @@ mod imp {
                 }
             } else {
                 clock.tick();
+            }
+        }
+    }
+
+    /// Push H.264 access units in order (deltas must not be dropped). If the private worker gives
+    /// up, degrades to slow simctl JPEG frames — each wire frame carries its codec, so a mixed
+    /// stream stays decodable client-side.
+    fn push_h264(udid: &str, stream: &CaptureStream, stop: &AtomicBool, tx: &Sender<OutMsg>) {
+        let fallback_interval = Duration::from_millis(500);
+        while !stop.load(Ordering::Relaxed) {
+            if stream.is_dead() {
+                let tick = Instant::now();
+                if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
+                    && let Ok(body) = encode_stream_frame(udid, &jpeg)
+                    && tx
+                        .send(OutMsg::Frame {
+                            type_byte: STREAM_FRAME,
+                            body,
+                        })
+                        .is_err()
+                {
+                    break; // daemon gone
+                }
+                if let Some(rest) = fallback_interval.checked_sub(tick.elapsed()) {
+                    thread::sleep(rest);
+                }
+                continue;
+            }
+            let Some(unit) = stream.next_encoded(Duration::from_millis(250)) else {
+                continue;
+            };
+            if let Ok(body) = encode_stream_frame_h264(udid, unit.key, &unit.data)
+                && tx
+                    .send(OutMsg::Frame {
+                        type_byte: STREAM_FRAME_H264,
+                        body,
+                    })
+                    .is_err()
+            {
+                break; // daemon gone
             }
         }
     }

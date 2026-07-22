@@ -20,6 +20,7 @@ pub const RESULT: u8 = 0x81;
 pub const SCREENSHOT: u8 = 0x82;
 /// A streamed framebuffer frame: `[u16 LE udid_len][udid][jpeg]` (unsolicited, while a stream runs).
 pub const STREAM_FRAME: u8 = 0x83;
+pub const STREAM_FRAME_H264: u8 = 0x84;
 
 /// Encode a `STREAM_FRAME` body: `[u16 LE udid_len][udid][jpeg bytes]`.
 pub fn encode_stream_frame(udid: &str, jpeg: &[u8]) -> io::Result<Vec<u8>> {
@@ -34,6 +35,23 @@ pub fn encode_stream_frame(udid: &str, jpeg: &[u8]) -> io::Result<Vec<u8>> {
     out.extend_from_slice(&(id.len() as u16).to_le_bytes());
     out.extend_from_slice(id);
     out.extend_from_slice(jpeg);
+    Ok(out)
+}
+
+/// Encode a `STREAM_FRAME_H264` body: `[u16 LE udid_len][udid][u8 key][Annex-B access unit]`.
+pub fn encode_stream_frame_h264(udid: &str, key: bool, data: &[u8]) -> io::Result<Vec<u8>> {
+    let id = udid.as_bytes();
+    if id.is_empty() || id.len() > MAX_REQUEST_ID_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid udid length",
+        ));
+    }
+    let mut out = Vec::with_capacity(3 + id.len() + data.len());
+    out.extend_from_slice(&(id.len() as u16).to_le_bytes());
+    out.extend_from_slice(id);
+    out.push(u8::from(key));
+    out.extend_from_slice(data);
     Ok(out)
 }
 

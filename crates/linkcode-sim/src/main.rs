@@ -262,7 +262,8 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             fps,
             quality,
             scale,
-        } => interactive::stream_start(&udid, fps, quality, scale, tx),
+            codec,
+        } => interactive::stream_start(&udid, fps, quality, scale, codec, tx),
         Op::StreamStop { udid } => interactive::stream_stop(&udid),
     };
     match outcome {
@@ -341,6 +342,7 @@ fn diag_interactive() {
             fps: 12,
             quality: 0.6,
             scale: 1.0,
+            codec: rpc::StreamCodec::Jpeg,
         },
     );
     eprintln!("supervised capture stream started; driving input for ~5s");

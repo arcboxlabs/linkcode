@@ -73,10 +73,16 @@ Off macOS, or when SimulatorKit is unavailable, every P1 op fails with `xcodeMis
 | `tap` | `udid`, `x`, `y` (normalised 0..1) | `{}` |
 | `swipe` | `udid`, `x0`, `y0`, `x1`, `y1`, `durationMs?` | `{}` |
 | `button` | `udid`, `button` (`home`/`lock`) | `{}` |
-| `streamStart` | `udid`, `fps?` (60), `quality?` (0.6), `scale?` (1.0) | `{ streaming, fps, scale }` — JPEG frames then arrive on `STREAM_FRAME`s |
+| `streamStart` | `udid`, `fps?` (60), `quality?` (0.6), `scale?` (1.0), `codec?` (`jpeg` default, `h264`) | `{ streaming, fps, scale, codec }` — frames then arrive on `STREAM_FRAME`s (jpeg) or `STREAM_FRAME_H264`s |
 | `streamStop` | `udid` | `{}` |
 
 `scale` (0.1..1.0) downscales each frame before JPEG encode: at native resolution the encode bounds the frame rate near ~55 fps, so `scale` below 1.0 both lifts the achievable rate toward the display's 60 Hz and cuts bandwidth (e.g. `0.5` ≈ one third the bytes). `tap`/`swipe` stay in normalized 0..1 coordinates, so a downscaled stream needs no coordinate adjustment.
+
+`codec: h264` switches the stream to hardware H.264 (VideoToolbox): the retained framebuffer `IOSurface` is wrapped in a `CVPixelBuffer` and encoded on the media engine — pixels never enter CPU memory — at **native resolution** (`scale`/`quality` are ignored; bitrate carries the bandwidth budget, ~10-25× below the JPEG stream). Access units are Annex-B with SPS/PPS prepended on keyframes (≤2s apart) — exactly what a WebCodecs `VideoDecoder` configured without a `description` consumes. Delivery is **ordered and lossless** (deltas depend on each other); if the sidecar must drop (stalled consumer), it drops through the next keyframe. If the private worker gives up, the stream degrades to slow simctl JPEG `STREAM_FRAME`s — each wire frame declares its own encoding, so a mixed stream stays decodable.
+
+### `STREAM_FRAME_H264` body (`0x84`)
+
+`[u16 LE udid_len][udid][u8 key][Annex-B access unit]` — `key` is `1` on sync frames.
 
 Input (`tap`/`swipe`/`button`) runs in the sidecar's main process via a per-udid warmed HID client and is stable. Framebuffer streaming runs in a **crash-isolated worker subprocess**: the sidecar spawns it, reads its frames, and respawns it on the intermittent hard crashes of the private framebuffer path. If the worker crash-loops and gives up, the stream degrades to `simctl io screenshot` frames — slower, but frames never stop and the sidecar never crashes.
 
