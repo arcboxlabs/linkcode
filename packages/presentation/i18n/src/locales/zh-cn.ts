@@ -799,6 +799,7 @@ export const zhCN = {
       connectionsTitle: '已保存的 GitHub 访问',
       enabledLabel: '启用{name}',
       usesConnection: '使用的 GitHub 访问',
+      noConnection: '尚未选择',
       addConnection: '添加 GitHub 访问',
       chooseConnection: '选择 GitHub 访问',
       connectionsEmpty: '尚未保存 GitHub 访问凭证。',

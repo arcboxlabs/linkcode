@@ -146,12 +146,9 @@ export function PluginsSettingsPanel(): React.ReactNode {
         busy={isMutating}
         onEnabledChange={handleEnabledChange}
         onConnectionChange={handleConnectionChange}
-        onAddConnection={(unitId) => {
-          const descriptor =
-            unitId === undefined ? catalog?.at(0) : descriptorById.get(unitId as McpPluginId);
-          if (descriptor?.service) {
-            addConnection(descriptor.service, unitId === undefined ? undefined : descriptor.id);
-          }
+        onAddConnection={() => {
+          const descriptor = catalog?.at(0);
+          if (descriptor?.service) addConnection(descriptor.service);
         }}
         onEditConnection={editConnection}
         onRemoveConnection={removeConnection}

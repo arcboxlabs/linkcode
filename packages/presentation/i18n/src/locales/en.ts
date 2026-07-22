@@ -819,6 +819,7 @@ export const en = {
       connectionsTitle: 'Saved GitHub access',
       enabledLabel: 'Enable {name}',
       usesConnection: 'GitHub access to use',
+      noConnection: 'None selected',
       addConnection: 'Add GitHub access',
       chooseConnection: 'Choose GitHub access',
       connectionsEmpty: 'No GitHub access credential has been saved.',
