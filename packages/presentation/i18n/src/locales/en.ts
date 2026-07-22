@@ -579,6 +579,7 @@ export const en = {
       about: 'About',
       providers: 'Providers',
       agents: 'Agents',
+      plugins: 'Tools',
       imChannel: 'Messaging',
     },
     historyImport: {
@@ -810,6 +811,45 @@ export const en = {
       },
     },
     plugins: {
+      hint: 'Configure optional external tools and access credentials for your agents.',
+      managedUnavailable:
+        'Cloud connections and tool delivery are not available yet. You can save a personal GitHub credential now; agents cannot use these tools until service support ships.',
+      loadError: 'Unable to load tool settings: {message}',
+      toolsTitle: 'Available tools',
+      connectionsTitle: 'Saved GitHub access',
+      enabledLabel: 'Enable {name}',
+      usesConnection: 'GitHub access to use',
+      addConnection: 'Add GitHub access',
+      chooseConnection: 'Choose GitHub access',
+      connectionsEmpty: 'No GitHub access credential has been saved.',
+      credentialSaved: 'Saved',
+      credentialType: {
+        'api-key': 'API key',
+        'auth-token': 'Personal access token',
+      },
+      editConnection: 'Edit {name}',
+      removeConnection: 'Remove {name}',
+      connectionFallback: 'GitHub access',
+      githubConnectionDefault: 'My GitHub',
+      addTitle: 'Add GitHub access',
+      editTitle: 'Edit GitHub access',
+      removeTitle: 'Remove “{name}”?',
+      removeDescription:
+        'The credential is deleted from this machine and tools using it are disabled. This cannot be undone.',
+      removeConfirm: 'Remove',
+      cancel: 'Cancel',
+      add: 'Add',
+      save: 'Save',
+      saveError: 'Unable to save GitHub access.',
+      form: {
+        label: 'Name',
+        credentialType: 'Credential type',
+        secret: 'Key or token',
+        secretHint: 'Sent only to your local daemon and never returned by the settings API.',
+        secretKeepPlaceholder: 'Leave blank to keep the saved credential',
+        secretKeepHint:
+          'The saved value is not displayed for security. Enter a new value to replace it.',
+      },
       units: {
         githubRead: {
           label: 'GitHub read-only tools',
