@@ -126,6 +126,59 @@ describe('SimulatorService', () => {
     expect(backend.close).toHaveBeenCalledTimes(1);
   });
 
+  it('reclaims a service-booted device whose session stops mid-boot', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    let resolveBoot!: () => void;
+    backend.boot.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveBoot = resolve;
+        }),
+    );
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    const booting = service.boot(S1, 'A');
+    // Let boot() claim the device and reach the (still-pending) backend.boot() call.
+    await vi.advanceTimersByTimeAsync(0);
+    // The owning session stops before the boot finishes, dropping the not-yet-service-booted claim.
+    service.releaseSession(S1);
+    resolveBoot();
+    await booting;
+
+    // The device we booted must not be left running untracked: it is re-tracked for reclaim, so it
+    // is not shut down immediately but is once the idle window elapses (without the fix there is no
+    // claim, so the booted device is never reclaimed).
+    expect(backend.shutdownDevice).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+    expect(service.ownerOf('A')).toBeUndefined();
+  });
+
+  it('holds the claim until the reclaim shutdown settles', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    let resolveShutdown!: () => void;
+    backend.shutdownDevice.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveShutdown = resolve;
+        }),
+    );
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    service.releaseSession(S1);
+    await vi.advanceTimersByTimeAsync(1000); // idle timer fires → shutdown in flight
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+    // Another session must not grab the udid while its shutdown is still running.
+    await expect(service.openUrl(S2, 'A', 'https://example.com')).rejects.toMatchObject({
+      code: 'conflict',
+    });
+    // The device frees only once the shutdown settles.
+    resolveShutdown();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.ownerOf('A')).toBeUndefined();
+  });
+
   it('frees a device on owner-driven shutdown', async () => {
     const backend = fakeBackend([device('A', 'Shutdown')]);
     const service = new SimulatorService(backend);

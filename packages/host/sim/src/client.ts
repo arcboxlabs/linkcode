@@ -1,6 +1,7 @@
 import type { ChildProcessByStdio } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { Frame } from './codec';
 import {
   decodeScreenshotFrame,
@@ -137,7 +138,15 @@ export class SimSidecarClient {
       // Don't let a pending reply keep the host's event loop alive on its own.
       timer.unref();
       this.pending.set(requestId, { resolve, reject, timer });
-      writeFrame(child.stdin, REQUEST, body);
+      try {
+        writeFrame(child.stdin, REQUEST, body);
+      } catch (error) {
+        // The child died between ensureChild() and the write: fail this request now instead of
+        // leaving it registered to wait out the full reply deadline. (Async write failures land on
+        // the stdin `error` listener below, which fails every pending request the same way.)
+        this.take(requestId);
+        reject(new Error(extractErrorMessage(error) ?? 'sim sidecar write failed'));
+      }
     });
   }
 
@@ -150,21 +159,28 @@ export class SimSidecarClient {
       windowsHide: true,
     });
     this.child = child;
+    // Every listener is scoped to THIS child: after a crash a new request spawns a replacement, and
+    // the old child's delayed `exit`/`error`/`data` must not tear down (or feed stale bytes into)
+    // the current one. `onChildGone` only fires while `child` is still the live child.
+    const teardown = (): void => {
+      if (this.child === child) this.onChildGone();
+    };
     child.stdout.on('data', (chunk: Buffer) => {
+      if (this.child !== child) return;
       try {
         for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
       } catch {
         // A corrupt stream cannot be resynchronized mid-flight; drop the child and start over.
         child.kill();
-        this.onChildGone();
+        teardown();
       }
     });
     // A failed spawn (e.g. missing binary) errors the pipes; a broken pipe means the child is
     // gone. Without these listeners the unhandled stream error would crash the host process.
-    child.stdin.on('error', () => this.onChildGone());
-    child.stdout.on('error', () => this.onChildGone());
-    child.on('exit', () => this.onChildGone());
-    child.on('error', () => this.onChildGone());
+    child.stdin.on('error', teardown);
+    child.stdout.on('error', teardown);
+    child.on('exit', teardown);
+    child.on('error', teardown);
     return child;
   }
 
