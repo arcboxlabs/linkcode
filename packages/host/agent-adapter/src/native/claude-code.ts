@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
+  McpServerConfig,
   PermissionMode,
   PermissionResult,
   Query,
@@ -35,6 +36,7 @@ import type {
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
+  McpServer,
   PermissionOption,
   StartOptions,
   StopReason,
@@ -84,6 +86,25 @@ type ResultMessage = Extract<SDKMessage, { type: 'result' }>;
 /** Claude's subagent-spawning tool: `Agent` in current CLIs (verified live against the vendored
  * 0.3.x), `Task` in older transcripts still met by history replay. Exact match on purpose so other
  * adapters (e.g. opencode's lowercase `task`) opt in deliberately, not by regex accident. */
+/** Fold the wire's `McpServer[]` into the SDK's name-keyed record (CODE-93). The SDK serializes
+ * it into a spawn-time `--mcp-config` flag, so it merges with — never replaces — the user's own
+ * `.mcp.json`/`~/.claude.json` servers (`strictMcpConfig` stays unset on purpose). */
+function claudeMcpServers(
+  servers: McpServer[] | undefined,
+): Record<string, McpServerConfig> | undefined {
+  if (!servers || servers.length === 0) return undefined;
+  return Object.fromEntries(
+    servers.map((server) =>
+      server.type === 'stdio'
+        ? [
+            server.name,
+            { type: 'stdio' as const, command: server.command, args: server.args, env: server.env },
+          ]
+        : [server.name, { type: 'http' as const, url: server.url, headers: server.headers }],
+    ),
+  );
+}
+
 function claudeToolKind(name: string): ToolCall['kind'] {
   return name === 'Task' || name === 'Agent' ? 'task' : toolKindFromName(name);
 }
@@ -679,6 +700,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
+        mcpServers: claudeMcpServers(opts.mcpServers),
         ...(credentialEnv && { env: credentialEnv }),
       },
     });

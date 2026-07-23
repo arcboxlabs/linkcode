@@ -10,6 +10,7 @@ import type {
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
+  McpServer,
   PermissionOption,
   PermissionOutcome,
   StartOptions,
@@ -21,6 +22,7 @@ import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
@@ -173,6 +175,30 @@ const POLICY_PRESETS: Record<CodexPolicyId, { approvalPolicy: string; sandboxMod
   bypassPermissions: { approvalPolicy: 'never', sandboxMode: 'danger-full-access' },
 };
 const INITIAL_POLICY_ID: CodexPolicyId = 'acceptEdits';
+
+/** thread/start|resume `config.mcp_servers` override (CODE-93): codex infers stdio-vs-http from
+ * command-vs-url presence — its on-disk RawMcpServerConfig has NO type tag, and `headers` is named
+ * `http_headers` (verified live on 0.144.1). The override deep-merges with the user's own
+ * config.toml entries; a same-named entry is masked for the session, never rewritten on disk. */
+function codexMcpServers(servers: McpServer[]): Record<string, unknown> {
+  return Object.fromEntries(
+    servers.map((server) =>
+      server.type === 'stdio'
+        ? [
+            server.name,
+            {
+              command: server.command,
+              ...(server.args?.length && { args: server.args }),
+              ...(server.env && { env: server.env }),
+            },
+          ]
+        : [
+            server.name,
+            { url: server.url, ...(server.headers && { http_headers: server.headers }) },
+          ],
+    ),
+  );
+}
 
 function isCodexPolicyId(id: string): id is CodexPolicyId {
   return id in POLICY_PRESETS;
@@ -592,14 +618,19 @@ export class CodexAdapter extends BaseAgentAdapter {
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
+    // One shared override map: separate `config` spreads would silently drop each other.
+    const configOverrides: Record<string, unknown> = {
+      ...(opts.additionalDirectories?.length && {
+        'sandbox_workspace_write.writable_roots': opts.additionalDirectories,
+      }),
+      ...(opts.mcpServers?.length && { mcp_servers: codexMcpServers(opts.mcpServers) }),
+    };
     const params = {
       cwd: opts.cwd,
       model: this.model,
       approvalPolicy: preset.approvalPolicy,
       ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
-      ...(opts.additionalDirectories?.length && {
-        config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
-      }),
+      ...(!isObjectEmpty(configOverrides) && { config: configOverrides }),
     };
     // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger the
     // clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the
@@ -776,6 +807,19 @@ export class CodexAdapter extends BaseAgentAdapter {
   private handleNotification(method: string, params: unknown): void {
     if (!isRecord(params)) return;
     switch (method) {
+      // Injected MCP servers start asynchronously after thread/start; a failure would otherwise be
+      // invisible (the tools just never appear). Surface it as a recoverable diagnostic.
+      case 'mcpServer/startupStatus/updated': {
+        if (stringField(params, 'status') !== 'failed') break;
+        const name = stringField(params, 'name') ?? 'unknown';
+        const detail = stringField(params, 'error');
+        this.emit({
+          type: 'error',
+          message: `MCP server "${name}" failed to start${detail ? `: ${detail}` : ''}`,
+          recoverable: true,
+        });
+        break;
+      }
       case 'thread/started': {
         const thread = recordField(params, 'thread');
         const id = thread ? stringField(thread, 'id') : undefined;
