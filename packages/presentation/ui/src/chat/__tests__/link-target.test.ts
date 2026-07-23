@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { faviconSrcFor, filePathTarget, linkTargetFor, linkTargetForUri } from '../link-target';
+import { filePathTarget, linkTargetFor, linkTargetForUri } from '../link-target';
 
 describe('linkTargetFor', () => {
   it('classifies web urls with their hostname', () => {
@@ -34,6 +34,11 @@ describe('linkTargetFor', () => {
       path: '/Users/z/src/main.ts',
       line: 12,
     });
+  });
+
+  it('leaves root-relative urls without file identity alone', () => {
+    expect(linkTargetFor('/docs')).toBeNull();
+    expect(linkTargetFor('/settings/appearance')).toBeNull();
   });
 
   it('decodes percent-encoded path destinations', () => {
@@ -160,13 +165,5 @@ describe('linkTargetForUri', () => {
       kind: 'uri',
       uri: 'mock://notes/showcase.md',
     });
-  });
-});
-
-describe('faviconSrcFor', () => {
-  it('builds the google s2 url for a hostname', () => {
-    expect(faviconSrcFor('en.wikipedia.org')).toBe(
-      'https://www.google.com/s2/favicons?domain=en.wikipedia.org&sz=32',
-    );
   });
 });
