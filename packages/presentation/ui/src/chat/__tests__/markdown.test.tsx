@@ -267,6 +267,19 @@ it('renders skill mentions as chips titled by their path', () => {
   expect(chip?.getAttribute('title')).toBe('/Users/z/.codex/skills/github/SKILL.md');
 });
 
+// The composer serializes @-mentions as [basename](./path); the sent user message must chip
+// them back through the same pipeline.
+it('round-trips composer mention links into file chips', () => {
+  const openFile = vi.fn();
+  const { getByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'Check [.gitignore](./.gitignore) please.'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
+  );
+  fireEvent.click(getByRole('button', { name: '.gitignore' }));
+  expect(openFile).toHaveBeenCalledWith('.gitignore');
+});
+
 it('renders viewer-openable inline code paths as file chips', () => {
   const openFile = vi.fn();
   const { getByRole } = render(

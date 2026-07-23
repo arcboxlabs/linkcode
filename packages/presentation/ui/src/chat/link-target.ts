@@ -33,8 +33,10 @@ function pathTarget(decoded: string): LinkTarget {
   return { kind: 'file', path, line: Number(lineMatch[1]) };
 }
 
-/** Classify a markdown link href. Null → not ours (fragments, mailto, relative URLs);
- * callers keep their default anchor behavior. */
+/** Classify a markdown link href. Null → not ours (fragments, mailto, bare relative URLs);
+ * callers keep their default anchor behavior. `./`-prefixed destinations are unambiguously
+ * workspace files — the composer serializes mentions that way — while bare relative hrefs
+ * stay untouched. */
 export function linkTargetFor(href: string | null | undefined): LinkTarget | null {
   if (!href || href[0] === '#') return null;
   if (href.startsWith(PLUGIN_PREFIX)) {
@@ -47,6 +49,10 @@ export function linkTargetFor(href: string | null | undefined): LinkTarget | nul
     } catch {
       return null;
     }
+  }
+  if (href.startsWith('./') || href.startsWith('../')) {
+    const decoded = decodedPath(href);
+    return pathTarget(decoded.startsWith('./') ? decoded.slice(2) : decoded);
   }
   // ponytail: POSIX absolute paths only — Windows drive hrefs (C:\…) never reach here, the
   // markdown sanitizer already drops their unknown single-letter protocol.

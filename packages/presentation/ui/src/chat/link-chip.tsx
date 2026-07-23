@@ -1,11 +1,20 @@
+import type { BadgeProps } from 'coss-ui/components/badge';
 import { Badge } from 'coss-ui/components/badge';
 import { cn } from '../lib/cn';
 import { artifactNavigationAction, useArtifactHostActions } from './artifacts/host-actions';
 import { Favicon, LinkTargetIcon } from './link-icon';
 import type { LinkTarget } from './link-target';
 
-/** Match the chat prose's 14px metrics; the badge's own sm scale is tuned for bare counters. */
-const LINK_CHIP_CLASS = 'mx-0.5 h-5 max-w-full align-bottom text-sm sm:h-5 sm:text-sm';
+/** Match the 14px text metrics shared by chat prose and the composer editor; the badge's own
+ * sm scale is tuned for bare counters. */
+const CHIP_CLASS = 'mx-0.5 h-5 max-w-full align-bottom text-sm sm:h-5 sm:text-sm';
+
+/** The one inline chip shell — a coss Badge pinned to the app's chip metrics. Chat link chips
+ * and the composer's directive/mention chips all render through it; interaction (anchor,
+ * button, Lexical node selection) comes from the caller via Badge props. */
+export function Chip({ className, variant = 'secondary', ...props }: BadgeProps): React.ReactNode {
+  return <Badge className={cn(CHIP_CLASS, className)} size="sm" variant={variant} {...props} />;
+}
 
 function chipTitle(target: Exclude<LinkTarget, { kind: 'web' }>): string {
   switch (target.kind) {
@@ -40,15 +49,13 @@ export function LinkChip({ target, children, className }: LinkChipProps): React.
 
   if (target.kind === 'web') {
     return (
-      <Badge
-        size="sm"
-        variant="secondary"
-        className={cn(LINK_CHIP_CLASS, className)}
+      <Chip
+        className={className}
         render={<a href={target.href} rel="noreferrer" target="_blank" />}
       >
         <Favicon hostname={target.hostname} />
         <span className="truncate">{children}</span>
-      </Badge>
+      </Chip>
     );
   }
 
@@ -57,15 +64,13 @@ export function LinkChip({ target, children, className }: LinkChipProps): React.
       ? artifactNavigationAction(actions, { kind: 'file', path: target.path })
       : undefined;
   return (
-    <Badge
-      size="sm"
-      variant="secondary"
-      className={cn(LINK_CHIP_CLASS, className)}
+    <Chip
+      className={className}
       title={chipTitle(target)}
       render={onOpen ? <button type="button" onClick={onOpen} /> : <span />}
     >
       <LinkTargetIcon target={target} />
       <span className="truncate">{children}</span>
-    </Badge>
+    </Chip>
   );
 }
