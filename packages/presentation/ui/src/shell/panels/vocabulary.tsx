@@ -1,4 +1,10 @@
-import { CompassIcon, FileDiffIcon, FolderCodeIcon, SquareTerminalIcon } from 'lucide-react';
+import {
+  CompassIcon,
+  FileDiffIcon,
+  FolderCodeIcon,
+  SmartphoneIcon,
+  SquareTerminalIcon,
+} from 'lucide-react';
 
 export type PanelSide = 'right' | 'bottom';
 
@@ -9,7 +15,15 @@ export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
 /** The right panel's fixed sections — a subset of {@link PanelWindowType}. */
 export const PANEL_SECTIONS = ['diff', 'terminal', 'browser', 'files'] as const;
 
-export type PanelSection = (typeof PANEL_SECTIONS)[number];
+/** On-demand right-panel sections, added (and removed) via the section strip's + menu. */
+export const OPTIONAL_PANEL_SECTIONS = ['simulator'] as const;
+
+export type OptionalPanelSection = (typeof OPTIONAL_PANEL_SECTIONS)[number];
+
+/** Every section the right panel can show — the fixed strip plus the on-demand extras. */
+export const ALL_PANEL_SECTIONS = [...PANEL_SECTIONS, ...OPTIONAL_PANEL_SECTIONS] as const;
+
+export type PanelSection = (typeof ALL_PANEL_SECTIONS)[number];
 
 export interface PanelTab {
   id: string;
@@ -30,11 +44,12 @@ export interface PanelControl {
 }
 
 /** Window labels are translated at the render site (`workbench.panel.window.*`); only icons live here. */
-export const PANEL_WINDOW_ICONS: Record<PanelWindowType, React.ReactNode> = {
+export const PANEL_WINDOW_ICONS: Record<PanelWindowType | OptionalPanelSection, React.ReactNode> = {
   diff: <FileDiffIcon />,
   terminal: <SquareTerminalIcon />,
   browser: <CompassIcon />,
   files: <FolderCodeIcon />,
+  simulator: <SmartphoneIcon />,
 };
 
 /** Shared tab recipe: the active/inactive halves of every panel tab button's className. */

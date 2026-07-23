@@ -53,8 +53,31 @@ pub enum Op {
         #[serde(default)]
         format: ImageFormat,
     },
+    /// Render the devicetype's framebuffer-mask PDF (the exact screen outline) as a transparent
+    /// PNG; bytes come back on a `SCREENSHOT` frame.
+    ScreenMask { udid: String },
     /// Single-finger tap at a normalised (0..1) point (private API; P1).
     Tap { udid: String, x: f64, y: f64 },
+    /// One phase of a caller-driven touch stream at a normalised point (private API; P1).
+    /// Sequencing (one `down`, moves, one `up`) is the caller's; phases keep stdio order.
+    Touch {
+        udid: String,
+        phase: TouchPhase,
+        x: f64,
+        y: f64,
+    },
+    /// One phase of a caller-driven **two-finger** stream (pinch/zoom); private API. Both finger
+    /// positions are normalised. Sequencing and stdio ordering match `touch`.
+    Pinch {
+        udid: String,
+        phase: TouchPhase,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+    },
+    /// Set the device pasteboard (public `simctl pbcopy`); pair with a Cmd+V key press.
+    Paste { udid: String, text: String },
     /// Swipe between two normalised (0..1) points over `duration_ms` (private API; P1).
     Swipe {
         udid: String,
@@ -67,7 +90,16 @@ pub enum Op {
     },
     /// Press a hardware button (private API; P1).
     Button { udid: String, button: ButtonKind },
-    /// Start streaming the device framebuffer as JPEG `FRAME`s at `fps` (private API; P1).
+    /// Press one keyboard key: an HID usage on page 7 with modifier usages (`0xE0..`) bracketed
+    /// around it (private API; P1). Key order is preserved (handled inline like `touch`).
+    Key {
+        udid: String,
+        usage: u32,
+        #[serde(default)]
+        modifiers: Vec<u32>,
+    },
+    /// Start streaming the device framebuffer at `fps` (private API; P1). `codec` picks JPEG
+    /// `STREAM_FRAME`s (latest-wins) or H.264 `STREAM_FRAME_H264` access units (ordered).
     StreamStart {
         udid: String,
         #[serde(default = "default_fps")]
@@ -76,6 +108,8 @@ pub enum Op {
         quality: f64,
         #[serde(default = "default_scale")]
         scale: f64,
+        #[serde(default)]
+        codec: StreamCodec,
     },
     /// Stop a running framebuffer stream.
     StreamStop { udid: String },
@@ -97,6 +131,35 @@ fn default_scale() -> f64 {
 pub enum ButtonKind {
     Home,
     Lock,
+}
+
+/// One phase of a streamed touch gesture.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TouchPhase {
+    Down,
+    Move,
+    Up,
+}
+
+/// Framebuffer stream encodings. JPEG frames are independently decodable (latest-wins delivery);
+/// H.264 access units are ordered and delta-dependent (hardware encode/decode, ~10× less bandwidth).
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StreamCodec {
+    #[default]
+    Jpeg,
+    H264,
+}
+
+impl StreamCodec {
+    /// The value passed to the capture worker on its command line.
+    pub fn cli_name(self) -> &'static str {
+        match self {
+            Self::Jpeg => "jpeg",
+            Self::H264 => "h264",
+        }
+    }
 }
 
 /// Screenshot encodings supported by `simctl io screenshot --type`.

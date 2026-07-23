@@ -14,6 +14,7 @@
 
 mod capture;
 mod interactive;
+mod mask;
 #[cfg(target_os = "macos")]
 mod private;
 mod proto;
@@ -115,6 +116,11 @@ fn main() {
         bench_encode();
         return;
     }
+    // Diagnostic: render a device's screen mask to a PNG file: `linkcode-sim diag-mask <udid> [out]`.
+    if subcommand.as_deref() == Some("diag-mask") {
+        diag_mask();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -156,13 +162,23 @@ fn main() {
         }
         match serde_json::from_slice::<Request>(&body) {
             Ok(request) => {
-                gate.acquire();
-                let tx = tx.clone();
-                let gate = Arc::clone(&gate);
-                thread::spawn(move || {
+                // Touch phases and key presses must keep stdio order — a per-request thread would
+                // race a gesture's down/move/up or reorder typed characters. Each is a handful of
+                // fast HID sends, so inline handling is cheap and stays off the inflight gate.
+                if matches!(
+                    request.op,
+                    Op::Touch { .. } | Op::Pinch { .. } | Op::Key { .. }
+                ) {
                     serve(request, &tx);
-                    gate.release();
-                });
+                } else {
+                    gate.acquire();
+                    let tx = tx.clone();
+                    let gate = Arc::clone(&gate);
+                    thread::spawn(move || {
+                        serve(request, &tx);
+                        gate.release();
+                    });
+                }
             }
             Err(err) => {
                 eprintln!("invalid REQUEST frame: {err}");
@@ -229,7 +245,29 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
                 Err(e) => Err(e),
             }
         }
+        Op::ScreenMask { udid } => {
+            match mask::screen_mask(&udid).and_then(|image| {
+                encode_screenshot(&request_id, &image)
+                    .map_err(|e| OpError::new(ErrorCode::Io, e.to_string()))
+            }) {
+                Ok(body) => {
+                    send(tx, SCREENSHOT, body);
+                    return;
+                }
+                Err(e) => Err(e),
+            }
+        }
         Op::Tap { udid, x, y } => interactive::tap(&udid, x, y),
+        Op::Touch { udid, phase, x, y } => interactive::touch(&udid, phase, x, y),
+        Op::Pinch {
+            udid,
+            phase,
+            x0,
+            y0,
+            x1,
+            y1,
+        } => interactive::pinch(&udid, phase, (x0, y0), (x1, y1)),
+        Op::Paste { udid, text } => simctl::set_pasteboard(&udid, &text),
         Op::Swipe {
             udid,
             x0,
@@ -239,12 +277,18 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             duration_ms,
         } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
         Op::Button { udid, button } => interactive::button(&udid, button),
+        Op::Key {
+            udid,
+            usage,
+            modifiers,
+        } => interactive::key(&udid, usage, &modifiers),
         Op::StreamStart {
             udid,
             fps,
             quality,
             scale,
-        } => interactive::stream_start(&udid, fps, quality, scale, tx),
+            codec,
+        } => interactive::stream_start(&udid, fps, quality, scale, codec, tx),
         Op::StreamStop { udid } => interactive::stream_stop(&udid),
     };
     match outcome {
@@ -264,6 +308,26 @@ fn probe_with_capabilities() -> Result<serde_json::Value, OpError> {
 
 fn send(tx: &Sender<OutMsg>, type_byte: u8, body: Vec<u8>) {
     let _ = tx.send(OutMsg::Frame { type_byte, body });
+}
+
+/// Diagnostic entry: render the screen mask for a device to a PNG file.
+fn diag_mask() {
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-mask <udid> [out.png]");
+    let out = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "mask.png".to_owned());
+    match mask::screen_mask(&udid) {
+        Ok(bytes) => {
+            std::fs::write(&out, &bytes).expect("write mask png");
+            eprintln!("wrote {} bytes to {out}", bytes.len());
+        }
+        Err(error) => {
+            eprintln!("mask failed: {}", error.message);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn send_error(tx: &Sender<OutMsg>, request_id: &str, error: &OpError) {
@@ -303,6 +367,7 @@ fn diag_interactive() {
             fps: 12,
             quality: 0.6,
             scale: 1.0,
+            codec: rpc::StreamCodec::Jpeg,
         },
     );
     eprintln!("supervised capture stream started; driving input for ~5s");

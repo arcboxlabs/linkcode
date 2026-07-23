@@ -4,7 +4,7 @@
 //! [`ErrorCode::Timeout`]. A missing `xcrun` (no Xcode / no Command Line Tools) surfaces as
 //! [`ErrorCode::XcodeMissing`] so the daemon can gate the capability instead of retrying.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
@@ -60,7 +60,23 @@ pub fn probe() -> Result<Value, OpError> {
     Ok(json!({
         "simctlPath": simctl_path.trim(),
         "developerDir": developer_dir.trim(),
+        // Interactive framebuffer/HID needs SimulatorKit; simctl alone can't stream a screen or
+        // inject touches. Report it so clients gate the live panel instead of mounting a stream that
+        // only ever fails. The private layer resolves exactly when interactive drive is possible.
+        "interactive": interactive_supported(),
     }))
+}
+
+/// Whether this host can drive simulators interactively (framebuffer stream + HID), which requires
+/// the private SimulatorKit layer beyond the public `simctl` CLI. Non-macOS builds never can.
+#[cfg(target_os = "macos")]
+fn interactive_supported() -> bool {
+    crate::private::interactive_available()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn interactive_supported() -> bool {
+    false
 }
 
 /// List available devices with their runtime names.
@@ -144,6 +160,62 @@ pub fn screenshot(udid: &str, format: ImageFormat) -> Result<Vec<u8>, OpError> {
     read
 }
 
+/// Resolve a device's devicetype bundle directory (`…/DeviceTypes/<name>.simdevicetype`),
+/// joining `list devices` (udid → devicetype identifier) with `list devicetypes` (identifier →
+/// `bundlePath`). Public simctl surface only.
+pub fn device_type_bundle_path(udid: &str) -> Result<std::path::PathBuf, OpError> {
+    let devices_raw = run_ok(
+        simctl(["list", "-j", "devices", "available"]),
+        DEFAULT_TIMEOUT,
+    )?;
+    let identifier = parse_device_type_identifier(&devices_raw, udid)
+        .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))?;
+    let types_raw = run_ok(simctl(["list", "-j", "devicetypes"]), DEFAULT_TIMEOUT)?;
+    parse_device_type_bundle_path(&types_raw, &identifier)
+        .map(std::path::PathBuf::from)
+        .map_err(|message| OpError::new(ErrorCode::SimctlFailed, message))
+}
+
+/// Set the device pasteboard to `text` (public `simctl pbcopy`, fed on stdin). The client pairs
+/// this with a Cmd+V key press to inject arbitrary Unicode — the path US-ASCII key decomposition
+/// cannot cover (IME output, emoji, pasted blocks).
+pub fn set_pasteboard(udid: &str, text: &str) -> Result<Value, OpError> {
+    let mut child = simctl(["pbcopy", udid])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => OpError::new(
+                ErrorCode::XcodeMissing,
+                format!("{XCRUN} not found; install Xcode with the iOS platform"),
+            ),
+            _ => OpError::new(ErrorCode::Io, format!("spawn {XCRUN} pbcopy: {e}")),
+        })?;
+    // Write on a thread so a full pipe buffer can never deadlock against exit polling.
+    let stdin = child.stdin.take().expect("stdin piped above");
+    let bytes = text.as_bytes().to_vec();
+    let writer = thread::spawn(move || {
+        let mut stdin = stdin;
+        let _ = stdin.write_all(&bytes);
+        // Drop closes the pipe so pbcopy sees EOF.
+    });
+    let stderr = drain(child.stderr.take().expect("stderr piped above"));
+    let status = wait_with_timeout(&mut child, XCRUN, DEFAULT_TIMEOUT)?;
+    let _ = writer.join();
+    if status.success() {
+        Ok(json!({}))
+    } else {
+        Err(OpError::new(
+            ErrorCode::SimctlFailed,
+            format!(
+                "{XCRUN} pbcopy exited with {status}: {}",
+                join_drained(stderr).trim()
+            ),
+        ))
+    }
+}
+
 fn simctl<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
     let mut cmd = apple_tool(XCRUN);
     cmd.arg("simctl").args(args);
@@ -186,24 +258,7 @@ fn run_ok(mut cmd: Command, timeout: Duration) -> Result<String, OpError> {
     let stdout = drain(child.stdout.take().expect("stdout piped above"));
     let stderr = drain(child.stderr.take().expect("stderr piped above"));
 
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(OpError::new(
-                    ErrorCode::Timeout,
-                    format!("{program} timed out after {}s", timeout.as_secs()),
-                ));
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
-            Err(e) => {
-                return Err(OpError::new(ErrorCode::Io, format!("wait {program}: {e}")));
-            }
-        }
-    };
+    let status = wait_with_timeout(&mut child, &program, timeout)?;
 
     let stdout = join_drained(stdout);
     let stderr = join_drained(stderr);
@@ -219,6 +274,30 @@ fn run_ok(mut cmd: Command, timeout: Duration) -> Result<String, OpError> {
             ErrorCode::SimctlFailed,
             format!("{program} exited with {status}: {}", detail.trim()),
         ))
+    }
+}
+
+/// Wait for `child` under `timeout`; kill and report `Timeout` if it overruns.
+fn wait_with_timeout(
+    child: &mut std::process::Child,
+    program: &str,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, OpError> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(OpError::new(
+                    ErrorCode::Timeout,
+                    format!("{program} timed out after {}s", timeout.as_secs()),
+                ));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(e) => return Err(OpError::new(ErrorCode::Io, format!("wait {program}: {e}"))),
+        }
     }
 }
 
@@ -238,6 +317,41 @@ fn join_drained(handle: thread::JoinHandle<String>) -> String {
 /// bundle ids never contain one. Absence of a parsable pid maps to `null`.
 fn parse_launch_pid(stdout: &str) -> Option<u32> {
     stdout.trim().rsplit(": ").next()?.trim().parse().ok()
+}
+
+fn parse_device_type_identifier(devices_json: &str, udid: &str) -> Result<String, String> {
+    let raw: RawDeviceList =
+        serde_json::from_str(devices_json).map_err(|e| format!("parse device list: {e}"))?;
+    raw.devices
+        .into_values()
+        .flatten()
+        .find(|device| device.udid == udid)
+        .ok_or_else(|| format!("no device {udid}"))?
+        .device_type_identifier
+        .ok_or_else(|| format!("device {udid} reports no devicetype identifier"))
+}
+
+#[derive(Deserialize)]
+struct RawDeviceTypeList {
+    devicetypes: Vec<RawDeviceType>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawDeviceType {
+    identifier: String,
+    bundle_path: Option<String>,
+}
+
+fn parse_device_type_bundle_path(types_json: &str, identifier: &str) -> Result<String, String> {
+    let raw: RawDeviceTypeList =
+        serde_json::from_str(types_json).map_err(|e| format!("parse devicetype list: {e}"))?;
+    raw.devicetypes
+        .into_iter()
+        .find(|entry| entry.identifier == identifier)
+        .ok_or_else(|| format!("no devicetype {identifier}"))?
+        .bundle_path
+        .ok_or_else(|| format!("devicetype {identifier} reports no bundle path"))
 }
 
 #[derive(Deserialize)]
@@ -345,5 +459,36 @@ mod tests {
     fn parses_the_launch_pid() {
         assert_eq!(parse_launch_pid("com.example.app: 4242\n"), Some(4242));
         assert_eq!(parse_launch_pid("garbage"), None);
+    }
+
+    #[test]
+    fn resolves_a_device_type_identifier_by_udid() {
+        assert_eq!(
+            parse_device_type_identifier(DEVICES, "AAAA").unwrap(),
+            "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+        );
+        assert!(parse_device_type_identifier(DEVICES, "missing").is_err());
+    }
+
+    #[test]
+    fn resolves_a_device_type_bundle_path() {
+        let types = r#"{
+            "devicetypes": [
+                {
+                    "identifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+                    "bundlePath": "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17 Pro.simdevicetype",
+                    "name": "iPhone 17 Pro"
+                }
+            ]
+        }"#;
+        assert_eq!(
+            parse_device_type_bundle_path(
+                types,
+                "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"
+            )
+            .unwrap(),
+            "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17 Pro.simdevicetype"
+        );
+        assert!(parse_device_type_bundle_path(types, "other").is_err());
     }
 }

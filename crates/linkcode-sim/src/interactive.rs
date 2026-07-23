@@ -11,7 +11,7 @@ use std::sync::mpsc::Sender;
 use serde_json::{Value, json};
 
 use crate::OutMsg;
-use crate::rpc::{ButtonKind, ErrorCode, OpError};
+use crate::rpc::{ButtonKind, ErrorCode, OpError, TouchPhase};
 
 fn unsupported() -> OpError {
     OpError::new(
@@ -21,7 +21,7 @@ fn unsupported() -> OpError {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{available, button, stream_start, stream_stop, swipe, tap};
+pub use imp::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(not(target_os = "macos"))]
 mod stubs {
@@ -31,6 +31,17 @@ mod stubs {
         false
     }
     pub fn tap(_udid: &str, _x: f64, _y: f64) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
+    pub fn touch(_udid: &str, _phase: TouchPhase, _x: f64, _y: f64) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
+    pub fn pinch(
+        _udid: &str,
+        _phase: TouchPhase,
+        _a: (f64, f64),
+        _b: (f64, f64),
+    ) -> Result<Value, OpError> {
         Err(unsupported())
     }
     pub fn swipe(
@@ -46,11 +57,15 @@ mod stubs {
     pub fn button(_udid: &str, _button: ButtonKind) -> Result<Value, OpError> {
         Err(unsupported())
     }
+    pub fn key(_udid: &str, _usage: u32, _modifiers: &[u32]) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
     pub fn stream_start(
         _udid: &str,
         _fps: u32,
         _quality: f64,
         _scale: f64,
+        _codec: crate::rpc::StreamCodec,
         _tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         Err(unsupported())
@@ -61,7 +76,7 @@ mod stubs {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub use stubs::{available, button, stream_start, stream_stop, swipe, tap};
+pub use stubs::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -74,7 +89,10 @@ mod imp {
     use super::*;
     use crate::capture::{CaptureStream, Frame, FrameClock};
     use crate::private::{self, Button, Input, SimDevice};
-    use crate::proto::{STREAM_FRAME, encode_stream_frame};
+    use crate::proto::{
+        STREAM_FRAME, STREAM_FRAME_H264, encode_stream_frame, encode_stream_frame_h264,
+    };
+    use crate::rpc::StreamCodec;
 
     /// A live-but-silent private worker (framebuffer registration produced no callbacks) is treated
     /// as unusable after this long with no new frame, and the pusher degrades to simctl.
@@ -85,6 +103,10 @@ mod imp {
     struct Registry {
         inputs: HashMap<String, Arc<Input>>,
         streams: HashMap<String, StreamHandle>,
+        /// Active streamed-touch identifiers by udid (down allocates, up removes).
+        touches: HashMap<String, u32>,
+        /// Active two-finger identifiers by udid (pinch streams).
+        pinches: HashMap<String, [u32; 2]>,
     }
 
     struct StreamHandle {
@@ -102,12 +124,22 @@ mod imp {
             Mutex::new(Registry {
                 inputs: HashMap::new(),
                 streams: HashMap::new(),
+                touches: HashMap::new(),
+                pinches: HashMap::new(),
             })
         })
     }
 
     pub fn available() -> bool {
         private::interactive_available()
+    }
+
+    fn to_hid_phase(phase: TouchPhase) -> private::Phase {
+        match phase {
+            TouchPhase::Down => private::Phase::Down,
+            TouchPhase::Move => private::Phase::Move,
+            TouchPhase::Up => private::Phase::Up,
+        }
     }
 
     /// Resolve (and cache) a warmed HID client for `udid`.
@@ -129,6 +161,62 @@ mod imp {
             Ok(json!({}))
         } else {
             Err(OpError::new(ErrorCode::SimctlFailed, "tap failed"))
+        }
+    }
+
+    /// One phase of a streamed touch gesture. A `move`/`up` without an active stream is a benign
+    /// race (a duplicate up, a move after cancel) and no-ops successfully.
+    pub fn touch(udid: &str, phase: TouchPhase, x: f64, y: f64) -> Result<Value, OpError> {
+        let input = input_for(udid)?;
+        let mut reg = registry().lock().expect("interactive registry poisoned");
+        let identifier = match phase {
+            TouchPhase::Down => {
+                let id = input.allocate_touch();
+                reg.touches.insert(udid.to_owned(), id);
+                Some(id)
+            }
+            TouchPhase::Move => reg.touches.get(udid).copied(),
+            TouchPhase::Up => reg.touches.remove(udid),
+        };
+        drop(reg);
+        let Some(identifier) = identifier else {
+            return Ok(json!({}));
+        };
+        if input.touch_phase(x, y, identifier, to_hid_phase(phase)) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "touch failed"))
+        }
+    }
+
+    /// One phase of a streamed two-finger gesture (pinch/zoom). Identifiers are allocated on
+    /// `down` and released on `up`; a stray `move`/`up` no-ops like [`touch`].
+    pub fn pinch(
+        udid: &str,
+        phase: TouchPhase,
+        a: (f64, f64),
+        b: (f64, f64),
+    ) -> Result<Value, OpError> {
+        let input = input_for(udid)?;
+        let mut reg = registry().lock().expect("interactive registry poisoned");
+        let ids = match phase {
+            TouchPhase::Down => {
+                let ids = [input.allocate_touch(), input.allocate_touch()];
+                reg.pinches.insert(udid.to_owned(), ids);
+                Some(ids)
+            }
+            TouchPhase::Move => reg.pinches.get(udid).copied(),
+            TouchPhase::Up => reg.pinches.remove(udid),
+        };
+        drop(reg);
+        let Some([id0, id1]) = ids else {
+            return Ok(json!({}));
+        };
+        let hid_phase = to_hid_phase(phase);
+        if input.touch_pair([(a.0, a.1, id0), (b.0, b.1, id1)], hid_phase) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "pinch failed"))
         }
     }
 
@@ -166,11 +254,20 @@ mod imp {
         }
     }
 
+    pub fn key(udid: &str, usage: u32, modifiers: &[u32]) -> Result<Value, OpError> {
+        if input_for(udid)?.key(usage, modifiers, Duration::from_millis(20)) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(ErrorCode::SimctlFailed, "key press failed"))
+        }
+    }
+
     pub fn stream_start(
         udid: &str,
         fps: u32,
         quality: f64,
         scale: f64,
+        codec: StreamCodec,
         tx: &Sender<OutMsg>,
     ) -> Result<Value, OpError> {
         if !available() {
@@ -195,6 +292,7 @@ mod imp {
                 fps,
                 quality: quality.clamp(0.1, 1.0),
                 scale,
+                codec,
             },
         ));
         let stop = Arc::new(AtomicBool::new(false));
@@ -203,7 +301,10 @@ mod imp {
             let stop = Arc::clone(&stop);
             let tx = tx.clone();
             let udid = udid.to_owned();
-            move || push_frames(&udid, fps, &stream, &stop, &tx)
+            move || match codec {
+                StreamCodec::Jpeg => push_frames(&udid, fps, &stream, &stop, &tx),
+                StreamCodec::H264 => push_h264(&udid, &stream, &stop, &tx),
+            }
         });
         reg.streams.insert(
             udid.to_owned(),
@@ -213,7 +314,7 @@ mod imp {
                 pusher: Some(pusher),
             },
         );
-        Ok(json!({ "streaming": true, "fps": fps, "scale": scale }))
+        Ok(json!({ "streaming": true, "fps": fps, "scale": scale, "codec": codec }))
     }
 
     pub fn stream_stop(udid: &str) -> Result<Value, OpError> {
@@ -293,6 +394,46 @@ mod imp {
                 }
             } else {
                 clock.tick();
+            }
+        }
+    }
+
+    /// Push H.264 access units in order (deltas must not be dropped). If the private worker gives
+    /// up, degrades to slow simctl JPEG frames — each wire frame carries its codec, so a mixed
+    /// stream stays decodable client-side.
+    fn push_h264(udid: &str, stream: &CaptureStream, stop: &AtomicBool, tx: &Sender<OutMsg>) {
+        let fallback_interval = Duration::from_millis(500);
+        while !stop.load(Ordering::Relaxed) {
+            if stream.is_dead() {
+                let tick = Instant::now();
+                if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
+                    && let Ok(body) = encode_stream_frame(udid, &jpeg)
+                    && tx
+                        .send(OutMsg::Frame {
+                            type_byte: STREAM_FRAME,
+                            body,
+                        })
+                        .is_err()
+                {
+                    break; // daemon gone
+                }
+                if let Some(rest) = fallback_interval.checked_sub(tick.elapsed()) {
+                    thread::sleep(rest);
+                }
+                continue;
+            }
+            let Some(unit) = stream.next_encoded(Duration::from_millis(250)) else {
+                continue;
+            };
+            if let Ok(body) = encode_stream_frame_h264(udid, unit.key, &unit.data)
+                && tx
+                    .send(OutMsg::Frame {
+                        type_byte: STREAM_FRAME_H264,
+                        body,
+                    })
+                    .is_err()
+            {
+                break; // daemon gone
             }
         }
     }

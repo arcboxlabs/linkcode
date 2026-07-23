@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decodeScreenshotFrame, FrameDecoder, MAX_FRAME_LEN, RESULT, writeFrame } from '../codec';
+import {
+  decodeScreenshotFrame,
+  decodeStreamFrame,
+  FrameDecoder,
+  MAX_FRAME_LEN,
+  RESULT,
+  writeFrame,
+} from '../codec';
 
 function frame(type: number, body: Buffer): Buffer {
   const header = Buffer.allocUnsafe(5);
@@ -52,5 +59,24 @@ describe('decodeScreenshotFrame', () => {
   it('rejects truncated bodies', () => {
     expect(() => decodeScreenshotFrame(Buffer.from([9]))).toThrow('short screenshot frame');
     expect(() => decodeScreenshotFrame(Buffer.from([9, 0, 0x78]))).toThrow('truncated request id');
+  });
+});
+
+describe('decodeStreamFrame', () => {
+  it('splits the udid from the image bytes', () => {
+    const udid = Buffer.from('U-1');
+    const body = Buffer.concat([
+      Buffer.from([udid.length, 0]),
+      udid,
+      Buffer.from([0xff, 0xd8, 0xff]),
+    ]);
+    const decoded = decodeStreamFrame(body);
+    expect(decoded.udid).toBe('U-1');
+    expect([...decoded.image]).toEqual([0xff, 0xd8, 0xff]);
+  });
+
+  it('rejects truncated bodies', () => {
+    expect(() => decodeStreamFrame(Buffer.from([9]))).toThrow('short stream frame');
+    expect(() => decodeStreamFrame(Buffer.from([9, 0, 0x78]))).toThrow('truncated stream udid');
   });
 });

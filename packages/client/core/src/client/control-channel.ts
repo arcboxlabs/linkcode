@@ -38,6 +38,8 @@ import type {
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
+  SimulatorStreamCodec,
+  SimulatorTouchPhase,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -655,6 +657,184 @@ export class ControlChannel {
       sessionId,
       udid,
       format,
+    }));
+  }
+
+  /** Resolves with the device's screen-outline mask as base64 PNG (no session claim). */
+  simulatorScreenMask(udid: string): Promise<string> {
+    return this.sendCorrelated('simulatorScreenMask', (clientReqId) => ({
+      kind: 'simulator.screen-mask',
+      clientReqId,
+      udid,
+    }));
+  }
+
+  simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.tap',
+      clientReqId,
+      sessionId,
+      udid,
+      x,
+      y,
+    }));
+  }
+
+  simulatorKey(
+    sessionId: SessionId,
+    udid: string,
+    usage: number,
+    modifiers: number[],
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.key',
+      clientReqId,
+      sessionId,
+      udid,
+      usage,
+      modifiers,
+    }));
+  }
+
+  simulatorTouch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<RequestAck> {
+    // `move` phases fire at up to 60 Hz; a per-move round-trip would stall the gesture, so they go
+    // out unacked (the engine skips the reply). `down`/`up` stay correlated so a claim conflict or
+    // the gesture's completion is still observable.
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.touch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x,
+          y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.touch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
+      x,
+      y,
+    }));
+  }
+
+  simulatorPinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<RequestAck> {
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.pinch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x0: a.x,
+          y0: a.y,
+          x1: b.x,
+          y1: b.y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.pinch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
+      x0: a.x,
+      y0: a.y,
+      x1: b.x,
+      y1: b.y,
+    }));
+  }
+
+  simulatorPaste(sessionId: SessionId, udid: string, text: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.paste',
+      clientReqId,
+      sessionId,
+      udid,
+      text,
+    }));
+  }
+
+  simulatorSwipe(
+    sessionId: SessionId,
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.swipe',
+      clientReqId,
+      sessionId,
+      udid,
+      x0: from.x,
+      y0: from.y,
+      x1: to.x,
+      y1: to.y,
+      durationMs,
+    }));
+  }
+
+  simulatorButton(
+    sessionId: SessionId,
+    udid: string,
+    button: 'home' | 'lock',
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.button',
+      clientReqId,
+      sessionId,
+      udid,
+      button,
+    }));
+  }
+
+  /** Resolves with the accepted `{ fps, scale, codec }`; frames then arrive as `simulator.stream.frame`. */
+  simulatorStreamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: { fps?: number; quality?: number; scale?: number; codec?: SimulatorStreamCodec },
+  ): Promise<{ fps: number; scale: number; codec: SimulatorStreamCodec }> {
+    return this.sendCorrelated('simulatorStreamStart', (clientReqId) => ({
+      kind: 'simulator.stream.start',
+      clientReqId,
+      sessionId,
+      udid,
+      fps: options?.fps,
+      quality: options?.quality,
+      scale: options?.scale,
+      codec: options?.codec,
+    }));
+  }
+
+  simulatorStreamStop(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.stream.stop',
+      clientReqId,
+      sessionId,
+      udid,
     }));
   }
 

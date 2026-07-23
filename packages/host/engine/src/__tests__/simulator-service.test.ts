@@ -20,7 +20,9 @@ function device(udid: string, state: string): SimulatorDeviceInfo {
 
 function fakeBackend(devices: SimulatorDeviceInfo[]) {
   return {
-    probe: vi.fn(() => Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev' })),
+    probe: vi.fn(() =>
+      Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
+    ),
     list: vi.fn(() => Promise.resolve(devices)),
     boot: vi.fn(asyncNoop),
     shutdownDevice: vi.fn(asyncNoop),
@@ -29,6 +31,24 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
     terminate: vi.fn(asyncNoop),
     openUrl: vi.fn(asyncNoop),
     screenshot: vi.fn(() => Promise.resolve(new Uint8Array([0xff, 0xd8]))),
+    screenMask: vi.fn(() => Promise.resolve(new Uint8Array([0x89, 0x50]))),
+    tap: vi.fn(asyncNoop),
+    touch: vi.fn(asyncNoop),
+    pinch: vi.fn(asyncNoop),
+    paste: vi.fn(asyncNoop),
+    key: vi.fn(asyncNoop),
+    swipe: vi.fn(asyncNoop),
+    button: vi.fn(asyncNoop),
+    streamStart: vi.fn(() =>
+      Promise.resolve<Awaited<ReturnType<SimulatorBackend['streamStart']>>>({
+        streaming: true,
+        fps: 60,
+        scale: 1,
+        codec: 'jpeg',
+      }),
+    ),
+    streamStop: vi.fn(asyncNoop),
+    onFrame: vi.fn(() => noop),
     close: vi.fn(noop),
   } satisfies SimulatorBackend;
 }
@@ -97,6 +117,34 @@ describe('SimulatorService', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(backend.shutdownDevice).not.toHaveBeenCalled();
     expect(service.ownerOf('A')).toBe(S1);
+  });
+
+  it('does not reacquire a released user-booted device when its stream is stopped', async () => {
+    const backend = fakeBackend([device('A', 'Booted')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    service.releaseSession(S1); // user-booted → claim dropped immediately
+    expect(service.ownerOf('A')).toBeUndefined();
+
+    // A deferred stream stop for the now-released device must not pin it back to the dead session.
+    await service.streamStop(S1, 'A');
+    expect(service.ownerOf('A')).toBeUndefined();
+  });
+
+  it('does not cancel a service-booted reclaim when a released stream is stopped', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A'); // service-booted (was Shutdown), so release arms a reclaim
+    service.releaseSession(S1);
+
+    // A deferred stop must not refresh the claim — that would disarm the reclaim and strand the device.
+    await service.streamStop(S1, 'A');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+    expect(service.ownerOf('A')).toBeUndefined();
   });
 
   it('never shuts down a device the user booted', async () => {

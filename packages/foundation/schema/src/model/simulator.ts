@@ -25,6 +25,9 @@ export const SimulatorStatusSchema = z.object({
   /** Where simctl lives; present when available. */
   simctlPath: z.string().optional(),
   developerDir: z.string().optional(),
+  /** Whether the host can stream a framebuffer and inject HID input (private SimulatorKit), not
+   * just run simctl; present when available. Clients gate the live co-driving panel on it. */
+  interactive: z.boolean().optional(),
   /** Why unavailable (e.g. Xcode missing); present when not available. */
   reason: z.string().optional(),
 });
@@ -32,3 +35,12 @@ export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
 
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
+
+/** Framebuffer stream encodings: independently-decodable JPEG frames, or ordered hardware H.264
+ * access units (Annex-B, native resolution — decoded client-side with WebCodecs). */
+export const SimulatorStreamCodecSchema = z.enum(['jpeg', 'h264']);
+export type SimulatorStreamCodec = z.infer<typeof SimulatorStreamCodecSchema>;
+
+/** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
+export const SimulatorTouchPhaseSchema = z.enum(['down', 'move', 'up']);
+export type SimulatorTouchPhase = z.infer<typeof SimulatorTouchPhaseSchema>;

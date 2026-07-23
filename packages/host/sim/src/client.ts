@@ -5,19 +5,51 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { Frame } from './codec';
 import {
   decodeScreenshotFrame,
+  decodeStreamFrame,
+  decodeStreamFrameH264,
   FrameDecoder,
   REQUEST,
   RESULT,
   SCREENSHOT,
+  STREAM_FRAME,
+  STREAM_FRAME_H264,
   writeFrame,
 } from './codec';
-import type { SimDevice, SimImageFormat, SimProbe } from './schema';
+import type {
+  SimButton,
+  SimDevice,
+  SimImageFormat,
+  SimProbe,
+  SimStreamCodec,
+  SimStreamStartResult,
+  SimTouchPhase,
+} from './schema';
 import {
   SimLaunchResultSchema,
   SimListResultSchema,
   SimProbeSchema,
   SimResultSchema,
+  SimStreamStartResultSchema,
 } from './schema';
+
+/** One live stream frame: a JPEG image, or one ordered H.264 access unit (`key` on sync frames). */
+export interface SimStreamFrame {
+  codec: SimStreamCodec;
+  data: Buffer;
+  key: boolean;
+}
+
+export type SimFrameListener = (frame: SimStreamFrame) => void;
+
+/** Options for {@link SimSidecarClient.streamStart}; omitted fields take the sidecar defaults. */
+export interface SimStreamOptions {
+  fps?: number;
+  quality?: number;
+  /** Downscale factor before encode (0..1; 1.0 = native). Lower trades resolution for rate/bandwidth. */
+  scale?: number;
+  /** `h264` streams ordered hardware-encoded access units at native resolution; default `jpeg`. */
+  codec?: SimStreamCodec;
+}
 
 /** The sidecar child: piped stdin/stdout, inherited stderr (its logs go to the host's stderr). */
 type SidecarChild = ChildProcessByStdio<Writable, Readable, null>;
@@ -62,6 +94,8 @@ export class SimSidecarClient {
   private child: SidecarChild | null = null;
   private readonly decoder = new FrameDecoder();
   private readonly pending = new Map<string, Pending>();
+  /** Per-udid framebuffer listeners; `STREAM_FRAME`s are fanned out to the matching set. */
+  private readonly frameListeners = new Map<string, Set<SimFrameListener>>();
   private seq = 0;
   private closed = false;
 
@@ -106,6 +140,102 @@ export class SimSidecarClient {
     return image;
   }
 
+  /** The device's screen-outline mask as a transparent PNG (rendered from the local Xcode). */
+  async screenMask(udid: string): Promise<Buffer> {
+    const image = await this.call('screenMask', { udid });
+    if (!Buffer.isBuffer(image)) throw new Error('sim sidecar sent a non-binary screen mask');
+    return image;
+  }
+
+  /** Tap at a normalized (0..1) point (private HID; macOS only). */
+  async tap(udid: string, x: number, y: number): Promise<void> {
+    await this.call('tap', { udid, x, y });
+  }
+
+  /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
+  async touch(udid: string, phase: SimTouchPhase, x: number, y: number): Promise<void> {
+    await this.call('touch', { udid, phase, x, y });
+  }
+
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  async pinch(
+    udid: string,
+    phase: SimTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<void> {
+    await this.call('pinch', { udid, phase, x0: a.x, y0: a.y, x1: b.x, y1: b.y });
+  }
+
+  /** Set the device pasteboard; pair with a Cmd+V key press to inject arbitrary Unicode. */
+  async paste(udid: string, text: string): Promise<void> {
+    await this.call('paste', { udid, text });
+  }
+
+  /** Swipe between two normalized (0..1) points over `durationMs` (private HID; macOS only). */
+  async swipe(
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<void> {
+    await this.call('swipe', {
+      udid,
+      x0: from.x,
+      y0: from.y,
+      x1: to.x,
+      y1: to.y,
+      ...(durationMs !== undefined && { durationMs }),
+    });
+  }
+
+  /** Press a hardware button (private HID; macOS only). */
+  async button(udid: string, button: SimButton): Promise<void> {
+    await this.call('button', { udid, button });
+  }
+
+  /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
+  async key(udid: string, usage: number, modifiers: number[]): Promise<void> {
+    await this.call('key', { udid, usage, modifiers });
+  }
+
+  /**
+   * Start streaming `udid`'s framebuffer as JPEG frames delivered to {@link onFrame} listeners.
+   * Frames are pushed until {@link streamStop} (or the client closes).
+   */
+  async streamStart(udid: string, options: SimStreamOptions = {}): Promise<SimStreamStartResult> {
+    return SimStreamStartResultSchema.parse(await this.call('streamStart', { udid, ...options }));
+  }
+
+  /** Stop a running framebuffer stream. */
+  async streamStop(udid: string): Promise<void> {
+    await this.call('streamStop', { udid });
+  }
+
+  /**
+   * Subscribe to `udid`'s framebuffer frames; returns an unsubscribe function. Subscribing does not
+   * itself start the stream — pair it with {@link streamStart}.
+   */
+  private fanOutFrame(udid: string, frame: SimStreamFrame): void {
+    const listeners = this.frameListeners.get(udid);
+    if (listeners) for (const listener of listeners) listener(frame);
+  }
+
+  onFrame(udid: string, listener: SimFrameListener): () => void {
+    let set = this.frameListeners.get(udid);
+    if (!set) {
+      set = new Set();
+      this.frameListeners.set(udid, set);
+    }
+    set.add(listener);
+    return () => {
+      const current = this.frameListeners.get(udid);
+      if (!current) return;
+      current.delete(listener);
+      if (current.size === 0) this.frameListeners.delete(udid);
+    };
+  }
+
   /** Release the client and its sidecar. Booted devices keep running server-side. */
   close(): void {
     if (this.closed) return;
@@ -113,12 +243,13 @@ export class SimSidecarClient {
     const child = this.child;
     this.child = null;
     this.decoder.reset();
+    this.frameListeners.clear();
     this.failAll(new Error('sim client closed'));
     // Close stdin (EOF) rather than kill: the sidecar drains queued replies before exiting.
     child?.stdin.end();
   }
 
-  private call(type: string, params: Record<string, string>): Promise<unknown> {
+  private call(type: string, params: Record<string, unknown>): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('sim client closed'));
     // Unconfigured binary (see the daemon's `resolveSimSidecarPath`): fail with a clear, stable
     // message instead of `spawn('')`, which would surface as a confusing crash on every call.
@@ -197,6 +328,16 @@ export class SimSidecarClient {
       case SCREENSHOT: {
         const { requestId, image } = decodeScreenshotFrame(frame.body);
         this.take(requestId)?.resolve(image);
+        break;
+      }
+      case STREAM_FRAME: {
+        const { udid, image } = decodeStreamFrame(frame.body);
+        this.fanOutFrame(udid, { codec: 'jpeg', data: image, key: true });
+        break;
+      }
+      case STREAM_FRAME_H264: {
+        const { udid, key, data } = decodeStreamFrameH264(frame.body);
+        this.fanOutFrame(udid, { codec: 'h264', data, key });
         break;
       }
       default:

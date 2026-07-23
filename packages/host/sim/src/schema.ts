@@ -38,9 +38,34 @@ export const SimListResultSchema = z.object({ devices: z.array(SimDeviceSchema) 
 export const SimProbeSchema = z.object({
   simctlPath: z.string(),
   developerDir: z.string(),
+  /** Whether the private SimulatorKit layer (framebuffer stream + HID) is reachable; simctl alone
+   * is not enough to co-drive a device. Defaulted so an older sidecar reads as non-interactive. */
+  interactive: z.boolean().default(false),
 });
 export type SimProbe = z.infer<typeof SimProbeSchema>;
 
 export const SimLaunchResultSchema = z.object({ pid: z.number().int().nullable() });
+
+export const SimStreamCodecSchema = z.enum(['jpeg', 'h264']);
+export type SimStreamCodec = z.infer<typeof SimStreamCodecSchema>;
+
+/** `streamStart` reply: the accepted stream, or a no-op when one is already running. `codec` is
+ * absent from sidecars predating h264 support — those always stream JPEG. */
+export const SimStreamStartResultSchema = z.union([
+  z.object({
+    streaming: z.literal(true),
+    fps: z.number().int(),
+    scale: z.number(),
+    codec: SimStreamCodecSchema.default('jpeg'),
+  }),
+  z.object({ alreadyStreaming: z.literal(true) }),
+]);
+export type SimStreamStartResult = z.infer<typeof SimStreamStartResultSchema>;
+
+/** A hardware button the private HID layer can press. */
+export type SimButton = 'home' | 'lock';
+
+/** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
+export type SimTouchPhase = 'down' | 'move' | 'up';
 
 export type SimImageFormat = 'jpeg' | 'png';

@@ -56,9 +56,30 @@ describe('desktop shell state persistence', () => {
     expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
   });
 
-  it('clamps latest layout values', () => {
+  it('falls back to defaults for a stale v2 payload instead of migrating it', () => {
     const state = parsePersistedDesktopShellState({
       version: 2,
+      sidebarOpen: false,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'terminal',
+        terminalTabCount: 2,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: true, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.sidebarOpen).toBe(true);
+    expect(state.expansionStack).toEqual([]);
+    expect(state.rightPanel).toEqual(createDefaultRightPanelState());
+    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
+  });
+
+  it('clamps latest layout values', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 3,
       sidebarOpen: true,
       layout: { sidebarW: 10, rightW: 10000, bottomH: 1 },
       expansionStack: [],
@@ -80,7 +101,7 @@ describe('desktop shell state persistence', () => {
 
   it('rejects invalid bottom tabs and falls back when none remain', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: {
         sidebarW: SIDEBAR_MAX_SIZE,
@@ -103,7 +124,7 @@ describe('desktop shell state persistence', () => {
 
   it('restores the right panel section and terminal tab count, clamping the active index', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -124,7 +145,7 @@ describe('desktop shell state persistence', () => {
 
   it('seeds a first terminal tab when restoring an open panel showing an empty terminal section', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -143,7 +164,7 @@ describe('desktop shell state persistence', () => {
 
   it('does not seed a terminal tab when the restored panel is closed or on another section', () => {
     const closed = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -158,7 +179,7 @@ describe('desktop shell state persistence', () => {
     expect(closed.rightPanel.terminal.tabs).toEqual([]);
 
     const otherSection = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -175,7 +196,7 @@ describe('desktop shell state persistence', () => {
 
   it('rejects an invalid right panel section and falls back to diff', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -191,9 +212,37 @@ describe('desktop shell state persistence', () => {
     expect(state.rightPanel.activeSection).toBe('diff');
   });
 
+  it('falls the active section back to diff when the simulator section lost its membership', () => {
+    const payload = {
+      version: 3,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'simulator',
+        simulatorAdded: false,
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    };
+
+    const dropped = parsePersistedDesktopShellState(payload);
+    expect(dropped.rightPanel.activeSection).toBe('diff');
+    expect(dropped.rightPanel.simulatorAdded).toBe(false);
+
+    const kept = parsePersistedDesktopShellState({
+      ...payload,
+      rightPanel: { ...payload.rightPanel, simulatorAdded: true },
+    });
+    expect(kept.rightPanel.activeSection).toBe('simulator');
+    expect(kept.rightPanel.simulatorAdded).toBe(true);
+  });
+
   it('caps a corrupted terminal tab count', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: [],
@@ -211,7 +260,7 @@ describe('desktop shell state persistence', () => {
 
   it('filters expansion stack to open panels', () => {
     const state = parsePersistedDesktopShellState({
-      version: 2,
+      version: 3,
       sidebarOpen: true,
       layout: DEFAULT_LAYOUT,
       expansionStack: ['right', 'bottom', 'bottom', 'invalid'],
@@ -232,6 +281,7 @@ describe('desktop shell state persistence', () => {
     const rightPanel: RightPanelState = {
       open: true,
       activeSection: 'browser',
+      simulatorAdded: true,
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
       browser: { url: 'http://web--app-1a2b3c.localhost:19523' },
@@ -253,6 +303,7 @@ describe('desktop shell state persistence', () => {
     expect(parsed.layout).toEqual(source.layout);
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
     expect(parsed.rightPanel.activeSection).toBe('browser');
+    expect(parsed.rightPanel.simulatorAdded).toBe(true);
     expect(parsed.rightPanel.terminal.tabs).toHaveLength(2);
     expect(parsed.rightPanel.files.tabs.map((tab) => tab.path)).toEqual([
       '/w/PLAN.md',
@@ -357,6 +408,15 @@ describe('revealSectionState', () => {
 
     expect(revealed.activeSection).toBe('files');
     expect(revealed.terminal.tabs).toEqual([]);
+  });
+
+  it('adds the simulator section to the strip when revealing it', () => {
+    const panel = createDefaultRightPanelState();
+
+    const revealed = revealSectionState(panel, 'simulator', true);
+
+    expect(revealed.activeSection).toBe('simulator');
+    expect(revealed.simulatorAdded).toBe(true);
   });
 });
 

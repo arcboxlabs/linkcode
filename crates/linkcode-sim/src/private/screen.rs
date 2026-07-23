@@ -158,6 +158,33 @@ impl Held {
         unsafe { CFRetain(surface.cast_const()) };
         Held(surface)
     }
+
+    fn retained_clone(&self) -> Held {
+        Held::new(self.0)
+    }
+}
+
+/// A retained `IOSurface` handed out of the sink for zero-copy H.264 encoding: the encoder wraps
+/// it in a `CVPixelBuffer` so VideoToolbox reads the pixels on the media engine — they never cross
+/// into CPU memory. The compositor updates the surface in place, so a frame encoded mid-write can
+/// tear for one frame; that is the standard trade of every surface-fed capture pipeline.
+pub struct CapturedSurface(Held);
+
+impl CapturedSurface {
+    /// The raw `IOSurfaceRef`, valid while this value lives.
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.0.0
+    }
+
+    pub fn width(&self) -> usize {
+        // SAFETY: read-only dimension query on a retained live surface.
+        unsafe { IOSurfaceGetWidth(self.0.0) }
+    }
+
+    pub fn height(&self) -> usize {
+        // SAFETY: read-only dimension query on a retained live surface.
+        unsafe { IOSurfaceGetHeight(self.0.0) }
+    }
 }
 
 impl Drop for Held {
@@ -544,6 +571,15 @@ impl Screen {
     pub fn capture_jpeg(&self, quality: f64, scale: f64) -> Option<Vec<u8>> {
         let frame = self.sink.latest()?;
         encode_bgra_jpeg(&frame, quality.clamp(0.1, 1.0), scale.clamp(0.1, 1.0))
+    }
+
+    /// The current live surface, retained for the caller — the zero-copy input for the H.264
+    /// encoder. `None` before the first surface delivery.
+    pub fn capture_surface(&self) -> Option<CapturedSurface> {
+        let guard = self.sink.current.lock().expect("frame sink mutex poisoned");
+        guard
+            .as_ref()
+            .map(|held| CapturedSurface(held.retained_clone()))
     }
 }
 

@@ -1,2 +1,12 @@
+export type { SimFrameListener, SimStreamFrame, SimStreamOptions } from './client';
 export { SimSidecarClient, SimSidecarError } from './client';
-export type { SimDevice, SimErrorCode, SimImageFormat, SimProbe } from './schema';
+export type {
+  SimButton,
+  SimDevice,
+  SimErrorCode,
+  SimImageFormat,
+  SimProbe,
+  SimStreamCodec,
+  SimStreamStartResult,
+  SimTouchPhase,
+} from './schema';

@@ -3,13 +3,26 @@ import { Effect } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
-import type { SimulatorBackend, SimulatorDeviceInfo, SimulatorImageFormat } from './backend';
+import type {
+  SimulatorBackend,
+  SimulatorButton,
+  SimulatorDeviceInfo,
+  SimulatorFrameListener,
+  SimulatorImageFormat,
+  SimulatorPoint,
+  SimulatorStreamOptions,
+  SimulatorStreamStartResult,
+  SimulatorTouchPhase,
+} from './backend';
 
 /** Lazily-probed host capability; mirrors the wire's `SimulatorStatus` shape structurally. */
 export interface SimulatorHostStatus {
   available: boolean;
   simctlPath?: string;
   developerDir?: string;
+  /** Whether the host can stream a framebuffer and inject HID input, not just run simctl; present
+   * only when available. Clients gate the live panel on it. */
+  interactive?: boolean;
   reason?: string;
 }
 
@@ -87,6 +100,11 @@ export class SimulatorService {
     return this.backend.list();
   }
 
+  /** Read-only devicetype metadata (screen outline PNG); claims are not required. */
+  screenMask(udid: string): Promise<Uint8Array> {
+    return this.backend.screenMask(udid);
+  }
+
   /** Boot a device for a session, claiming it. Booting a device the user already booted claims
    * it without marking it reclaimable. */
   async boot(sessionId: SessionId, udid: string): Promise<void> {
@@ -152,6 +170,88 @@ export class SimulatorService {
     format?: SimulatorImageFormat,
   ): Promise<Uint8Array> {
     return this.withClaim(sessionId, udid, () => this.backend.screenshot(udid, format));
+  }
+
+  async tap(sessionId: SessionId, udid: string, x: number, y: number): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.tap(udid, x, y);
+  }
+
+  async touch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.touch(udid, phase, x, y);
+  }
+
+  async pinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: SimulatorPoint,
+    b: SimulatorPoint,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.pinch(udid, phase, a, b);
+  }
+
+  async paste(sessionId: SessionId, udid: string, text: string): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.paste(udid, text);
+  }
+
+  async swipe(
+    sessionId: SessionId,
+    udid: string,
+    from: SimulatorPoint,
+    to: SimulatorPoint,
+    durationMs?: number,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.swipe(udid, from, to, durationMs);
+  }
+
+  async button(sessionId: SessionId, udid: string, button: SimulatorButton): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.button(udid, button);
+  }
+
+  async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.key(udid, usage, modifiers);
+  }
+
+  /** Start streaming a device's framebuffer for a session, claiming it. */
+  async streamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: SimulatorStreamOptions,
+  ): Promise<SimulatorStreamStartResult> {
+    this.claim(sessionId, udid);
+    return this.backend.streamStart(udid, options);
+  }
+
+  /** Stop a device's framebuffer stream. Unlike the interactive ops this does NOT claim: the panel
+   * fires stops opportunistically, so a deferred stop can arrive after the owning session already
+   * released the device. Reacquiring here would recreate a claim for a released user-booted device
+   * (pinning it to a dead session) or disarm a service-booted device's idle reclaim — either way the
+   * device stays stuck until the daemon restarts. Only the current owner stops the stream; for a
+   * stale session it is a no-op that never touches another session's claim. */
+  async streamStop(sessionId: SessionId, udid: string): Promise<void> {
+    if (this.claims.get(udid)?.sessionId !== sessionId) return;
+    return this.backend.streamStop(udid);
+  }
+
+  /**
+   * Subscribe to a device's framebuffer frames; returns an unsubscribe function. Ownership is
+   * enforced by {@link streamStart}, not here — this only wires the transport-level fan-out.
+   */
+  onFrame(udid: string, listener: SimulatorFrameListener): () => void {
+    return this.backend.onFrame(udid, listener);
   }
 
   /** Release every device a session holds (the session-stop hook). */
@@ -263,6 +363,8 @@ export class SimulatorService {
     const claim = this.claims.get(udid);
     if (claim?.idleTimer) clearTimeout(claim.idleTimer);
     this.claims.delete(udid);
+    // A released device must not keep streaming; `streamStop` is idempotent (a no-op if idle).
+    this.backend.streamStop(udid).catch(noop);
   }
 
   private async reclaimAll(): Promise<void> {

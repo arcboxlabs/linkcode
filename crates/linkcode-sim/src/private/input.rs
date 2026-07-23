@@ -7,6 +7,17 @@
 //! `IndigoHIDMessageForTrackpadEventFromHIDEventRef`, then patches the two byte slots the wrapper
 //! leaves uninitialised (the `0x32` touch-target tag and the edge bitmask). Buttons (home/lock) use
 //! the legacy `IndigoHIDMessageForButton`, which SpringBoard still honors on Face ID devices.
+//!
+//! Native scroll injection was spiked 2026-07 and is a dead end — don't re-tread it. SimulatorKit
+//! exports `IndigoHIDMessageForScrollEvent{,FromHIDEventRef}` (payload target at `+0x2c`, routing
+//! tags `0x35`/`0x36`), and injected messages do reach backboardd (its AttentionAwareness counter
+//! ticks per event), but neither iPhone nor iPad runtimes ever deliver them to apps: iPhones only
+//! route pointer devices under AssistiveTouch, and even the iPad runtime (native pointer support)
+//! dropped every variant of the matrix (both targets × wrapped/direct × with/without a preceding
+//! `IndigoHIDMessageForTrackpadMoveEvent` hover). Simulator.app itself never sends scroll messages
+//! for iPhone/iPad — its `simDigitizerInputView:scrollEvent:` delegate only forwards to Digital
+//! Crown/Dial (watch) and returns otherwise. Scrolling on iOS is a touch gesture; the client's
+//! wheel→synthetic-drag translation is the platform-canonical path, not a stopgap.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -61,6 +72,9 @@ type CreateFingerFn = unsafe extern "C" fn(
 type AppendEventFn = unsafe extern "C" fn(*mut c_void, *mut c_void, u32);
 type TrackpadWrapFn = unsafe extern "C" fn(*const c_void) -> *mut c_void;
 type ButtonFn = unsafe extern "C" fn(u32, u32, u32) -> *mut c_void;
+/// `IndigoHIDMessageForHIDArbitrary(target, page, usage, operation)` — routes any HID
+/// (page, usage) pair; operation 1=down, 2=up. No timestamp arg.
+type HidArbitraryFn = unsafe extern "C" fn(u32, u32, u32, u32) -> *mut c_void;
 type ServiceFn = unsafe extern "C" fn() -> *mut c_void;
 
 unsafe extern "C" {
@@ -114,9 +128,13 @@ struct Symbols {
     append_event: AppendEventFn,
     trackpad_wrap: TrackpadWrapFn,
     button: ButtonFn,
+    hid_arbitrary: Option<HidArbitraryFn>,
     create_pointer_service: Option<ServiceFn>,
     create_mouse_service: Option<ServiceFn>,
 }
+
+/// HID keyboard/keypad usage page (the page every key press below lives on).
+const KEYBOARD_USAGE_PAGE: u32 = 7;
 
 /// A warmed HID client bound to one device, plus the resolved private symbols. Created lazily; a
 /// resolution failure means this host cannot inject input (the caller degrades to view-only).
@@ -144,6 +162,23 @@ impl Input {
         };
         input.warm_services();
         Some(input)
+    }
+
+    /// Allocate the shared identifier for one caller-driven touch stream (down → moves → up).
+    pub fn allocate_touch(&self) -> u32 {
+        self.next_identifier()
+    }
+
+    /// Inject one phase of a caller-driven touch stream. The caller owns the cadence and the
+    /// down/move/up sequencing; `identifier` ties the phases into one gesture.
+    pub fn touch_phase(&self, x: f64, y: f64, identifier: u32, phase: Phase) -> bool {
+        self.send_touch(x, y, identifier, phase)
+    }
+
+    /// Inject one phase of a caller-driven **two-finger** stream (pinch/zoom). Both fingers share
+    /// the phase; the caller owns the pair of identifiers and the cadence.
+    pub fn touch_pair(&self, fingers: [(f64, f64, u32); 2], phase: Phase) -> bool {
+        self.send_fingers(&fingers, phase)
     }
 
     /// Single-finger tap at a normalised (0..1) point, holding for `hold`.
@@ -177,6 +212,37 @@ impl Input {
         self.send_touch(x1, y1, id, Phase::Up) && ok >= steps / 2
     }
 
+    /// Press one keyboard key (HID usage on page 7) with `modifiers` (usages `0xE0..=0xE7`)
+    /// bracketed around it: modifier-downs → key-down → hold → key-up → modifier-ups.
+    pub fn key(&self, usage: u32, modifiers: &[u32], hold: Duration) -> bool {
+        let Some(hid) = self.symbols.hid_arbitrary else {
+            return false;
+        };
+        let send_op = |usage: u32, operation: u32| -> bool {
+            // SAFETY: symbol resolved above; returns a malloc'd message consumed by send.
+            let message = unsafe { hid(TOUCH_TARGET, KEYBOARD_USAGE_PAGE, usage, operation) };
+            if message.is_null() {
+                return false;
+            }
+            self.send_message(message);
+            true
+        };
+        for modifier in modifiers {
+            if !send_op(*modifier, 1) {
+                return false;
+            }
+        }
+        if !send_op(usage, 1) {
+            return false;
+        }
+        sleep(hold.max(Duration::from_millis(20)));
+        let mut ok = send_op(usage, 2);
+        for modifier in modifiers.iter().rev() {
+            ok = send_op(*modifier, 2) && ok;
+        }
+        ok
+    }
+
     /// Press a hardware button (home/lock) for `hold`.
     pub fn button(&self, button: Button, hold: Duration) -> bool {
         let arg0 = match button {
@@ -207,10 +273,18 @@ impl Input {
         if id == 0 { 1 } else { id }
     }
 
-    /// Build one digitizer parent+finger event, wrap it, patch the target/edge byte slots, and send.
+    /// Single-finger convenience over [`send_fingers`].
     fn send_touch(&self, x: f64, y: f64, identifier: u32, phase: Phase) -> bool {
-        let x = clamp01(x);
-        let y = clamp01(y);
+        self.send_fingers(&[(x, y, identifier)], phase)
+    }
+
+    /// Build one digitizer parent with a finger child per `(x, y, id)`, wrap it, patch the
+    /// target/edge byte slots, and send. The parent carries the first finger's position; each
+    /// child gets its own index/identifier so the device tracks the fingers independently.
+    fn send_fingers(&self, fingers: &[(f64, f64, u32)], phase: Phase) -> bool {
+        let Some(&(px, py, parent_id)) = fingers.first() else {
+            return false;
+        };
         let mask = phase.event_mask();
         let range = phase.range();
         let touch = phase.touch();
@@ -224,11 +298,11 @@ impl Input {
                 now,
                 TRANSDUCER_FINGER,
                 0,
-                identifier,
+                parent_id,
                 mask,
                 0,
-                x,
-                y,
+                clamp01(px),
+                clamp01(py),
                 0.0,
                 0.0,
                 0.0,
@@ -240,32 +314,37 @@ impl Input {
         if parent.is_null() {
             return false;
         }
-        let finger = unsafe {
-            (self.symbols.create_finger)(
-                ptr::null(),
-                now,
-                0,
-                identifier,
-                mask,
-                x,
-                y,
-                0.0,
-                0.0,
-                0.0,
-                range,
-                touch,
-                0,
-            )
-        };
-        if !finger.is_null() {
-            // SAFETY: append copies the child into the parent; both stay valid here.
-            unsafe { (self.symbols.append_event)(parent, finger, 0) };
+        let mut children = Vec::with_capacity(fingers.len());
+        for (index, &(x, y, id)) in fingers.iter().enumerate() {
+            // SAFETY: same ABI as the digitizer creator; +1 ref appended and released below.
+            let finger = unsafe {
+                (self.symbols.create_finger)(
+                    ptr::null(),
+                    now,
+                    index as u32,
+                    id,
+                    mask,
+                    clamp01(x),
+                    clamp01(y),
+                    0.0,
+                    0.0,
+                    0.0,
+                    range,
+                    touch,
+                    0,
+                )
+            };
+            if !finger.is_null() {
+                // SAFETY: append copies the child into the parent; both stay valid here.
+                unsafe { (self.symbols.append_event)(parent, finger, 0) };
+                children.push(finger);
+            }
         }
         // SAFETY: wrapper reads the parent event and returns a malloc'd Indigo message (or null).
         let message = unsafe { (self.symbols.trackpad_wrap)(parent.cast_const()) };
         // The wrapper has copied out what it needs; release the events regardless of outcome.
         unsafe {
-            if !finger.is_null() {
+            for finger in children {
                 CFRelease(finger.cast_const());
             }
             CFRelease(parent.cast_const());
@@ -366,6 +445,7 @@ fn resolve_symbols() -> Option<Symbols> {
         let trackpad_wrap =
             framework::dlsym(kit, "IndigoHIDMessageForTrackpadEventFromHIDEventRef")?;
         let button = framework::dlsym(kit, "IndigoHIDMessageForButton")?;
+        let hid_arbitrary = framework::dlsym(kit, "IndigoHIDMessageForHIDArbitrary");
         Some(Symbols {
             create_digitizer: std::mem::transmute::<*mut c_void, CreateDigitizerFn>(
                 create_digitizer,
@@ -374,6 +454,8 @@ fn resolve_symbols() -> Option<Symbols> {
             append_event: std::mem::transmute::<*mut c_void, AppendEventFn>(append_event),
             trackpad_wrap: std::mem::transmute::<*mut c_void, TrackpadWrapFn>(trackpad_wrap),
             button: std::mem::transmute::<*mut c_void, ButtonFn>(button),
+            hid_arbitrary: hid_arbitrary
+                .map(|p| std::mem::transmute::<*mut c_void, HidArbitraryFn>(p)),
             create_pointer_service: framework::dlsym(kit, "IndigoHIDMessageToCreatePointerService")
                 .map(|p| std::mem::transmute::<*mut c_void, ServiceFn>(p)),
             create_mouse_service: framework::dlsym(kit, "IndigoHIDMessageToCreateMouseService")

@@ -14,7 +14,9 @@ const S2 = 'session-2' as SessionId;
 
 function fakeBackend(): SimulatorBackend {
   return {
-    probe: vi.fn(() => Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev' })),
+    probe: vi.fn(() =>
+      Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
+    ),
     list: vi.fn(() =>
       Promise.resolve([
         {
@@ -33,6 +35,19 @@ function fakeBackend(): SimulatorBackend {
     terminate: vi.fn(asyncNoop),
     openUrl: vi.fn(asyncNoop),
     screenshot: vi.fn(() => Promise.resolve(new Uint8Array([0xff, 0xd8, 0x02]))),
+    screenMask: vi.fn(() => Promise.resolve(new Uint8Array([0x89, 0x50]))),
+    tap: vi.fn(asyncNoop),
+    touch: vi.fn(asyncNoop),
+    pinch: vi.fn(asyncNoop),
+    paste: vi.fn(asyncNoop),
+    key: vi.fn(asyncNoop),
+    swipe: vi.fn(asyncNoop),
+    button: vi.fn(asyncNoop),
+    streamStart: vi.fn(() =>
+      Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
+    ),
+    streamStop: vi.fn(asyncNoop),
+    onFrame: vi.fn(() => noop),
     close: vi.fn(noop),
   };
 }

@@ -22,6 +22,7 @@ import type {
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
+  SimulatorStreamCodec,
   TerminalMetadata,
   WirePayload,
   WorkspaceFile,
@@ -98,6 +99,8 @@ export interface PendingValueMap {
   simulatorList: SimulatorDevice[];
   simulatorLaunch: number | null;
   simulatorScreenshot: { format: SimulatorImageFormat; data: string };
+  simulatorScreenMask: string;
+  simulatorStreamStart: { fps: number; scale: number; codec: SimulatorStreamCodec };
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
@@ -146,6 +149,8 @@ export class PendingRegistry {
     simulatorList: new Map(),
     simulatorLaunch: new Map(),
     simulatorScreenshot: new Map(),
+    simulatorScreenMask: new Map(),
+    simulatorStreamStart: new Map(),
   };
 
   private readonly randomUUID: RandomUUID;

@@ -15,7 +15,13 @@ import { WirePayloadSchema } from './payload';
 // file.host/file.hosted, keeping every distinct schema on a distinct protocol version.
 // 44 adds the simulator.* variants (CODE-394).
 // 45 adds the simulator.activity broadcast (CODE-395).
-export const WIRE_PROTOCOL_VERSION = 45 as const;
+// 46 adds the simulator interactive + framebuffer-stream variants (CODE-397).
+// 47 adds the simulator screen-mask wire (CODE-397).
+// 48 adds the H.264 stream codec plumbing (CODE-397).
+// 49 adds streamed touch, wheel scroll, and HID keyboard input (CODE-397).
+// 50 adds two-finger pinch and IME pasteboard input (CODE-397).
+// 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
+export const WIRE_PROTOCOL_VERSION = 51 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({
