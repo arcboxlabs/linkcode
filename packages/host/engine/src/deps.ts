@@ -8,6 +8,7 @@ import type { LoopStore, ScheduleStore } from './automation';
 import type { GitService } from './git/git-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { SessionStore } from './session/session-store';
+import type { SimulatorBackend } from './simulator/backend';
 import type { PtyBackend } from './terminal/pty-backend';
 import type { FileSuggestService } from './workspace/file-suggest-service';
 import type { WorkspaceStore } from './workspace/workspace-store';
@@ -17,6 +18,8 @@ export interface EngineDeps {
   factory?: AdapterFactory;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
+  /** iOS Simulator sidecar client (macOS hosts only); absent Engines have no simulator surface. */
+  simulatorBackend?: SimulatorBackend;
   providerStore?: ProviderConfigStore;
   git?: GitService;
   fileSuggest?: FileSuggestService;
