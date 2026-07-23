@@ -42,6 +42,8 @@ export const SHOWCASE_MARKDOWN_CONTENT = textBlock(
     '- [x] Fragment links stay in-page',
     '- [ ] Vendor syntax detectors (CODE-64)',
     '',
+    'Link icons: [Wikipedia](https://en.wikipedia.org/wiki/Arknights) carries a favicon, [@Computer](plugin://computer-use@openai-bundled) a plugin chip, [$github:github](/mock/linkcode/skills/github/SKILL.md) a skill chip, [transport.ts:41](/mock/linkcode/packages/foundation/transport/src/transport.ts:41) a file chip, and inline code `docs/ARCHITECTURE.md` upgrades to the same chip.',
+    '',
     '```ts',
     'const target = ids.map((id) => doc.getElementById(id)).find((el) => el !== null);',
     '```',
