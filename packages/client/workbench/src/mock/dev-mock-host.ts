@@ -10,8 +10,13 @@ import type {
   EffortLevel,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
+  McpPluginService,
   MessageId,
   PermissionOutcome,
+  PluginConfig,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   SessionId,
@@ -26,7 +31,12 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
+import {
+  AGENT_INPUT_CAPABILITIES,
+  mcpPluginServerName,
+  normalizeCwdKey,
+  textBlock,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -99,6 +109,15 @@ const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = 
   'grok-build': 'high',
 };
 
+const MOCK_PLUGIN_CATALOG: McpPluginCatalog = [
+  {
+    id: 'github-read',
+    labelKey: 'units.githubRead.label',
+    descriptionKey: 'units.githubRead.description',
+    servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
+  },
+];
+
 interface MockSession extends SessionInfo {
   /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
@@ -165,6 +184,12 @@ export class DevMockHost {
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  private plugins: PluginConfig = {
+    units: [],
+    serviceBindings: {},
+    connectors: [],
+    customServers: [],
+  };
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -324,6 +349,15 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
+          plugins: publicPluginConfig(this.plugins),
+        });
+        break;
+      case 'plugin.catalog.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin.catalog.result',
+          replyTo: p.clientReqId,
+          catalog: MOCK_PLUGIN_CATALOG,
         });
         break;
       case 'agent-runtime.list':
@@ -349,6 +383,16 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
+        if (p.plugins !== undefined) {
+          try {
+            this.plugins = applyPluginConfigSet(this.plugins, p.plugins);
+          } catch {
+            // Engine parity: an invalid connector operation fails the request with the same
+            // sanitized public message the daemon sends, leaving the acknowledged state untouched.
+            this.sendFailure(p.clientReqId, 'Failed to update provider config');
+            break;
+          }
+        }
         this.sendSuccess(p.clientReqId);
         break;
       case 'workspace.list':
@@ -1383,6 +1427,130 @@ export class DevMockHost {
     this.workspaceSeq += 1;
     return `mock-ws-${Date.now().toString(36)}-${this.workspaceSeq.toString(36)}` as WorkspaceId;
   }
+}
+
+function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
+  return {
+    units: structuredClone(config.units),
+    serviceBindings: structuredClone(config.serviceBindings),
+    connectors: config.connectors.map(({ credential, ...connector }) => ({
+      ...connector,
+      credential:
+        credential.expiresAt === undefined
+          ? { type: credential.type, configured: true }
+          : { type: credential.type, configured: true, expiresAt: credential.expiresAt },
+    })),
+    customServers: config.customServers.map(({ id, enabled, server }) => ({
+      id,
+      enabled,
+      server:
+        server.type === 'stdio'
+          ? {
+              type: 'stdio',
+              name: server.name,
+              command: server.command,
+              ...(server.args && { args: server.args }),
+              envKeys: Object.keys(server.env ?? {}),
+            }
+          : {
+              type: 'http',
+              name: server.name,
+              url: server.url,
+              headerKeys: Object.keys(server.headers ?? {}),
+            },
+    })),
+  };
+}
+
+function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
+  const units = structuredClone(patch.units ?? current.units);
+  const serviceBindings = structuredClone(patch.serviceBindings ?? current.serviceBindings);
+  let connectors = structuredClone(current.connectors);
+  for (const operation of patch.connectorOperations ?? []) {
+    const connectorId =
+      operation.type === 'create' ? operation.connector.id : operation.connectorId;
+    const exists = connectors.some((connector) => connector.id === connectorId);
+    switch (operation.type) {
+      case 'create':
+        if (exists) throw new Error(`Plugin connector already exists: ${connectorId}`);
+        connectors.push(structuredClone(operation.connector));
+        break;
+      case 'update':
+        if (!exists) throw new Error(`Plugin connector does not exist: ${connectorId}`);
+        connectors = connectors.map((connector) => {
+          if (connector.id !== operation.connectorId) return connector;
+          const label =
+            operation.label === undefined ? connector.label : (operation.label ?? undefined);
+          return {
+            ...connector,
+            ...(label === undefined ? { label: undefined } : { label }),
+            credential: operation.credential ?? connector.credential,
+          };
+        });
+        break;
+      case 'delete':
+        if (!exists) throw new Error(`Plugin connector does not exist: ${connectorId}`);
+        connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
+        for (const service of Object.keys(serviceBindings) as McpPluginService[]) {
+          const binding = serviceBindings[service];
+          if (binding?.type === 'local' && binding.connectorId === operation.connectorId) {
+            delete serviceBindings[service];
+          }
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  let customServers = structuredClone(current.customServers);
+  // Faithful mirror of the engine's assertServerNameAvailable: a custom server name must not
+  // collide with the catalog or another custom server (both are MCP injection keys).
+  const assertNameFree = (name: string, selfId: string): void => {
+    const catalogNames = MOCK_PLUGIN_CATALOG.flatMap((descriptor) =>
+      descriptor.servers.map((server) => mcpPluginServerName(server)),
+    );
+    if (catalogNames.includes(name)) {
+      throw new Error(`Custom MCP server name collides with a built-in server: ${name}`);
+    }
+    if (customServers.some((entry) => entry.id !== selfId && entry.server.name === name)) {
+      throw new Error(`Custom MCP server name already in use: ${name}`);
+    }
+  };
+  for (const operation of patch.customServerOperations ?? []) {
+    switch (operation.type) {
+      case 'add':
+        if (customServers.some((entry) => entry.id === operation.server.id)) {
+          throw new Error(`Custom MCP server already exists: ${operation.server.id}`);
+        }
+        assertNameFree(operation.server.server.name, operation.server.id);
+        customServers.push(structuredClone(operation.server));
+        break;
+      case 'update': {
+        const existing = customServers.find((entry) => entry.id === operation.id);
+        if (!existing) throw new Error(`Custom MCP server does not exist: ${operation.id}`);
+        if (operation.server) assertNameFree(operation.server.name, operation.id);
+        customServers = customServers.map((entry) =>
+          entry.id === operation.id
+            ? {
+                id: entry.id,
+                enabled: operation.enabled ?? entry.enabled,
+                server: operation.server ? structuredClone(operation.server) : entry.server,
+              }
+            : entry,
+        );
+        break;
+      }
+      case 'remove':
+        if (!customServers.some((entry) => entry.id === operation.id)) {
+          throw new Error(`Custom MCP server does not exist: ${operation.id}`);
+        }
+        customServers = customServers.filter((entry) => entry.id !== operation.id);
+        break;
+      default:
+        break;
+    }
+  }
+  return { units, serviceBindings, connectors, customServers };
 }
 
 function promptText(content: readonly ContentBlock[]): string {

@@ -12,11 +12,19 @@ import type {
   AgentModelOption,
   ApprovalPolicy,
   ContentBlock,
+  McpServer,
   PermissionOption,
   Question,
   StartOptions,
 } from '@linkcode/schema';
-import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk/v2';
+import type {
+  Event,
+  FilePartInput,
+  McpLocalConfig,
+  McpRemoteConfig,
+  Part,
+  TextPartInput,
+} from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { falseFn } from 'foxts/noop';
@@ -46,6 +54,37 @@ type SessionErrored = Extract<Event, { type: 'session.error' }>['properties'];
 
 /** Same three-way menu as claude-code's tool asks; `allow_always` maps onto opencode's `always`
  * reply, which the server persists as a saved allow rule for the ask's matched pattern. */
+/** Spawn-time `Config.mcp` for our per-session server (CODE-93): schema `stdio` is opencode
+ * `local` with one concatenated `command` array and `env` renamed `environment`; `http` is
+ * `remote`. `enabled: true` is explicit — the user's own opencode.json merges UNDER
+ * OPENCODE_CONFIG_CONTENT per key, and a same-named entry's `enabled: false` would otherwise
+ * leak through and silently disable the injected server (verified live on 1.18.2). */
+function opencodeMcpConfig(servers: McpServer[]): Record<string, McpLocalConfig | McpRemoteConfig> {
+  return Object.fromEntries(
+    servers.map((server) =>
+      server.type === 'stdio'
+        ? [
+            server.name,
+            {
+              type: 'local' as const,
+              command: [server.command, ...(server.args ?? [])],
+              ...(server.env && { environment: server.env }),
+              enabled: true,
+            },
+          ]
+        : [
+            server.name,
+            {
+              type: 'remote' as const,
+              url: server.url,
+              ...(server.headers && { headers: server.headers }),
+              enabled: true,
+            },
+          ],
+    ),
+  );
+}
+
 const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
   { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
@@ -201,13 +240,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
     if (cred.baseUrl) options.baseURL = cred.baseUrl;
-    const serverOptions =
+    // Credential injection and MCP servers travel through the same spawn-time config
+    // (delivered via OPENCODE_CONFIG_CONTENT); the per-session server keeps them session-scoped.
+    const providerConfig =
       providerID && (options.apiKey || options.baseURL)
-        ? { config: { provider: { [providerID]: { options } } } }
+        ? { provider: { [providerID]: { options } } }
         : undefined;
+    const mcpConfig = opts.mcpServers?.length
+      ? { mcp: opencodeMcpConfig(opts.mcpServers) }
+      : undefined;
+    const serverOptions =
+      providerConfig || mcpConfig ? { config: { ...providerConfig, ...mcpConfig } } : undefined;
     // The injection is spawn-time-only: remember which provider it scoped to so a later
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
-    this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
+    this.credentialProviderId = providerConfig ? (providerID ?? null) : null;
     try {
       // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
       // auto-allocate either), and this adapter spawns one server per session — without an

@@ -68,6 +68,7 @@ export class WireRequestRouter {
       }
       case 'agent-runtime.list':
       case 'agent.catalog':
+      case 'plugin.catalog.get':
       case 'config.get':
       case 'config.set': {
         return this.handlers.agent.handle(p);

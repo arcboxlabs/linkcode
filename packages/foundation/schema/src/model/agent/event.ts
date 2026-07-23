@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ContentBlockSchema } from '../content';
 import { PermissionOutcomeSchema, PermissionRequestSchema } from '../permission';
 import { PlanSchema } from '../plan';
+import { McpPluginIdSchema, McpPluginServiceSchema, PluginWarningReasonSchema } from '../plugin';
 import {
   AgentHistoryIdSchema,
   MessageIdSchema,
@@ -143,6 +144,16 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     message: z.string(),
     code: z.string().optional(),
     recoverable: z.boolean().default(true),
+  }),
+  /** A plugin/MCP server could not be resolved at session start. Sourced from either a catalog
+   * unit (`unitId`, optionally with the failed `service`) or a user-imported server
+   * (`customServerName`); exactly one identifier is set. */
+  z.object({
+    type: z.literal('plugin-warning'),
+    unitId: McpPluginIdSchema.optional(),
+    customServerName: z.string().min(1).optional(),
+    service: McpPluginServiceSchema.optional(),
+    reason: PluginWarningReasonSchema,
   }),
 
   // Agent → client requests await a reply via AgentInput, correlated by requestId.

@@ -135,6 +135,225 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('serves and mutates masked plugin settings', async () => {
+    const client = await connectedClient();
+
+    expect(await client.getPluginCatalog()).toEqual([
+      expect.objectContaining({
+        id: 'github-read',
+        servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
+      }),
+    ]);
+    await client.setPluginConfig({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            label: 'Personal GitHub',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+    expect(await client.getPluginConfig()).toEqual({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectors: [
+        {
+          id: 'github-personal',
+          label: 'Personal GitHub',
+          service: 'github',
+          credential: { type: 'auth-token', configured: true },
+        },
+      ],
+      customServers: [],
+    });
+    expect(JSON.stringify(await client.getPluginConfig())).not.toContain('github-secret');
+
+    // Updating metadata without a credential keeps the stored secret; replacing it remains masked.
+    await client.setPluginConfig({
+      connectorOperations: [
+        { type: 'update', connectorId: 'github-personal', label: 'Work GitHub' },
+      ],
+    });
+    await client.setPluginConfig({
+      connectorOperations: [
+        {
+          type: 'update',
+          connectorId: 'github-personal',
+          credential: { type: 'auth-token', secret: 'rotated-secret' },
+        },
+      ],
+    });
+    expect(await client.getPluginConfig()).toMatchObject({
+      connectors: [{ label: 'Work GitHub', credential: { configured: true } }],
+    });
+
+    await client.setPluginConfig({
+      connectorOperations: [{ type: 'delete', connectorId: 'github-personal' }],
+    });
+    expect(await client.getPluginConfig()).toEqual({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: {},
+      connectors: [],
+      customServers: [],
+    });
+
+    client.dispose();
+  });
+
+  it('imports, masks, toggles, and removes a custom MCP server', async () => {
+    const client = await connectedClient();
+
+    await client.setPluginConfig({
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'http',
+              name: 'remote-mcp',
+              url: 'https://mcp.test',
+              headers: { Authorization: 'Bearer github-secret' },
+            },
+          },
+        },
+      ],
+    });
+
+    // The header VALUE is stripped to a key list; the secret never crosses back.
+    expect(await client.getPluginConfig()).toMatchObject({
+      customServers: [
+        {
+          id: 'cs1',
+          enabled: true,
+          server: {
+            type: 'http',
+            name: 'remote-mcp',
+            url: 'https://mcp.test',
+            headerKeys: ['Authorization'],
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(await client.getPluginConfig())).not.toContain('github-secret');
+
+    // Toggling preserves the stored server (secret intact server-side).
+    await client.setPluginConfig({
+      customServerOperations: [{ type: 'update', id: 'cs1', enabled: false }],
+    });
+    expect((await client.getPluginConfig()).customServers[0]).toMatchObject({ enabled: false });
+
+    await client.setPluginConfig({
+      customServerOperations: [{ type: 'remove', id: 'cs1' }],
+    });
+    expect((await client.getPluginConfig()).customServers).toEqual([]);
+
+    client.dispose();
+  });
+
+  it('rejects a custom server whose name collides with a catalog server (engine parity)', async () => {
+    const client = await connectedClient();
+    // `linkcode-github` is the catalog server name — the daemon rejects it; the mock must too.
+    await expect(
+      client.setPluginConfig({
+        customServerOperations: [
+          {
+            type: 'add',
+            server: {
+              id: 'cs-dupe',
+              enabled: true,
+              server: { type: 'stdio', name: 'linkcode-github', command: 'x' },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect((await client.getPluginConfig()).customServers).toEqual([]);
+    client.dispose();
+  });
+
+  it('applies a unit toggle in isolation without touching bindings or connectors', async () => {
+    const client = await connectedClient();
+    await client.setPluginConfig({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+
+    await client.setPluginConfig({ units: [{ unitId: 'github-read', enabled: false }] });
+
+    expect(await client.getPluginConfig()).toEqual({
+      units: [{ unitId: 'github-read', enabled: false }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectors: [
+        {
+          id: 'github-personal',
+          service: 'github',
+          credential: { type: 'auth-token', configured: true },
+        },
+      ],
+      customServers: [],
+    });
+    client.dispose();
+  });
+
+  it('rejects an invalid connector operation and keeps the last acknowledged state', async () => {
+    const client = await connectedClient();
+    await client.setPluginConfig({
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+    const confirmed = await client.getPluginConfig();
+
+    // The daemon redacts the cause into this fixed public message; the mock mirrors that.
+    await expect(
+      client.setPluginConfig({
+        connectorOperations: [
+          {
+            type: 'create',
+            connector: {
+              id: 'github-personal',
+              service: 'github',
+              credential: { type: 'auth-token', secret: 'other-secret' },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow('Failed to update provider config');
+    await expect(
+      client.setPluginConfig({
+        connectorOperations: [{ type: 'delete', connectorId: 'missing' }],
+      }),
+    ).rejects.toThrow('Failed to update provider config');
+
+    expect(await client.getPluginConfig()).toEqual(confirmed);
+    client.dispose();
+  });
+
   it('advertises and handles composer directives', async () => {
     const client = await connectedClient();
     const sessionId = await client.startSession({

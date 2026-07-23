@@ -1,12 +1,17 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import type { Accounts, PluginConfig, ProvidersConfig } from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
+  CustomMcpServerSchema,
   DAEMON_DEFAULT_PORT,
+  McpPluginServiceSchema,
+  PluginConnectorSchema,
+  PluginServiceBindingSchema,
+  PluginUnitStateSchema,
   ProviderConfigSchema,
 } from '@linkcode/schema';
 import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
@@ -29,6 +34,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** Global plugin enablement and daemon-local connector credentials. */
+  plugins?: PluginConfig;
 }
 
 const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
@@ -40,6 +47,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  plugins?: unknown;
 }
 
 function configPath(): string {
@@ -101,7 +109,64 @@ export function loadConfig(): DaemonConfig {
     ),
     providers: parseProviders(file.providers),
     accounts: parseAccounts(file.accounts),
+    plugins: parsePlugins(file.plugins),
   };
+}
+
+function parsePlugins(raw: unknown): PluginConfig {
+  const empty: PluginConfig = { units: [], serviceBindings: {}, connectors: [], customServers: [] };
+  if (raw === undefined) return empty;
+  if (!isRecord(raw)) {
+    logger.warn({ operation: 'config.load' }, 'Invalid plugins config: expected an object');
+    return empty;
+  }
+  return {
+    units: parsePluginEntries(raw.units, PluginUnitStateSchema, 'unit'),
+    serviceBindings: parseServiceBindings(raw.serviceBindings),
+    connectors: parsePluginEntries(raw.connectors, PluginConnectorSchema, 'connector'),
+    customServers: parsePluginEntries(raw.customServers, CustomMcpServerSchema, 'custom server'),
+  };
+}
+
+/** Parse binding by binding: an invalid entry is dropped and logged, never blanking the map. */
+function parseServiceBindings(raw: unknown): PluginConfig['serviceBindings'] {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    logger.warn(
+      { operation: 'config.load' },
+      'Invalid plugin service bindings config: expected an object',
+    );
+    return {};
+  }
+  const bindings: PluginConfig['serviceBindings'] = {};
+  for (const service of McpPluginServiceSchema.options) {
+    if (!(service in raw)) continue;
+    const parsed = PluginServiceBindingSchema.safeParse(raw[service]);
+    if (parsed.success) bindings[service] = parsed.data;
+    else logger.warn({ operation: 'config.load' }, 'Dropping invalid plugin service binding');
+  }
+  return bindings;
+}
+
+function parsePluginEntries<T>(
+  raw: unknown,
+  schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  entryType: string,
+): T[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    logger.warn(
+      { operation: 'config.load' },
+      `Invalid plugin ${entryType}s config: expected an array`,
+    );
+    return [];
+  }
+  return raw.flatMap((value) => {
+    const parsed = schema.safeParse(value);
+    if (parsed.success) return [parsed.data];
+    logger.warn({ operation: 'config.load' }, `Dropping invalid plugin ${entryType} config`);
+    return [];
+  });
 }
 
 /**
@@ -166,8 +231,13 @@ export function saveAccounts(accounts: Accounts): void {
   writeConfigField('accounts', accounts);
 }
 
+/** Persist plugin state and local credentials, preserving other config fields; `0600`. */
+export function savePlugins(plugins: PluginConfig): void {
+  writeConfigField('plugins', plugins);
+}
+
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
+function writeConfigField(key: 'providers' | 'accounts' | 'plugins', value: unknown): void {
   const path = configPath();
   let file: Record<string, unknown> = {};
   try {
@@ -179,6 +249,7 @@ function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
   file[key] = value;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {

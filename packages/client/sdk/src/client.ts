@@ -28,7 +28,10 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
   PermissionOutcome,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -111,6 +114,10 @@ export class LinkCodeSdkClient {
 
   getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
     return toResult(this.raw.getAgentCatalog(agentKind, cwd));
+  }
+
+  getPluginCatalog(): RequestResult<McpPluginCatalog> {
+    return toResult(this.raw.getPluginCatalog());
   }
 
   stopSession(sessionId: SessionId): RequestResult<{ ok: true }> {
@@ -201,6 +208,15 @@ export class LinkCodeSdkClient {
   /** Read the daemon-owned provider config (data plane). */
   getProviderConfig(): RequestResult<ProvidersConfig> {
     return toResult(this.raw.getProviderConfig());
+  }
+
+  /** Read public plugin state. Connector secrets are represented only by configured metadata. */
+  getPluginConfig(): RequestResult<PluginConfigPublic> {
+    return toResult(this.raw.getPluginConfig());
+  }
+
+  setPluginConfig(plugins: PluginConfigSet): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setPluginConfig(plugins));
   }
 
   /** Persist the daemon-owned provider config (data plane). */

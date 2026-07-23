@@ -1,6 +1,10 @@
-import type { Account, ProvidersConfig, StartOptions } from '@linkcode/schema';
+import type { Account, PluginConfig, ProvidersConfig, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { applyProviderDefaults } from '../agent/provider-config';
+import {
+  applyPluginConfigSet,
+  applyProviderDefaults,
+  publicPluginConfig,
+} from '../agent/provider-config';
 
 const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 
@@ -108,5 +112,145 @@ describe('applyProviderDefaults account pool', () => {
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
     expect(applyProviderDefaults(baseOpts, providers, [oauth]).config).toEqual({});
+  });
+});
+
+describe('plugin config', () => {
+  const config: PluginConfig = {
+    units: [{ unitId: 'github-read', enabled: true }],
+    serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+    connectors: [
+      {
+        id: 'github-personal',
+        label: 'Personal',
+        service: 'github',
+        credential: { type: 'auth-token', secret: 'old-secret' },
+      },
+    ],
+    customServers: [],
+  };
+
+  it('returns credential metadata without exposing a secret or a reusable mask', () => {
+    const publicConfig = publicPluginConfig(config);
+    expect(publicConfig.connectors[0]?.credential).toEqual({
+      type: 'auth-token',
+      configured: true,
+    });
+    expect(JSON.stringify(publicConfig)).not.toContain('old-secret');
+  });
+
+  it('keeps an omitted credential and replaces an explicitly supplied credential', () => {
+    const kept = applyPluginConfigSet(config, {
+      connectorOperations: [{ type: 'update', connectorId: 'github-personal', label: 'Renamed' }],
+    });
+    expect(kept.connectors[0]?.credential.secret).toBe('old-secret');
+
+    const replaced = applyPluginConfigSet(kept, {
+      connectorOperations: [
+        {
+          type: 'update',
+          connectorId: 'github-personal',
+          credential: { type: 'auth-token', secret: 'new-secret' },
+        },
+      ],
+    });
+    expect(replaced.connectors[0]?.credential.secret).toBe('new-secret');
+  });
+
+  it('deletes a connector and atomically drops every service binding that referenced it', () => {
+    expect(
+      applyPluginConfigSet(config, {
+        connectorOperations: [{ type: 'delete', connectorId: 'github-personal' }],
+      }),
+    ).toEqual({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: {},
+      connectors: [],
+      customServers: [],
+    });
+  });
+
+  it('adds, toggles, replaces, and removes a custom server without a connector', () => {
+    const added = applyPluginConfigSet(config, {
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'stdio',
+              name: 'local-fs',
+              command: 'fs-mcp',
+              env: { TOKEN: 'sekret' },
+            },
+          },
+        },
+      ],
+    });
+    expect(added.customServers).toHaveLength(1);
+
+    // An update without a `server` preserves the stored one (including its inline secret).
+    const toggled = applyPluginConfigSet(added, {
+      customServerOperations: [{ type: 'update', id: 'cs1', enabled: false }],
+    });
+    expect(toggled.customServers[0]).toMatchObject({
+      enabled: false,
+      server: { env: { TOKEN: 'sekret' } },
+    });
+
+    const removed = applyPluginConfigSet(toggled, {
+      customServerOperations: [{ type: 'remove', id: 'cs1' }],
+    });
+    expect(removed.customServers).toEqual([]);
+  });
+
+  it('rejects a custom server name that collides with a catalog server', () => {
+    expect(() =>
+      applyPluginConfigSet(config, {
+        customServerOperations: [
+          {
+            type: 'add',
+            server: {
+              id: 'cs-dupe',
+              enabled: true,
+              server: { type: 'stdio', name: 'linkcode-github', command: 'x' },
+            },
+          },
+        ],
+      }),
+    ).toThrow('built-in server');
+  });
+
+  it('masks custom server env and header values as key lists', () => {
+    const withCustom = applyPluginConfigSet(config, {
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'http',
+              name: 'remote-mcp',
+              url: 'https://mcp.test',
+              headers: { Authorization: 'Bearer sekret' },
+            },
+          },
+        },
+      ],
+    });
+    const publicConfig = publicPluginConfig(withCustom);
+    expect(publicConfig.customServers[0]).toEqual({
+      id: 'cs1',
+      enabled: true,
+      server: {
+        type: 'http',
+        name: 'remote-mcp',
+        url: 'https://mcp.test',
+        headerKeys: ['Authorization'],
+      },
+    });
+    expect(JSON.stringify(publicConfig)).not.toContain('sekret');
   });
 });

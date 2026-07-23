@@ -793,6 +793,30 @@ describe('createConversationBuilder', () => {
     expect(builder.snapshot()).not.toBe(first);
   });
 
+  it('dedupes replayed plugin warnings while keeping distinct reasons for one dependency', () => {
+    const builder = createConversationBuilder();
+    const warning: AgentEvent = {
+      type: 'plugin-warning',
+      unitId: 'github-read',
+      service: 'github',
+      reason: 'unsatisfied-binding',
+    };
+    builder.advance(warning);
+    // The engine replays start diagnostics on session.attach — the same warning must not stack.
+    builder.advance(warning);
+    expect(builder.snapshot().pluginWarnings).toEqual([
+      { unitId: 'github-read', service: 'github', reason: 'unsatisfied-binding' },
+    ]);
+    expect(builder.snapshot().items).toEqual([]);
+
+    // Two composed servers on one service can fail for different reasons — both stay visible.
+    builder.advance({ ...warning, reason: 'broker-unavailable' });
+    expect(builder.snapshot().pluginWarnings).toEqual([
+      { unitId: 'github-read', service: 'github', reason: 'unsatisfied-binding' },
+      { unitId: 'github-read', service: 'github', reason: 'broker-unavailable' },
+    ]);
+  });
+
   it('never mutates previously returned snapshots (copy-on-write)', () => {
     const builder = createConversationBuilder();
     for (const event of scenario.slice(0, 5)) builder.advance(event);

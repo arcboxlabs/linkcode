@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PluginConfig } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -9,6 +10,7 @@ import {
   hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  savePlugins,
 } from '../config';
 import { logger } from '../logger';
 import { telemetryConfigCachePath } from '../paths';
@@ -37,6 +39,12 @@ function writeAccountsConfig(accounts: unknown): void {
   const dir = join(process.env.HOME ?? '', '.linkcode');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ accounts }));
+}
+
+function writeRawConfig(config: unknown): void {
+  const dir = join(process.env.HOME ?? '', '.linkcode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify(config));
 }
 
 const validAccount = {
@@ -167,5 +175,76 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadConfig plugins', () => {
+  const connector = {
+    id: 'github-personal',
+    label: 'Personal GitHub',
+    service: 'github',
+    credential: { type: 'auth-token', secret: 'github-secret' },
+  } as const;
+
+  it('keeps valid entries and drops malformed entries independently', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeRawConfig({
+      plugins: {
+        units: [
+          { unitId: 'github-read', enabled: true },
+          { unitId: 'unknown-unit', enabled: true },
+        ],
+        serviceBindings: {
+          github: { type: 'local', connectorId: connector.id },
+          jira: { type: 'local', connectorId: 'stale' },
+        },
+        connectors: [connector, { id: 'bad', service: 'github' }],
+        customServers: [
+          { id: 'cs1', enabled: true, server: { type: 'stdio', name: 'local-fs', command: 'fs' } },
+          { id: 'bad', enabled: true, server: { type: 'stdio', name: 'x' } },
+        ],
+      },
+    });
+
+    expect(loadConfig().plugins).toEqual({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: connector.id } },
+      connectors: [connector],
+      customServers: [
+        { id: 'cs1', enabled: true, server: { type: 'stdio', name: 'local-fs', command: 'fs' } },
+      ],
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('round-trips credentials at mode 0600 without overwriting providers or accounts', () => {
+    writeRawConfig({ providers: { codex: { enabled: true } }, accounts: [validAccount] });
+    const plugins: PluginConfig = {
+      units: [],
+      serviceBindings: { github: { type: 'local', connectorId: connector.id } },
+      connectors: [connector],
+      customServers: [],
+    };
+
+    savePlugins(plugins);
+
+    expect(loadConfig()).toMatchObject({
+      providers: { codex: { enabled: true } },
+      accounts: [validAccount],
+      plugins,
+    });
+    expect(statSync(join(process.env.HOME ?? '', '.linkcode', 'config.json')).mode & 0o777).toBe(
+      0o600,
+    );
+  });
+
+  it('defaults an older config without a plugins section to empty state', () => {
+    writeRawConfig({ providers: {} });
+    expect(loadConfig().plugins).toEqual({
+      units: [],
+      serviceBindings: {},
+      connectors: [],
+      customServers: [],
+    });
   });
 });

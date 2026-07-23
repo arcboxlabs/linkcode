@@ -1,8 +1,10 @@
 import type {
   AgentEvent,
   AgentStartCatalog,
+  McpPluginCatalog,
   MessageId,
   PermissionOutcome,
+  PluginConfigPublic,
   SessionId,
   SessionNotification,
   WirePayload,
@@ -83,6 +85,57 @@ describe('LinkCodeClient control API', () => {
 
     await expect(client.getAgentCatalog('pi')).rejects.toThrow('catalog unavailable');
     await expect(client.getAgentCatalog('pi')).resolves.toEqual({ models: [], policies: [] });
+
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('reads the plugin catalog and masked plugin config through correlated requests', async () => {
+    let requestNumber = 0;
+    const { client, serverTransport } = await createConnectedLocalClient({
+      randomUUID: () => `plugin-${++requestNumber}`,
+    });
+    const catalog: McpPluginCatalog = [
+      {
+        id: 'github-read',
+        labelKey: 'units.githubRead.label',
+        descriptionKey: 'units.githubRead.description',
+        servers: [{ type: 'managed', name: 'linkcode-github', service: 'github' }],
+      },
+    ];
+    const plugins: PluginConfigPublic = {
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'managed' } },
+      connectors: [],
+      customServers: [],
+    };
+
+    serverTransport.onMessage((msg) => {
+      const payload = msg.payload;
+      if (payload.kind === 'plugin.catalog.get') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'plugin.catalog.result',
+            replyTo: payload.clientReqId,
+            catalog,
+          }),
+        );
+      }
+      if (payload.kind === 'config.get') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'config.get.result',
+            replyTo: payload.clientReqId,
+            providers: {},
+            accounts: [],
+            plugins,
+          }),
+        );
+      }
+    });
+
+    await expect(client.getPluginCatalog()).resolves.toEqual(catalog);
+    await expect(client.getPluginConfig()).resolves.toEqual(plugins);
 
     client.dispose();
     serverTransport.close();

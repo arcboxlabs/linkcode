@@ -24,7 +24,10 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  McpPluginCatalog,
   PermissionOutcome,
+  PluginConfigPublic,
+  PluginConfigSet,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -80,6 +83,14 @@ export class ControlChannel {
       clientReqId,
       agentKind,
       cwd,
+    }));
+  }
+
+  /** Read the daemon-owned MCP plugin catalog. */
+  getPluginCatalog(): Promise<McpPluginCatalog> {
+    return this.sendCorrelated('pluginCatalog', (clientReqId) => ({
+      kind: 'plugin.catalog.get',
+      clientReqId,
     }));
   }
 
@@ -331,6 +342,14 @@ export class ControlChannel {
     }));
   }
 
+  /** Read public plugin state. Connector secrets never cross this boundary. */
+  getPluginConfig(): Promise<PluginConfigPublic> {
+    return this.sendCorrelated('pluginConfigGet', (clientReqId) => ({
+      kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
   /** Read the daemon-owned global account pool (data plane). */
   getAccounts(): Promise<Accounts> {
     return this.sendCorrelated('accountsGet', (clientReqId) => ({
@@ -374,6 +393,15 @@ export class ControlChannel {
       kind: 'config.set',
       clientReqId,
       providers,
+    }));
+  }
+
+  /** Apply plugin state and daemon-local connector credential operations. */
+  setPluginConfig(plugins: PluginConfigSet): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'config.set',
+      clientReqId,
+      plugins,
     }));
   }
 

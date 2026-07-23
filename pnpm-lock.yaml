@@ -1055,6 +1055,9 @@ importers:
 
   packages/presentation/i18n:
     devDependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../../foundation/schema
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'

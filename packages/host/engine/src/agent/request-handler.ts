@@ -4,10 +4,11 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
+import { MCP_PLUGIN_CATALOG } from '../plugin/catalog';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
-import { applyProviderDefaults } from './provider-config';
+import { applyPluginConfigSet, applyProviderDefaults, publicPluginConfig } from './provider-config';
 import type { AgentRuntimeService } from './runtime-service';
 
 type AgentRequest = Extract<
@@ -16,6 +17,7 @@ type AgentRequest = Extract<
     kind:
       | 'agent-runtime.list'
       | 'agent.catalog'
+      | 'plugin.catalog.get'
       | 'config.get'
       | 'config.set'
       | 'agent-login.start'
@@ -37,6 +39,22 @@ export class AgentRequestHandler {
 
   handle(payload: AgentRequest): Effect.Effect<void> {
     switch (payload.kind) {
+      case 'plugin.catalog.get':
+        return this.responder.reply(
+          payload.clientReqId,
+          Effect.try({
+            try: () =>
+              this.transport.send(
+                createWireMessage({
+                  kind: 'plugin.catalog.result',
+                  replyTo: payload.clientReqId,
+                  catalog: MCP_PLUGIN_CATALOG,
+                }),
+              ),
+            catch: (cause) =>
+              providerFailure('plugin.catalog.get', 'Failed to load plugin catalog', cause),
+          }),
+        );
       case 'agent.catalog':
         return this.responder.reply(
           payload.clientReqId,
@@ -98,6 +116,7 @@ export class AgentRequestHandler {
                   replyTo: payload.clientReqId,
                   providers: this.providers.get(),
                   accounts: this.providers.getAccounts(),
+                  plugins: publicPluginConfig(this.providers.getPlugins()),
                 }),
               ),
             catch: (cause) =>
@@ -107,6 +126,7 @@ export class AgentRequestHandler {
       case 'config.set': {
         const providers = payload.providers;
         const accounts = payload.accounts;
+        const plugins = payload.plugins;
         return this.responder.reply(
           payload.clientReqId,
           Effect.andThen(
@@ -118,9 +138,21 @@ export class AgentRequestHandler {
               : updateProviderConfig('config.set-accounts', () =>
                   this.providers.setAccounts(accounts),
                 ),
-          ).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
+          )
+            .pipe(
+              Effect.andThen(
+                plugins === undefined
+                  ? Effect.void
+                  : updateProviderConfig('config.set-plugins', () =>
+                      this.providers.setPlugins(
+                        applyPluginConfigSet(this.providers.getPlugins(), plugins),
+                      ),
+                    ),
+              ),
+            )
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       }
       case 'agent-login.start': {

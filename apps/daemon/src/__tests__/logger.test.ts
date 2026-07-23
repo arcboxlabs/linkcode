@@ -32,6 +32,9 @@ describe('daemon logger', () => {
         nested: { apiKey: 'nested-secret', token: 'nested-token' },
         providers: { codex: { apiKey: 'provider-secret' } },
         accounts: [{ credential: { key: 'account-secret' } }],
+        plugins: {
+          connectors: [{ credential: { type: 'auth-token', secret: 'plugin-secret' } }],
+        },
         sessionId: 'session-1',
       },
       'Session started',
@@ -48,6 +51,7 @@ describe('daemon logger', () => {
       nested: { apiKey: '[Redacted]', token: '[Redacted]' },
       providers: { codex: { apiKey: '[Redacted]' } },
       accounts: [{ credential: '[Redacted]' }],
+      plugins: { connectors: [{ credential: '[Redacted]' }] },
       sessionId: 'session-1',
     });
   });

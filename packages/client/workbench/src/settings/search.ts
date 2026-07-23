@@ -1,3 +1,4 @@
+import { McpPluginServiceSchema } from '@linkcode/schema';
 import type { SettingsSidebarNavGroup } from '@linkcode/ui';
 import { useTranslations } from 'use-intl';
 import { matchPaletteCommands } from '../palette/match';
@@ -26,6 +27,7 @@ export interface SettingsSearchKeywords {
   about: readonly string[];
   agents: readonly string[];
   providers: readonly string[];
+  plugins: readonly string[];
   imChannel: readonly string[];
   historyImport: readonly string[];
 }
@@ -85,6 +87,12 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('providers.endpoint'),
       t('providers.accountModel'),
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
+    ],
+    plugins: [
+      t('plugins.unitsTitle'),
+      t('plugins.units.githubRead.label'),
+      t('plugins.units.githubRead.description'),
+      ...McpPluginServiceSchema.options.map((service) => t(`plugins.serviceName.${service}`)),
     ],
     imChannel: [t('imChannel.connectTitle'), t('imChannel.bindings'), t('imChannel.autoMirror')],
     historyImport: [t('historyImport.portalLabel')],

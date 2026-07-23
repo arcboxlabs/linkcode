@@ -580,6 +580,7 @@ export const en = {
       about: 'About',
       providers: 'Providers',
       agents: 'Agents',
+      plugins: 'Tools',
       imChannel: 'Messaging',
     },
     historyImport: {
@@ -811,6 +812,60 @@ export const en = {
         baseUrl: 'Endpoint URL (optional)',
         protocol: 'Protocol (optional)',
         protocolNone: 'Default',
+      },
+    },
+    plugins: {
+      hint: 'Configure optional MCP tools for your agents. Credentials stay in the local daemon.',
+      loadError: 'Could not load tool settings: {message}',
+      unitsTitle: 'Available capabilities',
+      enabledLabel: 'Enable {name}',
+      status: {
+        ready: 'Ready',
+        partial: 'Partially available',
+        unavailable: 'Unavailable',
+        disabled: 'Off',
+      },
+      serverStatus: {
+        ready: 'Ready',
+        satisfied: 'Connected',
+        'expired-credential': 'Credential expired',
+        'unsatisfied-binding': 'Service not connected',
+        'broker-unavailable': 'Cloud service not available yet',
+      },
+      serviceName: {
+        github: 'GitHub',
+      },
+      units: {
+        githubRead: {
+          label: 'GitHub read-only tools',
+          description:
+            'Reads repositories, issues, and pull requests without creating, changing, or deleting GitHub content.',
+        },
+      },
+      customTitle: 'Custom MCP',
+      customHint:
+        'Import your own MCP servers. Credentials stay in the local daemon and are injected only into supported agent sessions.',
+      customEmpty: 'No custom MCP servers imported yet.',
+      customAdd: 'Add server',
+      customAddTitle: 'Add custom MCP server',
+      customEmptyDetail: '(none)',
+      customSecretKeys: 'Credentials: {keys}',
+      customRemove: 'Remove {name}',
+      customCancel: 'Cancel',
+      customSaveError: 'Could not save the MCP server.',
+      customForm: {
+        name: 'Name',
+        nameHint: 'The server identity injected into agents; letters, digits, - and _ only.',
+        transport: 'Transport',
+        transportStdio: 'Local process (stdio)',
+        transportHttp: 'Remote (HTTP)',
+        command: 'Command',
+        args: 'Arguments',
+        env: 'Environment variables',
+        url: 'URL',
+        headers: 'Headers',
+        secretHint:
+          'One key-value pair per line; values are sent only to the local daemon and never read back.',
       },
     },
     notifications: {
