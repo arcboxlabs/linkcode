@@ -5,9 +5,12 @@
 //! on its own thread so a slow boot never blocks a screenshot.
 
 // The framebuffer-capture and HID surface is macOS-only (its consumers are behind
-// `#[cfg(target_os = "macos")]`), so on other targets the streaming machinery is unreachable — don't
-// fail the `-D warnings` lint on its expected dead code there.
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// `#[cfg(target_os = "macos")]`), so on other targets the streaming machinery, its imports, and the
+// diag-dispatch locals are unreachable — don't fail the `-D warnings` lint on that expected slack.
+#![cfg_attr(
+    not(target_os = "macos"),
+    allow(dead_code, unused_imports, unused_variables)
+)]
 
 mod capture;
 mod interactive;
