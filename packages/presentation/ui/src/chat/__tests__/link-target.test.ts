@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { faviconSrcFor, linkTargetFor, linkTargetForUri } from '../link-target';
+import { faviconSrcFor, filePathTarget, linkTargetFor, linkTargetForUri } from '../link-target';
 
 describe('linkTargetFor', () => {
   it('classifies web urls with their hostname', () => {
@@ -69,13 +69,67 @@ describe('linkTargetFor', () => {
     });
   });
 
-  it('leaves fragments, relative urls, and other schemes alone', () => {
+  it('classifies bare relative destinations that carry a file identity', () => {
+    expect(linkTargetFor('package-lock.json')).toStrictEqual({
+      kind: 'file',
+      path: 'package-lock.json',
+    });
+    expect(linkTargetFor('src/main.rs:7')).toStrictEqual({
+      kind: 'file',
+      path: 'src/main.rs',
+      line: 7,
+    });
+  });
+
+  it('leaves fragments, schemes, and evidence-free relative urls alone', () => {
     expect(linkTargetFor(undefined)).toBeNull();
     expect(linkTargetFor('')).toBeNull();
     expect(linkTargetFor('#user-content-fn-1')).toBeNull();
     expect(linkTargetFor('mailto:someone@example.com')).toBeNull();
     expect(linkTargetFor('tel:+123456')).toBeNull();
-    expect(linkTargetFor('docs/readme.md')).toBeNull();
+    expect(linkTargetFor('release/notes')).toBeNull();
+  });
+});
+
+describe('filePathTarget', () => {
+  it('classifies tokens with recognized file identities', () => {
+    expect(filePathTarget('package-lock.json')).toStrictEqual({
+      kind: 'file',
+      path: 'package-lock.json',
+    });
+    expect(filePathTarget('src/main.rs')).toStrictEqual({ kind: 'file', path: 'src/main.rs' });
+    expect(filePathTarget('.gitignore')).toStrictEqual({ kind: 'file', path: '.gitignore' });
+    expect(filePathTarget('Makefile')).toStrictEqual({ kind: 'file', path: 'Makefile' });
+    expect(filePathTarget('./out/report.pdf')).toStrictEqual({
+      kind: 'file',
+      path: 'out/report.pdf',
+    });
+    expect(filePathTarget('/abs/path/logo.png')).toStrictEqual({
+      kind: 'file',
+      path: '/abs/path/logo.png',
+    });
+    expect(filePathTarget('src/foo.ts:42')).toStrictEqual({
+      kind: 'file',
+      path: 'src/foo.ts',
+      line: 42,
+    });
+    expect(filePathTarget('skills/github/SKILL.md')).toStrictEqual({
+      kind: 'skill',
+      path: 'skills/github/SKILL.md',
+    });
+  });
+
+  it('rejects prose that merely looks path-shaped', () => {
+    expect(filePathTarget('foo.bar')).toBeNull();
+    expect(filePathTarget('origin/main')).toBeNull();
+    expect(filePathTarget('application/json')).toBeNull();
+    expect(filePathTarget('and/or')).toBeNull();
+    expect(filePathTarget('two words.md')).toBeNull();
+    expect(filePathTarget('https://example.com/a.md')).toBeNull();
+    expect(filePathTarget('mailto:user@example.com')).toBeNull();
+    expect(filePathTarget('foo(bar)')).toBeNull();
+    expect(filePathTarget('')).toBeNull();
+    expect(filePathTarget(`${'x'.repeat(300)}.md`)).toBeNull();
   });
 });
 

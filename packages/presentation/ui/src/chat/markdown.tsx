@@ -20,10 +20,9 @@ import type { Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
-import { detectInlineFilePath } from './artifacts/file-kind';
 import { LinkChip } from './link-chip';
 import { Favicon } from './link-icon';
-import { linkTargetFor } from './link-target';
+import { filePathTarget, linkTargetFor } from './link-target';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
@@ -54,19 +53,19 @@ const scopeFragmentIdentifiers: Plugin<[ScopeFragmentIdentifiersOptions], Root> 
     });
   };
 
-/** Inline code, upgraded to the shared file chip when the span is a viewer-openable path
- * (LinkChip resolves opening — video → browser preview, else the file viewer — and stays an
- * inert chip when the host wires nothing); plain code everywhere else. */
+/** Inline code, upgraded to the shared file chip when the span carries a recognized file
+ * identity (LinkChip resolves opening — video → browser preview, else the file viewer — and
+ * stays an inert chip when the host wires nothing); plain code everywhere else. */
 function InlineCode({
   className,
   children,
   node: _node,
   ...rest
 }: React.ComponentProps<'code'> & { node?: unknown }): React.ReactNode {
-  const path = typeof children === 'string' ? detectInlineFilePath(children) : null;
-  if (path !== null) {
+  const target = typeof children === 'string' ? filePathTarget(children) : null;
+  if (target !== null) {
     return (
-      <LinkChip className={className} target={{ kind: 'file', path }}>
+      <LinkChip className={className} target={target}>
         {children}
       </LinkChip>
     );
