@@ -514,7 +514,6 @@ export const zhCN = {
     },
     content: {
       audio: '[音频]',
-      resourceLink: '[资源：{name}]',
       resource: '[资源]',
     },
     artifact: {
