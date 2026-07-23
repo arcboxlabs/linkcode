@@ -84,9 +84,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runTask,
   );
   let terminals: TerminalService | undefined;
-  const simulators = deps.simulatorBackend
-    ? new SimulatorService(deps.simulatorBackend)
-    : undefined;
+  // Constructed after `sessions` (both reference it lazily), mirroring `terminals`, so the
+  // session-existence predicate can gate simulator claims on a live session.
+  let simulators: SimulatorService | undefined;
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -99,6 +99,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       simulators?.releaseSession(sessionId);
     },
   );
+  simulators = deps.simulatorBackend
+    ? new SimulatorService(deps.simulatorBackend, { hasSession: (id) => sessions.has(id) })
+    : undefined;
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;

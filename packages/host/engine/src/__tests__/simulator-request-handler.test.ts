@@ -1,11 +1,11 @@
-import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
+import type { SessionId, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { SimulatorBackend } from '../simulator/backend';
-import { settleEngineTasks } from './fixtures/session-harness';
+import { FakeAdapter, settleEngineTasks, startedSessionId } from './fixtures/session-harness';
 import { createTestEngine } from './fixtures/test-engine';
 
 function fakeBackend(): SimulatorBackend {
@@ -50,7 +50,10 @@ function harness(backend?: SimulatorBackend) {
     onClose: () => noop,
     close: noop,
   };
-  const engine = createTestEngine(transport, { simulatorBackend: backend });
+  const engine = createTestEngine(transport, {
+    simulatorBackend: backend,
+    factory: () => new FakeAdapter(),
+  });
   async function inject(payload: WirePayload): Promise<void> {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
     await settleEngineTasks();
@@ -58,7 +61,17 @@ function harness(backend?: SimulatorBackend) {
   function reply(replyTo: string): WirePayload | undefined {
     return sent.find((p) => 'replyTo' in p && p.replyTo === replyTo);
   }
-  return { engine, sent, inject, reply };
+  // Simulator commands are session-scoped and the engine rejects unknown sessions, so start a real
+  // one and return its id.
+  async function startSession(clientReqId: string): Promise<SessionId> {
+    await inject({
+      kind: 'session.start',
+      clientReqId,
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    return startedSessionId(sent, clientReqId);
+  }
+  return { engine, sent, inject, reply, startSession };
 }
 
 describe('simulator wire requests', () => {
@@ -98,10 +111,11 @@ describe('simulator wire requests', () => {
       devices: [{ udid: 'U-1', state: 'Shutdown' }],
     });
 
+    const s1 = await h.startSession('s1');
     await h.inject({
       kind: 'simulator.boot',
       clientReqId: 'boot',
-      sessionId: 'session-1' as never,
+      sessionId: s1,
       udid: 'U-1',
     });
     expect(h.reply('boot')).toMatchObject({ kind: 'request.succeeded' });
@@ -114,10 +128,11 @@ describe('simulator wire requests', () => {
     const h = harness(fakeBackend());
     await h.engine.start();
 
+    const s1 = await h.startSession('s1');
     await h.inject({
       kind: 'simulator.launch',
       clientReqId: 'go',
-      sessionId: 'session-1' as never,
+      sessionId: s1,
       udid: 'U-1',
       bundleId: 'com.example.app',
     });
@@ -126,7 +141,7 @@ describe('simulator wire requests', () => {
     await h.inject({
       kind: 'simulator.screenshot',
       clientReqId: 'shot',
-      sessionId: 'session-1' as never,
+      sessionId: s1,
       udid: 'U-1',
     });
     expect(h.reply('shot')).toMatchObject({
@@ -135,11 +150,12 @@ describe('simulator wire requests', () => {
       data: Buffer.from([0xff, 0xd8, 0x01]).toString('base64'),
     });
 
-    // The device belongs to session-1 now; another session's command must fail as a conflict.
+    // The device belongs to s1 now; a *different* live session's command must fail as a conflict.
+    const s2 = await h.startSession('s2');
     await h.inject({
       kind: 'simulator.open-url',
       clientReqId: 'steal',
-      sessionId: 'session-2' as never,
+      sessionId: s2,
       udid: 'U-1',
       url: 'https://example.com',
     });

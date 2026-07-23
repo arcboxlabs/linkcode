@@ -44,13 +44,15 @@ interface DeviceClaim {
 export class SimulatorService {
   private readonly claims = new Map<string, DeviceClaim>();
   private readonly idleReclaimMs: number;
+  private readonly hasSession?: (sessionId: SessionId) => boolean;
   private probedStatus?: SimulatorHostStatus;
 
   constructor(
     private readonly backend: SimulatorBackend,
-    opts?: { idleReclaimMs?: number },
+    opts?: { idleReclaimMs?: number; hasSession?: (sessionId: SessionId) => boolean },
   ) {
     this.idleReclaimMs = opts?.idleReclaimMs ?? IDLE_RECLAIM_MS;
+    this.hasSession = opts?.hasSession;
   }
 
   probe(): Promise<{ simctlPath: string; developerDir: string }> {
@@ -122,23 +124,19 @@ export class SimulatorService {
   // wire handlers and MCP tools treat every service call uniformly as a promise.
 
   async install(sessionId: SessionId, udid: string, appPath: string): Promise<void> {
-    this.claim(sessionId, udid);
-    return this.backend.install(udid, appPath);
+    return this.withClaim(sessionId, udid, () => this.backend.install(udid, appPath));
   }
 
   async launch(sessionId: SessionId, udid: string, bundleId: string): Promise<number | null> {
-    this.claim(sessionId, udid);
-    return this.backend.launch(udid, bundleId);
+    return this.withClaim(sessionId, udid, () => this.backend.launch(udid, bundleId));
   }
 
   async terminate(sessionId: SessionId, udid: string, bundleId: string): Promise<void> {
-    this.claim(sessionId, udid);
-    return this.backend.terminate(udid, bundleId);
+    return this.withClaim(sessionId, udid, () => this.backend.terminate(udid, bundleId));
   }
 
   async openUrl(sessionId: SessionId, udid: string, url: string): Promise<void> {
-    this.claim(sessionId, udid);
-    return this.backend.openUrl(udid, url);
+    return this.withClaim(sessionId, udid, () => this.backend.openUrl(udid, url));
   }
 
   async screenshot(
@@ -146,8 +144,7 @@ export class SimulatorService {
     udid: string,
     format?: SimulatorImageFormat,
   ): Promise<Uint8Array> {
-    this.claim(sessionId, udid);
-    return this.backend.screenshot(udid, format);
+    return this.withClaim(sessionId, udid, () => this.backend.screenshot(udid, format));
   }
 
   /** Release every device a session holds (the session-stop hook). */
@@ -169,12 +166,36 @@ export class SimulatorService {
     );
   }
 
+  /** Run `op` under a claim on `udid`, rolling the claim back if `op` rejects AND this call is what
+   * created it — a command that failed never actually acquired the device, so it must not keep
+   * consuming the session's cap or block other sessions. A refreshed (pre-existing) claim is left
+   * intact. Boot is the deliberate exception: it reconciles ownership itself, since a failed boot
+   * may still have started the device server-side. */
+  private async withClaim<T>(sessionId: SessionId, udid: string, op: () => Promise<T>): Promise<T> {
+    const created = this.claim(sessionId, udid);
+    try {
+      return await op();
+    } catch (error) {
+      if (created && this.claims.get(udid)?.sessionId === sessionId) this.drop(udid);
+      throw error;
+    }
+  }
+
   /**
    * Claim a device for a session, or refresh an existing claim (disarming a pending reclaim).
-   * Throws `conflict` when another session holds the device and `limit_exceeded` past the
-   * per-session cap.
+   * Returns whether it created a new claim (vs. refreshed an existing one). Throws `not_found` for
+   * an unknown session, `conflict` when another session holds the device, and `limit_exceeded` past
+   * the per-session cap.
    */
-  private claim(sessionId: SessionId, udid: string): void {
+  private claim(sessionId: SessionId, udid: string): boolean {
+    // Reject a stale or fabricated session before it claims a device: the engine emits no
+    // session-stop for one it never started, so its claim would never be released.
+    if (this.hasSession && !this.hasSession(sessionId)) {
+      throw new RequestError({
+        code: 'not_found',
+        message: `session ${sessionId} is not active`,
+      });
+    }
     const existing = this.claims.get(udid);
     if (existing) {
       if (existing.sessionId !== sessionId) {
@@ -190,7 +211,7 @@ export class SimulatorService {
       // Cancel an in-flight reclaim's claim-drop: the session is back, so it keeps ownership even if
       // the shutdown started (it re-boots the device on its next op).
       existing.reclaiming = false;
-      return;
+      return false;
     }
     let held = 0;
     for (const claim of this.claims.values()) {
@@ -203,6 +224,7 @@ export class SimulatorService {
       });
     }
     this.claims.set(udid, { sessionId, bootedByService: false });
+    return true;
   }
 
   private release(udid: string, claim: DeviceClaim): void {
