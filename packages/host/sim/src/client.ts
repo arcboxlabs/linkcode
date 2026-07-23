@@ -19,6 +19,7 @@ import type {
   SimButton,
   SimDevice,
   SimImageFormat,
+  SimOrientation,
   SimProbe,
   SimStreamCodec,
   SimStreamStartResult,
@@ -192,6 +193,11 @@ export class SimSidecarClient {
   /** Press a hardware button (private HID; macOS only). */
   async button(udid: string, button: SimButton): Promise<void> {
     await this.call('button', { udid, button });
+  }
+
+  /** Rotate the interface orientation (GraphicsServices GSEvent; macOS only). */
+  async rotate(udid: string, orientation: SimOrientation): Promise<void> {
+    await this.call('rotate', { udid, orientation });
   }
 
   /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */

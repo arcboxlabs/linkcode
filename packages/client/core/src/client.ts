@@ -40,6 +40,7 @@ import type {
   SessionRecord,
   SimulatorDevice,
   SimulatorImageFormat,
+  SimulatorOrientation,
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
@@ -763,6 +764,14 @@ export class LinkCodeClient {
     button: 'home' | 'lock',
   ): Promise<RequestAck> {
     return this.control.simulatorButton(sessionId, udid, button);
+  }
+
+  simulatorRotate(
+    sessionId: SessionId,
+    udid: string,
+    orientation: SimulatorOrientation,
+  ): Promise<RequestAck> {
+    return this.control.simulatorRotate(sessionId, udid, orientation);
   }
 
   /** Start streaming a device's framebuffer; frames arrive via {@link subscribeSimulatorFrames}. */

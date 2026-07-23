@@ -9,6 +9,7 @@ import type {
   SimulatorDeviceInfo,
   SimulatorFrameListener,
   SimulatorImageFormat,
+  SimulatorOrientation,
   SimulatorPoint,
   SimulatorStreamOptions,
   SimulatorStreamStartResult,
@@ -218,6 +219,15 @@ export class SimulatorService {
   async button(sessionId: SessionId, udid: string, button: SimulatorButton): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.button(udid, button);
+  }
+
+  async rotate(
+    sessionId: SessionId,
+    udid: string,
+    orientation: SimulatorOrientation,
+  ): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.rotate(udid, orientation);
   }
 
   async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {

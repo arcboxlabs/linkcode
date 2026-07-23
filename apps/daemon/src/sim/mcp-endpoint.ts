@@ -258,6 +258,27 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         }),
     );
     server.registerTool(
+      'sim_rotate',
+      {
+        description:
+          'Rotate a booted iOS Simulator device to an interface orientation (portrait, portraitUpsideDown, landscapeLeft, landscapeRight), then re-screenshot to check the landscape/portrait layout. A foreground app that does not support the orientation keeps its current frame.',
+        inputSchema: {
+          udid: z.string().min(1),
+          orientation: z.enum([
+            'portrait',
+            'portraitUpsideDown',
+            'landscapeLeft',
+            'landscapeRight',
+          ]),
+        },
+      },
+      ({ udid, orientation }) =>
+        run('sim_rotate', udid, async () => {
+          await simulators.rotate(sessionId, udid, orientation);
+          return `rotated ${udid} to ${orientation}`;
+        }),
+    );
+    server.registerTool(
       'sim_screenshot',
       {
         description:

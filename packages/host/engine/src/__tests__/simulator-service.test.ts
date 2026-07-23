@@ -39,6 +39,7 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
     key: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
+    rotate: vi.fn(asyncNoop),
     streamStart: vi.fn(() =>
       Promise.resolve<Awaited<ReturnType<SimulatorBackend['streamStart']>>>({
         streaming: true,

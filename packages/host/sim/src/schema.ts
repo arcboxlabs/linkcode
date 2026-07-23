@@ -65,6 +65,9 @@ export type SimStreamStartResult = z.infer<typeof SimStreamStartResultSchema>;
 /** A hardware button the private HID layer can press. */
 export type SimButton = 'home' | 'lock';
 
+/** Interface orientation for a rotate command (matches `UIDeviceOrientation`). */
+export type SimOrientation = 'portrait' | 'portraitUpsideDown' | 'landscapeLeft' | 'landscapeRight';
+
 /** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
 export type SimTouchPhase = 'down' | 'move' | 'up';
 
