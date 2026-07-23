@@ -23,6 +23,9 @@ export interface SimulatorDeviceInfo {
 export interface SimulatorProbe {
   simctlPath: string;
   developerDir: string;
+  /** Whether the host can stream a framebuffer and inject HID input (private SimulatorKit layer),
+   * not just run public simctl commands. */
+  interactive: boolean;
 }
 
 export type SimulatorImageFormat = 'jpeg' | 'png';

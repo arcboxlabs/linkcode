@@ -14,7 +14,9 @@ const S2 = 'session-2' as SessionId;
 
 function fakeBackend(): SimulatorBackend {
   return {
-    probe: vi.fn(() => Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev' })),
+    probe: vi.fn(() =>
+      Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
+    ),
     list: vi.fn(() =>
       Promise.resolve([
         {

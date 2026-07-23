@@ -20,7 +20,8 @@ import { WirePayloadSchema } from './payload';
 // 48 adds the H.264 stream codec plumbing (CODE-397).
 // 49 adds streamed touch, wheel scroll, and HID keyboard input (CODE-397).
 // 50 adds two-finger pinch and IME pasteboard input (CODE-397).
-export const WIRE_PROTOCOL_VERSION = 50 as const;
+// 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
+export const WIRE_PROTOCOL_VERSION = 51 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

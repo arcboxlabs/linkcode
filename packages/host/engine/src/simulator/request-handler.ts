@@ -41,8 +41,11 @@ type SimulatorRequest = Extract<
  * watcher, so its own commands are the only change source it can observe).
  */
 export class SimulatorRequestHandler {
-  /** Active framebuffer fan-out subscriptions, keyed by udid; the value unsubscribes it. */
-  private readonly frameSubs = new Map<string, () => void>();
+  /** Active framebuffer fan-out subscriptions, keyed by udid. The owning `sessionId` is tracked so a
+   * later start by a different session replaces the fan-out: a release or shutdown outside the wire
+   * stop path leaves the entry, and a stale callback would otherwise route new frames to the dead
+   * session (the current panel then receives none). */
+  private readonly frameSubs = new Map<string, { sessionId: SessionId; unsubscribe: () => void }>();
 
   constructor(
     private readonly simulators: SimulatorService | undefined,
@@ -261,8 +264,14 @@ export class SimulatorRequestHandler {
       case 'simulator.stream.stop':
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.stream.stop', 'Failed to stop stream', async () => {
-            this.unsubscribeFrames(payload.udid);
-            await simulators.streamStop(payload.sessionId, payload.udid);
+            // A deferred stop can arrive after this session released the device — possibly after
+            // another session took it over. Only tear down the fan-out and backend stream while this
+            // session still owns the device; otherwise it is a no-op that leaves the new owner's
+            // stream and subscription intact.
+            if (simulators.ownerOf(payload.udid) === payload.sessionId) {
+              this.unsubscribeFrames(payload.udid);
+              await simulators.streamStop(payload.sessionId, payload.udid);
+            }
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );
@@ -272,9 +281,14 @@ export class SimulatorRequestHandler {
   }
 
   /** Fan the device's frames out to the transport as session-scoped `simulator.stream.frame`s.
-   * Idempotent: a second `streamStart` for a device already fanning out keeps the one subscription. */
+   * The same session re-starting keeps its one subscription (idempotent); a different session
+   * taking over the device replaces the fan-out so frames follow the new owner. */
   private subscribeFrames(simulators: SimulatorService, sessionId: SessionId, udid: string): void {
-    if (this.frameSubs.has(udid)) return;
+    const existing = this.frameSubs.get(udid);
+    if (existing) {
+      if (existing.sessionId === sessionId) return;
+      existing.unsubscribe();
+    }
     const unsubscribe = simulators.onFrame(udid, (frame) => {
       this.transport.send(
         createWireMessage({
@@ -287,11 +301,11 @@ export class SimulatorRequestHandler {
         }),
       );
     });
-    this.frameSubs.set(udid, unsubscribe);
+    this.frameSubs.set(udid, { sessionId, unsubscribe });
   }
 
   private unsubscribeFrames(udid: string): void {
-    this.frameSubs.get(udid)?.();
+    this.frameSubs.get(udid)?.unsubscribe();
     this.frameSubs.delete(udid);
   }
 

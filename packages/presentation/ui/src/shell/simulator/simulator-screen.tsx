@@ -1,4 +1,4 @@
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { clamp } from 'foxts/clamp';
 import { noop } from 'foxts/noop';
 import { useRef, useState } from 'react';
@@ -58,10 +58,10 @@ export interface SimulatorScreenProps {
   onKey?: (press: SimulatorKeyPress) => void;
   /** Text committed by the OS IME (composition end / non-ASCII input): pasted onto the device. */
   onText?: (text: string) => void;
-  /** The device's real screen-outline mask (image URL, framebuffer-sized): clips the stream to
-   * the exact screen shape, and its grown outline keeps the chassis band even. Absent → a generic
-   * rounding. */
-  maskUrl?: string | null;
+  /** The device's real screen-outline mask as a base64-encoded PNG (framebuffer-sized): clips the
+   * stream to the exact screen shape, and its grown outline keeps the chassis band even. Absent → a
+   * generic rounding. Base64, not a `data:` URL — the desktop CSP blocks `fetch`-ing data URLs. */
+  maskPng?: string | null;
   /** Shown centered until the first frame arrives. */
   placeholder?: React.ReactNode;
   className?: string;
@@ -81,7 +81,7 @@ export function SimulatorScreen({
   onPinch,
   onKey,
   onText,
-  maskUrl,
+  maskPng,
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
@@ -104,7 +104,7 @@ export function SimulatorScreen({
   } | null>(null);
   const [layout, setLayout] = useState<DeviceLayout | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       let rafId: number | null = null;
       // Rebuilt only when the framebuffer size or mask presence changes — i.e. essentially once.
@@ -156,11 +156,10 @@ export function SimulatorScreen({
     [subscribeFrames],
   );
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
-      if (maskUrl == null) return;
-      void fetch(maskUrl, { signal })
-        .then(decodeMask)
+      if (maskPng == null) return;
+      void decodeMask(maskPng)
         .then((bitmap) => {
           if (signal.aborted) {
             bitmap.close();
@@ -177,7 +176,7 @@ export function SimulatorScreen({
         maskRef.current = null;
       };
     },
-    [maskUrl],
+    [maskPng],
   );
 
   const emitGesture = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {

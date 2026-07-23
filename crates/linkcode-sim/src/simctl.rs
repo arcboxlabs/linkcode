@@ -60,7 +60,23 @@ pub fn probe() -> Result<Value, OpError> {
     Ok(json!({
         "simctlPath": simctl_path.trim(),
         "developerDir": developer_dir.trim(),
+        // Interactive framebuffer/HID needs SimulatorKit; simctl alone can't stream a screen or
+        // inject touches. Report it so clients gate the live panel instead of mounting a stream that
+        // only ever fails. The private layer resolves exactly when interactive drive is possible.
+        "interactive": interactive_supported(),
     }))
+}
+
+/// Whether this host can drive simulators interactively (framebuffer stream + HID), which requires
+/// the private SimulatorKit layer beyond the public `simctl` CLI. Non-macOS builds never can.
+#[cfg(target_os = "macos")]
+fn interactive_supported() -> bool {
+    crate::private::interactive_available()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn interactive_supported() -> bool {
+    false
 }
 
 /// List available devices with their runtime names.

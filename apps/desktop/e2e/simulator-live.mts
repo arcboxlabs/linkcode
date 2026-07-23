@@ -25,7 +25,7 @@ const simSidecar = join(repoRoot, 'target', 'release', 'linkcode-sim');
 const electronBinary = require('electron') as unknown as string;
 
 const PORT = 43000 + (process.pid % 1000);
-const WIRE_VERSION = 49;
+const WIRE_VERSION = 51;
 
 async function waitForDaemon(): Promise<void> {
   const deadline = Date.now() + 30000;

@@ -104,9 +104,11 @@ export class SimulatorFrameDecoder {
   }
 }
 
-/** A screen mask fetched from a URL, decoded to a bitmap. */
-export function decodeMask(response: Response): Promise<ImageBitmap> {
-  return response.blob().then((blob) => createImageBitmap(blob));
+/** Decode a base64-encoded PNG screen mask to a bitmap. Takes the raw base64, not a `data:` URL:
+ * the desktop renderer's CSP forbids `data:` in `connect-src`, so `fetch()`-ing a data URL is
+ * silently blocked — building the Blob from the decoded bytes avoids the network path entirely. */
+export function decodeMask(pngBase64: string): Promise<ImageBitmap> {
+  return createImageBitmap(new Blob([base64Bytes(pngBase64)], { type: 'image/png' }));
 }
 
 function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {

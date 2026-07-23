@@ -376,6 +376,8 @@ export const en = {
       simulatorSelectDevice: 'Select a device',
       simulatorNoDevices: 'No simulator devices found',
       simulatorUnavailable: 'iOS Simulator is not available on this host',
+      simulatorNonInteractive:
+        "This host can list simulators but can't stream their screen (SimulatorKit unavailable)",
       simulatorNoSession: 'Select a thread to drive the simulator',
       simulatorBoot: 'Boot',
       simulatorBooting: 'Booting device…',

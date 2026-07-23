@@ -20,6 +20,9 @@ export interface SimulatorHostStatus {
   available: boolean;
   simctlPath?: string;
   developerDir?: string;
+  /** Whether the host can stream a framebuffer and inject HID input, not just run simctl; present
+   * only when available. Clients gate the live panel on it. */
+  interactive?: boolean;
   reason?: string;
 }
 
@@ -232,9 +235,14 @@ export class SimulatorService {
     return this.backend.streamStart(udid, options);
   }
 
-  /** Stop a device's framebuffer stream. Requires the session to hold the device. */
+  /** Stop a device's framebuffer stream. Unlike the interactive ops this does NOT claim: the panel
+   * fires stops opportunistically, so a deferred stop can arrive after the owning session already
+   * released the device. Reacquiring here would recreate a claim for a released user-booted device
+   * (pinning it to a dead session) or disarm a service-booted device's idle reclaim — either way the
+   * device stays stuck until the daemon restarts. Only the current owner stops the stream; for a
+   * stale session it is a no-op that never touches another session's claim. */
   async streamStop(sessionId: SessionId, udid: string): Promise<void> {
-    this.claim(sessionId, udid);
+    if (this.claims.get(udid)?.sessionId !== sessionId) return;
     return this.backend.streamStop(udid);
   }
 

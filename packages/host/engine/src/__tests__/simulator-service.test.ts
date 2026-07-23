@@ -20,7 +20,9 @@ function device(udid: string, state: string): SimulatorDeviceInfo {
 
 function fakeBackend(devices: SimulatorDeviceInfo[]) {
   return {
-    probe: vi.fn(() => Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev' })),
+    probe: vi.fn(() =>
+      Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
+    ),
     list: vi.fn(() => Promise.resolve(devices)),
     boot: vi.fn(asyncNoop),
     shutdownDevice: vi.fn(asyncNoop),
@@ -115,6 +117,34 @@ describe('SimulatorService', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(backend.shutdownDevice).not.toHaveBeenCalled();
     expect(service.ownerOf('A')).toBe(S1);
+  });
+
+  it('does not reacquire a released user-booted device when its stream is stopped', async () => {
+    const backend = fakeBackend([device('A', 'Booted')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    service.releaseSession(S1); // user-booted → claim dropped immediately
+    expect(service.ownerOf('A')).toBeUndefined();
+
+    // A deferred stream stop for the now-released device must not pin it back to the dead session.
+    await service.streamStop(S1, 'A');
+    expect(service.ownerOf('A')).toBeUndefined();
+  });
+
+  it('does not cancel a service-booted reclaim when a released stream is stopped', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A'); // service-booted (was Shutdown), so release arms a reclaim
+    service.releaseSession(S1);
+
+    // A deferred stop must not refresh the claim — that would disarm the reclaim and strand the device.
+    await service.streamStop(S1, 'A');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+    expect(service.ownerOf('A')).toBeUndefined();
   });
 
   it('never shuts down a device the user booted', async () => {

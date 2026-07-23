@@ -218,7 +218,17 @@ impl CaptureStream {
             let stopped = Arc::clone(&stopped);
             let dead = Arc::clone(&dead);
             let worker_pid = Arc::clone(&worker_pid);
-            move || supervise(&udid, params, &latest, &encoded, &stopped, &dead, &worker_pid)
+            move || {
+                supervise(
+                    &udid,
+                    params,
+                    &latest,
+                    &encoded,
+                    &stopped,
+                    &dead,
+                    &worker_pid,
+                )
+            }
         });
         CaptureStream {
             latest,

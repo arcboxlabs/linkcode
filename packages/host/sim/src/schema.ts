@@ -38,6 +38,9 @@ export const SimListResultSchema = z.object({ devices: z.array(SimDeviceSchema) 
 export const SimProbeSchema = z.object({
   simctlPath: z.string(),
   developerDir: z.string(),
+  /** Whether the private SimulatorKit layer (framebuffer stream + HID) is reachable; simctl alone
+   * is not enough to co-drive a device. Defaulted so an older sidecar reads as non-interactive. */
+  interactive: z.boolean().default(false),
 });
 export type SimProbe = z.infer<typeof SimProbeSchema>;
 

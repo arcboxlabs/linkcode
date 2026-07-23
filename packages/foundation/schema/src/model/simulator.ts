@@ -25,6 +25,9 @@ export const SimulatorStatusSchema = z.object({
   /** Where simctl lives; present when available. */
   simctlPath: z.string().optional(),
   developerDir: z.string().optional(),
+  /** Whether the host can stream a framebuffer and inject HID input (private SimulatorKit), not
+   * just run simctl; present when available. Clients gate the live co-driving panel on it. */
+  interactive: z.boolean().optional(),
   /** Why unavailable (e.g. Xcode missing); present when not available. */
   reason: z.string().optional(),
 });

@@ -86,6 +86,8 @@ describe('SimSidecarClient', () => {
     await expect(probing).resolves.toEqual({
       simctlPath: '/usr/bin/simctl',
       developerDir: '/dev/dir',
+      // Omitted by this sidecar response → schema default; an older sidecar reads as non-interactive.
+      interactive: false,
     });
   });
 

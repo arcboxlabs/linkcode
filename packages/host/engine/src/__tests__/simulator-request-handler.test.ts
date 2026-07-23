@@ -20,7 +20,9 @@ function fakeBackend() {
     },
   ];
   return {
-    probe: vi.fn(() => Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev' })),
+    probe: vi.fn(() =>
+      Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
+    ),
     list: vi.fn(() => Promise.resolve(devices)),
     boot: vi.fn(() => {
       devices[0] = { ...devices[0], state: 'Booted' };
@@ -181,11 +183,12 @@ describe('simulator wire requests', () => {
     const backend = fakeBackend();
     const h = harness(backend);
     await h.engine.start();
+    const s1 = await h.startSession('s1');
 
     await h.inject({
       kind: 'simulator.stream.start',
       clientReqId: 'ss',
-      sessionId: 'session-1' as never,
+      sessionId: s1,
       udid: 'U-1',
       scale: 0.5,
     });
@@ -201,7 +204,7 @@ describe('simulator wire requests', () => {
     listener?.({ codec: 'jpeg', data: new Uint8Array([0xff, 0xd8, 0x01]), key: true });
     expect(h.sent.find((p) => p.kind === 'simulator.stream.frame')).toMatchObject({
       kind: 'simulator.stream.frame',
-      sessionId: 'session-1',
+      sessionId: s1,
       udid: 'U-1',
       codec: 'jpeg',
       key: true,
@@ -211,11 +214,39 @@ describe('simulator wire requests', () => {
     await h.inject({
       kind: 'simulator.stream.stop',
       clientReqId: 'sx',
-      sessionId: 'session-1' as never,
+      sessionId: s1,
       udid: 'U-1',
     });
     expect(h.reply('sx')).toMatchObject({ kind: 'request.succeeded' });
     expect(backend.streamStop).toHaveBeenCalledWith('U-1');
+    await h.engine.stop();
+  });
+
+  it('a stream stop from a session that does not own the device is a no-op', async () => {
+    const backend = fakeBackend();
+    const h = harness(backend);
+    await h.engine.start();
+    const s1 = await h.startSession('s1');
+
+    await h.inject({
+      kind: 'simulator.stream.start',
+      clientReqId: 'ss1',
+      sessionId: s1,
+      udid: 'U-1',
+    });
+    expect(h.reply('ss1')).toMatchObject({ kind: 'simulator.stream.started' });
+
+    // A deferred stop from a session that never held U-1 (a stale panel firing after handoff) must
+    // not tear down the current owner's backend stream or fan-out — it just succeeds silently.
+    const s2 = await h.startSession('s2');
+    await h.inject({
+      kind: 'simulator.stream.stop',
+      clientReqId: 'sx',
+      sessionId: s2,
+      udid: 'U-1',
+    });
+    expect(h.reply('sx')).toMatchObject({ kind: 'request.succeeded' });
+    expect(backend.streamStop).not.toHaveBeenCalled();
     await h.engine.stop();
   });
 });

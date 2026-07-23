@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
@@ -35,13 +35,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [status, setStatus] = useState<SimulatorStatus | null>(null);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
   const [selectedUdid, setSelectedUdid] = useState<string | null>(null);
-  /** Screen-outline masks by udid; `null` = the host has none (fall back to generic rounding). */
+  /** Screen-outline masks by udid as base64 PNGs; `null` = the host has none (generic rounding). */
   const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const leaseRef = useRef<SimulatorStreamLease | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void client
         .simulatorStatus()
@@ -71,18 +71,22 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const device = pickDevice(devices, selectedUdid);
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
-  const canStream = sessionId !== null && udid !== null && booted;
+  // Optimistic until the probe resolves: assume interactive so a capable host streams immediately.
+  // A host with simctl but no SimulatorKit reports `interactive: false`; the live stream would only
+  // fail there, so we gate it out and show a hint instead of an unrecoverable Retry loop.
+  const interactive = status?.interactive ?? true;
+  const canStream = sessionId !== null && udid !== null && booted && interactive;
 
   // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
   // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
   // land the result for the next switch back.
   const maskFetchedRef = useRef(new Set<string>());
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (udid === null || maskFetchedRef.current.has(udid)) return;
     maskFetchedRef.current.add(udid);
     void client
       .simulatorScreenMask(udid)
-      .then((data) => setMasks((prev) => ({ ...prev, [udid]: `data:image/png;base64,${data}` })))
+      .then((data) => setMasks((prev) => ({ ...prev, [udid]: data })))
       .catch(() => setMasks((prev) => ({ ...prev, [udid]: null })));
   }, [client, udid]);
 
@@ -224,6 +228,9 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
         {device !== null && booted && sessionId === null && (
           <CenteredHint>{t('simulatorNoSession')}</CenteredHint>
         )}
+        {device !== null && booted && sessionId !== null && !interactive && (
+          <CenteredHint>{t('simulatorNonInteractive')}</CenteredHint>
+        )}
         {canStream && (
           <SimulatorScreen
             key={udid}
@@ -232,7 +239,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
             onPinch={handlePinch}
             onKey={handleKey}
             onText={handleText}
-            maskUrl={masks[udid] ?? null}
+            maskPng={masks[udid] ?? null}
             placeholder={
               <span className="text-muted-foreground text-sm">{t('simulatorConnecting')}</span>
             }
