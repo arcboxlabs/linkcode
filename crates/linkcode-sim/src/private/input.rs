@@ -7,6 +7,17 @@
 //! `IndigoHIDMessageForTrackpadEventFromHIDEventRef`, then patches the two byte slots the wrapper
 //! leaves uninitialised (the `0x32` touch-target tag and the edge bitmask). Buttons (home/lock) use
 //! the legacy `IndigoHIDMessageForButton`, which SpringBoard still honors on Face ID devices.
+//!
+//! Native scroll injection was spiked 2026-07 and is a dead end — don't re-tread it. SimulatorKit
+//! exports `IndigoHIDMessageForScrollEvent{,FromHIDEventRef}` (payload target at `+0x2c`, routing
+//! tags `0x35`/`0x36`), and injected messages do reach backboardd (its AttentionAwareness counter
+//! ticks per event), but neither iPhone nor iPad runtimes ever deliver them to apps: iPhones only
+//! route pointer devices under AssistiveTouch, and even the iPad runtime (native pointer support)
+//! dropped every variant of the matrix (both targets × wrapped/direct × with/without a preceding
+//! `IndigoHIDMessageForTrackpadMoveEvent` hover). Simulator.app itself never sends scroll messages
+//! for iPhone/iPad — its `simDigitizerInputView:scrollEvent:` delegate only forwards to Digital
+//! Crown/Dial (watch) and returns otherwise. Scrolling on iOS is a touch gesture; the client's
+//! wheel→synthetic-drag translation is the platform-canonical path, not a stopgap.
 
 use std::ffi::c_void;
 use std::ptr;
