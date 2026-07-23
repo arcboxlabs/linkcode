@@ -477,6 +477,19 @@ export const zhCN = {
         groupFallback: '群组 {id}',
       },
     },
+    threadMenu: {
+      label: '更多操作',
+      pin: '置顶线程',
+      unpin: '取消置顶',
+      copyTitle: '复制标题',
+      reveal: {
+        darwin: '在访达中显示',
+        win32: '在文件资源管理器中显示',
+        other: '在文件管理器中显示',
+      },
+      openInEditor: '用编辑器打开',
+      close: '关闭线程',
+    },
     palette: {
       placeholder: '搜索线程或运行命令',
       recentGroup: '最近',

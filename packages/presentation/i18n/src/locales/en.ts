@@ -488,6 +488,19 @@ export const en = {
         groupFallback: 'Group {id}',
       },
     },
+    threadMenu: {
+      label: 'More actions',
+      pin: 'Pin thread',
+      unpin: 'Unpin thread',
+      copyTitle: 'Copy title',
+      reveal: {
+        darwin: 'Reveal in Finder',
+        win32: 'Show in File Explorer',
+        other: 'Show in file manager',
+      },
+      openInEditor: 'Open in editor',
+      close: 'Close thread',
+    },
     palette: {
       placeholder: 'Search threads or run a command',
       recentGroup: 'Recent',

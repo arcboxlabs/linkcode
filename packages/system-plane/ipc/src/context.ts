@@ -17,6 +17,14 @@ export interface SystemContext {
      * one-element array. */
     pickFile(opts?: PickFileOptions): Promise<string[] | null>;
   };
+  shell: {
+    /** Reveal a path in the OS file manager (Finder / Explorer / …). */
+    revealPath(path: string): void;
+    /** External editors detected on this machine, in display order; empty when none is installed. */
+    listEditors(): DetectedEditor[];
+    /** Launch a detected editor on `path`; an unknown `editorId` rejects. */
+    openInEditor(request: OpenInEditorRequest): Promise<void>;
+  };
   app: {
     getVersion(): string;
     /** Trigger a manual update check (no-op when the app is not packaged). */
@@ -56,6 +64,23 @@ export const PickFileOptionsSchema = z.object({
   filters: z.array(FileFilterSchema).optional(),
 });
 export type PickFileOptions = z.infer<typeof PickFileOptionsSchema>;
+
+/** A filesystem path handed to a shell operation. */
+export const ShellPathSchema = z.string().min(1);
+
+/** One external editor found on this machine. `id` is opaque to the renderer — it comes back
+ * verbatim on launch, so the renderer never learns a binary path or a bundle location. */
+export const DetectedEditorSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+});
+export type DetectedEditor = z.infer<typeof DetectedEditorSchema>;
+
+export const OpenInEditorRequestSchema = z.object({
+  editorId: z.string(),
+  path: ShellPathSchema,
+});
+export type OpenInEditorRequest = z.infer<typeof OpenInEditorRequestSchema>;
 
 /** Display parameters for one OS notification — a native-UI operation, not a data channel. The
  * renderer decides whether/what to notify; `clickToken` is opaque to this layer and echoed back

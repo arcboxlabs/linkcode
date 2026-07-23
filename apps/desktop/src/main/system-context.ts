@@ -1,11 +1,12 @@
 import type { SystemContext } from '@linkcode/ipc';
 import { NOTIFICATION_CLICKED_CHANNEL } from '@linkcode/ipc';
 import type { BrowserWindow } from 'electron';
-import { app, dialog, Notification } from 'electron';
+import { app, dialog, Notification, shell } from 'electron';
 import { applyThemePreference } from './appearance';
 import { resolveDaemonUrl } from './daemon-discovery';
 import { isDaemonManaged, retryDaemonSupervisor } from './daemon-supervisor';
 import { ensureDefaultPickerDirectory } from './default-picker-directory';
+import { listEditors, openInEditor } from './editors';
 import { getSettings, setSettings } from './settings';
 import { checkForUpdates } from './updater';
 
@@ -35,6 +36,11 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
         if (result.canceled || result.filePaths.length === 0) return null;
         return result.filePaths;
       },
+    },
+    shell: {
+      revealPath: (path) => shell.showItemInFolder(path),
+      listEditors: () => listEditors(),
+      openInEditor: ({ editorId, path }) => openInEditor(editorId, path),
     },
     app: {
       getVersion: () => app.getVersion(),
