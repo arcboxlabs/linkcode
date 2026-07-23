@@ -172,5 +172,6 @@ export const PluginWarningReasonSchema = z.enum([
   'unsatisfied-binding',
   'unsupported-transport',
   'broker-unavailable',
+  'expired-credential',
 ]);
 export type PluginWarningReason = z.infer<typeof PluginWarningReasonSchema>;

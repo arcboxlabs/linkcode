@@ -184,7 +184,9 @@ export class SessionOrchestrator {
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
-          events.broadcast(sessionId, initialEvents);
+          // Keep the start diagnostics on the session so attach replay repeats them.
+          session.startDiagnostics = Array.from(initialEvents);
+          events.broadcast(sessionId, session.startDiagnostics);
           if (replyTo !== undefined) {
             transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
           }

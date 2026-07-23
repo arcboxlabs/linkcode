@@ -121,6 +121,17 @@ export const AGENT_INPUT_CAPABILITIES = {
   'grok-build': { slashCommands: false, shellCommand: false },
 } as const satisfies Readonly<Record<AgentKind, AgentCapabilities>>;
 
+/** Which agent kinds accept `StartOptions.mcpServers`. Static per-kind truth shared by the
+ * engine's plugin resolution and the settings surface, so neither hardcodes its own list.
+ * Per-transport granularity (stdio vs http) is CODE-93's to refine. */
+export const AGENT_MCP_CAPABLE = {
+  'claude-code': true,
+  codex: true,
+  opencode: true,
+  pi: false,
+  'grok-build': false,
+} as const satisfies Readonly<Record<AgentKind, boolean>>;
+
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [
   /** A user prompt as one or more content blocks (text / image / resource …). */

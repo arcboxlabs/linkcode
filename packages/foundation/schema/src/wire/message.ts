@@ -16,7 +16,8 @@ import { WirePayloadSchema } from './payload';
 // 46 disambiguates another parallel double-bump: master's 44 (CODE-388/391 structured tool diffs
 // and message-identity upserts) and the plugin branch's 44/45 (CODE-382 plugin contracts, then the
 // multi-server/service-binding reshape) are distinct schemas; the merge gets a fresh number.
-export const WIRE_PROTOCOL_VERSION = 46 as const;
+// 47 adds the expired-credential plugin-warning reason (CODE-385).
+export const WIRE_PROTOCOL_VERSION = 47 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

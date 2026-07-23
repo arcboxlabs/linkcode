@@ -6,7 +6,7 @@ import type {
   PluginConfig,
   StartOptions,
 } from '@linkcode/schema';
-import { mcpPluginServerName } from '@linkcode/schema';
+import { AGENT_MCP_CAPABLE, mcpPluginServerName } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { ProviderConfigStore } from '../agent/provider-config';
@@ -22,8 +22,6 @@ export interface ResolvedStartOptions {
   options: StartOptions;
   warnings: PluginWarning[];
 }
-
-const MCP_CAPABLE_AGENTS = new Set(['claude-code', 'codex', 'opencode']);
 
 /** Resolves daemon-owned provider defaults and the optional cross-protocol translation endpoint. */
 export class SessionStartOptionsResolver {
@@ -76,6 +74,7 @@ export function resolvePluginServers(
   options: StartOptions,
   config: PluginConfig,
   catalog: McpPluginCatalog = MCP_PLUGIN_CATALOG,
+  now: number = Date.now(),
 ): ResolvedStartOptions {
   const warnings: PluginWarning[] = [];
   const clientServers = options.mcpServers ?? [];
@@ -90,7 +89,7 @@ export function resolvePluginServers(
       warnings.push({ type: 'plugin-warning', unitId: unit.unitId, reason: 'unsatisfied-binding' });
       continue;
     }
-    if (!MCP_CAPABLE_AGENTS.has(options.kind)) {
+    if (!AGENT_MCP_CAPABLE[options.kind]) {
       warnings.push({
         type: 'plugin-warning',
         unitId: unit.unitId,
@@ -146,6 +145,18 @@ export function resolvePluginServers(
           unitId: unit.unitId,
           service,
           reason: 'unsatisfied-binding',
+        });
+        continue;
+      }
+      const expiresAt = connector.credential.expiresAt;
+      if (expiresAt !== undefined && expiresAt <= now) {
+        // A declaredly expired secret would only fail downstream as an opaque MCP auth error;
+        // skipping with a typed reason keeps the diagnostic attributable.
+        warnings.push({
+          type: 'plugin-warning',
+          unitId: unit.unitId,
+          service,
+          reason: 'expired-credential',
         });
         continue;
       }

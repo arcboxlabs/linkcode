@@ -120,6 +120,34 @@ describe('resolvePluginServers', () => {
     ]);
   });
 
+  it('skips a declaredly expired credential with a typed reason instead of injecting it', () => {
+    const resolved = resolvePluginServers(
+      OPTIONS,
+      {
+        ...LOCAL_CONFIG,
+        connectors: [
+          {
+            id: 'github-personal',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret', expiresAt: 999 },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+      1000,
+    );
+
+    expect(resolved.warnings).toEqual([
+      {
+        type: 'plugin-warning',
+        unitId: 'github-read',
+        service: 'github',
+        reason: 'expired-credential',
+      },
+    ]);
+    expect(JSON.stringify(resolved.options)).not.toContain('github-secret');
+  });
+
   it('treats a service-mismatched connector as unsatisfied', () => {
     const resolved = resolvePluginServers(
       OPTIONS,

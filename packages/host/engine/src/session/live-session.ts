@@ -28,6 +28,9 @@ export class LiveSession {
   availableCommands?: AgentCommand[];
   availableModels?: AgentModelOption[];
   capabilities: AgentCapabilities;
+  /** Host-synthesized diagnostics broadcast once at run start (e.g. plugin warnings). Kept so a
+   * late attacher's replay sees them; each run's startLive replaces the previous run's set. */
+  startDiagnostics: AgentEvent[] = [];
   private unsubscribe: Unsubscribe = noop;
   private closing = false;
 
@@ -134,7 +137,7 @@ export class LiveSession {
     if (this.availableModels) {
       events.push({ type: 'available-models-update', models: this.availableModels });
     }
-    return events.concat(this.interactions.replay());
+    return events.concat(this.startDiagnostics, this.interactions.replay());
   }
 
   closeInteractions(): AgentEvent[] {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
-import { createSessionHarness } from './fixtures/session-harness';
+import { createSessionHarness, startedSessionId } from './fixtures/session-harness';
 
 describe('engine plugin config', () => {
   it('masks local credentials on config.get', async () => {
@@ -94,20 +94,23 @@ describe('engine plugin config', () => {
       opts: { kind: 'claude-code', cwd: '/repo' },
     });
 
-    const started = h.sent.find(
-      (payload) => payload.kind === 'session.started' && payload.replyTo === 'plugin-session-start',
-    );
-    expect(started?.kind).toBe('session.started');
-    expect(h.sent).toContainEqual({
+    const sessionId = startedSessionId(h.sent, 'plugin-session-start');
+    const warningEvent = {
       kind: 'agent.event',
-      sessionId: started?.kind === 'session.started' ? started.sessionId : '',
+      sessionId,
       event: {
         type: 'plugin-warning',
         unitId: 'github-read',
         service: 'github',
         reason: 'broker-unavailable',
       },
-    });
+    };
+    expect(h.sent).toContainEqual(warningEvent);
     expect(JSON.stringify(await h.store.load())).not.toContain('credential');
+
+    // A late attacher must see the same diagnostics — they replay with the live state.
+    const mark = h.sent.length;
+    await h.inject({ kind: 'session.attach', sessionId });
+    expect(h.sent.slice(mark)).toContainEqual(warningEvent);
   });
 });
