@@ -206,6 +206,13 @@ fn supervise(
                 // Publish the pid before reading so a concurrent drop can kill a stuck worker; clear
                 // it only after `wait()` reaps it, keeping the pid unreusable while it is set.
                 worker_pid.store(child.id(), Ordering::Relaxed);
+                // A drop that set `stopped` between the spawn and the store above may have read pid 0
+                // and not killed us; kill the child ourselves so the pump/wait below can't block on
+                // a worker that never writes.
+                if stopped.load(Ordering::Relaxed) {
+                    // SAFETY: our own just-spawned, un-reaped child pid.
+                    unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
+                }
                 pump_worker(&mut child, latest, stopped);
                 let _ = child.wait();
                 worker_pid.store(0, Ordering::Relaxed);
