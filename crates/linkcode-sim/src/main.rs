@@ -10,15 +10,76 @@ mod simctl;
 
 use std::io::{self, BufReader, Write};
 use std::sync::mpsc::{Sender, channel};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
-use crate::proto::{REQUEST, RESULT, SCREENSHOT, encode_screenshot, read_frame, write_frame};
+/// How long shutdown waits for in-flight request workers to finish before abandoning them.
+const SHUTDOWN_DRAIN: Duration = Duration::from_secs(3);
+
+use crate::proto::{
+    MAX_FRAME_LEN, REQUEST, RESULT, SCREENSHOT, encode_screenshot, read_frame, write_frame,
+};
 use crate::rpc::{ErrorCode, Op, OpError, Request, RequestIdOnly, error_body, success_body};
 
 /// A frame bound for the daemon, or the sentinel that tells the writer thread to stop.
 enum OutMsg {
     Frame { type_byte: u8, body: Vec<u8> },
     Stop,
+}
+
+/// Cap on concurrent request workers. A slow simctl op (a boot waits up to 180s) holds its worker
+/// thread and an `xcrun` child the whole time, so spawning one per request unbounded lets a retry
+/// burst exhaust the process's threads and file descriptors; over-cap requests park the read loop
+/// until a worker frees a slot (backpressure to the daemon).
+const MAX_INFLIGHT: usize = 24;
+
+/// A counting gate bounding concurrent request workers (see [`MAX_INFLIGHT`]).
+struct InflightGate {
+    count: Mutex<usize>,
+    freed: Condvar,
+    max: usize,
+}
+
+impl InflightGate {
+    fn new(max: usize) -> Self {
+        Self {
+            count: Mutex::new(0),
+            freed: Condvar::new(),
+            max,
+        }
+    }
+    /// Block until a worker slot is free, then take it.
+    fn acquire(&self) {
+        let mut count = self.count.lock().expect("inflight gate poisoned");
+        while *count >= self.max {
+            count = self.freed.wait(count).expect("inflight gate poisoned");
+        }
+        *count += 1;
+    }
+    /// Return a slot and wake one waiter.
+    fn release(&self) {
+        *self.count.lock().expect("inflight gate poisoned") -= 1;
+        self.freed.notify_one();
+    }
+    /// Wait up to `timeout` for every worker to finish (best-effort shutdown drain).
+    fn wait_idle(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        let mut count = self.count.lock().expect("inflight gate poisoned");
+        while *count > 0 {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                break;
+            };
+            let (guard, timed_out) = self
+                .freed
+                .wait_timeout(count, remaining)
+                .expect("inflight gate poisoned");
+            count = guard;
+            if timed_out.timed_out() {
+                break;
+            }
+        }
+    }
 }
 
 fn main() {
@@ -28,14 +89,23 @@ fn main() {
     let writer = thread::spawn(move || {
         let mut stdout = io::stdout().lock();
         while let Ok(OutMsg::Frame { type_byte, body }) = rx.recv() {
-            if write_frame(&mut stdout, type_byte, &body).is_err() {
-                // The daemon is gone; frames have nowhere to go.
-                break;
+            match write_frame(&mut stdout, type_byte, &body) {
+                Ok(()) => {}
+                // An over-limit body is one bad frame, not a dead pipe: drop it and keep the writer
+                // alive so later responses still reach the daemon. The request that produced an
+                // oversized screenshot already gets a RESULT error from the guard in `serve`, so in
+                // practice this only backstops a future unbounded body.
+                Err(e) if e.kind() == io::ErrorKind::InvalidInput => {
+                    eprintln!("dropping oversized frame ({} bytes)", body.len());
+                }
+                // A real write failure means the daemon is gone; frames have nowhere to go.
+                Err(_) => break,
             }
         }
         let _ = stdout.flush();
     });
 
+    let gate = Arc::new(InflightGate::new(MAX_INFLIGHT));
     let mut stdin = BufReader::new(io::stdin());
     loop {
         let (type_byte, body) = match read_frame(&mut stdin) {
@@ -53,8 +123,13 @@ fn main() {
         }
         match serde_json::from_slice::<Request>(&body) {
             Ok(request) => {
+                gate.acquire();
                 let tx = tx.clone();
-                thread::spawn(move || serve(request, &tx));
+                let gate = Arc::clone(&gate);
+                thread::spawn(move || {
+                    serve(request, &tx);
+                    gate.release();
+                });
             }
             Err(err) => {
                 eprintln!("invalid REQUEST frame: {err}");
@@ -75,8 +150,11 @@ fn main() {
         }
     }
 
-    // Stop the writer without waiting for in-flight simctl calls: a mid-boot device keeps booting
-    // server-side in CoreSimulatorService whether or not our child lives to see it.
+    // On stdin EOF, let quick in-flight requests finish so their responses flush and their `xcrun`
+    // children exit, rather than orphaning them — but cap the wait: a mid-boot `bootstatus` can run
+    // for minutes, and that device keeps booting server-side in CoreSimulatorService whether or not
+    // our child lives to see it, so past the drain we abandon the rest.
+    gate.wait_idle(SHUTDOWN_DRAIN);
     let _ = tx.send(OutMsg::Stop);
     let _ = writer.join();
 }
@@ -95,6 +173,19 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
         Op::OpenUrl { udid, url } => simctl::open_url(&udid, &url),
         Op::Screenshot { udid, format } => {
             match simctl::screenshot(&udid, format).and_then(|image| {
+                // Guard the frame budget here so an over-limit capture (a high-entropy iPad screen
+                // can exceed it) fails just this request instead of the sole writer thread — which
+                // would tear down and silently drop every later response. Frame overhead is the type
+                // byte + the u16 id length + the request id (see `encode_screenshot`/`write_frame`).
+                if image.len() + request_id.len() + 3 > MAX_FRAME_LEN {
+                    return Err(OpError::new(
+                        ErrorCode::SimctlFailed,
+                        format!(
+                            "screenshot is {} bytes, over the {MAX_FRAME_LEN}-byte frame limit",
+                            image.len()
+                        ),
+                    ));
+                }
                 encode_screenshot(&request_id, &image)
                     .map_err(|e| OpError::new(ErrorCode::Io, e.to_string()))
             }) {

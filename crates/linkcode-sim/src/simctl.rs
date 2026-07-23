@@ -47,14 +47,14 @@ pub struct Device {
 
 /// Check that simulator tooling is usable and report where it lives.
 pub fn probe() -> Result<Value, OpError> {
-    let mut find_simctl = Command::new(XCRUN);
+    let mut find_simctl = apple_tool(XCRUN);
     find_simctl.args(["--find", "simctl"]);
     let simctl_path = run_ok(find_simctl, DEFAULT_TIMEOUT).map_err(|e| match e.code {
         // xcrun exists but cannot find simctl: Xcode's iOS platform is missing.
         ErrorCode::SimctlFailed => OpError::new(ErrorCode::XcodeMissing, e.message),
         _ => e,
     })?;
-    let mut developer_dir_cmd = Command::new(XCODE_SELECT);
+    let mut developer_dir_cmd = apple_tool(XCODE_SELECT);
     developer_dir_cmd.arg("-p");
     let developer_dir = run_ok(developer_dir_cmd, DEFAULT_TIMEOUT)?;
     Ok(json!({
@@ -145,8 +145,19 @@ pub fn screenshot(udid: &str, format: ImageFormat) -> Result<Vec<u8>, OpError> {
 }
 
 fn simctl<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
-    let mut cmd = Command::new(XCRUN);
+    let mut cmd = apple_tool(XCRUN);
     cmd.arg("simctl").args(args);
+    cmd
+}
+
+/// Build a `Command` for an Apple tool at an absolute path, scrubbing the SDK-selection overrides a
+/// launcher may have injected. `/usr/bin/xcrun` honors inherited `DEVELOPER_DIR`/`SDKROOT`, so a
+/// foreign selection (nix xcbuild, a stale toolchain in the daemon's environment) makes `--find`,
+/// `list`, `boot`, and the rest fail — reporting `xcodeMissing` — even with a full Xcode installed.
+/// Every Apple-tool spawn must go through here (the device-loop fixture removes the same two vars).
+fn apple_tool(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.env_remove("DEVELOPER_DIR").env_remove("SDKROOT");
     cmd
 }
 
