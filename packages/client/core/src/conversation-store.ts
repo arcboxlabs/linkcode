@@ -27,6 +27,7 @@ const EMPTY_CONVERSATION: Conversation = {
   stopReason: null,
   pendingPermissionIds: [],
   pendingQuestionIds: [],
+  pluginWarnings: [],
 };
 
 /**

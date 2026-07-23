@@ -33,6 +33,12 @@ export type QuestionResolution = Pick<
   Extract<AgentEvent, { type: 'question-resolved' }>,
   'outcome' | 'source'
 >;
+/** One plugin resolution diagnostic (from `plugin-warning`): the named unit's `service` dependency
+ * (absent for unit-level reasons) could not be satisfied at the last session start. */
+export type ConversationPluginWarning = Pick<
+  Extract<AgentEvent, { type: 'plugin-warning' }>,
+  'unitId' | 'service' | 'reason'
+>;
 
 /** A single semantic item in the conversation timeline. `receivedAt` is the best-known time of the
  * item's latest event: the client receive time for live events (see {@link SequencedAgentEvent}),
@@ -159,6 +165,10 @@ export interface ConversationViewModel {
   pendingPermissionIds: string[];
   /** requestIds of question asks that are still open, tracked the same way as permission asks. */
   pendingQuestionIds: string[];
+  /** Plugin resolution diagnostics from `plugin-warning`, in first-arrival order. Deduped by
+   * unit+service+reason, so the attach replay of the same warnings stays idempotent while
+   * distinct reasons for one dependency (one per composed server) all remain visible. */
+  pluginWarnings: ConversationPluginWarning[];
 }
 
 export type Conversation = ConversationViewModel;
@@ -212,6 +222,9 @@ export function createConversationBuilder(): ConversationBuilder {
   const promptResponseStatuses = new Map<string, 'open' | 'responding'>();
   /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
   const seenAskIds = new Set<string>();
+  /** unit+service+reason → diagnostic, so attach replays dedupe while distinct reasons for the
+   * same dependency (one per composed server) all stay visible. */
+  const pluginWarningIndex = new Map<string, ConversationPluginWarning>();
   /** parentToolCallId (undefined = main agent) → the reasoning item currently open in that scope. */
   const activeReasoningByScope = new Map<string | undefined, number>();
   let currentTurnId: ConversationTurnId = null;
@@ -542,6 +555,14 @@ export function createConversationBuilder(): ConversationBuilder {
         });
         break;
 
+      case 'plugin-warning':
+        pluginWarningIndex.set(`${event.unitId}|${event.service ?? ''}|${event.reason}`, {
+          unitId: event.unitId,
+          service: event.service,
+          reason: event.reason,
+        });
+        break;
+
       case 'permission-request': {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
@@ -699,6 +720,7 @@ export function createConversationBuilder(): ConversationBuilder {
       stopReason,
       pendingPermissionIds: approvals.filter((requestId) => !permissionResolutions.has(requestId)),
       pendingQuestionIds: questionAsks.filter((requestId) => !questionResolutions.has(requestId)),
+      pluginWarnings: [...pluginWarningIndex.values()],
     };
     return cached;
   };
