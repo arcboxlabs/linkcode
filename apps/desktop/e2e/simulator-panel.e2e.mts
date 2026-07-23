@@ -221,12 +221,13 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
     await row.click();
     await win.waitForTimeout(1500);
 
+    // The device paints two layered canvases; the screen (last in DOM) carries the framebuffer.
     const canvas = win.locator('canvas:visible');
     const frameDeadline = Date.now() + 30000;
     let painted: { width: number; height: number } | null = null;
     while (Date.now() < frameDeadline) {
       if ((await canvas.count()) > 0) {
-        const size = await canvas.first().evaluate((el) => {
+        const size = await canvas.last().evaluate((el) => {
           const c = el as HTMLCanvasElement;
           return { width: c.width, height: c.height };
         });
@@ -262,8 +263,9 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       console.log(`screenshot: ${safariShot}`);
 
       // Interactive drive-through: the panel's Home button and a canvas tap must actually move
-      // the device. Each step is asserted by the painted canvas changing (downsampled hash).
-      const deviceCanvas = win.locator('canvas:visible').first();
+      // the device. Each step is asserted by the painted screen layer changing (downsampled hash);
+      // it is the last canvas (the chassis is a static first layer that never changes).
+      const deviceCanvas = win.locator('canvas:visible').last();
       const canvasHash = (): Promise<number> =>
         deviceCanvas.evaluate((el) => {
           const source = el as HTMLCanvasElement;
@@ -293,12 +295,12 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       const onHome = await waitForHashChange(onSafari, 'pressing Home');
       console.log('panel Home button returned the device to the home screen');
 
-      // Tap Safari in the dock through the canvas (device-normalized ≈ (0.41, 0.93), mapped
-      // into the canvas box across the painted chassis margins).
+      // Tap Safari in the dock through the screen canvas. Coordinates are screen-normalized now
+      // (the canvas is exactly the screen, no bezel) — the dock Safari icon sits at ≈ (0.41, 0.93).
       const box = await deviceCanvas.boundingBox();
       if (!box) fail('device canvas has no bounding box');
       await deviceCanvas.click({
-        position: { x: box.width * 0.416, y: box.height * 0.919 },
+        position: { x: box.width * 0.41, y: box.height * 0.93 },
       });
       const onSafariAgain = await waitForHashChange(onHome, 'tapping the dock');
       console.log('canvas tap reopened Safari from the dock');
