@@ -188,8 +188,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     const current =
       rotateStateRef.current.udid === udid ? rotateStateRef.current.orientation : 'portrait';
     const next = ROTATE_CYCLE[(ROTATE_CYCLE.indexOf(current) + 1) % ROTATE_CYCLE.length];
-    rotateStateRef.current = { udid, orientation: next };
-    void client.simulatorRotate(ownerSessionId, udid, next).catch(flagBusy);
+    // Advance the assumed orientation only once the rotation is acknowledged: a failed send (port
+    // unvended, Mach send failed, transport down) must not desync the cycle from the device.
+    void client
+      .simulatorRotate(ownerSessionId, udid, next)
+      .then(() => {
+        rotateStateRef.current = { udid, orientation: next };
+      })
+      .catch(flagBusy);
   };
   const bootDevice = (): void => {
     if (sessionId === null || udid === null) return;

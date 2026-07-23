@@ -45,8 +45,9 @@ export type SimulatorStreamCodec = z.infer<typeof SimulatorStreamCodecSchema>;
 export const SimulatorTouchPhaseSchema = z.enum(['down', 'move', 'up']);
 export type SimulatorTouchPhase = z.infer<typeof SimulatorTouchPhaseSchema>;
 
-/** Interface orientation for a rotate command; the four `UIDeviceOrientation` cases. `landscapeLeft`
- * puts the home indicator on the left (rotated 90° CCW), `landscapeRight` on the right. */
+/** Interface orientation for a rotate command; the four `UIInterfaceOrientation` cases.
+ * `landscapeLeft` puts the home indicator on the left (rotated 90° CCW), `landscapeRight` on the
+ * right (90° CW). */
 export const SimulatorOrientationSchema = z.enum([
   'portrait',
   'portraitUpsideDown',

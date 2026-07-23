@@ -18,8 +18,11 @@ use objc2_foundation::NSString;
 
 use super::device::SimDevice;
 
-/// Interface orientation; raw values match `UIDeviceOrientation` — the GSEvent's 4-byte payload at
-/// offset 0x4C is exactly this number.
+/// Interface orientation; raw values match `UIInterfaceOrientation` — landscapeRight = 3 and
+/// landscapeLeft = 4, the inverse of `UIDeviceOrientation`'s landscape pair (device-left is
+/// interface-right). The GSEvent's 4-byte payload at offset 0x4C is exactly this number. Verified on
+/// a booted device: portrait → landscapeRight → portraitUpsideDown → landscapeLeft steps a
+/// consistent 90° clockwise cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Orientation {
     Portrait = 1,

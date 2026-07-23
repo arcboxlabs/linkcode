@@ -33,7 +33,7 @@ export type SimulatorImageFormat = 'jpeg' | 'png';
 /** A hardware button the private HID layer can press. */
 export type SimulatorButton = 'home' | 'lock';
 
-/** Interface orientation for a rotate command (matches `UIDeviceOrientation`). */
+/** Interface orientation for a rotate command (matches `UIInterfaceOrientation`). */
 export type SimulatorOrientation =
   | 'portrait'
   | 'portraitUpsideDown'

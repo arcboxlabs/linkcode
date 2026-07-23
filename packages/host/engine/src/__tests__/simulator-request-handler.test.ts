@@ -180,6 +180,26 @@ describe('simulator wire requests', () => {
     await h.engine.stop();
   });
 
+  it('routes a rotate request through the wire router to the backend', async () => {
+    const backend = fakeBackend();
+    const h = harness(backend);
+    await h.engine.start();
+    const s1 = await h.startSession('s1');
+
+    // Guards the router's simulator group: if `simulator.rotate` is not enumerated there, the
+    // request falls through to a no-op and this reply never arrives.
+    await h.inject({
+      kind: 'simulator.rotate',
+      clientReqId: 'rot',
+      sessionId: s1,
+      udid: 'U-1',
+      orientation: 'landscapeRight',
+    });
+    expect(h.reply('rot')).toMatchObject({ kind: 'request.succeeded' });
+    expect(backend.rotate).toHaveBeenCalledWith('U-1', 'landscapeRight');
+    await h.engine.stop();
+  });
+
   it('start subscribes frames and fans them out session-scoped; stop unsubscribes', async () => {
     const backend = fakeBackend();
     const h = harness(backend);
