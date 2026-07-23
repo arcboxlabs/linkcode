@@ -280,6 +280,32 @@ it('round-trips composer mention links into file chips', () => {
   expect(openFile).toHaveBeenCalledWith('.gitignore');
 });
 
+// The agent "Files:" convention: bare relative destinations must chip, not render as broken
+// target=_blank anchors that resolve against the app origin.
+it('chips bare relative link destinations that carry a file identity', () => {
+  const openFile = vi.fn();
+  const { getByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'Files: [package-lock.json](package-lock.json)'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
+  );
+  fireEvent.click(getByRole('button', { name: 'package-lock.json' }));
+  expect(openFile).toHaveBeenCalledWith('package-lock.json');
+});
+
+it('chips source-file inline code while prose-shaped tokens stay code', () => {
+  const openFile = vi.fn();
+  const { container, getByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'Run `src/main.rs:7` but keep `origin/main` and `foo.bar` as code.'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
+  );
+  fireEvent.click(getByRole('button', { name: 'src/main.rs:7' }));
+  expect(openFile).toHaveBeenCalledWith('src/main.rs');
+  const codeTexts = [...container.querySelectorAll('code')].map((el) => el.textContent);
+  expect(codeTexts).toEqual(['origin/main', 'foo.bar']);
+});
+
 it('renders viewer-openable inline code paths as file chips', () => {
   const openFile = vi.fn();
   const { getByRole } = render(

@@ -1,3 +1,4 @@
+import { hasKnownFileIdentity } from '../lib/file-icon';
 import { fileBasename } from './artifacts/file-kind';
 
 /** A chat link target, classified for icon and interaction dispatch. Mention links come from
@@ -57,7 +58,27 @@ export function linkTargetFor(href: string | null | undefined): LinkTarget | nul
   // ponytail: POSIX absolute paths only — Windows drive hrefs (C:\…) never reach here, the
   // markdown sanitizer already drops their unknown single-letter protocol.
   if (href[0] === '/') return pathTarget(decodedPath(href));
-  return null;
+  // Bare relative destinations ([x](package-lock.json)) are how agents commonly reference
+  // files; as anchors they only 404 against the app origin, so evidence-based file
+  // classification is strictly better. The charset test also rejects schemes (mailto:…).
+  return filePathTarget(decodedPath(href));
+}
+
+const MAX_INLINE_PATH_LENGTH = 256;
+/** One path-safe token, optionally `./`/`../`-anchored or absolute, with an optional trailing
+ * `:line` / `:line:column`. A colon anywhere else (schemes, prose) fails the shape. */
+const INLINE_PATH_RE = /^(?:\.{1,2}\/|\/)?[\w.@+-]+(?:\/[\w.@+-]+)*(?::\d+(?::\d+)?)?$/;
+
+/** Classify a bare token (inline-code span, bare relative href) as a workspace file, or null.
+ * Shape alone is not enough — `origin/main` and `foo.bar` read like paths — so the token must
+ * also carry a file identity the icon system recognizes (known extension, filename, dotfile). */
+export function filePathTarget(text: string): LinkTarget | null {
+  const candidate = text.trim();
+  if (candidate.length === 0 || candidate.length > MAX_INLINE_PATH_LENGTH) return null;
+  if (!INLINE_PATH_RE.test(candidate)) return null;
+  const target = pathTarget(candidate.startsWith('./') ? candidate.slice(2) : candidate);
+  if (target.kind !== 'file' && target.kind !== 'skill') return null;
+  return hasKnownFileIdentity(target.path) ? target : null;
 }
 
 const FILE_URI_PREFIX = 'file://';
