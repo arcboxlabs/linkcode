@@ -4,6 +4,11 @@
 //! protocol (see [`proto`]). Requests arrive on stdin; results go to stdout. Each request runs
 //! on its own thread so a slow boot never blocks a screenshot.
 
+// The framebuffer-capture and HID surface is macOS-only (its consumers are behind
+// `#[cfg(target_os = "macos")]`), so on other targets the streaming machinery is unreachable — don't
+// fail the `-D warnings` lint on its expected dead code there.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 mod capture;
 mod interactive;
 #[cfg(target_os = "macos")]
