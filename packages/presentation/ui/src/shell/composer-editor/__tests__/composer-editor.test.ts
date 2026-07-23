@@ -356,20 +356,20 @@ describe('canonical text invariant', () => {
       },
       { discrete: true },
     );
-    expect(draftText(editor)).toBe('/review "src/app.ts" fix');
+    expect(draftText(editor)).toBe('/review [app.ts](./src/app.ts) fix');
   });
 
-  it('escapes quotes inside mention paths', () => {
+  it('escapes markdown-breaking characters in mention labels and destinations', () => {
     const editor = createEditor();
     editor.update(
       () => {
         const paragraph = $createParagraphNode();
-        paragraph.append($createMentionNode('a"b.ts'));
+        paragraph.append($createMentionNode('src/app (v2)/100%/[id].tsx'));
         $getRoot().clear().append(paragraph);
       },
       { discrete: true },
     );
-    expect(draftText(editor)).toBe(String.raw`"a\"b.ts"`);
+    expect(draftText(editor)).toBe(String.raw`[\[id\].tsx](./src/app%20%28v2%29/100%25/[id].tsx)`);
   });
 });
 
@@ -442,7 +442,7 @@ describe('$draftDirective', () => {
       { discrete: true },
     );
     expect(editor.read(() => $draftDirective(directiveState()))).toMatchObject({
-      args: '"src/app.ts" carefully',
+      args: '[app.ts](./src/app.ts) carefully',
       kind: 'command',
       name: 'review',
     });
@@ -643,8 +643,8 @@ describe('$replaceTriggerWith', () => {
       },
       { discrete: true },
     );
-    expect(draftText(editor)).toBe('hi "src/app.ts" ');
-    expect(editor.read($caretFlatOffset)).toBe('hi "src/app.ts" '.length);
+    expect(draftText(editor)).toBe('hi [app.ts](./src/app.ts) ');
+    expect(editor.read($caretFlatOffset)).toBe('hi [app.ts](./src/app.ts) '.length);
   });
 
   it('skips the separator when whitespace already follows', () => {
@@ -663,7 +663,7 @@ describe('$replaceTriggerWith', () => {
       },
       { discrete: true },
     );
-    expect(draftText(editor)).toBe('hi "src/app.ts" rest');
+    expect(draftText(editor)).toBe('hi [app.ts](./src/app.ts) rest');
   });
 
   it('skips the separator before a line break sibling', () => {
@@ -682,7 +682,7 @@ describe('$replaceTriggerWith', () => {
       { discrete: true },
     );
 
-    expect(draftText(editor)).toBe('see "src/app.ts"\nnext');
+    expect(draftText(editor)).toBe('see [app.ts](./src/app.ts)\nnext');
   });
 
   it('keeps command-menu chips at both leading and mid-text positions', () => {
@@ -748,6 +748,6 @@ describe('shell chip round-trip', () => {
     const json = JSON.stringify(editor.getEditorState().toJSON());
     const restored = createEditor();
     restored.setEditorState(restored.parseEditorState(json));
-    expect(draftText(restored)).toBe('/usage "src/app.ts"$');
+    expect(draftText(restored)).toBe('/usage [app.ts](./src/app.ts)$');
   });
 });

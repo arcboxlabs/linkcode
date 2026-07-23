@@ -364,9 +364,6 @@ const FOOTNOTE_SECTION_CLASS =
 
 type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
 
-const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
-const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
-
 interface SanitizeSchemaLike {
   protocols?: { href?: unknown };
 }
@@ -387,9 +384,16 @@ function allowMentionLinkProtocols(entry: RehypePlugins[number]): RehypePlugins[
   ];
 }
 
-const defaultRehypePluginValues = Object.values(defaultRehypePlugins).map((entry, index) =>
-  defaultRehypePluginNames[index] === 'sanitize' ? allowMentionLinkProtocols(entry) : entry,
-);
+// Harden is dropped: behind the sanitize allowlist its all-wildcard config blocks nothing
+// extra, and its URL round-trip rewrites `./path` mention hrefs into root-absolute ones —
+// which would corrupt cwd-relative file mentions into absolute paths for openFile.
+const defaultRehypePluginValues: RehypePlugins = [];
+let rawRehypePluginIndex = -1;
+for (const [name, entry] of Object.entries(defaultRehypePlugins)) {
+  if (name === 'harden') continue;
+  if (name === 'raw') rawRehypePluginIndex = defaultRehypePluginValues.length;
+  defaultRehypePluginValues.push(name === 'sanitize' ? allowMentionLinkProtocols(entry) : entry);
+}
 
 function createMarkdownRehypePlugins(scopePrefix: string): RehypePlugins {
   if (rawRehypePluginIndex < 0) {

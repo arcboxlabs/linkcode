@@ -52,6 +52,23 @@ describe('linkTargetFor', () => {
     });
   });
 
+  it('classifies ./-prefixed relative destinations as workspace files', () => {
+    expect(linkTargetFor('./.gitignore')).toStrictEqual({ kind: 'file', path: '.gitignore' });
+    expect(linkTargetFor('./src/app%20%28v2%29/100%25/main.ts:12')).toStrictEqual({
+      kind: 'file',
+      path: 'src/app (v2)/100%/main.ts',
+      line: 12,
+    });
+    expect(linkTargetFor('../shared/util.ts')).toStrictEqual({
+      kind: 'file',
+      path: '../shared/util.ts',
+    });
+    expect(linkTargetFor('./skills/github/SKILL.md')).toStrictEqual({
+      kind: 'skill',
+      path: 'skills/github/SKILL.md',
+    });
+  });
+
   it('leaves fragments, relative urls, and other schemes alone', () => {
     expect(linkTargetFor(undefined)).toBeNull();
     expect(linkTargetFor('')).toBeNull();
@@ -59,7 +76,6 @@ describe('linkTargetFor', () => {
     expect(linkTargetFor('mailto:someone@example.com')).toBeNull();
     expect(linkTargetFor('tel:+123456')).toBeNull();
     expect(linkTargetFor('docs/readme.md')).toBeNull();
-    expect(linkTargetFor('./relative.md')).toBeNull();
   });
 });
 
