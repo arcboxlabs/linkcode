@@ -121,6 +121,12 @@ fn main() {
         diag_mask();
         return;
     }
+    // Diagnostic: inject an orientation change: `linkcode-sim diag-rotate <udid> <orientation>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-rotate") {
+        diag_rotate();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -277,6 +283,7 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             duration_ms,
         } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
         Op::Button { udid, button } => interactive::button(&udid, button),
+        Op::Rotate { udid, orientation } => interactive::rotate(&udid, orientation),
         Op::Key {
             udid,
             usage,
@@ -388,6 +395,30 @@ fn diag_interactive() {
         "stream dead={} frames-seen={frames} last={last_len} bytes; wrote {out}",
         stream.is_dead()
     );
+}
+
+/// Diagnostic (macOS only): inject an interface-orientation change against a booted device — the
+/// spike that decides whether the GraphicsServices `PurpleWorkspacePort` GSEvent path works before
+/// it is threaded through the stack. `linkcode-sim diag-rotate <udid> <portrait|portrait-upside-down|
+/// landscape-left|landscape-right>`.
+#[cfg(target_os = "macos")]
+fn diag_rotate() {
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-rotate <udid> <orientation>");
+    let name = std::env::args()
+        .nth(3)
+        .unwrap_or_else(|| "landscape-left".to_owned());
+    let orientation = match name.as_str() {
+        "portrait" => private::Orientation::Portrait,
+        "portrait-upside-down" => private::Orientation::PortraitUpsideDown,
+        "landscape-left" => private::Orientation::LandscapeLeft,
+        "landscape-right" => private::Orientation::LandscapeRight,
+        other => panic!("unknown orientation: {other}"),
+    };
+    let device = private::SimDevice::resolve(&udid).expect("device not found");
+    let ok = device.set_orientation(orientation);
+    eprintln!("set_orientation({name}) -> {ok}");
 }
 
 /// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the
