@@ -1,9 +1,11 @@
 /**
- * The device compositor: paints one framebuffer frame into a canvas as the whole machine —
- * side-button bumps, a titanium rim + black display band grown from the real screen mask (so the
- * band stays even around the continuous-curvature corners a `roundRect` can't match), and the
- * mask-clipped screen. Pure canvas work, no React: the component owns a {@link CompositorState}
- * and calls {@link paintDevice} whenever a new frame or mask arrives.
+ * The device compositor: draws the two layers of the machine. The chassis (side-button bumps + a
+ * titanium rim + black display band grown from the real screen mask, so the band stays even around
+ * the continuous-curvature corners a `roundRect` can't match) is static — painted once per device
+ * via {@link paintChassis}. The screen is a separate layer painted every frame by
+ * {@link paintScreen}: just the framebuffer clipped to the mask, so the per-frame cost is one draw
+ * plus one mask composite and nothing static repaints. Pure canvas work; the component owns the
+ * two canvases and the retained frame/mask.
  */
 
 import {
@@ -27,34 +29,19 @@ export function frameHeight(frame: DecodedFrame): number {
   return 'displayHeight' in frame ? frame.displayHeight : frame.height;
 }
 
-/** Everything the compositor retains between paints, in native framebuffer pixels. */
-export interface CompositorState {
-  mask: ImageBitmap | null;
-  /** Last decoded frame, retained so a late-arriving mask can recomposite it. */
-  frame: DecodedFrame | null;
-  /** Screen-sized scratch layer the mask is composited on before drawing into the chassis. */
-  screenLayer: OffscreenCanvas | null;
-  /** Cached chassis artwork (rim + display band), rebuilt when the geometry key changes. */
-  chassis: OffscreenCanvas | null;
-  chassisKey: string;
-}
-
-export function createCompositorState(): CompositorState {
-  return { mask: null, frame: null, screenLayer: null, chassis: null, chassisKey: '' };
-}
-
 const RIM_COLOR = '#3a3a3c';
 const BEZEL_COLOR = '#000000';
 /** Mask dilation samples — the offsets the screen shape is stamped along to grow the chassis. */
 const DILATION_STAMPS = 24;
 
-/** Paint the whole device into `canvas` (resizing it to the native device dimensions). No-op
- * until a frame has been set on `state`. */
-export function paintDevice(canvas: HTMLCanvasElement, state: CompositorState): void {
-  const frame = state.frame;
-  if (frame === null) return;
-  const screenW = frameWidth(frame);
-  const screenH = frameHeight(frame);
+/** Paint the static chassis (buttons + rim + band) into `canvas`, resizing it to the whole device.
+ * Called once per device and again only when the mask arrives — never per frame. */
+export function paintChassis(
+  canvas: HTMLCanvasElement,
+  mask: ImageBitmap | null,
+  screenW: number,
+  screenH: number,
+): void {
   const pad = Math.round(screenW * PAD_FRACTION);
   const buttonDepth = Math.round(screenW * BUTTON_DEPTH_FRACTION);
   const width = screenW + 2 * pad + 2 * buttonDepth;
@@ -87,54 +74,59 @@ export function paintDevice(canvas: HTMLCanvasElement, state: CompositorState): 
     context.fill();
   }
 
-  context.drawImage(buildChassis(state, screenW, screenH), buttonDepth, 0);
-
-  // Screen: composite the frame against the mask on a screen-sized layer, then inset it.
-  let layer = state.screenLayer;
-  if (layer?.width !== screenW || layer.height !== screenH) {
-    layer = new OffscreenCanvas(screenW, screenH);
-    state.screenLayer = layer;
-  }
-  const layerContext = layer.getContext('2d');
-  if (layerContext === null) return;
-  layerContext.clearRect(0, 0, layer.width, layer.height);
-  if (state.mask === null) {
-    layerContext.save();
-    layerContext.beginPath();
-    layerContext.roundRect(0, 0, layer.width, layer.height, screenW * FALLBACK_CORNER_FRACTION);
-    layerContext.clip();
-    layerContext.drawImage(frame, 0, 0);
-    layerContext.restore();
-  } else {
-    layerContext.drawImage(frame, 0, 0);
-    layerContext.globalCompositeOperation = 'destination-in';
-    layerContext.drawImage(state.mask, 0, 0, layer.width, layer.height);
-    layerContext.globalCompositeOperation = 'source-over';
-  }
-  context.drawImage(layer, buttonDepth + pad, pad);
+  context.drawImage(buildChassis(mask, screenW, screenH), buttonDepth, 0);
 }
 
-/** The chassis artwork (rim + display band), cached per frame-size + mask identity. */
-function buildChassis(state: CompositorState, screenW: number, screenH: number): OffscreenCanvas {
+/** Paint one framebuffer frame into the screen layer, clipped to the real screen shape. This is
+ * the entire per-frame cost: one opaque draw of the frame, then one mask composite that re-cuts
+ * the rounded corners the opaque frame overwrote. The canvas is the exact screen size, so it never
+ * needs clearing on the mask path. */
+export function paintScreen(
+  canvas: HTMLCanvasElement,
+  frame: DecodedFrame,
+  mask: ImageBitmap | null,
+): void {
+  const screenW = frameWidth(frame);
+  const screenH = frameHeight(frame);
+  if (canvas.width !== screenW || canvas.height !== screenH) {
+    canvas.width = screenW;
+    canvas.height = screenH;
+  }
+  const context = canvas.getContext('2d');
+  if (context === null) return;
+  if (mask === null) {
+    context.clearRect(0, 0, screenW, screenH);
+    context.save();
+    context.beginPath();
+    context.roundRect(0, 0, screenW, screenH, screenW * FALLBACK_CORNER_FRACTION);
+    context.clip();
+    context.drawImage(frame, 0, 0);
+    context.restore();
+  } else {
+    context.globalCompositeOperation = 'source-over';
+    context.drawImage(frame, 0, 0);
+    context.globalCompositeOperation = 'destination-in';
+    context.drawImage(mask, 0, 0, screenW, screenH);
+    context.globalCompositeOperation = 'source-over';
+  }
+}
+
+/** The chassis artwork (rim + display band) as a screen-plus-pad-sized layer. */
+function buildChassis(mask: ImageBitmap | null, screenW: number, screenH: number): OffscreenCanvas {
   const pad = Math.round(screenW * PAD_FRACTION);
   const rim = Math.round(screenW * RIM_FRACTION);
   const width = screenW + 2 * pad;
   const height = screenH + 2 * pad;
-  const key = `${width}x${height}:${state.mask === null ? 'fallback' : 'mask'}`;
-  if (state.chassis !== null && state.chassisKey === key) return state.chassis;
-
   const chassis = new OffscreenCanvas(width, height);
   const context = chassis.getContext('2d');
-  if (context === null) return chassis;
-  context.clearRect(0, 0, width, height);
-  const rimShape = growScreenShape(state.mask, screenW, screenH, pad);
-  const bandShape = growScreenShape(state.mask, screenW, screenH, pad - rim);
-  colorize(rimShape, RIM_COLOR);
-  colorize(bandShape, BEZEL_COLOR);
-  context.drawImage(rimShape, 0, 0);
-  context.drawImage(bandShape, rim, rim);
-  state.chassis = chassis;
-  state.chassisKey = key;
+  if (context !== null) {
+    const rimShape = growScreenShape(mask, screenW, screenH, pad);
+    const bandShape = growScreenShape(mask, screenW, screenH, pad - rim);
+    colorize(rimShape, RIM_COLOR);
+    colorize(bandShape, BEZEL_COLOR);
+    context.drawImage(rimShape, 0, 0);
+    context.drawImage(bandShape, rim, rim);
+  }
   return chassis;
 }
 

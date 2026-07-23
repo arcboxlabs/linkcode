@@ -3,9 +3,10 @@ import { clamp } from 'foxts/clamp';
 import { noop } from 'foxts/noop';
 import { useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
-import { createCompositorState, paintDevice } from './device-compositor';
-import type { SimulatorScreenPoint } from './device-geometry';
-import { mirrorPoint, normalizedPoint, screenRectOnPage } from './device-geometry';
+import type { DecodedFrame } from './device-compositor';
+import { frameHeight, frameWidth, paintChassis, paintScreen } from './device-compositor';
+import type { ScreenInset, SimulatorScreenPoint } from './device-geometry';
+import { mirrorPoint, normalizedPoint, screenInset } from './device-geometry';
 import type { SimulatorScreenFrame } from './frame-decoder';
 import { decodeMask, SimulatorFrameDecoder } from './frame-decoder';
 import type { SimulatorKeyPress } from './keymap';
@@ -21,6 +22,14 @@ export type SimulatorScreenTouchPhase = 'down' | 'move' | 'up';
 const TOUCH_MOVE_INTERVAL_MS = 16;
 /** A wheel stream idle for this long ends its synthetic drag gesture. */
 const WHEEL_IDLE_MS = 120;
+
+/** The device box's size + the screen layer's placement within it, once the first frame reveals
+ * the framebuffer dimensions. */
+interface DeviceLayout {
+  deviceW: number;
+  deviceH: number;
+  inset: ScreenInset;
+}
 
 export interface SimulatorScreenProps {
   /** Feed of stream frames; returns the unsubscribe. H.264 units decode through WebCodecs
@@ -42,8 +51,8 @@ export interface SimulatorScreenProps {
   /** Text committed by the OS IME (composition end / non-ASCII input): pasted onto the device. */
   onText?: (text: string) => void;
   /** The device's real screen-outline mask (image URL, framebuffer-sized): clips the stream to
-   * the exact screen shape, and its measured corner radius keeps the chassis curve concentric.
-   * Absent → a generic rounding. */
+   * the exact screen shape, and its grown outline keeps the chassis band even. Absent → a generic
+   * rounding. */
   maskUrl?: string | null;
   /** Shown centered until the first frame arrives. */
   placeholder?: React.ReactNode;
@@ -51,11 +60,12 @@ export interface SimulatorScreenProps {
 }
 
 /**
- * Live device screen: renders the framebuffer stream as the whole machine (chassis + mask-clipped
- * screen) and forwards pointer/wheel/key input as normalized gestures. The decode, compositing,
- * and coordinate mapping are framework-agnostic modules ({@link SimulatorFrameDecoder},
- * {@link paintDevice}, `device-geometry`); this component only wires them to React and the DOM.
- * Key it by device so a switch resets the painted frame.
+ * Live device screen, rendered as two DOM layers so 60 fps stays cheap: a chassis canvas painted
+ * once ({@link paintChassis}) and a screen canvas painted every frame ({@link paintScreen}) with
+ * only a frame draw + a mask composite — no static artwork repaints. Decode ({@link
+ * SimulatorFrameDecoder}) and coordinate mapping (`device-geometry`) are framework-agnostic; this
+ * component wires them to React, vsync-aligns paints with `requestAnimationFrame`, and forwards
+ * pointer/wheel/key input as normalized gestures. Key it by device so a switch resets the frame.
  */
 export function SimulatorScreen({
   subscribeFrames,
@@ -67,9 +77,15 @@ export function SimulatorScreen({
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const chassisRef = useRef<HTMLCanvasElement | null>(null);
+  const screenRef = useRef<HTMLCanvasElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const compositorRef = useRef(createCompositorState());
+  /** Latest decoded frame, retained so a late mask (or the next rAF) can recomposite it. */
+  const frameRef = useRef<DecodedFrame | null>(null);
+  const maskRef = useRef<ImageBitmap | null>(null);
+  /** Coalesce paints onto the display's refresh: the decoder can outrun it, so only the newest
+   * frame is drawn each tick. Set by the decoder effect; the mask effect calls it to recomposite. */
+  const repaintRef = useRef<() => void>(noop);
   const pressRef = useRef<{
     pointerId: number;
     /** True while this drag is an Option-pinch (two mirrored fingers about `origin`). */
@@ -78,29 +94,55 @@ export function SimulatorScreen({
     last: SimulatorScreenPoint;
     moveSentAt: number;
   } | null>(null);
-  /** `w / h` of the whole painted device (screen + bezel); sizes the canvas box. */
-  const [deviceAspect, setDeviceAspect] = useState<string | null>(null);
+  const [layout, setLayout] = useState<DeviceLayout | null>(null);
 
   useAbortableEffect(
     (signal) => {
-      const state = compositorRef.current;
+      let rafId: number | null = null;
+      // Rebuilt only when the framebuffer size or mask presence changes — i.e. essentially once.
+      let chassisKey = '';
+      const paint = (): void => {
+        rafId = null;
+        const frame = frameRef.current;
+        const chassis = chassisRef.current;
+        const screen = screenRef.current;
+        if (frame === null || chassis === null || screen === null) return;
+        const screenW = frameWidth(frame);
+        const screenH = frameHeight(frame);
+        const key = `${screenW}x${screenH}:${maskRef.current === null ? 'fallback' : 'mask'}`;
+        if (key !== chassisKey) {
+          chassisKey = key;
+          paintChassis(chassis, maskRef.current, screenW, screenH);
+          setLayout({
+            deviceW: chassis.width,
+            deviceH: chassis.height,
+            inset: screenInset(screenW, screenH),
+          });
+        }
+        paintScreen(screen, frame, maskRef.current);
+      };
+      const schedulePaint = (): void => {
+        if (rafId === null) rafId = requestAnimationFrame(paint);
+      };
+      repaintRef.current = schedulePaint;
+
       const decoder = new SimulatorFrameDecoder((frame) => {
-        if (signal.aborted || canvasRef.current === null) {
+        if (signal.aborted) {
           frame.close();
           return;
         }
-        state.frame?.close();
-        state.frame = frame;
-        paintDevice(canvasRef.current, state);
-        const aspect = `${canvasRef.current.width} / ${canvasRef.current.height}`;
-        setDeviceAspect((previous) => (previous === aspect ? previous : aspect));
+        frameRef.current?.close();
+        frameRef.current = frame;
+        schedulePaint();
       });
       const unsubscribe = subscribeFrames((frame) => decoder.push(frame));
       return () => {
         unsubscribe();
         decoder.close();
-        state.frame?.close();
-        state.frame = null;
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        repaintRef.current = noop;
+        frameRef.current?.close();
+        frameRef.current = null;
       };
     },
     [subscribeFrames],
@@ -109,7 +151,6 @@ export function SimulatorScreen({
   useAbortableEffect(
     (signal) => {
       if (maskUrl == null) return;
-      const state = compositorRef.current;
       void fetch(maskUrl, { signal })
         .then(decodeMask)
         .then((bitmap) => {
@@ -117,17 +158,15 @@ export function SimulatorScreen({
             bitmap.close();
             return;
           }
-          state.mask?.close();
-          state.mask = bitmap;
+          maskRef.current?.close();
+          maskRef.current = bitmap;
           // Recomposite the held frame so the mask applies without waiting for the next one.
-          if (canvasRef.current !== null && state.frame !== null) {
-            paintDevice(canvasRef.current, state);
-          }
+          repaintRef.current();
         })
         .catch(noop);
       return () => {
-        state.mask?.close();
-        state.mask = null;
+        maskRef.current?.close();
+        maskRef.current = null;
       };
     },
     [maskUrl],
@@ -207,7 +246,7 @@ export function SimulatorScreen({
   } | null>(null);
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>): void => {
     if (pressRef.current !== null) return;
-    const screen = screenRectOnPage(event.currentTarget);
+    const rect = event.currentTarget.getBoundingClientRect();
     const endGesture = (): void => {
       const wheel = wheelRef.current;
       wheelRef.current = null;
@@ -226,8 +265,8 @@ export function SimulatorScreen({
       wheel.endTimer = setTimeout(endGesture, WHEEL_IDLE_MS);
     }
     wheel.pos = {
-      x: clamp(wheel.pos.x - event.deltaX / screen.width, 0, 1),
-      y: clamp(wheel.pos.y - event.deltaY / screen.height, 0, 1),
+      x: clamp(wheel.pos.x - event.deltaX / rect.width, 0, 1),
+      y: clamp(wheel.pos.y - event.deltaY / rect.height, 0, 1),
     };
     if (now - wheel.moveSentAt >= TOUCH_MOVE_INTERVAL_MS) {
       wheel.moveSentAt = now;
@@ -238,20 +277,42 @@ export function SimulatorScreen({
   return (
     <div
       className={cn('flex h-full w-full items-center justify-center overflow-hidden', className)}
+      // A size container so the device box can `object-contain` against the panel via cq units,
+      // with no per-resize JS measuring.
+      style={{ containerType: 'size' }}
     >
-      <canvas
-        ref={canvasRef}
-        className={cn(
-          'w-full max-h-full max-w-full touch-none object-contain drop-shadow-xl',
-          deviceAspect === null && 'hidden',
-        )}
-        style={deviceAspect === null ? undefined : { aspectRatio: deviceAspect }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onWheel={handleWheel}
-      />
+      <div
+        className={cn('relative max-h-full max-w-full drop-shadow-xl', layout === null && 'hidden')}
+        style={
+          layout === null
+            ? undefined
+            : {
+                aspectRatio: `${layout.deviceW} / ${layout.deviceH}`,
+                width: `min(100cqw, calc(${layout.deviceW / layout.deviceH} * 100cqh))`,
+              }
+        }
+      >
+        <canvas ref={chassisRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        <canvas
+          ref={screenRef}
+          className="absolute touch-none"
+          style={
+            layout === null
+              ? undefined
+              : {
+                  left: `${layout.inset.left * 100}%`,
+                  top: `${layout.inset.top * 100}%`,
+                  width: `${layout.inset.width * 100}%`,
+                  height: `${layout.inset.height * 100}%`,
+                }
+          }
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onWheel={handleWheel}
+        />
+      </div>
       {/* Off-screen editable that owns keyboard focus: ASCII keydowns become HID key presses,
           IME/non-ASCII commits become pasteboard text. A tap on the canvas focuses it. App-level
           chords (⌘…) fall through `simulatorKeyPress` untouched. */}
@@ -266,7 +327,7 @@ export function SimulatorScreen({
         onKeyDown={handleKeyDown}
         onChange={handleInput}
       />
-      {deviceAspect === null && placeholder}
+      {layout === null && placeholder}
     </div>
   );
 }

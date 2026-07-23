@@ -1,9 +1,9 @@
 /**
- * Device ↔ screen coordinate mapping for the simulator canvas. Pure geometry, no React or DOM
- * events: given the painted canvas (chassis + screen in native pixels, drawn `object-contain`),
- * it recovers where the real device screen sits on the page and maps a page point into the
- * device's normalized [0,1] space. Shared by the compositor (which lays the chassis out with the
- * same fractions) and the input handlers.
+ * Device ↔ screen geometry for the layered simulator view. Pure geometry, no React or DOM events:
+ * the chassis and screen are separate DOM layers (the screen a CSS-positioned canvas inside the
+ * chassis box), so mapping a pointer into normalized [0,1] space is just its offset within the
+ * screen canvas's own rect. The chassis compositor and this module share the same fractions, so
+ * {@link screenInset} places the screen layer exactly over the band's cutout.
  */
 
 import { clamp } from 'foxts/clamp';
@@ -13,7 +13,8 @@ export interface SimulatorScreenPoint {
   y: number;
 }
 
-export interface DeviceRect {
+/** The screen layer's box as fractions [0,1] of the whole device box, for CSS placement. */
+export interface ScreenInset {
   left: number;
   top: number;
   width: number;
@@ -39,48 +40,33 @@ export const LEFT_BUTTONS: ReadonlyArray<readonly [number, number]> = [
 ];
 export const RIGHT_BUTTONS: ReadonlyArray<readonly [number, number]> = [[0.355, 0.175]];
 
-/** The painted device's on-page box (the canvas is `object-contain`, so it may be letterboxed). */
-export function deviceRectOnPage(canvas: HTMLCanvasElement): DeviceRect {
-  const rect = canvas.getBoundingClientRect();
-  if (canvas.width === 0 || canvas.height === 0) return rect;
-  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
-  const width = canvas.width * scale;
-  const height = canvas.height * scale;
+/** The screen layer's placement within the device box, as fractions of it. Uses the same rounded
+ * native insets the chassis compositor paints, so the CSS-positioned screen sits exactly over the
+ * band's cutout. */
+export function screenInset(screenW: number, screenH: number): ScreenInset {
+  const pad = Math.round(screenW * PAD_FRACTION);
+  const buttonDepth = Math.round(screenW * BUTTON_DEPTH_FRACTION);
+  const deviceW = screenW + 2 * pad + 2 * buttonDepth;
+  const deviceH = screenH + 2 * pad;
   return {
-    left: rect.left + (rect.width - width) / 2,
-    top: rect.top + (rect.height - height) / 2,
-    width,
-    height,
+    left: (pad + buttonDepth) / deviceW,
+    top: pad / deviceH,
+    width: screenW / deviceW,
+    height: screenH / deviceH,
   };
 }
 
-/** The screen's on-page box: the device box inset by the chassis band and button margin. */
-export function screenRectOnPage(canvas: HTMLCanvasElement): DeviceRect {
-  const device = deviceRectOnPage(canvas);
-  if (canvas.width === 0) return device;
-  // Recover the native insets the painter rounded from the screen width.
-  const approxScreenWidth = canvas.width / (1 + 2 * PAD_FRACTION + 2 * BUTTON_DEPTH_FRACTION);
-  const pad = Math.round(approxScreenWidth * PAD_FRACTION);
-  const buttonDepth = Math.round(approxScreenWidth * BUTTON_DEPTH_FRACTION);
-  const scale = device.width / canvas.width;
-  return {
-    left: device.left + (pad + buttonDepth) * scale,
-    top: device.top + pad * scale,
-    width: (canvas.width - 2 * pad - 2 * buttonDepth) * scale,
-    height: (canvas.height - 2 * pad) * scale,
-  };
-}
-
-/** Map a page point (a pointer/wheel event) into the device's normalized [0,1] screen space. */
+/** Map a page point (a pointer/wheel event on the screen layer) into normalized [0,1] screen
+ * space — the offset within the screen canvas's own rect. */
 export function normalizedPoint(event: {
   clientX: number;
   clientY: number;
   currentTarget: HTMLCanvasElement;
 }): SimulatorScreenPoint {
-  const screen = screenRectOnPage(event.currentTarget);
+  const rect = event.currentTarget.getBoundingClientRect();
   return {
-    x: clamp((event.clientX - screen.left) / screen.width, 0, 1),
-    y: clamp((event.clientY - screen.top) / screen.height, 0, 1),
+    x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+    y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
   };
 }
 
