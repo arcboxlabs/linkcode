@@ -103,4 +103,23 @@ describe('release automation', () => {
       }),
     ).rejects.toThrow(`expected ${SHA}`);
   });
+
+  it('verifies the draft and lightweight tag created by release-please', async () => {
+    const releases = [{ draft: true, tag_name: 'v0.6.4', target_commitish: SHA }];
+    const { github } = harness({ releases, tag: SHA });
+    const write = vi.fn();
+    const core = { summary: { addRaw: vi.fn(() => ({ write })) } };
+    await automation.verifyStartedRelease({
+      core,
+      github,
+      owner: 'arcboxlabs',
+      releaseCreated: 'true',
+      releasePleaseSha: SHA,
+      releasePleaseTag: 'v0.6.4',
+      releaseSha: SHA,
+      releaseTag: 'v0.6.4',
+      repo: 'linkcode',
+    });
+    expect(write).toHaveBeenCalledOnce();
+  });
 });
