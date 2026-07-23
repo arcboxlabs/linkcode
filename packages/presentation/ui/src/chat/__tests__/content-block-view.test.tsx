@@ -27,15 +27,14 @@ it('opens file resource links through the artifact host actions', () => {
   expect(openFile).toHaveBeenCalledWith('/mock/linkcode/docs/ARCHITECTURE.md');
 });
 
-it('renders web resource links as favicon anchor chips', () => {
+it('renders web resource links without remote favicon requests', () => {
   const { getByRole } = render(
     <ContentBlockView block={resourceLink('https://example.com/doc')} />,
   );
   const link = getByRole('link', { name: 'ARCHITECTURE.md' });
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(link.querySelector('img')?.getAttribute('src')).toBe(
-    'https://www.google.com/s2/favicons?domain=example.com&sz=32',
-  );
+  expect(link.querySelector('img')).toBeNull();
+  expect(link.querySelector('svg')).not.toBeNull();
 });
 
 it('renders unknown-scheme resource links as inert chips titled by uri', () => {

@@ -34,10 +34,16 @@ function pathTarget(decoded: string): LinkTarget {
   return { kind: 'file', path, line: Number(lineMatch[1]) };
 }
 
-/** Classify a markdown link href. Null → not ours (fragments, mailto, bare relative URLs);
- * callers keep their default anchor behavior. `./`-prefixed destinations are unambiguously
- * workspace files — the composer serializes mentions that way — while bare relative hrefs
- * stay untouched. */
+function knownPathTarget(decoded: string): LinkTarget | null {
+  const target = pathTarget(decoded);
+  if (target.kind !== 'file' && target.kind !== 'skill') return null;
+  return hasKnownFileIdentity(target.path) ? target : null;
+}
+
+/** Classify a markdown link href. Null → not ours (fragments, mailto, root-relative and bare
+ * relative URLs without file identity); callers keep their default anchor behavior.
+ * `./`-prefixed destinations are unambiguously workspace files because the composer serializes
+ * mentions that way. */
 export function linkTargetFor(href: string | null | undefined): LinkTarget | null {
   if (!href || href[0] === '#') return null;
   if (href.startsWith(PLUGIN_PREFIX)) {
@@ -56,8 +62,9 @@ export function linkTargetFor(href: string | null | undefined): LinkTarget | nul
     return pathTarget(decoded.startsWith('./') ? decoded.slice(2) : decoded);
   }
   // ponytail: POSIX absolute paths only — Windows drive hrefs (C:\…) never reach here, the
-  // markdown sanitizer already drops their unknown single-letter protocol.
-  if (href[0] === '/') return pathTarget(decodedPath(href));
+  // markdown sanitizer already drops their unknown single-letter protocol. Require known file
+  // identity so standard root-relative URLs such as /docs retain anchor semantics.
+  if (href[0] === '/') return knownPathTarget(decodedPath(href));
   // Bare relative destinations ([x](package-lock.json)) are how agents commonly reference
   // files; as anchors they only 404 against the app origin, so evidence-based file
   // classification is strictly better. The charset test also rejects schemes (mailto:…).
@@ -76,9 +83,7 @@ export function filePathTarget(text: string): LinkTarget | null {
   const candidate = text.trim();
   if (candidate.length === 0 || candidate.length > MAX_INLINE_PATH_LENGTH) return null;
   if (!INLINE_PATH_RE.test(candidate)) return null;
-  const target = pathTarget(candidate.startsWith('./') ? candidate.slice(2) : candidate);
-  if (target.kind !== 'file' && target.kind !== 'skill') return null;
-  return hasKnownFileIdentity(target.path) ? target : null;
+  return knownPathTarget(candidate.startsWith('./') ? candidate.slice(2) : candidate);
 }
 
 const FILE_URI_PREFIX = 'file://';
@@ -97,10 +102,4 @@ export function linkTargetForUri(uri: string): LinkTarget {
     }
   }
   return { kind: 'uri', uri };
-}
-
-/** Google's s2 endpoint resolves a favicon for any registrable domain and always answers with
- * an image (a generic globe when the site has none), so the `<img>` error path stays cold. */
-export function faviconSrcFor(hostname: string): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`;
 }

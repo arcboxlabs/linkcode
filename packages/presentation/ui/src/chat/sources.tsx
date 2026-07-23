@@ -11,7 +11,7 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
-import { UrlFavicon } from './link-icon';
+import { UrlLinkIcon } from './link-icon';
 
 // TODO(linkcode-schema): Provisional UI-only source metadata, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema types when assistant messages can emit source/citation metadata.
@@ -121,7 +121,7 @@ export function Source({ className, source, ...props }: SourceProps): React.Reac
     <>
       <span className="mt-0.5 shrink-0">
         {source.icon ?? (
-          <UrlFavicon url={source.url} fallback={<BookOpenIcon className="size-3.5" />} />
+          <UrlLinkIcon url={source.url} fallback={<BookOpenIcon className="size-3.5" />} />
         )}
       </span>
       <span className="min-w-0 flex-1">

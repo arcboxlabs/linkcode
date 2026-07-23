@@ -214,16 +214,29 @@ it('prevents navigation for fragment links with no resolvable target', () => {
   expect(fireEvent.click(link)).toBe(false);
 });
 
-it('prefixes external links with a favicon and keeps anchor semantics', () => {
+it('prefixes external links with a local icon and keeps anchor semantics', () => {
   const { getByRole } = render(
     <Markdown>{'[Wiki](https://en.wikipedia.org/wiki/Arknights)'}</Markdown>,
   );
   const link = getByRole('link', { name: 'Wiki' });
   expect(link.getAttribute('target')).toBe('_blank');
   expect(link.getAttribute('rel')).toBe('noreferrer');
-  expect(link.querySelector('img')?.getAttribute('src')).toBe(
-    'https://www.google.com/s2/favicons?domain=en.wikipedia.org&sz=32',
+  expect(link.querySelector('img')).toBeNull();
+  expect(link.querySelector('svg')).not.toBeNull();
+});
+
+it('keeps root-relative urls as anchors instead of opening files', () => {
+  const openFile = vi.fn();
+  const { getByRole, queryByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'[documentation](/docs)'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
   );
+  const link = getByRole('link', { name: 'documentation' });
+  expect(link.getAttribute('href')).toBe('/docs');
+  expect(link.getAttribute('target')).toBe('_blank');
+  expect(queryByRole('button')).toBeNull();
+  expect(openFile).not.toHaveBeenCalled();
 });
 
 // The chip renders only if the plugin:// href survives Streamdown's sanitize pass — this also

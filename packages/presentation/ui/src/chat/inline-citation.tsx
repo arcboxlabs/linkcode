@@ -2,7 +2,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { ExternalLinkIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
-import { UrlFavicon } from './link-icon';
+import { UrlLinkIcon } from './link-icon';
 
 // TODO(linkcode-schema): Provisional UI-only citation reference, not yet wired to daemon/client schema.
 // Move or replace with @linkcode/schema citation metadata when message content supports citations.
@@ -71,7 +71,7 @@ export function InlineCitationTrigger({
         >
           {children ?? (
             <>
-              <UrlFavicon url={citation.url} className="size-3" />
+              <UrlLinkIcon url={citation.url} className="size-3" />
               {citation.label ?? citation.sourceId}
             </>
           )}
@@ -115,7 +115,7 @@ export function InlineCitationSource({
       {children ?? (
         <>
           <div className="flex min-w-0 items-center gap-1 font-medium text-foreground">
-            <UrlFavicon url={citation.url} className="shrink-0" />
+            <UrlLinkIcon url={citation.url} className="shrink-0" />
             <span className="truncate">
               {citation.title ?? citation.label ?? citation.sourceId}
             </span>

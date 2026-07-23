@@ -21,7 +21,7 @@ import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { LinkChip } from './link-chip';
-import { Favicon } from './link-icon';
+import { LinkTargetIcon } from './link-icon';
 import { filePathTarget, linkTargetFor } from './link-target';
 import { useSmoothText } from './smooth-text-controller';
 
@@ -209,7 +209,7 @@ function MarkdownLink({
       {...anchorProps}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
     >
-      {target === null ? null : <Favicon hostname={target.hostname} className="me-1" />}
+      {target === null ? null : <LinkTargetIcon target={target} className="me-1" />}
       {children}
     </a>
   );
