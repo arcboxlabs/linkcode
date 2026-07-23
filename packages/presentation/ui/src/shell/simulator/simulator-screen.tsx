@@ -22,6 +22,14 @@ export type SimulatorScreenTouchPhase = 'down' | 'move' | 'up';
 const TOUCH_MOVE_INTERVAL_MS = 16;
 /** A wheel stream idle for this long ends its synthetic drag gesture. */
 const WHEEL_IDLE_MS = 120;
+/** When a re-planted wheel finger lands, it re-plants inside this band (a real long scroll is many
+ * swipes; a finger clamped at the edge just stalls). Kept clear of the top/bottom edges so an
+ * upward re-swipe never reads as the home gesture. */
+const WHEEL_BAND_LO = 0.15;
+const WHEEL_BAND_HI = 0.85;
+/** How far, in normalized units, a re-planted finger is nudged so the touch reads as a drag (not a
+ * stray tap if the scroll idles right after re-planting). */
+const WHEEL_NUDGE = 0.02;
 
 /** The device box's size + the screen layer's placement within it, once the first frame reveals
  * the framebuffer dimensions. */
@@ -238,7 +246,9 @@ export function SimulatorScreen({
   // Trackpad/wheel scrolling becomes a synthetic drag: touch down where the cursor sits, move
   // opposite the scroll deltas (finger-follows-content), up after idle. Trackpad wheels fire far
   // faster than 60 Hz, so deltas accumulate into `pos` every event but a `move` is emitted at most
-  // once per frame — the final `up` carries the settled position so nothing is lost.
+  // once per frame — the final `up` carries the settled position so nothing is lost. When the
+  // finger would run off a screen edge, it lifts and re-plants on the far side, so one long scroll
+  // becomes many swipes instead of a finger pinned at the edge (which stalls scrolling mid-page).
   const wheelRef = useRef<{
     pos: SimulatorScreenPoint;
     moveSentAt: number;
@@ -255,7 +265,11 @@ export function SimulatorScreen({
     const now = performance.now();
     let wheel = wheelRef.current;
     if (wheel === null) {
-      const start = normalizedPoint(event);
+      const cursor = normalizedPoint(event);
+      const start = {
+        x: clamp(cursor.x, WHEEL_BAND_LO, WHEEL_BAND_HI),
+        y: clamp(cursor.y, WHEEL_BAND_LO, WHEEL_BAND_HI),
+      };
       const endTimer = setTimeout(endGesture, WHEEL_IDLE_MS);
       wheel = { pos: start, moveSentAt: now, endTimer };
       wheelRef.current = wheel;
@@ -264,13 +278,34 @@ export function SimulatorScreen({
       clearTimeout(wheel.endTimer);
       wheel.endTimer = setTimeout(endGesture, WHEEL_IDLE_MS);
     }
-    wheel.pos = {
-      x: clamp(wheel.pos.x - event.deltaX / rect.width, 0, 1),
-      y: clamp(wheel.pos.y - event.deltaY / rect.height, 0, 1),
-    };
-    if (now - wheel.moveSentAt >= TOUCH_MOVE_INTERVAL_MS) {
+    // Advance the synthetic finger opposite the scroll (finger follows content).
+    const x = wheel.pos.x - event.deltaX / rect.width;
+    const y = wheel.pos.y - event.deltaY / rect.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+      // Ran past a screen edge: finish this swipe there, lift, then re-plant on the far side so the
+      // same scroll keeps dragging. The immediate nudge makes the re-planted touch a drag, so an
+      // idle right after re-planting ends a swipe (up), never a stray tap in place.
+      const edge = { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
+      onTouch?.('move', edge);
+      onTouch?.('up', edge);
+      const planted = {
+        x: x < 0 ? WHEEL_BAND_HI : x > 1 ? WHEEL_BAND_LO : clamp(x, WHEEL_BAND_LO, WHEEL_BAND_HI),
+        y: y < 0 ? WHEEL_BAND_HI : y > 1 ? WHEEL_BAND_LO : clamp(y, WHEEL_BAND_LO, WHEEL_BAND_HI),
+      };
+      onTouch?.('down', planted);
+      const nudged = {
+        x: clamp(planted.x - Math.sign(event.deltaX) * WHEEL_NUDGE, 0, 1),
+        y: clamp(planted.y - Math.sign(event.deltaY) * WHEEL_NUDGE, 0, 1),
+      };
+      onTouch?.('move', nudged);
+      wheel.pos = nudged;
       wheel.moveSentAt = now;
-      onTouch?.('move', wheel.pos);
+    } else {
+      wheel.pos = { x, y };
+      if (now - wheel.moveSentAt >= TOUCH_MOVE_INTERVAL_MS) {
+        wheel.moveSentAt = now;
+        onTouch?.('move', wheel.pos);
+      }
     }
   };
 
