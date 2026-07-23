@@ -2,6 +2,7 @@ import type { SessionId, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
+import { noop } from 'foxts/noop';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
@@ -167,32 +168,36 @@ export class SimulatorRequestHandler {
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );
-      case 'simulator.touch':
+      case 'simulator.touch': {
+        const run = (simulators: SimulatorService): Promise<void> =>
+          simulators.touch(payload.sessionId, payload.udid, payload.phase, payload.x, payload.y);
+        // High-frequency `move` phases arrive unacked (see the client); run them fire-and-forget
+        // so no reply is emitted. `down`/`up` stay correlated for claim/completion feedback.
+        if (payload.phase === 'move') return this.fireAndForget('simulator.touch', run);
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.touch', 'Failed to inject touch', async () => {
-            await simulators.touch(
-              payload.sessionId,
-              payload.udid,
-              payload.phase,
-              payload.x,
-              payload.y,
-            );
+            await run(simulators);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );
-      case 'simulator.pinch':
+      }
+      case 'simulator.pinch': {
+        const run = (simulators: SimulatorService): Promise<void> =>
+          simulators.pinch(
+            payload.sessionId,
+            payload.udid,
+            payload.phase,
+            { x: payload.x0, y: payload.y0 },
+            { x: payload.x1, y: payload.y1 },
+          );
+        if (payload.phase === 'move') return this.fireAndForget('simulator.pinch', run);
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.pinch', 'Failed to pinch', async () => {
-            await simulators.pinch(
-              payload.sessionId,
-              payload.udid,
-              payload.phase,
-              { x: payload.x0, y: payload.y0 },
-              { x: payload.x1, y: payload.y1 },
-            );
+            await run(simulators);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );
+      }
       case 'simulator.paste':
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.paste', 'Failed to set pasteboard', async () => {
@@ -298,6 +303,17 @@ export class SimulatorRequestHandler {
     } catch {
       // The next explicit list will reconcile; failing the completed command would be worse.
     }
+  }
+
+  /** Run an unacked simulator op (a high-frequency `move`). No reply is emitted, and a failure is
+   * swallowed — a dropped move is corrected by the next one, and the stream reflects reality. */
+  private fireAndForget(
+    _operation: string,
+    run: (simulators: SimulatorService) => Promise<void>,
+  ): Effect.Effect<void> {
+    if (!this.simulators) return Effect.void;
+    const simulators = this.simulators;
+    return Effect.promise(() => run(simulators).catch(noop));
   }
 
   private withSimulators(

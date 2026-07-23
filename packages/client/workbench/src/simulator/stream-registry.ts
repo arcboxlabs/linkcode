@@ -8,9 +8,10 @@ export type SimulatorStreamClient = Pick<
   'simulatorStreamStart' | 'simulatorStreamStop'
 >;
 
-/** Panel-facing stream parameters: hardware H.264 at native resolution — full 60 fps at a
- * fraction of a JPEG stream's bandwidth. Hosts that cannot honor it fall back to JPEG frames. */
-const STREAM_OPTIONS = { fps: 60, codec: 'h264' } as const;
+/** Panel-facing stream parameters: hardware H.264 at native resolution. 30 fps keeps the
+ * client-side decode + native-resolution canvas composite well within one core's budget (60 fps
+ * saturated it and made interaction stutter); hosts without H.264 fall back to JPEG frames. */
+const STREAM_OPTIONS = { fps: 30, codec: 'h264' } as const;
 
 /** Bridges the unmount→mount gap of the docked↔maximized handoff without stopping the stream. */
 const CLOSE_DELAY_MS = 250;

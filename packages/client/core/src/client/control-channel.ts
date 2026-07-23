@@ -703,6 +703,23 @@ export class ControlChannel {
     x: number,
     y: number,
   ): Promise<RequestAck> {
+    // `move` phases fire at up to 60 Hz; a per-move round-trip would stall the gesture, so they go
+    // out unacked (the engine skips the reply). `down`/`up` stay correlated so a claim conflict or
+    // the gesture's completion is still observable.
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.touch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x,
+          y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.touch',
       clientReqId,
@@ -721,6 +738,22 @@ export class ControlChannel {
     a: { x: number; y: number },
     b: { x: number; y: number },
   ): Promise<RequestAck> {
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.pinch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x0: a.x,
+          y0: a.y,
+          x1: b.x,
+          y1: b.y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.pinch',
       clientReqId,
