@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
+  McpServerConfig,
   PermissionMode,
   PermissionResult,
   Query,
@@ -35,6 +36,7 @@ import type {
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
+  McpServer,
   PermissionOption,
   StartOptions,
   StopReason,
@@ -233,6 +235,26 @@ function effortFlagSettings(
 ): Parameters<Query['applyFlagSettings']>[0] {
   if (effort === 'ultracode') return { ultracode: true };
   return { ultracode: null, effortLevel: effort };
+}
+
+/** Map wire `McpServer` entries onto the SDK's keyed record shape (undefined when none). */
+export function claudeMcpServers(
+  servers: McpServer[] | undefined,
+): Record<string, McpServerConfig> | undefined {
+  if (!servers?.length) return undefined;
+  const out: Record<string, McpServerConfig> = {};
+  for (const server of servers) {
+    out[server.name] =
+      server.type === 'http'
+        ? { type: 'http', url: server.url, ...(server.headers && { headers: server.headers }) }
+        : {
+            type: 'stdio',
+            command: server.command,
+            ...(server.args && { args: server.args }),
+            ...(server.env && { env: server.env }),
+          };
+  }
+  return out;
 }
 
 /** Map Claude's stop reason to our ACP-aligned StopReason. */
@@ -639,6 +661,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
+    const mcpServers = claudeMcpServers(opts.mcpServers);
     let q: Query | null = null;
     const reflectCurrentQueryEffort: HookCallback = (input, toolUseID, hookOptions) => {
       if (q === null || this.q !== q) return Promise.resolve({ continue: true });
@@ -679,6 +702,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
+        ...(mcpServers && { mcpServers }),
         ...(credentialEnv && { env: credentialEnv }),
       },
     });

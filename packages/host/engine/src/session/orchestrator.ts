@@ -277,9 +277,14 @@ export class SessionOrchestrator {
         ),
         Effect.andThen(stopBestEffort(session.adapter)),
         Effect.ensuring(
-          Effect.suspend(() =>
-            this.remove(sessionId, session) ? recordLiveSessions(this.sessions.size) : Effect.void,
-          ),
+          Effect.suspend(() => {
+            if (!this.remove(sessionId, session)) return Effect.void;
+            // Release what a partial start may have reserved — notably the simulator MCP endpoint
+            // token minted while resolving start options. Normal teardown does this via `onStopped`;
+            // a discarded failed start must too, or that token leaks until daemon shutdown.
+            this.onStopped(sessionId);
+            return recordLiveSessions(this.sessions.size);
+          }),
         ),
         Effect.onExit((exit) => Deferred.done(session.closed, exit).pipe(Effect.asVoid)),
       );

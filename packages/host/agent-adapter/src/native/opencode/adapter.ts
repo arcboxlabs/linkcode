@@ -16,9 +16,17 @@ import type {
   Question,
   StartOptions,
 } from '@linkcode/schema';
-import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk/v2';
+import type {
+  Event,
+  FilePartInput,
+  McpLocalConfig,
+  McpRemoteConfig,
+  Part,
+  TextPartInput,
+} from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
@@ -59,6 +67,32 @@ const ABORT_WAIT_MS = 2000;
 const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
 /** Prevent a server that repeatedly closes an empty SSE response from spinning a hot subscribe loop. */
 const EVENT_RESUBSCRIBE_DELAY_MS = 100;
+
+/** Map wire `McpServer` entries onto opencode's keyed `config.mcp` shape (undefined when none).
+ * http → `remote`; stdio → `local` with `[command, ...args]` and `environment`. */
+export function opencodeMcpConfig(
+  servers: StartOptions['mcpServers'],
+): Record<string, McpLocalConfig | McpRemoteConfig> | undefined {
+  if (!servers?.length) return undefined;
+  const out: Record<string, McpLocalConfig | McpRemoteConfig> = {};
+  for (const server of servers) {
+    out[server.name] =
+      server.type === 'http'
+        ? {
+            type: 'remote',
+            url: server.url,
+            enabled: true,
+            ...(server.headers && { headers: server.headers }),
+          }
+        : {
+            type: 'local',
+            command: [server.command, ...(server.args ?? [])],
+            enabled: true,
+            ...(server.env && { environment: server.env }),
+          };
+  }
+  return out;
+}
 
 /** Most `session.error` variants carry `data.message`; fall back to the variant name. */
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
@@ -201,13 +235,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
     if (cred.baseUrl) options.baseURL = cred.baseUrl;
-    const serverOptions =
-      providerID && (options.apiKey || options.baseURL)
-        ? { config: { provider: { [providerID]: { options } } } }
-        : undefined;
+    const providerInjected = Boolean(providerID && (options.apiKey || options.baseURL));
+    const mcp = opencodeMcpConfig(opts.mcpServers);
+    const config = {
+      ...(providerInjected && providerID && { provider: { [providerID]: { options } } }),
+      ...(mcp && { mcp }),
+    };
+    const serverOptions = isObjectEmpty(config) ? undefined : { config };
     // The injection is spawn-time-only: remember which provider it scoped to so a later
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
-    this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
+    this.credentialProviderId = providerInjected ? (providerID ?? null) : null;
     try {
       // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
       // auto-allocate either), and this adapter spawns one server per session — without an

@@ -34,6 +34,15 @@ export const simulatorWireVariants = [
     kind: z.literal('simulator.devices.changed'),
     devices: z.array(SimulatorDeviceSchema),
   }),
+  /** An agent MCP tool call started/settled on a device — the panel's "agent is driving this
+   * device" badge. Broadcast, uncorrelated; `udid` is absent for device-less tools (list). */
+  z.object({
+    kind: z.literal('simulator.activity'),
+    sessionId: SessionIdSchema,
+    udid: z.string().min(1).optional(),
+    tool: z.string(),
+    phase: z.enum(['started', 'settled']),
+  }),
   z.object({
     kind: z.literal('simulator.boot'),
     clientReqId: WireRequestIdSchema,
