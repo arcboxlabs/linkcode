@@ -72,9 +72,13 @@ mod imp {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::capture::{CaptureStream, FrameClock};
+    use crate::capture::{CaptureStream, Frame, FrameClock};
     use crate::private::{self, Button, Input, SimDevice};
     use crate::proto::{STREAM_FRAME, encode_stream_frame};
+
+    /// A live-but-silent private worker (framebuffer registration produced no callbacks) is treated
+    /// as unusable after this long with no new frame, and the pusher degrades to simctl.
+    const SILENT_FALLBACK_AFTER: Duration = Duration::from_secs(3);
 
     /// Warmed HID clients and running streams, keyed by udid. Warming a client is expensive, so it
     /// is cached; a stream is one crash-isolated worker plus a pusher thread.
@@ -178,7 +182,12 @@ mod imp {
         let scale = scale.clamp(0.1, 1.0);
         let mut reg = registry().lock().expect("interactive registry poisoned");
         if reg.streams.contains_key(udid) {
-            return Ok(json!({ "alreadyStreaming": true }));
+            // An idempotent retry keeps the documented success shape (PROTOCOL.md), with
+            // `alreadyStreaming` only as an extra flag, so a caller validating the result still sees
+            // `streaming`/`fps`/`scale`.
+            return Ok(
+                json!({ "streaming": true, "fps": fps, "scale": scale, "alreadyStreaming": true }),
+            );
         }
         let stream = Arc::new(CaptureStream::start(
             udid.to_owned(),
@@ -238,10 +247,35 @@ mod imp {
         let mut clock = FrameClock::new(fps);
         // simctl screenshots cost ~200-400ms, so poll them well below the private fps.
         let fallback_interval = Duration::from_millis(500);
-        let mut last: Option<*const Vec<u8>> = None;
+        // Retain the last-sent frame (not a raw pointer): comparing addresses alone risks ABA — a
+        // freed frame's address reused by a new one would read as "already sent".
+        let mut last: Option<Frame> = None;
+        // If the worker stays alive but never delivers (framebuffer registration produced no
+        // callbacks), fall back to simctl instead of sending nothing forever.
+        let mut last_progress = Instant::now();
         while !stop.load(Ordering::Relaxed) {
-            if stream.is_dead() {
-                // Degraded path: capture via the public simctl screenshot and push it.
+            // Prefer a fresh private frame; sending one marks the worker as producing.
+            if let Some(frame) = stream.latest()
+                && last.as_ref().is_none_or(|prev| !Arc::ptr_eq(prev, &frame))
+            {
+                last = Some(Arc::clone(&frame));
+                last_progress = Instant::now();
+                if let Ok(body) = encode_stream_frame(udid, &frame)
+                    && tx
+                        .send(OutMsg::Frame {
+                            type_byte: STREAM_FRAME,
+                            body,
+                        })
+                        .is_err()
+                {
+                    break; // daemon gone
+                }
+                clock.tick();
+                continue;
+            }
+            // No fresh private frame: if the worker gave up, or has been silent past the timeout,
+            // degrade to a public simctl screenshot so frames never stop.
+            if stream.is_dead() || last_progress.elapsed() >= SILENT_FALLBACK_AFTER {
                 let tick = Instant::now();
                 if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
                     && let Ok(body) = encode_stream_frame(udid, &jpeg)
@@ -257,25 +291,9 @@ mod imp {
                 if let Some(rest) = fallback_interval.checked_sub(tick.elapsed()) {
                     thread::sleep(rest);
                 }
-                continue;
+            } else {
+                clock.tick();
             }
-            if let Some(frame) = stream.latest() {
-                let ptr = Arc::as_ptr(&frame);
-                if last != Some(ptr) {
-                    last = Some(ptr);
-                    if let Ok(body) = encode_stream_frame(udid, &frame)
-                        && tx
-                            .send(OutMsg::Frame {
-                                type_byte: STREAM_FRAME,
-                                body,
-                            })
-                            .is_err()
-                    {
-                        break; // daemon gone
-                    }
-                }
-            }
-            clock.tick();
         }
     }
 }

@@ -14,7 +14,7 @@
 
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -126,6 +126,9 @@ pub struct CaptureStream {
     stopped: Arc<AtomicBool>,
     /// Set true once the manager gives up after a crash loop, so callers can degrade.
     dead: Arc<AtomicBool>,
+    /// The live worker child's pid (0 = none). Non-zero only while the manager holds the un-reaped
+    /// `Child`, so the pid can't be reused — making a kill-on-drop safe to target it.
+    worker_pid: Arc<AtomicU32>,
     manager: Option<thread::JoinHandle<()>>,
 }
 
@@ -135,16 +138,19 @@ impl CaptureStream {
         let latest = Arc::new(Mutex::new(None));
         let stopped = Arc::new(AtomicBool::new(false));
         let dead = Arc::new(AtomicBool::new(false));
+        let worker_pid = Arc::new(AtomicU32::new(0));
         let manager = thread::spawn({
             let latest = Arc::clone(&latest);
             let stopped = Arc::clone(&stopped);
             let dead = Arc::clone(&dead);
-            move || supervise(&udid, params, &latest, &stopped, &dead)
+            let worker_pid = Arc::clone(&worker_pid);
+            move || supervise(&udid, params, &latest, &stopped, &dead, &worker_pid)
         });
         CaptureStream {
             latest,
             stopped,
             dead,
+            worker_pid,
             manager: Some(manager),
         }
     }
@@ -166,6 +172,16 @@ impl CaptureStream {
 impl Drop for CaptureStream {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::Relaxed);
+        // The manager may be parked in a blocking `read_exact` on a worker that opened its
+        // framebuffer but never wrote a frame (a boot/shutdown transition); `stopped` alone can't
+        // wake that read, so kill the worker to close its stdout and let the read return. The pid is
+        // non-zero only while the manager holds the un-reaped child, so it can't have been reused.
+        let pid = self.worker_pid.load(Ordering::Relaxed);
+        if pid != 0 {
+            // SAFETY: best-effort SIGKILL to our capture-worker child (or a not-yet-reaped zombie of
+            // it); no other process can hold this pid while `worker_pid` is set.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        }
         if let Some(manager) = self.manager.take() {
             let _ = manager.join();
         }
@@ -180,14 +196,19 @@ fn supervise(
     latest: &Arc<Mutex<Option<Frame>>>,
     stopped: &Arc<AtomicBool>,
     dead: &Arc<AtomicBool>,
+    worker_pid: &Arc<AtomicU32>,
 ) {
     let mut fast_crashes = 0u32;
     while !stopped.load(Ordering::Relaxed) {
         let started = Instant::now();
         match spawn_worker(udid, params) {
             Ok(mut child) => {
+                // Publish the pid before reading so a concurrent drop can kill a stuck worker; clear
+                // it only after `wait()` reaps it, keeping the pid unreusable while it is set.
+                worker_pid.store(child.id(), Ordering::Relaxed);
                 pump_worker(&mut child, latest, stopped);
                 let _ = child.wait();
+                worker_pid.store(0, Ordering::Relaxed);
             }
             Err(err) => {
                 eprintln!("sim capture: failed to spawn worker: {err}");
