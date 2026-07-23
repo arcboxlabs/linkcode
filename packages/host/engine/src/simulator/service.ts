@@ -15,6 +15,9 @@ interface DeviceClaim {
   bootedByService: boolean;
   /** Armed when the owning session stops; a new claim within the window disarms it. */
   idleTimer?: ReturnType<typeof setTimeout>;
+  /** True once the idle timer has fired and the reclaim shutdown is in flight; a resume clears it
+   * so the settling shutdown does not drop the re-acquired claim. */
+  reclaiming?: boolean;
 }
 
 /**
@@ -56,13 +59,23 @@ export class SimulatorService {
     // Distinguish "we booted it" from "it was already up": only the former is ours to shut down.
     const state = (await this.backend.list()).find((device) => device.udid === udid)?.state;
     if (state === 'Booted') return;
-    await this.backend.boot(udid);
+    try {
+      await this.backend.boot(udid);
+    } finally {
+      // Reconcile ownership whether the boot resolved or rejected: `simctl boot` can start the
+      // device even when a later bootstatus wait, the sidecar, or the reply then fails, so both
+      // paths must keep it reclaimable (shutting down a device that never actually booted is a
+      // harmless no-op).
+      this.reconcileBootedClaim(sessionId, udid);
+    }
+  }
+
+  /** After a boot attempt, mark the device service-booted so it is reclaimed. If the owning session
+   * stopped mid-boot (its not-yet-service-booted claim was dropped), re-track it and arm idle
+   * reclaim, exactly as if the stop had arrived after the boot. */
+  private reconcileBootedClaim(sessionId: SessionId, udid: string): void {
     const claim = this.claims.get(udid);
     if (claim === undefined) {
-      // The owning session stopped while the boot was in flight, so `releaseSession` dropped the
-      // not-yet-service-booted claim. We booted a device that now has no owner: re-track it as
-      // service-booted and arm idle reclaim, exactly as if the stop had arrived after the boot — a
-      // resume within the window re-claims it, otherwise it is shut down instead of left running.
       const reclaimed: DeviceClaim = { sessionId, bootedByService: true };
       this.claims.set(udid, reclaimed);
       this.release(udid, reclaimed);
@@ -148,6 +161,9 @@ export class SimulatorService {
         clearTimeout(existing.idleTimer);
         existing.idleTimer = undefined;
       }
+      // Cancel an in-flight reclaim's claim-drop: the session is back, so it keeps ownership even if
+      // the shutdown started (it re-boots the device on its next op).
+      existing.reclaiming = false;
       return;
     }
     let held = 0;
@@ -174,10 +190,16 @@ export class SimulatorService {
       // another session claims and boots the same udid while this shutdown is still in flight,
       // which would then tear down the device that session just acquired. Reclaim stays best-effort
       // (the device may already be gone — deleted in Xcode, host reboot).
+      claim.reclaiming = true;
       void this.backend
         .shutdownDevice(udid)
         .catch(noop)
-        .finally(() => this.drop(udid));
+        .finally(() => {
+          // Drop only if this is still the reclaiming claim: a resume during the shutdown clears
+          // `reclaiming` (and takes ownership), so we must not drop the re-acquired claim.
+          const current = this.claims.get(udid);
+          if (current === claim && current.reclaiming) this.drop(udid);
+        });
     }, this.idleReclaimMs);
     claim.idleTimer.unref?.();
   }

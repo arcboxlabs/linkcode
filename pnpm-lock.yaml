@@ -1039,6 +1039,9 @@ importers:
 
   packages/host/sim:
     dependencies:
+      foxts:
+        specifier: ^5.8.0
+        version: 5.8.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3

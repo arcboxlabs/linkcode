@@ -179,6 +179,28 @@ describe('SimulatorService', () => {
     expect(service.ownerOf('A')).toBeUndefined();
   });
 
+  it('keeps ownership when the session resumes during the reclaim shutdown', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    let resolveShutdown!: () => void;
+    backend.shutdownDevice.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveShutdown = resolve;
+        }),
+    );
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    service.releaseSession(S1);
+    await vi.advanceTimersByTimeAsync(1000); // idle timer fires → shutdown in flight
+    // The owning session comes back while the reclaim shutdown is still settling.
+    await service.screenshot(S1, 'A');
+    resolveShutdown();
+    await vi.advanceTimersByTimeAsync(0);
+    // The resumed session keeps the device; the settling shutdown must not drop its re-claim.
+    expect(service.ownerOf('A')).toBe(S1);
+  });
+
   it('frees a device on owner-driven shutdown', async () => {
     const backend = fakeBackend([device('A', 'Shutdown')]);
     const service = new SimulatorService(backend);
