@@ -204,6 +204,80 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('applies a unit toggle in isolation without touching bindings or connectors', async () => {
+    const client = await connectedClient();
+    await client.setPluginConfig({
+      units: [{ unitId: 'github-read', enabled: true }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+
+    await client.setPluginConfig({ units: [{ unitId: 'github-read', enabled: false }] });
+
+    expect(await client.getPluginConfig()).toEqual({
+      units: [{ unitId: 'github-read', enabled: false }],
+      serviceBindings: { github: { type: 'local', connectorId: 'github-personal' } },
+      connectors: [
+        {
+          id: 'github-personal',
+          service: 'github',
+          credential: { type: 'auth-token', configured: true },
+        },
+      ],
+    });
+    client.dispose();
+  });
+
+  it('rejects an invalid connector operation and keeps the last acknowledged state', async () => {
+    const client = await connectedClient();
+    await client.setPluginConfig({
+      connectorOperations: [
+        {
+          type: 'create',
+          connector: {
+            id: 'github-personal',
+            service: 'github',
+            credential: { type: 'auth-token', secret: 'github-secret' },
+          },
+        },
+      ],
+    });
+    const confirmed = await client.getPluginConfig();
+
+    // The daemon redacts the cause into this fixed public message; the mock mirrors that.
+    await expect(
+      client.setPluginConfig({
+        connectorOperations: [
+          {
+            type: 'create',
+            connector: {
+              id: 'github-personal',
+              service: 'github',
+              credential: { type: 'auth-token', secret: 'other-secret' },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow('Failed to update provider config');
+    await expect(
+      client.setPluginConfig({
+        connectorOperations: [{ type: 'delete', connectorId: 'missing' }],
+      }),
+    ).rejects.toThrow('Failed to update provider config');
+
+    expect(await client.getPluginConfig()).toEqual(confirmed);
+    client.dispose();
+  });
+
   it('advertises and handles composer directives', async () => {
     const client = await connectedClient();
     const sessionId = await client.startSession({

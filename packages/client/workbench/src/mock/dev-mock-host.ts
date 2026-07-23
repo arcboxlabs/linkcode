@@ -373,7 +373,16 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
-        if (p.plugins !== undefined) this.plugins = applyPluginConfigSet(this.plugins, p.plugins);
+        if (p.plugins !== undefined) {
+          try {
+            this.plugins = applyPluginConfigSet(this.plugins, p.plugins);
+          } catch {
+            // Engine parity: an invalid connector operation fails the request with the same
+            // sanitized public message the daemon sends, leaving the acknowledged state untouched.
+            this.sendFailure(p.clientReqId, 'Failed to update provider config');
+            break;
+          }
+        }
         this.sendSuccess(p.clientReqId);
         break;
       case 'workspace.list':
@@ -1429,11 +1438,16 @@ function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): Pl
   const serviceBindings = structuredClone(patch.serviceBindings ?? current.serviceBindings);
   let connectors = structuredClone(current.connectors);
   for (const operation of patch.connectorOperations ?? []) {
+    const connectorId =
+      operation.type === 'create' ? operation.connector.id : operation.connectorId;
+    const exists = connectors.some((connector) => connector.id === connectorId);
     switch (operation.type) {
       case 'create':
+        if (exists) throw new Error(`Plugin connector already exists: ${connectorId}`);
         connectors.push(structuredClone(operation.connector));
         break;
       case 'update':
+        if (!exists) throw new Error(`Plugin connector does not exist: ${connectorId}`);
         connectors = connectors.map((connector) => {
           if (connector.id !== operation.connectorId) return connector;
           const label =
@@ -1446,6 +1460,7 @@ function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): Pl
         });
         break;
       case 'delete':
+        if (!exists) throw new Error(`Plugin connector does not exist: ${connectorId}`);
         connectors = connectors.filter((connector) => connector.id !== operation.connectorId);
         for (const service of Object.keys(serviceBindings) as McpPluginService[]) {
           const binding = serviceBindings[service];
