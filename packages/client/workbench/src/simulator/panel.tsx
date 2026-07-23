@@ -1,5 +1,10 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
-import type { SessionId, SimulatorDevice, SimulatorStatus } from '@linkcode/schema';
+import type {
+  SessionId,
+  SimulatorDevice,
+  SimulatorOrientation,
+  SimulatorStatus,
+} from '@linkcode/schema';
 import type {
   SimulatorKeyPress,
   SimulatorScreenFrame,
@@ -17,12 +22,22 @@ import {
 } from 'coss-ui/components/select';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
+import { RotateCwIcon } from 'lucide-react';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SimulatorStreamLease } from './stream-registry';
 import { acquireSimulatorStream, peekSimulatorStream } from './stream-registry';
 
 const BUSY_BANNER_MS = 3000;
+
+/** Interface orientations in clockwise order, so the rotate button steps device rotation 90° CW
+ * each press (portrait → home-on-right → upside-down → home-on-left → portrait). */
+const ROTATE_CYCLE = [
+  'portrait',
+  'landscapeRight',
+  'portraitUpsideDown',
+  'landscapeLeft',
+] as const satisfies readonly SimulatorOrientation[];
 
 /**
  * The right panel's Simulator section: device picker plus a live, touchable device screen.
@@ -40,6 +55,10 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const leaseRef = useRef<SimulatorStreamLease | null>(null);
+  const rotateStateRef = useRef<{ udid: string | null; orientation: SimulatorOrientation }>({
+    udid: null,
+    orientation: 'portrait',
+  });
 
   useEffect(
     (signal) => {
@@ -162,6 +181,16 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     if (ownerSessionId === null || udid === null) return;
     void client.simulatorButton(ownerSessionId, udid, button).catch(flagBusy);
   };
+  // Orientation is write-only (the guest never reports it back), so the rotate button just steps
+  // clockwise from the last value we sent; a device switch resets the assumption to portrait.
+  const handleRotate = (): void => {
+    if (ownerSessionId === null || udid === null) return;
+    const current =
+      rotateStateRef.current.udid === udid ? rotateStateRef.current.orientation : 'portrait';
+    const next = ROTATE_CYCLE[(ROTATE_CYCLE.indexOf(current) + 1) % ROTATE_CYCLE.length];
+    rotateStateRef.current = { udid, orientation: next };
+    void client.simulatorRotate(ownerSessionId, udid, next).catch(flagBusy);
+  };
   const bootDevice = (): void => {
     if (sessionId === null || udid === null) return;
     void client.simulatorBoot(sessionId, udid).catch(flagBusy);
@@ -190,6 +219,15 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           </Select>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t('simulatorRotate')}
+            disabled={ownerSessionId === null}
+            onClick={handleRotate}
+          >
+            <RotateCwIcon className="size-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"

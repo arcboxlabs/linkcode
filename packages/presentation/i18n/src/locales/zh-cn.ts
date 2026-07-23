@@ -374,6 +374,7 @@ export const zhCN = {
       simulatorStreamFailed: '画面流启动失败',
       simulatorRetry: '重试',
       simulatorBusy: '设备正被其他线程使用',
+      simulatorRotate: '旋转',
       simulatorHome: '主屏幕',
       simulatorLock: '锁屏',
     },
