@@ -201,6 +201,38 @@ describe('SimulatorService', () => {
     expect(service.ownerOf('A')).toBe(S1);
   });
 
+  it('rejects operations from a session the engine does not know', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { hasSession: (id) => id === S1 });
+
+    await expect(service.boot(S2, 'A')).rejects.toMatchObject({ code: 'not_found' });
+    // A rejected fabricated session must not leave a claim behind (it never gets a session-stop).
+    expect(service.ownerOf('A')).toBeUndefined();
+    await expect(service.boot(S1, 'A')).resolves.toBeUndefined();
+  });
+
+  it('rolls back a claim the failed command created', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    backend.openUrl.mockRejectedValueOnce(new Error('boom'));
+    const service = new SimulatorService(backend);
+
+    await expect(service.openUrl(S1, 'A', 'https://example.com')).rejects.toThrow('boom');
+    // The failed command never acquired the device, so it is free for another session.
+    expect(service.ownerOf('A')).toBeUndefined();
+    await expect(service.openUrl(S2, 'A', 'https://example.com')).resolves.toBeUndefined();
+  });
+
+  it('keeps a pre-existing claim when a later command fails', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend);
+
+    await service.boot(S1, 'A');
+    backend.openUrl.mockRejectedValueOnce(new Error('boom'));
+    await expect(service.openUrl(S1, 'A', 'https://example.com')).rejects.toThrow('boom');
+    // The claim pre-existed this command, so its failure must not release S1's device.
+    expect(service.ownerOf('A')).toBe(S1);
+  });
+
   it('frees a device on owner-driven shutdown', async () => {
     const backend = fakeBackend([device('A', 'Shutdown')]);
     const service = new SimulatorService(backend);

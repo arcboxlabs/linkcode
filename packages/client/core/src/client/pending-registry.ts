@@ -19,6 +19,9 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorDevice,
+  SimulatorImageFormat,
+  SimulatorStatus,
   TerminalMetadata,
   WirePayload,
   WorkspaceFile,
@@ -91,6 +94,10 @@ export interface PendingValueMap {
   terminalList: TerminalMetadata[];
   terminalAttach: { terminal: TerminalMetadata; truncated: boolean };
   agentLoginStart: string;
+  simulatorStatus: SimulatorStatus;
+  simulatorList: SimulatorDevice[];
+  simulatorLaunch: number | null;
+  simulatorScreenshot: { format: SimulatorImageFormat; data: string };
 }
 
 type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingValueMap[K]>> };
@@ -135,6 +142,10 @@ export class PendingRegistry {
     terminalList: new Map(),
     terminalAttach: new Map(),
     agentLoginStart: new Map(),
+    simulatorStatus: new Map(),
+    simulatorList: new Map(),
+    simulatorLaunch: new Map(),
+    simulatorScreenshot: new Map(),
   };
 
   private readonly randomUUID: RandomUUID;

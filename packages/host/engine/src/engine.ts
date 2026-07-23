@@ -35,6 +35,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorRequestHandler } from './simulator/request-handler';
 import { SimulatorService } from './simulator/service';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
@@ -83,9 +84,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runTask,
   );
   let terminals: TerminalService | undefined;
-  const simulators = deps.simulatorBackend
-    ? new SimulatorService(deps.simulatorBackend)
-    : undefined;
+  // Constructed after `sessions` (both reference it lazily), mirroring `terminals`, so the
+  // session-existence predicate can gate simulator claims on a live session.
+  let simulators: SimulatorService | undefined;
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -98,10 +99,14 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       simulators?.releaseSession(sessionId);
     },
   );
+  simulators = deps.simulatorBackend
+    ? new SimulatorService(deps.simulatorBackend, { hasSession: (id) => sessions.has(id) })
+    : undefined;
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
+  const simulatorRequests = new SimulatorRequestHandler(simulators, transport, responder);
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
@@ -187,6 +192,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     artifact: artifactRequests,
     automation: automationRequests,
     terminal: terminalRequests,
+    simulator: simulatorRequests,
   });
   let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;

@@ -22,6 +22,7 @@ export type OperationSubsystem =
   | 'pty'
   | 'runtime-probe'
   | 'script'
+  | 'simulator'
   | 'store'
   | 'translator'
   | 'transport';
