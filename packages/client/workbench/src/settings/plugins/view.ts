@@ -7,6 +7,7 @@ import type {
   PluginConnectorPublic,
 } from '@linkcode/schema';
 import { AGENT_MCP_CAPABLE, AgentKindSchema, mcpPluginServerName } from '@linkcode/schema';
+import type { CustomServerCardView } from '@linkcode/ui';
 
 /**
  * Presentation-ready plugin state, derived purely from the catalog and the public config. The
@@ -131,6 +132,18 @@ export function pluginUnitViews(
       status: unitStatus(enabled, servers),
     };
   });
+}
+
+/** Project the masked custom servers into presentation cards (values already stripped upstream). */
+export function customServerViews(config: PluginConfigPublic): CustomServerCardView[] {
+  return config.customServers.map((entry) => ({
+    id: entry.id,
+    name: entry.server.name,
+    transport: entry.server.type,
+    enabled: entry.enabled,
+    detail: entry.server.type === 'stdio' ? entry.server.command : entry.server.url,
+    secretKeys: entry.server.type === 'stdio' ? entry.server.envKeys : entry.server.headerKeys,
+  }));
 }
 
 export function pluginServiceViews(

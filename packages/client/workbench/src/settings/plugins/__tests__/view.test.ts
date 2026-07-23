@@ -36,6 +36,7 @@ function config(overrides: Partial<PluginConfigPublic> = {}): PluginConfigPublic
         credential: { type: 'auth-token', configured: true },
       },
     ],
+    customServers: [],
     ...overrides,
   };
 }

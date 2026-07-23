@@ -199,6 +199,10 @@ describe('loadConfig plugins', () => {
           jira: { type: 'local', connectorId: 'stale' },
         },
         connectors: [connector, { id: 'bad', service: 'github' }],
+        customServers: [
+          { id: 'cs1', enabled: true, server: { type: 'stdio', name: 'local-fs', command: 'fs' } },
+          { id: 'bad', enabled: true, server: { type: 'stdio', name: 'x' } },
+        ],
       },
     });
 
@@ -206,8 +210,11 @@ describe('loadConfig plugins', () => {
       units: [{ unitId: 'github-read', enabled: true }],
       serviceBindings: { github: { type: 'local', connectorId: connector.id } },
       connectors: [connector],
+      customServers: [
+        { id: 'cs1', enabled: true, server: { type: 'stdio', name: 'local-fs', command: 'fs' } },
+      ],
     });
-    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledTimes(3);
   });
 
   it('round-trips credentials at mode 0600 without overwriting providers or accounts', () => {
@@ -216,6 +223,7 @@ describe('loadConfig plugins', () => {
       units: [],
       serviceBindings: { github: { type: 'local', connectorId: connector.id } },
       connectors: [connector],
+      customServers: [],
     };
 
     savePlugins(plugins);
@@ -232,6 +240,11 @@ describe('loadConfig plugins', () => {
 
   it('defaults an older config without a plugins section to empty state', () => {
     writeRawConfig({ providers: {} });
-    expect(loadConfig().plugins).toEqual({ units: [], serviceBindings: {}, connectors: [] });
+    expect(loadConfig().plugins).toEqual({
+      units: [],
+      serviceBindings: {},
+      connectors: [],
+      customServers: [],
+    });
   });
 });

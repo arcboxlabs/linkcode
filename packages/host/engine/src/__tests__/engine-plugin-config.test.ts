@@ -15,6 +15,7 @@ describe('engine plugin config', () => {
           credential: { type: 'auth-token', secret: 'private-github-token' },
         },
       ],
+      customServers: [],
     });
     const h = createSessionHarness(undefined, undefined, undefined, undefined, undefined, store);
     await h.engine.start();
@@ -36,6 +37,7 @@ describe('engine plugin config', () => {
             credential: { type: 'auth-token', configured: true },
           },
         ],
+        customServers: [],
       },
     });
     expect(JSON.stringify(h.sent)).not.toContain('private-github-token');
@@ -84,6 +86,7 @@ describe('engine plugin config', () => {
       units: [{ unitId: 'github-read', enabled: true }],
       serviceBindings: { github: { type: 'managed' } },
       connectors: [],
+      customServers: [],
     });
     const h = createSessionHarness(undefined, undefined, undefined, undefined, undefined, store);
     await h.engine.start();

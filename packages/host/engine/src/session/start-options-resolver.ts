@@ -164,6 +164,22 @@ export function resolvePluginServers(
     }
   }
 
+  // User-imported servers are opaque to LinkCode: no service/binding, secrets already inline. They
+  // inject as-is, sharing only the capability gate and client-name precedence with catalog servers.
+  for (const custom of config.customServers) {
+    if (!custom.enabled) continue;
+    if (clientNames.has(custom.server.name)) continue;
+    if (!AGENT_MCP_CAPABLE[options.kind]) {
+      warnings.push({
+        type: 'plugin-warning',
+        customServerName: custom.server.name,
+        reason: 'unsupported-transport',
+      });
+      continue;
+    }
+    pluginServers.push(custom.server);
+  }
+
   return {
     options:
       pluginServers.length === 0

@@ -33,11 +33,12 @@ export type QuestionResolution = Pick<
   Extract<AgentEvent, { type: 'question-resolved' }>,
   'outcome' | 'source'
 >;
-/** One plugin resolution diagnostic (from `plugin-warning`): the named unit's `service` dependency
- * (absent for unit-level reasons) could not be satisfied at the last session start. */
+/** One plugin resolution diagnostic (from `plugin-warning`): a catalog unit (`unitId`, optionally
+ * with the failed `service`) or a user-imported server (`customServerName`) could not be resolved
+ * at the last session start. */
 export type ConversationPluginWarning = Pick<
   Extract<AgentEvent, { type: 'plugin-warning' }>,
-  'unitId' | 'service' | 'reason'
+  'unitId' | 'customServerName' | 'service' | 'reason'
 >;
 
 /** A single semantic item in the conversation timeline. `receivedAt` is the best-known time of the
@@ -556,11 +557,15 @@ export function createConversationBuilder(): ConversationBuilder {
         break;
 
       case 'plugin-warning':
-        pluginWarningIndex.set(`${event.unitId}|${event.service ?? ''}|${event.reason}`, {
-          unitId: event.unitId,
-          service: event.service,
-          reason: event.reason,
-        });
+        pluginWarningIndex.set(
+          `${event.unitId ?? ''}|${event.customServerName ?? ''}|${event.service ?? ''}|${event.reason}`,
+          {
+            unitId: event.unitId,
+            customServerName: event.customServerName,
+            service: event.service,
+            reason: event.reason,
+          },
+        );
         break;
 
       case 'permission-request': {

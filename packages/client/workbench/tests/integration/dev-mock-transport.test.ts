@@ -170,6 +170,7 @@ describe('dev mock transport', () => {
           credential: { type: 'auth-token', configured: true },
         },
       ],
+      customServers: [],
     });
     expect(JSON.stringify(await client.getPluginConfig())).not.toContain('github-secret');
 
@@ -199,7 +200,60 @@ describe('dev mock transport', () => {
       units: [{ unitId: 'github-read', enabled: true }],
       serviceBindings: {},
       connectors: [],
+      customServers: [],
     });
+
+    client.dispose();
+  });
+
+  it('imports, masks, toggles, and removes a custom MCP server', async () => {
+    const client = await connectedClient();
+
+    await client.setPluginConfig({
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'http',
+              name: 'remote-mcp',
+              url: 'https://mcp.test',
+              headers: { Authorization: 'Bearer github-secret' },
+            },
+          },
+        },
+      ],
+    });
+
+    // The header VALUE is stripped to a key list; the secret never crosses back.
+    expect(await client.getPluginConfig()).toMatchObject({
+      customServers: [
+        {
+          id: 'cs1',
+          enabled: true,
+          server: {
+            type: 'http',
+            name: 'remote-mcp',
+            url: 'https://mcp.test',
+            headerKeys: ['Authorization'],
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(await client.getPluginConfig())).not.toContain('github-secret');
+
+    // Toggling preserves the stored server (secret intact server-side).
+    await client.setPluginConfig({
+      customServerOperations: [{ type: 'update', id: 'cs1', enabled: false }],
+    });
+    expect((await client.getPluginConfig()).customServers[0]).toMatchObject({ enabled: false });
+
+    await client.setPluginConfig({
+      customServerOperations: [{ type: 'remove', id: 'cs1' }],
+    });
+    expect((await client.getPluginConfig()).customServers).toEqual([]);
 
     client.dispose();
   });
@@ -233,6 +287,7 @@ describe('dev mock transport', () => {
           credential: { type: 'auth-token', configured: true },
         },
       ],
+      customServers: [],
     });
     client.dispose();
   });

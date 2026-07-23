@@ -135,10 +135,49 @@ export const PluginConnectorPublicSchema = PluginConnectorSchema.omit({ credenti
 });
 export type PluginConnectorPublic = z.infer<typeof PluginConnectorPublicSchema>;
 
+/**
+ * A user-imported ("bring your own") MCP server. Unlike a catalog descriptor, LinkCode does not
+ * understand its credential semantics — any secret lives inline in the wrapped server's `env`
+ * (stdio) or `headers` (http), which is why the public projection masks those values. No service
+ * or connector is involved; the schema leaves room to later opt an entry into the per-service
+ * connector model, but v1 keeps credentials inline. `id` is the stable config handle;
+ * `server.name` is the MCP injection key (unique across custom servers AND the catalog).
+ */
+export const CustomMcpServerSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
+  server: McpServerSchema,
+});
+export type CustomMcpServer = z.infer<typeof CustomMcpServerSchema>;
+
+/** Custom server with every secret-bearing value stripped: stdio `env` and http `headers` collapse
+ * to their key lists (a configured key, never its value). No mask string is ever writable back. */
+export const CustomMcpServerPublicSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
+  server: z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('stdio'),
+      name: z.string(),
+      command: z.string(),
+      args: z.array(z.string()).optional(),
+      envKeys: z.array(z.string()),
+    }),
+    z.object({
+      type: z.literal('http'),
+      name: z.string(),
+      url: z.string(),
+      headerKeys: z.array(z.string()),
+    }),
+  ]),
+});
+export type CustomMcpServerPublic = z.infer<typeof CustomMcpServerPublicSchema>;
+
 export const PluginConfigSchema = z.object({
   units: z.array(PluginUnitStateSchema),
   serviceBindings: PluginServiceBindingsSchema,
   connectors: z.array(PluginConnectorSchema),
+  customServers: z.array(CustomMcpServerSchema),
 });
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 
@@ -146,6 +185,7 @@ export const PluginConfigPublicSchema = z.object({
   units: z.array(PluginUnitStateSchema),
   serviceBindings: PluginServiceBindingsSchema,
   connectors: z.array(PluginConnectorPublicSchema),
+  customServers: z.array(CustomMcpServerPublicSchema),
 });
 export type PluginConfigPublic = z.infer<typeof PluginConfigPublicSchema>;
 
@@ -161,10 +201,26 @@ export const PluginConnectorOperationSchema = z.discriminatedUnion('type', [
 ]);
 export type PluginConnectorOperation = z.infer<typeof PluginConnectorOperationSchema>;
 
+/** Custom-server patch ops. `update` follows the connector posture: an omitted `server` keeps the
+ * stored one (so a plain enable/disable never touches secrets), a supplied `server` replaces it
+ * wholesale (secrets re-entered). `enabled` omitted means keep. */
+export const CustomMcpServerOperationSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('add'), server: CustomMcpServerSchema }),
+  z.object({
+    type: z.literal('update'),
+    id: z.string().min(1),
+    enabled: z.boolean().optional(),
+    server: McpServerSchema.optional(),
+  }),
+  z.object({ type: z.literal('remove'), id: z.string().min(1) }),
+]);
+export type CustomMcpServerOperation = z.infer<typeof CustomMcpServerOperationSchema>;
+
 export const PluginConfigSetSchema = z.object({
   units: z.array(PluginUnitStateSchema).optional(),
   serviceBindings: PluginServiceBindingsSchema.optional(),
   connectorOperations: z.array(PluginConnectorOperationSchema).optional(),
+  customServerOperations: z.array(CustomMcpServerOperationSchema).optional(),
 });
 export type PluginConfigSet = z.infer<typeof PluginConfigSetSchema>;
 

@@ -1,8 +1,9 @@
 import { Alert, AlertDescription } from 'coss-ui/components/alert';
 import { Badge } from 'coss-ui/components/badge';
+import { Button } from 'coss-ui/components/button';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { Switch } from 'coss-ui/components/switch';
-import { TriangleAlertIcon } from 'lucide-react';
+import { PlusIcon, Trash2Icon, TriangleAlertIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { SettingsCard, SettingsSection } from '../settings-page';
 
@@ -30,12 +31,29 @@ export interface PluginUnitCardView {
   servers: PluginServerCardView[];
 }
 
+/** A user-imported MCP server, projected for display; env/header values never reach the client. */
+export interface CustomServerCardView {
+  id: string;
+  name: string;
+  transport: 'stdio' | 'http';
+  enabled: boolean;
+  /** command (stdio) or url (http). */
+  detail: string;
+  /** Configured env/header keys, masked — values are never present. */
+  secretKeys: string[];
+}
+
 export interface PluginSettingsPanelProps {
   /** Undefined while catalog/config load — the cards render as skeletons. */
   units: PluginUnitCardView[] | undefined;
+  /** User-imported servers; undefined while config loads. */
+  customServers: CustomServerCardView[] | undefined;
   error?: string;
   busy: boolean;
   onEnabledChange: (unitId: string, enabled: boolean) => void;
+  onCustomToggle: (id: string, enabled: boolean) => void;
+  onCustomRemove: (id: string) => void;
+  onAddCustom: () => void;
 }
 
 const UNIT_BADGE_VARIANT = {
@@ -56,9 +74,13 @@ const SERVER_BADGE_VARIANT = {
 /** Pure card list for MCP capability units: label, enablement, and per-server status. */
 export function PluginSettingsPanel({
   units,
+  customServers,
   error,
   busy,
   onEnabledChange,
+  onCustomToggle,
+  onCustomRemove,
+  onAddCustom,
 }: PluginSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
 
@@ -114,6 +136,58 @@ export function PluginSettingsPanel({
             ))
           )}
         </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('customTitle')}>
+        <p className="px-1 text-muted-foreground text-xs">{t('customHint')}</p>
+        <SettingsCard>
+          {customServers === undefined ? (
+            <PluginUnitSkeleton />
+          ) : customServers.length === 0 ? (
+            <div className="px-4 py-4 text-muted-foreground text-sm">{t('customEmpty')}</div>
+          ) : (
+            customServers.map((server) => (
+              <div key={server.id} className="flex items-start justify-between gap-4 px-4 py-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate font-medium text-sm">{server.name}</p>
+                    <Badge variant="outline">{server.transport}</Badge>
+                  </div>
+                  <p className="mt-0.5 truncate text-muted-foreground text-xs">{server.detail}</p>
+                  {server.secretKeys.length > 0 && (
+                    <p className="mt-0.5 text-muted-foreground text-xs">
+                      {t('customSecretKeys', { keys: server.secretKeys.join(', ') })}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Switch
+                    aria-label={t('enabledLabel', { name: server.name })}
+                    checked={server.enabled}
+                    disabled={busy}
+                    onCheckedChange={(enabled) => onCustomToggle(server.id, enabled)}
+                  />
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('customRemove', { name: server.name })}
+                    disabled={busy}
+                    onClick={() => onCustomRemove(server.id)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </SettingsCard>
+        <div>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onAddCustom}>
+            <PlusIcon />
+            {t('customAdd')}
+          </Button>
+        </div>
       </SettingsSection>
     </div>
   );

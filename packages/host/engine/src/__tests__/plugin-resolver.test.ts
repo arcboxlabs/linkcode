@@ -40,6 +40,7 @@ const LOCAL_CONFIG: PluginConfig = {
       credential: { type: 'auth-token', secret: 'github-secret' },
     },
   ],
+  customServers: [],
 };
 
 const OPTIONS: StartOptions = { kind: 'codex', cwd: '/repo' };
@@ -195,6 +196,7 @@ describe('resolvePluginServers', () => {
         units: [{ unitId: 'github-read', enabled: true }],
         serviceBindings: { github: { type: 'managed' } },
         connectors: [],
+        customServers: [],
       },
       MCP_PLUGIN_CATALOG,
     );
@@ -206,5 +208,88 @@ describe('resolvePluginServers', () => {
         reason: 'broker-unavailable',
       },
     ]);
+  });
+
+  it('injects an enabled custom server as-is, alongside catalog servers', () => {
+    const resolved = resolvePluginServers(
+      OPTIONS,
+      {
+        ...LOCAL_CONFIG,
+        customServers: [
+          {
+            id: 'cs1',
+            enabled: true,
+            server: { type: 'stdio', name: 'local-fs', command: 'fs-mcp', env: { TOKEN: 't' } },
+          },
+          {
+            id: 'cs2',
+            enabled: false,
+            server: { type: 'http', name: 'disabled', url: 'https://off.test/mcp' },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+    );
+
+    expect(resolved.warnings).toEqual([]);
+    expect(resolved.options.mcpServers).toContainEqual({
+      type: 'stdio',
+      name: 'local-fs',
+      command: 'fs-mcp',
+      env: { TOKEN: 't' },
+    });
+    // A disabled custom server is never injected.
+    expect(resolved.options.mcpServers?.some((server) => server.name === 'disabled')).toBe(false);
+  });
+
+  it('warns per custom server on an MCP-incapable agent instead of injecting it', () => {
+    const resolved = resolvePluginServers(
+      { kind: 'pi', cwd: '/repo' },
+      {
+        units: [],
+        serviceBindings: {},
+        connectors: [],
+        customServers: [
+          {
+            id: 'cs1',
+            enabled: true,
+            server: { type: 'stdio', name: 'local-fs', command: 'fs-mcp' },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+    );
+
+    expect(resolved.options.mcpServers).toBeUndefined();
+    expect(resolved.warnings).toEqual([
+      { type: 'plugin-warning', customServerName: 'local-fs', reason: 'unsupported-transport' },
+    ]);
+  });
+
+  it('lets a client-supplied server win by name over a custom server', () => {
+    const clientServer = {
+      type: 'http' as const,
+      name: 'local-fs',
+      url: 'https://client.test/mcp',
+    };
+    const resolved = resolvePluginServers(
+      { ...OPTIONS, mcpServers: [clientServer] },
+      {
+        units: [],
+        serviceBindings: {},
+        connectors: [],
+        customServers: [
+          {
+            id: 'cs1',
+            enabled: true,
+            server: { type: 'stdio', name: 'local-fs', command: 'fs-mcp', env: { TOKEN: 't' } },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+    );
+
+    expect(resolved.options.mcpServers).toEqual([clientServer]);
+    expect(JSON.stringify(resolved)).not.toContain('fs-mcp');
   });
 });

@@ -1,6 +1,9 @@
 import type {
   Account,
   Accounts,
+  CustomMcpServer,
+  CustomMcpServerPublic,
+  McpPluginCatalog,
   PluginConfig,
   PluginConfigPublic,
   PluginConfigSet,
@@ -8,8 +11,9 @@ import type {
   ProvidersConfig,
   StartOptions,
 } from '@linkcode/schema';
-import { McpPluginServiceSchema } from '@linkcode/schema';
+import { McpPluginServiceSchema, mcpPluginServerName } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { MCP_PLUGIN_CATALOG } from '../plugin/catalog';
 
 /**
  * Daemon-owned data-plane config store: per-agent provider settings plus the global account pool,
@@ -30,7 +34,12 @@ export interface ProviderConfigStore {
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
-  private plugins: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
+  private plugins: PluginConfig = {
+    units: [],
+    serviceBindings: {},
+    connectors: [],
+    customServers: [],
+  };
 
   get(): ProvidersConfig {
     return this.providers;
@@ -59,12 +68,19 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
 
 /** Apply one validated plugin patch without mutating the stored snapshot. Connector deletion also
  * drops every service binding that referenced it, so a successful write cannot create stale
- * references through deletion; units stay enabled and surface a resolution warning instead. */
-export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): PluginConfig {
+ * references through deletion; units stay enabled and surface a resolution warning instead. A
+ * custom server name must stay unique among custom servers and distinct from every catalog server
+ * name (both are injection keys into the same `mcpServers` array). */
+export function applyPluginConfigSet(
+  current: PluginConfig,
+  patch: PluginConfigSet,
+  catalog: McpPluginCatalog = MCP_PLUGIN_CATALOG,
+): PluginConfig {
   const units = patch.units === undefined ? current.units : patch.units;
   let serviceBindings =
     patch.serviceBindings === undefined ? current.serviceBindings : patch.serviceBindings;
   let connectors = current.connectors;
+  let customServers = current.customServers;
 
   for (const operation of patch.connectorOperations ?? []) {
     const connectorId =
@@ -116,7 +132,66 @@ export function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigS
     }
   }
 
-  return { units, serviceBindings, connectors };
+  for (const operation of patch.customServerOperations ?? []) {
+    switch (operation.type) {
+      case 'add': {
+        const { id, server } = operation.server;
+        if (customServers.some((entry) => entry.id === id)) {
+          throw new TypeError(`Custom MCP server already exists: ${id}`);
+        }
+        assertServerNameAvailable(server.name, customServers, catalog, id);
+        customServers = [...customServers, operation.server];
+        break;
+      }
+      case 'update': {
+        const existing = nullthrow(
+          customServers.find((entry) => entry.id === operation.id),
+          `Custom MCP server does not exist: ${operation.id}`,
+        );
+        // An omitted server keeps the stored one (secrets untouched); a supplied one replaces it.
+        const server = operation.server ?? existing.server;
+        if (operation.server) {
+          assertServerNameAvailable(server.name, customServers, catalog, operation.id);
+        }
+        const next: CustomMcpServer = {
+          id: existing.id,
+          enabled: operation.enabled ?? existing.enabled,
+          server,
+        };
+        customServers = customServers.map((entry) => (entry.id === operation.id ? next : entry));
+        break;
+      }
+      case 'remove':
+        nullthrow(
+          customServers.find((entry) => entry.id === operation.id),
+          `Custom MCP server does not exist: ${operation.id}`,
+        );
+        customServers = customServers.filter((entry) => entry.id !== operation.id);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return { units, serviceBindings, connectors, customServers };
+}
+
+/** A custom server's injection name must not collide with the catalog or another custom server. */
+function assertServerNameAvailable(
+  name: string,
+  customServers: readonly CustomMcpServer[],
+  catalog: McpPluginCatalog,
+  selfId: string,
+): void {
+  const catalogNames = catalog.flatMap((descriptor) =>
+    descriptor.servers.map((server) => mcpPluginServerName(server)),
+  );
+  if (catalogNames.includes(name)) {
+    throw new TypeError(`Custom MCP server name collides with a built-in server: ${name}`);
+  }
+  if (customServers.some((entry) => entry.id !== selfId && entry.server.name === name)) {
+    throw new TypeError(`Custom MCP server name already in use: ${name}`);
+  }
 }
 
 /** Remove connector secrets at the data-plane boundary. A configured credential is represented by
@@ -133,6 +208,31 @@ export function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
         ...(credential.expiresAt !== undefined && { expiresAt: credential.expiresAt }),
       },
     })),
+    customServers: config.customServers.map(publicCustomServer),
+  };
+}
+
+/** Strip a custom server's secret-bearing values, keeping only the configured key lists. */
+function publicCustomServer(entry: CustomMcpServer): CustomMcpServerPublic {
+  const { server } = entry;
+  return {
+    id: entry.id,
+    enabled: entry.enabled,
+    server:
+      server.type === 'stdio'
+        ? {
+            type: 'stdio',
+            name: server.name,
+            command: server.command,
+            ...(server.args && { args: server.args }),
+            envKeys: Object.keys(server.env ?? {}),
+          }
+        : {
+            type: 'http',
+            name: server.name,
+            url: server.url,
+            headerKeys: Object.keys(server.headers ?? {}),
+          },
   };
 }
 

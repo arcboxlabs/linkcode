@@ -145,10 +145,13 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     code: z.string().optional(),
     recoverable: z.boolean().default(true),
   }),
+  /** A plugin/MCP server could not be resolved at session start. Sourced from either a catalog
+   * unit (`unitId`, optionally with the failed `service`) or a user-imported server
+   * (`customServerName`); exactly one identifier is set. */
   z.object({
     type: z.literal('plugin-warning'),
-    unitId: McpPluginIdSchema,
-    /** The service dependency that failed, when the reason is service-scoped. */
+    unitId: McpPluginIdSchema.optional(),
+    customServerName: z.string().min(1).optional(),
     service: McpPluginServiceSchema.optional(),
     reason: PluginWarningReasonSchema,
   }),

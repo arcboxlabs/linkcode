@@ -179,7 +179,12 @@ export class DevMockHost {
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
-  private plugins: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
+  private plugins: PluginConfig = {
+    units: [],
+    serviceBindings: {},
+    connectors: [],
+    customServers: [],
+  };
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -1430,6 +1435,25 @@ function publicPluginConfig(config: PluginConfig): PluginConfigPublic {
           ? { type: credential.type, configured: true }
           : { type: credential.type, configured: true, expiresAt: credential.expiresAt },
     })),
+    customServers: config.customServers.map(({ id, enabled, server }) => ({
+      id,
+      enabled,
+      server:
+        server.type === 'stdio'
+          ? {
+              type: 'stdio',
+              name: server.name,
+              command: server.command,
+              ...(server.args && { args: server.args }),
+              envKeys: Object.keys(server.env ?? {}),
+            }
+          : {
+              type: 'http',
+              name: server.name,
+              url: server.url,
+              headerKeys: Object.keys(server.headers ?? {}),
+            },
+    })),
   };
 }
 
@@ -1473,7 +1497,40 @@ function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): Pl
         break;
     }
   }
-  return { units, serviceBindings, connectors };
+  let customServers = structuredClone(current.customServers);
+  for (const operation of patch.customServerOperations ?? []) {
+    switch (operation.type) {
+      case 'add':
+        if (customServers.some((entry) => entry.id === operation.server.id)) {
+          throw new Error(`Custom MCP server already exists: ${operation.server.id}`);
+        }
+        customServers.push(structuredClone(operation.server));
+        break;
+      case 'update': {
+        const existing = customServers.find((entry) => entry.id === operation.id);
+        if (!existing) throw new Error(`Custom MCP server does not exist: ${operation.id}`);
+        customServers = customServers.map((entry) =>
+          entry.id === operation.id
+            ? {
+                id: entry.id,
+                enabled: operation.enabled ?? entry.enabled,
+                server: operation.server ? structuredClone(operation.server) : entry.server,
+              }
+            : entry,
+        );
+        break;
+      }
+      case 'remove':
+        if (!customServers.some((entry) => entry.id === operation.id)) {
+          throw new Error(`Custom MCP server does not exist: ${operation.id}`);
+        }
+        customServers = customServers.filter((entry) => entry.id !== operation.id);
+        break;
+      default:
+        break;
+    }
+  }
+  return { units, serviceBindings, connectors, customServers };
 }
 
 function promptText(content: readonly ContentBlock[]): string {

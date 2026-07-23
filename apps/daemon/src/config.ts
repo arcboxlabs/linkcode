@@ -6,6 +6,7 @@ import type { Accounts, PluginConfig, ProvidersConfig } from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
+  CustomMcpServerSchema,
   DAEMON_DEFAULT_PORT,
   McpPluginServiceSchema,
   PluginConnectorSchema,
@@ -113,7 +114,7 @@ export function loadConfig(): DaemonConfig {
 }
 
 function parsePlugins(raw: unknown): PluginConfig {
-  const empty: PluginConfig = { units: [], serviceBindings: {}, connectors: [] };
+  const empty: PluginConfig = { units: [], serviceBindings: {}, connectors: [], customServers: [] };
   if (raw === undefined) return empty;
   if (!isRecord(raw)) {
     logger.warn({ operation: 'config.load' }, 'Invalid plugins config: expected an object');
@@ -123,6 +124,7 @@ function parsePlugins(raw: unknown): PluginConfig {
     units: parsePluginEntries(raw.units, PluginUnitStateSchema, 'unit'),
     serviceBindings: parseServiceBindings(raw.serviceBindings),
     connectors: parsePluginEntries(raw.connectors, PluginConnectorSchema, 'connector'),
+    customServers: parsePluginEntries(raw.customServers, CustomMcpServerSchema, 'custom server'),
   };
 }
 

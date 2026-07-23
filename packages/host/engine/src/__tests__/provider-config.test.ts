@@ -127,6 +127,7 @@ describe('plugin config', () => {
         credential: { type: 'auth-token', secret: 'old-secret' },
       },
     ],
+    customServers: [],
   };
 
   it('returns credential metadata without exposing a secret or a reusable mask', () => {
@@ -165,6 +166,91 @@ describe('plugin config', () => {
       units: [{ unitId: 'github-read', enabled: true }],
       serviceBindings: {},
       connectors: [],
+      customServers: [],
     });
+  });
+
+  it('adds, toggles, replaces, and removes a custom server without a connector', () => {
+    const added = applyPluginConfigSet(config, {
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'stdio',
+              name: 'local-fs',
+              command: 'fs-mcp',
+              env: { TOKEN: 'sekret' },
+            },
+          },
+        },
+      ],
+    });
+    expect(added.customServers).toHaveLength(1);
+
+    // An update without a `server` preserves the stored one (including its inline secret).
+    const toggled = applyPluginConfigSet(added, {
+      customServerOperations: [{ type: 'update', id: 'cs1', enabled: false }],
+    });
+    expect(toggled.customServers[0]).toMatchObject({
+      enabled: false,
+      server: { env: { TOKEN: 'sekret' } },
+    });
+
+    const removed = applyPluginConfigSet(toggled, {
+      customServerOperations: [{ type: 'remove', id: 'cs1' }],
+    });
+    expect(removed.customServers).toEqual([]);
+  });
+
+  it('rejects a custom server name that collides with a catalog server', () => {
+    expect(() =>
+      applyPluginConfigSet(config, {
+        customServerOperations: [
+          {
+            type: 'add',
+            server: {
+              id: 'cs-dupe',
+              enabled: true,
+              server: { type: 'stdio', name: 'linkcode-github', command: 'x' },
+            },
+          },
+        ],
+      }),
+    ).toThrow('built-in server');
+  });
+
+  it('masks custom server env and header values as key lists', () => {
+    const withCustom = applyPluginConfigSet(config, {
+      customServerOperations: [
+        {
+          type: 'add',
+          server: {
+            id: 'cs1',
+            enabled: true,
+            server: {
+              type: 'http',
+              name: 'remote-mcp',
+              url: 'https://mcp.test',
+              headers: { Authorization: 'Bearer sekret' },
+            },
+          },
+        },
+      ],
+    });
+    const publicConfig = publicPluginConfig(withCustom);
+    expect(publicConfig.customServers[0]).toEqual({
+      id: 'cs1',
+      enabled: true,
+      server: {
+        type: 'http',
+        name: 'remote-mcp',
+        url: 'https://mcp.test',
+        headerKeys: ['Authorization'],
+      },
+    });
+    expect(JSON.stringify(publicConfig)).not.toContain('sekret');
   });
 });

@@ -107,6 +107,7 @@ describe('LinkCodeClient control API', () => {
       units: [{ unitId: 'github-read', enabled: true }],
       serviceBindings: { github: { type: 'managed' } },
       connectors: [],
+      customServers: [],
     };
 
     serverTransport.onMessage((msg) => {
