@@ -4,12 +4,13 @@ How to cut, sign, notarize, and publish the Electron desktop app, plus the packa
 
 ## Release surface
 
-- Five GitHub Actions workflows plus one composite action own the release path:
+- Five GitHub Actions workflows, one script module, and one composite action own the release path:
   - `.github/workflows/ci.yml` ("CI") — runs on every PR.
   - `.github/workflows/release-please.yml` ("Release Please") — maintains release PRs after pushes to `master`; it never tags or publishes.
   - `.github/workflows/finalize-releases.yml` ("Finalize Releases") — after a successful `master` CI, turns a merged release PR into a draft Release and pushes its validated tag.
   - `.github/workflows/build-desktop.yml` ("Build Desktop") — reusable packaging workflow; **not** PR-triggered.
   - `.github/workflows/release-desktop.yml` ("Release Desktop") — tag-triggered publish.
+  - `.github/scripts/release-automation.cjs` — tested Octokit policy for candidate resolution, recovery, and Release preflight checks.
   - `.github/actions/build-sidecar` — composite action that builds the PTY sidecar per arch.
 - All jobs run on **Blacksmith** runners, not stock GitHub: `blacksmith-2vcpu-ubuntu-2404` (CI + the publish job), and the `build-desktop` matrix uses `blacksmith-6vcpu-macos-26` (arm64/M4; Xcode 26 so `actool >= 26` compiles `mac.icon` into `Assets.car`), `blacksmith-4vcpu-windows-2025` (VS Build Tools, enough for NSIS), and `blacksmith-4vcpu-ubuntu-2204` (older glibc for broader AppImage compatibility).
 
