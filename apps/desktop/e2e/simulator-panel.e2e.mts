@@ -29,7 +29,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 51;
+const WIRE_VERSION = 52;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -334,6 +334,14 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       await win.keyboard.up('Alt');
       if ((await sectionTab.count()) === 0) fail('the panel died during the pinch gesture');
       console.log('option-drag pinch drove a two-finger gesture');
+
+      // Rotate: the panel's rotate button injects an orientation GSEvent; Safari re-lays-out to
+      // landscape, so the streamed framebuffer must change.
+      const beforeRotate = await canvasHash();
+      await win.getByRole('button', { name: 'Rotate', exact: true }).click();
+      await waitForHashChange(beforeRotate, 'rotating the device');
+      console.log('rotate button rotated the device');
+
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });
       console.log(`screenshot: ${tapShot}`);
