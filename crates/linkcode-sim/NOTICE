@@ -1,0 +1,15 @@
+linkcode-sim
+
+The private-framework interactive layer (framebuffer capture and HID injection under
+`src/private/`) ports recipes from baguette, an iOS Simulator control tool:
+
+    baguette — https://github.com/tddworks/baguette
+    Copyright (c) tddworks
+    Licensed under the Apache License, Version 2.0
+
+The undocumented CoreSimulator / SimulatorKit call sequences reproduced here — the IOHIDEvent
+digitizer tap recipe for iOS 26, the framebuffer descriptor enumeration and screen-callback
+registration, and the SimulatorKit framework path resolution — were derived from baguette's
+implementation. They are reimplemented in Rust; no baguette source is included verbatim.
+
+A copy of the Apache License 2.0 is available at https://www.apache.org/licenses/LICENSE-2.0.

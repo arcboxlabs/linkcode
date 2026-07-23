@@ -14,5 +14,15 @@ name = "linkcode-sim"
 path = "src/main.rs"
 
 [dependencies]
+libc = "0.2.189"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+
+# The private-framework layer (CoreSimulator/SimulatorKit via objc2/block2) is macOS-only and its
+# use is all behind `#[cfg(target_os = "macos")]`. Scope these deps to macOS so a Linux CI build
+# doesn't compile objc2's Objective-C exception helper, which needs an ObjC toolchain (cc1obj).
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2 = { version = "0.6.4", features = ["exception"] }
+objc2-core-foundation = "0.3.2"
+objc2-foundation = "0.3.2"

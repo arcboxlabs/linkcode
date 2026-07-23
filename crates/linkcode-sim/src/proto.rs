@@ -18,6 +18,24 @@ pub const REQUEST: u8 = 0x01;
 // Sidecar → daemon.
 pub const RESULT: u8 = 0x81;
 pub const SCREENSHOT: u8 = 0x82;
+/// A streamed framebuffer frame: `[u16 LE udid_len][udid][jpeg]` (unsolicited, while a stream runs).
+pub const STREAM_FRAME: u8 = 0x83;
+
+/// Encode a `STREAM_FRAME` body: `[u16 LE udid_len][udid][jpeg bytes]`.
+pub fn encode_stream_frame(udid: &str, jpeg: &[u8]) -> io::Result<Vec<u8>> {
+    let id = udid.as_bytes();
+    if id.is_empty() || id.len() > MAX_REQUEST_ID_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid udid length",
+        ));
+    }
+    let mut out = Vec::with_capacity(2 + id.len() + jpeg.len());
+    out.extend_from_slice(&(id.len() as u16).to_le_bytes());
+    out.extend_from_slice(id);
+    out.extend_from_slice(jpeg);
+    Ok(out)
+}
 
 /// Read one frame. Returns `Ok(None)` on a clean end-of-stream (the daemon closed the pipe).
 pub fn read_frame(reader: &mut impl Read) -> io::Result<Option<(u8, Vec<u8>)>> {
