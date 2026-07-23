@@ -7,6 +7,7 @@ import type {
   TerminalReplayEvent,
   ToolCall,
 } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
@@ -25,6 +26,15 @@ function collectEvents(client: LinkCodeClient, sessionId: SessionId): AgentEvent
 
 function toolCalls(events: readonly AgentEvent[]): ToolCall[] {
   return events.flatMap((event) => (event.type === 'tool-call' ? [event.toolCall] : []));
+}
+
+function permissionToolCallId(
+  request: Extract<AgentEvent, { type: 'permission-request' }>,
+): string {
+  return nullthrow(
+    request.subject?.toolCallId ?? request.toolCall?.toolCallId,
+    `permission ${request.requestId} has no linked tool call`,
+  );
 }
 
 async function eventually<T>(
@@ -232,7 +242,7 @@ describe('dev mock transport', () => {
     await expect(client.invokeCommand(sessionId, 'review', 'src/app.ts')).resolves.toEqual({
       ok: true,
     });
-    expect(events.slice(mark)).toEqual([
+    expect(events.slice(mark)).toMatchObject([
       {
         type: 'user-message',
         content: [{ type: 'text', text: '/review src/app.ts' }],
@@ -256,7 +266,7 @@ describe('dev mock transport', () => {
       'usage-report',
       'status',
     ]);
-    expect(usageEvents[0]).toEqual({
+    expect(usageEvents[0]).toMatchObject({
       type: 'user-message',
       content: [{ type: 'text', text: '/cost' }],
     });
@@ -271,7 +281,7 @@ describe('dev mock transport', () => {
 
     mark = events.length;
     await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });
-    expect(events.slice(mark)).toEqual([
+    expect(events.slice(mark)).toMatchObject([
       {
         type: 'user-message',
         content: [{ type: 'text', text: '$ git status' }],
@@ -513,10 +523,13 @@ describe('dev mock transport', () => {
       (event): event is Extract<AgentEvent, { type: 'permission-request' }> =>
         event.type === 'permission-request',
     );
-    expect(permissionRequests.map((request) => request.toolCall.kind).sort()).toEqual([
-      'edit',
-      'execute',
-    ]);
+    expect(permissionRequests.every((request) => request.toolCall === undefined)).toBe(true);
+    const callsById = new Map(toolCalls(events).map((tool) => [tool.toolCallId, tool]));
+    expect(
+      permissionRequests
+        .map((request) => callsById.get(permissionToolCallId(request))?.kind)
+        .sort(),
+    ).toEqual(['edit', 'execute']);
     await expect(
       client.respondQuestion(showcase.sessionId, questionRequest.requestId, {
         outcome: 'answered',
@@ -550,7 +563,8 @@ describe('dev mock transport', () => {
       ).resolves.toEqual({ ok: true });
       expect(
         toolCalls(events).some(
-          (tool) => tool.toolCallId === request.toolCall.toolCallId && tool.status === 'completed',
+          (tool) =>
+            tool.toolCallId === permissionToolCallId(request) && tool.status === 'completed',
         ),
       ).toBe(true);
       expect(events).toContainEqual({
@@ -675,7 +689,7 @@ describe('dev mock transport', () => {
       // eslint-disable-next-line no-await-in-loop -- assert each cancelled ask reaches its own tool snapshot.
       const cancelledTool = await eventually(() =>
         toolCalls(events).find(
-          (tool) => tool.toolCallId === request.toolCall.toolCallId && tool.status === 'failed',
+          (tool) => tool.toolCallId === permissionToolCallId(request) && tool.status === 'failed',
         ),
       );
       expect(cancelledTool.rawOutput).toEqual({ outcome: { outcome: 'cancelled' } });

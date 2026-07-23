@@ -7,6 +7,7 @@ import type {
   EffortLevel,
   PermissionOption,
   PermissionOutcome,
+  PermissionSubject,
   Plan,
   PromptResolutionSource,
   Question,
@@ -67,10 +68,18 @@ export type ConversationItem =
       postTokens?: number;
       summary?: string;
     })
-  | (ConversationItemBase & { kind: 'plan'; plan: Plan })
+  | (ConversationItemBase & {
+      kind: 'plan';
+      /** Turn that most recently emitted this stable plan identity. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    })
   | (ConversationItemBase & {
       kind: 'approval';
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;

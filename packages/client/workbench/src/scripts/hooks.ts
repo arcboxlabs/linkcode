@@ -1,7 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { normalizeCwdKey } from '@linkcode/schema';
 import { listWorkspaceScripts } from '@linkcode/sdk';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useData } from '../runtime/tayori';
 
 /**
@@ -15,7 +15,7 @@ export function useWorkspaceScripts(cwd: string | undefined) {
   });
   const { mutate } = result;
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (cwd === undefined) return;
       const key = normalizeCwdKey(cwd);

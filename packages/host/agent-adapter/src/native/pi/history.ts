@@ -10,6 +10,7 @@ import type {
   AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistorySession,
+  MessageId,
   ToolCall,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
@@ -27,6 +28,18 @@ import {
 import { locationsFromToolInput, toolKindFromName } from '../../util';
 
 export type PiSdk = typeof import('@earendil-works/pi-coding-agent');
+
+/** Stable Pi assistant block identity shared by live deltas and persisted history. */
+export function piMessageBlockId(
+  responseId: string | undefined,
+  timestamp: number | undefined,
+  fallbackId: string,
+  contentIndex: number,
+  kind: 'message' | 'thought',
+): MessageId {
+  const messageId = responseId ?? (timestamp === undefined ? fallbackId : `response-${timestamp}`);
+  return asMessageId(`${messageId}:${kind}:${contentIndex}`);
+}
 
 export async function listPiHistory(
   pi: PiSdk,
@@ -146,25 +159,41 @@ export function mapPiHistoryEvents(
       const event = textHistoryEvent(historyId, 'user', entry.id, message.content, ts);
       if (event) events.push(event);
     } else if (message.role === 'assistant' && Array.isArray(message.content)) {
-      for (const block of message.content) {
+      const responseId = typeof message.responseId === 'string' ? message.responseId : undefined;
+      const messageTimestamp =
+        typeof message.timestamp === 'number' ? message.timestamp : undefined;
+      for (const [contentIndex, block] of message.content.entries()) {
         if (!isRecord(block)) continue;
         if (block.type === 'text') {
-          const event = textHistoryEvent(historyId, 'assistant', entry.id, block.text, ts);
+          const id = piMessageBlockId(
+            responseId,
+            messageTimestamp,
+            entry.id,
+            contentIndex,
+            'message',
+          );
+          const event = textHistoryEvent(historyId, 'assistant', id, block.text, ts);
           if (event) events.push(event);
         } else if (
           block.type === 'thinking' &&
           typeof block.thinking === 'string' &&
           block.thinking.trim()
         ) {
-          const id = asMessageId(`${entry.id}-thought`);
+          const id = piMessageBlockId(
+            responseId,
+            messageTimestamp,
+            entry.id,
+            contentIndex,
+            'thought',
+          );
           events.push({
             historyId,
             itemId: id,
             ts,
             event: {
-              type: 'agent-thought-chunk',
+              type: 'agent-thought',
               messageId: id,
-              content: textBlock(block.thinking),
+              content: [textBlock(block.thinking)],
             },
           });
         } else if (block.type === 'toolCall' && typeof block.id === 'string') {

@@ -39,12 +39,12 @@ it('places the ghost Preview action in the source header before Copy', async () 
   );
 
   const preview = screen.getByRole('button', { name: 'Preview' });
-  const header = preview.closest('[data-slot="card-header"]');
+  const header = preview.closest('header');
   const actions = preview.parentElement;
   expect(header).not.toBeNull();
   expect(preview.className).toContain('border-transparent');
   expect(actions?.lastElementChild?.getAttribute('aria-label')).toBe('Copy');
-  expect(container.querySelector('[data-slot="card"] + div')).toBeNull();
+  expect(container.querySelector('[data-slot="frame-panel"] + div')).toBeNull();
   await waitFor(
     () => {
       expect(container.querySelectorAll('code span[style*="--sdm-c"]').length).toBeGreaterThan(2);
@@ -69,5 +69,5 @@ it('keeps a hosting failure visible in the source header', async () => {
 
   await user.click(screen.getByRole('button', { name: 'Preview' }));
   const failure = await screen.findByText('Failed to host the preview');
-  expect(failure.closest('[data-slot="card-header"]')).not.toBeNull();
+  expect(failure.closest('header')).not.toBeNull();
 });

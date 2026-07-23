@@ -413,9 +413,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
-  /** Diff content parsed off an Edit/Write announce, keyed by tool_use id; re-attached at settle
-   * because `emitTool`'s merge replaces `content` wholesale (result text must not wipe the diff). */
-  private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
   /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
    * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
   private pendingCompaction: {
@@ -936,11 +933,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
-   * A compaction's summary frame also never outlives its turn — drop a stale boundary stash so
-   * the summary match can't fire against an unrelated later frame. */
+  /** A compaction's summary frame never outlives its turn — drop a stale boundary stash so the
+   * summary match can't fire against an unrelated later frame. */
   protected override teardown(): void {
-    this.pendingEditDiffs.clear();
     this.pendingCompaction = null;
     super.teardown();
   }
@@ -954,12 +949,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
       }
     }
+    const toolCallId = options.toolUseID;
+    const title = options.title ?? toolName;
+    this.emitTool({
+      toolCallId,
+      title,
+      kind: claudeToolKind(toolName),
+      status: 'in_progress',
+      rawInput: input,
+      locations: hostLocationsFromToolInput(input),
+    });
     const outcome = await this.requestPermission(
       {
-        toolCallId: options.toolUseID,
-        title: options.title ?? toolName,
-        kind: claudeToolKind(toolName),
-        rawInput: input,
+        title,
+        subject: { type: 'tool-call', toolCallId },
       },
       PERMISSION_OPTIONS,
     );
@@ -1117,18 +1120,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * event is the only carrier of the decider's reason. Settle the tool as failed with it — the
    * later `is_error` tool_result says only "denied" and hits `emitTool`'s terminal guard anyway. */
   private handlePermissionDenied(msg: SDKPermissionDeniedMessage): void {
-    const diff = this.pendingEditDiffs.get(msg.tool_use_id) ?? [];
-    this.pendingEditDiffs.delete(msg.tool_use_id);
     const reason = msg.decision_reason ?? msg.message;
+    if (reason) {
+      this.appendToolContent(msg.tool_use_id, { type: 'content', content: textBlock(reason) });
+    }
     this.emitTool({
       toolCallId: msg.tool_use_id,
       title: msg.tool_name,
       kind: claudeToolKind(msg.tool_name),
       status: 'failed',
-      content: [
-        ...diff,
-        ...(reason ? [{ type: 'content' as const, content: textBlock(reason) }] : []),
-      ],
     });
   }
 
@@ -1163,7 +1163,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     for (const block of message.content) {
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
-        if (diff) this.pendingEditDiffs.set(block.id, diff);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
         this.emitTool({
           toolCallId: block.id,
@@ -1193,7 +1192,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
-        if (diff) this.pendingEditDiffs.set(block.id, diff);
         this.emitTool({
           toolCallId: block.id,
           parentToolCallId: parent,
@@ -1224,15 +1222,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
-      const diff = this.pendingEditDiffs.get(block.tool_use_id) ?? [];
-      this.pendingEditDiffs.delete(block.tool_use_id);
+      for (const result of toolResultContent(block.content)) {
+        this.appendToolContent(block.tool_use_id, result);
+      }
       this.emitTool({
         toolCallId: block.tool_use_id,
         // Re-stated on settle so the parent link survives even if the announce was never seen
         // (e.g. it sat beyond a history read's page window). Null for main-agent results.
         parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
-        content: [...diff, ...toolResultContent(block.content)],
         rawOutput: envelope ?? block.content,
       });
     }
@@ -1302,12 +1300,12 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
       return undefined;
     }
     // The CLI on Windows reports MSYS drive-form paths (`/c/…`) — rewrite to native form.
-    return [{ type: 'diff', path: toHostPath(path), oldText, newText }];
+    return [{ type: 'diff', change: 'modify', path: toHostPath(path), oldText, newText }];
   }
   if (toolName === 'Write') {
     const { file_path: path, content: newText } = input;
     if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
-    return [{ type: 'diff', path: toHostPath(path), newText }];
+    return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
 }

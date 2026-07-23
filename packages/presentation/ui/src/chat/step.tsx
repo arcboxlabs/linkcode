@@ -1,5 +1,11 @@
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
-import { CircleCheckIcon, CircleDashedIcon, CircleIcon, ListTodoIcon } from 'lucide-react';
+import {
+  CircleCheckIcon,
+  CircleDashedIcon,
+  CircleIcon,
+  CircleXIcon,
+  ListTodoIcon,
+} from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { ChatDisclosureContentProps } from './disclosure-content';
 import { ChatDisclosureContent } from './disclosure-content';
@@ -59,7 +65,7 @@ export function StepContent({ className, ...props }: StepContentProps): React.Re
   return <ChatDisclosureContent className={cn('mt-2', className)} {...props} />;
 }
 
-export type StepItemStatus = 'pending' | 'in_progress' | 'completed';
+export type StepItemStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export type StepItemProps = React.ComponentProps<'div'> & {
   status: StepItemStatus;
@@ -75,7 +81,11 @@ export function StepItem({
     <div className={cn('flex items-center gap-2 py-0.5 text-sm', className)} {...props}>
       <StepItemIcon status={status} />
       <span
-        className={cn('flex-1', status === 'completed' && 'text-muted-foreground line-through')}
+        className={cn(
+          'flex-1',
+          (status === 'completed' || status === 'cancelled') &&
+            'text-muted-foreground line-through',
+        )}
       >
         {children}
       </span>
@@ -93,6 +103,8 @@ function StepItemIcon({ status }: { status: StepItemStatus }): React.ReactNode {
       );
     case 'completed':
       return <CircleCheckIcon className="size-3.5 shrink-0 text-success-foreground" />;
+    case 'cancelled':
+      return <CircleXIcon className="size-3.5 shrink-0 text-muted-foreground" />;
     default:
       return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
   }

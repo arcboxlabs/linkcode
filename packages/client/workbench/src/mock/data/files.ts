@@ -7,9 +7,13 @@ import type { WorkspaceFile } from '@linkcode/schema';
 
 const PLAN_MD = `# PLAN.md — Mock delivery plan
 
+- [Goals](#goals)
+- [Notes](#notes)
+- [Checklist](#checklist)
+
 ## Goals
 
-Ship the files viewer behind the right panel's \`files\` section.
+Ship the files viewer behind the right panel's \`files\` section.[^scope]
 
 1. Message-level artifact cards for tool-produced files
 2. Daemon-backed reads with workspace containment
@@ -25,6 +29,21 @@ code fences, and \`inline code\` all behave identically.
 | schema | done |
 | engine | done |
 | viewer | in progress |
+
+\`\`\`ts
+export function mockFixture(path: string): WorkspaceFile | null {
+  return path.endsWith('.md') ? markdownFixture(path) : null;
+}
+\`\`\`
+
+---
+
+## Checklist
+
+- [x] Fixture served through \`file.read\`
+- [ ] Containment errors surfaced in the viewer
+
+[^scope]: Scoped to read-only viewing; edits stay in the agent loop.
 `;
 
 // A 1x1 transparent PNG (same bytes as the showcase image block).

@@ -32,7 +32,7 @@ module.exports = require('eslint-config-sukka').sukka(
         'packages/client/workbench/src/**',
         'packages/client/core/src/**',
       ],
-      additionalHooks: '(useIsomorphicLayoutEffect|useAbortableEffect)',
+      additionalHooks: '(useIsomorphicLayoutEffect|useEffect)',
     },
     stylistic: false,
     ts: {

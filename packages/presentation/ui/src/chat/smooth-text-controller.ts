@@ -1,5 +1,5 @@
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'foxact/use-abortable-effect';
+import { useReducer } from 'react';
 import { useRenderPrefs } from '../render-prefs';
 
 const DRAIN_TICKS = 8;
@@ -72,29 +72,27 @@ export function advanceSmoothText(current: SmoothTextState): SmoothTextState {
 
 export function useSmoothText(source: string, isStreaming: boolean): string {
   const { reduceMotion } = useRenderPrefs();
-  const [state, setState] = useState(() =>
-    createSmoothTextState(source, isStreaming && !reduceMotion),
+  const [state, dispatch] = useReducer(
+    (latest: SmoothTextState, next?: SmoothTextState): SmoothTextState =>
+      next ?? advanceSmoothText(reconcileSmoothText(latest, source, false)),
+    source,
+    (initialSource) => createSmoothTextState(initialSource, isStreaming && !reduceMotion),
   );
-  const sourceRef = useRef(source);
-  useEffect(() => {
-    sourceRef.current = source;
-  }, [source]);
 
   const immediate = reduceMotion;
   const replaced = source !== state.source && !source.startsWith(state.source);
   const current = immediate || replaced ? reconcileSmoothText(state, source, true) : state;
-  if (current !== state) setState(current);
+  if (current !== state) dispatch(current);
 
   const active =
     !immediate && (isStreaming || source !== current.source || current.pending.length > 0);
-  useAbortableEffect(
+
+  useEffect(
     (signal) => {
       if (!active) return;
       const timer = window.setInterval(() => {
         if (signal.aborted) return;
-        setState((latest) =>
-          advanceSmoothText(reconcileSmoothText(latest, sourceRef.current, false)),
-        );
+        dispatch();
       }, TICK_MS);
       return () => window.clearInterval(timer);
     },

@@ -26,6 +26,19 @@ interface NavigationHistoryState extends NavHistoryStacks {
   backFromOverlay: () => void;
 }
 
+type NavigationPerformanceObserver = (surface: NavLocation['surface']) => void;
+let navigationPerformanceObserver: NavigationPerformanceObserver | null = null;
+
+/** Installs an app-owned observer without coupling the shared navigation store to a telemetry SDK. */
+export function installNavigationPerformanceObserver(
+  observer: NavigationPerformanceObserver,
+): () => void {
+  navigationPerformanceObserver = observer;
+  return () => {
+    if (navigationPerformanceObserver === observer) navigationPerformanceObserver = null;
+  };
+}
+
 /**
  * Per-window navigation history over the workbench's main surface (in-memory locations, no URLs).
  * Module scope so any surface can traverse it; not persisted — a fresh window starts empty.
@@ -34,10 +47,16 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   back: [],
   forward: [],
   overlay: null,
-  record: (from, to) => set(recordTransition(get(), from, to)),
+  record(from, to) {
+    const current = get();
+    const next = recordTransition(current, from, to);
+    set(next);
+    if (next !== current) navigationPerformanceObserver?.(to.surface);
+  },
   travel(dir, current, isReachable) {
     const { stacks, target } = travel(get(), dir, current, isReachable);
     set(stacks);
+    if (target !== null) navigationPerformanceObserver?.(target.surface);
     return target;
   },
   setOverlay: (overlay) => set({ overlay }),

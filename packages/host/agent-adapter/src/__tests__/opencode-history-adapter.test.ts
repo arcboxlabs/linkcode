@@ -145,7 +145,7 @@ describe('OpenCodeAdapter.readHistory', () => {
     });
     // The reverted msg-u2 never replays; the assistant chunk is the final event.
     expect(page2.events[0].event).toMatchObject({
-      type: 'agent-message-chunk',
+      type: 'agent-message',
       messageId: 'prt-a1',
     });
     expect(page2.cursor).toBeUndefined();

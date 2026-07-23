@@ -5,12 +5,7 @@ export { artifactKindForPath, detectInlineFilePath, fileBasename } from './file-
 export type { ArtifactHostActions } from './host-actions';
 export { useArtifactHostActions } from './host-actions';
 export type { ResolvedInlineArtifact } from './registry';
-export {
-  artifactFenceLanguages,
-  getArtifactKind,
-  registerArtifactDetector,
-  registerArtifactKind,
-} from './registry';
+export { getArtifactKind, registerArtifactDetector, registerArtifactKind } from './registry';
 export type {
   ArtifactCapabilities,
   ArtifactKindDefinition,

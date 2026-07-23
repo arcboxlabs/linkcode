@@ -1,11 +1,14 @@
+import { listWorkspaceFiles } from '@linkcode/sdk';
 import { cn } from '@linkcode/ui';
-import type { FileTab } from '@linkcode/ui/shell/files';
+import type { FileTab, WorkspaceFileTreeHandle } from '@linkcode/ui/shell/files';
 import { FileTabStrip, FileViewer, WorkspaceFileTree } from '@linkcode/ui/shell/files';
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { createFixedArray } from 'foxact/create-fixed-array';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
+import { useData } from '../runtime/tayori';
 import { useAppearancePrefsStore } from '../settings/appearance-store';
-import { useWorkspaceFile, useWorkspaceFileList } from './hooks';
+import { useWorkspaceFile } from './hooks';
 
 export type { FileTab } from '@linkcode/ui/shell/files';
 
@@ -41,7 +44,14 @@ export function FilesPanel({
   const tabsById = new Map(tabs.map((tab) => [tab.id, tab] as const));
   const active = activeTabId === null ? null : (tabsById.get(activeTabId) ?? null);
   const { data, isLoading, error } = useWorkspaceFile(cwd, active?.path ?? null);
-  const { data: treeFiles } = useWorkspaceFileList(cwd);
+
+  const treeRef = useRef<WorkspaceFileTreeHandle>(null);
+
+  const { data: treeFiles } = useData(listWorkspaceFiles, cwd === undefined ? null : { cwd }, {
+    onSuccess(paths) {
+      treeRef.current?.resetPaths(paths);
+    },
+  });
 
   const treePane = (
     <div
@@ -61,7 +71,7 @@ export function FilesPanel({
       ) : (
         // Keyed per workspace: the tree model is built once per mount and must not
         // carry expansion/selection across roots.
-        <WorkspaceFileTree key={cwd} paths={treeFiles} onFileOpen={onOpenFile} />
+        <WorkspaceFileTree ref={treeRef} key={cwd} paths={treeFiles} onFileOpen={onOpenFile} />
       )}
     </div>
   );

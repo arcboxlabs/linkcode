@@ -1,37 +1,53 @@
 import { cjk } from '@streamdown/cjk';
-import { createCodePlugin } from '@streamdown/code';
-import type { Root } from 'hast';
-import { createContext, useContext, useId } from 'react';
+import { Badge } from 'coss-ui/components/badge';
+import { Checkbox } from 'coss-ui/components/checkbox';
+import { Frame } from 'coss-ui/components/frame';
+import { Separator } from 'coss-ui/components/separator';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from 'coss-ui/components/table';
+import type { Element, Root } from 'hast';
+import { isValidElement, useId } from 'react';
 import rehypeSlug from 'rehype-slug';
 import type { Components, PluginConfig, StreamdownProps } from 'streamdown';
-import { defaultRehypePlugins, Streamdown } from 'streamdown';
+import { defaultRehypePlugins, Streamdown, useIsCodeFenceIncomplete } from 'streamdown';
 import type { Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
-import { useRenderPrefs } from '../render-prefs';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
 import { artifactNavigationAction, useArtifactHostActions } from './artifacts/host-actions';
-import { artifactFenceLanguages } from './artifacts/registry';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
 const NON_WORD_RE = /\W/g;
-const SANITIZED_HEADING_PREFIX = 'user-content-';
-const HEADING_TAG_NAMES = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-const MarkdownHeadingPrefixContext = createContext<string | null>(null);
+/** Streamdown's bundled rehype-sanitize clobbers every id with this prefix; hrefs are not
+ * clobbered, so scopeFragmentIdentifiers bakes it into rewritten fragment hrefs up front. */
+const SANITIZED_ID_PREFIX = 'user-content-';
 
-interface HeadingIdPrefixOptions {
+interface ScopeFragmentIdentifiersOptions {
   prefix: string;
 }
 
-const prefixExplicitHeadingIds: Plugin<[HeadingIdPrefixOptions], Root> =
+/** Scope every id — heading slugs, footnote ids, raw-HTML ids — to one Markdown instance, and
+ * rewrite fragment hrefs to the exact form those ids take once sanitize clobbers them. Ids can
+ * then never collide across chat messages, and every fragment href equals its target's DOM id. */
+const scopeFragmentIdentifiers: Plugin<[ScopeFragmentIdentifiersOptions], Root> =
   ({ prefix }) =>
   (tree) => {
     visit(tree, 'element', (node) => {
       const id = node.properties.id;
-      if (HEADING_TAG_NAMES.has(node.tagName) && typeof id === 'string' && id.length > 0) {
+      if (typeof id === 'string' && id.length > 0) {
         node.properties.id = `${prefix}${id}`;
+      }
+      const href = node.properties.href;
+      if (typeof href === 'string' && node.tagName === 'a' && href[0] === '#') {
+        node.properties.href = `#${SANITIZED_ID_PREFIX}${prefix}${href.slice(1)}`;
       }
     });
   };
@@ -72,59 +88,134 @@ function InlineCode({
   );
 }
 
+const FENCE_LANGUAGE_RE = /language-(\S+)/;
+const TRAILING_NEWLINES_RE = /\n+$/;
+
+/** The fence text child is a plain string, except while the animate plugin wraps it. */
+function fenceText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children;
+  if (isValidElement<{ children?: unknown }>(children)) {
+    const inner = children.props.children;
+    if (typeof inner === 'string') return inner;
+  }
+  return '';
+}
+
+/** Every fenced block routes through the artifact pipeline: registry-claimed languages render
+ * inline artifacts, everything else degrades to the coss-ui CodeBlock via FenceFallback. */
+function FencedCode({
+  className,
+  children,
+  node,
+}: React.ComponentProps<'code'> & { node?: Element }): React.ReactNode {
+  const isIncomplete = useIsCodeFenceIncomplete();
+  const language = FENCE_LANGUAGE_RE.exec(className ?? '')?.[1] ?? '';
+  const metastring = node?.properties.metastring;
+  return (
+    <ArtifactFenceRenderer
+      code={fenceText(children).replace(TRAILING_NEWLINES_RE, '')}
+      language={language}
+      meta={typeof metastring === 'string' ? metastring : undefined}
+      isIncomplete={isIncomplete}
+    />
+  );
+}
+
+/** Anchor hashes may be percent-encoded (CJK heading slugs) while element ids are not. */
+function decodeFragment(hash: string): string {
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    return hash;
+  }
+}
+
+/** The nearest ancestor that actually scrolls vertically. Never fall back to scrollIntoView:
+ * it walks every ancestor — overflow-hidden layout boxes included — and shoves the app chrome. */
+function nearestScrollContainer(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+    const { overflowY } = window.getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+  }
+  return null;
+}
+
+function scrollToFragment(event: React.MouseEvent<HTMLAnchorElement>, id: string): void {
+  // Fragment navigation must stay in-page even when nothing resolves: the native fallthrough
+  // is a real navigation (hash/router side effects; the desktop untrusted-link surface).
+  event.preventDefault();
+  const target = event.currentTarget.ownerDocument.getElementById(id);
+  if (!target) return;
+  const scrollContainer =
+    event.currentTarget.closest<HTMLElement>('[data-markdown-scroll-container]') ??
+    nearestScrollContainer(target);
+  if (!scrollContainer) return;
+  scrollContainer.scrollTo({
+    top:
+      scrollContainer.scrollTop +
+      target.getBoundingClientRect().top -
+      scrollContainer.getBoundingClientRect().top,
+  });
+}
+
+type MarkdownAnchorProps = React.ComponentProps<'a'> & {
+  node?: unknown;
+  'data-footnote-ref'?: boolean;
+  'data-footnote-backref'?: boolean;
+};
+
 function MarkdownLink({
   className,
   children,
   node: _node,
   href,
+  'data-footnote-ref': footnoteRef,
+  'data-footnote-backref': footnoteBackref,
   ...rest
-}: React.ComponentProps<'a'> & { node?: unknown }): React.ReactNode {
-  const headingPrefix = useContext(MarkdownHeadingPrefixContext);
-  const isFragment = href?.[0] === '#';
-  const fragmentHref =
-    isFragment && headingPrefix
-      ? `#${SANITIZED_HEADING_PREFIX}${headingPrefix}${href.slice(1)}`
-      : undefined;
+}: MarkdownAnchorProps): React.ReactNode {
+  const fragment = href?.[0] === '#' ? href.slice(1) : null;
+  const anchorProps: Omit<MarkdownAnchorProps, 'node'> = {
+    ...rest,
+    'data-footnote-ref': footnoteRef,
+    'data-footnote-backref': footnoteBackref,
+    href,
+    target: fragment === null ? '_blank' : undefined,
+    rel: fragment === null ? 'noreferrer' : undefined,
+    onClick:
+      fragment === null
+        ? undefined
+        : (event) => {
+            // scopeFragmentIdentifiers rewrote every fragment href to its target's exact
+            // DOM id, so resolution is a single lookup (decoded: CJK slugs percent-encode).
+            scrollToFragment(event, decodeFragment(fragment));
+          },
+  };
+  // Footnote citations and their back-references render as compact badge chips; the badge
+  // supplies its own type scale, so the surrounding sup/section size never distorts them.
+  if (footnoteRef !== undefined || footnoteBackref !== undefined) {
+    return (
+      <Badge
+        size="sm"
+        variant={footnoteRef === undefined ? 'outline' : 'secondary'}
+        className={cn('tabular-nums', className)}
+        render={<a {...anchorProps}>{children}</a>}
+      />
+    );
+  }
   return (
     <a
-      {...rest}
+      {...anchorProps}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
-      href={fragmentHref ?? href}
-      target={isFragment ? undefined : '_blank'}
-      rel={isFragment ? undefined : 'noreferrer'}
-      onClick={
-        fragmentHref
-          ? (event) => {
-              const target = event.currentTarget.ownerDocument.getElementById(
-                fragmentHref.slice(1),
-              );
-              if (target) {
-                event.preventDefault();
-                const scrollContainer = event.currentTarget.closest<HTMLElement>(
-                  '[data-markdown-scroll-container]',
-                );
-                if (!scrollContainer) {
-                  target.scrollIntoView({ block: 'start' });
-                  return;
-                }
-                scrollContainer.scrollTo({
-                  top:
-                    scrollContainer.scrollTop +
-                    target.getBoundingClientRect().top -
-                    scrollContainer.getBoundingClientRect().top,
-                });
-              }
-            }
-          : undefined
-      }
     >
       {children}
     </a>
   );
 }
 
-// Typography overrides keep the chat-tuned look; fenced code blocks stay on
-// Streamdown's defaults for shiki highlighting and copy controls.
+// Chat-tuned typography on coss-ui primitives. Fenced code routes through the artifact
+// pipeline (FencedCode), so Streamdown's own fence chrome and code plugin are unused.
 const components: Components = {
   a: MarkdownLink,
   p: ({ className, children, node: _node, ...rest }) => (
@@ -147,6 +238,25 @@ const components: Components = {
       {children}
     </h3>
   ),
+  // Streamdown's h4-h6 defaults (text-lg/text-base) would outsize the h1 above.
+  h4: ({ className, children, node: _node, ...rest }) => (
+    <h4 className={cn('mt-3 mb-1.5 font-semibold text-sm first:mt-0', className)} {...rest}>
+      {children}
+    </h4>
+  ),
+  h5: ({ className, children, node: _node, ...rest }) => (
+    <h5 className={cn('mt-3 mb-1.5 font-medium text-sm first:mt-0', className)} {...rest}>
+      {children}
+    </h5>
+  ),
+  h6: ({ className, children, node: _node, ...rest }) => (
+    <h6
+      className={cn('mt-3 mb-1.5 font-medium text-muted-foreground text-sm first:mt-0', className)}
+      {...rest}
+    >
+      {children}
+    </h6>
+  ),
   ul: ({ className, children, node: _node, ...rest }) => (
     <ul className={cn('my-2 list-disc space-y-1 pl-5', className)} {...rest}>
       {children}
@@ -158,7 +268,14 @@ const components: Components = {
     </ol>
   ),
   li: ({ className, children, node: _node, ...rest }) => (
-    <li className={cn('leading-relaxed', className)} {...rest}>
+    <li
+      className={cn(
+        'leading-relaxed',
+        className?.includes('task-list-item') && 'list-none',
+        className,
+      )}
+      {...rest}
+    >
       {children}
     </li>
   ),
@@ -171,27 +288,58 @@ const components: Components = {
     </blockquote>
   ),
   inlineCode: InlineCode,
-  table: ({ className, children, node: _node, ...rest }) => (
-    <table className={cn('my-2 w-full border-collapse text-sm', className)} {...rest}>
-      {children}
-    </table>
+  code: FencedCode,
+  // Sanitize forces every surviving <input> into a disabled checkbox (GFM task lists).
+  input: ({ className, checked }) => (
+    <Checkbox
+      checked={Boolean(checked)}
+      disabled
+      className={cn('me-1.5 align-text-bottom', className)}
+    />
   ),
-  th: ({ className, children, node: _node, ...rest }) => (
-    <th
-      className={cn('border border-border bg-muted px-2 py-1 text-left font-semibold', className)}
-      {...rest}
-    >
+  // Streamdown's default forces text-sm, defeating native superscript sizing (footnote refs).
+  sup: ({ className, children, node: _node, ...rest }) => (
+    <sup className={className} {...rest}>
       {children}
-    </th>
+    </sup>
+  ),
+  // The coss.com "framed card" table particle (p-table-2): Frame chrome around a card-variant
+  // table, whose header sits on the muted frame and whose body is the rounded card surface.
+  table: ({ className, children, node: _node, ...rest }) => (
+    <Frame className="my-2">
+      <Table variant="card" className={className} {...rest}>
+        {children}
+      </Table>
+    </Frame>
+  ),
+  thead: ({ className, children, node: _node, ...rest }) => (
+    <TableHeader className={className} {...rest}>
+      {children}
+    </TableHeader>
+  ),
+  tbody: ({ className, children, node: _node, ...rest }) => (
+    <TableBody className={className} {...rest}>
+      {children}
+    </TableBody>
+  ),
+  tr: ({ className, children, node: _node, ...rest }) => (
+    <TableRow className={className} {...rest}>
+      {children}
+    </TableRow>
+  ),
+  // whitespace-normal + line height: the coss-ui data-grid cells assume single-line content,
+  // but Markdown tables carry prose.
+  th: ({ className, children, node: _node, ...rest }) => (
+    <TableHead className={cn('whitespace-normal leading-normal', className)} {...rest}>
+      {children}
+    </TableHead>
   ),
   td: ({ className, children, node: _node, ...rest }) => (
-    <td className={cn('border border-border px-2 py-1', className)} {...rest}>
+    <TableCell className={cn('whitespace-normal leading-normal', className)} {...rest}>
       {children}
-    </td>
+    </TableCell>
   ),
-  hr: ({ className, node: _node, ...rest }) => (
-    <hr className={cn('my-3 border-border', className)} {...rest} />
-  ),
+  hr: ({ className }) => <Separator className={cn('my-3', className)} />,
   strong: ({ className, children, node: _node, ...rest }) => (
     <strong className={cn('font-semibold', className)} {...rest}>
       {children}
@@ -204,31 +352,30 @@ const components: Components = {
   ),
 };
 
-// Artifact-claimed fence languages render as inline artifacts. The language list is snapshotted
-// here, hence the module-scope registration constraint documented in artifacts/registry.ts.
-const artifactRenderers = [
-  { language: artifactFenceLanguages(), component: ArtifactFenceRenderer },
-];
+const plugins: PluginConfig = { cjk };
+
+// remark-gfm appends footnote definitions as a trailing <section data-footnotes>; set it off
+// from the body the way GitHub does. Styled from here because overriding `section` would lose
+// Streamdown's empty-footnote filtering during streaming.
+const FOOTNOTE_SECTION_CLASS =
+  '[&_section[data-footnotes]]:mt-4 [&_section[data-footnotes]]:border-t [&_section[data-footnotes]]:border-border [&_section[data-footnotes]]:pt-3 [&_section[data-footnotes]]:text-muted-foreground [&_section[data-footnotes]]:text-xs';
 
 type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
 
 const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
 const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
 
-function createMarkdownRehypePlugins(headingPrefix: string): RehypePlugins {
+function createMarkdownRehypePlugins(scopePrefix: string): RehypePlugins {
   if (rawRehypePluginIndex < 0) {
     throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
   }
   const defaults = Object.values(defaultRehypePlugins);
-  const explicitHeadingIdPlugin: RehypePlugins[number] = [
-    prefixExplicitHeadingIds,
-    { prefix: headingPrefix },
-  ];
-  const headingSlugPlugin: RehypePlugins[number] = [rehypeSlug, { prefix: headingPrefix }];
+  const scopePlugin: RehypePlugins[number] = [scopeFragmentIdentifiers, { prefix: scopePrefix }];
   return [
     ...defaults.slice(0, rawRehypePluginIndex + 1),
-    explicitHeadingIdPlugin,
-    headingSlugPlugin,
+    // Slug headings first so freshly assigned ids get scoped along with everything else.
+    rehypeSlug,
+    scopePlugin,
     ...defaults.slice(rawRehypePluginIndex + 1),
   ];
 }
@@ -242,6 +389,8 @@ interface MarkdownProps {
   children: string;
   className?: string;
   animated?: StreamdownProps['animated'];
+  /** Parse as one static document so repeated-heading slugs dedupe document-wide (file and
+   * preview surfaces). Heading anchors themselves resolve on every surface. */
   headingAnchors?: boolean;
 }
 
@@ -255,36 +404,27 @@ export function Markdown({
   animated,
   headingAnchors = false,
 }: MarkdownProps): React.ReactNode {
-  const { codeTheme } = useRenderPrefs();
   const markdownId = useId();
-  const headingPrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
-  // The @streamdown/code plugin's getThemes() wins over the shikiTheme prop, so the selected theme
-  // must be baked into the plugin. createCodePlugin is cheap — its highlighter is created lazily.
-  const plugins: PluginConfig = {
-    cjk,
-    code: createCodePlugin({ themes: codeTheme }),
-    renderers: artifactRenderers,
-  };
-  const content = (
+  const scopePrefix = `markdown-${markdownId.replaceAll(NON_WORD_RE, '')}-`;
+  return (
     <Streamdown
       // space-y-0: block rhythm comes from the per-element my-* overrides above,
       // matching the previous react-markdown renderer.
-      className={cn('space-y-0 break-words text-sm leading-relaxed', className)}
+      className={cn(
+        'space-y-0 break-words text-sm leading-relaxed',
+        FOOTNOTE_SECTION_CLASS,
+        className,
+      )}
       components={components}
       animated={animated}
       plugins={plugins}
+      // Static mode parses the whole document in one pass, so repeated headings dedupe
+      // across the document; chat stays in streaming mode and slugs per block.
       mode={headingAnchors ? 'static' : undefined}
-      rehypePlugins={headingAnchors ? createMarkdownRehypePlugins(headingPrefix) : undefined}
+      rehypePlugins={createMarkdownRehypePlugins(scopePrefix)}
     >
       {children}
     </Streamdown>
-  );
-  return headingAnchors ? (
-    <MarkdownHeadingPrefixContext.Provider value={headingPrefix}>
-      {content}
-    </MarkdownHeadingPrefixContext.Provider>
-  ) : (
-    content
   );
 }
 

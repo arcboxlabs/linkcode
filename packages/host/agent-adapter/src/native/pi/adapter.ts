@@ -21,6 +21,7 @@ import type {
   StartOptions,
   ToolKind,
 } from '@linkcode/schema';
+import { textBlock } from '@linkcode/schema';
 import { invariant } from 'foxts/guard';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -39,6 +40,7 @@ import {
   lastPiModelChange,
   listPiHistory,
   piAgentDir,
+  piMessageBlockId,
   readPiHistory,
 } from './history';
 import { createPiUiContext } from './ui-bridge';
@@ -87,7 +89,7 @@ function effortLevels(model: PiModel): PiEffort[] {
 function modelOptions(models: PiModel[]) {
   return models.map((model) => ({
     id: `${model.provider}/${model.id}`,
-    label: model.name ?? model.id,
+    label: model.name,
     description: `${model.provider}/${model.id}`,
     effortLevels: effortLevels(model),
   }));
@@ -101,14 +103,14 @@ function createConfiguredRegistry(
   const authStorage = pi.AuthStorage.create();
   const modelRegistry = pi.ModelRegistry.create(authStorage);
   const ref = opts.model ? parseModel(opts.model) : null;
-  if (opts.model && !ref) {
+  if (!ref && opts.model) {
     throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
   }
 
   const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
   const provider = ref?.provider ?? fallbackProvider ?? modelRegistry.getAvailable()[0]?.provider;
-  if ((key || cred.baseUrl) && !provider) {
+  if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
@@ -122,7 +124,7 @@ function createConfiguredRegistry(
     authStorage,
     modelRegistry,
     ref,
-    credentialProviderId: key || cred.baseUrl ? (provider ?? null) : null,
+    credentialProviderId: key || cred.baseUrl ? provider : null,
   };
 }
 
@@ -222,7 +224,7 @@ export class PiAdapter extends BaseAgentAdapter {
     if (ref && !model) {
       throw new Error(`pi: model '${opts.model}' is not available for provider '${ref.provider}'`);
     }
-    if (opts.model !== null && !model && !manager) model = modelRegistry.getAvailable()[0];
+    if (!manager && !model && opts.model !== null) model = modelRegistry.getAvailable()[0];
     const cwd = manager?.getCwd() ?? opts.cwd;
     const resourceLoader = new pi.DefaultResourceLoader({
       cwd,
@@ -305,6 +307,7 @@ export class PiAdapter extends BaseAgentAdapter {
         await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
       } else await this.session.prompt(text, imageOptions);
       this.promptInFlight = false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the subscribe handler flips `settlementPending` while prompt() is awaited
       if (this.settlementPending) this.settleTurn();
     } catch (error) {
       this.promptInFlight = false;
@@ -416,11 +419,14 @@ export class PiAdapter extends BaseAgentAdapter {
       locations: locationsFromToolInput(event.input),
     };
     this.emitTool({ ...card, status: 'in_progress' });
-    const outcome = await this.requestPermission(card, [
-      { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
-      { optionId: 'always', name: 'Always allow this session', kind: 'allow_always' },
-      { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
-    ]);
+    const outcome = await this.requestPermission(
+      { title: event.toolName, subject: { type: 'tool-call', toolCallId: event.toolCallId } },
+      [
+        { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'always', name: 'Always allow this session', kind: 'allow_always' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+      ],
+    );
     if (this.lifecycle !== generation) return { block: true, reason: 'The Pi session has stopped' };
     if (outcome.outcome === 'cancelled') {
       this.emitTool({ toolCallId: event.toolCallId, status: 'failed' });
@@ -460,8 +466,33 @@ export class PiAdapter extends BaseAgentAdapter {
         break;
       case 'message_update': {
         const a = ev.assistantMessageEvent;
-        if (a.type === 'text_delta') this.emitAssistantText(a.delta, this.messageId);
-        else if (a.type === 'thinking_delta') this.emitThought(a.delta, this.thoughtId);
+        const id = (kind: 'message' | 'thought') => {
+          const fallbackId = kind === 'message' ? this.messageId : this.thoughtId;
+          if (!('partial' in a)) return fallbackId;
+          return piMessageBlockId(
+            a.partial.responseId,
+            a.partial.timestamp,
+            fallbackId,
+            'contentIndex' in a ? a.contentIndex : 0,
+            kind,
+          );
+        };
+        switch (a.type) {
+          case 'text_delta':
+            this.emitAssistantText(a.delta, id('message'));
+            break;
+          case 'thinking_delta':
+            this.emitThought(a.delta, id('thought'));
+            break;
+          case 'text_end':
+            this.emitAgentMessage(id('message'), [textBlock(a.content)]);
+            break;
+          case 'thinking_end':
+            this.emitAgentThought(id('thought'), [textBlock(a.content)]);
+            break;
+          default:
+            break;
+        }
         break;
       }
       case 'tool_execution_start':

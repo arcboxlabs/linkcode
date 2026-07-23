@@ -1,4 +1,11 @@
-import type { AgentEvent, ContentBlock, PermissionOption, Plan, ToolCall } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  ContentBlock,
+  PermissionOption,
+  PermissionSubject,
+  Plan,
+  ToolCall,
+} from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { SHOWCASE_TERMINAL_ID } from './sessions';
 
@@ -20,6 +27,29 @@ export const SHOWCASE_THOUGHT_CONTENT = textBlock(
 
 export const SHOWCASE_INTRO_CONTENT = textBlock(
   'Here is a mocked transcript that uses the same wire events as the daemon.',
+);
+
+export const SHOWCASE_MARKDOWN_CONTENT = textBlock(
+  [
+    'Markdown tour: tables, task lists, fences, and footnotes[^wire] share the chat pipeline.',
+    '',
+    '| Surface | Primitive | Status |',
+    '| ------- | --------- | ------ |',
+    '| Tables | `coss-ui` Table | wired |',
+    '| Rules | Separator | wired |',
+    '| Task lists | Checkbox | wired |',
+    '',
+    '- [x] Fragment links stay in-page',
+    '- [ ] Vendor syntax detectors (CODE-64)',
+    '',
+    '```ts',
+    'const target = ids.map((id) => doc.getElementById(id)).find((el) => el !== null);',
+    '```',
+    '',
+    '---',
+    '',
+    '[^wire]: Footnote references scroll to this definition instead of navigating.',
+  ].join('\n'),
 );
 
 export const SHOWCASE_ARCHITECTURE_LINK: ContentBlock = {
@@ -76,6 +106,7 @@ export const SHOWCASE_ARTIFACTS_CONTENT = textBlock(
 );
 
 export const SHOWCASE_PLAN: Plan = {
+  planId: 'mock-showcase-plan',
   entries: [
     {
       content: 'Seed representative conversation events',
@@ -173,6 +204,9 @@ const SHOWCASE_PERMISSION_EXEC_TOOL: ToolCall = {
 
 export interface ShowcasePermission {
   requestId: string;
+  title: string;
+  description?: string;
+  subject: PermissionSubject;
   toolCall: ToolCall;
   options: PermissionOption[];
 }
@@ -181,11 +215,21 @@ export interface ShowcasePermission {
 export const SHOWCASE_PERMISSIONS: ShowcasePermission[] = [
   {
     requestId: SHOWCASE_PERMISSION_ID,
+    title: 'Apply guarded edit',
+    description: 'Update the permission prompt implementation',
+    subject: { type: 'tool-call', toolCallId: SHOWCASE_PERMISSION_TOOL_ID },
     toolCall: SHOWCASE_PERMISSION_EDIT_TOOL,
     options: SHOWCASE_PERMISSION_OPTIONS,
   },
   {
     requestId: 'mock-permission-exec',
+    title: 'Run database migration',
+    subject: {
+      type: 'command',
+      command: 'pnpm run migrate -- --env=dev',
+      cwd: '/mock/linkcode',
+      toolCallId: 'mock-tool-permission-exec',
+    },
     toolCall: SHOWCASE_PERMISSION_EXEC_TOOL,
     options: SHOWCASE_PERMISSION_OPTIONS,
   },

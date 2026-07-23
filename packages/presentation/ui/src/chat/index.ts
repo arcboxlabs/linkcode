@@ -4,6 +4,7 @@ export * from './agent-icon';
 export * from './artifact';
 export * from './artifacts';
 export * from './attachments';
+export * from './chat-card';
 export * from './checkpoint';
 export * from './circular-progress';
 export * from './code-block';

@@ -69,7 +69,7 @@ export function PromptCard({
               {title}
             </span>
           </FrameTitle>
-          {(disabled && busyLabel) || meta ? (
+          {meta || (disabled && busyLabel) ? (
             <div className="flex shrink-0 items-center gap-1.5">
               {disabled && busyLabel ? (
                 <Spinner aria-label={busyLabel} className="size-3.5" />

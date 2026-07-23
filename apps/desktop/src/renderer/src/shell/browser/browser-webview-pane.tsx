@@ -1,6 +1,6 @@
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -47,7 +47,7 @@ export function BrowserWebviewPane(): React.ReactNode {
     setWebview(element as WebviewTag | null);
   };
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (webview === null) return;
       const sync = (): void => {
@@ -91,7 +91,7 @@ export function BrowserWebviewPane(): React.ReactNode {
   // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
   // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
   // restarts it on their next visit.
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (webview === null || visible) return;
     // Guest may be mid-navigation or detached, in which case there is nothing to pause.
     webview

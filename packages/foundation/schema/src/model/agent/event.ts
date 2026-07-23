@@ -12,7 +12,7 @@ import {
 import { QuestionOutcomeSchema, QuestionRequestSchema } from '../question';
 import { ApprovalPolicyStateSchema, SessionModeIdSchema } from '../session/control';
 import { SessionStatusSchema, StopReasonSchema } from '../session/lifecycle';
-import { ToolCallSchema } from '../tool-call';
+import { ToolCallContentSchema, ToolCallSchema } from '../tool-call';
 import { TokenUsageSchema, UsageReportSchema } from '../usage';
 import {
   AgentCapabilitiesSchema,
@@ -37,12 +37,25 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('user-message'),
     // Identity / dedup only — a user message is whole, so this never drives grouping.
-    messageId: MessageIdSchema.optional(),
+    messageId: MessageIdSchema,
     // The full message, same shape as `AgentInput.prompt`'s content.
     content: z.array(ContentBlockSchema),
   }),
 
-  // Agent output: streaming chunks, bucketed and concatenated by messageId.
+  // Agent output: whole snapshots replace by messageId; chunks append to the same identity.
+  // Omitting whole-event content confirms/backfills identity without changing the current body.
+  z.object({
+    type: z.literal('agent-message'),
+    messageId: MessageIdSchema,
+    parentToolCallId: z.string().min(1).optional(),
+    content: z.array(ContentBlockSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('agent-thought'),
+    messageId: MessageIdSchema,
+    parentToolCallId: z.string().min(1).optional(),
+    content: z.array(ContentBlockSchema).optional(),
+  }),
   z.object({
     type: z.literal('agent-message-chunk'),
     // Required: the grouping authority (chunks with the same id form one bubble).
@@ -59,8 +72,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     content: ContentBlockSchema,
   }),
 
-  // Tools: one event per state change, each carrying the full current ToolCall snapshot.
+  // Tools: state patches carry a full snapshot; content chunks append one item without resending
+  // the accumulated array. A later full snapshot remains authoritative and replaces by id.
   z.object({ type: z.literal('tool-call'), toolCall: ToolCallSchema }),
+  z.object({
+    type: z.literal('tool-call-content-chunk'),
+    toolCallId: z.string().min(1),
+    content: ToolCallContentSchema,
+  }),
 
   /** Emitted at the compaction boundary and again once the swapped-in summary text is learned.
    * Consumers merge events by `compactionId` (the provider's own boundary id), so partial emits,
@@ -135,7 +154,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // Agent → client requests await a reply via AgentInput, correlated by requestId.
-  PermissionRequestSchema.extend({
+  PermissionRequestSchema.safeExtend({
     type: z.literal('permission-request'),
     requestId: z.string().min(1),
   }),

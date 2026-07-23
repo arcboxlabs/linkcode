@@ -1,1 +1,1 @@
-export { router } from './router';
+export { createWebviewRouter } from './router';

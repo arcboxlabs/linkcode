@@ -81,6 +81,10 @@ function notificationReason(event: AgentEvent): SessionNotificationReason | unde
     case 'stop':
       return { type: 'turn-completed', stopReason: event.stopReason };
     case 'permission-request':
+      return {
+        type: 'awaiting-approval',
+        toolTitle: event.title ?? event.toolCall?.title ?? event.requestId,
+      };
     case 'question-request':
       return { type: 'awaiting-approval', toolTitle: event.toolCall.title };
     case 'error':

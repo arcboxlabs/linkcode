@@ -2,6 +2,7 @@ import type {
   AgentEvent,
   AgentStartCatalog,
   McpPluginCatalog,
+  MessageId,
   PermissionOutcome,
   PluginConfigPublic,
   SessionId,
@@ -217,7 +218,11 @@ describe('LinkCodeClient event buffer', () => {
   it('sequences received events and replays them to a late subscriber with original seqs', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
 
-    const first: AgentEvent = { type: 'user-message', content: [{ type: 'text', text: 'hi' }] };
+    const first: AgentEvent = {
+      type: 'user-message',
+      messageId: 'user-1' as MessageId,
+      content: [{ type: 'text', text: 'hi' }],
+    };
     const second: AgentEvent = { type: 'status', status: 'running' };
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event: first }));
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event: second }));

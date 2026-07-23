@@ -111,9 +111,11 @@ jobs:
       - name: Build workspace
         run: pnpm turbo run build --filter "${{ env.DESKTOP_PACKAGE }}..."
         env:
-          # Inlined into the main bundle (a DSN is a publishable id, not a secret); only signed
-          # builds carry it. Must stay declared in apps/desktop/turbo.json `build.env`.
+          # Publishable identifiers inlined only into signed release bundles. These names must
+          # stay declared in apps/desktop/turbo.json `build.env` so Turbo cache keys include them.
           MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
+          RENDERER_VITE_POSTHOG_PROJECT_TOKEN: ${{ inputs.sign && secrets.POSTHOG_PROJECT_TOKEN || '' }}
+          RENDERER_VITE_POSTHOG_HOST: ${{ inputs.sign && secrets.POSTHOG_HOST || '' }}
 
       # The PTY sidecar ships per arch under Resources (extraResources: sidecar/${arch}).
       - name: Build PTY sidecar (both arches)

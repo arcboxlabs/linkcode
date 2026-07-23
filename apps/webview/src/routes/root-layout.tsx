@@ -2,10 +2,11 @@ import {
   CloudImProvider,
   createBrowserCloudImSource,
   SessionNotifier,
+  syncProductAnalyticsIdentity,
   WorkbenchAppProviders,
   WorkbenchProviders,
 } from '@linkcode/workbench';
-import { CLOUD_API_URL } from '@webview/cloud/auth';
+import { authClient, CLOUD_API_URL } from '@webview/cloud/auth';
 import { webviewDaemonConnectionSource } from '@webview/daemon-connection-source';
 import { presentWebNotification } from '@webview/notifications';
 import { useSettingsStore } from '@webview/settings/store';
@@ -13,6 +14,20 @@ import { Outlet } from 'react-router';
 
 /** Browser shell: the credential is the shared session cookie, so the source is plain fetch. */
 const cloudImSource = createBrowserCloudImSource(CLOUD_API_URL);
+interface AnalyticsSessionState {
+  data: { user: { id: string } } | null;
+  isPending: boolean;
+}
+let analyticsIdentity: string | null | undefined;
+if (import.meta.env.VITE_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_POSTHOG_HOST) {
+  authClient.$store.atoms.session.subscribe((session: AnalyticsSessionState) => {
+    if (session.isPending) return;
+    const nextIdentity = session.data?.user.id ?? null;
+    if (nextIdentity === analyticsIdentity) return;
+    analyticsIdentity = nextIdentity;
+    syncProductAnalyticsIdentity(nextIdentity);
+  });
+}
 
 /**
  * Root layout: global providers + the daemon connection, rendered once around every route's

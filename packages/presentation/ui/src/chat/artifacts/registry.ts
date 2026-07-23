@@ -36,8 +36,7 @@ export function getArtifactKind(id: string): ArtifactKindDefinition | undefined 
   return kinds.get(id);
 }
 
-/** Registration must happen at module scope: `Markdown` snapshots the claimed fence
- * languages into its Streamdown plugin config when its module first evaluates. */
+/** Kinds are consulted per fence render, so a registration applies from the next render on. */
 export function registerArtifactKind(definition: ArtifactKindDefinition): () => void {
   if (kinds.has(definition.id)) {
     throw new Error(`artifact kind "${definition.id}" is already registered`);
@@ -49,22 +48,13 @@ export function registerArtifactKind(definition: ArtifactKindDefinition): () => 
 }
 
 /** Later registrations take precedence over the baseline (vendor syntaxes are more
- * specific than the generic fence mapping). Same module-scope constraint as kinds. */
+ * specific than the generic fence mapping). */
 export function registerArtifactDetector(detector: ArtifactSyntaxDetector): () => void {
   detectors = [detector, ...detectors];
   return () => {
     const index = detectors.indexOf(detector);
     if (index !== -1) detectors = detectors.toSpliced(index, 1);
   };
-}
-
-/** All fence languages any registered kind claims — feeds Streamdown's renderer matching. */
-export function artifactFenceLanguages(): string[] {
-  const languages = new Set<string>();
-  for (const definition of kinds.values()) {
-    for (const language of definition.fenceLanguages) languages.add(language);
-  }
-  return [...languages];
 }
 
 export interface ResolvedInlineArtifact {

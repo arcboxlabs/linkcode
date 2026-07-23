@@ -1,6 +1,6 @@
 import { ShellIconButton } from '@linkcode/ui';
 import { systemBridge } from '@renderer/ipc';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { CopyIcon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { DesktopChromeMetricsStyle } from './metrics';
@@ -35,7 +35,7 @@ export function DesktopWindowControls(): React.ReactNode {
  */
 function WindowControls(): React.ReactNode {
   const [maximized, setMaximized] = useState(false);
-  useAbortableEffect((signal) => {
+  useEffect((signal) => {
     void systemBridge.window.isMaximized().then((value) => {
       if (!signal.aborted) setMaximized(value);
     });

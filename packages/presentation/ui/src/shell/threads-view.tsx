@@ -147,7 +147,7 @@ export function ThreadsView({
     const activeId = source.id as SessionId;
     const oldIndex = visibleIds.indexOf(activeId);
     const newIndex = reordered.indexOf(activeId);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+    if (oldIndex === newIndex || oldIndex < 0 || newIndex < 0) return;
     const overId = visibleIds[newIndex];
     onReorderThreads(groupKey, activeId, overId, newIndex > oldIndex ? 'after' : 'before');
   }

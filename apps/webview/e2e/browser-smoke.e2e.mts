@@ -39,7 +39,7 @@ function monitorApplicationErrors(page: Page, appOrigin: string, appErrors: stri
     // Chromium reports route-change cancellations as ERR_ABORTED while the Vite module graph is
     // still loading; a required canceled module is covered by the subsequent UI assertion.
     const errorText = request.failure()?.errorText ?? 'unknown';
-    if (request.url().startsWith(appOrigin) && errorText !== 'net::ERR_ABORTED') {
+    if (errorText !== 'net::ERR_ABORTED' && request.url().startsWith(appOrigin)) {
       appErrors.push(`requestfailed: ${request.method()} ${request.url()} (${errorText})`);
     }
   });

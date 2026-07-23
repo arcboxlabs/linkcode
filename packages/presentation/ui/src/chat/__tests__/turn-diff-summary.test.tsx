@@ -42,7 +42,7 @@ describe('TurnDiffSummary', () => {
     await user.click(screen.getByRole('button', { name: RE_SHOW_MORE }));
     const fileButtons = FILES.map((file) =>
       screen.getByRole('button', {
-        name: `${file.path} +${file.additions}-${file.deletions}`,
+        name: `${file.path.split('/').at(-1)} +${file.additions}-${file.deletions}`,
       }),
     );
     expect(fileButtons).toHaveLength(FILES.length);

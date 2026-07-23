@@ -155,6 +155,16 @@ jobs:
       - name: Test production and mock browser entries
         run: pnpm -F @linkcode/webview e2e:browser
 
+      # Never expose production telemetry configuration to pull-request code. The browser smoke
+      # above deliberately runs without it; push/manual builds separately verify the real bundle.
+      - name: Build production bundle with telemetry
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN_WEBVIEW }}
+          VITE_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          VITE_POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        run: pnpm -F @linkcode/webview build
+
   mobile:
     name: Mobile Native Bundles
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
@@ -177,6 +187,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Export Android and iOS app entries
+        # SENTRY_AUTH_TOKEN intentionally stays in EAS: ordinary CI does not upload source maps.
+        env:
+          EXPO_PUBLIC_SENTRY_DSN: ${{ github.event_name != 'pull_request' && secrets.SENTRY_DSN_MOBILE || '' }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ github.event_name != 'pull_request' && secrets.POSTHOG_PROJECT_TOKEN || '' }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ github.event_name != 'pull_request' && secrets.POSTHOG_HOST || '' }}
         run: pnpm -F @linkcode/mobile smoke:export
 
   rust:

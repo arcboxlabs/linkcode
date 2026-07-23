@@ -69,7 +69,7 @@ export function groupTimeline(
       timeline: items,
       approvalGatedToolCallIds: approvalGated,
     });
-    if (!isActivityRunItem(item) || key === null) {
+    if (key === null || !isActivityRunItem(item)) {
       flushRun();
       entries.push({ type: 'item', item });
       continue;

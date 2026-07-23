@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   EffortLevel,
   PermissionOption,
+  PermissionSubject,
   Plan,
   Question,
   SessionStatus,
@@ -78,12 +79,23 @@ export type ConversationItem = (
       postTokens?: number;
       summary?: string;
     }
-  | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
+  | {
+      kind: 'plan';
+      id: string;
+      /** Timeline placement stays fixed at first sight so turn segments remain contiguous. */
+      turnId: ConversationTurnId;
+      /** Turn that most recently emitted this plan, used by current-plan selectors. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    }
   | {
       kind: 'approval';
       id: string;
       turnId: ConversationTurnId;
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;
@@ -189,7 +201,7 @@ export function createConversationBuilder(): ConversationBuilder {
   const messageIndex = new Map<string, number>();
   // compactionId → item index, so partial compaction re-emits merge into one marker.
   const compactionIndex = new Map<string, number>();
-  const planIndexByTurn = new Map<ConversationTurnId, number>();
+  const planIndexById = new Map<string, number>();
   /** Asks in arrival order; explicit resolution events are their only settlement authority. */
   const approvals: string[] = [];
   const questionAsks: string[] = [];
@@ -237,11 +249,12 @@ export function createConversationBuilder(): ConversationBuilder {
     }
   };
 
-  // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
-  const openAgentStream = (
+  // Upsert one agent message/thought identity. Whole snapshots replace; chunks append.
+  const upsertAgentContent = (
     kind: 'message' | 'reasoning',
     messageId: string,
-    block: ContentBlock,
+    content: readonly ContentBlock[] | undefined,
+    mode: 'append' | 'replace',
     receivedAt: number | undefined,
     parentToolCallId: string | undefined,
   ): void => {
@@ -251,8 +264,17 @@ export function createConversationBuilder(): ConversationBuilder {
       if (item.kind === kind) {
         items[existing] = {
           ...item,
-          blocks: appendBlock(item.blocks, block),
+          blocks:
+            content === undefined
+              ? item.blocks
+              : mode === 'replace'
+                ? [...content]
+                : content.reduce<ContentBlock[]>(
+                    (blocks, block) => appendBlock(blocks, block),
+                    item.blocks,
+                  ),
           receivedAt: receivedAt ?? item.receivedAt,
+          parentToolCallId: parentToolCallId ?? item.parentToolCallId,
           // Backfill a model the adapter only reported after this message opened.
           ...(item.kind === 'message' && { model: item.model ?? currentModel ?? undefined }),
         };
@@ -266,7 +288,7 @@ export function createConversationBuilder(): ConversationBuilder {
         id: messageId,
         turnId: currentTurnId,
         role: 'assistant',
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
         receivedAt,
@@ -277,7 +299,7 @@ export function createConversationBuilder(): ConversationBuilder {
         kind: 'reasoning',
         id: messageId,
         turnId: currentTurnId,
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
         startedAt: receivedAt,
@@ -292,35 +314,70 @@ export function createConversationBuilder(): ConversationBuilder {
     cached = null;
     switch (event.type) {
       case 'user-message': {
-        // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
+        const existing = messageIndex.get(event.messageId);
+        if (existing !== undefined) {
+          const item = items[existing];
+          if (item.kind === 'message' && item.role === 'user') {
+            items[existing] = {
+              ...item,
+              blocks: [...event.content],
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+          break;
+        }
+        // A new complete message opens a turn; replay of the same id replaces it above.
         endAllActiveReasoning(receivedAt);
         turnStopped = false;
         currentTurnId = genId('turn');
         items.push({
           kind: 'message',
-          id: event.messageId ?? genId('user-message'),
+          id: event.messageId,
           turnId: currentTurnId,
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
           receivedAt,
         });
+        messageIndex.set(event.messageId, items.length - 1);
         break;
       }
-      case 'agent-message-chunk':
-        openAgentStream(
+      case 'agent-message':
+        upsertAgentContent(
           'message',
           event.messageId,
           event.content,
+          'replace',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-message-chunk':
+        upsertAgentContent(
+          'message',
+          event.messageId,
+          [event.content],
+          'append',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-thought':
+        upsertAgentContent(
+          'reasoning',
+          event.messageId,
+          event.content,
+          'replace',
           receivedAt,
           event.parentToolCallId,
         );
         break;
       case 'agent-thought-chunk':
-        openAgentStream(
+        upsertAgentContent(
           'reasoning',
           event.messageId,
-          event.content,
+          [event.content],
+          'append',
           receivedAt,
           event.parentToolCallId,
         );
@@ -348,6 +405,22 @@ export function createConversationBuilder(): ConversationBuilder {
               receivedAt: receivedAt ?? item.receivedAt,
             };
           }
+        }
+        break;
+      }
+      case 'tool-call-content-chunk': {
+        const existing = toolIndex.get(event.toolCallId);
+        if (existing === undefined) break;
+        const item = items[existing];
+        if (item.kind === 'tool') {
+          items[existing] = {
+            ...item,
+            toolCall: {
+              ...item.toolCall,
+              content: [...item.toolCall.content, event.content],
+            },
+            receivedAt: receivedAt ?? item.receivedAt,
+          };
         }
         break;
       }
@@ -388,23 +461,25 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'plan': {
-        const planIndex = planIndexByTurn.get(currentTurnId);
+        const planIndex = planIndexById.get(event.plan.planId);
         if (planIndex === undefined) {
           endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'plan',
-            id: genId('plan'),
+            id: event.plan.planId,
             turnId: currentTurnId,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt,
           });
-          planIndexByTurn.set(currentTurnId, items.length - 1);
+          planIndexById.set(event.plan.planId, items.length - 1);
           break;
         }
         const item = items[planIndex];
         if (item.kind === 'plan') {
           items[planIndex] = {
             ...item,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt: receivedAt ?? item.receivedAt,
           };
@@ -467,17 +542,39 @@ export function createConversationBuilder(): ConversationBuilder {
         });
         break;
 
-      case 'permission-request':
+      case 'permission-request': {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
-        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
+        const subject = event.subject ?? {
+          type: 'tool-call' as const,
+          toolCallId: event.toolCall?.toolCallId ?? event.requestId,
+        };
+        const linkedIndex = subject.toolCallId ? toolIndex.get(subject.toolCallId) : undefined;
+        const linkedItem = linkedIndex === undefined ? undefined : items[linkedIndex];
+        const linkedToolCall = linkedItem?.kind === 'tool' ? linkedItem.toolCall : undefined;
+        const title = event.title ?? event.toolCall?.title ?? event.requestId;
+        const toolCall =
+          linkedToolCall ??
+          event.toolCall ??
+          (subject.type === 'command'
+            ? {
+                toolCallId: subject.toolCallId ?? event.requestId,
+                title,
+                kind: 'execute' as const,
+                rawInput: { command: subject.command, cwd: subject.cwd },
+              }
+            : { toolCallId: subject.toolCallId, title });
+        endActiveReasoning(toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'approval',
           id: event.requestId,
           turnId: currentTurnId,
           requestId: event.requestId,
-          toolCall: event.toolCall,
+          title,
+          description: event.description,
+          subject,
+          toolCall,
           options: event.options,
           responding:
             !permissionResolutions.has(event.requestId) &&
@@ -488,10 +585,11 @@ export function createConversationBuilder(): ConversationBuilder {
         approvalIndex.set(event.requestId, items.length - 1);
         approvals.push(event.requestId);
         break;
+      }
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
-        endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
+        endActiveReasoning(event.toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'question',
           id: event.requestId,
