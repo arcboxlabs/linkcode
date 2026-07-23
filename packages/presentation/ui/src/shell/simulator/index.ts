@@ -1,7 +1,7 @@
+export type { SimulatorScreenPoint } from './device-geometry';
+export type { SimulatorScreenFrame } from './frame-decoder';
 export type { SimulatorKeyPress } from './keymap';
 export type {
-  SimulatorScreenFrame,
-  SimulatorScreenPoint,
   SimulatorScreenProps,
   SimulatorScreenTouchPhase,
 } from './simulator-screen';
