@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ArtifactHostActionsContext } from '../artifacts/host-actions';
 import { Markdown } from '../markdown';
 
 // Fences render through ArtifactFenceRenderer, which resolves failure notes via use-intl.
@@ -211,6 +212,76 @@ it('prevents navigation for fragment links with no resolvable target', () => {
   const link = getByRole('link', { name: 'missing' });
   expect(link.getAttribute('target')).toBeNull();
   expect(fireEvent.click(link)).toBe(false);
+});
+
+it('prefixes external links with a favicon and keeps anchor semantics', () => {
+  const { getByRole } = render(
+    <Markdown>{'[Wiki](https://en.wikipedia.org/wiki/Arknights)'}</Markdown>,
+  );
+  const link = getByRole('link', { name: 'Wiki' });
+  expect(link.getAttribute('target')).toBe('_blank');
+  expect(link.getAttribute('rel')).toBe('noreferrer');
+  expect(link.querySelector('img')?.getAttribute('src')).toBe(
+    'https://www.google.com/s2/favicons?domain=en.wikipedia.org&sz=32',
+  );
+});
+
+// The chip renders only if the plugin:// href survives Streamdown's sanitize pass — this also
+// pins the extended sanitize schema in createMarkdownRehypePlugins.
+it('renders plugin mentions as inert chips', () => {
+  const { getByText, queryByRole } = render(
+    <Markdown>{'[@Computer](plugin://computer-use@openai-bundled)'}</Markdown>,
+  );
+  expect(queryByRole('link')).toBeNull();
+  expect(queryByRole('button')).toBeNull();
+  const chip = getByText('@Computer').closest('[data-slot="badge"]');
+  expect(chip).not.toBeNull();
+  expect(chip?.getAttribute('title')).toBe('computer-use@openai-bundled');
+});
+
+it('opens file mentions through the artifact host actions, decoded and line-stripped', () => {
+  const openFile = vi.fn();
+  const { getByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'[main.ts:12](/Users/z/My%20Src/main.ts:12)'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
+  );
+  const chip = getByRole('button', { name: 'main.ts:12' });
+  fireEvent.click(chip);
+  expect(openFile).toHaveBeenCalledWith('/Users/z/My Src/main.ts');
+});
+
+it('renders file mentions as inert chips when no host wires a viewer', () => {
+  const { getByText, queryByRole } = render(<Markdown>{'[demo.md](/Users/z/demo.md)'}</Markdown>);
+  expect(queryByRole('button')).toBeNull();
+  expect(queryByRole('link')).toBeNull();
+  const chip = getByText('demo.md').closest('[data-slot="badge"]');
+  expect(chip?.getAttribute('title')).toBe('/Users/z/demo.md');
+});
+
+it('renders skill mentions as chips titled by their path', () => {
+  const { getByText } = render(
+    <Markdown>{'[$github:github](/Users/z/.codex/skills/github/SKILL.md)'}</Markdown>,
+  );
+  const chip = getByText('$github:github').closest('[data-slot="badge"]');
+  expect(chip?.getAttribute('title')).toBe('/Users/z/.codex/skills/github/SKILL.md');
+});
+
+it('renders viewer-openable inline code paths as file chips', () => {
+  const openFile = vi.fn();
+  const { getByRole } = render(
+    <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
+      <Markdown>{'Open `docs/guide.md` now.'}</Markdown>
+    </ArtifactHostActionsContext.Provider>,
+  );
+  fireEvent.click(getByRole('button', { name: 'docs/guide.md' }));
+  expect(openFile).toHaveBeenCalledWith('docs/guide.md');
+});
+
+it('keeps non-path inline code as plain code', () => {
+  const { container, queryByRole } = render(<Markdown>{'Call `foo(bar)` next.'}</Markdown>);
+  expect(queryByRole('button')).toBeNull();
+  expect(container.querySelector('code')?.textContent).toBe('foo(bar)');
 });
 
 // Pins the @streamdown/code ↔ shiki contract: the workspace override forces shiki 4 under the

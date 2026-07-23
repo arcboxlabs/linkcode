@@ -21,7 +21,9 @@ import { visit } from 'unist-util-visit';
 import { cn } from '../lib/cn';
 import { ArtifactFenceRenderer } from './artifacts/fence-renderer';
 import { detectInlineFilePath } from './artifacts/file-kind';
-import { artifactNavigationAction, useArtifactHostActions } from './artifacts/host-actions';
+import { LinkChip } from './link-chip';
+import { Favicon } from './link-icon';
+import { linkTargetFor } from './link-target';
 import { useSmoothText } from './smooth-text-controller';
 
 const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
@@ -52,33 +54,21 @@ const scopeFragmentIdentifiers: Plugin<[ScopeFragmentIdentifiersOptions], Root> 
     });
   };
 
-/** Inline code, upgraded to a file link when the span is a viewer-openable path and the host
- * wires a matching action (video → browser preview, else the file viewer); degrades to plain
- * code everywhere else. */
+/** Inline code, upgraded to the shared file chip when the span is a viewer-openable path
+ * (LinkChip resolves opening — video → browser preview, else the file viewer — and stays an
+ * inert chip when the host wires nothing); plain code everywhere else. */
 function InlineCode({
   className,
   children,
   node: _node,
   ...rest
 }: React.ComponentProps<'code'> & { node?: unknown }): React.ReactNode {
-  const actions = useArtifactHostActions();
   const path = typeof children === 'string' ? detectInlineFilePath(children) : null;
-  const onOpen =
-    path === null ? undefined : artifactNavigationAction(actions, { kind: 'file', path });
-
-  if (onOpen) {
+  if (path !== null) {
     return (
-      <button
-        type="button"
-        className={cn(
-          INLINE_CODE_CLASS,
-          'cursor-pointer underline decoration-dotted underline-offset-2 hover:bg-accent',
-          className,
-        )}
-        onClick={onOpen}
-      >
+      <LinkChip className={className} target={{ kind: 'file', path }}>
         {children}
-      </button>
+      </LinkChip>
     );
   }
   return (
@@ -204,11 +194,23 @@ function MarkdownLink({
       />
     );
   }
+  const target = linkTargetFor(href);
+  // Mention links (plugin/skill/file) render as chips, never anchors: an absolute-path or
+  // plugin href reaching native navigation would 404 the SPA or leak to the OS.
+  if (target !== null && target.kind !== 'web') {
+    return (
+      <LinkChip className={className} target={target}>
+        {children}
+      </LinkChip>
+    );
+  }
+
   return (
     <a
       {...anchorProps}
       className={cn('text-primary underline underline-offset-2 hover:opacity-80', className)}
     >
+      {target === null ? null : <Favicon hostname={target.hostname} className="me-1" />}
       {children}
     </a>
   );
@@ -365,11 +367,35 @@ type RehypePlugins = NonNullable<StreamdownProps['rehypePlugins']>;
 const defaultRehypePluginNames = Object.keys(defaultRehypePlugins);
 const rawRehypePluginIndex = defaultRehypePluginNames.indexOf('raw');
 
+interface SanitizeSchemaLike {
+  protocols?: { href?: unknown };
+}
+
+/** Streamdown's bundled sanitize schema drops hrefs with unknown protocols; mention links
+ * (`plugin://…`) must survive to MarkdownLink, so the sanitize options tuple is cloned with
+ * the protocol allowed. Absolute-path mentions already pass as relative URLs. */
+function allowMentionLinkProtocols(entry: RehypePlugins[number]): RehypePlugins[number] {
+  const [plugin, schema] = Array.isArray(entry) ? entry : [];
+  const protocols = (schema as SanitizeSchemaLike | undefined)?.protocols;
+  const href = protocols?.href;
+  if (plugin === undefined || !Array.isArray(href)) {
+    throw new Error('Streamdown sanitize schema changed shape; mention links would be stripped');
+  }
+  return [
+    plugin,
+    { ...(schema as SanitizeSchemaLike), protocols: { ...protocols, href: [...href, 'plugin'] } },
+  ];
+}
+
+const defaultRehypePluginValues = Object.values(defaultRehypePlugins).map((entry, index) =>
+  defaultRehypePluginNames[index] === 'sanitize' ? allowMentionLinkProtocols(entry) : entry,
+);
+
 function createMarkdownRehypePlugins(scopePrefix: string): RehypePlugins {
   if (rawRehypePluginIndex < 0) {
     throw new Error('Streamdown raw HTML parsing is required for Markdown heading anchors');
   }
-  const defaults = Object.values(defaultRehypePlugins);
+  const defaults = defaultRehypePluginValues;
   const scopePlugin: RehypePlugins[number] = [scopeFragmentIdentifiers, { prefix: scopePrefix }];
   return [
     ...defaults.slice(0, rawRehypePluginIndex + 1),
