@@ -25,14 +25,38 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      # Execute release policy from the same protected master SHA that CI tested, never from a
-      # moving checkout. The workflow_run event itself always uses the default-branch workflow.
-      - name: Checkout tested release automation
+      # workflow_run is privileged, so only check out the protected default branch. The next step
+      # proves this script is byte-identical to the policy included in the CI-tested merge SHA.
+      - name: Checkout release automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: master
           persist-credentials: false
           sparse-checkout: .github/scripts
+
+      - name: Verify release automation was CI-tested
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const path = '.github/scripts/release-automation.cjs'
+            const read = async (ref) => {
+              const response = await github.rest.repos.getContent({
+                ...context.repo,
+                path,
+                ref,
+              })
+              return response.data.sha
+            }
+            const [testedBlob, currentBlob] = await Promise.all([
+              read(process.env.TESTED_SHA),
+              read('master'),
+            ])
+            if (currentBlob !== testedBlob) {
+              throw new Error(`${path} changed after CI-tested release candidate ${process.env.TESTED_SHA}`)
+            }
 
       - name: Mint release bot token
         id: release-token
