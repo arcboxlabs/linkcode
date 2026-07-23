@@ -31,7 +31,12 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
+import {
+  AGENT_INPUT_CAPABILITIES,
+  mcpPluginServerName,
+  normalizeCwdKey,
+  textBlock,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -1498,17 +1503,32 @@ function applyPluginConfigSet(current: PluginConfig, patch: PluginConfigSet): Pl
     }
   }
   let customServers = structuredClone(current.customServers);
+  // Faithful mirror of the engine's assertServerNameAvailable: a custom server name must not
+  // collide with the catalog or another custom server (both are MCP injection keys).
+  const assertNameFree = (name: string, selfId: string): void => {
+    const catalogNames = MOCK_PLUGIN_CATALOG.flatMap((descriptor) =>
+      descriptor.servers.map((server) => mcpPluginServerName(server)),
+    );
+    if (catalogNames.includes(name)) {
+      throw new Error(`Custom MCP server name collides with a built-in server: ${name}`);
+    }
+    if (customServers.some((entry) => entry.id !== selfId && entry.server.name === name)) {
+      throw new Error(`Custom MCP server name already in use: ${name}`);
+    }
+  };
   for (const operation of patch.customServerOperations ?? []) {
     switch (operation.type) {
       case 'add':
         if (customServers.some((entry) => entry.id === operation.server.id)) {
           throw new Error(`Custom MCP server already exists: ${operation.server.id}`);
         }
+        assertNameFree(operation.server.server.name, operation.server.id);
         customServers.push(structuredClone(operation.server));
         break;
       case 'update': {
         const existing = customServers.find((entry) => entry.id === operation.id);
         if (!existing) throw new Error(`Custom MCP server does not exist: ${operation.id}`);
+        if (operation.server) assertNameFree(operation.server.name, operation.id);
         customServers = customServers.map((entry) =>
           entry.id === operation.id
             ? {

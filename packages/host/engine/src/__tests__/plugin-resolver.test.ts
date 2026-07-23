@@ -266,6 +266,34 @@ describe('resolvePluginServers', () => {
     ]);
   });
 
+  it('never injects two same-named servers even if config holds a duplicate custom name', () => {
+    // A bad-state config (hand-edited / restored) that the write-time guard never saw.
+    const resolved = resolvePluginServers(
+      OPTIONS,
+      {
+        units: [],
+        serviceBindings: {},
+        connectors: [],
+        customServers: [
+          {
+            id: 'cs1',
+            enabled: true,
+            server: { type: 'stdio', name: 'dup', command: 'first' },
+          },
+          {
+            id: 'cs2',
+            enabled: true,
+            server: { type: 'stdio', name: 'dup', command: 'second' },
+          },
+        ],
+      },
+      PRESET_CATALOG,
+    );
+
+    const dupes = resolved.options.mcpServers?.filter((server) => server.name === 'dup') ?? [];
+    expect(dupes).toEqual([{ type: 'stdio', name: 'dup', command: 'first' }]);
+  });
+
   it('lets a client-supplied server win by name over a custom server', () => {
     const clientServer = {
       type: 'http' as const,

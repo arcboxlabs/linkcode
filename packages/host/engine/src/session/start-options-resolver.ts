@@ -166,9 +166,13 @@ export function resolvePluginServers(
 
   // User-imported servers are opaque to LinkCode: no service/binding, secrets already inline. They
   // inject as-is, sharing only the capability gate and client-name precedence with catalog servers.
+  // Names already taken (client, catalog plugin servers, an earlier custom entry) are skipped so a
+  // bad-state config.json can never silently clobber another server when folded into the adapter's
+  // name-keyed MCP config — write-time validation blocks this in-app, this is the last-resort guard.
+  const takenNames = new Set([...clientNames, ...pluginServers.map((server) => server.name)]);
   for (const custom of config.customServers) {
     if (!custom.enabled) continue;
-    if (clientNames.has(custom.server.name)) continue;
+    if (takenNames.has(custom.server.name)) continue;
     if (!AGENT_MCP_CAPABLE[options.kind]) {
       warnings.push({
         type: 'plugin-warning',
@@ -177,6 +181,7 @@ export function resolvePluginServers(
       });
       continue;
     }
+    takenNames.add(custom.server.name);
     pluginServers.push(custom.server);
   }
 

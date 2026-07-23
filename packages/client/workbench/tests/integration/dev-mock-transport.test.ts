@@ -258,6 +258,27 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('rejects a custom server whose name collides with a catalog server (engine parity)', async () => {
+    const client = await connectedClient();
+    // `linkcode-github` is the catalog server name — the daemon rejects it; the mock must too.
+    await expect(
+      client.setPluginConfig({
+        customServerOperations: [
+          {
+            type: 'add',
+            server: {
+              id: 'cs-dupe',
+              enabled: true,
+              server: { type: 'stdio', name: 'linkcode-github', command: 'x' },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect((await client.getPluginConfig()).customServers).toEqual([]);
+    client.dispose();
+  });
+
   it('applies a unit toggle in isolation without touching bindings or connectors', async () => {
     const client = await connectedClient();
     await client.setPluginConfig({
