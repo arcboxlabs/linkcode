@@ -510,7 +510,6 @@ export const en = {
     },
     content: {
       audio: '[audio]',
-      resourceLink: '[resource: {name}]',
       resource: '[resource]',
     },
     artifact: {
