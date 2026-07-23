@@ -11,7 +11,7 @@ use std::sync::mpsc::Sender;
 use serde_json::{Value, json};
 
 use crate::OutMsg;
-use crate::rpc::{ButtonKind, ErrorCode, OpError, TouchPhase};
+use crate::rpc::{ButtonKind, ErrorCode, OpError, RotateOrientation, TouchPhase};
 
 fn unsupported() -> OpError {
     OpError::new(
@@ -21,7 +21,9 @@ fn unsupported() -> OpError {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
+pub use imp::{
+    available, button, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+};
 
 #[cfg(not(target_os = "macos"))]
 mod stubs {
@@ -57,6 +59,9 @@ mod stubs {
     pub fn button(_udid: &str, _button: ButtonKind) -> Result<Value, OpError> {
         Err(unsupported())
     }
+    pub fn rotate(_udid: &str, _orientation: RotateOrientation) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
     pub fn key(_udid: &str, _usage: u32, _modifiers: &[u32]) -> Result<Value, OpError> {
         Err(unsupported())
     }
@@ -76,7 +81,9 @@ mod stubs {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub use stubs::{available, button, key, pinch, stream_start, stream_stop, swipe, tap, touch};
+pub use stubs::{
+    available, button, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+};
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -251,6 +258,28 @@ mod imp {
             Ok(json!({}))
         } else {
             Err(OpError::new(ErrorCode::SimctlFailed, "button press failed"))
+        }
+    }
+
+    /// Rotate the interface orientation. Unlike the HID ops this needs no warmed `Input` — it is a
+    /// mach GSEvent to the guest's `PurpleWorkspacePort` — so it only resolves the `SimDevice`.
+    pub fn rotate(udid: &str, orientation: RotateOrientation) -> Result<Value, OpError> {
+        let device = SimDevice::resolve(udid).ok_or_else(|| {
+            OpError::new(ErrorCode::SimctlFailed, format!("device {udid} not found"))
+        })?;
+        let orientation = match orientation {
+            RotateOrientation::Portrait => private::Orientation::Portrait,
+            RotateOrientation::PortraitUpsideDown => private::Orientation::PortraitUpsideDown,
+            RotateOrientation::LandscapeLeft => private::Orientation::LandscapeLeft,
+            RotateOrientation::LandscapeRight => private::Orientation::LandscapeRight,
+        };
+        if device.set_orientation(orientation) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(
+                ErrorCode::SimctlFailed,
+                "orientation change failed (device not booted, or port unvended)",
+            ))
         }
     }
 

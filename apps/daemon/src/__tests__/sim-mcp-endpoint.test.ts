@@ -43,6 +43,7 @@ function fakeBackend(): SimulatorBackend {
     key: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
+    rotate: vi.fn(asyncNoop),
     streamStart: vi.fn(() =>
       Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
     ),
@@ -89,6 +90,7 @@ describe('SimulatorMcpEndpoint', () => {
       'sim_launch',
       'sim_list_devices',
       'sim_open_url',
+      'sim_rotate',
       'sim_screenshot',
       'sim_shutdown',
       'sim_terminate',

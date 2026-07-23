@@ -28,6 +28,7 @@ type SimulatorRequest = Extract<
       | 'simulator.paste'
       | 'simulator.swipe'
       | 'simulator.button'
+      | 'simulator.rotate'
       | 'simulator.key'
       | 'simulator.stream.start'
       | 'simulator.stream.stop';
@@ -225,6 +226,13 @@ export class SimulatorRequestHandler {
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.button', 'Failed to press button', async () => {
             await simulators.button(payload.sessionId, payload.udid, payload.button);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.rotate':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.rotate', 'Failed to rotate device', async () => {
+            await simulators.rotate(payload.sessionId, payload.udid, payload.orientation);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );

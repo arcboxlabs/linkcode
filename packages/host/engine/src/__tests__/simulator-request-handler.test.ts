@@ -42,6 +42,7 @@ function fakeBackend() {
     key: vi.fn(asyncNoop),
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
+    rotate: vi.fn(asyncNoop),
     streamStart: vi.fn(() =>
       Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
     ),
@@ -176,6 +177,26 @@ describe('simulator wire requests', () => {
       url: 'https://example.com',
     });
     expect(h.reply('steal')).toMatchObject({ kind: 'request.failed', code: 'conflict' });
+    await h.engine.stop();
+  });
+
+  it('routes a rotate request through the wire router to the backend', async () => {
+    const backend = fakeBackend();
+    const h = harness(backend);
+    await h.engine.start();
+    const s1 = await h.startSession('s1');
+
+    // Guards the router's simulator group: if `simulator.rotate` is not enumerated there, the
+    // request falls through to a no-op and this reply never arrives.
+    await h.inject({
+      kind: 'simulator.rotate',
+      clientReqId: 'rot',
+      sessionId: s1,
+      udid: 'U-1',
+      orientation: 'landscapeRight',
+    });
+    expect(h.reply('rot')).toMatchObject({ kind: 'request.succeeded' });
+    expect(backend.rotate).toHaveBeenCalledWith('U-1', 'landscapeRight');
     await h.engine.stop();
   });
 

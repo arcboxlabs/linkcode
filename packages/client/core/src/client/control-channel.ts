@@ -37,6 +37,7 @@ import type {
   SessionRecord,
   SimulatorDevice,
   SimulatorImageFormat,
+  SimulatorOrientation,
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
@@ -808,6 +809,20 @@ export class ControlChannel {
       sessionId,
       udid,
       button,
+    }));
+  }
+
+  simulatorRotate(
+    sessionId: SessionId,
+    udid: string,
+    orientation: SimulatorOrientation,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.rotate',
+      clientReqId,
+      sessionId,
+      udid,
+      orientation,
     }));
   }
 

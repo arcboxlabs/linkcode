@@ -9,11 +9,13 @@ pub(crate) mod debug;
 mod device;
 mod framework;
 mod input;
+mod orientation;
 mod screen;
 mod vt;
 
 pub use device::SimDevice;
 pub use input::{Button, Input, Phase};
+pub use orientation::Orientation;
 pub use screen::{Screen, bench_encode};
 pub use vt::VtEncoder;
 

@@ -385,6 +385,7 @@ export const en = {
       simulatorStreamFailed: 'Screen stream failed to start',
       simulatorRetry: 'Retry',
       simulatorBusy: 'Device is in use by another thread',
+      simulatorRotate: 'Rotate',
       simulatorHome: 'Home',
       simulatorLock: 'Lock screen',
     },

@@ -3,6 +3,7 @@ import { SessionIdSchema } from '../model/primitives';
 import {
   SimulatorDeviceSchema,
   SimulatorImageFormatSchema,
+  SimulatorOrientationSchema,
   SimulatorStatusSchema,
   SimulatorStreamCodecSchema,
   SimulatorTouchPhaseSchema,
@@ -181,6 +182,15 @@ export const simulatorWireVariants = [
     sessionId: SessionIdSchema,
     udid,
     button: SimulatorButtonSchema,
+  }),
+  /** Rotate the device's interface orientation (a GraphicsServices GSEvent, not HID). A guest app
+   * that doesn't support the target orientation silently keeps its frame — not observable here. */
+  z.object({
+    kind: z.literal('simulator.rotate'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    orientation: SimulatorOrientationSchema,
   }),
   /** One keyboard key press: an HID usage on page 7 with modifier usages (`0xE0..`) held
    * around it. Clients decompose typed characters (US layout) before sending. */

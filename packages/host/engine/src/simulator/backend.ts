@@ -33,6 +33,13 @@ export type SimulatorImageFormat = 'jpeg' | 'png';
 /** A hardware button the private HID layer can press. */
 export type SimulatorButton = 'home' | 'lock';
 
+/** Interface orientation for a rotate command (matches `UIInterfaceOrientation`). */
+export type SimulatorOrientation =
+  | 'portrait'
+  | 'portraitUpsideDown'
+  | 'landscapeLeft'
+  | 'landscapeRight';
+
 /** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
 export type SimulatorTouchPhase = 'down' | 'move' | 'up';
 
@@ -100,6 +107,8 @@ export interface SimulatorBackend {
   swipe(udid: string, from: SimulatorPoint, to: SimulatorPoint, durationMs?: number): Promise<void>;
   /** Press a hardware button (private HID; macOS only). */
   button(udid: string, button: SimulatorButton): Promise<void>;
+  /** Rotate the interface orientation (GraphicsServices GSEvent; macOS only). */
+  rotate(udid: string, orientation: SimulatorOrientation): Promise<void>;
   /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
   key(udid: string, usage: number, modifiers: number[]): Promise<void>;
   /** Start streaming `udid`'s framebuffer; frames arrive via {@link onFrame} listeners. */

@@ -90,6 +90,12 @@ pub enum Op {
     },
     /// Press a hardware button (private API; P1).
     Button { udid: String, button: ButtonKind },
+    /// Rotate the device's interface orientation (private API; a GraphicsServices
+    /// `PurpleWorkspacePort` GSEvent, not an HID event).
+    Rotate {
+        udid: String,
+        orientation: RotateOrientation,
+    },
     /// Press one keyboard key: an HID usage on page 7 with modifier usages (`0xE0..`) bracketed
     /// around it (private API; P1). Key order is preserved (handled inline like `touch`).
     Key {
@@ -131,6 +137,16 @@ fn default_scale() -> f64 {
 pub enum ButtonKind {
     Home,
     Lock,
+}
+
+/// Interface orientation for `rotate`; maps 1:1 onto the private `Orientation`.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RotateOrientation {
+    Portrait,
+    PortraitUpsideDown,
+    LandscapeLeft,
+    LandscapeRight,
 }
 
 /// One phase of a streamed touch gesture.
