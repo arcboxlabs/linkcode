@@ -298,11 +298,29 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
   }
 }
 
+/** MCP tool calls are small JSON envelopes; cap the body so a buggy or hostile client on the
+ * loopback endpoint can't grow it without bound and exhaust memory. */
+const MAX_MCP_BODY_BYTES = 4 * 1024 * 1024;
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    let size = 0;
+    let aborted = false;
+    req.on('data', (chunk: Buffer) => {
+      if (aborted) return;
+      size += chunk.length;
+      if (size > MAX_MCP_BODY_BYTES) {
+        aborted = true;
+        req.destroy();
+        reject(new Error('MCP request body exceeds the size limit'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!aborted) resolve(Buffer.concat(chunks).toString('utf8'));
+    });
     req.on('error', reject);
   });
 }

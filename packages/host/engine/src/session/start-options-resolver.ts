@@ -53,6 +53,11 @@ export class SessionStartOptionsResolver {
     if (!this.simulatorMcp || !MCP_CAPABLE_AGENT_KINDS.has(options.kind)) return options;
     const endpoint = this.simulatorMcp.endpointFor(sessionId);
     if (!endpoint) return options;
-    return { ...options, mcpServers: [...(options.mcpServers ?? []), endpoint] };
+    const existing = options.mcpServers ?? [];
+    // Never shadow a user-configured server of the same name: many SDKs key servers by name and let
+    // the last one win, so appending ours would silently replace theirs. If the user already claims
+    // the name, leave their config untouched (the token is released with the session).
+    if (existing.some((server) => server.name === endpoint.name)) return options;
+    return { ...options, mcpServers: [...existing, endpoint] };
   }
 }

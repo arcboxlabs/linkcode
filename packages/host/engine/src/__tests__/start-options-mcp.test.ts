@@ -46,6 +46,24 @@ describe('simulator MCP injection at session start', () => {
     expect(resolved.mcpServers).toEqual([explicit, ENDPOINT]);
   });
 
+  it('does not shadow a user server that already claims the injected name', async () => {
+    const userOwned: McpServer = {
+      type: 'http',
+      name: 'linkcode-sim',
+      url: 'http://127.0.0.1:9/u',
+    };
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      provider(ENDPOINT),
+    );
+    const resolved = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo', mcpServers: [userOwned] }, SESSION),
+    );
+    // The user's server keeps the name; ours is not appended over it.
+    expect(resolved.mcpServers).toEqual([userOwned]);
+  });
+
   it('never injects for pi, and copes with an absent capability', async () => {
     const withProvider = new SessionStartOptionsResolver(
       new InMemoryProviderConfigStore(),
