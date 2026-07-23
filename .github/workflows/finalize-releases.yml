@@ -138,7 +138,9 @@ jobs:
             exit 1
           fi
 
-      - name: Verify tested release candidate is still master
+      # release-please reads these files from current master even when it releases an older, tested
+      # release-PR merge SHA. Ordinary commits may advance master; release policy must not drift.
+      - name: Verify tested release configuration is still current
         if: ${{ steps.candidate.outputs.state == 'pending' }}
         env:
           GH_TOKEN: ${{ steps.release-token.outputs.token }}
@@ -146,13 +148,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          master_sha="$(
-            gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/master" --jq .object.sha
-          )"
-          if [ "$master_sha" != "$TESTED_SHA" ]; then
-            echo "::error::master advanced to ${master_sha}; refusing to release tested ${TESTED_SHA}"
-            exit 1
-          fi
+          for path in release-please-config.json .release-please-manifest.json; do
+            tested_blob="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/contents/${path}" \
+                -f "ref=${TESTED_SHA}" --jq .sha
+            )"
+            current_blob="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/contents/${path}" \
+                -f ref=master --jq .sha
+            )"
+
+            if [ "$current_blob" != "$tested_blob" ]; then
+              echo "::error::${path} changed after CI-tested release candidate ${TESTED_SHA}"
+              exit 1
+            fi
+          done
 
       # release-please recovers the version and notes from a merged release PR. Configured Releases
       # stay draft, so users never see a release before its signed artifacts have been verified.
