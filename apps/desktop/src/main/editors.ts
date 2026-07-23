@@ -32,6 +32,20 @@ type EditorTarget =
   | { kind: 'executable'; file: string }
   | { kind: 'mac-app'; bundle: string; label: string };
 
+/**
+ * A JetBrains IDE. All open a directory as a project; their bundle is `<label>.app` and their CLI
+ * launcher (installed by Toolbox into `~/.local/bin`, or via "Create Command-line Launcher") is
+ * `bin`. No `windowsExe`: the standalone Windows installer nests the binary under a version-stamped
+ * directory this model can't address, so Windows detection is deliberately left uncovered rather
+ * than guessed.
+ */
+function jetBrains(id: string, label: string, bin: string): EditorCandidate {
+  return { id, label, cli: bin, macApp: `${label}.app` };
+}
+
+// Editor coverage follows vitejs/launch-editor's editor-info tables (MIT), adapted to this
+// install-probing model. Terminal editors (vim/emacs) and EOL apps (Atom/Brackets) are excluded:
+// the menu opens a workspace folder in a GUI editor, which neither fits.
 const EDITOR_CANDIDATES: EditorCandidate[] = [
   {
     id: 'vscode',
@@ -48,6 +62,13 @@ const EDITOR_CANDIDATES: EditorCandidate[] = [
     windowsExe: join('Microsoft VS Code Insiders', 'Code - Insiders.exe'),
   },
   {
+    id: 'vscodium',
+    label: 'VSCodium',
+    cli: 'codium',
+    macApp: 'VSCodium.app',
+    windowsExe: join('VSCodium', 'VSCodium.exe'),
+  },
+  {
     id: 'cursor',
     label: 'Cursor',
     cli: 'cursor',
@@ -61,7 +82,20 @@ const EDITOR_CANDIDATES: EditorCandidate[] = [
     macApp: 'Windsurf.app',
     windowsExe: join('Windsurf', 'Windsurf.exe'),
   },
-  { id: 'zed', label: 'Zed', cli: 'zed', macApp: 'Zed.app', windowsExe: join('Zed', 'zed.exe') },
+  {
+    id: 'trae',
+    label: 'Trae',
+    cli: 'trae',
+    macApp: 'Trae.app',
+    windowsExe: join('Trae', 'Trae.exe'),
+  },
+  {
+    id: 'antigravity',
+    label: 'Antigravity',
+    cli: 'antigravity',
+    macApp: 'Antigravity.app',
+    windowsExe: join('Antigravity', 'Antigravity.exe'),
+  },
   {
     id: 'sublime-text',
     label: 'Sublime Text',
@@ -69,6 +103,15 @@ const EDITOR_CANDIDATES: EditorCandidate[] = [
     macApp: 'Sublime Text.app',
     windowsExe: join('Sublime Text', 'sublime_text.exe'),
   },
+  { id: 'zed', label: 'Zed', cli: 'zed', macApp: 'Zed.app', windowsExe: join('Zed', 'zed.exe') },
+  jetBrains('intellij-idea', 'IntelliJ IDEA', 'idea'),
+  jetBrains('pycharm', 'PyCharm', 'pycharm'),
+  jetBrains('webstorm', 'WebStorm', 'webstorm'),
+  jetBrains('phpstorm', 'PhpStorm', 'phpstorm'),
+  jetBrains('goland', 'GoLand', 'goland'),
+  jetBrains('clion', 'CLion', 'clion'),
+  jetBrains('rubymine', 'RubyMine', 'rubymine'),
+  jetBrains('rider', 'Rider', 'rider'),
 ];
 
 /** Roots Windows installers target, in the order they are probed. */

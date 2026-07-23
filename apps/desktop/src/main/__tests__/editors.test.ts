@@ -59,4 +59,17 @@ describe('editorTargets', () => {
   it('yields nothing for an editor with no target on the platform', () => {
     expect(editorTargets({ id: 'x', label: 'X' }, 'darwin')).toEqual([]);
   });
+
+  // JetBrains entries carry no windowsExe by design, so Windows detection is a no-op for them.
+  it('yields nothing on Windows for a cli-and-bundle-only editor', () => {
+    vi.stubEnv('PATH', String.raw`C:\bin`);
+    vi.stubEnv('LOCALAPPDATA', String.raw`C:\Users\dev\AppData\Local`);
+    const jetBrainsShaped = {
+      id: 'webstorm',
+      label: 'WebStorm',
+      cli: 'webstorm',
+      macApp: 'WebStorm.app',
+    };
+    expect(editorTargets(jetBrainsShaped, 'win32')).toEqual([]);
+  });
 });
