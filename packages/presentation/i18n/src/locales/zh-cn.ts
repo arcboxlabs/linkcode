@@ -569,6 +569,7 @@ export const zhCN = {
       about: '关于',
       providers: 'Providers',
       agents: '智能体',
+      plugins: '工具',
       imChannel: 'IM 渠道',
     },
     historyImport: {
@@ -793,6 +794,26 @@ export const zhCN = {
       },
     },
     plugins: {
+      hint: '为智能体配置可选的 MCP 工具。凭证只保存在本机 daemon 中。',
+      loadError: '无法加载工具设置：{message}',
+      unitsTitle: '可用能力',
+      enabledLabel: '启用{name}',
+      status: {
+        ready: '可用',
+        partial: '部分可用',
+        unavailable: '不可用',
+        disabled: '已停用',
+      },
+      serverStatus: {
+        ready: '就绪',
+        satisfied: '已连接',
+        'expired-credential': '凭证已过期',
+        'unsatisfied-binding': '未连接服务',
+        'broker-unavailable': '云端服务尚未开放',
+      },
+      serviceName: {
+        github: 'GitHub',
+      },
       units: {
         githubRead: {
           label: 'GitHub 只读能力',

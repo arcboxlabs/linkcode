@@ -580,6 +580,7 @@ export const en = {
       about: 'About',
       providers: 'Providers',
       agents: 'Agents',
+      plugins: 'Tools',
       imChannel: 'Messaging',
     },
     historyImport: {
@@ -814,6 +815,26 @@ export const en = {
       },
     },
     plugins: {
+      hint: 'Configure optional MCP tools for your agents. Credentials stay in the local daemon.',
+      loadError: 'Could not load tool settings: {message}',
+      unitsTitle: 'Available capabilities',
+      enabledLabel: 'Enable {name}',
+      status: {
+        ready: 'Ready',
+        partial: 'Partially available',
+        unavailable: 'Unavailable',
+        disabled: 'Off',
+      },
+      serverStatus: {
+        ready: 'Ready',
+        satisfied: 'Connected',
+        'expired-credential': 'Credential expired',
+        'unsatisfied-binding': 'Service not connected',
+        'broker-unavailable': 'Cloud service not available yet',
+      },
+      serviceName: {
+        github: 'GitHub',
+      },
       units: {
         githubRead: {
           label: 'GitHub read-only tools',
