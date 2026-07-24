@@ -62,7 +62,7 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [{ kind: 'skill', name: 'latex', enabled: true }],
-        assets: ['tool:tectonic'],
+        assets: [{ id: 'tool:tectonic', versionRange: '>=0.16.0 <0.17.0' }],
         managementCapabilities: {
           install: true,
           uninstall: true,
@@ -74,7 +74,7 @@ describe('PluginSchema', () => {
     ).toMatchObject({
       provider: 'codex',
       installations: [],
-      assets: ['tool:tectonic'],
+      assets: [{ id: 'tool:tectonic', versionRange: '>=0.16.0 <0.17.0' }],
     });
   });
 
@@ -109,7 +109,51 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [],
-        assets: ['agent:codex'],
+        assets: [{ id: 'agent:codex' }],
+        managementCapabilities: {
+          install: true,
+          uninstall: true,
+          update: false,
+          enable: false,
+          disable: false,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the former string shorthand for tool requirements', () => {
+    expect(
+      PluginSchema.safeParse({
+        provider: 'codex',
+        id: 'legacy@openai',
+        name: 'legacy',
+        keywords: [],
+        availability: 'available',
+        installations: [],
+        components: [],
+        assets: ['tool:tectonic'],
+        managementCapabilities: {
+          install: true,
+          uninstall: true,
+          update: false,
+          enable: false,
+          disable: false,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an empty version compatibility range', () => {
+    expect(
+      PluginSchema.safeParse({
+        provider: 'codex',
+        id: 'invalid-range@openai',
+        name: 'invalid-range',
+        keywords: [],
+        availability: 'available',
+        installations: [],
+        components: [],
+        assets: [{ id: 'tool:tectonic', versionRange: '' }],
         managementCapabilities: {
           install: true,
           uninstall: true,

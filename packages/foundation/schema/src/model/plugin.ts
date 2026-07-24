@@ -111,6 +111,16 @@ export const PluginLinksSchema = z.object({
 });
 export type PluginLinks = z.infer<typeof PluginLinksSchema>;
 
+/**
+ * A plugin's compatibility requirement on a trusted managed tool. The host selects the exact
+ * version; `versionRange` only gates compatibility and never instructs the host what to download.
+ */
+export const PluginAssetRequirementSchema = z.object({
+  id: ManagedToolAssetIdSchema,
+  versionRange: z.string().min(1).optional(),
+});
+export type PluginAssetRequirement = z.infer<typeof PluginAssetRequirementSchema>;
+
 const pluginFields = {
   /** Opaque provider-native id; pair with `provider` for identity. */
   id: z.string().min(1),
@@ -130,10 +140,10 @@ const pluginFields = {
   installations: z.array(PluginInstallationSchema),
   components: z.array(PluginComponentSchema),
   /**
-   * Managed runtime dependencies required by this plugin (for example `tool:tectonic`). Plugins
-   * declare only trusted catalog ids; download URLs, versions, and integrity stay host-owned.
+   * Managed runtime dependencies required by this plugin. Plugins declare trusted catalog ids and
+   * optional compatibility ranges; exact versions, download URLs, and integrity stay host-owned.
    */
-  assets: z.array(ManagedToolAssetIdSchema),
+  assets: z.array(PluginAssetRequirementSchema),
   managementCapabilities: PluginManagementCapabilitiesSchema,
 } as const;
 
