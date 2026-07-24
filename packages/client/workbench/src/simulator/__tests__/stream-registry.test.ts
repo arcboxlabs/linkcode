@@ -104,7 +104,7 @@ describe('simulator stream registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
 
-  it('restarts a live stream with new options and no-ops on an unchanged retune', async () => {
+  it('retunes a live stream in place with new options and no-ops on an unchanged retune', async () => {
     const client = createFakeClient();
     const lease = acquireSimulatorStream(client, 'U-1', S1, OPTS);
     const phases: string[] = [];
@@ -112,21 +112,20 @@ describe('simulator stream registry', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(lease.getSnapshot().phase).toBe('streaming');
 
-    // Same options: no stop/start.
+    // Same options: no extra start.
     setSimulatorStreamOptions(client, 'U-1', OPTS);
-    expect(client.stopped).toEqual([]);
     expect(client.started).toHaveLength(1);
 
-    // Changed options: stop then restart, and the new stream carries them.
+    // Changed options: a second start with the new options reconfigures the running stream in place
+    // — no stop, and the phase never leaves `streaming` (the picture doesn't blip).
     const next: SimulatorStreamOptions = { fps: 30, scale: 0.5, codec: 'jpeg' };
     setSimulatorStreamOptions(client, 'U-1', next);
-    expect(lease.getSnapshot().phase).toBe('starting');
     await vi.advanceTimersByTimeAsync(0);
-    expect(lease.getSnapshot().phase).toBe('streaming');
-    expect(client.stopped).toEqual([{ sessionId: S1, udid: 'U-1' }]);
+    expect(client.stopped).toEqual([]);
     expect(client.started).toHaveLength(2);
     expect(client.started[1].options).toEqual(next);
-    expect(phases).toEqual(['streaming', 'starting', 'streaming']);
+    expect(lease.getSnapshot().phase).toBe('streaming');
+    expect(phases).toEqual(['streaming']);
 
     lease.release();
     await vi.advanceTimersByTimeAsync(1000);

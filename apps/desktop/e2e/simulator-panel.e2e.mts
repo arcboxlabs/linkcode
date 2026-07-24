@@ -29,7 +29,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 52;
+const WIRE_VERSION = 53;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -341,6 +341,40 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       await win.getByRole('button', { name: 'Rotate', exact: true }).click();
       await waitForHashChange(beforeRotate, 'rotating the device');
       console.log('rotate button rotated the device');
+
+      // Live reconfigure (CODE-433): a stream start with new options retunes the running stream in
+      // place. Assert the capture-worker process is NOT respawned (same pid) and the picture keeps
+      // painting — the seamless path the panel's tuning row rides. A start on an already-running
+      // stream is the same wire the panel sends when a dropdown changes.
+      const workerPid = (): string | null => {
+        try {
+          return execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], { encoding: 'utf8' })
+            .trim()
+            .split('\n', 1)[0];
+        } catch {
+          return null;
+        }
+      };
+      const pidBefore = workerPid();
+      if (pidBefore === null) fail('no capture-worker process running before reconfigure');
+      const beforeReconfigure = await canvasHash();
+      // A start on an already-running stream (switching codec here) must retune it, not respawn the
+      // worker: the same pid before and after is the proof it happened in place. The wire reply omits
+      // the sidecar's internal `alreadyStreaming` flag, so the pid is the observable signal.
+      await wireRequest({
+        kind: 'simulator.stream.start',
+        clientReqId: 'e2e-reconfigure',
+        sessionId,
+        udid: bootedUdid,
+        codec: 'jpeg',
+        fps: 30,
+      });
+      await waitForHashChange(beforeReconfigure, 'reconfiguring the stream');
+      const pidAfter = workerPid();
+      if (pidAfter !== pidBefore) {
+        fail(`capture-worker respawned on reconfigure (pid ${pidBefore} → ${pidAfter ?? 'gone'})`);
+      }
+      console.log(`live reconfigure retuned in place (capture-worker pid stable ${pidBefore})`);
 
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });

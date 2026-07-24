@@ -44,7 +44,7 @@ interface RegistryEntry {
   closeTimer: ReturnType<typeof setTimeout> | null;
   snapshot: SimulatorStreamSnapshot;
   listeners: Set<() => void>;
-  /** Parameters the running (or next) stream uses; changing them restarts the stream in place. */
+  /** Parameters the running (or next) stream uses; changing them retunes the stream in place. */
   options: SimulatorStreamOptions;
 }
 
@@ -76,8 +76,8 @@ function startStream(
       if (registry.get(udid) !== entry) return;
       entry.snapshot = { ...entry.snapshot, phase: 'streaming' };
       notify(entry);
-      // A retune that landed mid-start could not restart yet (no stream to stop); do it now.
-      if (!optionsEqual(started, entry.options)) restartStream(client, registry, udid, entry);
+      // A retune that landed mid-start applies now that the stream exists to reconfigure.
+      if (!optionsEqual(started, entry.options)) applyStreamOptions(client, registry, udid, entry);
     })
     .catch(() => {
       if (registry.get(udid) !== entry) return;
@@ -86,23 +86,20 @@ function startStream(
     });
 }
 
-/** Stop then restart a live stream so the sidecar re-parameterizes it (it no-ops a `streamStart`
- * while one already runs). The lease, its listeners, and the frame subscription all survive. */
-function restartStream(
+/** Retune an established stream in place: a `streamStart` on a running stream reconfigures the
+ * daemon-side capture in place (no worker respawn, no visible blip), so the phase stays `streaming`
+ * and only a failure surfaces. */
+function applyStreamOptions(
   client: SimulatorStreamClient,
   registry: Map<string, RegistryEntry>,
   udid: string,
   entry: RegistryEntry,
 ): void {
-  entry.snapshot = { ...entry.snapshot, phase: 'starting' };
-  notify(entry);
-  void client
-    .simulatorStreamStop(entry.snapshot.sessionId, udid)
-    .catch(noop)
-    .finally(() => {
-      if (registry.get(udid) !== entry) return;
-      startStream(client, registry, udid, entry);
-    });
+  void client.simulatorStreamStart(entry.snapshot.sessionId, udid, entry.options).catch(() => {
+    if (registry.get(udid) !== entry) return;
+    entry.snapshot = { ...entry.snapshot, phase: 'failed' };
+    notify(entry);
+  });
 }
 
 /**
@@ -176,9 +173,9 @@ export function peekSimulatorStream(
 }
 
 /**
- * Retune a running device stream. The sidecar cannot re-parameterize a live stream (`streamStart`
- * no-ops once one exists), so a change stops and restarts it in place — the lease, its listeners,
- * and the independent frame subscription all survive; only the daemon stream blips. A no-op when the
+ * Retune a running device stream in place. A `streamStart` on a running stream reconfigures the
+ * daemon-side capture without respawning its worker, so the change is seamless — the lease, its
+ * listeners, and the frame subscription all survive and the picture never blips. A no-op when the
  * options are unchanged or no stream exists (the next {@link acquireSimulatorStream} carries them).
  */
 export function setSimulatorStreamOptions(
@@ -190,7 +187,7 @@ export function setSimulatorStreamOptions(
   const entry = registry?.get(udid);
   if (registry === undefined || entry === undefined || optionsEqual(entry.options, options)) return;
   entry.options = options;
-  // Only an established stream restarts now; a still-starting one adopts the options when its start
+  // Only an established stream retunes now; a still-starting one adopts the options when its start
   // completes (startStream re-checks), and a failed one uses them on the next `restart`.
-  if (entry.snapshot.phase === 'streaming') restartStream(client, registry, udid, entry);
+  if (entry.snapshot.phase === 'streaming') applyStreamOptions(client, registry, udid, entry);
 }
