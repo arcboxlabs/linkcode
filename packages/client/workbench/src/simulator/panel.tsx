@@ -13,16 +13,10 @@ import type {
 } from '@linkcode/ui/shell/simulator';
 import { SimulatorScreen } from '@linkcode/ui/shell/simulator';
 import { Button } from 'coss-ui/components/button';
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from 'coss-ui/components/select';
+import { Select, SelectItem, SelectPopup, SelectPrimitive } from 'coss-ui/components/select';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
-import { RotateCwIcon } from 'lucide-react';
+import { ChevronDownIcon, HouseIcon, LockIcon, RotateCwIcon } from 'lucide-react';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SimulatorStreamLease } from './stream-registry';
@@ -38,6 +32,11 @@ const ROTATE_CYCLE = [
   'portraitUpsideDown',
   'landscapeLeft',
 ] as const satisfies readonly SimulatorOrientation[];
+
+/** Toolbar buttons sit on the fixed-dark stage, so they use fixed neutrals: the ghost variant's
+ * token-based accent hover would flash a light blob there in the light theme. */
+const STAGE_BUTTON_CLASS =
+  'text-neutral-300 hover:bg-white/10 hover:text-white data-pressed:bg-white/10 disabled:opacity-40';
 
 /**
  * The right panel's Simulator section: device picker plus a live, touchable device screen.
@@ -209,12 +208,21 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-border border-b px-2 py-1.5">
-        {deviceItems.length > 0 && udid !== null && (
-          <Select items={deviceItems} value={udid} onValueChange={setSelectedUdid}>
-            <SelectTrigger className="h-7 min-w-0 flex-1" aria-label={t('simulatorSelectDevice')}>
-              <SelectValue />
-            </SelectTrigger>
+      {deviceItems.length > 0 && device !== null && (
+        <div className="flex shrink-0 items-center border-border border-b px-2 py-1.5">
+          <Select items={deviceItems} value={device.udid} onValueChange={setSelectedUdid}>
+            <SelectPrimitive.Trigger
+              aria-label={t('simulatorSelectDevice')}
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="truncate font-medium">{device.name}</span>
+              {device.runtimeName !== undefined && (
+                <span className="truncate text-muted-foreground">{device.runtimeName}</span>
+              )}
+              <SelectPrimitive.Icon>
+                <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              </SelectPrimitive.Icon>
+            </SelectPrimitive.Trigger>
             <SelectPopup>
               {deviceItems.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
@@ -223,35 +231,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               ))}
             </SelectPopup>
           </Select>
-        )}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t('simulatorRotate')}
-            disabled={ownerSessionId === null}
-            onClick={handleRotate}
-          >
-            <RotateCwIcon className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={ownerSessionId === null}
-            onClick={() => pressButton('home')}
-          >
-            {t('simulatorHome')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={ownerSessionId === null}
-            onClick={() => pressButton('lock')}
-          >
-            {t('simulatorLock')}
-          </Button>
         </div>
-      </div>
+      )}
       <div className="relative min-h-0 flex-1">
         {devices !== null && devices.length === 0 && (
           <CenteredHint>{t('simulatorNoDevices')}</CenteredHint>
@@ -276,19 +257,57 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           <CenteredHint>{t('simulatorNonInteractive')}</CenteredHint>
         )}
         {canStream && (
-          <SimulatorScreen
-            key={udid}
-            subscribeFrames={subscribeFrames}
-            onTouch={handleTouch}
-            onPinch={handlePinch}
-            onKey={handleKey}
-            onText={handleText}
-            maskPng={masks[udid] ?? null}
-            placeholder={
-              <span className="text-muted-foreground text-sm">{t('simulatorConnecting')}</span>
-            }
-            className="p-2"
-          />
+          // The stage stays near-black in both themes (video-player convention) so the streamed
+          // frame carries the contrast; everything on it uses fixed neutrals, not theme tokens.
+          <div className="absolute inset-2 overflow-hidden rounded-lg bg-neutral-950">
+            <SimulatorScreen
+              key={udid}
+              subscribeFrames={subscribeFrames}
+              onTouch={handleTouch}
+              onPinch={handlePinch}
+              onKey={handleKey}
+              onText={handleText}
+              maskPng={masks[udid] ?? null}
+              placeholder={
+                <span className="text-neutral-400 text-sm">{t('simulatorConnecting')}</span>
+              }
+              className="px-3 pt-3 pb-16"
+            />
+            <div className="-translate-x-1/2 absolute bottom-3 left-1/2 flex items-center gap-0.5 rounded-full border border-white/10 bg-neutral-900/90 px-1.5 py-1 shadow-lg">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={STAGE_BUTTON_CLASS}
+                aria-label={t('simulatorHome')}
+                disabled={ownerSessionId === null}
+                onClick={() => pressButton('home')}
+              >
+                <HouseIcon className="size-4" />
+              </Button>
+              <div className="mx-0.5 h-4 w-px bg-white/15" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={STAGE_BUTTON_CLASS}
+                aria-label={t('simulatorRotate')}
+                disabled={ownerSessionId === null}
+                onClick={handleRotate}
+              >
+                <RotateCwIcon className="size-4" />
+              </Button>
+              <div className="mx-0.5 h-4 w-px bg-white/15" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={STAGE_BUTTON_CLASS}
+                aria-label={t('simulatorLock')}
+                disabled={ownerSessionId === null}
+                onClick={() => pressButton('lock')}
+              >
+                <LockIcon className="size-4" />
+              </Button>
+            </div>
+          </div>
         )}
         {snapshot?.phase === 'failed' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80">
