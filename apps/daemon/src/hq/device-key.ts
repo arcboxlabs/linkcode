@@ -3,7 +3,9 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'no
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
+import process from 'node:process';
 import { deviceKeyPath, deviceKeysDir } from '../config';
+import { logger } from '../logger';
 
 /**
  * The device key is the machine's identity: it keeps the device id (= tunnel host id) stable
@@ -23,19 +25,41 @@ export interface DeviceKey {
 
 const require = createRequire(import.meta.url);
 
-export function ensureDeviceKey(): DeviceKey {
+/**
+ * Load the native module, separately from calling it — the two failures mean different things and
+ * only one is a defect. `@arcboxlabs/deviceid` resolves a per-platform prebuilt through npm
+ * optional dependencies, so a require failure means this build carries no binding for the arch it
+ * is running on (a packaging bug: the app was packed for an arch the build host did not install).
+ */
+function loadDeviceId(): typeof import('@arcboxlabs/deviceid') | null {
   try {
-    // Native module: resolves per-platform prebuilt binaries; throws where
-    // none fits (unsupported platform, missing keyring) — hence the fallback.
-    const { ensureDeviceId } =
-      require('@arcboxlabs/deviceid') as typeof import('@arcboxlabs/deviceid');
-    const device = ensureDeviceId({ dir: deviceKeysDir() });
+    return require('@arcboxlabs/deviceid') as typeof import('@arcboxlabs/deviceid');
+  } catch (err) {
+    logger.error(
+      { operation: 'device-key.load', err, platform: process.platform, arch: process.arch },
+      'No device-key native binding for this platform/arch; falling back to a software key. This is a packaging defect, not a property of this machine.',
+    );
+    return null;
+  }
+}
+
+export function ensureDeviceKey(): DeviceKey {
+  const module = loadDeviceId();
+  if (module === null) return ensureSoftwareDeviceKey();
+  try {
+    // Fail-closed by design: throws on machines with no usable backend (no TPM, no Secret
+    // Service). That is a legitimate property of the host, not an error to escalate.
+    const device = module.ensureDeviceId({ dir: deviceKeysDir() });
     return {
       publicKeyPem: device.publicKeyPem,
       protection: device.protection === 'hardware' ? 'hardware' : 'software',
       sign: (payload) => device.sign(payload),
     };
-  } catch {
+  } catch (err) {
+    logger.warn(
+      { operation: 'device-key.ensure', err },
+      'No hardware key store on this machine; using a software device key',
+    );
     return ensureSoftwareDeviceKey();
   }
 }
