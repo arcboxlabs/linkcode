@@ -856,14 +856,17 @@ export const en = {
       customForm: {
         name: 'Name',
         nameHint: 'The server identity injected into agents; letters, digits, - and _ only.',
+        nameError: 'Only letters, digits, - and _ are allowed.',
         transport: 'Transport',
         transportStdio: 'Local process (stdio)',
         transportHttp: 'Remote (HTTP)',
         command: 'Command',
         args: 'Arguments',
         env: 'Environment variables',
+        envError: 'Each line must be in KEY=VALUE form.',
         url: 'URL',
         headers: 'Headers',
+        headersError: 'Each line must be in "Name: value" form.',
         secretHint:
           'One key-value pair per line; values are sent only to the local daemon and never read back.',
       },

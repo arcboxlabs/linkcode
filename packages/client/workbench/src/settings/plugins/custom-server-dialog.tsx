@@ -26,27 +26,50 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { rhfErrorsToFormErrors } from '../../lib/form';
 
-const customServerDraftSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .regex(/^[\w-]+$/, 'name'),
-    transport: z.enum(['stdio', 'http']),
-    command: z.string().trim().optional(),
-    args: z.string().optional(),
-    env: z.string().optional(),
-    url: z.string().trim().optional(),
-    headers: z.string().optional(),
-  })
-  .refine((draft) => draft.transport !== 'stdio' || (draft.command ?? '').length > 0, {
-    path: ['command'],
-  })
-  .refine((draft) => draft.transport !== 'http' || (draft.url ?? '').length > 0, { path: ['url'] });
+/** Nonblank line missing the separator (or with an empty key) — `parsePairs` would drop it. */
+function hasMalformedPairLine(raw: string | undefined, separator: '=' | ':'): boolean {
+  return (raw ?? '').split('\n').some((line) => {
+    const trimmed = line.trim();
+    return trimmed !== '' && trimmed.indexOf(separator) <= 0;
+  });
+}
 
-type CustomServerDraft = z.infer<typeof customServerDraftSchema>;
+export function customServerDraftSchema(
+  t: (key: 'customForm.nameError' | 'customForm.envError' | 'customForm.headersError') => string,
+) {
+  return z
+    .object({
+      name: z
+        .string()
+        .trim()
+        .regex(/^[\w-]+$/, t('customForm.nameError')),
+      transport: z.enum(['stdio', 'http']),
+      command: z.string().trim().optional(),
+      args: z.string().optional(),
+      env: z.string().optional(),
+      url: z.string().trim().optional(),
+      headers: z.string().optional(),
+    })
+    .refine((draft) => draft.transport !== 'stdio' || (draft.command ?? '').length > 0, {
+      path: ['command'],
+    })
+    .refine((draft) => draft.transport !== 'http' || (draft.url ?? '').length > 0, {
+      path: ['url'],
+    })
+    .refine((draft) => draft.transport !== 'stdio' || !hasMalformedPairLine(draft.env, '='), {
+      path: ['env'],
+      message: t('customForm.envError'),
+    })
+    .refine((draft) => draft.transport !== 'http' || !hasMalformedPairLine(draft.headers, ':'), {
+      path: ['headers'],
+      message: t('customForm.headersError'),
+    });
+}
 
-/** Parse `KEY=VALUE` (env) / `KEY: VALUE` (headers) lines into a record; blank lines ignored. */
+type CustomServerDraft = z.infer<ReturnType<typeof customServerDraftSchema>>;
+
+/** Parse `KEY=VALUE` (env) / `KEY: VALUE` (headers) lines into a record; blank lines ignored
+ * (malformed lines are rejected by the draft schema before this runs). */
 function parsePairs(raw: string | undefined, separator: '=' | ':'): Record<string, string> {
   const pairs: Record<string, string> = {};
   for (const line of (raw ?? '').split('\n')) {
@@ -105,7 +128,7 @@ export function CustomServerDialog({
     setError,
     formState: { errors },
   } = useForm<CustomServerDraft>({
-    resolver: zodResolver(customServerDraftSchema),
+    resolver: zodResolver(customServerDraftSchema(t)),
     defaultValues: {
       name: '',
       transport: 'stdio',
@@ -202,6 +225,7 @@ export function CustomServerDialog({
                     disabled={busy}
                   />
                   <FieldDescription>{t('customForm.secretHint')}</FieldDescription>
+                  <FieldError />
                 </Field>
               </>
             ) : (
@@ -224,6 +248,7 @@ export function CustomServerDialog({
                     disabled={busy}
                   />
                   <FieldDescription>{t('customForm.secretHint')}</FieldDescription>
+                  <FieldError />
                 </Field>
               </>
             )}
