@@ -47,6 +47,8 @@ import {
 } from './history';
 import type { OpencodeHistoryServerLike } from './history-server';
 import { sharedOpencodeHistoryServer } from './history-server';
+import type { OpencodeServeHandle } from './serve';
+import { startOpencodeServe } from './serve';
 
 type PermissionAsked = Extract<Event, { type: 'permission.asked' }>['properties'];
 type QuestionAsked = Extract<Event, { type: 'question.asked' }>['properties'];
@@ -142,7 +144,7 @@ function parseModelRef(model: string): { providerID: string; modelID: string } |
 }
 
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
-type OpencodeClient = Awaited<ReturnType<OpencodeModule['createOpencode']>>['client'];
+type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 
 /**
  * OpenCode adapter — the server/client model: `createOpencode()` spawns a local OpenCode server
@@ -209,7 +211,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     const mod = await this.loadSdk('@opencode-ai/sdk', () => import('@opencode-ai/sdk/v2'));
-    let started: Awaited<ReturnType<OpencodeModule['createOpencode']>>;
+    let server: OpencodeServeHandle;
     // OpenCode routes by provider: inject the account's key + base URL under the model's
     // providerID (the half before '/') so the spawned server authenticates against that provider.
     const cred = readAgentCredential(opts.config);
@@ -246,24 +248,30 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
     this.credentialProviderId = providerInjected ? (providerID ?? null) : null;
     try {
-      // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
+      // The server port is a FIXED default of 4096 (opencode's own `--port=0` does not
       // auto-allocate either), and this adapter spawns one server per session — without an
       // explicitly allocated free port, the second concurrent session's server dies at bind
       // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
       // port can be stolen between the probe and the child's bind), so one failed spawn retries
       // with a fresh port — the same discipline as the shared history server.
       try {
-        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+        server = await startOpencodeServe({
+          port: await allocatePort(),
+          config: serverOptions?.config,
+        });
       } catch {
-        started = await mod.createOpencode({ ...serverOptions, port: await allocatePort() });
+        server = await startOpencodeServe({
+          port: await allocatePort(),
+          config: serverOptions?.config,
+        });
       }
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
       throw new Error(detail, { cause: err });
     }
-    this.client = started.client;
-    this.closeServer = () => started.server.close();
+    this.client = mod.createOpencodeClient({ baseUrl: server.url });
+    this.closeServer = server.close;
     let resumedAgent: string | null = null;
     let resumedModel: string | undefined;
     if (this.resumeFrom) {

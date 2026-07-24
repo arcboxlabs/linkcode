@@ -6,7 +6,7 @@ import { useData } from '../runtime/tayori';
 /**
  * Which agent CLIs the host can actually spawn, keyed by kind (`AgentRuntimes`); the
  * `agent-runtime.changed` push revalidates the snapshot here. Kinds the host has not evaluated
- * are absent (opencode until CODE-76).
+ * are absent.
  */
 export function useAgentRuntimes() {
   const client = useLinkCodeClient();

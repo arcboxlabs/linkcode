@@ -94,8 +94,8 @@ function versionKey(runtime: AgentRuntimeAvailability): string {
 
 /**
  * Pure cue derivation for the onboarding UI (CODE-112). A kind absent from `runtimes` is
- * unevaluated (opencode until CODE-76) and yields no cue; `runtimes` still loading yields no
- * cues at all rather than a flash of "missing".
+ * unevaluated and yields no cue; `runtimes` still loading yields no cues at all rather than a
+ * flash of "missing".
  */
 export function deriveAgentRuntimeCues(
   runtimes: AgentRuntimes | undefined,
