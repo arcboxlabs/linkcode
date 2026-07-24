@@ -26,7 +26,7 @@ function decodedPath(href: string): string {
   }
 }
 
-function pathTarget(decoded: string): LinkTarget {
+function pathTarget(decoded: string): Extract<LinkTarget, { kind: 'file' | 'skill' }> {
   const lineMatch = LINE_SUFFIX_RE.exec(decoded);
   const path = lineMatch === null ? decoded : decoded.slice(0, lineMatch.index);
   if (fileBasename(path) === SKILL_BASENAME) return { kind: 'skill', path };
@@ -34,16 +34,11 @@ function pathTarget(decoded: string): LinkTarget {
   return { kind: 'file', path, line: Number(lineMatch[1]) };
 }
 
-function knownPathTarget(decoded: string): LinkTarget | null {
-  const target = pathTarget(decoded);
-  if (target.kind !== 'file' && target.kind !== 'skill') return null;
-  return hasKnownFileIdentity(target.path) ? target : null;
-}
-
-/** Classify a markdown link href. Null → not ours (fragments, mailto, root-relative and bare
- * relative URLs without file identity); callers keep their default anchor behavior.
- * `./`-prefixed destinations are unambiguously workspace files because the composer serializes
- * mentions that way. */
+/** Classify a markdown link href. Null → not ours (fragments, mailto, and bare relative URLs
+ * without file identity); callers keep their default anchor behavior. `./`-prefixed
+ * destinations are unambiguously workspace files because the composer serializes mentions that
+ * way. Chat markdown has no URL base, so every slash-prefixed destination is a POSIX absolute
+ * file path; web targets must use an explicit HTTP(S) URL. */
 export function linkTargetFor(href: string | null | undefined): LinkTarget | null {
   if (!href || href[0] === '#') return null;
   if (href.startsWith(PLUGIN_PREFIX)) {
@@ -61,10 +56,9 @@ export function linkTargetFor(href: string | null | undefined): LinkTarget | nul
     const decoded = decodedPath(href);
     return pathTarget(decoded.startsWith('./') ? decoded.slice(2) : decoded);
   }
-  // ponytail: POSIX absolute paths only — Windows drive hrefs (C:\…) never reach here, the
-  // markdown sanitizer already drops their unknown single-letter protocol. Require known file
-  // identity so standard root-relative URLs such as /docs retain anchor semantics.
-  if (href[0] === '/') return knownPathTarget(decodedPath(href));
+  // ponytail: POSIX absolute paths only — Windows drive hrefs (C:\…) never reach here because
+  // the markdown sanitizer drops their unknown single-letter protocol.
+  if (href[0] === '/') return pathTarget(decodedPath(href));
   // Bare relative destinations ([x](package-lock.json)) are how agents commonly reference
   // files; as anchors they only 404 against the app origin, so evidence-based file
   // classification is strictly better. The charset test also rejects schemes (mailto:…).
@@ -83,7 +77,8 @@ export function filePathTarget(text: string): LinkTarget | null {
   const candidate = text.trim();
   if (candidate.length === 0 || candidate.length > MAX_INLINE_PATH_LENGTH) return null;
   if (!INLINE_PATH_RE.test(candidate)) return null;
-  return knownPathTarget(candidate.startsWith('./') ? candidate.slice(2) : candidate);
+  const target = pathTarget(candidate.startsWith('./') ? candidate.slice(2) : candidate);
+  return hasKnownFileIdentity(target.path) ? target : null;
 }
 
 const FILE_URI_PREFIX = 'file://';
