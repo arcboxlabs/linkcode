@@ -357,6 +357,40 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       };
       const pidBefore = workerPid();
       if (pidBefore === null) fail('no capture-worker process running before reconfigure');
+      const canvasSize = (): Promise<{ width: number; height: number }> =>
+        deviceCanvas.evaluate((el) => {
+          const c = el as HTMLCanvasElement;
+          return { width: c.width, height: c.height };
+        });
+      const waitForNarrowerCanvas = async (from: number, label: string): Promise<number> => {
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          const { width } = await canvasSize();
+          if (width < from) return width;
+          await wait(500);
+        }
+        fail(`canvas never shrank after ${label}`);
+      };
+
+      // Downscale live (CODE-434): H.264 honors `scale` by sizing its compression session down, so
+      // the *decoded* frame — and therefore the canvas backing store — must halve. This is the proof
+      // the Resolution control is not a no-op under the default codec.
+      const nativeWidth = (await canvasSize()).width;
+      await wireRequest({
+        kind: 'simulator.stream.start',
+        clientReqId: 'e2e-rescale',
+        sessionId,
+        udid: bootedUdid,
+        codec: 'h264',
+        scale: 0.5,
+      });
+      const scaledWidth = await waitForNarrowerCanvas(nativeWidth, 'scaling the stream to 50%');
+      const ratio = scaledWidth / nativeWidth;
+      if (ratio < 0.4 || ratio > 0.6) {
+        fail(`scaled canvas is ${scaledWidth}px vs native ${nativeWidth}px — not ≈50%`);
+      }
+      console.log(`stream rescaled live: canvas ${nativeWidth}px → ${scaledWidth}px wide`);
+
       const beforeReconfigure = await canvasHash();
       // A start on an already-running stream (switching codec here) must retune it, not respawn the
       // worker: the same pid before and after is the proof it happened in place. The wire reply omits
