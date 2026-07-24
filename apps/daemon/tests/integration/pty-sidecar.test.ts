@@ -19,7 +19,7 @@ const BINARY =
     join(repoRoot, 'target', 'release', binaryName),
   ].find((path) => !!path && existsSync(path)) ?? '';
 
-if (process.env.LINKCODE_REQUIRE_PTY_SIDECAR === '1' && !BINARY) {
+if (!BINARY && process.env.LINKCODE_REQUIRE_PTY_SIDECAR === '1') {
   throw new Error(
     'LINKCODE_REQUIRE_PTY_SIDECAR=1 but linkcode-pty was not found; build it or set LINKCODE_PTY_SIDECAR_PATH',
   );

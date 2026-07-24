@@ -116,7 +116,7 @@ export function toolCallReadPreviewText(toolCall: ToolCall, text: string): strin
 
     if (prefixEnd === cursor || numberedText.codePointAt(prefixEnd) !== 9) return text;
     const lineNumber = Number.parseInt(numberedText.slice(cursor, prefixEnd), 10);
-    if (!Number.isSafeInteger(lineNumber) || lineNumber < 1 || lineNumber !== expectedLine) {
+    if (lineNumber !== expectedLine || !Number.isSafeInteger(lineNumber) || lineNumber < 1) {
       return text;
     }
 
@@ -143,7 +143,7 @@ function fallbackContent(toolCall: ToolCall): ContentBlock[] {
   }
 
   // Codex execute uses rawOutput for an exit code and the terminal path owns string output.
-  if (toolCall.kind !== 'execute' && typeof rawOutput === 'string' && rawOutput.length > 0) {
+  if (typeof rawOutput === 'string' && toolCall.kind !== 'execute' && rawOutput.length > 0) {
     return [textBlock(rawOutput)];
   }
 

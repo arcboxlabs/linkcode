@@ -217,9 +217,9 @@ describe('ToolCallBody', () => {
     );
 
     const resourceLabel = screen.getByText('manifest.json');
-    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceCard = resourceLabel.closest('[data-slot="frame"]');
     const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).not.toBeNull();
+    expect(resourceCard?.querySelector('[data-slot="frame-panel"]')).not.toBeNull();
     expect(resourceHeader?.tabIndex).toBe(0);
     expect(screen.queryByText('https://example.test/manifest.json?token=secret')).toBeNull();
     await user.hover(resourceHeader!);
@@ -267,9 +267,9 @@ describe('ToolCallBody', () => {
     );
 
     const resourceLabel = screen.getByText('resource');
-    const resourceCard = resourceLabel.closest('[data-slot="card"]');
+    const resourceCard = resourceLabel.closest('[data-slot="frame"]');
     const resourceHeader = resourceLabel.closest<HTMLElement>('[data-slot="tooltip-trigger"]');
-    expect(resourceCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(resourceCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     expect(resourceHeader?.tabIndex).toBe(0);
     expect(screen.queryByRole('button', { name: 'resource' })).toBeNull();
     await user.hover(resourceHeader!);
@@ -330,11 +330,45 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const receiptNode = screen.getByText(receipt);
     expect(screen.getAllByText('hello.py')).toHaveLength(1);
     expect(fileCard?.contains(receiptNode)).toBe(false);
-    expect(receiptNode.closest('[data-slot="card"]')?.textContent).toContain('Edit');
+    // Receipts are auxiliary prose, not artifacts — they render outside any card.
+    expect(receiptNode.closest('[data-slot="frame"]')).toBeNull();
+  });
+
+  it('renders patch-only moves and textless binary deletes', () => {
+    const moved: ToolCall = {
+      toolCallId: 'move-patch',
+      title: 'Move file',
+      kind: 'edit',
+      status: 'completed',
+      content: [
+        {
+          type: 'diff',
+          change: 'move',
+          oldPath: '/repo/old.ts',
+          path: '/repo/new.ts',
+          patch: { format: 'git_patch', text: '@@ -1 +1 @@\n-old\n+new' },
+        },
+      ],
+    };
+    const deleted: ToolCall = {
+      toolCallId: 'delete-binary',
+      title: 'Delete binary',
+      kind: 'edit',
+      status: 'completed',
+      content: [{ type: 'diff', change: 'delete', path: '/repo/logo.bin', isBinary: true }],
+    };
+
+    const { rerender } = render(<ToolCallBody toolCall={moved} />);
+    expect(screen.getByText('/repo/old.ts → /repo/new.ts')).toBeDefined();
+    expect(screen.getByText('old')).toBeDefined();
+    expect(screen.getByText('new')).toBeDefined();
+
+    rerender(<ToolCallBody toolCall={deleted} />);
+    expect(screen.getByText('logo.bin')).toBeDefined();
   });
 
   it('keeps a failed mutation explanation visible without presenting it as file content', () => {
@@ -355,7 +389,7 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const explanationNode = screen.getByText(explanation);
     expect(explanationNode).toBeDefined();
     expect(fileCard?.contains(explanationNode)).toBe(false);
@@ -381,9 +415,9 @@ describe('ToolCallBody', () => {
 
     render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="card"]');
+    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
     const receiptNode = screen.getByText('Updated hello.py');
-    expect(fileCard?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     expect(fileCard?.contains(receiptNode)).toBe(false);
   });
 
@@ -456,9 +490,9 @@ describe('FileArtifactCard', () => {
     );
 
     const header = screen.getByRole('button', { name: 'report.pdf' });
-    const card = header.closest('[data-slot="card"]');
+    const card = header.closest('[data-slot="frame"]');
     expect(card?.className).toContain('max-w-md');
-    expect(card?.querySelector('[data-slot="card-panel"]')).toBeNull();
+    expect(card?.querySelector('[data-slot="frame-panel"]')).toBeNull();
     await user.hover(header);
     expect(await screen.findByText(path)).toBeDefined();
     await user.click(header);

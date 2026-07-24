@@ -1,4 +1,4 @@
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { falseFn, noop } from 'foxts/noop';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
@@ -170,7 +170,7 @@ export function LiveTerminal({
     }
   }, [suspended]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       const frame = frameRef.current;
       const container = containerRef.current;
@@ -247,17 +247,17 @@ export function LiveTerminal({
     },
     // fontFamily/fontSize/colorScheme only seed the initial config (live-synced by the effects
     // below); as deps they would tear the terminal down and rebuild it on every change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: initial seed only
+    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps -- intentional: initial seed only
     [session],
   );
 
   // Live-apply appearance prefs without tearing the terminal down; on first mount resttyRef is
   // still null and they no-op — the constructor config already applied the initial values.
-  useAbortableEffect(() => {
+  useEffect(() => {
     resttyRef.current?.setFontSize(fontSize);
   }, [fontSize]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       const restty = resttyRef.current;
       if (!restty) return;
@@ -268,7 +268,7 @@ export function LiveTerminal({
     [fontFamily],
   );
 
-  useAbortableEffect(() => {
+  useEffect(() => {
     const apply = createThemeChangeHandler(resttyRef, frameRef, colorScheme);
     apply();
     // Re-apply on `.dark` flips too, so the 'auto' scheme keeps following the app mode.

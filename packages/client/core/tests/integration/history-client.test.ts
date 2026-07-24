@@ -1,4 +1,4 @@
-import type { AgentHistoryId, WirePayload } from '@linkcode/schema';
+import type { AgentHistoryId, MessageId, WirePayload } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
 import { createConnectedLocalClient } from '../support/local-client';
@@ -33,6 +33,7 @@ describe('LinkCodeClient history API', () => {
                   historyId,
                   event: {
                     type: 'user-message',
+                    messageId: 'user-1' as MessageId,
                     content: [{ type: 'text', text: 'hello' }],
                   },
                 },

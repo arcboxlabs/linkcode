@@ -2,7 +2,7 @@ import type { Conversation, ConversationSeed, ConversationSeedEvent } from '@lin
 import { useConversation, useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SessionInfo } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 
 /** Upper bound on cursor pages one seed read follows, so a buggy cursor can't loop forever. */
@@ -22,7 +22,7 @@ export function useSeededConversation(session: SessionInfo | null): Conversation
   const historyId = session?.historyId;
   const sessionId = session?.sessionId ?? null;
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!agentKind || !historyId || !sessionId) return;
       void (async () => {

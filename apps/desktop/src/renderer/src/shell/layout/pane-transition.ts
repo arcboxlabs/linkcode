@@ -1,4 +1,4 @@
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useReducedMotion } from 'motion/react';
 import { useCallback, useReducer, useRef } from 'react';
@@ -95,7 +95,7 @@ export function usePaneTransition({
     onSizeChange?.(open ? Math.max(0, size) : 0);
   }, [onSizeChange, open, size]);
 
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (transitionVersion === 0) return;
     if (!isAnimatingPhase(phase)) return;
 

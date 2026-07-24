@@ -203,6 +203,70 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     }
   });
 
+  it('appends terminal tool output before emitting the completed snapshot', async () => {
+    const { events } = await makeAdapter();
+    const basePart = {
+      id: 'prt-1',
+      sessionID: 'sess-1',
+      messageID: 'msg-1',
+      type: 'tool' as const,
+      callID: 'call-1',
+      tool: 'bash',
+    };
+    client.stream.push({
+      id: 'e-tool-running',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 0,
+        part: {
+          ...basePart,
+          state: { status: 'running', input: { command: 'echo hi' }, time: { start: 0 } },
+        },
+      },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-tool-completed',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 1,
+        part: {
+          ...basePart,
+          state: {
+            status: 'completed',
+            input: { command: 'echo hi' },
+            output: 'hi\n',
+            title: 'echo hi',
+            metadata: {},
+            time: { start: 0, end: 1 },
+          },
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'tool-call-content-chunk')).toBe(true);
+    });
+    expect(events.filter((event) => event.type.startsWith('tool-call'))).toEqual([
+      expect.objectContaining({ type: 'tool-call' }),
+      {
+        type: 'tool-call-content-chunk',
+        toolCallId: 'prt-1',
+        content: { type: 'content', content: { type: 'text', text: 'hi\n' } },
+      },
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCall: expect.objectContaining({
+          toolCallId: 'prt-1',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
+        }),
+      }),
+    ]);
+  });
+
   it('skips parts of a user message, so the prompt text is not replayed as agent output', async () => {
     const { events } = await makeAdapter();
 
@@ -223,6 +287,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-user-part',
       type: 'message.part.updated',
@@ -238,6 +303,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-msg',
       type: 'message.updated',
@@ -259,6 +325,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-part',
       type: 'message.part.updated',
@@ -549,7 +616,19 @@ describe('OpenCodeAdapter permission round-trip', () => {
       expect(permissionAsks(events)).toHaveLength(1);
     });
     const ask = permissionAsks(events)[0];
-    expect(ask.toolCall.toolCallId).toBe('prt-1');
+    expect(ask).toMatchObject({
+      title: 'bash',
+      subject: {
+        type: 'command',
+        command: 'echo hi',
+        cwd: '/tmp/repo',
+        toolCallId: 'prt-1',
+      },
+    });
+    expect(ask).not.toHaveProperty('toolCall');
+    expect(
+      events.filter((event) => event.type === 'tool-call' && event.toolCall.toolCallId === 'prt-1'),
+    ).toHaveLength(1);
     expect(ask.options.map((o) => o.optionId)).toEqual(['allow', 'allow_always', 'reject']);
 
     await adapter.send({
@@ -628,30 +707,30 @@ describe('OpenCodeAdapter permission round-trip', () => {
   });
 });
 
-describe('OpenCodeAdapter question round-trip', () => {
-  function pushQuestionAsked(): void {
-    client.stream.push({
-      id: 'e-question',
-      type: 'question.asked',
-      properties: {
-        id: 'que-1',
-        sessionID: 'sess-1',
-        questions: [
-          {
-            question: 'Proceed?',
-            header: 'Proceed',
-            options: [
-              { label: 'Yes', description: 'Go ahead.' },
-              { label: 'No', description: 'Stop here.' },
-            ],
-            multiple: false,
-          },
-        ],
-        tool: { messageID: 'msg-1', callID: 'call-1' },
-      },
-    });
-  }
+function pushQuestionAsked(): void {
+  client.stream.push({
+    id: 'e-question',
+    type: 'question.asked',
+    properties: {
+      id: 'que-1',
+      sessionID: 'sess-1',
+      questions: [
+        {
+          question: 'Proceed?',
+          header: 'Proceed',
+          options: [
+            { label: 'Yes', description: 'Go ahead.' },
+            { label: 'No', description: 'Stop here.' },
+          ],
+          multiple: false,
+        },
+      ],
+      tool: { messageID: 'msg-1', callID: 'call-1' },
+    },
+  });
+}
 
+describe('OpenCodeAdapter question round-trip', () => {
   it('surfaces question.asked as a question-request and replies with the selected labels', async () => {
     const { adapter, events } = await makeAdapter();
     pushQuestionAsked();
@@ -698,6 +777,18 @@ describe('OpenCodeAdapter question round-trip', () => {
   });
 });
 
+/** A non-abort `session.error` as the server emits it mid-turn AND re-fires post-settle. */
+function pushUnknownSessionError(): void {
+  client.stream.push({
+    id: 'e-err',
+    type: 'session.error',
+    properties: {
+      sessionID: 'sess-1',
+      error: { name: 'UnknownError', data: { message: 'model not found' } },
+    },
+  });
+}
+
 describe('OpenCodeAdapter session.error and turn settle', () => {
   it('maps ProviderAuthError to a non-recoverable authentication_failed error, and the idle settle skips end_turn', async () => {
     const { adapter, events } = await makeAdapter();
@@ -734,24 +825,14 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     events.length = 0;
     pushBusy();
 
-    const push = () => {
-      client.stream.push({
-        id: 'e-err',
-        type: 'session.error',
-        properties: {
-          sessionID: 'sess-1',
-          error: { name: 'UnknownError', data: { message: 'model not found' } },
-        },
-      });
-    };
-    push();
+    pushUnknownSessionError();
     pushIdle();
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'status' && e.status === 'idle')).toBe(true);
     });
     events.length = 0;
 
-    push();
+    pushUnknownSessionError();
     await drained();
     expect(events).toHaveLength(0);
   });
@@ -854,21 +935,10 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
   it("drops the previous turn's re-fired session.error instead of failing the next un-started turn", async () => {
     const { adapter, events } = await makeAdapter();
 
-    const pushError = () => {
-      client.stream.push({
-        id: 'e-err',
-        type: 'session.error',
-        properties: {
-          sessionID: 'sess-1',
-          error: { name: 'UnknownError', data: { message: 'model not found' } },
-        },
-      });
-    };
-
     // Turn 1 fails and settles.
     await adapter.send({ type: 'prompt', content: [] });
     pushBusy();
-    pushError();
+    pushUnknownSessionError();
     pushIdle();
     await vi.waitFor(() => {
       expect(errors(events)).toHaveLength(1);
@@ -877,7 +947,7 @@ describe('OpenCodeAdapter session.error and turn settle', () => {
     // Turn 2 dispatched; turn 1's stale re-fire lands before turn 2's busy acknowledgement.
     await adapter.send({ type: 'prompt', content: [] });
     events.length = 0;
-    pushError();
+    pushUnknownSessionError();
     pushBusy();
     pushIdle();
     await vi.waitFor(() => {
@@ -1293,6 +1363,33 @@ describe('OpenCodeAdapter server spawn retry', () => {
   });
 });
 
+/** Seed the agent catalog the way a real `app.agents` responds: primaries, an `all`-mode
+ * agent, plus the two kinds that must be filtered out (hidden, subagent). */
+function seedAgents(): void {
+  sdkMock.createOpencode = () => {
+    client = new FakeClient();
+    client.app.agents.mockReturnValue({
+      data: [
+        { name: 'build', mode: 'primary', description: 'Default implementation agent' },
+        { name: 'plan', mode: 'primary' },
+        { name: 'helper', mode: 'all' },
+        { name: 'stealth', mode: 'primary', hidden: true },
+        { name: 'reviewer', mode: 'subagent' },
+      ],
+    });
+    return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+  };
+}
+
+function policyUpdates(
+  events: AgentEvent[],
+): Array<Extract<AgentEvent, { type: 'approval-policy-update' }>> {
+  return events.filter(
+    (e): e is Extract<AgentEvent, { type: 'approval-policy-update' }> =>
+      e.type === 'approval-policy-update',
+  );
+}
+
 describe('OpenCodeAdapter control plane (CODE-224)', () => {
   afterEach(() => {
     // Restore the default fresh-client factory (same discipline as the command-catalog block).
@@ -1301,33 +1398,6 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
       return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
     };
   });
-
-  /** Seed the agent catalog the way a real `app.agents` responds: primaries, an `all`-mode
-   * agent, plus the two kinds that must be filtered out (hidden, subagent). */
-  function seedAgents(): void {
-    sdkMock.createOpencode = () => {
-      client = new FakeClient();
-      client.app.agents.mockReturnValue({
-        data: [
-          { name: 'build', mode: 'primary', description: 'Default implementation agent' },
-          { name: 'plan', mode: 'primary' },
-          { name: 'helper', mode: 'all' },
-          { name: 'stealth', mode: 'primary', hidden: true },
-          { name: 'reviewer', mode: 'subagent' },
-        ],
-      });
-      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
-    };
-  }
-
-  function policyUpdates(
-    events: AgentEvent[],
-  ): Array<Extract<AgentEvent, { type: 'approval-policy-update' }>> {
-    return events.filter(
-      (e): e is Extract<AgentEvent, { type: 'approval-policy-update' }> =>
-        e.type === 'approval-policy-update',
-    );
-  }
 
   it('advertises selectable agents as the approval-policy axis at start', async () => {
     seedAgents();

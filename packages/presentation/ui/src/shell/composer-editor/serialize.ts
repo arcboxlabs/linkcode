@@ -225,7 +225,7 @@ export function $analyzeDirectives(): DirectiveAnalysis {
   const firstBlock = root.getFirstChild();
   const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
   const leading = first ? $asEditorDirective(first) : null;
-  if (directives.length === 1 && leading) {
+  if (leading && directives.length === 1) {
     return {
       blockedKeys: [],
       composition: { directive: leading, kind: 'ready' },
@@ -270,7 +270,7 @@ function $removeComposerChip(node: LexicalNode): void {
 
   if (nextStartsWithWhitespace && (!previous || previousEndsInWhitespace)) {
     next.setTextContent(next.getTextContent().slice(1));
-    if (next.getTextContentSize() === 0 && !next.getNextSibling() && previousEndsInWhitespace) {
+    if (previousEndsInWhitespace && next.getTextContentSize() === 0 && !next.getNextSibling()) {
       previous.setTextContent(previous.getTextContent().slice(0, -1));
     }
   } else if (!next && previousEndsInWhitespace) {

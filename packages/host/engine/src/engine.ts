@@ -35,6 +35,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorRequestHandler } from './simulator/request-handler';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
 import { WireRequestRouter } from './wire/request-router';
@@ -82,6 +83,10 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runTask,
   );
   let terminals: TerminalService | undefined;
+  // The daemon builds the service (so it can share the instance with the MCP endpoint) and injects
+  // it here; the engine owns the session registry, so it hands the service a session-existence
+  // predicate that gates claims on a live session.
+  const simulators = deps.simulators;
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -89,12 +94,18 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     runtimes,
     scope,
     runTask,
-    (sessionId) => terminals?.killBySession(sessionId),
+    (sessionId) => {
+      terminals?.killBySession(sessionId);
+      simulators?.releaseSession(sessionId);
+      deps.simulatorMcp?.release(sessionId);
+    },
   );
+  simulators?.setSessionValidator((id) => sessions.has(id));
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
+  const simulatorRequests = new SimulatorRequestHandler(simulators, transport, responder);
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
@@ -116,7 +127,11 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const translator = deps.translator;
-  const startOptions = new SessionStartOptionsResolver(providerStore, translator);
+  const startOptions = new SessionStartOptionsResolver(
+    providerStore,
+    translator,
+    deps.simulatorMcp,
+  );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,
     records,
@@ -180,6 +195,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     artifact: artifactRequests,
     automation: automationRequests,
     terminal: terminalRequests,
+    simulator: simulatorRequests,
   });
   let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;
@@ -273,6 +289,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalize('file-host.shutdown', () => fileHost.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
+      yield* finalizeEffect('simulators.shutdown', simulators?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());

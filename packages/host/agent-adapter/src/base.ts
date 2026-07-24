@@ -19,6 +19,7 @@ import type {
   MessageId,
   PermissionOption,
   PermissionOutcome,
+  PermissionPrompt,
   Question,
   QuestionOutcome,
   SessionStatus,
@@ -26,6 +27,7 @@ import type {
   StopReason,
   TokenUsage,
   ToolCall,
+  ToolCallContent,
   ToolCallUpdate,
   UsageReport,
 } from '@linkcode/schema';
@@ -47,9 +49,10 @@ interface PendingQuestion {
  * Adapter base class: event plumbing, lifecycle, tool-call normalization, and the permission
  * round-trip; subclasses implement only the SDK-specific hooks (`onStart` / `onPrompt` / `onCancel`
  * / `onStop`). Two enforced invariants: `emitTool` merges partial patches into per-id snapshots and
- * emits a complete `ToolCall` on every change (front-end replaces by id); `teardown` forces
- * unfinished tools to `failed` and resolves pending permission asks with `cancelled`, so a
- * mid-flight cancel/stop never leaves a tool stuck `in_progress` or an agent awaiting forever.
+ * emits a complete `ToolCall` on state/replace changes, while `appendToolContent` emits one content
+ * chunk and updates the same snapshot; `teardown` forces unfinished tools to `failed` and resolves
+ * pending permission asks with `cancelled`, so a mid-flight cancel/stop never leaves a tool stuck
+ * `in_progress` or an agent awaiting forever.
  */
 export abstract class BaseAgentAdapter implements AgentAdapter {
   abstract readonly kind: AgentKind;
@@ -230,6 +233,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       content: textBlock(text),
     });
   }
+  /** Replace a complete assistant message by identity. Omitted content preserves the current body. */
+  protected emitAgentMessage(
+    messageId: MessageId,
+    content?: ContentBlock[],
+    parentToolCallId?: string,
+  ): void {
+    this.emit({ type: 'agent-message', messageId, parentToolCallId, content });
+  }
   protected emitThought(text: string, messageId: MessageId, parentToolCallId?: string): void {
     if (text.length === 0) return;
     this.emit({
@@ -238,6 +249,14 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       parentToolCallId,
       content: textBlock(text),
     });
+  }
+  /** Replace a complete thought by identity. Omitted content preserves the current body. */
+  protected emitAgentThought(
+    messageId: MessageId,
+    content?: ContentBlock[],
+    parentToolCallId?: string,
+  ): void {
+    this.emit({ type: 'agent-thought', messageId, parentToolCallId, content });
   }
 
   /**
@@ -256,37 +275,62 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   /**
    * Merge a partial tool-call patch into its running snapshot and emit the complete `ToolCall`:
    * adapters supply only the fields they have; every downstream `tool-call` is a full snapshot.
+   * Undefined preserves a field, while null clears an optional field (or resets content to []).
    */
   protected emitTool(patch: ToolCallUpdate): void {
+    const toolCall = this.mergeToolPatch(patch);
+    if (!toolCall) return;
+    this.emit({ type: 'tool-call', toolCall });
+  }
+
+  /** Append one content item without retransmitting the accumulated array. The running snapshot is
+   * updated first, so a later state patch still emits a complete, authoritative tool call. */
+  protected appendToolContent(toolCallId: string, content: ToolCallContent): void {
+    const existing = this.toolCalls.get(toolCallId);
+    const toolCall = this.mergeToolPatch({
+      toolCallId,
+      content: [...(existing?.content ?? []), content],
+    });
+    if (!toolCall) return;
+    this.emit({ type: 'tool-call-content-chunk', toolCallId, content });
+  }
+
+  private mergeToolPatch(patch: ToolCallUpdate): ToolCall | null {
     const existing = this.toolCalls.get(patch.toolCallId);
     // completed/failed is terminal: ignore late updates so a stray post-teardown event (denied
     // tool_result, completion after a cancel sweep) cannot revive a failed tool.
-    if (existing && (existing.status === 'completed' || existing.status === 'failed')) return;
+    if (existing && (existing.status === 'completed' || existing.status === 'failed')) return null;
     const toolCall: ToolCall = existing
       ? {
           ...existing,
           title: patch.title ?? existing.title,
           kind: patch.kind ?? existing.kind,
           status: patch.status ?? existing.status,
-          parentToolCallId: patch.parentToolCallId ?? existing.parentToolCallId,
-          content: patch.content ?? existing.content,
-          locations: patch.locations ?? existing.locations,
-          rawInput: patch.rawInput ?? existing.rawInput,
-          rawOutput: patch.rawOutput ?? existing.rawOutput,
+          parentToolCallId:
+            patch.parentToolCallId === undefined
+              ? existing.parentToolCallId
+              : (patch.parentToolCallId ?? undefined),
+          content: patch.content === undefined ? existing.content : (patch.content ?? []),
+          locations:
+            patch.locations === undefined ? existing.locations : (patch.locations ?? undefined),
+          rawInput:
+            patch.rawInput === undefined ? existing.rawInput : (patch.rawInput ?? undefined),
+          rawOutput:
+            patch.rawOutput === undefined ? existing.rawOutput : (patch.rawOutput ?? undefined),
         }
       : {
           toolCallId: patch.toolCallId,
           title: patch.title ?? patch.toolCallId,
           kind: patch.kind ?? 'other',
           status: patch.status ?? 'in_progress',
-          parentToolCallId: patch.parentToolCallId,
+          parentToolCallId: patch.parentToolCallId ?? undefined,
           content: patch.content ?? [],
-          locations: patch.locations,
-          rawInput: patch.rawInput,
-          rawOutput: patch.rawOutput,
+          locations: patch.locations ?? undefined,
+          rawInput: patch.rawInput ?? undefined,
+          rawOutput: patch.rawOutput ?? undefined,
         };
     this.toolCalls.set(toolCall.toolCallId, toolCall);
-    this.emit({ type: 'tool-call', toolCall });
+    return toolCall;
   }
 
   /** Announce the provider-local native id of the live run once known; re-emits only when it changes. */
@@ -335,13 +379,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   // ── Permission round-trip (resolved by a `permission-response` AgentInput, by id) ──
   protected requestPermission(
-    toolCall: ToolCallUpdate,
+    prompt: PermissionPrompt,
     options: PermissionOption[],
   ): Promise<PermissionOutcome> {
     const requestId = nextRequestId();
     return new Promise<PermissionOutcome>((resolve) => {
       this.pending.set(requestId, resolve);
-      this.emit({ type: 'permission-request', requestId, toolCall, options });
+      this.emit({ type: 'permission-request', requestId, ...prompt, options });
     });
   }
   private resolvePending(requestId: string, outcome: PermissionOutcome): void {

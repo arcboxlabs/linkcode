@@ -32,9 +32,10 @@ const EMPTY_CONVERSATION: Conversation = {
 /**
  * Whether the seed's transcript snapshot can be assumed to contain this event — the only license
  * the `uptoSeq` cut has to drop it as "already in the snapshot". Providers flush transcripts by
- * whole item, so coverage is checked per identity: a chunk of a message the snapshot never saw
- * (the in-flight reply — claude-code writes the row only when the message completes) must survive
- * a mid-turn reseed, or the streamed text vanishes at a chunk boundary (CODE-272). Everything
+ * whole item, so coverage is checked per provider identity, or by counted value for user prompts
+ * whose host and provider ids cannot converge. A chunk of a message the snapshot never saw (the
+ * in-flight reply — claude-code writes the row only when the message completes) must survive a
+ * mid-turn reseed, or the streamed text vanishes at a chunk boundary (CODE-272). Everything
  * outside the switch (interactive requests and resolutions, status, stop, errors, usage …) is
  * ephemeral: it never appears in `history.read`, so cutting it would erase it outright — a pending
  * permission-request would vanish and strand the turn (CODE-35).
@@ -43,17 +44,28 @@ function coveredBySeed(
   event: AgentEvent,
   seedMessageIds: ReadonlySet<string>,
   seedToolIds: ReadonlySet<string>,
+  seedUserMessageCounts: Map<string, number>,
 ): boolean {
   switch (event.type) {
+    case 'agent-message':
     case 'agent-message-chunk':
+    case 'agent-thought':
     case 'agent-thought-chunk':
       return seedMessageIds.has(event.messageId);
+    case 'user-message': {
+      // Host and provider ids cannot converge, so consume one matching seed row by value. Counting
+      // preserves repeated prompts while an unflushed queued prompt remains visible past the cut.
+      const key = JSON.stringify(event.content);
+      const remaining = seedUserMessageCounts.get(key) ?? 0;
+      if (remaining === 0) return false;
+      if (remaining === 1) seedUserMessageCounts.delete(key);
+      else seedUserMessageCounts.set(key, remaining - 1);
+      return true;
+    }
     case 'tool-call':
       return seedToolIds.has(event.toolCall.toolCallId);
-    case 'user-message':
-      // No reliable cross-source id; providers flush the prompt row at accept, and the
-      // fresh-session race is handled by the adapters' session-ref deferral.
-      return true;
+    case 'tool-call-content-chunk':
+      return seedToolIds.has(event.toolCallId);
     default:
       return false;
   }
@@ -80,12 +92,29 @@ export function createConversationStore(
   // Identities the snapshot actually holds, for the per-event coverage check of the cut.
   const seedMessageIds = new Set<string>();
   const seedToolIds = new Set<string>();
+  const seedUserMessageCounts = new Map<string, number>();
   if (seed) {
     for (const { event } of seed.events) {
-      if (event.type === 'agent-message-chunk' || event.type === 'agent-thought-chunk') {
-        seedMessageIds.add(event.messageId);
-      } else if (event.type === 'tool-call') {
-        seedToolIds.add(event.toolCall.toolCallId);
+      switch (event.type) {
+        case 'agent-message':
+        case 'agent-message-chunk':
+        case 'agent-thought':
+        case 'agent-thought-chunk':
+          seedMessageIds.add(event.messageId);
+          break;
+        case 'user-message': {
+          const key = JSON.stringify(event.content);
+          seedUserMessageCounts.set(key, (seedUserMessageCounts.get(key) ?? 0) + 1);
+          break;
+        }
+        case 'tool-call':
+          seedToolIds.add(event.toolCall.toolCallId);
+          break;
+        case 'tool-call-content-chunk':
+          seedToolIds.add(event.toolCallId);
+          break;
+        default:
+          break;
       }
     }
   }
@@ -102,7 +131,10 @@ export function createConversationStore(
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq); i < events.length; i += 1) {
       const { event, seq, receivedAt } = events[i];
-      if (seq > uptoSeq || !coveredBySeed(event, seedMessageIds, seedToolIds)) {
+      if (
+        seq > uptoSeq ||
+        !coveredBySeed(event, seedMessageIds, seedToolIds, seedUserMessageCounts)
+      ) {
         builder.advance(event, receivedAt);
       }
     }

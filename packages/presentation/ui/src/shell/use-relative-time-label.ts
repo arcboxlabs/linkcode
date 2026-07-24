@@ -23,7 +23,7 @@ function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0 && timer !== null) {
+    if (timer !== null && listeners.size === 0) {
       clearInterval(timer);
       timer = null;
     }

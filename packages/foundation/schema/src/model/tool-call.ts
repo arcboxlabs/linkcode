@@ -29,14 +29,28 @@ export const ToolCallLocationSchema = z.object({
 });
 export type ToolCallLocation = z.infer<typeof ToolCallLocationSchema>;
 
+export const ToolDiffChangeSchema = z.enum(['modify', 'add', 'delete', 'move', 'copy']);
+export type ToolDiffChange = z.infer<typeof ToolDiffChangeSchema>;
+
+export const ToolDiffPatchSchema = z.object({
+  format: z.literal('git_patch'),
+  text: z.string(),
+});
+export type ToolDiffPatch = z.infer<typeof ToolDiffPatchSchema>;
+
 /** Tool-call output content: a wrapped ContentBlock, a file diff, or a live terminal reference. */
 export const ToolCallContentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('content'), content: ContentBlockSchema }),
   z.object({
     type: z.literal('diff'),
+    /** Omitted only for legacy oldText/newText snapshots. */
+    change: ToolDiffChangeSchema.optional(),
     path: z.string(),
+    oldPath: z.string().optional(),
     oldText: z.string().optional(),
-    newText: z.string(),
+    newText: z.string().optional(),
+    patch: ToolDiffPatchSchema.optional(),
+    isBinary: z.boolean().optional(),
   }),
   z.object({ type: z.literal('terminal'), terminalId: z.string() }),
 ]);
@@ -57,15 +71,17 @@ export const ToolCallSchema = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
-/** Incremental tool-call update (everything optional except the id). */
+/** Incremental adapter-side tool-call update (everything optional except the id).
+ * Omitted fields preserve the running snapshot. Null clears optional snapshot fields; null content
+ * resets the required content array to empty. */
 export const ToolCallUpdateSchema = z.object({
   toolCallId: z.string().min(1),
   title: z.string().optional(),
   kind: ToolKindSchema.optional(),
   status: ToolCallStatusSchema.optional(),
-  parentToolCallId: z.string().min(1).optional(),
-  content: z.array(ToolCallContentSchema).optional(),
-  locations: z.array(ToolCallLocationSchema).optional(),
+  parentToolCallId: z.string().min(1).nullable().optional(),
+  content: z.array(ToolCallContentSchema).nullable().optional(),
+  locations: z.array(ToolCallLocationSchema).nullable().optional(),
   rawInput: z.unknown().optional(),
   rawOutput: z.unknown().optional(),
 });

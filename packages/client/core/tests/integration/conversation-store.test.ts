@@ -6,8 +6,12 @@ import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-store' as SessionId;
 
-function userText(text: string): AgentEvent {
-  return { type: 'user-message', content: [{ type: 'text', text }] };
+function userText(text: string, messageId = `user:${text}`): AgentEvent {
+  return {
+    type: 'user-message',
+    messageId: messageId as MessageId,
+    content: [{ type: 'text', text }],
+  };
 }
 
 function tick(): Promise<void> {
@@ -39,19 +43,21 @@ describe('createConversationStore', () => {
     close();
   });
 
-  it('folds the seed once and appends only live events past the uptoSeq cut', async () => {
+  it('covers matching host echoes by value without dropping an unflushed queued prompt', async () => {
     const { client, send, close } = await harness();
-    send(userText('covered by transcript'));
-    send(userText('also covered'));
+    send(userText('covered by transcript', 'host-1'));
+    send(userText('queued and unflushed', 'host-2'));
     await tick();
 
     const store = createConversationStore(client, sessionId, {
-      events: [{ event: userText('from transcript'), ts: 1_700_000_000_000 }],
+      // Provider history ids intentionally differ from the host-generated live echo ids.
+      events: [{ event: userText('covered by transcript', 'provider-1'), ts: 1_700_000_000_000 }],
       uptoSeq: 2,
     });
     const seeded = store.getSnapshot();
     expect(seeded.items.map((i) => (i.kind === 'message' ? i.blocks : null))).toEqual([
-      [{ type: 'text', text: 'from transcript' }],
+      [{ type: 'text', text: 'covered by transcript' }],
+      [{ type: 'text', text: 'queued and unflushed' }],
     ]);
     // The provider timestamp stands in for the receive time live events get.
     expect(seeded.items[0].receivedAt).toBe(1_700_000_000_000);
@@ -62,9 +68,28 @@ describe('createConversationStore', () => {
     await tick();
     const advanced = store.getSnapshot();
     expect(advanced).not.toBe(seeded);
-    expect(advanced.items).toHaveLength(2);
+    expect(advanced.items).toHaveLength(3);
     // The earlier snapshot is untouched (copy-on-write).
-    expect(seeded.items).toHaveLength(1);
+    expect(seeded.items).toHaveLength(2);
+    close();
+  });
+
+  it('consumes only one matching seed row for repeated prompt content', async () => {
+    const { client, send, close } = await harness();
+    send(userText('repeat', 'host-1'));
+    send(userText('repeat', 'host-2'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('repeat', 'provider-1') }],
+      uptoSeq: 2,
+    });
+
+    const snapshot = store.getSnapshot();
+    const messages = snapshot.items.filter(
+      (item) => item.kind === 'message' && item.role === 'user',
+    );
+    expect(messages).toHaveLength(2);
     close();
   });
 
@@ -139,8 +164,35 @@ describe('createConversationStore', () => {
     close();
   });
 
+  // CODE-328: once history flushes a completed block under the same provider id, a reseed must
+  // replace its buffered live chunks rather than render the transcript row beside a second copy.
+  it('deduplicates live chunks that the snapshot covers by message id', async () => {
+    const { client, send, close } = await harness();
+    const chunk = (text: string): AgentEvent => ({
+      type: 'agent-message-chunk',
+      messageId: 'history-row' as MessageId,
+      content: { type: 'text', text },
+    });
+    send(userText('tell a story'));
+    send({ type: 'status', status: 'running' });
+    send(chunk('Once upon '));
+    send(chunk('a time'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('tell a story') }, { event: chunk('Once upon a time') }],
+      uptoSeq: 4,
+    });
+
+    const messages = store.getSnapshot().items.filter((item) => item.kind === 'message');
+    expect(messages).toHaveLength(2);
+    expect(messages[1].blocks).toEqual([{ type: 'text', text: 'Once upon a time' }]);
+    close();
+  });
+
   it('keeps an in-flight tool call the snapshot has not flushed yet', async () => {
     const { client, send, close } = await harness();
+    const output = { type: 'content' as const, content: { type: 'text' as const, text: 'done' } };
     const announce: AgentEvent = {
       type: 'tool-call',
       toolCall: {
@@ -153,14 +205,17 @@ describe('createConversationStore', () => {
     };
     send(userText('run echo'));
     send(announce);
+    send({ type: 'tool-call-content-chunk', toolCallId: 't1', content: output });
     await tick();
 
     const store = createConversationStore(client, sessionId, {
       events: [{ event: userText('run echo') }],
-      uptoSeq: 2,
+      uptoSeq: 3,
     });
     const items = store.getSnapshot().items;
-    expect(items.filter((i) => i.kind === 'tool')).toHaveLength(1);
+    const tool = items.find((item) => item.kind === 'tool');
+    expect(tool?.kind).toBe('tool');
+    if (tool?.kind === 'tool') expect(tool.toolCall.content).toEqual([output]);
     close();
   });
 

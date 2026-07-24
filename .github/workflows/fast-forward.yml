@@ -1,0 +1,36 @@
+name: Fast Forward Merge
+
+# Thin caller. All logic lives in the reusable workflow in arcboxlabs/actions.
+# Comment `/fast-forward` or `/ff` on a PR to advance base to the PR head as-is,
+# so commit SHAs and their signatures survive and history stays linear.
+# Docs: https://github.com/arcboxlabs/actions/blob/master/docs/fast-forward.md
+
+on:
+  issue_comment:
+    types: [created]
+
+# This is the ceiling for GITHUB_TOKEN; the called workflow only requests a
+# subset of it. Pushing is done with a GitHub App token, so contents needs read
+# only. Do not trim this block: a called workflow may lower these permissions
+# but never raise them, and one missing entry fails the whole run.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+jobs:
+  fast-forward:
+    # Coarse filter: a comment on a PR that mentions the command. The reusable
+    # workflow makes the authoritative decision.
+    if: >-
+      github.event.issue.pull_request != null &&
+      (contains(github.event.comment.body, '/fast-forward') ||
+      contains(github.event.comment.body, '/ff'))
+    # Pin to a 40-char commit SHA: whoever can change that repo can effectively
+    # push straight to this repository's default branch.
+    uses: arcboxlabs/actions/.github/workflows/fast-forward.yml@3b936594d02e187473fbc4ec5f814bbeba2049ac # ff-v1
+    secrets:
+      app_id: ${{ secrets.BOT_APP_ID }}
+      app_private_key: ${{ secrets.BOT_APP_PRIVATE_KEY }}

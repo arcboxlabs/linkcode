@@ -1,4 +1,4 @@
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
@@ -25,7 +25,7 @@ export function MermaidInline({ artifact, isIncomplete }: InlineArtifactProps): 
   const [failedCode, setFailedCode] = useState<string | null>(null);
   const code = artifact.source.text.trim();
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!code) return;
       void (async () => {

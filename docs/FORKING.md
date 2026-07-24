@@ -20,14 +20,14 @@ Work through every row; each one ships ArcBox identity or points at ArcBox infra
 | **Updater feed** | `publish.url: https://releases.linkcode.ai/desktop` (`electron-builder.yml`) | **Change or remove this before packaging.** electron-builder bakes it into the app's `app-update.yml`; an unmodified fork polls ArcBox's feed and will happily "update" itself into official LinkCode. |
 | State, workspace, and data dirs | `packages/foundation/schema/src/product.ts`: `STATE_DIR_BASENAME` (`~/.linkcode`), `WORKSPACES_DIRNAME` (`~/LinkCode`), `DATA_DIRNAME` (managed-asset store under the platform data dir) | One edit rebrands every on-disk footprint — daemon state, workspace root, asset store — across daemon, desktop, and adapters. They are shared with an installed LinkCode, and the daemon is one-per-machine (port `19523`, `/linkcode` identity probe) — rename them (and ideally the port/identity path) if your fork should coexist with LinkCode on the same machine. |
 | Cloud endpoints | `DEFAULT_HQ_URL = https://api.linkcode.ai` (`apps/daemon/src/hq/api.ts`); `CLOUD_API_URL` / sign-in URL (`apps/desktop/src/main/cloud-auth/client.ts`, overridable via `LINKCODE_CLOUD_API_URL` / `LINKCODE_CLOUD_SIGN_IN_URL`); mobile equivalents under `apps/mobile/src/runtime/cloud` | Cloud login is opt-in — a fork is fully functional local-first without it. Point these at your own deployment or leave the feature dormant; do not ship a fork that signs users into ArcBox's Cloud under your brand. |
-| Sentry | DSN env vars: `MAIN_VITE_SENTRY_DSN` (desktop, build-time), `LINKCODE_SENTRY_DSN` (daemon), `VITE_SENTRY_DSN` (webview), `EXPO_PUBLIC_SENTRY_DSN` (mobile) | Unset ⇒ the SDKs no-op. Set your own project's DSNs if you want crash reporting. |
+| Sentry / PostHog | Sentry DSN env vars: `MAIN_VITE_SENTRY_DSN` (desktop, build-time), `LINKCODE_SENTRY_DSN` (daemon), `VITE_SENTRY_DSN` (webview), `EXPO_PUBLIC_SENTRY_DSN` (mobile). PostHog uses a project token + host pair per client; see `docs/ENVIRONMENT.md`. | Unset ⇒ the SDKs no-op. Set your own projects if you want crash reporting or opt-in product analytics. PostHog stays user-opt-in even when configured. |
 | Package feeds | Homebrew cask in `arcboxlabs/homebrew-tap`; the R2 release feed | ArcBox's distribution channels. Publish your fork through your own tap/feeds. |
 
 ## What already fails safe
 
 - **Signing and publishing are ArcBox-maintainers-only** and live behind the `release` GitHub environment: macOS Developer ID + notarization, Windows Trusted Signing (OIDC), the R2 feed upload, and the Homebrew cask bump all no-op without its secrets — a fork's CI cannot reach them.
 - **CI is portable**: every `runs-on` resolves through repo vars with GitHub-hosted fallbacks, so a fork runs the full CI with zero runner setup.
-- **Telemetry and Cloud are opt-in**: no Sentry DSN means no reporting; no Cloud login means a purely local product.
+- **Telemetry and Cloud are opt-in**: no Sentry DSN means no crash reporting; PostHog needs both build-time configuration and explicit user consent; no Cloud login means a purely local product.
 
 ## Building your fork
 

@@ -4,6 +4,7 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useState } from 'react';
 import type { HostProfile } from '../stores/host-store';
 import { createHostTransport } from './create-host-transport';
+import { captureMobileProductEvent } from './product-analytics';
 
 export type HostConnectionStatus = 'connecting' | 'ready' | 'error';
 
@@ -13,6 +14,8 @@ export interface HostClientState {
   /** Tears down the current client and dials again. */
   retry: () => void;
 }
+
+const connectionStartedAtByClient = new WeakMap<LinkCodeClient, number>();
 
 /**
  * One client's connection lifecycle per host, mirroring workbench's WorkbenchRuntimeConnection:
@@ -40,16 +43,27 @@ export function useHostClient(host: HostProfile): HostClientState {
   // the render-time reset above, and retry.
   useEffect(
     (signal) => {
+      const connectionStartedAt = connectionStartedAtByClient.get(client) ?? Date.now();
       const offClose = client.onClose(() => {
         if (!signal.aborted) setStatus('error');
       });
       client
         .connect()
         .then(() => {
-          if (!signal.aborted) setStatus('ready');
+          if (!signal.aborted) {
+            setStatus('ready');
+            captureMobileProductEvent('host connection ready', {
+              duration_ms: Date.now() - connectionStartedAt,
+            });
+          }
         })
         .catch(() => {
-          if (!signal.aborted) setStatus('error');
+          if (!signal.aborted) {
+            setStatus('error');
+            captureMobileProductEvent('host connection failed', {
+              duration_ms: Date.now() - connectionStartedAt,
+            });
+          }
         });
 
       return () => {
@@ -64,5 +78,7 @@ export function useHostClient(host: HostProfile): HostClientState {
 }
 
 function createClient(host: HostProfile): LinkCodeClient {
-  return new LinkCodeClient(createHostTransport(host), { randomUUID });
+  const client = new LinkCodeClient(createHostTransport(host), { randomUUID });
+  connectionStartedAtByClient.set(client, Date.now());
+  return client;
 }

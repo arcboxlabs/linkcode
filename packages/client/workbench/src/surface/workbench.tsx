@@ -46,6 +46,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
+import { captureProductEvent } from '../analytics/product-analytics';
 import { useFileMentionSource } from '../files/mentions';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
@@ -290,21 +291,30 @@ function WorkbenchSessionSurface({
   }
 
   function handleSend(content: ContentBlock[]): Promise<void> {
-    return submitActiveInput({ type: 'prompt', content });
+    return submitActiveInput({ type: 'prompt', content }).then(() => {
+      captureProductEvent('turn submitted', { input_kind: 'prompt' });
+    });
   }
 
   function handleStopTurn(): void {
     if (!sessions.activeId) return;
     onClearError();
-    void cancelMutation.trigger({ sessionId: sessions.activeId }).catch(noop);
+    void cancelMutation
+      .trigger({ sessionId: sessions.activeId })
+      .then(() => captureProductEvent('turn cancelled', {}))
+      .catch(noop);
   }
 
   function handleInvokeCommand(name: string, args?: string): Promise<void> {
-    return submitActiveInput({ type: 'command', name, arguments: args });
+    return submitActiveInput({ type: 'command', name, arguments: args }).then(() => {
+      captureProductEvent('turn submitted', { input_kind: 'command' });
+    });
   }
 
   function handleRunShellCommand(command: string): Promise<void> {
-    return submitActiveInput({ type: 'shell-command', command });
+    return submitActiveInput({ type: 'shell-command', command }).then(() => {
+      captureProductEvent('turn submitted', { input_kind: 'shell-command' });
+    });
   }
 
   async function handleSubmitDraft(submission: NewSessionSubmission): Promise<void> {
@@ -327,6 +337,7 @@ function WorkbenchSessionSurface({
     void inputMutation
       .trigger({ sessionId, input: submission.input })
       .then(() => {
+        captureProductEvent('turn submitted', { input_kind: submission.input.type });
         // Some process-per-turn adapters can confirm a startup override only after their first
         // successful run. Promote only a positive late match: replaying a mismatch here could erase
         // a newer live selection made while that turn was running.

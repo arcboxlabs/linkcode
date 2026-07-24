@@ -86,7 +86,7 @@ export function settledActivityRunDescriptor(
     const count = categoryCounts.get(category);
     if (count !== undefined) clauses.push({ category, count });
   }
-  if (clauses.length === 0 && hasThinking) clauses.push({ category: 'thinking' });
+  if (hasThinking && clauses.length === 0) clauses.push({ category: 'thinking' });
 
   return {
     clauses,

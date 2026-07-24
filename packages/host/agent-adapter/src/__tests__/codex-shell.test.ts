@@ -10,6 +10,7 @@ import type { CodexAppServerOptions } from '../native/codex/app-server';
  * notification/exit callbacks the adapter registers through `startAppServer`'s options. */
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+  readonly handlers = new Map<string, (params: unknown) => Promise<unknown>>();
   /** Set per test to reject a specific method like a JSON-RPC error response. */
   rejectMethod: string | undefined;
   threadResponse: unknown = {
@@ -46,8 +47,13 @@ class FakeCodexServer {
     }
     return Promise.resolve({});
   }
-  setRequestHandler(): void {
-    // Approvals never fire on the shell-command path.
+  setRequestHandler(method: string, handler: (params: unknown) => Promise<unknown>): void {
+    this.handlers.set(method, handler);
+  }
+  serverRequest(method: string, params: unknown): Promise<unknown> {
+    const handler = this.handlers.get(method);
+    if (!handler) throw new Error(`missing handler for ${method}`);
+    return handler(params);
   }
   close(): void {
     // Nothing to reap.
@@ -110,6 +116,50 @@ function driveShellTurn(
 }
 
 describe('CodexAdapter shell-command passthrough', () => {
+  it('announces the gated command and requests permission by subject reference', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    events.length = 0;
+
+    const decision = adapter.fakeServers[0].serverRequest('item/commandExecution/requestApproval', {
+      itemId: 'command-approval-1',
+      command: 'pnpm test',
+      cwd: '/repo',
+      reason: 'Run the test suite',
+    });
+    await Promise.resolve();
+
+    expect(events[0]).toMatchObject({
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 'command-approval-1',
+        title: 'pnpm test',
+        status: 'in_progress',
+      },
+    });
+    const request = events.find((event) => event.type === 'permission-request');
+    expect(request).toMatchObject({
+      title: 'pnpm test',
+      description: 'Run the test suite',
+      subject: {
+        type: 'command',
+        command: 'pnpm test',
+        cwd: '/repo',
+        toolCallId: 'command-approval-1',
+      },
+    });
+    expect(request).not.toHaveProperty('toolCall');
+    if (request?.type !== 'permission-request') throw new Error('permission request not emitted');
+    await adapter.send({
+      type: 'permission-response',
+      requestId: request.requestId,
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    });
+    await expect(decision).resolves.toEqual({ decision: 'accept' });
+  });
+
   it('reflects the effective model and its catalog default without pinning overrides', async () => {
     const adapter = new TestCodex();
     const events: AgentEvent[] = [];

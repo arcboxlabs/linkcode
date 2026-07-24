@@ -1,7 +1,8 @@
 import type { ThemePreference } from '@linkcode/ipc';
-import type { ChromeSurface, PanelSection } from '@linkcode/ui/shell/panels';
+import type { SessionId } from '@linkcode/schema';
+import type { ChromeSurface, OptionalPanelSection, PanelSection } from '@linkcode/ui/shell/panels';
 import { SectionPanelRegion } from '@linkcode/ui/shell/panels';
-import { FilesPanel, GitPanel } from '@linkcode/workbench';
+import { FilesPanel, GitPanel, SimulatorPanel } from '@linkcode/workbench';
 import { DesktopChromePortal } from '../chrome/chrome';
 import { DESKTOP_CHROME_SPACER_CLASS } from '../chrome/metrics';
 import type { RightPanelState } from '../store/model';
@@ -15,6 +16,7 @@ import type { RightPanelState } from '../store/model';
 export function DesktopRightPanelRegion({
   panel,
   cwd,
+  activeSessionId,
   themeType,
   maximized,
   chromeVisible,
@@ -22,6 +24,8 @@ export function DesktopRightPanelRegion({
   chromeSurface,
   terminalContentTargetRef,
   onSelectSection,
+  onAddSection,
+  onCloseSection,
   onSelectTerminalTab,
   onCloseTerminalTab,
   onAddTerminalTab,
@@ -32,6 +36,8 @@ export function DesktopRightPanelRegion({
 }: {
   panel: RightPanelState;
   cwd: string | undefined;
+  /** The active thread — simulator interactions ride its session claim. */
+  activeSessionId: SessionId | null;
   themeType: ThemePreference;
   maximized: boolean;
   chromeVisible: boolean;
@@ -39,6 +45,8 @@ export function DesktopRightPanelRegion({
   chromeSurface: ChromeSurface;
   terminalContentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectSection: (section: PanelSection) => void;
+  onAddSection: (section: OptionalPanelSection) => void;
+  onCloseSection: (section: OptionalPanelSection) => void;
   onSelectTerminalTab: (id: string) => void;
   onCloseTerminalTab: (id: string) => void;
   onAddTerminalTab: () => void;
@@ -71,9 +79,12 @@ export function DesktopRightPanelRegion({
             onOpenFile={onOpenFileTab}
           />
         ),
+        simulator: <SimulatorPanel sessionId={activeSessionId} />,
       }}
       terminalContentTargetRef={terminalContentTargetRef}
       onSelectSection={onSelectSection}
+      onAddSection={onAddSection}
+      onCloseSection={onCloseSection}
       onSelectTerminalTab={onSelectTerminalTab}
       onCloseTerminalTab={onCloseTerminalTab}
       onAddTerminalTab={onAddTerminalTab}

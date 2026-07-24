@@ -19,6 +19,7 @@ Read by the daemon, desktop, webview, or mobile at run time.
 | `LINKCODE_PORT` | `apps/daemon/src/config.ts` | Overrides every configured listener's port. Must parse as an integer in `1..65535`, otherwise the config value stands. |
 | `LINKCODE_HOST` | `apps/daemon/src/config.ts` | Overrides every listener's bind host. |
 | `LINKCODE_PTY_SIDECAR_PATH` | `apps/daemon/src/pty/sidecar.ts` | Absolute path to the `linkcode-pty` binary; always wins. Dev falls back to `target/release/linkcode-pty`; a bundled `dist/` daemon has no fallback and disables terminals. The packaged desktop supervisor sets it to `<resourcesPath>/sidecar/<arch>`. |
+| `LINKCODE_SIM_SIDECAR_PATH` | `apps/daemon/src/sim/backend.ts` | Absolute path to the `linkcode-sim` iOS Simulator sidecar; always wins. macOS only — other platforms resolve to none regardless. Dev falls back to `target/release/linkcode-sim`; a bundled `dist/` daemon has no fallback and disables simulators. The packaged desktop supervisor sets it from `<resourcesPath>`. |
 | `LINKCODE_AIGATEWAY_PATH` | `apps/daemon/src/ai-gateway.ts` | Path to the `aigateway` translation sidecar, overriding the managed-asset install. |
 | `LINKCODE_ASSETS_DIR` | `packages/host/assets/src/paths.ts` | Redirects the managed-asset store root (default: `~/Library/Application Support/LinkCode/assets`, `%LOCALAPPDATA%/LinkCode/assets`, `$XDG_DATA_HOME/linkcode/assets`). Resolved per call, so tests can stub it. |
 | `ELECTRON_RENDERER_URL` | `apps/desktop/src/main/window.ts` | Dev-server URL the main process loads instead of the packaged renderer. Written by `apps/desktop/scripts/dev.mts`. |
@@ -53,7 +54,14 @@ Point a client at something other than production LinkCode Cloud. All default to
 
 ## Observability
 
-DSNs are publishable ids, not secrets. Unset means the SDK no-ops — the default for local development.
+DSNs and PostHog project tokens are publishable ids, not secrets. Unset means the SDK no-ops — the default for local development. Product analytics also requires an explicit user opt-in in each client.
+
+These changes do not client-sample Sentry error events. Performance root traces use client-side
+sampling: 10% in desktop, webview, and mobile, and 5% in the daemon. On each daemon start, optional
+CPU profiling is enabled with a 1% probability; in selected runs it follows sampled trace activity.
+Sentry project-level dynamic sampling can reduce retained trace volume remotely, but it does not
+prevent the client from uploading a sampled trace, so bandwidth-sensitive changes still require a
+client configuration or new build.
 
 | Variable | Surface | Notes |
 | --- | --- | --- |
@@ -62,6 +70,9 @@ DSNs are publishable ids, not secrets. Unset means the SDK no-ops — the defaul
 | `VITE_SENTRY_DSN` | Webview | Build-time inlined; declared in `apps/webview/turbo.json` `build.env`. |
 | `EXPO_PUBLIC_SENTRY_DSN` | Mobile | Inlined by Metro/EAS at bundle time. |
 | `SENTRY_ALLOW_FAILURE` | EAS `preview` profile | `apps/mobile/eas.json`; keeps a failed sourcemap upload from failing the build. |
+| `RENDERER_VITE_POSTHOG_PROJECT_TOKEN`, `RENDERER_VITE_POSTHOG_HOST` | Desktop renderer | Build-time inlined; both are required and declared in `apps/desktop/turbo.json`. Accepts only an HTTPS PostHog Cloud host (`*.posthog.com`) because Electron CSP is locked to that origin family. Only explicit app, connection, thread-lifecycle, turn-submission, and identity events are allowed; autocapture and replay are disabled. |
+| `VITE_POSTHOG_PROJECT_TOKEN`, `VITE_POSTHOG_HOST` | Webview | Build-time inlined; both are required and declared in `apps/webview/turbo.json`. Uses the same explicit-event policy as desktop. |
+| `EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN`, `EXPO_PUBLIC_POSTHOG_HOST` | Mobile | Inlined by Metro/EAS. Both are required; local development remains disabled even when set. Autocapture, lifecycle capture, replay, error tracking, and remote flags are disabled. |
 
 ## Tests and E2E
 
@@ -88,7 +99,7 @@ DSNs are publishable ids, not secrets. Unset means the SDK no-ops — the defaul
 
 ## Release-only secrets
 
-Set as GitHub repository/environment secrets, never locally. Signing and notarization secrets live in the protected `release` environment; unsigned PR builds get empty values and skip signing. Full context in [`RELEASE.md`](./RELEASE.md).
+Set as GitHub repository/environment secrets, never locally. Signing and notarization secrets live in the protected `release` environment; unsigned PR builds get empty values and skip signing. The release automation GitHub App credentials are repository/org secrets because release-please must maintain PRs before entering that environment. Full context in [`RELEASE.md`](./RELEASE.md).
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
@@ -99,4 +110,4 @@ Set as GitHub repository/environment secrets, never locally. Signing and notariz
 | `AZURE_PUBLISHER_NAME`, `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERTIFICATE_PROFILE` | `build-desktop.yml` | Windows Trusted Signing identifiers (not credentials, but kept as secrets so the public repo doesn't advertise the signing infrastructure). `AZURE_PUBLISHER_NAME` must match the certificate subject CN exactly. |
 | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` | `build-desktop.yml` | `azure/login` **inputs** for OIDC federation. No `AZURE_*` credential env exists during packaging on purpose, so `DefaultAzureCredential` falls through to the Azure CLI entry. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `release-desktop.yml` | Cloudflare R2 credentials for publishing the electron-updater feed. `AWS_REQUEST_CHECKSUM_CALCULATION`/`AWS_RESPONSE_CHECKSUM_VALIDATION` are pinned to `WHEN_REQUIRED` because R2 doesn't implement the checksums recent aws-cli sends. |
-| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | `release-desktop.yml` | GitHub App credentials for the Homebrew cask bump. **Empty makes the bump steps self-skip** — a missing secret is a silent no-op, not a failure. |
+| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | `release-please.yml`, `finalize-releases.yml`, `release-desktop.yml` | Repository/org-scoped GitHub App credentials. The App needs Contents, Issues, and Pull requests read/write on this repo so release-please can maintain PRs, draft Releases, and tags; the release environment also uses it for the Homebrew cask bump. Missing credentials fail release automation before any tag is created; only the Homebrew-only use remains an optional self-skip. |

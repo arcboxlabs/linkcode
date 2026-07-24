@@ -22,11 +22,17 @@ import {
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
-import { TOOL_KIND_ICONS, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+import { toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+
+/** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
+export type TerminalBlockComponent = React.ComponentType<{
+  terminalId: string;
+  command?: string;
+}>;
 
 interface ToolResultPreviewProps {
   toolCall: ToolCall;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
 }
 
 function RenderedContent({
@@ -35,24 +41,27 @@ function RenderedContent({
   toolCall,
 }: {
   content: ToolCallContent;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
   toolCall: ToolCall;
 }): React.ReactNode {
   if (content.type === 'content') return <ContentBlockView block={content.content} />;
   if (content.type === 'diff') {
     return (
       <DiffBlock
-        navigation={toolCallDiffNavigation(toolCall, content.path, content.newText)}
+        navigation={toolCallDiffNavigation(toolCall, content)}
         path={content.path}
+        oldPath={content.oldPath}
         oldText={content.oldText}
         newText={content.newText}
+        patch={content.patch?.text}
       />
     );
   }
+  const command = toolCallCommand(toolCall);
   if (TerminalBlockComponent) {
-    return <TerminalBlockComponent terminalId={content.terminalId} />;
+    return <TerminalBlockComponent command={command} terminalId={content.terminalId} />;
   }
-  return <TerminalBlock terminalId={content.terminalId} />;
+  return <TerminalBlock command={command} terminalId={content.terminalId} />;
 }
 
 function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): React.ReactNode {
@@ -226,16 +235,6 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
         </ToolPreviewCard>
       );
     }
-    case 'edit':
-    case 'delete':
-    case 'move': {
-      const Icon = TOOL_KIND_ICONS[toolCall.kind];
-      return (
-        <ToolPreviewCard icon={Icon} title={displayTitle}>
-          <Markdown>{text}</Markdown>
-        </ToolPreviewCard>
-      );
-    }
     case 'search':
       return <SearchRows text={text} toolCall={toolCall} />;
     case 'fetch': {
@@ -260,6 +259,10 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
         </ToolPreviewCard>
       );
     }
+    // Mutation receipts and reasoning summaries are auxiliary prose, not artifacts — no card.
+    case 'edit':
+    case 'delete':
+    case 'move':
     case 'think':
     case 'task':
       return <Markdown>{text}</Markdown>;
@@ -311,7 +314,7 @@ function ExecutePreview({
           toolCall={toolCall}
         />
       ))}
-      {terminalContent.length === 0 || output ? (
+      {output || terminalContent.length === 0 ? (
         <Terminal
           title={toolCallCommand(toolCall) ?? toolCallDisplayTitle(toolCall)}
           output={output}
@@ -335,7 +338,7 @@ export function ToolResultPreview({
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');
-    if (toolCall.kind === 'read' && !hasDiff) {
+    if (!hasDiff && toolCall.kind === 'read') {
       return (
         <FileCallPreview
           content={content}

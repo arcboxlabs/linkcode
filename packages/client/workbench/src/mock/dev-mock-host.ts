@@ -64,6 +64,7 @@ import {
   SHOWCASE_FILES_NARRATION,
   SHOWCASE_IMAGE,
   SHOWCASE_INTRO_CONTENT,
+  SHOWCASE_MARKDOWN_CONTENT,
   SHOWCASE_PERMISSION_DENIED_CONTENT,
   SHOWCASE_PERMISSION_GRANTED_CONTENT,
   SHOWCASE_PERMISSIONS,
@@ -901,6 +902,7 @@ export class DevMockHost {
       case 'shell-command':
         this.emit(sessionId, {
           type: 'user-message',
+          messageId: this.nextMessageId('mock-user'),
           content: [textBlock(`$ ${input.command}`)],
         });
         this.sendSuccess(replyTo);
@@ -928,6 +930,7 @@ export class DevMockHost {
 
     this.emit(session.sessionId, {
       type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
       content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
     });
     session.status = 'running';
@@ -953,9 +956,13 @@ export class DevMockHost {
     content: ContentBlock[],
   ): Promise<void> {
     const text = promptText(content);
-    if (!session.title && text) session.title = text.slice(0, 80);
+    if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
-    this.emit(session.sessionId, { type: 'user-message', content });
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
+      content,
+    });
     this.emit(session.sessionId, { type: 'status', status: 'running' });
 
     // Cancel/stop bump the session epoch; a stale epoch means this turn was cancelled and the
@@ -1046,7 +1053,11 @@ export class DevMockHost {
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
       { type: 'current-mode-update', currentModeId: 'mock-showcase' },
-      { type: 'user-message', content: SHOWCASE_USER_CONTENT },
+      {
+        type: 'user-message',
+        messageId: this.nextMessageId('mock-showcase-user'),
+        content: SHOWCASE_USER_CONTENT,
+      },
       {
         type: 'agent-thought-chunk',
         messageId: this.nextMessageId('mock-showcase-thought'),
@@ -1072,6 +1083,11 @@ export class DevMockHost {
         type: 'agent-message-chunk',
         messageId: this.nextMessageId('mock-showcase-image'),
         content: SHOWCASE_IMAGE,
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-markdown'),
+        content: SHOWCASE_MARKDOWN_CONTENT,
       },
       {
         type: 'agent-message-chunk',
@@ -1135,11 +1151,20 @@ export class DevMockHost {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,
       });
+      // The tool snapshot is the timeline authority; the following ask only references it.
+      // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
+      const announced = await this.emitShowcaseEvent(session, epoch, {
+        type: 'tool-call',
+        toolCall: permission.toolCall,
+      });
+      if (!announced) return false;
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       const emitted = await this.emitShowcaseEvent(session, epoch, {
         type: 'permission-request',
         requestId: permission.requestId,
-        toolCall: permission.toolCall,
+        title: permission.title,
+        description: permission.description,
+        subject: permission.subject,
         options: permission.options,
       });
       if (!emitted) return false;

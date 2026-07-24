@@ -104,7 +104,7 @@ export class InteractiveRequests {
   cancelOpen(toolCallId?: string): AskResolutionEvent[] {
     const resolutions: AskResolutionEvent[] = [];
     for (const [requestId, ask] of this.records) {
-      if (toolCallId !== undefined && ask.request.toolCall.toolCallId !== toolCallId) continue;
+      if (toolCallId !== undefined && requestToolCallId(ask.request) !== toolCallId) continue;
       if (ask.state === 'responding') {
         this.records.set(requestId, { ...ask, invalidated: true });
       } else if (ask.state === 'open') {
@@ -147,4 +147,9 @@ export class InteractiveRequests {
     }
     return events;
   }
+}
+
+function requestToolCallId(request: AskEvent): string | undefined {
+  if (request.type === 'question-request') return request.toolCall.toolCallId;
+  return request.subject?.toolCallId ?? request.toolCall?.toolCallId;
 }

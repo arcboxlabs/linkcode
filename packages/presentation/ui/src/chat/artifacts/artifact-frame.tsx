@@ -1,12 +1,8 @@
-import { Card } from 'coss-ui/components/card';
+import { Frame } from 'coss-ui/components/frame';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
-import {
-  CodeBlockActions,
-  CodeBlockCopyButton,
-  CodeBlockHeader,
-  CodeBlockTitle,
-} from '../code-block';
+import { ChatCardActions, ChatCardHeader, ChatCardPanel, ChatCardTitle } from '../chat-card';
+import { CodeBlockCopyButton } from '../code-block';
 
 export interface ArtifactFrameProps {
   /** Shown in the header (the fence language / kind id — technical, not translated). */
@@ -18,8 +14,8 @@ export interface ArtifactFrameProps {
   children: React.ReactNode;
 }
 
-/** Chrome shared by inline artifact renderers: bordered card with a code-block-style
- * header (kind label, streaming indicator, copy-source button). */
+/** Chrome shared by inline artifact renderers: coss-ui frame with the kind label,
+ * streaming indicator, and copy-source button in the frame header. */
 export function ArtifactFrame({
   kindLabel,
   code,
@@ -30,17 +26,15 @@ export function ArtifactFrame({
   const t = useTranslations('workbench.artifact');
 
   return (
-    <Card className={cn('my-2 overflow-hidden', className)} data-artifact-kind={kindLabel}>
-      <CodeBlockHeader>
-        <CodeBlockTitle>{kindLabel}</CodeBlockTitle>
-        <CodeBlockActions>
-          {isIncomplete ? (
-            <span className="animate-pulse text-muted-foreground">{t('streaming')}</span>
-          ) : null}
+    <Frame className={cn('my-2', className)} data-artifact-kind={kindLabel}>
+      <ChatCardHeader>
+        <ChatCardTitle>{kindLabel}</ChatCardTitle>
+        <ChatCardActions>
+          {isIncomplete ? <span className="animate-pulse">{t('streaming')}</span> : null}
           <CodeBlockCopyButton code={code} />
-        </CodeBlockActions>
-      </CodeBlockHeader>
-      {children}
-    </Card>
+        </ChatCardActions>
+      </ChatCardHeader>
+      <ChatCardPanel className="overflow-hidden p-0">{children}</ChatCardPanel>
+    </Frame>
   );
 }

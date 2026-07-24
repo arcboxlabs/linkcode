@@ -3,6 +3,7 @@ import type {
   AgentEvent,
   ContentBlock,
   EffortLevel,
+  ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
@@ -28,10 +29,14 @@ class TestAdapter extends BaseAgentAdapter {
   tool(patch: ToolCallUpdate): void {
     this.emitTool(patch);
   }
+  append(toolCallId: string, content: ToolCallContent): void {
+    this.appendToolContent(toolCallId, content);
+  }
   ask(): Promise<unknown> {
-    return this.requestPermission({ toolCallId: 't1' }, [
-      { optionId: 'ok', name: 'Allow', kind: 'allow_once' },
-    ]);
+    return this.requestPermission(
+      { title: 'Run', subject: { type: 'tool-call', toolCallId: 't1' } },
+      [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    );
   }
   commands(catalog: AgentCommand[]): void {
     this.emitCommands(catalog);
@@ -94,6 +99,57 @@ describe('BaseAgentAdapter.emitTool', () => {
     });
   });
 
+  it('distinguishes omitted fields from explicit clears', () => {
+    const a = new TestAdapter();
+    a.tool({
+      toolCallId: 't1',
+      parentToolCallId: 'parent',
+      content: [{ type: 'content', content: { type: 'text', text: 'output' } }],
+      locations: [{ path: '/repo/a.ts' }],
+      rawInput: { command: 'run' },
+      rawOutput: 'done',
+    });
+    a.tool({
+      toolCallId: 't1',
+      parentToolCallId: null,
+      content: null,
+      locations: null,
+      rawInput: null,
+      rawOutput: null,
+    });
+
+    expect(toolEvents(a).at(-1)?.toolCall).toMatchObject({
+      toolCallId: 't1',
+      content: [],
+      parentToolCallId: undefined,
+      locations: undefined,
+      rawInput: undefined,
+      rawOutput: undefined,
+    });
+  });
+
+  it('accumulates append chunks around authoritative content replacements', () => {
+    const a = new TestAdapter();
+    const first = { type: 'content' as const, content: { type: 'text' as const, text: 'first' } };
+    const replacement = {
+      type: 'content' as const,
+      content: { type: 'text' as const, text: 'replacement' },
+    };
+    const last = { type: 'content' as const, content: { type: 'text' as const, text: 'last' } };
+
+    a.tool({ toolCallId: 't1', content: [] });
+    a.append('t1', first);
+    a.tool({ toolCallId: 't1', content: [replacement] });
+    a.append('t1', last);
+    a.tool({ toolCallId: 't1', status: 'completed' });
+
+    expect(a.seen.filter((event) => event.type === 'tool-call-content-chunk')).toEqual([
+      { type: 'tool-call-content-chunk', toolCallId: 't1', content: first },
+      { type: 'tool-call-content-chunk', toolCallId: 't1', content: last },
+    ]);
+    expect(toolEvents(a).at(-1)?.toolCall.content).toEqual([replacement, last]);
+  });
+
   it('fills defaults on first sight (title=id, kind=other, status=in_progress, content=[])', () => {
     const a = new TestAdapter();
     a.tool({ toolCallId: 't9' });
@@ -114,6 +170,7 @@ describe('BaseAgentAdapter.emitTool', () => {
     a.tool({ toolCallId: 't1', title: 'Run', kind: 'execute', status: 'completed' });
     const before = a.seen.length;
     a.tool({ toolCallId: 't1', status: 'in_progress' }); // late/stray update — must be dropped
+    a.append('t1', { type: 'content', content: { type: 'text', text: 'late' } });
     expect(a.seen.length).toBe(before);
   });
 });
@@ -142,7 +199,14 @@ describe('BaseAgentAdapter teardown', () => {
   it('on cancel: resolves a pending permission ask with cancelled (no hang/leak)', async () => {
     const a = new TestAdapter();
     const pending = a.ask();
-    expect(a.seen.some((e) => e.type === 'permission-request')).toBe(true);
+    const request = a.seen.find((e) => e.type === 'permission-request');
+    expect(request).toMatchObject({
+      type: 'permission-request',
+      title: 'Run',
+      subject: { type: 'tool-call', toolCallId: 't1' },
+      options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+    });
+    expect(request).not.toHaveProperty('toolCall');
 
     await a.send({ type: 'cancel' });
     await expect(pending).resolves.toEqual({ outcome: 'cancelled' });

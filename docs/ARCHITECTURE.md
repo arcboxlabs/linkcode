@@ -263,6 +263,12 @@ each hiding its SDK's differences behind the unified `AgentAdapter` interface. A
 asks). Adapters advertise their `historyCapabilities` (list / read / resume), and any
 unsupported operation rejects clearly rather than silently degrading.
 
+The adapter lifecycle has four turn-level invariants: a turn-starting input emits `running` before
+its dispatch resolves; an open permission/question keeps that running turn awaiting input; a normal
+turn ends with `stop` followed by `idle`; and a permanently unavailable adapter emits `stopped`.
+Cancel follows the same terminal `stop`/`idle` path and tears down every open interaction/tool, so
+composer gates never infer liveness from a missing terminal event.
+
 **Abstraction layer.** Adapters normalize each agent's native events into the zod
 `AgentEvent` contract, and accept the
 normalized `AgentInput`. The agent data vocabulary — content, tool calls, plans,

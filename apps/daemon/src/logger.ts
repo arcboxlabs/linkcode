@@ -1,4 +1,5 @@
 import { Cause, Logger as EffectLogger } from 'effect';
+import { castArray } from 'foxts/cast-array';
 import type { ErrorLikeObject } from 'foxts/extract-error-message';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
 import type { DestinationStream, Logger as PinoLogger } from 'pino';
@@ -99,7 +100,7 @@ function effectError(
 export function createEffectLogger(target: PinoLogger): EffectLogger.Logger<unknown, void> {
   return EffectLogger.make(({ cause, logLevel, message }) => {
     if (logLevel === 'None') return;
-    const messages = Array.isArray(message) ? message : [message];
+    const messages = castArray(message);
     const text = messages.find((entry) => typeof entry === 'string') ?? 'Effect log';
     const bindings: Record<string, unknown> = effectBindings(messages);
     const error = effectError(messages, cause);

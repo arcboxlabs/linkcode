@@ -17,10 +17,11 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@linkcode/schema';
-import { EffortLevelSchema } from '@linkcode/schema';
+import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
@@ -50,7 +51,7 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { codexPlanEntries, execToolCall, fileChangeToolCall, textContent } from './tool-view';
+import { CODEX_PLAN_ID, codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
@@ -191,6 +192,36 @@ function sandboxPolicyFor(policyId: CodexPolicyId, writableRoots: string[]): unk
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
   };
+}
+
+/**
+ * `thread/start` `config` dotted-key overrides for MCP servers — the same override channel as
+ * `sandbox_workspace_write.writable_roots`. HTTP servers ride codex's streamable-HTTP MCP client,
+ * which sits behind `experimental_use_rmcp_client`. Header forwarding has no known config key, so
+ * a headered HTTP server is rejected loudly instead of silently connecting unauthenticated.
+ */
+export function codexMcpConfigOverrides(
+  servers: StartOptions['mcpServers'],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!servers?.length) return out;
+  let hasHttp = false;
+  for (const server of servers) {
+    const prefix = `mcp_servers.${server.name}`;
+    if (server.type === 'http') {
+      if (server.headers && !isObjectEmpty(server.headers)) {
+        throw new Error(`codex: MCP server ${server.name}: HTTP headers are not supported`);
+      }
+      hasHttp = true;
+      out[`${prefix}.url`] = server.url;
+    } else {
+      out[`${prefix}.command`] = server.command;
+      if (server.args) out[`${prefix}.args`] = server.args;
+      if (server.env) out[`${prefix}.env`] = server.env;
+    }
+  }
+  if (hasHttp) out.experimental_use_rmcp_client = true;
+  return out;
 }
 
 /** Map an app-server item status (`inProgress`/`completed`/`failed`/`declined`) to ours;
@@ -592,14 +623,18 @@ export class CodexAdapter extends BaseAgentAdapter {
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
+    const configOverrides = {
+      ...(opts.additionalDirectories?.length && {
+        'sandbox_workspace_write.writable_roots': opts.additionalDirectories,
+      }),
+      ...codexMcpConfigOverrides(opts.mcpServers),
+    };
     const params = {
       cwd: opts.cwd,
       model: this.model,
       approvalPolicy: preset.approvalPolicy,
       ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
-      ...(opts.additionalDirectories?.length && {
-        config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
-      }),
+      ...(!isObjectEmpty(configOverrides) && { config: configOverrides }),
     };
     // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger the
     // clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the
@@ -794,7 +829,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         const effort = EffortLevelSchema.safeParse(settings.effort);
         const effective = effort.success
           ? effort.data
-          : this.effort === undefined && model
+          : model && this.effort === undefined
             ? this.modelDefaultEfforts.get(model)
             : undefined;
         if (effective) this.emitEffort(effective);
@@ -850,7 +885,10 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'turn/plan/updated': {
         const plan = params.plan;
         if (!Array.isArray(plan)) break;
-        this.emit({ type: 'plan', plan: { entries: codexPlanEntries(plan) } });
+        this.emit({
+          type: 'plan',
+          plan: { planId: CODEX_PLAN_ID, entries: codexPlanEntries(plan) },
+        });
         break;
       }
       case 'thread/tokenUsage/updated': {
@@ -919,38 +957,37 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (!type || !id) return;
     switch (type) {
       case 'agentMessage': {
-        // Text streams via item/agentMessage/delta; on completion emit whatever the deltas
-        // missed so the message survives even if the delta channel dropped.
+        // Text streams via deltas; the completed full snapshot corrects a dropped/mutated delta.
         if (!completed) break;
-        const text = stringField(item, 'text') ?? '';
-        const seen = this.streamedTextLen.get(id) ?? 0;
-        if (text.length > seen) this.emitAssistantText(text.slice(seen), asMessageId(id));
+        const text = stringField(item, 'text');
+        this.emitAgentMessage(asMessageId(id), text ? [textBlock(text)] : undefined);
         break;
       }
       case 'reasoning': {
-        // On completion emit whatever the summary deltas missed (delta lengths + the '\n\n'
-        // separators add up to the joined summary). When raw-content deltas streamed
-        // (item/reasoning/textDelta), the streamed length exceeds the summary and this is a no-op.
+        // The provider's public summary is the authoritative completed thought snapshot.
         if (!completed) break;
         const summary = item.summary;
         const text = Array.isArray(summary)
           ? summary.filter((part): part is string => typeof part === 'string').join('\n\n')
           : '';
-        const seen = this.streamedTextLen.get(id) ?? 0;
-        if (text.length > seen) this.emitThought(text.slice(seen), asMessageId(id));
+        if (text) this.emitAgentThought(asMessageId(id), [textBlock(text)]);
         break;
       }
       case 'commandExecution': {
-        this.emitTool(
-          execToolCall({
-            toolCallId: id,
-            command: stringField(item, 'command'),
-            cwd: stringField(item, 'cwd'),
-            status: mapCodexItemStatus(stringField(item, 'status')),
-            output: stringField(item, 'aggregatedOutput'),
-            rawOutput: numberField(item, 'exitCode'),
-          }),
-        );
+        const toolCall = execToolCall({
+          toolCallId: id,
+          command: stringField(item, 'command'),
+          cwd: stringField(item, 'cwd'),
+          status: mapCodexItemStatus(stringField(item, 'status')),
+          output: stringField(item, 'aggregatedOutput'),
+          rawOutput: numberField(item, 'exitCode'),
+        });
+        if (!completed) {
+          this.emitTool(toolCall);
+          break;
+        }
+        for (const content of toolCall.content) this.appendToolContent(id, content);
+        this.emitTool({ ...toolCall, content: undefined });
         break;
       }
       case 'fileChange': {
@@ -964,13 +1001,31 @@ export class CodexAdapter extends BaseAgentAdapter {
           // holding the pre-rename identity. Cite (and label the diff with) the destination.
           const kind = recordField(change, 'kind');
           const movePath = kind ? stringField(kind, 'move_path') : undefined;
+          const changeType = kind ? stringField(kind, 'type') : undefined;
           const displayPath = movePath ?? path;
           locations.push({ path: displayPath });
           const diff = stringField(change, 'diff');
+          const structuredChange =
+            changeType === 'add' || changeType === 'delete'
+              ? changeType
+              : movePath
+                ? 'move'
+                : 'modify';
           if (diff) {
-            appendArrayInPlace(content, diffContentFromUnified(displayPath, diff));
-          } else if (movePath) {
-            appendArrayInPlace(content, textContent(`Renamed ${path} → ${movePath}`));
+            appendArrayInPlace(
+              content,
+              diffContentFromUnified(displayPath, diff, {
+                change: structuredChange,
+                oldPath: movePath ? path : undefined,
+              }),
+            );
+          } else {
+            content.push({
+              type: 'diff',
+              change: structuredChange,
+              path: displayPath,
+              oldPath: movePath ? path : undefined,
+            });
           }
         }
         this.emitTool(
@@ -1012,7 +1067,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         // assistant prose, emitted once on completion (its deltas are not subscribed).
         if (!completed) break;
         const text = stringField(item, 'text');
-        if (text) this.emitAssistantText(text, asMessageId(id));
+        if (text) this.emitAgentMessage(asMessageId(id), [textBlock(text)]);
         break;
       }
       case 'contextCompaction': {
@@ -1052,13 +1107,24 @@ export class CodexAdapter extends BaseAgentAdapter {
     const itemId = stringField(params, 'itemId');
     if (!itemId) return { decision: 'decline' };
     const command = stringField(params, 'command');
+    const cwd = stringField(params, 'cwd') ?? this.opts?.cwd;
     const reason = stringField(params, 'reason');
+    const title = kind === 'edit' ? 'Apply file changes' : (command ?? 'Run command');
+    this.emitTool({
+      toolCallId: itemId,
+      title,
+      kind,
+      status: 'in_progress',
+      rawInput: { command, cwd, reason },
+    });
     const outcome = await this.requestPermission(
       {
-        toolCallId: itemId,
-        title: command ?? (kind === 'edit' ? 'Apply file changes' : 'Run command'),
-        kind,
-        rawInput: { command, cwd: stringField(params, 'cwd'), reason },
+        title,
+        description: reason,
+        subject:
+          command && cwd
+            ? { type: 'command', command, cwd, toolCallId: itemId }
+            : { type: 'tool-call', toolCallId: itemId },
       },
       PERMISSION_OPTIONS,
     );

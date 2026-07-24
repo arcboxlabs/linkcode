@@ -13,7 +13,16 @@ import { WirePayloadSchema } from './payload';
 // schema it does not speak.
 // 43 combines 42's agent.catalog/agent.cataloged with CODE-316's parallel 42 bump for
 // file.host/file.hosted, keeping every distinct schema on a distinct protocol version.
-export const WIRE_PROTOCOL_VERSION = 43 as const;
+// 44 adds the simulator.* variants (CODE-394).
+// 45 adds the simulator.activity broadcast (CODE-395).
+// 46 adds the simulator interactive + framebuffer-stream variants (CODE-397).
+// 47 adds the simulator screen-mask wire (CODE-397).
+// 48 adds the H.264 stream codec plumbing (CODE-397).
+// 49 adds streamed touch, wheel scroll, and HID keyboard input (CODE-397).
+// 50 adds two-finger pinch and IME pasteboard input (CODE-397).
+// 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
+// 52 adds the simulator device-rotation wire (CODE-408).
+export const WIRE_PROTOCOL_VERSION = 52 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

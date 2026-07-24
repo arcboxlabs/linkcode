@@ -1,6 +1,7 @@
 export * from './agent-runtime/hooks';
 export * from './agent-runtime/onboarding';
 export * from './agent-runtime/unverified-store';
+export * from './analytics/product-analytics';
 export * from './app/app-providers';
 export * from './app/connection-state';
 export * from './app/workbench-app';
@@ -48,6 +49,8 @@ export * from './settings/search';
 export * from './settings/terminal-prefs-store';
 export * from './settings/terminal-settings';
 export * from './sidebar/runtime-thread-im-menu';
+export * from './simulator/panel';
+export * from './simulator/stream-registry';
 export * from './surface/selection-store';
 export * from './surface/shell';
 export * from './surface/use-workbench-sessions';

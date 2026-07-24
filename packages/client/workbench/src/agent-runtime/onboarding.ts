@@ -10,7 +10,7 @@ import type {
 import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useRef, useState } from 'react';
 import { useAssets } from '../assets/hooks';
@@ -215,7 +215,7 @@ export function useAgentRuntimeOnboarding(): {
   // Failures surface through the settled broadcast / local catch as the failed cue — no banner.
   const ensureMutation = useMutation(ensureAsset, { onError: noop });
 
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeAssetProgress((event) => {
         if (signal.aborted) return;
@@ -231,7 +231,7 @@ export function useAgentRuntimeOnboarding(): {
     [client],
   );
 
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeAssetSettled((event) => {
         if (signal.aborted) return;
@@ -244,7 +244,7 @@ export function useAgentRuntimeOnboarding(): {
   );
 
   // The re-probe push is the truth an `installed` bridge waits for — drop confirmed entries.
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeAgentRuntimesChanged((runtimes) => {
         if (signal.aborted) return;

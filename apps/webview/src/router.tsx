@@ -12,26 +12,31 @@ import { TerminalSettings } from '@webview/routes/settings/terminal';
 import { WorkbenchRoute } from '@webview/routes/workbench-route';
 import { createBrowserRouter } from 'react-router';
 
-export const router = createBrowserRouter([
-  {
-    element: <RootLayout />,
-    children: [
-      { index: true, element: <WorkbenchRoute /> },
-      { path: 'automations', element: <AutomationsRoute /> },
-      {
-        path: 'settings',
-        element: <SettingsLayout />,
-        children: [
-          { index: true, element: <GeneralSettings /> },
-          { path: 'appearance', element: <AppearanceSettings /> },
-          { path: 'terminal', element: <TerminalSettings /> },
-          { path: 'developer', element: <DeveloperSettings /> },
-          { path: 'notifications', element: <NotificationsSettings /> },
-          { path: 'providers', element: <ProvidersSettings /> },
-          { path: 'agents', element: <AgentsSettings /> },
-          { path: 'messaging', element: <MessagingSettings /> },
-        ],
-      },
-    ],
-  },
-]);
+/** Created after Sentry.init so the data router can register its initial route transaction. */
+export function createWebviewRouter(
+  createRouter: typeof createBrowserRouter = createBrowserRouter,
+): ReturnType<typeof createBrowserRouter> {
+  return createRouter([
+    {
+      element: <RootLayout />,
+      children: [
+        { index: true, element: <WorkbenchRoute /> },
+        { path: 'automations', element: <AutomationsRoute /> },
+        {
+          path: 'settings',
+          element: <SettingsLayout />,
+          children: [
+            { index: true, element: <GeneralSettings /> },
+            { path: 'appearance', element: <AppearanceSettings /> },
+            { path: 'terminal', element: <TerminalSettings /> },
+            { path: 'developer', element: <DeveloperSettings /> },
+            { path: 'notifications', element: <NotificationsSettings /> },
+            { path: 'providers', element: <ProvidersSettings /> },
+            { path: 'agents', element: <AgentsSettings /> },
+            { path: 'messaging', element: <MessagingSettings /> },
+          ],
+        },
+      ],
+    },
+  ]);
+}

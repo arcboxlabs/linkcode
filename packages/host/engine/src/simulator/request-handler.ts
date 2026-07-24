@@ -1,0 +1,367 @@
+import type { SessionId, WirePayload } from '@linkcode/schema';
+import type { Transport } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import { Effect } from 'effect';
+import { noop } from 'foxts/noop';
+import type { EngineFailure } from '../failure';
+import { RequestError, toOperationFailure } from '../failure';
+import type { WireResponder } from '../wire/responder';
+import type { SimulatorService } from './service';
+
+type SimulatorRequest = Extract<
+  WirePayload,
+  {
+    kind:
+      | 'simulator.status'
+      | 'simulator.list'
+      | 'simulator.boot'
+      | 'simulator.shutdown'
+      | 'simulator.install'
+      | 'simulator.launch'
+      | 'simulator.terminate'
+      | 'simulator.open-url'
+      | 'simulator.screenshot'
+      | 'simulator.screen-mask'
+      | 'simulator.tap'
+      | 'simulator.touch'
+      | 'simulator.pinch'
+      | 'simulator.paste'
+      | 'simulator.swipe'
+      | 'simulator.button'
+      | 'simulator.rotate'
+      | 'simulator.key'
+      | 'simulator.stream.start'
+      | 'simulator.stream.stop';
+  }
+>;
+
+/**
+ * Translates inbound simulator wire requests into operations on the optional simulator service.
+ * Ownership, caps, and reclaim all live in the service; this layer only correlates replies and
+ * broadcasts a fresh device list after state-changing commands (the engine has no CoreSimulator
+ * watcher, so its own commands are the only change source it can observe).
+ */
+export class SimulatorRequestHandler {
+  /** Active framebuffer fan-out subscriptions, keyed by udid. The owning `sessionId` is tracked so a
+   * later start by a different session replaces the fan-out: a release or shutdown outside the wire
+   * stop path leaves the entry, and a stale callback would otherwise route new frames to the dead
+   * session (the current panel then receives none). */
+  private readonly frameSubs = new Map<string, { sessionId: SessionId; unsubscribe: () => void }>();
+
+  constructor(
+    private readonly simulators: SimulatorService | undefined,
+    private readonly transport: Transport,
+    private readonly responder: WireResponder,
+  ) {}
+
+  handle(payload: SimulatorRequest): Effect.Effect<void> {
+    switch (payload.kind) {
+      case 'simulator.status':
+        // Answered even without a backend: `available: false` IS the capability signal clients
+        // gate their UI on, so it must never surface as an error.
+        return this.responder.reply(
+          payload.clientReqId,
+          simulatorOperation('simulator.status', 'Failed to probe simulators', async () => {
+            const status = this.simulators
+              ? await this.simulators.status()
+              : { available: false, reason: 'simulators are unavailable on this host' };
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.status.result',
+                replyTo: payload.clientReqId,
+                status,
+              }),
+            );
+          }),
+        );
+      case 'simulator.list':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.list', 'Failed to list simulators', async () => {
+            const devices = await simulators.list();
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.listed',
+                replyTo: payload.clientReqId,
+                devices,
+              }),
+            );
+          }),
+        );
+      case 'simulator.boot':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.boot', 'Failed to boot simulator', async () => {
+            await simulators.boot(payload.sessionId, payload.udid);
+            this.responder.sendSuccess(payload.clientReqId);
+            await this.broadcastDevices(simulators);
+          }),
+        );
+      case 'simulator.shutdown':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.shutdown', 'Failed to shut simulator down', async () => {
+            await simulators.shutdownDevice(payload.sessionId, payload.udid);
+            this.responder.sendSuccess(payload.clientReqId);
+            await this.broadcastDevices(simulators);
+          }),
+        );
+      case 'simulator.install':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.install', 'Failed to install app', async () => {
+            await simulators.install(payload.sessionId, payload.udid, payload.appPath);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.launch':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.launch', 'Failed to launch app', async () => {
+            const pid = await simulators.launch(payload.sessionId, payload.udid, payload.bundleId);
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.launched',
+                replyTo: payload.clientReqId,
+                pid,
+              }),
+            );
+          }),
+        );
+      case 'simulator.terminate':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.terminate', 'Failed to terminate app', async () => {
+            await simulators.terminate(payload.sessionId, payload.udid, payload.bundleId);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.open-url':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.open-url', 'Failed to open URL', async () => {
+            await simulators.openUrl(payload.sessionId, payload.udid, payload.url);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.screenshot':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.screenshot', 'Failed to capture screenshot', async () => {
+            const format = payload.format ?? 'jpeg';
+            const image = await simulators.screenshot(payload.sessionId, payload.udid, format);
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.screenshotted',
+                replyTo: payload.clientReqId,
+                format,
+                data: Buffer.from(image).toString('base64'),
+              }),
+            );
+          }),
+        );
+      case 'simulator.screen-mask':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.screen-mask', 'Failed to load screen mask', async () => {
+            const mask = await simulators.screenMask(payload.udid);
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.screen-masked',
+                replyTo: payload.clientReqId,
+                data: Buffer.from(mask).toString('base64'),
+              }),
+            );
+          }),
+        );
+      case 'simulator.tap':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.tap', 'Failed to tap', async () => {
+            await simulators.tap(payload.sessionId, payload.udid, payload.x, payload.y);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.touch': {
+        const run = (simulators: SimulatorService): Promise<void> =>
+          simulators.touch(payload.sessionId, payload.udid, payload.phase, payload.x, payload.y);
+        // High-frequency `move` phases arrive unacked (see the client); run them fire-and-forget
+        // so no reply is emitted. `down`/`up` stay correlated for claim/completion feedback.
+        if (payload.phase === 'move') return this.fireAndForget('simulator.touch', run);
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.touch', 'Failed to inject touch', async () => {
+            await run(simulators);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      }
+      case 'simulator.pinch': {
+        const run = (simulators: SimulatorService): Promise<void> =>
+          simulators.pinch(
+            payload.sessionId,
+            payload.udid,
+            payload.phase,
+            { x: payload.x0, y: payload.y0 },
+            { x: payload.x1, y: payload.y1 },
+          );
+        if (payload.phase === 'move') return this.fireAndForget('simulator.pinch', run);
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.pinch', 'Failed to pinch', async () => {
+            await run(simulators);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      }
+      case 'simulator.paste':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.paste', 'Failed to set pasteboard', async () => {
+            await simulators.paste(payload.sessionId, payload.udid, payload.text);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.swipe':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.swipe', 'Failed to swipe', async () => {
+            await simulators.swipe(
+              payload.sessionId,
+              payload.udid,
+              { x: payload.x0, y: payload.y0 },
+              { x: payload.x1, y: payload.y1 },
+              payload.durationMs,
+            );
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.button':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.button', 'Failed to press button', async () => {
+            await simulators.button(payload.sessionId, payload.udid, payload.button);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.rotate':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.rotate', 'Failed to rotate device', async () => {
+            await simulators.rotate(payload.sessionId, payload.udid, payload.orientation);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.key':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.key', 'Failed to press key', async () => {
+            await simulators.key(payload.sessionId, payload.udid, payload.usage, payload.modifiers);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.stream.start':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.stream.start', 'Failed to start stream', async () => {
+            const result = await simulators.streamStart(payload.sessionId, payload.udid, {
+              fps: payload.fps,
+              quality: payload.quality,
+              scale: payload.scale,
+              codec: payload.codec,
+            });
+            this.subscribeFrames(simulators, payload.sessionId, payload.udid);
+            // `alreadyStreaming` carries no params, so echo the request's (defaulted) values.
+            const fps = 'streaming' in result ? result.fps : (payload.fps ?? 60);
+            const scale = 'streaming' in result ? result.scale : (payload.scale ?? 1);
+            const codec = 'streaming' in result ? result.codec : (payload.codec ?? 'jpeg');
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.stream.started',
+                replyTo: payload.clientReqId,
+                udid: payload.udid,
+                fps,
+                scale,
+                codec,
+              }),
+            );
+          }),
+        );
+      case 'simulator.stream.stop':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.stream.stop', 'Failed to stop stream', async () => {
+            // A deferred stop can arrive after this session released the device — possibly after
+            // another session took it over. Only tear down the fan-out and backend stream while this
+            // session still owns the device; otherwise it is a no-op that leaves the new owner's
+            // stream and subscription intact.
+            if (simulators.ownerOf(payload.udid) === payload.sessionId) {
+              this.unsubscribeFrames(payload.udid);
+              await simulators.streamStop(payload.sessionId, payload.udid);
+            }
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      default:
+        return Effect.void;
+    }
+  }
+
+  /** Fan the device's frames out to the transport as session-scoped `simulator.stream.frame`s.
+   * The same session re-starting keeps its one subscription (idempotent); a different session
+   * taking over the device replaces the fan-out so frames follow the new owner. */
+  private subscribeFrames(simulators: SimulatorService, sessionId: SessionId, udid: string): void {
+    const existing = this.frameSubs.get(udid);
+    if (existing) {
+      if (existing.sessionId === sessionId) return;
+      existing.unsubscribe();
+    }
+    const unsubscribe = simulators.onFrame(udid, (frame) => {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.stream.frame',
+          sessionId,
+          udid,
+          codec: frame.codec,
+          key: frame.key,
+          data: Buffer.from(frame.data).toString('base64'),
+        }),
+      );
+    });
+    this.frameSubs.set(udid, { sessionId, unsubscribe });
+  }
+
+  private unsubscribeFrames(udid: string): void {
+    this.frameSubs.get(udid)?.unsubscribe();
+    this.frameSubs.delete(udid);
+  }
+
+  /** Best-effort push after a state-changing command; the command itself already succeeded. */
+  private async broadcastDevices(simulators: SimulatorService): Promise<void> {
+    try {
+      const devices = await simulators.list();
+      this.transport.send(createWireMessage({ kind: 'simulator.devices.changed', devices }));
+    } catch {
+      // The next explicit list will reconcile; failing the completed command would be worse.
+    }
+  }
+
+  /** Run an unacked simulator op (a high-frequency `move`). No reply is emitted, and a failure is
+   * swallowed — a dropped move is corrected by the next one, and the stream reflects reality. */
+  private fireAndForget(
+    _operation: string,
+    run: (simulators: SimulatorService) => Promise<void>,
+  ): Effect.Effect<void> {
+    if (!this.simulators) return Effect.void;
+    const simulators = this.simulators;
+    return Effect.promise(() => run(simulators).catch(noop));
+  }
+
+  private withSimulators(
+    replyTo: string,
+    fn: (simulators: SimulatorService) => Effect.Effect<void, EngineFailure>,
+  ): Effect.Effect<void> {
+    const operation = this.simulators
+      ? fn(this.simulators)
+      : Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: 'Simulators are not supported on this host',
+          }),
+        );
+    return this.responder.reply(replyTo, operation);
+  }
+}
+
+function simulatorOperation(
+  operation: string,
+  publicMessage: string,
+  run: () => Promise<void>,
+): Effect.Effect<void, EngineFailure> {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      toOperationFailure(cause, { subsystem: 'simulator', operation, publicMessage }),
+  });
+}

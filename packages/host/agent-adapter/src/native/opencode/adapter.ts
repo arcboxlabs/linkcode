@@ -16,16 +16,29 @@ import type {
   Question,
   StartOptions,
 } from '@linkcode/schema';
-import type { Event, FilePartInput, Part, TextPartInput } from '@opencode-ai/sdk/v2';
+import type {
+  Event,
+  FilePartInput,
+  McpLocalConfig,
+  McpRemoteConfig,
+  Part,
+  TextPartInput,
+} from '@opencode-ai/sdk/v2';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
-import { contentToText, imageBlocksFrom, toolKindFromName } from '../../util';
+import {
+  contentToText,
+  imageBlocksFrom,
+  locationsFromToolInput,
+  toolKindFromName,
+} from '../../util';
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
@@ -54,6 +67,32 @@ const ABORT_WAIT_MS = 2000;
 const ABORT_TIMED_OUT = Symbol('opencode-abort-timeout');
 /** Prevent a server that repeatedly closes an empty SSE response from spinning a hot subscribe loop. */
 const EVENT_RESUBSCRIBE_DELAY_MS = 100;
+
+/** Map wire `McpServer` entries onto opencode's keyed `config.mcp` shape (undefined when none).
+ * http → `remote`; stdio → `local` with `[command, ...args]` and `environment`. */
+export function opencodeMcpConfig(
+  servers: StartOptions['mcpServers'],
+): Record<string, McpLocalConfig | McpRemoteConfig> | undefined {
+  if (!servers?.length) return undefined;
+  const out: Record<string, McpLocalConfig | McpRemoteConfig> = {};
+  for (const server of servers) {
+    out[server.name] =
+      server.type === 'http'
+        ? {
+            type: 'remote',
+            url: server.url,
+            enabled: true,
+            ...(server.headers && { headers: server.headers }),
+          }
+        : {
+            type: 'local',
+            command: [server.command, ...(server.args ?? [])],
+            enabled: true,
+            ...(server.env && { environment: server.env }),
+          };
+  }
+  return out;
+}
 
 /** Most `session.error` variants carry `data.message`; fall back to the variant name. */
 function sessionErrorMessage(error: NonNullable<SessionErrored['error']>): string {
@@ -85,7 +124,7 @@ function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T
     detail = result.error;
   } else {
     try {
-      detail = JSON.stringify(result.error) ?? 'unknown error';
+      detail = JSON.stringify(result.error);
     } catch {
       detail = extractErrorMessage(result.error) ?? 'unknown error';
     }
@@ -183,7 +222,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const sessionID = this.resumeFrom;
       try {
         const got = await this.withHistoryClient((client) => client.session.get({ sessionID }));
-        if (got.error === undefined && got.data?.model) {
+        if (got.error === undefined && got.data.model) {
           opts.model = `${got.data.model.providerID}/${got.data.model.id}`;
         }
       } catch {
@@ -196,13 +235,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
     if (cred.baseUrl) options.baseURL = cred.baseUrl;
-    const serverOptions =
-      providerID && (options.apiKey || options.baseURL)
-        ? { config: { provider: { [providerID]: { options } } } }
-        : undefined;
+    const providerInjected = Boolean(providerID && (options.apiKey || options.baseURL));
+    const mcp = opencodeMcpConfig(opts.mcpServers);
+    const config = {
+      ...(providerInjected && providerID && { provider: { [providerID]: { options } } }),
+      ...(mcp && { mcp }),
+    };
+    const serverOptions = isObjectEmpty(config) ? undefined : { config };
     // The injection is spawn-time-only: remember which provider it scoped to so a later
     // set-model can refuse a cross-provider switch the running server holds no credentials for.
-    this.credentialProviderId = serverOptions ? (providerID ?? null) : null;
+    this.credentialProviderId = providerInjected ? (providerID ?? null) : null;
     try {
       // The SDK's server port is a FIXED default of 4096 (opencode's own `--port=0` does not
       // auto-allocate either), and this adapter spawns one server per session — without an
@@ -228,7 +270,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // Adopt the existing provider session and announce its id right away — a resumed session's
       // transcript is real, so the seed read is safe immediately (unlike the fresh path below).
       const got = await this.client.session.get({ sessionID: this.resumeFrom });
-      if (got.error !== undefined || !got.data) {
+      if (got.error !== undefined) {
         throw new Error(`opencode: history '${this.resumeFrom}' was not found`);
       }
       this.sessionId = got.data.id;
@@ -237,7 +279,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
       if (got.data.model) resumedModel = `${got.data.model.providerID}/${got.data.model.id}`;
-      if (!opts.model && resumedModel) opts.model = resumedModel;
+      if (resumedModel && !opts.model) opts.model = resumedModel;
       resumedAgent = got.data.agent ?? null;
       this.emitSessionRef(asHistoryId(got.data.id));
     } else {
@@ -467,8 +509,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.turnEpoch += 1;
     // Captured NOW, not when the wait cap fires: a repeat cancel inside the wait window must not
     // let this cancel's late-failure watcher mistake itself for the current flag owner.
-    const epoch = this.turnEpoch;
     if (!this.client || !this.sessionId) return;
+
+    const epoch = this.turnEpoch;
     const abort = this.client.session.abort({
       sessionID: this.sessionId,
       directory: this.directory,
@@ -558,7 +601,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         client.session.get({ sessionID: opts.historyId }),
         client.session.messages({ sessionID: opts.historyId }),
       ]);
-      if (got.error !== undefined || !got.data) {
+      if (got.error !== undefined) {
         throw new Error(`opencode: history '${opts.historyId}' was not found`);
       }
       okOrThrow(messages, 'opencode: session.messages');
@@ -680,8 +723,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       try {
         // The directory scope is load-bearing: a bare subscribe() carries only the server-cwd
         // instance's bus and silently misses every session event (verified live on 1.17.11).
+        // eslint-disable-next-line no-await-in-loop -- each pass replaces the one live subscription; sequential by design
         const sub = await this.client.event.subscribe({ directory: this.directory });
+        // eslint-disable-next-line no-await-in-loop -- the await IS the next-event signal
         for await (const ev of sub.stream) {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- onStop flips `stopped` across the awaits
           if (this.stopped) break;
           // Every successful subscription starts with this synthetic greeting, including a broken
           // stream that immediately closes. Only a real bus event proves the replacement is healthy.
@@ -691,6 +737,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       } catch (err) {
         caught = err;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- onStop flips `stopped` across the awaits
       if (this.stopped) return;
       const fatal = !this.cancelling && (caught !== undefined || this.turnActive);
       if (fatal) {
@@ -710,6 +757,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // receiving lifecycle events immediately. Back off only after an empty replacement also
       // closes, preventing a hot loop without adding a gap after a healthy turn's stream.
       emptyCloses = sawProgress ? 0 : emptyCloses + 1;
+      // eslint-disable-next-line no-await-in-loop -- backoff before the replacement subscribe
       if (emptyCloses > 0) await wait(EVENT_RESUBSCRIBE_DELAY_MS);
     }
   }
@@ -807,6 +855,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // Normally the previous turn's straggler; but if the server never emits `session.status`
         // (busy-precedes-idle is only live-verified on 1.17.11), this WAS the real settle and the
         // turn will hang at `running` — leave a trace so a stuck turn is attributable.
+        // eslint-disable-next-line no-console -- deliberate daemon-log trace, not a session event
         console.warn(
           'opencode: absorbed a session.idle that preceded the busy acknowledgement (straggler, or a server that never emits session.status)',
         );
@@ -860,16 +909,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * Always allow→`always` (persisted server-side), Reject→`reject`. A teardown-cancelled ask also
    * replies `reject` — an unanswered ask would otherwise gate the turn server-side forever. */
   private async handlePermissionAsked(props: PermissionAsked): Promise<void> {
-    const toolCallId =
-      (props.tool && this.toolPartIdByCallId.get(props.tool.callID)) ??
-      props.tool?.callID ??
-      nextToolCallId();
-    const outcome = await this.requestPermission(
-      {
+    const linkedToolCallId = props.tool
+      ? this.toolPartIdByCallId.get(props.tool.callID)
+      : undefined;
+    const rawInput = props.metadata;
+    const rawCommand = rawInput.command;
+    const command =
+      typeof rawCommand === 'string' && rawCommand.length > 0 ? rawCommand : undefined;
+    const commandSubject =
+      command && this.directory
+        ? { type: 'command' as const, command, cwd: this.directory, toolCallId: linkedToolCallId }
+        : undefined;
+    const toolCallId = linkedToolCallId ?? (commandSubject ? undefined : nextToolCallId());
+    if (!linkedToolCallId && toolCallId) {
+      this.emitTool({
         toolCallId,
         title: props.permission,
         kind: toolKindFromName(props.permission),
-        rawInput: props.metadata,
+        status: 'in_progress',
+        rawInput,
+        locations: locationsFromToolInput(rawInput),
+      });
+    }
+    const outcome = await this.requestPermission(
+      {
+        title: props.permission,
+        subject: commandSubject ?? {
+          type: 'tool-call',
+          toolCallId: toolCallId ?? nextToolCallId(),
+        },
       },
       PERMISSION_OPTIONS,
     );
@@ -987,8 +1055,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       case 'tool': {
         this.toolPartIdByCallId.set(part.callID, part.id);
-        // Same part→snapshot mapping history replay uses, so live and cold cards converge by id.
-        this.emitTool(toolCallFromPart(part));
+        // History emits one full snapshot. Live terminal output appends separately, so repeated
+        // cumulative part updates do not retransmit an ever-growing content array.
+        const toolCall = toolCallFromPart(part);
+        if (toolCall.status === 'completed' || toolCall.status === 'failed') {
+          for (const content of toolCall.content) this.appendToolContent(part.id, content);
+          this.emitTool({ ...toolCall, content: undefined });
+        } else {
+          this.emitTool(toolCall);
+        }
 
         break;
       }

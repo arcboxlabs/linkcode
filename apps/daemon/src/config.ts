@@ -7,13 +7,14 @@ import {
   AccountSchema,
   AgentKindSchema,
   DAEMON_DEFAULT_PORT,
-  linkcodeStateDirName,
   ProviderConfigSchema,
-  parseProfileName,
 } from '@linkcode/schema';
 import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
+import { daemonProfile, daemonStateDir } from './paths';
+
+export { daemonProfile } from './paths';
 
 /**
  * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
@@ -41,27 +42,13 @@ interface ConfigFile {
   accounts?: unknown;
 }
 
-/**
- * Profile from `LINKCODE_PROFILE` (`undefined` = default): every path below — and the device
- * identity HQ sees — forks with it. Resolved per call so tests can vary the env; an invalid name
- * throws and aborts boot rather than silently landing in the default universe.
- */
-export function daemonProfile(): string | undefined {
-  return parseProfileName(process.env.LINKCODE_PROFILE);
-}
-
-/** The daemon's state directory: `~/.linkcode`, or the profile sibling `~/.linkcode-<name>`. */
-function stateDir(): string {
-  return join(homedir(), linkcodeStateDirName(daemonProfile()));
-}
-
 function configPath(): string {
-  return join(stateDir(), 'config.json');
+  return join(daemonStateDir(), 'config.json');
 }
 
 /** The daemon's SQLite database (session registry), next to config.json. */
 export function databasePath(): string {
-  return join(stateDir(), 'daemon.db');
+  return join(daemonStateDir(), 'daemon.db');
 }
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
@@ -71,17 +58,17 @@ export function runtimeFilePath(): string {
 
 /** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
 export function hqCredentialsPath(): string {
-  return join(stateDir(), 'hq.json');
+  return join(daemonStateDir(), 'hq.json');
 }
 
 /** The device's Ed25519 private key (PKCS#8 PEM), next to config.json; written 0600. */
 export function deviceKeyPath(): string {
-  return join(stateDir(), 'device-key.pem');
+  return join(daemonStateDir(), 'device-key.pem');
 }
 
 /** Hardware-wrapped device-key handles (@arcboxlabs/deviceid), next to config.json. */
 export function deviceKeysDir(): string {
-  return join(stateDir(), 'keys');
+  return join(daemonStateDir(), 'keys');
 }
 
 /**

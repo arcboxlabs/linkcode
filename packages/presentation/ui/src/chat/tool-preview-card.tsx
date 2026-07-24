@@ -1,5 +1,6 @@
 import { Badge } from 'coss-ui/components/badge';
-import { Card, CardHeader, CardPanel, CardTitle } from 'coss-ui/components/card';
+import { Frame } from 'coss-ui/components/frame';
+import { ChatCardActions, ChatCardHeader, ChatCardPanel, ChatCardTitle } from './chat-card';
 
 export function ToolPreviewCard({
   badge,
@@ -13,19 +14,19 @@ export function ToolPreviewCard({
   title: string;
 }): React.ReactNode {
   return (
-    <Card className="my-1 overflow-hidden">
-      <CardHeader className="grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto] items-center gap-2 border-b bg-muted px-3 py-1.5 in-[[data-slot=card]:has(>[data-slot=card-panel])]:pb-1.5">
-        <Icon className="size-3.5 text-muted-foreground" />
-        <CardTitle className="truncate font-mono font-normal text-muted-foreground text-xs leading-normal">
-          {title}
-        </CardTitle>
+    <Frame className="my-1">
+      <ChatCardHeader>
+        <Icon className="size-3.5 shrink-0" />
+        <ChatCardTitle>{title}</ChatCardTitle>
         {badge ? (
-          <Badge size="sm" variant="secondary">
-            {badge}
-          </Badge>
+          <ChatCardActions>
+            <Badge size="sm" variant="secondary">
+              {badge}
+            </Badge>
+          </ChatCardActions>
         ) : null}
-      </CardHeader>
-      <CardPanel className="px-3 py-2">{children}</CardPanel>
-    </Card>
+      </ChatCardHeader>
+      <ChatCardPanel>{children}</ChatCardPanel>
+    </Frame>
   );
 }

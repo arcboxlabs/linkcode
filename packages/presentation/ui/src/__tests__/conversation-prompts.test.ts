@@ -55,7 +55,7 @@ function plan(turnId: string, entries: Plan['entries']): ConversationItem {
     kind: 'plan',
     id: `plan-${turnId}`,
     turnId,
-    plan: { entries },
+    plan: { planId: `plan-${turnId}`, entries },
   };
 }
 
@@ -79,7 +79,7 @@ describe('conversation prompt selectors', () => {
     expect(conversationFlowItems([message, item])).toEqual([message]);
   });
 
-  it('selects in-progress, then pending, then completed plan task', () => {
+  it('selects in-progress, then pending, then a terminal plan task', () => {
     const current = selectCurrentPlan(
       conversation([
         user('turn-0'),
@@ -104,7 +104,7 @@ describe('conversation prompt selectors', () => {
         user('turn-2'),
         plan('turn-2', [
           { content: 'One', priority: 'high', status: 'completed' },
-          { content: 'Two', priority: 'medium', status: 'completed' },
+          { content: 'Two', priority: 'medium', status: 'cancelled' },
         ]),
       ]),
     );
@@ -120,6 +120,18 @@ describe('conversation prompt selectors', () => {
 
     expect(selectCurrentPlan(conversation([user('turn-0'), oldPlan]))).not.toBeNull();
     expect(selectCurrentPlan(conversation([user('turn-0'), oldPlan, user('turn-1')]))).toBeNull();
+  });
+
+  it('selects a stable plan re-emitted in the latest turn without moving its timeline item', () => {
+    const stablePlan = {
+      ...plan('turn-0', [{ content: 'Continue', priority: 'high', status: 'in_progress' }]),
+      updatedTurnId: 'turn-1',
+    };
+
+    expect(
+      selectCurrentPlan(conversation([user('turn-0'), stablePlan, user('turn-1')]))?.item,
+    ).toBe(stablePlan);
+    expect(stablePlan.turnId).toBe('turn-0');
   });
 
   it('only surfaces pending prompt groups while a turn is live', () => {

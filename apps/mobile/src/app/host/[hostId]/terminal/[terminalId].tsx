@@ -2,10 +2,10 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
 import { TerminalIdSchema } from '@linkcode/schema';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { Button, Chip, Spinner } from 'heroui-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
@@ -41,7 +41,7 @@ export default function TerminalScreen(): React.ReactNode {
   const [error, setError] = useState<string | null>(() => (terminalId ? null : t('invalidId')));
   const [exit, setExit] = useState<{ code: number | null } | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!terminalId) return;
       const offController = client.subscribeTerminalController(terminalId, (controlled) => {

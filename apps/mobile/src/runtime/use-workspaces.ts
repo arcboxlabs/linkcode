@@ -1,7 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { WorkspaceRecord } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useState } from 'react';
 
 /** The host's registered workspaces (projects). A failed initial load degrades to the
@@ -14,7 +14,7 @@ export function useWorkspaces(): {
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([]);
   const load = useCallback(() => client.listWorkspaces(), [client]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void load()
         .then((next) => {

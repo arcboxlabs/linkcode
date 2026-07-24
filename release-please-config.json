@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "fbb2c7cfd39ec6f0404f3144224522e7b4dcde6a",
+  "draft": true,
+  "force-tag-creation": true,
+  "separate-pull-requests": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "desktop",
+      "changelog-path": "apps/desktop/CHANGELOG.md",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "bump-minor-pre-major": true,
+      "exclude-paths": ["apps/mobile", "apps/webview"],
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "apps/desktop/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

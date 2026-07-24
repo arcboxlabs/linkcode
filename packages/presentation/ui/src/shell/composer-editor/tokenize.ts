@@ -55,7 +55,7 @@ function $findDirectiveCandidate(
   let end = 1;
   while (end < content.length && !WHITESPACE_RE.test(content[end])) end++;
   const name = content.slice(1, end);
-  if (!name || (!$hasBoundaryAfter(node, end) && !force)) return null;
+  if (!name || (!force && !$hasBoundaryAfter(node, end))) return null;
   return { end, kind: 'command', name, start: 0 };
 }
 

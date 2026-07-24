@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
+  McpServerConfig,
   PermissionMode,
   PermissionResult,
   Query,
@@ -35,6 +36,7 @@ import type {
   ApprovalPolicyState,
   ContentBlock,
   EffortLevel,
+  McpServer,
   PermissionOption,
   StartOptions,
   StopReason,
@@ -76,7 +78,6 @@ import {
 import { agentRuntimeProber } from '../probe';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
-type StreamEvent = Extract<SDKMessage, { type: 'stream_event' }>['event'];
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
 type AssistantMessage = AssistantSDKMessage['message'];
 type UserSDKMessage = Extract<SDKMessage, { type: 'user' }>;
@@ -234,6 +235,26 @@ function effortFlagSettings(
 ): Parameters<Query['applyFlagSettings']>[0] {
   if (effort === 'ultracode') return { ultracode: true };
   return { ultracode: null, effortLevel: effort };
+}
+
+/** Map wire `McpServer` entries onto the SDK's keyed record shape (undefined when none). */
+export function claudeMcpServers(
+  servers: McpServer[] | undefined,
+): Record<string, McpServerConfig> | undefined {
+  if (!servers?.length) return undefined;
+  const out: Record<string, McpServerConfig> = {};
+  for (const server of servers) {
+    out[server.name] =
+      server.type === 'http'
+        ? { type: 'http', url: server.url, ...(server.headers && { headers: server.headers }) }
+        : {
+            type: 'stdio',
+            command: server.command,
+            ...(server.args && { args: server.args }),
+            ...(server.env && { env: server.env }),
+          };
+  }
+  return out;
 }
 
 /** Map Claude's stop reason to our ACP-aligned StopReason. */
@@ -414,9 +435,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
-  /** Diff content parsed off an Edit/Write announce, keyed by tool_use id; re-attached at settle
-   * because `emitTool`'s merge replaces `content` wholesale (result text must not wipe the diff). */
-  private readonly pendingEditDiffs = new Map<string, ToolCallContent[]>();
   /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
    * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
   private pendingCompaction: {
@@ -643,6 +661,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
+    const mcpServers = claudeMcpServers(opts.mcpServers);
     let q: Query | null = null;
     const reflectCurrentQueryEffort: HookCallback = (input, toolUseID, hookOptions) => {
       if (q === null || this.q !== q) return Promise.resolve({ continue: true });
@@ -683,6 +702,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
+        ...(mcpServers && { mcpServers }),
         ...(credentialEnv && { env: credentialEnv }),
       },
     });
@@ -937,11 +957,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** A cancelled/failed turn never delivers the matching tool_results; drop their stashed diffs.
-   * A compaction's summary frame also never outlives its turn — drop a stale boundary stash so
-   * the summary match can't fire against an unrelated later frame. */
+  /** A compaction's summary frame never outlives its turn — drop a stale boundary stash so the
+   * summary match can't fire against an unrelated later frame. */
   protected override teardown(): void {
-    this.pendingEditDiffs.clear();
     this.pendingCompaction = null;
     super.teardown();
   }
@@ -955,12 +973,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         return this.askUserQuestion(questions.data.questions, input, options.toolUseID);
       }
     }
+    const toolCallId = options.toolUseID;
+    const title = options.title ?? toolName;
+    this.emitTool({
+      toolCallId,
+      title,
+      kind: claudeToolKind(toolName),
+      status: 'in_progress',
+      rawInput: input,
+      locations: hostLocationsFromToolInput(input),
+    });
     const outcome = await this.requestPermission(
       {
-        toolCallId: options.toolUseID,
-        title: options.title ?? toolName,
-        kind: claudeToolKind(toolName),
-        rawInput: input,
+        title,
+        subject: { type: 'tool-call', toolCallId },
       },
       PERMISSION_OPTIONS,
     );
@@ -1039,7 +1065,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if ('isReplay' in msg) return;
     switch (msg.type) {
       case 'stream_event':
-        this.handleStreamEvent(msg.event, msg.parent_tool_use_id);
+        this.handleStreamEvent(msg);
         break;
       case 'assistant':
         this.handleAssistant(msg);
@@ -1118,34 +1144,39 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * event is the only carrier of the decider's reason. Settle the tool as failed with it — the
    * later `is_error` tool_result says only "denied" and hits `emitTool`'s terminal guard anyway. */
   private handlePermissionDenied(msg: SDKPermissionDeniedMessage): void {
-    const diff = this.pendingEditDiffs.get(msg.tool_use_id) ?? [];
-    this.pendingEditDiffs.delete(msg.tool_use_id);
     const reason = msg.decision_reason ?? msg.message;
+    if (reason) {
+      this.appendToolContent(msg.tool_use_id, { type: 'content', content: textBlock(reason) });
+    }
     this.emitTool({
       toolCallId: msg.tool_use_id,
       title: msg.tool_name,
       kind: claudeToolKind(msg.tool_name),
       status: 'failed',
-      content: [
-        ...diff,
-        ...(reason ? [{ type: 'content' as const, content: textBlock(reason) }] : []),
-      ],
     });
   }
 
-  private handleStreamEvent(event: StreamEvent, parentToolUseId: string | null): void {
+  private handleStreamEvent(msg: Extract<SDKMessage, { type: 'stream_event' }>): void {
     // Subagent narration renders message-level from the forwarded assistant frames
     // (handleSubagentAssistant); consuming its deltas here would render the same text twice.
-    if (parentToolUseId) return;
+    if (msg.parent_tool_use_id) return;
+    const event = msg.event;
+    if (event.type === 'message_start') {
+      this.messageId = asMessageId(event.message.id);
+      this.thoughtId = asMessageId(`${event.message.id}:think`);
+      return;
+    }
     if (event.type !== 'content_block_delta') return;
     const delta = event.delta;
+    // message_start's API id is stable across every delta and is persisted inside each transcript
+    // row; the SDK envelope uuid is per-frame and cannot group or reconcile streamed chunks.
     if (delta.type === 'text_delta') this.emitAssistantText(delta.text, this.messageId);
     else if (delta.type === 'thinking_delta') this.emitThought(delta.thinking, this.thoughtId);
   }
 
   private handleAssistant(msg: AssistantSDKMessage): void {
     if (msg.parent_tool_use_id) {
-      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id, msg.uuid);
+      this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id);
       return;
     }
     const message = msg.message;
@@ -1156,7 +1187,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     for (const block of message.content) {
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
-        if (diff) this.pendingEditDiffs.set(block.id, diff);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
         this.emitTool({
           toolCallId: block.id,
@@ -1177,16 +1207,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   /**
    * A subagent's assistant frame (`parent_tool_use_id` set): tool calls carry the spawning Task's
-   * id; text/thinking render message-level under the frame's own uuid (which doubles as the history
-   * mapper's id, so live and cold-resume converge). It never touches the main message/thought
+   * id; text/thinking render message-level under the provider message id (which the history mapper
+   * also reads from the transcript row). It never touches the main message/thought
    * cursors or calls `freshSegment()`, so a mid-turn subagent can't break the main streaming bubble.
    */
-  private handleSubagentAssistant(message: AssistantMessage, parent: string, uuid: string): void {
+  private handleSubagentAssistant(message: AssistantMessage, parent: string): void {
     for (const block of message.content) {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
-        if (diff) this.pendingEditDiffs.set(block.id, diff);
         this.emitTool({
           toolCallId: block.id,
           parentToolCallId: parent,
@@ -1198,9 +1227,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           locations: hostLocationsFromToolInput(block.input),
         });
       } else if (block.type === 'text') {
-        this.emitAssistantText(block.text, asMessageId(uuid), parent);
+        this.emitAssistantText(block.text, asMessageId(message.id), parent);
       } else if (block.type === 'thinking') {
-        this.emitThought(block.thinking, asMessageId(`${uuid}:think`), parent);
+        this.emitThought(block.thinking, asMessageId(`${message.id}:think`), parent);
       }
     }
   }
@@ -1217,15 +1246,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
-      const diff = this.pendingEditDiffs.get(block.tool_use_id) ?? [];
-      this.pendingEditDiffs.delete(block.tool_use_id);
+      for (const result of toolResultContent(block.content)) {
+        this.appendToolContent(block.tool_use_id, result);
+      }
       this.emitTool({
         toolCallId: block.tool_use_id,
         // Re-stated on settle so the parent link survives even if the announce was never seen
         // (e.g. it sat beyond a history read's page window). Null for main-agent results.
         parentToolCallId: msg.parent_tool_use_id ?? undefined,
         status: block.is_error === true ? 'failed' : 'completed',
-        content: [...diff, ...toolResultContent(block.content)],
         rawOutput: envelope ?? block.content,
       });
     }
@@ -1295,12 +1324,12 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
       return undefined;
     }
     // The CLI on Windows reports MSYS drive-form paths (`/c/…`) — rewrite to native form.
-    return [{ type: 'diff', path: toHostPath(path), oldText, newText }];
+    return [{ type: 'diff', change: 'modify', path: toHostPath(path), oldText, newText }];
   }
   if (toolName === 'Write') {
     const { file_path: path, content: newText } = input;
     if (typeof path !== 'string' || typeof newText !== 'string') return undefined;
-    return [{ type: 'diff', path: toHostPath(path), newText }];
+    return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
 }
@@ -1610,6 +1639,10 @@ export function createClaudeHistoryEventMapper(
     const parent = message.parent_tool_use_id ?? undefined;
 
     if (message.type === 'assistant') {
+      const providerMessageId = isRecord(message.message)
+        ? stringField(message.message, 'id')
+        : undefined;
+      const messageId = providerMessageId ?? message.uuid;
       // Every assistant row records the model that served it; replay it as the same model-update
       // the live stream emits so seeded messages get their per-turn model stamp. Subagent rows
       // are skipped — their model must not masquerade as the session's.
@@ -1619,28 +1652,20 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
-      // Thinking replays as thought chunks under `${uuid}:think` — the id the live subagent path
-      // already emits, so live-forwarded and cold-replayed thinking converge. Pre-CODE-273
+      // Thinking replays under the provider message id used by the live stream. Pre-CODE-273
       // transcripts store empty thinking text; the helper's empty-drop rule skips those.
       for (const block of blocks) {
         if (!isThinkingBlock(block)) continue;
         const thought = thoughtHistoryEvent(
           historyId,
-          `${message.uuid}:think`,
+          `${messageId}:think`,
           block.thinking,
           ts,
           parent,
         );
         if (thought) events.push(thought);
       }
-      const text = textHistoryEvent(
-        historyId,
-        'assistant',
-        message.uuid,
-        message.message,
-        ts,
-        parent,
-      );
+      const text = textHistoryEvent(historyId, 'assistant', messageId, message.message, ts, parent);
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
