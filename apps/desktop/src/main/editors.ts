@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -28,7 +28,7 @@ export interface EditorCandidate {
 }
 
 /** A resolved, launchable editor install. */
-type EditorTarget =
+export type EditorTarget =
   | { kind: 'executable'; file: string }
   | { kind: 'mac-app'; bundle: string; label: string };
 
@@ -156,32 +156,42 @@ export function editorTargets(
   return targets;
 }
 
-function targetPath(target: EditorTarget): string {
-  return target.kind === 'mac-app' ? target.bundle : target.file;
+/**
+ * Whether this target can be launched as it stands. An `executable` target is exec'd directly, so
+ * mere existence is not enough — a present but non-executable file would otherwise outrank a
+ * working application bundle later in the list.
+ */
+export function isLaunchable(target: EditorTarget): boolean {
+  if (target.kind === 'mac-app') return existsSync(target.bundle);
+  try {
+    accessSync(target.file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-// Probed once per process: an editor installed mid-session appears after a restart.
-let installs: Map<string, EditorTarget> | undefined;
-
-function detectInstalls(): Map<string, EditorTarget> {
-  installs ??= new Map(
-    EDITOR_CANDIDATES.flatMap((candidate) => {
-      const target = editorTargets(candidate, process.platform).find((each) =>
-        existsSync(targetPath(each)),
-      );
-      return target === undefined ? [] : [[candidate.id, target] as const];
-    }),
-  );
-  return installs;
+/** The install this editor would launch from. Resolved per call rather than cached: a snapshot
+ * goes stale the moment an editor is installed, moved, upgraded, or removed. */
+function resolveInstall(candidate: EditorCandidate): EditorTarget | undefined {
+  return editorTargets(candidate, process.platform).find(isLaunchable);
 }
 
 export function listEditors(): DetectedEditor[] {
-  const found = detectInstalls();
-  return EDITOR_CANDIDATES.flatMap(({ id, label }) => (found.has(id) ? [{ id, label }] : []));
+  return EDITOR_CANDIDATES.flatMap((candidate) =>
+    resolveInstall(candidate) === undefined ? [] : [{ id: candidate.id, label: candidate.label }],
+  );
 }
 
 export function openInEditor(editorId: string, path: string): Promise<void> {
-  const target = nullthrow(detectInstalls().get(editorId), `unknown editor: ${editorId}`);
+  const candidate = nullthrow(
+    EDITOR_CANDIDATES.find((each) => each.id === editorId),
+    `unknown editor: ${editorId}`,
+  );
+  const target = nullthrow(
+    resolveInstall(candidate),
+    `editor is not installed any more: ${editorId}`,
+  );
 
   const [file, args] =
     target.kind === 'mac-app'

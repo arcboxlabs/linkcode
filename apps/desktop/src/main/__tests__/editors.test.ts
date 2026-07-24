@@ -1,8 +1,9 @@
-import { homedir } from 'node:os';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import type { EditorCandidate } from '../editors';
-import { editorTargets } from '../editors';
+import { editorTargets, isLaunchable } from '../editors';
 
 const CURSOR: EditorCandidate = {
   id: 'cursor',
@@ -71,5 +72,31 @@ describe('editorTargets', () => {
       macApp: 'WebStorm.app',
     };
     expect(editorTargets(jetBrainsShaped, 'win32')).toEqual([]);
+  });
+});
+
+describe('isLaunchable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'linkcode-editors-'));
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Resolution takes the first launchable target, so a present-but-not-executable file must not
+  // outrank an application bundle further down the list.
+  it('rejects an existing file that is not executable', () => {
+    const file = join(dir, 'not-executable');
+    writeFileSync(file, '');
+    chmodSync(file, 0o644);
+    expect(isLaunchable({ kind: 'executable', file })).toBe(false);
+
+    chmodSync(file, 0o755);
+    expect(isLaunchable({ kind: 'executable', file })).toBe(true);
+  });
+
+  it('rejects a missing target of either kind', () => {
+    const missing = join(dir, 'absent');
+    expect(isLaunchable({ kind: 'executable', file: missing })).toBe(false);
+    expect(isLaunchable({ kind: 'mac-app', bundle: missing, label: 'X' })).toBe(false);
   });
 });
