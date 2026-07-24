@@ -377,6 +377,7 @@ export const zhCN = {
       simulatorRotate: '旋转',
       simulatorHome: '主屏幕',
       simulatorLock: '锁屏',
+      simulatorAgentDriving: 'Agent 正在使用此设备',
       simulatorBooted: '已启动',
       simulatorShutdown: '关闭设备',
       simulatorDetach: '断开画面',

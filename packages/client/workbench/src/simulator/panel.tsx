@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
+import { useSimulatorAgentActivity } from './agent-activity';
 import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from './capture';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
@@ -265,6 +266,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     [client, udid],
   );
   const measuredFps = useReceivedFps(subscribeFrames, showFps && canStream);
+  const agentDriving = useSimulatorAgentActivity(client, udid);
 
   const flagBusy = useCallback(() => {
     setBusy(true);
@@ -485,6 +487,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           // The stage stays near-black in both themes (video-player convention) so the streamed
           // frame carries the contrast; everything on it uses fixed neutrals, not theme tokens.
           <div className="absolute inset-2 overflow-hidden rounded-lg bg-neutral-950">
+            {agentDriving && (
+              // Floats over the stage rather than displacing it, so the picture never shifts as an
+              // agent starts and stops working. Input stays live — this informs, it does not lock.
+              <div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 z-10 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 font-medium text-neutral-900 text-xs shadow-lg">
+                <span className="size-2 shrink-0 animate-pulse rounded-full bg-orange-500" />
+                {t('simulatorAgentDriving')}
+              </div>
+            )}
             <SimulatorScreen
               key={udid}
               subscribeFrames={subscribeFrames}
