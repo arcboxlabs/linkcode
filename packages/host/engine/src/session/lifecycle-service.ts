@@ -58,6 +58,25 @@ export class SessionLifecycleService {
     this.runEffect = runEffect;
   }
 
+  deleteSession(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
+    const { sessions, workspaces, worktrees } = this;
+    return Effect.gen(function* () {
+      const worktree = worktrees.get(sessionId);
+      yield* sessions.delete(sessionId);
+      yield* worktrees.cleanupDeletedSession(sessionId);
+      if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
+        const workspace = workspaces.findByCwd(worktree.worktreePath);
+        if (workspace) {
+          yield* Effect.tryPromise(() => workspaces.archive(workspace.workspaceId)).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning('Failed to archive cleaned worktree workspace metadata', error),
+            ),
+          );
+        }
+      }
+    });
+  }
+
   start(replyTo: string, options: StartOptions): Effect.Effect<void, EngineFailure> {
     const { sessions, startOptions, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();

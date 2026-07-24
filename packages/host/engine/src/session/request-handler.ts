@@ -61,8 +61,8 @@ export class SessionRequestHandler {
         // can still be imported after another client deleted the LinkCode record.
         return this.responder.reply(
           payload.clientReqId,
-          this.sessions
-            .delete(payload.sessionId)
+          this.lifecycle
+            .deleteSession(payload.sessionId)
             .pipe(
               Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
             ),

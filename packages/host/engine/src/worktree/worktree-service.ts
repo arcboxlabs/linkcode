@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { basename, join, normalize, resolve } from 'node:path';
 import type { SessionId, StartOptions, WorktreeRecord } from '@linkcode/schema';
+import { SessionIdSchema } from '@linkcode/schema';
 import { Effect, Exit, Semaphore } from 'effect';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError } from '../failure';
 import type { GitService } from '../git/git-service';
 import {
   addWorktree,
+  identifyManagedWorktree,
+  inspectWorktreeCleanup,
   localBranchExists,
+  pruneWorktrees,
   readCurrentBranch,
+  removeWorktree,
   removeWorktreeBestEffort,
   resolveRepoRoot,
 } from '../git/worktrees';
@@ -30,7 +35,9 @@ export class WorktreeService {
     readonly git: GitService,
   ) {}
 
-  start(): Effect.Effect<void, OperationError> {
+  start(
+    durableSessionIds: ReadonlySet<SessionId> = new Set(),
+  ): Effect.Effect<void, OperationError> {
     return storeEffect('worktrees.load', 'Failed to load managed worktrees', () =>
       this.store.load(),
     ).pipe(
@@ -42,7 +49,7 @@ export class WorktreeService {
           }
         }),
       ),
-      Effect.asVoid,
+      Effect.andThen(Effect.suspend(() => this.reconcile(durableSessionIds))),
     );
   }
 
@@ -84,6 +91,21 @@ export class WorktreeService {
 
   get(sessionId: SessionId): WorktreeRecord | undefined {
     return this.bySession.get(sessionId);
+  }
+
+  hasPath(path: string): boolean {
+    const key = normalizeRepoRoot(path);
+    return [...this.bySession.values()].some(
+      (record) => normalizeRepoRoot(record.worktreePath) === key,
+    );
+  }
+
+  cleanupDeletedSession(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    const record = this.bySession.get(sessionId);
+    if (!record) return Effect.void;
+    return this.semaphore(normalizeRepoRoot(record.repoRoot)).withPermit(
+      this.cleanupRecord(record),
+    );
   }
 
   provisionLocked(
@@ -173,6 +195,171 @@ export class WorktreeService {
     this.semaphores.set(repoRoot, semaphore);
     return semaphore;
   }
+
+  cleanupRecord(record: WorktreeRecord): Effect.Effect<void, OperationError> {
+    return Effect.gen({ self: this }, function* () {
+      if (!existsSync(record.worktreePath)) {
+        yield* this.pruneAdvisory(record.repoRoot);
+        yield* this.deleteRecord(record);
+        return;
+      }
+      const safe = yield* inspectWorktreeCleanup(record.worktreePath, record.branch).pipe(
+        Effect.catch(() => Effect.succeed(false)),
+      );
+      if (!safe) {
+        yield* this.markOrphaned(record);
+        return;
+      }
+      const removed = yield* removeWorktree(record.repoRoot, record.worktreePath).pipe(
+        Effect.mapError((cause) =>
+          gitFailure('git.worktree.remove', 'Failed to remove managed worktree', cause),
+        ),
+      );
+      if (removed.exitCode !== 0) {
+        return yield* gitFailure(
+          'git.worktree.remove',
+          'Failed to remove managed worktree',
+          new Error(removed.stderr.trim() || `git worktree remove exited ${removed.exitCode}`),
+        );
+      }
+      yield* this.pruneAdvisory(record.repoRoot);
+      yield* this.deleteRecord(record);
+    });
+  }
+
+  reconcile(sessionIds: ReadonlySet<SessionId>): Effect.Effect<void, OperationError> {
+    return Effect.gen({ self: this }, function* () {
+      for (const record of this.bySession.values()) {
+        const hasSession = sessionIds.has(record.sessionId);
+        if (!existsSync(record.worktreePath)) {
+          yield* this.semaphore(normalizeRepoRoot(record.repoRoot)).withPermit(
+            (hasSession
+              ? this.pruneAdvisory(record.repoRoot).pipe(Effect.andThen(this.markOrphaned(record)))
+              : this.cleanupRecord(record)
+            ).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning('Managed worktree reconciliation deferred', error),
+              ),
+            ),
+          );
+        } else if (!hasSession && record.state === 'active') {
+          yield* this.semaphore(normalizeRepoRoot(record.repoRoot)).withPermit(
+            this.cleanupRecord(record).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning('Managed worktree reconciliation deferred', error),
+              ),
+            ),
+          );
+        }
+      }
+      yield* this.scanUnknown();
+    });
+  }
+
+  scanUnknown(): Effect.Effect<void> {
+    if (!this.root || !existsSync(this.root)) return Effect.void;
+    const root = this.root;
+    return Effect.gen({ self: this }, function* () {
+      const groups = yield* readChildDirectories(root);
+      for (const group of groups) {
+        const candidates = yield* readChildDirectories(group);
+        for (const candidate of candidates) {
+          if (this.hasPath(candidate)) continue;
+          const identity = yield* identifyManagedWorktree(candidate).pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                yield* Effect.logWarning('Unable to identify unowned managed worktree', error);
+              }),
+            ),
+          );
+          if (!identity) continue;
+          const record: WorktreeRecord = {
+            worktreePath: candidate,
+            repoRoot: identity.repoRoot,
+            branch: identity.branch,
+            sessionId: orphanSessionId(candidate),
+            createdAt: Date.now(),
+            state: 'orphaned',
+          };
+          yield* this.semaphore(normalizeRepoRoot(identity.repoRoot)).withPermit(
+            this.saveRecord(record).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning('Unable to persist unowned managed worktree', error),
+              ),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  saveRecord(record: WorktreeRecord): Effect.Effect<void, OperationError> {
+    return storeEffect('worktrees.save', 'Failed to persist managed worktree', () =>
+      this.store.save(record),
+    ).pipe(
+      Effect.tap(() => Effect.sync(() => this.index(record))),
+      Effect.asVoid,
+    );
+  }
+
+  markOrphaned(record: WorktreeRecord): Effect.Effect<void, OperationError> {
+    if (record.state === 'orphaned') return Effect.void;
+    return this.saveRecord({ ...record, state: 'orphaned' });
+  }
+
+  deleteRecord(record: WorktreeRecord): Effect.Effect<void, OperationError> {
+    return storeEffect('worktrees.delete', 'Failed to delete managed worktree', () =>
+      this.store.delete(record.worktreePath),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.bySession.delete(record.sessionId);
+          this.byRepoBranch.delete(repoBranchKey(record.repoRoot, record.branch));
+        }),
+      ),
+      Effect.asVoid,
+    );
+  }
+
+  private index(record: WorktreeRecord): void {
+    this.bySession.set(record.sessionId, record);
+    this.byRepoBranch.set(repoBranchKey(record.repoRoot, record.branch), record);
+  }
+
+  pruneAdvisory(repoRoot: string): Effect.Effect<void> {
+    return pruneWorktrees(repoRoot).pipe(
+      Effect.tap((result) =>
+        result.exitCode === 0
+          ? Effect.void
+          : Effect.logWarning('git worktree prune failed', result.stderr),
+      ),
+      Effect.catch((error) => Effect.logWarning('git worktree prune failed', error)),
+      Effect.asVoid,
+    );
+  }
+}
+
+function readChildDirectories(path: string): Effect.Effect<string[]> {
+  return Effect.try({
+    try: () =>
+      readdirSync(path, { withFileTypes: true }).reduce<string[]>((found, entry) => {
+        if (entry.isDirectory()) found.push(join(path, entry.name));
+        return found;
+      }, []),
+    catch: (cause) => gitFailure('git.worktree.scan', 'Failed to scan managed worktrees', cause),
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning('Managed worktree directory scan deferred', error);
+        return new Array<string>();
+      }),
+    ),
+  );
+}
+
+function orphanSessionId(path: string): SessionId {
+  const digest = createHash('sha256').update(normalizeRepoRoot(path)).digest('hex');
+  return SessionIdSchema.parse(`orphan-worktree-${digest}`);
 }
 
 function normalizeRepoRoot(path: string): string {

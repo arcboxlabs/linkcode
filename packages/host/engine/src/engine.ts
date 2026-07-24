@@ -217,10 +217,24 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* records.start((effect) => {
         runTask(effect);
       });
-      yield* worktrees.start();
+      yield* worktrees.start(new Set(Array.from(records.values(), ({ sessionId }) => sessionId)));
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
       );
+      for (const workspace of workspaces.list()) {
+        if (workspace.kind === 'worktree' && !worktrees.hasPath(workspace.cwd)) {
+          yield* tryOperation(
+            'store',
+            'workspace.archive-stale',
+            'Failed to archive workspace',
+            () => workspaces.archive(workspace.workspaceId),
+          ).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning('Stale worktree workspace reconciliation deferred', error),
+            ),
+          );
+        }
+      }
       // Reconcile imports created before workspace auto-registration. Known workspaces are skipped so
       // daemon startup never renames or freshens an existing project merely because it has imports.
       for (const record of records.values()) {
