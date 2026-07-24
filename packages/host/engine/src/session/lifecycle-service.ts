@@ -12,6 +12,7 @@ import type { SessionDriver } from '../automation';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
+import type { WorktreeService } from '../worktree/worktree-service';
 import type { HistoryService } from './history-service';
 import type { SessionOrchestrator } from './orchestrator';
 import type { SessionRecordRegistry } from './session-record-registry';
@@ -31,6 +32,7 @@ export class SessionLifecycleService {
     private readonly history: HistoryService,
     private readonly startOptions: SessionStartOptionsResolver,
     private readonly workspaces: WorkspaceRegistry,
+    private readonly worktrees: WorktreeService,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -54,10 +56,12 @@ export class SessionLifecycleService {
   }
 
   start(replyTo: string, options: StartOptions): Effect.Effect<void, EngineFailure> {
-    const { sessions, startOptions, workspaces } = this;
+    const { sessions, startOptions, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolved = yield* startOptions.resolve(options, sessionId);
+      const resolvedIntent = yield* startOptions.resolve(options, sessionId);
+      const resolved = yield* worktrees.provision(resolvedIntent, sessionId);
+      if (options.cwd) yield* workspaceTouch(workspaces, options.cwd);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -69,7 +73,6 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ startedAt: now }],
       };
-      if (resolved.cwd) yield* workspaceTouch(workspaces, resolved.cwd);
       yield* sessions.startLive(replyTo, record, (adapter) =>
         sessions.startAdapter(adapter, resolved),
       );
@@ -119,10 +122,12 @@ export class SessionLifecycleService {
     historyId: AgentHistoryId,
     options: StartOptions,
   ): Effect.Effect<void, EngineFailure> {
-    const { history, sessions, startOptions: resolver, workspaces } = this;
+    const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({ ...options, kind }, sessionId);
+      const resolvedIntent = yield* resolver.resolve({ ...options, kind }, sessionId);
+      const startOptions = yield* worktrees.provision(resolvedIntent, sessionId);
+      if (options.cwd) yield* workspaceTouch(workspaces, options.cwd);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -133,7 +138,6 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ historyId, startedAt: now }],
       };
-      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(replyTo, record, (adapter) =>
         history.resume(adapter, historyId, startOptions),
       );
@@ -163,15 +167,18 @@ export class SessionLifecycleService {
       // A never-prompted session has no provider transcript to resume from (the adapter only mints one
       // on the first prompt); waking it is a fresh start under the same LinkCode id.
       const historyId = this.records.historyId(sessionId);
-      const { history, sessions, startOptions: resolver, workspaces } = this;
+      const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
       return Effect.gen(function* () {
+        yield* worktrees.verifyResume(sessionId);
         const startOptions = yield* resolver.resolve(
           { kind: record.kind, cwd: record.cwd },
           sessionId,
         );
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
-        if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
+        if (record.cwd && !worktrees.isManagedSession(sessionId)) {
+          yield* workspaceTouch(workspaces, record.cwd);
+        }
         record.runs.push({ historyId, startedAt: Date.now() });
         yield* sessions.startLive(replyTo, record, (adapter) =>
           historyId === undefined

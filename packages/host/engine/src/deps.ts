@@ -13,6 +13,7 @@ import type { SimulatorService } from './simulator/service';
 import type { PtyBackend } from './terminal/pty-backend';
 import type { FileSuggestService } from './workspace/file-suggest-service';
 import type { WorkspaceStore } from './workspace/workspace-store';
+import type { WorktreeStore } from './worktree/worktree-store';
 
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
@@ -30,6 +31,9 @@ export interface EngineDeps {
   git?: GitService;
   fileSuggest?: FileSuggestService;
   workspaceStore?: WorkspaceStore;
+  /** Durable managed-worktree registry and daemon-owned root. Both are optional for embedders. */
+  worktreeStore?: WorktreeStore;
+  worktreeRoot?: string;
   /** Shared with the transport's reverse proxy; scripts need a PTY backend to run. */
   previewRoutes?: PreviewRouteRegistry;
   /** Boot-time probe result (`collectAgentRuntimes()`), served to clients on `agent-runtime.list`. */

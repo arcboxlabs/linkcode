@@ -51,6 +51,11 @@ export function databasePath(): string {
   return join(daemonStateDir(), 'daemon.db');
 }
 
+/** Daemon-owned root for managed git worktrees. */
+export function worktreeRoot(): string {
+  return join(daemonStateDir(), 'worktrees');
+}
+
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
 export function runtimeFilePath(): string {
   return daemonRuntimeFilePath(daemonProfile());

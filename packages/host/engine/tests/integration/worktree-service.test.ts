@@ -124,4 +124,31 @@ describe('WorktreeService', () => {
       code: 'worktree_missing',
     });
   });
+
+  it('serializes concurrent starts for the same repository branch', async () => {
+    const cwd = repo();
+    const service = new WorktreeService(
+      new InMemoryWorktreeStore(),
+      temp(),
+      await Effect.runPromise(GitService.make([])),
+    );
+    await Effect.runPromise(service.start());
+
+    const starts = await Promise.allSettled([
+      Effect.runPromise(
+        service.provision(
+          { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+          SessionIdSchema.parse('sess-concurrent-a'),
+        ),
+      ),
+      Effect.runPromise(
+        service.provision(
+          { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+          SessionIdSchema.parse('sess-concurrent-b'),
+        ),
+      ),
+    ]);
+    expect(starts.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(starts.filter(({ status }) => status === 'rejected')).toHaveLength(1);
+  });
 });

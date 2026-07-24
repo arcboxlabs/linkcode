@@ -23,7 +23,8 @@ import { WirePayloadSchema } from './payload';
 // 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
 // 52 adds the simulator device-rotation wire (CODE-408).
 // 53 adds git.branch.list (CODE-426).
-export const WIRE_PROTOCOL_VERSION = 53 as const;
+// 54 adds StartOptions.branch for managed worktree provisioning (CODE-427).
+export const WIRE_PROTOCOL_VERSION = 54 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

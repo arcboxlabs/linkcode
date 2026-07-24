@@ -22,7 +22,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import type { DaemonConfig } from './config';
-import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
+import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig, worktreeRoot } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
@@ -42,6 +42,7 @@ import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
 import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
+import { createWorktreeStore } from './worktree-store';
 
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
 // die loudly rather than keep serving clients from an unknown state.
@@ -244,6 +245,8 @@ async function main(): Promise<void> {
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
+        worktreeStore: createWorktreeStore(databasePath()),
+        worktreeRoot: worktreeRoot(),
         previewRoutes,
         agentRuntimesReady,
         assets,

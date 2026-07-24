@@ -5,6 +5,7 @@ export type RequestErrorCode =
   | 'not_found'
   | 'conflict'
   | 'unsupported'
+  | 'worktree_missing'
   | 'limit_exceeded'
   | 'cancelled';
 
