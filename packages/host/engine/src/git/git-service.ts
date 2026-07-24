@@ -138,6 +138,15 @@ export class GitService {
   getPullRequestStatus(cwd: string): Effect.Effect<GitPullRequestStatus, EngineFailure> {
     return Cache.get(this.prStatusCache, cwd);
   }
+
+  /** Drop cwd-scoped reads after a git mutation so the next poll observes it immediately. */
+  invalidate(cwd: string): Effect.Effect<void> {
+    return Effect.all([
+      Cache.invalidate(this.statusCache, cwd),
+      Cache.invalidate(this.branchListCache, cwd),
+      Cache.invalidate(this.prStatusCache, cwd),
+    ]).pipe(Effect.asVoid);
+  }
 }
 
 function makeCache<Key, A, E>(lookup: (key: Key) => Effect.Effect<A, E>, ttl: number) {
