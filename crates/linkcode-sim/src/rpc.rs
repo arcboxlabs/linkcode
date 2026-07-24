@@ -160,7 +160,7 @@ pub enum TouchPhase {
 
 /// Framebuffer stream encodings. JPEG frames are independently decodable (latest-wins delivery);
 /// H.264 access units are ordered and delta-dependent (hardware encode/decode, ~10× less bandwidth).
-#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StreamCodec {
     #[default]

@@ -127,6 +127,13 @@ fn main() {
         diag_rotate();
         return;
     }
+    // Diagnostic: prove a live reconfigure retunes the stream without respawning the worker:
+    // `linkcode-sim diag-reconfigure <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-reconfigure") {
+        diag_reconfigure();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -394,6 +401,77 @@ fn diag_interactive() {
     eprintln!(
         "stream dead={} frames-seen={frames} last={last_len} bytes; wrote {out}",
         stream.is_dead()
+    );
+}
+
+/// Diagnostic (macOS only): prove `CaptureStream::reconfigure` retunes a running stream in place —
+/// the worker pid stays the same across a JPEG→H.264 + fps change, and H.264 units start flowing.
+/// `linkcode-sim diag-reconfigure <udid>`. Needs a booted device with an active framebuffer.
+#[cfg(target_os = "macos")]
+fn diag_reconfigure() {
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-reconfigure <udid>");
+    eprintln!(
+        "interactive available: {}",
+        private::interactive_available()
+    );
+
+    let stream = capture::CaptureStream::start(
+        udid.clone(),
+        capture::StreamParams {
+            fps: 30,
+            quality: 0.6,
+            scale: 1.0,
+            codec: rpc::StreamCodec::Jpeg,
+        },
+    );
+
+    // JPEG phase: wait for the first frame, then count distinct frames for ~2s.
+    let mut jpeg_frames = 0u32;
+    let mut last: Option<capture::Frame> = None;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) && !stream.is_dead() {
+        if let Some(frame) = stream.latest()
+            && last.as_ref().is_none_or(|prev| !Arc::ptr_eq(prev, &frame))
+        {
+            jpeg_frames += 1;
+            last = Some(frame);
+        }
+        thread::sleep(Duration::from_millis(30));
+    }
+    let pid_before = stream.worker_pid();
+    eprintln!("JPEG @30fps: worker pid={pid_before}, distinct frames≈{jpeg_frames}");
+
+    // Reconfigure to H.264 @15fps — expected to retune in place, no respawn.
+    stream.reconfigure(capture::StreamParams {
+        fps: 15,
+        quality: 0.6,
+        scale: 1.0,
+        codec: rpc::StreamCodec::H264,
+    });
+    let mut units = 0u32;
+    let mut keyframes = 0u32;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) {
+        if let Some(unit) = stream.next_encoded(Duration::from_millis(250)) {
+            units += 1;
+            if unit.key {
+                keyframes += 1;
+            }
+        }
+    }
+    let pid_after = stream.worker_pid();
+    eprintln!("H.264 @15fps: worker pid={pid_after}, units={units} (keyframes={keyframes})");
+
+    assert_eq!(
+        pid_before, pid_after,
+        "worker pid changed — reconfigure respawned the worker instead of retuning it"
+    );
+    assert!(pid_before != 0, "no worker was running to reconfigure");
+    assert!(units > 0, "no H.264 units after switching codec live");
+    eprintln!(
+        "PASS: reconfigure retuned in place (pid stable {pid_before}); codec switched jpeg→h264"
     );
 }
 
