@@ -13,6 +13,7 @@ import type { MentionItem } from './composer';
 import type { ConversationComposerController } from './conversation-surface';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
+import type { NewSessionBranchPickerComponent } from './new-session-branch-picker';
 import type {
   AgentStartCatalogs,
   AttachmentSupportByAgent,
@@ -53,6 +54,8 @@ export interface ShellFrameProps
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
+  newSessionPreferredBranches: Readonly<Record<string, string>>;
+  NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -118,6 +121,8 @@ export function ShellFrame({
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
+  newSessionPreferredBranches,
+  NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -205,6 +210,8 @@ export function ShellFrame({
             defaultModels={newSessionDefaultModels}
             preferredModels={newSessionPreferredModels}
             preferredEfforts={newSessionPreferredEfforts}
+            preferredBranches={newSessionPreferredBranches}
+            NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
             mentionItems={mentionItems}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}

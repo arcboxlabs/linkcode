@@ -25,7 +25,6 @@ import {
   ChevronDownIcon,
   FolderIcon,
   FolderPlusIcon,
-  GitBranchIcon,
   LaptopMinimalIcon,
   MessagesSquareIcon,
   XIcon,
@@ -41,6 +40,7 @@ import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
+import type { NewSessionBranchPickerComponent } from './new-session-branch-picker';
 import { DEFAULT_MODE_ID } from './session-modes';
 
 export interface NewSessionDraft {
@@ -60,6 +60,7 @@ export interface NewSessionSubmission {
   effort?: EffortLevel | null;
   approvalPolicyId?: string;
   modeId?: SessionModeId;
+  branch?: { name: string };
   input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
 
@@ -86,6 +87,9 @@ export interface NewSessionSurfaceProps {
   preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
+  /** Last successfully used branch per workspace. */
+  preferredBranches?: Readonly<Record<string, string>>;
+  NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Ranked files for the active draft workspace's `@` query. */
   mentionItems: MentionItem[];
   /** Queries files in the draft's currently selected workspace. */
@@ -138,6 +142,8 @@ export function NewSessionSurface({
   defaultModels,
   preferredModels,
   preferredEfforts,
+  preferredBranches,
+  NewSessionBranchPickerComponent,
   mentionItems,
   onMentionQueryChange,
   onDownloadAgent,
@@ -162,10 +168,14 @@ export function NewSessionSurface({
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
   const [selectedPolicies, setSelectedPolicies] = useState<Partial<Record<AgentKind, string>>>({});
   const [pending, setPending] = useState(false);
+  const [selectedBranches, setSelectedBranches] = useState<Record<string, string>>({});
 
   const selectableWorkspaces = chatWorkspace ? [chatWorkspace, ...workspaces] : workspaces;
   const selected = workspaceById(selectableWorkspaces, workspaceId);
   const isChatSelected = selected != null && selected === chatWorkspace;
+  const selectedBranch = selected
+    ? (selectedBranches[selected.workspaceId] ?? preferredBranches?.[selected.workspaceId])
+    : undefined;
   const localModel = selectedModels[provider];
   const selectedModel =
     localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
@@ -204,6 +214,7 @@ export function NewSessionSurface({
           : constrainedEffort !== null && { effort: constrainedEffort }),
         ...(currentPolicyId && { approvalPolicyId: currentPolicyId }),
         modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
+        ...(selectedBranch && { branch: { name: selectedBranch } }),
         input,
       });
     } finally {
@@ -276,6 +287,11 @@ export function NewSessionSurface({
     setWorkspaceId(nextWorkspaceId);
   }
 
+  function handleBranchChange(branch: string): void {
+    if (!selected) return;
+    setSelectedBranches((current) => ({ ...current, [selected.workspaceId]: branch }));
+  }
+
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       {topContent}
@@ -337,6 +353,9 @@ export function NewSessionSurface({
                 onSelect={handleWorkspaceChange}
                 onPickDirectory={onPickDirectory}
                 onRegisterWorkspace={onRegisterWorkspace}
+                selectedBranch={selectedBranch}
+                onSelectBranch={handleBranchChange}
+                NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
               />
             }
           />
@@ -355,6 +374,9 @@ function NewSessionContextBar({
   onSelect,
   onPickDirectory,
   onRegisterWorkspace,
+  selectedBranch,
+  onSelectBranch,
+  NewSessionBranchPickerComponent,
 }: {
   workspaces: WorkspaceRecord[];
   chatWorkspace: WorkspaceRecord | null;
@@ -364,6 +386,9 @@ function NewSessionContextBar({
   onSelect: (workspaceId: WorkspaceId) => void;
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
+  selectedBranch?: string;
+  onSelectBranch: (branch: string) => void;
+  NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
 }): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const tSidebar = useTranslations('workbench.sidebar');
@@ -461,12 +486,14 @@ function NewSessionContextBar({
         {t('workLocally')}
         <ChevronDownIcon className="size-3 text-muted-foreground/72" />
       </Button>
-      {/* TODO(backend): branch/worktree selection for the new session — stub until the daemon exposes it. */}
-      <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
-        <GitBranchIcon />
-        {t('branch')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
-      </Button>
+      {selected && !isChatSelected && NewSessionBranchPickerComponent && (
+        <NewSessionBranchPickerComponent
+          cwd={selected.cwd}
+          disabled={disabled}
+          selectedBranch={selectedBranch}
+          onSelect={onSelectBranch}
+        />
+      )}
       {registerError != null && (
         <span className="min-w-0 truncate text-destructive text-xs">
           {tSidebar('registerWorkspaceError', {

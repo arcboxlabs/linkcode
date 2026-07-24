@@ -342,6 +342,10 @@ export const en = {
       noProject: "Don't work in a project",
       workLocally: 'Work locally',
       branch: 'Branch',
+      branchLoading: 'Loading local branches…',
+      branchEmpty: 'No local branches',
+      branchError: 'Could not load local branches',
+      branchWorktreeHint: 'Will start in an isolated worktree',
     },
     panel: {
       window: {

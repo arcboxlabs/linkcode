@@ -48,6 +48,7 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { captureProductEvent } from '../analytics/product-analytics';
 import { useFileMentionSource } from '../files/mentions';
+import { RuntimeNewSessionBranchPicker } from '../git/new-session-branch-picker';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -241,6 +242,9 @@ function WorkbenchSessionSurface({
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
   const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
+  const newSessionPreferredBranches = useNewSessionDefaultsStore(
+    (state) => state.branchesByWorkspace,
+  );
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
@@ -327,12 +331,18 @@ function WorkbenchSessionSurface({
       effort: submission.effort ?? undefined,
       approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
+      branch: submission.branch,
     });
     const startupSelection = reflectedStartupSelection(
       submission,
       sdkClient.raw.eventsSnapshot(sessionId),
     );
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
+    rememberNewSessionDefaults(
+      submission.kind,
+      submission.workspaceId,
+      startupSelection,
+      submission.branch?.name,
+    );
     // The first input rides behind the started session, like any conversation send.
     void inputMutation
       .trigger({ sessionId, input: submission.input })
@@ -576,6 +586,8 @@ function WorkbenchSessionSurface({
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
+      newSessionPreferredBranches={newSessionPreferredBranches}
+      NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}

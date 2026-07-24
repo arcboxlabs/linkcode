@@ -30,6 +30,13 @@ const CHAT_WORKSPACE = {
   createdAt: 1,
   lastUsedAt: 1,
 };
+const PROJECT_WORKSPACE = {
+  workspaceId: WorkspaceIdSchema.parse('workspace-2'),
+  cwd: '/project',
+  kind: 'project' as const,
+  createdAt: 1,
+  lastUsedAt: 1,
+};
 const RE_MODEL_DEFAULT = /modelDefault/;
 const RE_SONNET_5 = /Sonnet 5/;
 const RE_CONFIGURED_CLAUDE_MODEL = /configured\/claude-model/;
@@ -38,7 +45,62 @@ const RE_MEDIUM_EFFORT = /Medium/;
 const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
 
+function BranchPickerTest({ onSelect }: { onSelect: (branch: string) => void }) {
+  return (
+    <button type="button" onClick={() => onSelect('feature/code-428')}>
+      Pick branch
+    </button>
+  );
+}
+
 describe('NewSessionSurface', () => {
+  it.each([
+    { chatWorkspace: CHAT_WORKSPACE, initialWorkspaceId: CHAT_WORKSPACE.workspaceId },
+    { chatWorkspace: null, initialWorkspaceId: null },
+  ])('does not mount the branch picker for chat or no selection', (selection) => {
+    const BranchPicker = vi.fn(() => null);
+    render(
+      <NewSessionSurface
+        NewSessionBranchPickerComponent={BranchPicker}
+        chatWorkspace={selection.chatWorkspace}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: selection.initialWorkspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn()}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    expect(BranchPicker).not.toHaveBeenCalled();
+  });
+
+  it('submits an explicitly selected repository branch', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        NewSessionBranchPickerComponent={BranchPickerTest}
+        chatWorkspace={null}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn()}
+        onSubmit={onSubmit}
+        workspaces={[PROJECT_WORKSPACE]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick branch' }));
+    typeInComposer('start here');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ branch: { name: 'feature/code-428' } }),
+      ),
+    );
+  });
+
   it.each([
     'claude-code',
     'codex',

@@ -1,7 +1,7 @@
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v3';
+const STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v4';
 const WORKSPACE_ID = WorkspaceIdSchema.parse('workspace-1');
 const stored = new Map<string, string>();
 const storage = {
@@ -63,6 +63,20 @@ describe('new-session defaults', () => {
     expect(restarted.getState().effortsByProvider).toEqual({ 'grok-build': 'medium' });
   });
 
+  it('persists branch choices per workspace and rehydrates them', async () => {
+    const otherWorkspaceId = WorkspaceIdSchema.parse('workspace-2');
+    const first = await loadStore();
+    first.getState().remember('codex', WORKSPACE_ID, {}, 'main');
+    first.getState().remember('codex', otherWorkspaceId, {}, 'release');
+
+    const restarted = await loadStore();
+
+    expect(restarted.getState().branchesByWorkspace).toEqual({
+      [WORKSPACE_ID]: 'main',
+      [otherWorkspaceId]: 'release',
+    });
+  });
+
   it('discards malformed persisted selections at the schema boundary', async () => {
     storage.setItem(
       STORAGE_KEY,
@@ -82,5 +96,6 @@ describe('new-session defaults', () => {
     expect(store.getState().lastProvider).toBeNull();
     expect(store.getState().modelsByProvider).toEqual({});
     expect(store.getState().effortsByProvider).toEqual({});
+    expect(store.getState().branchesByWorkspace).toEqual({});
   });
 });

@@ -67,6 +67,8 @@ export function DesktopShell({
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
+  newSessionPreferredBranches,
+  NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -349,6 +351,8 @@ export function DesktopShell({
           defaultModels={newSessionDefaultModels}
           preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}
+          preferredBranches={newSessionPreferredBranches}
+          NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
           mentionItems={mentionItems}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
