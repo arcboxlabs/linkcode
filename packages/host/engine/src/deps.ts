@@ -1,4 +1,4 @@
-import type { AdapterFactory } from '@linkcode/agent-adapter';
+import type { AdapterFactory, PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
 import type { AgentRuntimes } from '@linkcode/schema';
 import type { LoginBinaryResolver } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
@@ -17,6 +17,8 @@ import type { WorkspaceStore } from './workspace/workspace-store';
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
   factory?: AdapterFactory;
+  /** Read-only native plugin providers aggregated by the Engine plugin service. */
+  pluginFactory?: PluginProviderAdapterFactory;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
   /** iOS Simulator policy service, daemon-constructed around the sidecar client so the daemon's
