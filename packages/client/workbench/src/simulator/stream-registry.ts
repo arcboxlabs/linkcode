@@ -1,5 +1,5 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
-import type { SessionId } from '@linkcode/schema';
+import type { SessionId, SimulatorStreamCodec } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 
 /** The slice of `LinkCodeClient` the stream registry needs. */
@@ -8,11 +8,19 @@ export type SimulatorStreamClient = Pick<
   'simulatorStreamStart' | 'simulatorStreamStop'
 >;
 
-/** Panel-facing stream parameters: hardware H.264 at native resolution, 60 fps. The client draws
- * the framebuffer on its own layer (one draw + one mask composite per frame, vsync-aligned), so
- * 60 fps no longer saturates a core the way the old whole-device repaint did; hosts without H.264
- * fall back to JPEG frames. */
-const STREAM_OPTIONS = { fps: 60, codec: 'h264' } as const;
+/** Panel-facing stream parameters. The client draws the framebuffer on its own layer (one draw + one
+ * mask composite per frame, vsync-aligned), so even 60 fps no longer saturates a core the way the old
+ * whole-device repaint did; a host without H.264 falls back to JPEG frames regardless of `codec`. */
+export interface SimulatorStreamOptions {
+  fps: number;
+  /** Downscale factor before encode (0..1; 1 = native). */
+  scale: number;
+  codec: SimulatorStreamCodec;
+}
+
+function optionsEqual(a: SimulatorStreamOptions, b: SimulatorStreamOptions): boolean {
+  return a.fps === b.fps && a.scale === b.scale && a.codec === b.codec;
+}
 
 /** Bridges the unmount→mount gap of the docked↔maximized handoff without stopping the stream. */
 const CLOSE_DELAY_MS = 250;
@@ -36,6 +44,8 @@ interface RegistryEntry {
   closeTimer: ReturnType<typeof setTimeout> | null;
   snapshot: SimulatorStreamSnapshot;
   listeners: Set<() => void>;
+  /** Parameters the running (or next) stream uses; changing them restarts the stream in place. */
+  options: SimulatorStreamOptions;
 }
 
 const registries = new WeakMap<SimulatorStreamClient, Map<string, RegistryEntry>>();
@@ -59,17 +69,39 @@ function startStream(
   udid: string,
   entry: RegistryEntry,
 ): void {
+  const started = entry.options;
   client
-    .simulatorStreamStart(entry.snapshot.sessionId, udid, STREAM_OPTIONS)
+    .simulatorStreamStart(entry.snapshot.sessionId, udid, started)
     .then(() => {
       if (registry.get(udid) !== entry) return;
       entry.snapshot = { ...entry.snapshot, phase: 'streaming' };
       notify(entry);
+      // A retune that landed mid-start could not restart yet (no stream to stop); do it now.
+      if (!optionsEqual(started, entry.options)) restartStream(client, registry, udid, entry);
     })
     .catch(() => {
       if (registry.get(udid) !== entry) return;
       entry.snapshot = { ...entry.snapshot, phase: 'failed' };
       notify(entry);
+    });
+}
+
+/** Stop then restart a live stream so the sidecar re-parameterizes it (it no-ops a `streamStart`
+ * while one already runs). The lease, its listeners, and the frame subscription all survive. */
+function restartStream(
+  client: SimulatorStreamClient,
+  registry: Map<string, RegistryEntry>,
+  udid: string,
+  entry: RegistryEntry,
+): void {
+  entry.snapshot = { ...entry.snapshot, phase: 'starting' };
+  notify(entry);
+  void client
+    .simulatorStreamStop(entry.snapshot.sessionId, udid)
+    .catch(noop)
+    .finally(() => {
+      if (registry.get(udid) !== entry) return;
+      startStream(client, registry, udid, entry);
     });
 }
 
@@ -82,6 +114,7 @@ export function acquireSimulatorStream(
   client: SimulatorStreamClient,
   udid: string,
   sessionId: SessionId,
+  options: SimulatorStreamOptions,
 ): SimulatorStreamLease {
   const registry = getRegistry(client);
   let entry = registry.get(udid);
@@ -98,6 +131,7 @@ export function acquireSimulatorStream(
       closeTimer: null,
       snapshot: { phase: 'starting', sessionId },
       listeners: new Set(),
+      options,
     };
     registry.set(udid, created);
     entry = created;
@@ -139,4 +173,24 @@ export function peekSimulatorStream(
   udid: string,
 ): SimulatorStreamSnapshot | null {
   return registries.get(client)?.get(udid)?.snapshot ?? null;
+}
+
+/**
+ * Retune a running device stream. The sidecar cannot re-parameterize a live stream (`streamStart`
+ * no-ops once one exists), so a change stops and restarts it in place — the lease, its listeners,
+ * and the independent frame subscription all survive; only the daemon stream blips. A no-op when the
+ * options are unchanged or no stream exists (the next {@link acquireSimulatorStream} carries them).
+ */
+export function setSimulatorStreamOptions(
+  client: SimulatorStreamClient,
+  udid: string,
+  options: SimulatorStreamOptions,
+): void {
+  const registry = registries.get(client);
+  const entry = registry?.get(udid);
+  if (registry === undefined || entry === undefined || optionsEqual(entry.options, options)) return;
+  entry.options = options;
+  // Only an established stream restarts now; a still-starting one adopts the options when its start
+  // completes (startStream re-checks), and a failed one uses them on the next `restart`.
+  if (entry.snapshot.phase === 'streaming') restartStream(client, registry, udid, entry);
 }

@@ -388,6 +388,10 @@ export const en = {
       simulatorRotate: 'Rotate',
       simulatorHome: 'Home',
       simulatorLock: 'Lock screen',
+      simulatorFrameRate: 'Frame rate',
+      simulatorResolution: 'Resolution',
+      simulatorEncoding: 'Encoding',
+      simulatorFps: 'FPS',
     },
     git: {
       emptyTitle: 'No active thread',

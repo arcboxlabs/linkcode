@@ -13,6 +13,7 @@ import type {
 } from '@linkcode/ui/shell/simulator';
 import { SimulatorScreen } from '@linkcode/ui/shell/simulator';
 import { Button } from 'coss-ui/components/button';
+import { Checkbox } from 'coss-ui/components/checkbox';
 import { Select, SelectItem, SelectPopup, SelectPrimitive } from 'coss-ui/components/select';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
@@ -20,7 +21,17 @@ import { ChevronDownIcon, HouseIcon, LockIcon, RotateCwIcon } from 'lucide-react
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SimulatorStreamLease } from './stream-registry';
-import { acquireSimulatorStream, peekSimulatorStream } from './stream-registry';
+import {
+  acquireSimulatorStream,
+  peekSimulatorStream,
+  setSimulatorStreamOptions,
+} from './stream-registry';
+import {
+  STREAM_CODEC_OPTIONS,
+  STREAM_FPS_OPTIONS,
+  STREAM_SCALE_OPTIONS,
+  useSimulatorStreamSettings,
+} from './stream-settings-store';
 
 const BUSY_BANNER_MS = 3000;
 
@@ -37,6 +48,88 @@ const ROTATE_CYCLE = [
  * token-based accent hover would flash a light blob there in the light theme. */
 const STAGE_BUTTON_CLASS =
   'text-neutral-300 hover:bg-white/10 hover:text-white data-pressed:bg-white/10 disabled:opacity-40';
+
+const FPS_ITEMS = STREAM_FPS_OPTIONS.map((n) => ({ value: String(n), label: `${n} FPS` }));
+const SCALE_ITEMS = STREAM_SCALE_OPTIONS.map((n) => ({
+  value: String(n),
+  label: `${Math.round(n * 100)}%`,
+}));
+const CODEC_ITEMS = STREAM_CODEC_OPTIONS.map((c) => ({
+  value: c,
+  label: c === 'h264' ? 'H.264' : 'JPEG',
+}));
+
+/** Count frames arriving over `subscribeFrames` in one-second windows; `null` while disabled. State
+ * updates at most once per second (not per frame), so the readout never drives the render loop. */
+function useReceivedFps(
+  subscribeFrames: (onFrame: (frame: SimulatorScreenFrame) => void) => () => void,
+  enabled: boolean,
+): number | null {
+  const [fps, setFps] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let count = 0;
+    const unsubscribe = subscribeFrames(() => {
+      count += 1;
+    });
+    const interval = setInterval(() => {
+      setFps(count);
+      count = 0;
+    }, 1000);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [subscribeFrames, enabled]);
+  return enabled ? fps : null;
+}
+
+/** A compact "label value ⌄" dropdown for the stream-tuning row — quiet gray label, bold value.
+ * The caller passes the already-formatted `display` for the current value (avoiding a render-phase
+ * lookup); `items` is only the popup list. */
+function QuietSelect({
+  label,
+  ariaLabel,
+  display,
+  value,
+  items,
+  onValueChange,
+}: {
+  label: string;
+  ariaLabel: string;
+  display: string;
+  value: string;
+  items: ReadonlyArray<{ value: string; label: string }>;
+  onValueChange: (value: string) => void;
+}): React.ReactNode {
+  return (
+    <Select
+      items={items}
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null) onValueChange(next);
+      }}
+    >
+      <SelectPrimitive.Trigger
+        aria-label={ariaLabel}
+        className="flex items-center gap-1 rounded px-1 py-0.5 text-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{display}</span>
+        <SelectPrimitive.Icon>
+          <ChevronDownIcon className="size-3 text-muted-foreground" />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+      <SelectPopup>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
 
 /**
  * The right panel's Simulator section: device picker plus a live, touchable device screen.
@@ -58,6 +151,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     udid: null,
     orientation: 'portrait',
   });
+  const { fps, scale, codec, showFps, setFps, setScale, setCodec, toggleShowFps } =
+    useSimulatorStreamSettings();
 
   useEffect(
     (signal) => {
@@ -111,7 +206,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (sessionId === null || udid === null || !booted) return noop;
-      const lease = acquireSimulatorStream(client, udid, sessionId);
+      // Options are read from the store here (not a hook dep) so a tuning change retunes the running
+      // stream via the effect below instead of tearing this subscription down and reacquiring.
+      const settings = useSimulatorStreamSettings.getState();
+      const lease = acquireSimulatorStream(client, udid, sessionId, {
+        fps: settings.fps,
+        scale: settings.scale,
+        codec: settings.codec,
+      });
       leaseRef.current = lease;
       const unsubscribe = lease.subscribe(onStoreChange);
       return () => {
@@ -128,6 +230,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   /** The claim-holding session every interaction must ride. */
   const ownerSessionId = snapshot?.sessionId ?? null;
 
+  // Push tuning changes onto the running stream (a stop→start restart inside the registry). Fires on
+  // mount with the same options `subscribe` used, which the registry no-ops as unchanged.
+  useEffect(() => {
+    if (udid === null) return;
+    setSimulatorStreamOptions(client, udid, { fps, scale, codec });
+  }, [client, udid, fps, scale, codec]);
+
   const subscribeFrames = useCallback(
     (onFrame: (frame: SimulatorScreenFrame) => void) =>
       udid === null
@@ -137,6 +246,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           ),
     [client, udid],
   );
+  const measuredFps = useReceivedFps(subscribeFrames, showFps && canStream);
 
   const flagBusy = useCallback(() => {
     setBusy(true);
@@ -209,28 +319,63 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {deviceItems.length > 0 && device !== null && (
-        <div className="flex shrink-0 items-center border-border border-b px-2 py-1.5">
-          <Select items={deviceItems} value={device.udid} onValueChange={setSelectedUdid}>
-            <SelectPrimitive.Trigger
-              aria-label={t('simulatorSelectDevice')}
-              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className="truncate font-medium">{device.name}</span>
-              {device.runtimeName !== undefined && (
-                <span className="truncate text-muted-foreground">{device.runtimeName}</span>
-              )}
-              <SelectPrimitive.Icon>
-                <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              </SelectPrimitive.Icon>
-            </SelectPrimitive.Trigger>
-            <SelectPopup>
-              {deviceItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
+        <div className="flex shrink-0 flex-col gap-1 border-border border-b px-2 py-1.5">
+          <div className="flex items-center">
+            <Select items={deviceItems} value={device.udid} onValueChange={setSelectedUdid}>
+              <SelectPrimitive.Trigger
+                aria-label={t('simulatorSelectDevice')}
+                className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="truncate font-medium">{device.name}</span>
+                {device.runtimeName !== undefined && (
+                  <span className="truncate text-muted-foreground">{device.runtimeName}</span>
+                )}
+                <SelectPrimitive.Icon>
+                  <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                </SelectPrimitive.Icon>
+              </SelectPrimitive.Trigger>
+              <SelectPopup>
+                {deviceItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
+          {canStream && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <QuietSelect
+                label={t('simulatorFrameRate')}
+                ariaLabel={t('simulatorFrameRate')}
+                display={`${fps} FPS`}
+                value={String(fps)}
+                items={FPS_ITEMS}
+                onValueChange={(next) => setFps(Number(next))}
+              />
+              <QuietSelect
+                label={t('simulatorResolution')}
+                ariaLabel={t('simulatorResolution')}
+                display={`${Math.round(scale * 100)}%`}
+                value={String(scale)}
+                items={SCALE_ITEMS}
+                onValueChange={(next) => setScale(Number(next))}
+              />
+              <QuietSelect
+                label={t('simulatorEncoding')}
+                ariaLabel={t('simulatorEncoding')}
+                display={codec === 'h264' ? 'H.264' : 'JPEG'}
+                value={codec}
+                items={CODEC_ITEMS}
+                onValueChange={(next) => setCodec(next === 'jpeg' ? 'jpeg' : 'h264')}
+              />
+              <label className="flex items-center gap-1.5 text-xs">
+                <Checkbox checked={showFps} onCheckedChange={toggleShowFps} />
+                <span className="text-muted-foreground">{t('simulatorFps')}</span>
+                {showFps && <span className="font-medium tabular-nums">{measuredFps ?? '—'}</span>}
+              </label>
+            </div>
+          )}
         </div>
       )}
       <div className="relative min-h-0 flex-1">
