@@ -214,14 +214,14 @@ it('prevents navigation for fragment links with no resolvable target', () => {
   expect(fireEvent.click(link)).toBe(false);
 });
 
-it('prefixes external links with a local icon and keeps anchor semantics', () => {
+it('prefixes external links with favicon candidates and keeps anchor semantics', () => {
   const { getByRole } = render(
     <Markdown>{'[Wiki](https://en.wikipedia.org/wiki/Arknights)'}</Markdown>,
   );
   const link = getByRole('link', { name: 'Wiki' });
   expect(link.getAttribute('target')).toBe('_blank');
   expect(link.getAttribute('rel')).toBe('noreferrer');
-  expect(link.querySelector('img')).toBeNull();
+  expect(link.querySelectorAll('img')).toHaveLength(2);
   expect(link.querySelector('svg')).not.toBeNull();
 });
 
