@@ -23,7 +23,9 @@ import {
   CircleStopIcon,
   HouseIcon,
   LockIcon,
+  PowerIcon,
   RotateCwIcon,
+  UnplugIcon,
   VideoIcon,
 } from 'lucide-react';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
@@ -165,6 +167,9 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   /** The live screen canvas, published by `SimulatorScreen` — the surface the recorder captures. */
   const [screenCanvas, setScreenCanvas] = useState<HTMLCanvasElement | null>(null);
   const recorder = useSimulatorRecorder();
+  /** Devices the user detached: still booted, just not streamed here. Keyed so switching devices
+   * (and back) remembers each one's state. */
+  const [detached, setDetached] = useState<Readonly<Record<string, boolean>>>({});
 
   useEffect(
     (signal) => {
@@ -200,7 +205,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   // A host with simctl but no SimulatorKit reports `interactive: false`; the live stream would only
   // fail there, so we gate it out and show a hint instead of an unrecoverable Retry loop.
   const interactive = status?.interactive ?? true;
-  const canStream = sessionId !== null && udid !== null && booted && interactive;
+  const isDetached = udid !== null && (detached[udid] ?? false);
+  const canStream = sessionId !== null && udid !== null && booted && interactive && !isDetached;
 
   // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
   // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
@@ -217,7 +223,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      if (sessionId === null || udid === null || !booted) return noop;
+      if (sessionId === null || udid === null || !booted || isDetached) return noop;
       // Options are read from the store here (not a hook dep) so a tuning change retunes the running
       // stream via the effect below instead of tearing this subscription down and reacquiring.
       const settings = useSimulatorStreamSettings.getState();
@@ -234,7 +240,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
         if (leaseRef.current === lease) leaseRef.current = null;
       };
     },
-    [client, sessionId, udid, booted],
+    [client, sessionId, udid, booted, isDetached],
   );
   const snapshot = useSyncExternalStore(subscribe, () =>
     canStream ? peekSimulatorStream(client, udid) : null,
@@ -320,7 +326,19 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   };
   const bootDevice = (): void => {
     if (sessionId === null || udid === null) return;
+    // Booting is an explicit "I want this device here", so it also clears a stale detach.
+    setDetached((prev) => ({ ...prev, [udid]: false }));
     void client.simulatorBoot(sessionId, udid).catch(flagBusy);
+  };
+  // Detach only stops streaming here — the device stays booted and keeps running whatever it was
+  // doing, so an agent driving it is unaffected.
+  const setAttached = (attached: boolean): void => {
+    if (udid === null) return;
+    setDetached((prev) => ({ ...prev, [udid]: !attached }));
+  };
+  const shutdownDevice = (): void => {
+    if (sessionId === null || udid === null) return;
+    void client.simulatorShutdown(sessionId, udid).catch(flagBusy);
   };
   // The screenshot comes from the device rather than the canvas: it is a real PNG at native
   // resolution, unaffected by the stream's scale/codec or the screen mask.
@@ -347,6 +365,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const deviceItems = (devices ?? []).map((item) => ({
     value: item.udid,
     label: item.runtimeName === undefined ? item.name : `${item.name} · ${item.runtimeName}`,
+    booted: item.state === 'Booted',
   }));
 
   return (
@@ -370,11 +389,31 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               <SelectPopup>
                 {deviceItems.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
-                    {item.label}
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{item.label}</span>
+                      {item.booted && (
+                        <span
+                          aria-label={t('simulatorBooted')}
+                          title={t('simulatorBooted')}
+                          className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                        />
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
+            {booted && sessionId !== null && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="ml-auto text-muted-foreground"
+                aria-label={t('simulatorShutdown')}
+                onClick={shutdownDevice}
+              >
+                <PowerIcon className="size-4" />
+              </Button>
+            )}
           </div>
           {canStream && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -433,6 +472,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
         )}
         {device !== null && booted && sessionId !== null && !interactive && (
           <CenteredHint>{t('simulatorNonInteractive')}</CenteredHint>
+        )}
+        {device !== null && booted && sessionId !== null && interactive && isDetached && (
+          <div className="flex h-full flex-col items-center justify-center gap-3">
+            <span className="text-muted-foreground text-sm">{t('simulatorDetached')}</span>
+            <Button variant="outline" size="sm" onClick={() => setAttached(true)}>
+              {t('simulatorAttach')}
+            </Button>
+          </div>
         )}
         {canStream && (
           // The stage stays near-black in both themes (video-player convention) so the streamed
@@ -518,6 +565,16 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
                 onClick={() => pressButton('lock')}
               >
                 <LockIcon className="size-4" />
+              </Button>
+              <div className="mx-0.5 h-4 w-px bg-white/15" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={STAGE_BUTTON_CLASS}
+                aria-label={t('simulatorDetach')}
+                onClick={() => setAttached(false)}
+              >
+                <UnplugIcon className="size-4" />
               </Button>
             </div>
           </div>
