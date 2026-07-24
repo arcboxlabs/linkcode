@@ -19,7 +19,7 @@ describe('linkTargetFor', () => {
     expect(linkTargetFor('plugin://')).toBeNull();
   });
 
-  it('classifies absolute paths as files and strips line suffixes', () => {
+  it('classifies absolute paths as files regardless of identity and strips line suffixes', () => {
     expect(linkTargetFor('/Users/z/Documents/outputs/demo.md')).toStrictEqual({
       kind: 'file',
       path: '/Users/z/Documents/outputs/demo.md',
@@ -34,11 +34,22 @@ describe('linkTargetFor', () => {
       path: '/Users/z/src/main.ts',
       line: 12,
     });
+    expect(linkTargetFor('/workspace/project/notes.unknownext')).toStrictEqual({
+      kind: 'file',
+      path: '/workspace/project/notes.unknownext',
+    });
+    expect(linkTargetFor('/workspace/project/README')).toStrictEqual({
+      kind: 'file',
+      path: '/workspace/project/README',
+    });
   });
 
-  it('leaves root-relative urls without file identity alone', () => {
-    expect(linkTargetFor('/docs')).toBeNull();
-    expect(linkTargetFor('/settings/appearance')).toBeNull();
+  it('treats slash-prefixed destinations as absolute files', () => {
+    expect(linkTargetFor('/docs')).toStrictEqual({ kind: 'file', path: '/docs' });
+    expect(linkTargetFor('/settings/appearance')).toStrictEqual({
+      kind: 'file',
+      path: '/settings/appearance',
+    });
   });
 
   it('decodes percent-encoded path destinations', () => {

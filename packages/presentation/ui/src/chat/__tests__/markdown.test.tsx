@@ -225,18 +225,16 @@ it('prefixes external links with a local icon and keeps anchor semantics', () =>
   expect(link.querySelector('svg')).not.toBeNull();
 });
 
-it('keeps root-relative urls as anchors instead of opening files', () => {
+it('opens slash-prefixed destinations as absolute files', () => {
   const openFile = vi.fn();
   const { getByRole, queryByRole } = render(
     <ArtifactHostActionsContext.Provider value={{ referenceToComposer: vi.fn(), openFile }}>
       <Markdown>{'[documentation](/docs)'}</Markdown>
     </ArtifactHostActionsContext.Provider>,
   );
-  const link = getByRole('link', { name: 'documentation' });
-  expect(link.getAttribute('href')).toBe('/docs');
-  expect(link.getAttribute('target')).toBe('_blank');
-  expect(queryByRole('button')).toBeNull();
-  expect(openFile).not.toHaveBeenCalled();
+  expect(queryByRole('link')).toBeNull();
+  fireEvent.click(getByRole('button', { name: 'documentation' }));
+  expect(openFile).toHaveBeenCalledWith('/docs');
 });
 
 // The chip renders only if the plugin:// href survives Streamdown's sanitize pass — this also
