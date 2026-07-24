@@ -1,7 +1,7 @@
 import { useEffect } from 'foxact/use-abortable-effect';
 import { clamp } from 'foxts/clamp';
 import { noop } from 'foxts/noop';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import type { DecodedFrame } from './device-compositor';
 import { frameHeight, frameWidth, paintChassis, paintScreen } from './device-compositor';
@@ -62,6 +62,10 @@ export interface SimulatorScreenProps {
    * stream to the exact screen shape, and its grown outline keeps the chassis band even. Absent → a
    * generic rounding. Base64, not a `data:` URL — the desktop CSP blocks `fetch`-ing data URLs. */
   maskPng?: string | null;
+  /** Receives the canvas the framebuffer paints into as it mounts (and `null` as it unmounts) — the
+   * surface a recorder captures. Pass a **stable** callback (a `useState` setter or `useCallback`):
+   * a fresh identity each render would detach and re-attach the ref. */
+  onScreenCanvas?: (canvas: HTMLCanvasElement | null) => void;
   /** Shown centered until the first frame arrives. */
   placeholder?: React.ReactNode;
   className?: string;
@@ -82,11 +86,21 @@ export function SimulatorScreen({
   onKey,
   onText,
   maskPng,
+  onScreenCanvas,
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
   const chassisRef = useRef<HTMLCanvasElement | null>(null);
   const screenRef = useRef<HTMLCanvasElement | null>(null);
+  // The screen canvas is tracked by a ref *and* published to the caller, so a recorder can capture
+  // the same surface the framebuffer paints into.
+  const setScreenCanvas = useCallback(
+    (node: HTMLCanvasElement | null) => {
+      screenRef.current = node;
+      onScreenCanvas?.(node);
+    },
+    [onScreenCanvas],
+  );
   const inputRef = useRef<HTMLInputElement | null>(null);
   /** Latest decoded frame, retained so a late mask (or the next rAF) can recomposite it. */
   const frameRef = useRef<DecodedFrame | null>(null);
@@ -328,7 +342,7 @@ export function SimulatorScreen({
       >
         <canvas ref={chassisRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         <canvas
-          ref={screenRef}
+          ref={setScreenCanvas}
           className="absolute touch-none"
           style={
             layout === null

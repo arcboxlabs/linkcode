@@ -17,9 +17,18 @@ import { Checkbox } from 'coss-ui/components/checkbox';
 import { Select, SelectItem, SelectPopup, SelectPrimitive } from 'coss-ui/components/select';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
-import { ChevronDownIcon, HouseIcon, LockIcon, RotateCwIcon } from 'lucide-react';
+import {
+  CameraIcon,
+  ChevronDownIcon,
+  CircleStopIcon,
+  HouseIcon,
+  LockIcon,
+  RotateCwIcon,
+  VideoIcon,
+} from 'lucide-react';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
+import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from './capture';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -153,6 +162,9 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   });
   const { fps, scale, codec, showFps, setFps, setScale, setCodec, toggleShowFps } =
     useSimulatorStreamSettings();
+  /** The live screen canvas, published by `SimulatorScreen` — the surface the recorder captures. */
+  const [screenCanvas, setScreenCanvas] = useState<HTMLCanvasElement | null>(null);
+  const recorder = useSimulatorRecorder();
 
   useEffect(
     (signal) => {
@@ -310,6 +322,27 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     if (sessionId === null || udid === null) return;
     void client.simulatorBoot(sessionId, udid).catch(flagBusy);
   };
+  // The screenshot comes from the device rather than the canvas: it is a real PNG at native
+  // resolution, unaffected by the stream's scale/codec or the screen mask.
+  const saveScreenshot = (): void => {
+    if (ownerSessionId === null || udid === null || device === null) return;
+    void client
+      .simulatorScreenshot(ownerSessionId, udid, 'png')
+      .then((shot) => {
+        downloadBlob(
+          base64Blob(shot.data, `image/${shot.format}`),
+          `${captureFileStem(device.name)}.${shot.format}`,
+        );
+      })
+      .catch(flagBusy);
+  };
+  const toggleRecording = (): void => {
+    if (recorder.recording) {
+      recorder.stop();
+    } else if (screenCanvas !== null && device !== null) {
+      recorder.start(screenCanvas, captureFileStem(device.name));
+    }
+  };
 
   const deviceItems = (devices ?? []).map((item) => ({
     value: item.udid,
@@ -413,6 +446,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               onKey={handleKey}
               onText={handleText}
               maskPng={masks[udid] ?? null}
+              onScreenCanvas={setScreenCanvas}
               placeholder={
                 <span className="text-neutral-400 text-sm">{t('simulatorConnecting')}</span>
               }
@@ -429,6 +463,40 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               >
                 <HouseIcon className="size-4" />
               </Button>
+              <div className="mx-0.5 h-4 w-px bg-white/15" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={STAGE_BUTTON_CLASS}
+                aria-label={t('simulatorScreenshot')}
+                disabled={ownerSessionId === null}
+                onClick={saveScreenshot}
+              >
+                <CameraIcon className="size-4" />
+              </Button>
+              {recorder.supported && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={
+                    recorder.recording
+                      ? 'text-red-400 hover:bg-white/10 hover:text-red-300'
+                      : STAGE_BUTTON_CLASS
+                  }
+                  aria-label={
+                    recorder.recording ? t('simulatorStopRecording') : t('simulatorRecord')
+                  }
+                  aria-pressed={recorder.recording}
+                  disabled={ownerSessionId === null}
+                  onClick={toggleRecording}
+                >
+                  {recorder.recording ? (
+                    <CircleStopIcon className="size-4" />
+                  ) : (
+                    <VideoIcon className="size-4" />
+                  )}
+                </Button>
+              )}
               <div className="mx-0.5 h-4 w-px bg-white/15" />
               <Button
                 variant="ghost"

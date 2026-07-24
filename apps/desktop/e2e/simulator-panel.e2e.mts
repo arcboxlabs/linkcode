@@ -8,7 +8,16 @@
 
 import type { ChildProcess } from 'node:child_process';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -115,7 +124,30 @@ async function seedPiSession(cwd: string): Promise<string> {
   throw new Error(`session.start failed: ${JSON.stringify(reply)}`);
 }
 
-async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void> {
+/** Wait for a download matching `pattern` to land in `dir` and finish being written. */
+async function waitForDownload(dir: string, pattern: RegExp, label: string): Promise<string> {
+  const deadline = Date.now() + 20000;
+  let lastSize = -1;
+  while (Date.now() < deadline) {
+    const match = readdirSync(dir).find((name) => pattern.test(name));
+    if (match !== undefined) {
+      const path = join(dir, match);
+      const size = statSync(path).size;
+      // Two equal reads mean the writer is done, so the assertion never sees a partial file.
+      if (size === lastSize && size > 0) return path;
+      lastSize = size;
+    }
+    await wait(300);
+  }
+  fail(`${label} never landed in ${dir}`);
+}
+
+async function run(
+  win: Page,
+  chatRoot: string,
+  deepPass: boolean,
+  downloadDir: string,
+): Promise<void> {
   await win
     .locator('button[aria-label="Toggle side panel"]:visible')
     .first()
@@ -410,6 +442,26 @@ async function run(win: Page, chatRoot: string, deepPass: boolean): Promise<void
       }
       console.log(`live reconfigure retuned in place (capture-worker pid stable ${pidBefore})`);
 
+      // Capture controls (CODE-415): the screenshot button saves a real device PNG, and the record
+      // button muxes the live canvas into a video container. Both save through a browser download,
+      // which the harness redirected to `downloadDir`.
+      await win.getByRole('button', { name: 'Save screenshot', exact: true }).click();
+      const savedShot = await waitForDownload(downloadDir, /\.png$/, 'the screenshot');
+      const shotHeader = readFileSync(savedShot).subarray(1, 4).toString('latin1');
+      if (shotHeader !== 'PNG') fail(`saved screenshot is not a PNG (header ${shotHeader})`);
+      console.log(`screenshot saved: ${savedShot} (${statSync(savedShot).size} bytes)`);
+
+      const recordButton = win.getByRole('button', { name: 'Record screen', exact: true });
+      if ((await recordButton.count()) > 0) {
+        await recordButton.click();
+        await win.waitForTimeout(3000);
+        await win.getByRole('button', { name: 'Stop recording', exact: true }).click();
+        const clip = await waitForDownload(downloadDir, /\.(?:mp4|webm)$/, 'the recording');
+        console.log(`recording saved: ${clip} (${statSync(clip).size} bytes)`);
+      } else {
+        console.log('recording unsupported in this build — skipping the record assertion');
+      }
+
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });
       console.log(`screenshot: ${tapShot}`);
@@ -491,9 +543,18 @@ async function main(): Promise<void> {
       env: { ...process.env, HOME: home, LINKCODE_PROFILE: profile },
     });
 
+    // Captures download through the browser's normal flow, so pin the destination from the main
+    // process to make the assertions deterministic.
+    const downloadDir = mkdtempSync(join(tmpdir(), 'linkcode-e2e-downloads-'));
+    await app.evaluate(({ session }, dir: string) => {
+      session.defaultSession.on('will-download', (_event, item) => {
+        item.setSavePath(`${dir}/${item.getFilename()}`);
+      });
+    }, downloadDir);
+
     const win = await app.firstWindow();
     try {
-      await run(win, chatRoot, deepPass);
+      await run(win, chatRoot, deepPass, downloadDir);
     } catch (error) {
       const shot = join(tmpdir(), `linkcode-e2e-simulator-${process.pid}.png`);
       await win.screenshot({ path: shot }).catch(noop);
