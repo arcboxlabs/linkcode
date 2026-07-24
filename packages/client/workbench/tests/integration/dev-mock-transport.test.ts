@@ -308,6 +308,13 @@ describe('dev mock transport', () => {
       branch: 'mock-host',
       dirtyFileCount: 3,
     });
+    await expect(client.listGitBranches('/mock/linkcode')).resolves.toEqual({
+      isRepo: true,
+      branches: [
+        { name: 'mock-host', isCurrent: true, lastCommitAt: 1_720_000_000_000 },
+        { name: 'main', isCurrent: false, lastCommitAt: 1_710_000_000_000 },
+      ],
+    });
     await expect(client.getGitPullRequestStatus('/mock/linkcode')).resolves.toMatchObject({
       status: 'ok',
       pullRequest: { checks: 'failing', reviewDecision: 'changes_requested' },
@@ -325,6 +332,7 @@ describe('dev mock transport', () => {
       pullRequest: null,
     });
     await expect(client.getGitStatus('/mock/scratch')).resolves.toEqual({ isRepo: false });
+    await expect(client.listGitBranches('/mock/scratch')).resolves.toEqual({ isRepo: false });
     await expect(client.getGitPullRequestStatus('/mock/scratch')).resolves.toEqual({
       status: 'unavailable',
       reason: 'not_git_repo',

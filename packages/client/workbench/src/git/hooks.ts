@@ -1,5 +1,5 @@
 import type { GitDiffMode } from '@linkcode/schema';
-import { getGitDiff, getGitPullRequestStatus, getGitStatus } from '@linkcode/sdk';
+import { getGitDiff, getGitPullRequestStatus, getGitStatus, listGitBranches } from '@linkcode/sdk';
 import { useData } from '../runtime/tayori';
 
 /**
@@ -14,6 +14,14 @@ const PR_STATUS_REFRESH_MS = 60000;
 /** Local git facts for a directory. Pass undefined to pause (e.g. no active session). */
 export function useGitStatus(cwd: string | undefined) {
   return useData(getGitStatus, cwd === undefined ? null : { cwd }, {
+    refreshInterval: GIT_STATUS_REFRESH_MS,
+    keepPreviousData: true,
+  });
+}
+
+/** Local branches for a directory. Pass undefined to pause. */
+export function useGitBranches(cwd: string | undefined) {
+  return useData(listGitBranches, cwd === undefined ? null : { cwd }, {
     refreshInterval: GIT_STATUS_REFRESH_MS,
     keepPreviousData: true,
   });

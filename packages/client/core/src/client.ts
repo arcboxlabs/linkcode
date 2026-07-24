@@ -11,6 +11,7 @@ import type {
   ContentBlock,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -384,6 +385,9 @@ export class LinkCodeClient {
         break;
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
+        break;
+      case 'git.branch.list.result':
+        this.pending.resolve('gitBranchList', p.replyTo, p.branchList);
         break;
       case 'git.pr_status.get.result':
         this.pending.resolve('gitPrStatus', p.replyTo, p.prStatus);
@@ -825,6 +829,10 @@ export class LinkCodeClient {
 
   getGitStatus(cwd: string): Promise<GitStatus> {
     return this.control.getGitStatus(cwd);
+  }
+
+  listGitBranches(cwd: string): Promise<GitBranchList> {
+    return this.control.listGitBranches(cwd);
   }
 
   getGitPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {

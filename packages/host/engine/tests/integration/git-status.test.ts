@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Effect, Logger as EffectLogger } from 'effect';
 import { noop } from 'foxts/noop';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readGitBranches } from '../../src/git/branches';
 import { GitService } from '../../src/git/git-service';
 import { GitProviderError } from '../../src/git/provider';
 import { readGitStatus } from '../../src/git/status';
@@ -24,6 +25,30 @@ function git(cwd: string, ...args: string[]): void {
   // The fixture repos must not inherit the machine's commit signing (a locked
   // signer would fail every `git commit` here).
   execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, stdio: 'ignore' });
+}
+
+function commitAt(cwd: string, branch: string, date: string): void {
+  git(cwd, 'checkout', '-b', branch);
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.email=test@test',
+      '-c',
+      'user.name=test',
+      'commit',
+      '--allow-empty',
+      '-m',
+      branch,
+    ],
+    {
+      cwd,
+      stdio: 'ignore',
+      env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    },
+  );
 }
 
 function makeRepo(): string {
@@ -159,5 +184,34 @@ describe('readGitStatus', () => {
       status: 'ok',
       pullRequest: null,
     });
+  });
+});
+
+describe('readGitBranches', () => {
+  it('reports a non-repo directory', async () => {
+    await expect(Effect.runPromise(readGitBranches(makeTempDir()))).resolves.toEqual({
+      isRepo: false,
+    });
+  });
+
+  it('lists local branches current-first, then by descending committer date', async () => {
+    const dir = makeRepo();
+    commitAt(dir, 'older', '2024-01-01T00:00:00Z');
+    git(dir, 'checkout', 'main');
+    commitAt(dir, 'newer', '2024-02-01T00:00:00Z');
+    git(dir, 'checkout', 'main');
+    git(dir, 'remote', 'add', 'origin', dir);
+    git(dir, 'fetch', 'origin');
+
+    const result = await Effect.runPromise(readGitBranches(dir));
+    expect(result.isRepo).toBe(true);
+    if (!result.isRepo) return;
+    expect(result.branches[0]?.name).toBe('main');
+    expect(result.branches[0]?.isCurrent).toBe(true);
+    expect(result.branches[0]?.lastCommitAt).toEqual(expect.any(Number));
+    expect(result.branches.slice(1)).toEqual([
+      { name: 'newer', isCurrent: false, lastCommitAt: Date.parse('2024-02-01T00:00:00Z') },
+      { name: 'older', isCurrent: false, lastCommitAt: Date.parse('2024-01-01T00:00:00Z') },
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TimestampSchema } from './primitives';
 
 /**
  * Git data contracts (data plane). Capability-shaped and provider-neutral: the wire never names
@@ -44,6 +45,21 @@ export const GitStatusSchema = z.discriminatedUnion('isRepo', [
   }),
 ]);
 export type GitStatus = z.infer<typeof GitStatusSchema>;
+
+/** One local branch, with the timestamp of its tip commit. */
+export const GitBranchSchema = z.object({
+  name: z.string().min(1),
+  isCurrent: z.boolean(),
+  lastCommitAt: TimestampSchema,
+});
+export type GitBranch = z.infer<typeof GitBranchSchema>;
+
+/** Local branches for one directory. Non-repositories degrade to a typed empty state. */
+export const GitBranchListSchema = z.discriminatedUnion('isRepo', [
+  z.object({ isRepo: z.literal(false) }),
+  z.object({ isRepo: z.literal(true), branches: z.array(GitBranchSchema) }),
+]);
+export type GitBranchList = z.infer<typeof GitBranchListSchema>;
 
 /** Which base a diff is computed against. `base` compares HEAD against the merge-base with the
  * remote's default branch; `uncommitted` compares the working tree (tracked + untracked) against HEAD. */

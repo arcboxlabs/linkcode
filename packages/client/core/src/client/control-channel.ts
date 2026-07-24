@@ -12,6 +12,7 @@ import type {
   ContentBlock,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -396,6 +397,15 @@ export class ControlChannel {
   getGitStatus(cwd: string): Promise<GitStatus> {
     return this.sendCorrelated('gitStatus', (clientReqId) => ({
       kind: 'git.status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Local branches for a directory, ordered current-first then by descending commit date. */
+  listGitBranches(cwd: string): Promise<GitBranchList> {
+    return this.sendCorrelated('gitBranchList', (clientReqId) => ({
+      kind: 'git.branch.list',
       clientReqId,
       cwd,
     }));
