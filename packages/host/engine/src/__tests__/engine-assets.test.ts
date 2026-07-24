@@ -6,6 +6,7 @@ import type {
   ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
+import { managedAgentAssetId, managedToolAssetId } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
@@ -15,8 +16,13 @@ import type { AssetService } from '../asset/service';
 import type { EngineDeps } from '../deps';
 import { createTestEngine } from './fixtures/test-engine';
 
+const CLAUDE_CODE_ID = managedAgentAssetId('claude-code');
+const CODEX_ID = managedAgentAssetId('codex');
+const OPENCODE_ID = managedAgentAssetId('opencode');
+const TECTONIC_ID = managedToolAssetId('tectonic');
+
 const INSTALLED_CODEX: InstalledAsset = {
-  id: 'agent:codex',
+  id: CODEX_ID,
   version: '0.140.0',
   path: '/store/agent/codex/0.140.0/codex',
 };
@@ -65,15 +71,15 @@ describe('asset.list', () => {
   it('serves a live status snapshot from the injected service', async () => {
     const statuses: ManagedAssetStatus[] = [
       {
-        id: 'agent:codex',
+        id: CODEX_ID,
         wantedVersion: '0.140.0',
         installed: {
-          id: 'agent:codex',
+          id: CODEX_ID,
           version: '0.140.0',
           path: '/store/agent/codex/0.140.0/codex',
         },
       },
-      { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+      { id: TECTONIC_ID, wantedVersion: '0.16.9' },
     ];
     const { service } = fakeAssets({ statuses: () => statuses });
     const { engine, sent, inject } = harness({ assets: service });
@@ -93,14 +99,14 @@ describe('asset.list', () => {
 describe('asset.ensure', () => {
   it('replies asset.ensured with the fresh status once the install settles', async () => {
     const status: ManagedAssetStatus = {
-      id: 'agent:codex',
+      id: CODEX_ID,
       wantedVersion: '0.140.0',
       installed: INSTALLED_CODEX,
     };
     const { service } = fakeAssets({ statuses: () => [status] });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: CODEX_ID });
     await vi.waitFor(() => {
       expect(sent).toContainEqual({ kind: 'asset.ensured', replyTo: 'r1', status });
     });
@@ -112,7 +118,7 @@ describe('asset.ensure', () => {
     });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: CODEX_ID });
     await vi.waitFor(() => {
       expect(sent).toContainEqual({
         kind: 'request.failed',
@@ -128,7 +134,7 @@ describe('asset.ensure', () => {
     const { service } = fakeAssets({ ensure: () => Promise.resolve(undefined) });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:opencode' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: OPENCODE_ID });
     await vi.waitFor(() => {
       expect(sent).toContainEqual({
         kind: 'request.failed',
@@ -142,7 +148,7 @@ describe('asset.ensure', () => {
   it('fails the request when the host has no asset service', async () => {
     const { engine, sent, inject } = harness();
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: CODEX_ID });
     expect(sent).toContainEqual({
       kind: 'request.failed',
       replyTo: 'r1',
@@ -155,7 +161,7 @@ describe('asset.ensure', () => {
     const { service } = fakeAssets({ statuses: () => [] });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: CODEX_ID });
     await vi.waitFor(() => {
       expect(sent).toContainEqual({
         kind: 'request.failed',
@@ -177,7 +183,7 @@ describe('asset.ensure', () => {
     const { service } = fakeAssets({ ensure });
     const { engine, sent, inject } = harness({ assets: service });
     await engine.start();
-    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: 'agent:codex' });
+    inject({ kind: 'asset.ensure', clientReqId: 'r1', id: CODEX_ID });
     await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
 
     await engine.stop();
@@ -197,17 +203,47 @@ describe('asset install broadcasts', () => {
       const { engine, sent } = harness({ assets: service });
       await engine.start();
 
-      emit({ kind: 'progress', id: 'agent:codex', receivedBytes: 1, totalBytes: 100 });
-      emit({ kind: 'progress', id: 'agent:codex', receivedBytes: 2, totalBytes: 100 });
+      emit({
+        kind: 'progress',
+        id: CODEX_ID,
+        receivedBytes: 1,
+        totalBytes: 100,
+      });
+      emit({
+        kind: 'progress',
+        id: CODEX_ID,
+        receivedBytes: 2,
+        totalBytes: 100,
+      });
       // Another asset has its own throttle window.
-      emit({ kind: 'progress', id: 'tool:tectonic', receivedBytes: 5 });
+      emit({ kind: 'progress', id: TECTONIC_ID, receivedBytes: 5 });
       vi.advanceTimersByTime(200);
-      emit({ kind: 'progress', id: 'agent:codex', receivedBytes: 3, totalBytes: 100 });
+      emit({
+        kind: 'progress',
+        id: CODEX_ID,
+        receivedBytes: 3,
+        totalBytes: 100,
+      });
 
       expect(sent.filter((p) => p.kind === 'asset.progress')).toEqual([
-        { kind: 'asset.progress', id: 'agent:codex', receivedBytes: 1, totalBytes: 100 },
-        { kind: 'asset.progress', id: 'tool:tectonic', receivedBytes: 5, totalBytes: undefined },
-        { kind: 'asset.progress', id: 'agent:codex', receivedBytes: 3, totalBytes: 100 },
+        {
+          kind: 'asset.progress',
+          id: CODEX_ID,
+          receivedBytes: 1,
+          totalBytes: 100,
+        },
+        {
+          kind: 'asset.progress',
+          id: TECTONIC_ID,
+          receivedBytes: 5,
+          totalBytes: undefined,
+        },
+        {
+          kind: 'asset.progress',
+          id: CODEX_ID,
+          receivedBytes: 3,
+          totalBytes: 100,
+        },
       ]);
     } finally {
       vi.useRealTimers();
@@ -218,10 +254,10 @@ describe('asset install broadcasts', () => {
     const { service, emit } = fakeAssets();
     const { engine, sent } = harness({ assets: service });
     await engine.start();
-    emit({ kind: 'failed', id: 'agent:codex', error: 'network down' });
+    emit({ kind: 'failed', id: CODEX_ID, error: 'network down' });
     expect(sent).toContainEqual({
       kind: 'asset.settled',
-      id: 'agent:codex',
+      id: CODEX_ID,
       error: 'network down',
     });
   });
@@ -232,11 +268,11 @@ describe('asset install broadcasts', () => {
     await engine.start();
     await engine.stop();
 
-    emit({ kind: 'failed', id: 'agent:codex', error: 'network down' });
+    emit({ kind: 'failed', id: CODEX_ID, error: 'network down' });
 
     expect(sent).not.toContainEqual({
       kind: 'asset.settled',
-      id: 'agent:codex',
+      id: CODEX_ID,
       error: 'network down',
     });
   });
@@ -253,10 +289,10 @@ describe('asset install broadcasts', () => {
     });
     await engine.start();
 
-    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX });
     expect(sent).toContainEqual({
       kind: 'asset.settled',
-      id: 'agent:codex',
+      id: CODEX_ID,
       installed: INSTALLED_CODEX,
     });
     await vi.waitFor(() => {
@@ -285,7 +321,7 @@ describe('asset install broadcasts', () => {
       collectAgentRuntimes: () => Promise.resolve(runtimes),
     });
     await engine.start();
-    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX });
     await vi.waitFor(() => {
       expect(sent).toContainEqual({ kind: 'agent-runtime.changed', runtimes });
     });
@@ -314,7 +350,7 @@ describe('asset install broadcasts', () => {
     await engine.start();
 
     inject({ kind: 'agent-runtime.list', clientReqId: 'r1' }); // pass 1: read-triggered
-    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX }); // pass 2: queued
+    emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX }); // pass 2: queued
     await vi.waitFor(() => {
       expect(collect).toHaveBeenCalledTimes(1); // pass 2 must NOT start while pass 1 is in flight
     });
@@ -355,7 +391,7 @@ describe('asset install broadcasts', () => {
 
       // The event path must not inherit the read cooldown: the client's 'installed' activity
       // bridge waits on this push landing promptly.
-      emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+      emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX });
       await vi.waitFor(() => {
         expect(collect).toHaveBeenCalledTimes(2);
       });
@@ -379,8 +415,12 @@ describe('asset install broadcasts', () => {
 
     // Same tick, before the queued pass starts probing: both events' effects are already on
     // disk, so one pass observes them both.
-    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
-    emit({ kind: 'installed', id: 'agent:claude-code', installed: INSTALLED_CODEX });
+    emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX });
+    emit({
+      kind: 'installed',
+      id: CLAUDE_CODE_ID,
+      installed: INSTALLED_CODEX,
+    });
     await vi.waitFor(() => {
       expect(sent.filter((p) => p.kind === 'agent-runtime.changed')).toHaveLength(1);
     });
@@ -406,12 +446,16 @@ describe('asset install broadcasts', () => {
     });
     await engine.start();
 
-    emit({ kind: 'installed', id: 'agent:codex', installed: INSTALLED_CODEX });
+    emit({ kind: 'installed', id: CODEX_ID, installed: INSTALLED_CODEX });
     await vi.waitFor(() => {
       expect(collect).toHaveBeenCalledTimes(1); // pass 1 is probing now
     });
     // This event's install landed after pass 1 began — it needs its own pass.
-    emit({ kind: 'installed', id: 'agent:claude-code', installed: INSTALLED_CODEX });
+    emit({
+      kind: 'installed',
+      id: CLAUDE_CODE_ID,
+      installed: INSTALLED_CODEX,
+    });
     nullthrow(resolvers[0])(runtimes);
     await vi.waitFor(() => {
       expect(collect).toHaveBeenCalledTimes(2);
@@ -428,8 +472,12 @@ describe('asset install broadcasts', () => {
     harness({ assets: service, collectAgentRuntimes: collect });
     emit({
       kind: 'installed',
-      id: 'tool:tectonic',
-      installed: { id: 'tool:tectonic', version: '0.16.9', path: '/store/tool/tectonic' },
+      id: TECTONIC_ID,
+      installed: {
+        id: TECTONIC_ID,
+        version: '0.16.9',
+        path: '/store/tool/tectonic',
+      },
     });
     await Promise.resolve();
     expect(collect).not.toHaveBeenCalled();

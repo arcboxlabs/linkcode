@@ -4,9 +4,11 @@ import type {
   AgentRuntimeAvailability,
   AgentRuntimes,
   ManagedAssetId,
+  ManagedAssetKey,
   ManagedAssetStatus,
   ProvidersConfig,
 } from '@linkcode/schema';
+import { managedAgentAssetId, managedAssetIdEquals, managedAssetKey } from '@linkcode/schema';
 import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
@@ -21,10 +23,10 @@ import { useUnverifiedRuntimesStore } from './unverified-store';
 /** The managed asset backing each downloadable agent kind; pi's is the in-process npm closure
  * (CODE-219). grok-build has none (detect-only). */
 const AGENT_ASSET_IDS: Partial<Record<AgentKind, ManagedAssetId>> = {
-  'claude-code': 'agent:claude-code',
-  codex: 'agent:codex',
-  opencode: 'agent:opencode',
-  pi: 'agent:pi',
+  'claude-code': managedAgentAssetId('claude-code'),
+  codex: managedAgentAssetId('codex'),
+  opencode: managedAgentAssetId('opencode'),
+  pi: managedAgentAssetId('pi'),
 };
 
 /**
@@ -44,17 +46,7 @@ export type AssetActivity =
   | { kind: 'failed'; error: string }
   | { kind: 'installed' };
 
-export type AssetActivityMap = Partial<Record<ManagedAssetId, AssetActivity>>;
-
-/** The agent kind an installable asset backs — the inverse of {@link AGENT_ASSET_IDS}. */
-function installedAssetKind(id: ManagedAssetId): AgentKind | undefined {
-  for (const [kind, assetId] of Object.entries(AGENT_ASSET_IDS) as Array<
-    [AgentKind, ManagedAssetId]
-  >) {
-    if (assetId === id) return kind;
-  }
-  return undefined;
-}
+export type AssetActivityMap = Partial<Record<ManagedAssetKey, AssetActivity>>;
 
 /**
  * Drop only the `installed` bridges whose own agent now probes `available`: a push can come from
@@ -66,13 +58,17 @@ export function dropConfirmedInstalls(
   runtimes: AgentRuntimes,
 ): AssetActivityMap {
   const next: AssetActivityMap = {};
-  for (const [id, entry] of Object.entries(activity) as Array<[ManagedAssetId, AssetActivity]>) {
+  for (const [kind, assetId] of Object.entries(AGENT_ASSET_IDS) as Array<
+    [AgentKind, ManagedAssetId]
+  >) {
+    const key = managedAssetKey(assetId);
+    const entry = activity[key];
+    if (!entry) continue;
     if (entry.kind !== 'installed') {
-      next[id] = entry;
+      next[key] = entry;
       continue;
     }
-    const kind = installedAssetKind(id);
-    if (kind && runtimes[kind]?.status !== 'available') next[id] = entry;
+    if (runtimes[kind]?.status !== 'available') next[key] = entry;
   }
   return next;
 }
@@ -167,7 +163,7 @@ function deriveCue(
       // "Download paired version" is the same install as the missing flow — activity must win over
       // the probed status here too, or progress never shows and a settled install stays blocked.
       const assetId = AGENT_ASSET_IDS[kind];
-      const fromActivity = activityCue(assetId ? activity[assetId] : undefined);
+      const fromActivity = activityCue(assetId ? activity[managedAssetKey(assetId)] : undefined);
       if (fromActivity === 'installed') return undefined;
       if (fromActivity) return fromActivity;
       return acknowledged[kind] === versionKey(runtime)
@@ -177,10 +173,10 @@ function deriveCue(
     case 'missing': {
       const assetId = AGENT_ASSET_IDS[kind];
       if (!assetId) return { state: 'missing', downloadable: false };
-      const fromActivity = activityCue(activity[assetId]);
+      const fromActivity = activityCue(activity[managedAssetKey(assetId)]);
       if (fromActivity === 'installed') return undefined;
       if (fromActivity) return fromActivity;
-      const status = assets?.find((candidate) => candidate.id === assetId);
+      const status = assets?.find((candidate) => managedAssetIdEquals(candidate.id, assetId));
       // Optimistic while `assets` is still loading; a pinless ensure fails into the failed cue.
       return { state: 'missing', downloadable: status ? status.wantedVersion !== undefined : true };
     }
@@ -221,7 +217,7 @@ export function useAgentRuntimeOnboarding(): {
         if (signal.aborted) return;
         setActivity((previous) => ({
           ...previous,
-          [event.id]: {
+          [managedAssetKey(event.id)]: {
             kind: 'downloading',
             receivedBytes: event.receivedBytes,
             totalBytes: event.totalBytes,
@@ -237,7 +233,9 @@ export function useAgentRuntimeOnboarding(): {
         if (signal.aborted) return;
         setActivity((previous) => ({
           ...previous,
-          [event.id]: event.error ? { kind: 'failed', error: event.error } : { kind: 'installed' },
+          [managedAssetKey(event.id)]: event.error
+            ? { kind: 'failed', error: event.error }
+            : { kind: 'installed' },
         }));
       }),
     [client],
@@ -257,12 +255,13 @@ export function useAgentRuntimeOnboarding(): {
     const id = AGENT_ASSET_IDS[kind];
     if (!id) return;
     // Instant feedback: the first progress broadcast can trail the click by a network roundtrip.
-    setActivity((previous) => ({ ...previous, [id]: { kind: 'downloading', receivedBytes: 0 } }));
+    const key = managedAssetKey(id);
+    setActivity((previous) => ({ ...previous, [key]: { kind: 'downloading', receivedBytes: 0 } }));
     // A daemon-side failure also arrives as `asset.settled`; this catch covers transport errors.
     ensureMutation.trigger({ id }).catch((err: unknown) => {
       setActivity((previous) => ({
         ...previous,
-        [id]: { kind: 'failed', error: extractErrorMessage(err) ?? 'download failed' },
+        [key]: { kind: 'failed', error: extractErrorMessage(err) ?? 'download failed' },
       }));
     });
   }

@@ -13,7 +13,8 @@ import { WirePayloadSchema } from './payload';
 // schema it does not speak.
 // 43 combines 42's agent.catalog/agent.cataloged with CODE-316's parallel 42 bump for
 // file.host/file.hosted, keeping every distinct schema on a distinct protocol version.
-export const WIRE_PROTOCOL_VERSION = 44 as const;
+// 45 migrates managed-asset IDs from public strings to discriminated objects.
+export const WIRE_PROTOCOL_VERSION = 45 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

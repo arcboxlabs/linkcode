@@ -62,7 +62,7 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [{ kind: 'skill', name: 'latex', enabled: true }],
-        assets: [{ id: 'tool:tectonic', versionRange: '>=0.16.0 <0.17.0' }],
+        assets: [{ id: { kind: 'tool', name: 'tectonic' }, versionRange: '>=0.16.0 <0.17.0' }],
         managementCapabilities: {
           install: true,
           uninstall: true,
@@ -74,7 +74,7 @@ describe('PluginSchema', () => {
     ).toMatchObject({
       provider: 'codex',
       installations: [],
-      assets: [{ id: 'tool:tectonic', versionRange: '>=0.16.0 <0.17.0' }],
+      assets: [{ id: { kind: 'tool', name: 'tectonic' }, versionRange: '>=0.16.0 <0.17.0' }],
     });
   });
 
@@ -109,7 +109,7 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [],
-        assets: [{ id: 'agent:codex' }],
+        assets: [{ id: { kind: 'agent', name: 'codex' } }],
         managementCapabilities: {
           install: true,
           uninstall: true,
@@ -131,7 +131,7 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [],
-        assets: ['tool:tectonic'],
+        assets: [{ id: 'tool:tectonic', versionRange: '>=0.16.0' }],
         managementCapabilities: {
           install: true,
           uninstall: true,
@@ -153,7 +153,7 @@ describe('PluginSchema', () => {
         availability: 'available',
         installations: [],
         components: [],
-        assets: [{ id: 'tool:tectonic', versionRange: '' }],
+        assets: [{ id: { kind: 'tool', name: 'tectonic' }, versionRange: '' }],
         managementCapabilities: {
           install: true,
           uninstall: true,

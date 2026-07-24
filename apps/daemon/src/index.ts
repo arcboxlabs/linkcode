@@ -10,7 +10,12 @@ import {
   PreviewRouteRegistry,
 } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
-import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
+import {
+  DAEMON_EXIT_ALREADY_RUNNING,
+  ManagedAgentAssetNameSchema,
+  managedAgentAssetId,
+  managedToolAssetId,
+} from '@linkcode/schema';
 import { Hub } from '@linkcode/transport/server';
 import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
@@ -189,15 +194,16 @@ async function main(): Promise<void> {
         });
       }
       agentRuntimeProber.setManagedResolver((kind) => {
-        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
-        return id.success ? assets.managedBinary(id.data) : undefined;
+        const name = ManagedAgentAssetNameSchema.safeParse(kind);
+        return name.success ? assets.managedBinary(managedAgentAssetId(name.data)) : undefined;
       });
       // In-process agents (pi) import a managed closure entry instead of spawning (CODE-219).
       agentRuntimeProber.setManagedEntryResolver((kind) => {
-        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
-        if (!id.success) return;
-        const path = assets.managedEntry(id.data);
-        const version = assets.wantedVersionOf(id.data);
+        const name = ManagedAgentAssetNameSchema.safeParse(kind);
+        if (!name.success) return;
+        const id = managedAgentAssetId(name.data);
+        const path = assets.managedEntry(id);
+        const version = assets.wantedVersionOf(id);
         return path && version ? { path, version } : undefined;
       });
       // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
@@ -227,7 +233,7 @@ async function main(): Promise<void> {
         // Local Anthropic⇄OpenAI translation for cross-protocol accounts (arcboxlabs/aigateway).
         // The binary installs on demand from the asset store; LINKCODE_AIGATEWAY_PATH overrides.
         translator: createAiGatewaySidecar({
-          ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
+          ensureBinary: async () => (await assets.ensure(managedToolAssetId('aigateway')))?.path,
         }),
       });
       const EngineReady = Layer.effectDiscard(
@@ -240,7 +246,7 @@ async function main(): Promise<void> {
             .then((agentRuntimes) => {
               for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
                 void assets
-                  .ensure(`agent:${kind}`)
+                  .ensure(managedAgentAssetId(kind))
                   .catch((err) => {
                     logger.warn(
                       { err, agentKind: kind, operation: 'asset.ensure' },

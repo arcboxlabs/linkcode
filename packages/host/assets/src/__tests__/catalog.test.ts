@@ -26,7 +26,7 @@ const TECTONIC_ID = managedToolAssetId('tectonic');
 function binary(id: ManagedAssetId): BinaryAssetDescriptor {
   const descriptor = descriptorFor(id);
   if (isClosureDescriptor(descriptor)) {
-    throw new Error(`expected a binary descriptor: ${managedAssetKey(id)}`);
+    throw new Error(`expected a binary descriptor: ${id.kind}:${id.name}`);
   }
   return descriptor;
 }

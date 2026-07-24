@@ -1,10 +1,5 @@
 import type { ManagedAssetFormat, ManagedAssetId } from '@linkcode/schema';
-import {
-  managedAgentAssetId,
-  managedAssetIdEquals,
-  managedAssetKey,
-  managedToolAssetId,
-} from '@linkcode/schema';
+import { managedAgentAssetId, managedAssetIdEquals, managedToolAssetId } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import type { NpmClosure } from './closure';
 import { PI_CLOSURE } from './pi-closure.gen';
@@ -288,6 +283,6 @@ export const CATALOG: readonly AssetDescriptor[] = [
 export function descriptorFor(id: ManagedAssetId): AssetDescriptor {
   return nullthrow(
     CATALOG.find((candidate) => managedAssetIdEquals(candidate.id, id)),
-    `Unknown managed asset: ${managedAssetKey(id)}`,
+    `Unknown managed asset: ${id.kind}:${id.name}`,
   );
 }

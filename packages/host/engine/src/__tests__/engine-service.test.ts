@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { InstalledAsset, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
+import { managedAgentAssetId } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect, Logger as EffectLogger, Layer, ManagedRuntime } from 'effect';
@@ -24,6 +25,8 @@ import type { PtyBackend } from '../terminal/pty-backend';
 import type { WorkspaceStore } from '../workspace/workspace-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
 import { FakeAdapter } from './fixtures/session-harness';
+
+const CODEX_ID = managedAgentAssetId('codex');
 
 describe('engine service', () => {
   it('owns the engine lifecycle and exposes workspace orchestration', async () => {
@@ -281,7 +284,13 @@ describe('engine service', () => {
           const engine = yield* createEngineRuntime(transport, { assets });
           yield* engine.start;
           const inject = (clientReqId: string): void => {
-            handler?.(createWireMessage({ kind: 'asset.ensure', clientReqId, id: 'agent:codex' }));
+            handler?.(
+              createWireMessage({
+                kind: 'asset.ensure',
+                clientReqId,
+                id: CODEX_ID,
+              }),
+            );
           };
 
           inject('accepted');
@@ -293,7 +302,11 @@ describe('engine service', () => {
           inject('late');
           expect(ensure).toHaveBeenCalledOnce();
 
-          settleEnsure({ id: 'agent:codex', version: '1.0.0', path: '/bin/codex' });
+          settleEnsure({
+            id: CODEX_ID,
+            version: '1.0.0',
+            path: '/bin/codex',
+          });
           yield* Effect.yieldNow;
           expect(sent).toEqual([]);
         }),

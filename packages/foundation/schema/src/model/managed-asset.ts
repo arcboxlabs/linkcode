@@ -11,45 +11,46 @@ export type ManagedAgentAssetName = z.infer<typeof ManagedAgentAssetNameSchema>;
 
 /** Agent runtime assets pair a CLI with its in-repo SDK (`agent:pi` is an npm closure the daemon
  * imports in-process, CODE-219). */
-export const ManagedAgentAssetIdSchema = z.enum([
-  'agent:claude-code',
-  'agent:codex',
-  'agent:opencode',
-  'agent:pi',
-]);
+export const ManagedAgentAssetIdSchema = z.object({
+  kind: z.literal('agent'),
+  name: ManagedAgentAssetNameSchema,
+});
 export type ManagedAgentAssetId = z.infer<typeof ManagedAgentAssetIdSchema>;
 
 /** Standalone tools managed by the daemon; these may be runtime dependencies of plugins. */
 export const ManagedToolAssetNameSchema = z.enum(['tectonic', 'aigateway']);
 export type ManagedToolAssetName = z.infer<typeof ManagedToolAssetNameSchema>;
 
-export const ManagedToolAssetIdSchema = z.enum(['tool:tectonic', 'tool:aigateway']);
+export const ManagedToolAssetIdSchema = z.object({
+  kind: z.literal('tool'),
+  name: ManagedToolAssetNameSchema,
+});
 export type ManagedToolAssetId = z.infer<typeof ManagedToolAssetIdSchema>;
 
 /** Every asset understood by the managed-asset store and wire control surface. */
-export const ManagedAssetIdSchema = z.enum([
-  ...ManagedAgentAssetIdSchema.options,
-  ...ManagedToolAssetIdSchema.options,
+export const ManagedAssetIdSchema = z.discriminatedUnion('kind', [
+  ManagedAgentAssetIdSchema,
+  ManagedToolAssetIdSchema,
 ]);
 export type ManagedAssetId = z.infer<typeof ManagedAssetIdSchema>;
 
-export type ManagedAssetKey = ManagedAssetId;
+export type ManagedAssetKey = `agent:${ManagedAgentAssetName}` | `tool:${ManagedToolAssetName}`;
 
 export function managedAgentAssetId(name: ManagedAgentAssetName): ManagedAgentAssetId {
-  return `agent:${name}`;
+  return { kind: 'agent', name };
 }
 
 export function managedToolAssetId(name: ManagedToolAssetName): ManagedToolAssetId {
-  return `tool:${name}`;
+  return { kind: 'tool', name };
 }
 
 /** Canonical internal key for maps, sets, logs, and other structural identity checks. */
 export function managedAssetKey(id: ManagedAssetId): ManagedAssetKey {
-  return id;
+  return id.kind === 'agent' ? `agent:${id.name}` : `tool:${id.name}`;
 }
 
 export function managedAssetIdEquals(left: ManagedAssetId, right: ManagedAssetId): boolean {
-  return left === right;
+  return left.kind === right.kind && left.name === right.name;
 }
 
 export const ManagedAssetFormatSchema = z.enum(['tgz', 'zip', 'raw']);

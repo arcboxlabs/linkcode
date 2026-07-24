@@ -122,8 +122,8 @@ describe('installAsset', () => {
       installAsset(gateway, '1.0.0'),
     ]);
 
-    expect(tectonicInstall.id).toBe('tool:tectonic');
-    expect(gatewayInstall.id).toBe('tool:aigateway');
+    expect(tectonicInstall.id).toEqual({ kind: 'tool', name: 'tectonic' });
+    expect(gatewayInstall.id).toEqual({ kind: 'tool', name: 'aigateway' });
     expect(tectonicServer.requests).toHaveLength(1);
     expect(gatewayServer.requests).toHaveLength(1);
   });
