@@ -1,6 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { managedToolAssetId } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetDescriptor } from '../../src/catalog';
 import { IntegrityError } from '../../src/errors';
@@ -15,6 +16,8 @@ import { startLocalServer } from '../support/local-server';
 const platform = currentPlatformKey();
 if (!platform) throw new Error('tests require a catalog-supported platform');
 
+const AIGATEWAY_ID = managedToolAssetId('aigateway');
+const TECTONIC_ID = managedToolAssetId('tectonic');
 const servers: LocalServer[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -34,9 +37,10 @@ function descriptor(
   integrity: string,
   size: number,
   extraMembers?: string[],
+  id: AssetDescriptor['id'] = TECTONIC_ID,
 ): AssetDescriptor {
   return {
-    id: 'tool:tectonic',
+    id,
     binaryBase: 'tool',
     version: { kind: 'pinned', version: '1.0.0' },
     artifacts: {
@@ -65,11 +69,11 @@ describe('installAsset', () => {
     const spec = descriptor(`${server.url}/a.tgz`, fixture.integrity, fixture.bytes.length);
 
     const installed = await installAsset(spec, '1.0.0');
-    expect(installed.path).toBe(join(assetDir('tool:tectonic'), '1.0.0', 'tool'));
+    expect(installed.path).toBe(join(assetDir(TECTONIC_ID), '1.0.0', 'tool'));
     expect(readFileSync(installed.path, 'utf8')).toContain('echo tool');
     expect(statSync(installed.path).mode & 0o111).not.toBe(0);
     expect(installedPath(spec, '1.0.0')).toBe(installed.path);
-    expect(readdirSync(assetDir('tool:tectonic'))).toEqual(['1.0.0']);
+    expect(readdirSync(assetDir(TECTONIC_ID))).toEqual(['1.0.0']);
   });
 
   it('short-circuits when the version is already installed — zero network', async () => {
@@ -93,6 +97,35 @@ describe('installAsset', () => {
     const [a, b] = await Promise.all([installAsset(spec, '1.0.0'), installAsset(spec, '1.0.0')]);
     expect(a.path).toBe(b.path);
     expect(server.requests).toHaveLength(1);
+  });
+
+  it('does not deduplicate different assets that share a version', async () => {
+    freshStore();
+    const fixture = makeTgz('package/tool', 'concurrent');
+    const tectonicServer = await serve(fixture);
+    const gatewayServer = await serve(fixture);
+    const tectonic = descriptor(
+      `${tectonicServer.url}/a.tgz`,
+      fixture.integrity,
+      fixture.bytes.length,
+    );
+    const gateway = descriptor(
+      `${gatewayServer.url}/a.tgz`,
+      fixture.integrity,
+      fixture.bytes.length,
+      undefined,
+      AIGATEWAY_ID,
+    );
+
+    const [tectonicInstall, gatewayInstall] = await Promise.all([
+      installAsset(tectonic, '1.0.0'),
+      installAsset(gateway, '1.0.0'),
+    ]);
+
+    expect(tectonicInstall.id).toBe('tool:tectonic');
+    expect(gatewayInstall.id).toBe('tool:aigateway');
+    expect(tectonicServer.requests).toHaveLength(1);
+    expect(gatewayServer.requests).toHaveLength(1);
   });
 
   it('extracts extra members as executable siblings under their basenames', async () => {
@@ -152,6 +185,6 @@ describe('installAsset', () => {
 
     await expect(installAsset(spec, '1.0.0')).rejects.toThrow(IntegrityError);
     expect(installedPath(spec, '1.0.0')).toBeUndefined();
-    expect(readdirSync(assetDir('tool:tectonic'))).toEqual([]);
+    expect(readdirSync(assetDir(TECTONIC_ID))).toEqual([]);
   });
 });

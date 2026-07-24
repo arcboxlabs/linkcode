@@ -1,4 +1,5 @@
 import type { ManagedAssetArtifact } from '@linkcode/schema';
+import { managedAssetKey } from '@linkcode/schema';
 import type { BinaryAssetDescriptor } from './catalog';
 import { UnsupportedPlatformError } from './errors';
 import type { PlatformKey } from './platform';
@@ -23,7 +24,7 @@ export async function resolveArtifact(
   const source = platform ? descriptor.artifacts[platform] : undefined;
   if (!source) {
     throw new UnsupportedPlatformError(
-      `${descriptor.id} has no artifact for ${platform ?? 'this platform'}`,
+      `${managedAssetKey(descriptor.id)} has no artifact for ${platform ?? 'this platform'}`,
     );
   }
   if (source.kind === 'baked') {

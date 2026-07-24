@@ -1,21 +1,52 @@
+import type { ManagedAssetId } from '@linkcode/schema';
+import {
+  ManagedAgentAssetNameSchema,
+  ManagedToolAssetNameSchema,
+  managedAgentAssetId,
+  managedAssetKey,
+  managedToolAssetId,
+} from '@linkcode/schema';
 import ssri from 'ssri';
 import { describe, expect, it } from 'vitest';
 import type { BinaryAssetDescriptor } from '../catalog';
-import { CATALOG, isClosureDescriptor } from '../catalog';
+import { CATALOG, descriptorFor, isClosureDescriptor } from '../catalog';
 import { PI_CLOSURE } from '../pi-closure.gen';
 
-const descriptors = Object.values(CATALOG).filter(
+const descriptors = CATALOG.filter(
   (descriptor): descriptor is BinaryAssetDescriptor => !isClosureDescriptor(descriptor),
 );
 const HTTPS = /^https:\/\//;
+const CLAUDE_CODE_ID = managedAgentAssetId('claude-code');
+const CODEX_ID = managedAgentAssetId('codex');
+const OPENCODE_ID = managedAgentAssetId('opencode');
+const PI_ID = managedAgentAssetId('pi');
+const AIGATEWAY_ID = managedToolAssetId('aigateway');
+const TECTONIC_ID = managedToolAssetId('tectonic');
 
-function binary(id: keyof typeof CATALOG): BinaryAssetDescriptor {
-  const descriptor = CATALOG[id];
-  if (isClosureDescriptor(descriptor)) throw new Error(`expected a binary descriptor: ${id}`);
+function binary(id: ManagedAssetId): BinaryAssetDescriptor {
+  const descriptor = descriptorFor(id);
+  if (isClosureDescriptor(descriptor)) {
+    throw new Error(`expected a binary descriptor: ${managedAssetKey(id)}`);
+  }
   return descriptor;
 }
 
 describe('CATALOG', () => {
+  it('contains every managed asset identity exactly once', () => {
+    const expected = [
+      ...ManagedAgentAssetNameSchema.options.map((name) =>
+        managedAssetKey(managedAgentAssetId(name)),
+      ),
+      ...ManagedToolAssetNameSchema.options.map((name) =>
+        managedAssetKey(managedToolAssetId(name)),
+      ),
+    ];
+    const actual = CATALOG.map((descriptor) => managedAssetKey(descriptor.id));
+
+    expect(new Set(actual).size).toBe(actual.length);
+    expect(new Set(actual)).toEqual(new Set(expected));
+  });
+
   it('declares a verifiable baked artifact for every baked platform entry', () => {
     for (const descriptor of descriptors) {
       for (const source of Object.values(descriptor.artifacts)) {
@@ -36,7 +67,7 @@ describe('CATALOG', () => {
   });
 
   it('addresses codex through the real @openai/codex packument with platform version keys', () => {
-    const codex = binary('agent:codex');
+    const codex = binary(CODEX_ID);
     const darwin = codex.artifacts['darwin-arm64'];
     if (darwin?.kind !== 'npm') throw new Error('expected npm source');
     expect(darwin.packageName).toBe('@openai/codex');
@@ -45,7 +76,7 @@ describe('CATALOG', () => {
   });
 
   it('ships the codex Windows sandbox helpers next to the win32 binaries only', () => {
-    for (const [key, source] of Object.entries(binary('agent:codex').artifacts)) {
+    for (const [key, source] of Object.entries(binary(CODEX_ID).artifacts)) {
       if (source.kind !== 'npm') throw new Error('expected npm source');
       if (!key.startsWith('win32')) {
         expect(source.extraMembers).toBeUndefined();
@@ -60,13 +91,13 @@ describe('CATALOG', () => {
   });
 
   it('names opencode platform packages with windows, not win32', () => {
-    const source = binary('agent:opencode').artifacts['win32-x64'];
+    const source = binary(OPENCODE_ID).artifacts['win32-x64'];
     if (source?.kind !== 'npm') throw new Error('expected npm source');
     expect(source.packageName).toBe('opencode-windows-x64');
   });
 
   it('registers pi as the committed closure manifest behind its SDK pin (CODE-219)', () => {
-    const pi = CATALOG['agent:pi'];
+    const pi = descriptorFor(PI_ID);
     if (!isClosureDescriptor(pi)) throw new Error('expected a closure descriptor');
     expect(pi.closure).toBe(PI_CLOSURE);
     expect(pi.version).toEqual({
@@ -76,12 +107,12 @@ describe('CATALOG', () => {
   });
 
   it('covers the agent grid on all six platforms and tectonic everywhere but arm64 windows', () => {
-    expect(Object.keys(binary('agent:claude-code').artifacts)).toHaveLength(6);
-    expect(Object.keys(binary('agent:codex').artifacts)).toHaveLength(6);
-    expect(Object.keys(binary('agent:opencode').artifacts)).toHaveLength(6);
-    expect(binary('tool:tectonic').artifacts['win32-arm64']).toBeUndefined();
-    expect(Object.keys(binary('tool:tectonic').artifacts)).toHaveLength(5);
-    expect(binary('tool:aigateway').artifacts['win32-arm64']).toBeUndefined();
-    expect(Object.keys(binary('tool:aigateway').artifacts)).toHaveLength(5);
+    expect(Object.keys(binary(CLAUDE_CODE_ID).artifacts)).toHaveLength(6);
+    expect(Object.keys(binary(CODEX_ID).artifacts)).toHaveLength(6);
+    expect(Object.keys(binary(OPENCODE_ID).artifacts)).toHaveLength(6);
+    expect(binary(TECTONIC_ID).artifacts['win32-arm64']).toBeUndefined();
+    expect(Object.keys(binary(TECTONIC_ID).artifacts)).toHaveLength(5);
+    expect(binary(AIGATEWAY_ID).artifacts['win32-arm64']).toBeUndefined();
+    expect(Object.keys(binary(AIGATEWAY_ID).artifacts)).toHaveLength(5);
   });
 });

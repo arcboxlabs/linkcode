@@ -6,6 +6,9 @@ import { z } from 'zod';
  * eventually the signed compat manifest (CODE-77), which will carry these shapes with a signature.
  */
 
+export const ManagedAgentAssetNameSchema = z.enum(['claude-code', 'codex', 'opencode', 'pi']);
+export type ManagedAgentAssetName = z.infer<typeof ManagedAgentAssetNameSchema>;
+
 /** Agent runtime assets pair a CLI with its in-repo SDK (`agent:pi` is an npm closure the daemon
  * imports in-process, CODE-219). */
 export const ManagedAgentAssetIdSchema = z.enum([
@@ -17,6 +20,9 @@ export const ManagedAgentAssetIdSchema = z.enum([
 export type ManagedAgentAssetId = z.infer<typeof ManagedAgentAssetIdSchema>;
 
 /** Standalone tools managed by the daemon; these may be runtime dependencies of plugins. */
+export const ManagedToolAssetNameSchema = z.enum(['tectonic', 'aigateway']);
+export type ManagedToolAssetName = z.infer<typeof ManagedToolAssetNameSchema>;
+
 export const ManagedToolAssetIdSchema = z.enum(['tool:tectonic', 'tool:aigateway']);
 export type ManagedToolAssetId = z.infer<typeof ManagedToolAssetIdSchema>;
 
@@ -26,6 +32,25 @@ export const ManagedAssetIdSchema = z.enum([
   ...ManagedToolAssetIdSchema.options,
 ]);
 export type ManagedAssetId = z.infer<typeof ManagedAssetIdSchema>;
+
+export type ManagedAssetKey = ManagedAssetId;
+
+export function managedAgentAssetId(name: ManagedAgentAssetName): ManagedAgentAssetId {
+  return `agent:${name}`;
+}
+
+export function managedToolAssetId(name: ManagedToolAssetName): ManagedToolAssetId {
+  return `tool:${name}`;
+}
+
+/** Canonical internal key for maps, sets, logs, and other structural identity checks. */
+export function managedAssetKey(id: ManagedAssetId): ManagedAssetKey {
+  return id;
+}
+
+export function managedAssetIdEquals(left: ManagedAssetId, right: ManagedAssetId): boolean {
+  return left === right;
+}
 
 export const ManagedAssetFormatSchema = z.enum(['tgz', 'zip', 'raw']);
 export type ManagedAssetFormat = z.infer<typeof ManagedAssetFormatSchema>;

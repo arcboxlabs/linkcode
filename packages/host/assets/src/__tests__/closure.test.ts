@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
+import { managedAgentAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { NpmClosureAssetDescriptor } from '../catalog';
 import { closurePackagesForHost, npmTarballUrls } from '../closure';
@@ -126,13 +127,14 @@ describe('closurePackagesForHost', () => {
 
 describe('closure pins', () => {
   it('a stale closure manifest (pin ≠ manifest version) reads as unpinnable', () => {
+    const opencodeId = managedAgentAssetId('opencode');
     const descriptor: NpmClosureAssetDescriptor = {
-      id: 'agent:opencode',
+      id: opencodeId,
       version: { kind: 'pinned', version: '2.0.0' },
       closure: { version: '1.0.0', entry: 'node_modules/x/index.js', packages: [] },
     };
     const manager = new AssetManager({ catalog: [descriptor] });
-    expect(manager.wantedVersionOf('agent:opencode')).toBeUndefined();
+    expect(manager.wantedVersionOf(opencodeId)).toBeUndefined();
   });
 });
 
