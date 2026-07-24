@@ -32,9 +32,10 @@ const PORT = 44000 + (process.pid % 1000);
 const SESSION_ID = 'e2e-thread-menu-session';
 const SESSION_TITLE = 'Seeded thread for the title menu';
 
+/** Throws rather than exiting: `main()`'s catch captures a screenshot and its finally reaps the
+ * daemon and the Electron app, none of which run past a `process.exit`. */
 function fail(message: string): never {
-  console.error(`FAIL: ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 /**
