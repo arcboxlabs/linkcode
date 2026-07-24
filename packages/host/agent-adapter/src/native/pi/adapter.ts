@@ -5,11 +5,13 @@ import type {
   CreateAgentSessionOptions,
   ExtensionAPI,
   PromptOptions,
+  ResourceLoader,
   SessionManager,
   ToolCallEvent,
   ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
+  AgentCommand,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -22,6 +24,7 @@ import type {
   ToolKind,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { invariant } from 'foxts/guard';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -93,6 +96,34 @@ function modelOptions(models: PiModel[]) {
     description: `${model.provider}/${model.id}`,
     effortLevels: effortLevels(model),
   }));
+}
+
+/** Commands Pi's prompt expansion accepts. Extension commands are excluded because they require
+ * ExtensionCommandContext execution rather than a prompt containing `/name`. */
+function piCommandCatalog(
+  loader: Pick<ResourceLoader, 'getPrompts' | 'getSkills'>,
+): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getPrompts().prompts.map((prompt) => ({
+        name: prompt.name,
+        description: prompt.description || undefined,
+        argumentHint: prompt.argumentHint,
+      })),
+    );
+  } catch {}
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getSkills().skills.map((skill) => ({
+        name: `skill:${skill.name}`,
+        description: skill.description || undefined,
+      })),
+    );
+  } catch {}
+  return commands;
 }
 
 function createConfiguredRegistry(
@@ -287,11 +318,12 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       },
     });
+    // Pi has no resource change event in headless mode, so this is a full snapshot. Each resource
+    // category is optional session metadata: discovery failure hides only that category.
+    this.emitCommands(piCommandCatalog(resourceLoader));
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    invariant(this.session, 'pi: session not started');
-    const text = contentToText(content);
     const images = imageBlocksFrom(content);
     const imageOptions: Pick<PromptOptions, 'images'> | undefined =
       images.length === 0
@@ -303,6 +335,17 @@ export class PiAdapter extends BaseAgentAdapter {
               mimeType: image.mimeType,
             })),
           };
+    await this.runPrompt(contentToText(content), imageOptions);
+  }
+
+  /** Pi expands `/skill:name` and prompt-template commands inside `session.prompt`, so command
+   * dispatch shares the normal turn lifecycle and must not re-emit the user's invocation. */
+  protected override async onCommand(name: string, args?: string): Promise<void> {
+    await this.runPrompt(`/${name}${args ? ` ${args}` : ''}`);
+  }
+
+  private async runPrompt(text: string, options?: Pick<PromptOptions, 'images'>): Promise<void> {
+    invariant(this.session, 'pi: session not started');
     this.turnActive = true;
     this.promptInFlight = true;
     this.settlementPending = false;
@@ -310,8 +353,8 @@ export class PiAdapter extends BaseAgentAdapter {
     this.emitStatus('running');
     try {
       if (this.session.isStreaming) {
-        await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
-      } else await this.session.prompt(text, imageOptions);
+        await this.session.prompt(text, { ...options, streamingBehavior: 'followUp' });
+      } else await this.session.prompt(text, options);
       this.promptInFlight = false;
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the subscribe handler flips `settlementPending` while prompt() is awaited
       if (this.settlementPending) this.settleTurn();

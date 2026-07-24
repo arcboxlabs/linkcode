@@ -1112,7 +1112,7 @@ describe('OpenCodeAdapter command catalog', () => {
       client.command.list.mockReturnValueOnce({
         data: [
           { name: 'review', description: 'Review code', template: 't', hints: ['<file>'] },
-          { name: 'noop', template: 't', hints: [] },
+          { name: 'karpathy-guidelines', source: 'skill', template: 'skill body', hints: [] },
         ],
       });
       return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
@@ -1126,7 +1126,7 @@ describe('OpenCodeAdapter command catalog', () => {
     expect(catalog).toHaveLength(1);
     expect(catalog[0].commands).toEqual([
       { name: 'review', description: 'Review code', argumentHint: '<file>' },
-      { name: 'noop', description: undefined, argumentHint: undefined },
+      { name: 'karpathy-guidelines', description: undefined, argumentHint: undefined },
     ]);
   });
 

@@ -43,6 +43,7 @@ describe('NewSessionSurface', () => {
     'claude-code',
     'codex',
     'opencode',
+    'pi',
   ] as const)('submits a leading slash command for %s', async (provider) => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
@@ -298,15 +299,12 @@ describe('NewSessionSurface', () => {
     expect(screen.queryByRole('img', { name: 'accepted.png' })).toBeNull();
   });
 
-  it.each([
-    'pi',
-    'grok-build',
-  ] as const)('blocks unsupported slash commands for %s', async (provider) => {
+  it('blocks unsupported slash commands for grok-build', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialProvider: 'grok-build', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}

@@ -248,10 +248,11 @@ describe('dev mock transport', () => {
 
     let mark = piEvents.length;
     client.attachSession(piSessionId);
-    await eventually(() => piEvents.length === mark + 2);
+    await eventually(() => piEvents.length === mark + 3);
     expect(piEvents.slice(mark).map((event) => event.type)).toEqual([
       'status',
       'capabilities-update',
+      'available-commands-update',
     ]);
 
     const opencodeSessionId = await client.startSession({
