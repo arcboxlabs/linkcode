@@ -93,6 +93,37 @@ describe('groupThreadsByWorkspace', () => {
     expect(groups.find((g) => g.key === UNREGISTERED_THREAD_GROUP_KEY)?.isChat).toBe(false);
     expect(groups.every((g) => !g.isPinned)).toBe(true);
   });
+
+  it('groups worktree sessions under their parent without emitting a worktree group', () => {
+    const parent = createWorkspace('ws-parent', '/repo/app', 1, 'project');
+    const worktree = {
+      ...createWorkspace('ws-worktree', '/managed/feature', 2, 'worktree'),
+      parentWorkspaceId: parent.workspaceId,
+      name: 'feature',
+    };
+    const session = createSession('s-worktree', worktree.cwd, 100);
+
+    const groups = groupThreadsByWorkspace([session], [worktree, parent]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.workspace).toBe(parent);
+    expect(groups[0]?.sessions).toEqual([session]);
+  });
+
+  it('falls back to unregistered when a worktree parent is missing', () => {
+    const missingParentId = createWorkspace('ws-missing', '/missing', 1).workspaceId;
+    const worktree = {
+      ...createWorkspace('ws-worktree', '/managed/feature', 2, 'worktree'),
+      parentWorkspaceId: missingParentId,
+    };
+
+    const groups = groupThreadsByWorkspace(
+      [createSession('s-worktree', worktree.cwd, 100)],
+      [worktree],
+    );
+
+    expect(groups.map((group) => group.key)).toEqual([UNREGISTERED_THREAD_GROUP_KEY]);
+  });
 });
 
 describe('extractPinnedGroup', () => {

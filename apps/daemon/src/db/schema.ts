@@ -150,9 +150,10 @@ export const workspaces = sqliteTable(
     workspaceId: text('workspace_id').primaryKey(),
     cwd: text('cwd').notNull().unique(),
     name: text('name'),
-    kind: text('kind', { enum: ['project', 'chat'] })
+    kind: text('kind', { enum: ['project', 'chat', 'worktree'] })
       .notNull()
       .default('project'),
+    parentWorkspaceId: text('parent_workspace_id'),
     createdAt: integer('created_at').notNull(),
     lastUsedAt: integer('last_used_at').notNull(),
   },

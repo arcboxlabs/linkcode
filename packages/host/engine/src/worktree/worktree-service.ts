@@ -82,8 +82,8 @@ export class WorktreeService {
     );
   }
 
-  isManagedSession(sessionId: SessionId): boolean {
-    return this.bySession.has(sessionId);
+  get(sessionId: SessionId): WorktreeRecord | undefined {
+    return this.bySession.get(sessionId);
   }
 
   provisionLocked(

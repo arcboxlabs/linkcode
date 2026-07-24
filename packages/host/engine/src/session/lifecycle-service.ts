@@ -5,6 +5,9 @@ import type {
   SessionId,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
+  WorktreeRecord,
 } from '@linkcode/schema';
 import { Effect, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
@@ -61,7 +64,11 @@ export class SessionLifecycleService {
     return Effect.gen(function* () {
       const resolvedIntent = yield* startOptions.resolve(options, sessionId);
       const resolved = yield* worktrees.provision(resolvedIntent, sessionId);
-      if (options.cwd) yield* workspaceTouch(workspaces, options.cwd);
+      if (options.cwd) {
+        const parent = yield* workspaceTouch(workspaces, options.cwd);
+        const worktree = worktrees.get(sessionId);
+        if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+      }
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -127,7 +134,11 @@ export class SessionLifecycleService {
     return Effect.gen(function* () {
       const resolvedIntent = yield* resolver.resolve({ ...options, kind }, sessionId);
       const startOptions = yield* worktrees.provision(resolvedIntent, sessionId);
-      if (options.cwd) yield* workspaceTouch(workspaces, options.cwd);
+      if (options.cwd) {
+        const parent = yield* workspaceTouch(workspaces, options.cwd);
+        const worktree = worktrees.get(sessionId);
+        if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+      }
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -176,7 +187,11 @@ export class SessionLifecycleService {
         );
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
-        if (record.cwd && !worktrees.isManagedSession(sessionId)) {
+        const worktree = worktrees.get(sessionId);
+        if (worktree) {
+          const parent = yield* workspaceTouch(workspaces, worktree.repoRoot);
+          yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+        } else if (record.cwd) {
           yield* workspaceTouch(workspaces, record.cwd);
         }
         record.runs.push({ historyId, startedAt: Date.now() });
@@ -245,7 +260,7 @@ export class SessionLifecycleService {
 function workspaceTouch(
   workspaces: WorkspaceRegistry,
   cwd: string,
-): Effect.Effect<unknown, EngineFailure> {
+): Effect.Effect<WorkspaceRecord, EngineFailure> {
   return Effect.tryPromise({
     try: () => workspaces.touch(cwd),
     catch: (cause) =>
@@ -253,6 +268,27 @@ function workspaceTouch(
         subsystem: 'store',
         operation: 'workspace.touch',
         publicMessage: 'Failed to persist workspace',
+      }),
+  });
+}
+
+function workspaceRegisterWorktree(
+  workspaces: WorkspaceRegistry,
+  worktree: WorktreeRecord,
+  parentWorkspaceId: WorkspaceId,
+): Effect.Effect<unknown, EngineFailure> {
+  return Effect.tryPromise({
+    try: () =>
+      workspaces.registerWorktree({
+        cwd: worktree.worktreePath,
+        parentWorkspaceId,
+        branch: worktree.branch,
+      }),
+    catch: (cause) =>
+      toOperationFailure(cause, {
+        subsystem: 'store',
+        operation: 'workspace.register-worktree',
+        publicMessage: 'Failed to persist managed worktree workspace',
       }),
   });
 }

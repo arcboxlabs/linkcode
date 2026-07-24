@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 describe('engine managed worktree sessions', () => {
-  it('starts in the managed cwd without passing branch intent or registering that cwd', async () => {
+  it('starts and resumes in the managed cwd registered under its parent project', async () => {
     const repo = makeRepo();
     const sessionStore = new InMemorySessionStore();
     const workspaceStore = new InMemoryWorkspaceStore();
@@ -86,11 +86,28 @@ describe('engine managed worktree sessions', () => {
         kind: 'claude-code',
         cwd: worktree.worktreePath,
       });
-      expect((await workspaceStore.load()).map(({ cwd }) => cwd)).toEqual([repo]);
+      const workspaces = await workspaceStore.load();
+      const parent = workspaces.find(({ cwd }) => cwd === repo);
+      expect(parent?.kind).toBe('project');
+      expect(workspaces.find(({ cwd }) => cwd === worktree.worktreePath)).toMatchObject({
+        kind: 'worktree',
+        name: 'feature',
+        parentWorkspaceId: parent?.workspaceId,
+      });
 
       await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId });
       await vi.waitFor(() =>
         expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'stop' }),
+      );
+      await h.inject({ kind: 'session.resume', clientReqId: 'resume-success', sessionId });
+      await vi.waitFor(() => startedSessionId(h.sent, 'resume-success'));
+      expect(h.adapters[1].startedWith).toEqual({
+        kind: 'claude-code',
+        cwd: worktree.worktreePath,
+      });
+      await h.inject({ kind: 'session.stop', clientReqId: 'stop-again', sessionId });
+      await vi.waitFor(() =>
+        expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'stop-again' }),
       );
       rmSync(worktree.worktreePath, { recursive: true, force: true });
       await h.inject({ kind: 'session.resume', clientReqId: 'resume', sessionId });

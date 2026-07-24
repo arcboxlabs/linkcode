@@ -484,11 +484,14 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const workspaceIds = new Set(allWorkspaces.map((workspace) => workspace.workspaceId));
+  const workspaceIds = new Set<WorkspaceId>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
   for (const workspace of allWorkspaces) {
-    if (workspaceKind(workspace) === 'chat') chatWorkspace ??= workspace;
+    const kind = workspaceKind(workspace);
+    if (kind === 'worktree') continue;
+    workspaceIds.add(workspace.workspaceId);
+    if (kind === 'chat') chatWorkspace ??= workspace;
     else projectWorkspaces.push(workspace);
   }
 

@@ -64,6 +64,13 @@
       "when": 1784883717182,
       "tag": "0008_talented_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784884614792,
+      "tag": "0009_third_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

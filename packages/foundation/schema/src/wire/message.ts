@@ -24,7 +24,8 @@ import { WirePayloadSchema } from './payload';
 // 52 adds the simulator device-rotation wire (CODE-408).
 // 53 adds git.branch.list (CODE-426).
 // 54 adds StartOptions.branch for managed worktree provisioning (CODE-427).
-export const WIRE_PROTOCOL_VERSION = 54 as const;
+// 55 adds managed worktree workspace records (CODE-429).
+export const WIRE_PROTOCOL_VERSION = 55 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({
