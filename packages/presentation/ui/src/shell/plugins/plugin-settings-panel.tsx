@@ -1,47 +1,13 @@
 import { Alert, AlertDescription } from 'coss-ui/components/alert';
-import { Badge } from 'coss-ui/components/badge';
-import { Button } from 'coss-ui/components/button';
-import { Skeleton } from 'coss-ui/components/skeleton';
-import { Switch } from 'coss-ui/components/switch';
-import { PlusIcon, Trash2Icon, TriangleAlertIcon } from 'lucide-react';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
+import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
+import { SearchIcon, TriangleAlertIcon } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { SettingsCard, SettingsSection } from '../settings-page';
-
-export type PluginUnitCardStatus = 'disabled' | 'ready' | 'partial' | 'unavailable';
-export type PluginServerCardStatus =
-  | 'ready'
-  | 'satisfied'
-  | 'expired-credential'
-  | 'unsatisfied-binding'
-  | 'broker-unavailable';
-
-export interface PluginServerCardView {
-  name: string;
-  /** Localized service display name, when the server depends on one. */
-  serviceLabel?: string;
-  status: PluginServerCardStatus;
-}
-
-export interface PluginUnitCardView {
-  id: string;
-  label: string;
-  description: string;
-  enabled: boolean;
-  status: PluginUnitCardStatus;
-  servers: PluginServerCardView[];
-}
-
-/** A user-imported MCP server, projected for display; env/header values never reach the client. */
-export interface CustomServerCardView {
-  id: string;
-  name: string;
-  transport: 'stdio' | 'http';
-  enabled: boolean;
-  /** command (stdio) or url (http). */
-  detail: string;
-  /** Configured env/header keys, masked — values are never present. */
-  secretKeys: string[];
-}
+import { SettingsCard } from '../settings-page';
+import { CustomServerList } from './custom-server-list';
+import type { CustomServerCardView, PluginUnitCardView } from './types';
+import { PluginUnitList } from './unit-list';
 
 export interface PluginSettingsPanelProps {
   /** Undefined while catalog/config load — the cards render as skeletons. */
@@ -56,22 +22,18 @@ export interface PluginSettingsPanelProps {
   onAddCustom: () => void;
 }
 
-const UNIT_BADGE_VARIANT = {
-  ready: 'success',
-  partial: 'warning',
-  unavailable: 'warning',
-  disabled: 'secondary',
-} as const;
+function matchesQuery(query: string, haystacks: Array<string | undefined>): boolean {
+  return haystacks.some((value) => value?.toLowerCase().includes(query));
+}
 
-const SERVER_BADGE_VARIANT = {
-  ready: 'success',
-  satisfied: 'success',
-  'expired-credential': 'warning',
-  'unsatisfied-binding': 'outline',
-  'broker-unavailable': 'secondary',
-} as const;
+function TabCount({ count }: { count: number | undefined }): React.ReactNode {
+  return count === undefined ? null : (
+    <span className="text-muted-foreground text-xs tabular-nums">{count}</span>
+  );
+}
 
-/** Pure card list for MCP capability units: label, enablement, and per-server status. */
+/** Plugin management panel: capability units, custom MCP servers, and skills, tab-filtered
+ * with a shared client-side search. */
 export function PluginSettingsPanel({
   units,
   customServers,
@@ -83,6 +45,23 @@ export function PluginSettingsPanel({
   onAddCustom,
 }: PluginSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
+  const [query, setQuery] = useState('');
+
+  const trimmed = query.trim().toLowerCase();
+  const filteredUnits =
+    trimmed === ''
+      ? units
+      : units?.filter((unit) =>
+          matchesQuery(trimmed, [
+            unit.label,
+            unit.description,
+            ...unit.servers.map((server) => server.name),
+          ]),
+        );
+  const filteredCustom =
+    trimmed === ''
+      ? customServers
+      : customServers?.filter((server) => matchesQuery(trimmed, [server.name, server.detail]));
 
   return (
     <div className="flex flex-col gap-5">
@@ -95,118 +74,61 @@ export function PluginSettingsPanel({
         </Alert>
       )}
 
-      <SettingsSection title={t('unitsTitle')}>
-        <SettingsCard>
-          {units === undefined ? (
-            <PluginUnitSkeleton />
-          ) : (
-            units.map((unit) => (
-              <div key={unit.id} className="flex flex-col gap-3 px-4 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm">{unit.label}</p>
-                      <Badge variant={UNIT_BADGE_VARIANT[unit.status]}>
-                        {t(`status.${unit.status}`)}
-                      </Badge>
-                    </div>
-                    <p className="mt-0.5 text-muted-foreground text-xs">{unit.description}</p>
-                  </div>
-                  <Switch
-                    aria-label={t('enabledLabel', { name: unit.label })}
-                    checked={unit.enabled}
-                    disabled={busy}
-                    onCheckedChange={(enabled) => onEnabledChange(unit.id, enabled)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {unit.servers.map((server) => (
-                    <div key={server.name} className="flex items-center justify-between gap-3">
-                      <span className="truncate text-muted-foreground text-xs">
-                        {server.name}
-                        {server.serviceLabel === undefined ? '' : ` · ${server.serviceLabel}`}
-                      </span>
-                      <Badge variant={SERVER_BADGE_VARIANT[server.status]}>
-                        {t(`serverStatus.${server.status}`)}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </SettingsCard>
-      </SettingsSection>
-
-      <SettingsSection title={t('customTitle')}>
-        <p className="px-1 text-muted-foreground text-xs">{t('customHint')}</p>
-        <SettingsCard>
-          {customServers === undefined ? (
-            <PluginUnitSkeleton />
-          ) : customServers.length === 0 ? (
-            <div className="px-4 py-4 text-muted-foreground text-sm">{t('customEmpty')}</div>
-          ) : (
-            customServers.map((server) => (
-              <div key={server.id} className="flex items-start justify-between gap-4 px-4 py-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-medium text-sm">{server.name}</p>
-                    <Badge variant="outline">{server.transport}</Badge>
-                  </div>
-                  <p className="mt-0.5 truncate text-muted-foreground text-xs">{server.detail}</p>
-                  {server.secretKeys.length > 0 && (
-                    <p className="mt-0.5 text-muted-foreground text-xs">
-                      {t('customSecretKeys', { keys: server.secretKeys.join(', ') })}
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Switch
-                    aria-label={t('enabledLabel', { name: server.name })}
-                    checked={server.enabled}
-                    disabled={busy}
-                    onCheckedChange={(enabled) => onCustomToggle(server.id, enabled)}
-                  />
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={t('customRemove', { name: server.name })}
-                    disabled={busy}
-                    onClick={() => onCustomRemove(server.id)}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-              </div>
-            ))
-          )}
-        </SettingsCard>
-        <div>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onAddCustom}>
-            <PlusIcon />
-            {t('customAdd')}
-          </Button>
+      <Tabs defaultValue="plugins">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList>
+            <TabsTab value="plugins">
+              {t('tabPlugins')}
+              <TabCount count={units?.length} />
+            </TabsTab>
+            <TabsTab value="mcp">
+              {t('tabMcp')}
+              <TabCount count={customServers?.length} />
+            </TabsTab>
+            <TabsTab value="skills">
+              {t('tabSkills')}
+              <TabCount count={0} />
+            </TabsTab>
+          </TabsList>
+          <InputGroup className="h-8 w-56 bg-background shadow-none">
+            <InputGroupAddon>
+              <SearchIcon className="text-muted-foreground" />
+            </InputGroupAddon>
+            <InputGroupInput
+              aria-label={t('searchPlaceholder')}
+              nativeInput
+              placeholder={t('searchPlaceholder')}
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </InputGroup>
         </div>
-      </SettingsSection>
-    </div>
-  );
-}
 
-function PluginUnitSkeleton(): React.ReactNode {
-  return (
-    <div className="flex flex-col gap-3 px-4 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="mt-1.5 h-3 w-72" />
-        </div>
-        <Skeleton className="h-5 w-9 rounded-full" />
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <Skeleton className="h-3 w-32" />
-        <Skeleton className="h-4 w-16" />
-      </div>
+        <TabsPanel value="plugins" className="pt-2">
+          <PluginUnitList
+            units={filteredUnits}
+            emptyLabel={t('searchEmpty')}
+            busy={busy}
+            onEnabledChange={onEnabledChange}
+          />
+        </TabsPanel>
+        <TabsPanel value="mcp" className="pt-2">
+          <CustomServerList
+            servers={filteredCustom}
+            emptyLabel={trimmed === '' ? t('customEmpty') : t('searchEmpty')}
+            busy={busy}
+            onToggle={onCustomToggle}
+            onRemove={onCustomRemove}
+            onAdd={onAddCustom}
+          />
+        </TabsPanel>
+        <TabsPanel value="skills" className="pt-2">
+          <SettingsCard>
+            <div className="px-4 py-4 text-muted-foreground text-sm">{t('skillsEmpty')}</div>
+          </SettingsCard>
+        </TabsPanel>
+      </Tabs>
     </div>
   );
 }

@@ -16,6 +16,7 @@ export * from './im-channel-settings-panel';
 export * from './new-session-surface';
 export * from './notifications-settings-panel';
 export * from './plugins/plugin-settings-panel';
+export * from './plugins/types';
 export * from './providers/account-detail';
 export * from './providers/account-master-list';
 export * from './service-icon';

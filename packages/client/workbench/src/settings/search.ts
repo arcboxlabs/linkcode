@@ -89,7 +89,9 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
     ],
     plugins: [
-      t('plugins.unitsTitle'),
+      t('plugins.tabPlugins'),
+      t('plugins.tabMcp'),
+      t('plugins.tabSkills'),
       t('plugins.units.githubRead.label'),
       t('plugins.units.githubRead.description'),
       ...McpPluginServiceSchema.options.map((service) => t(`plugins.serviceName.${service}`)),

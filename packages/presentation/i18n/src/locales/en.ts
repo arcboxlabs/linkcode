@@ -580,7 +580,7 @@ export const en = {
       about: 'About',
       providers: 'Providers',
       agents: 'Agents',
-      plugins: 'Tools',
+      plugins: 'Plugins',
       imChannel: 'Messaging',
     },
     historyImport: {
@@ -815,9 +815,14 @@ export const en = {
       },
     },
     plugins: {
-      hint: 'Configure optional MCP tools for your agents. Credentials stay in the local daemon.',
-      loadError: 'Could not load tool settings: {message}',
-      unitsTitle: 'Available capabilities',
+      hint: 'Manage plugins, skills, and MCP servers for your agents. Credentials stay in the local daemon.',
+      loadError: 'Could not load plugin settings: {message}',
+      tabPlugins: 'Plugins',
+      tabMcp: 'MCP',
+      tabSkills: 'Skills',
+      searchPlaceholder: 'Search',
+      searchEmpty: 'No matching results.',
+      skillsEmpty: 'Skills management is coming soon.',
       enabledLabel: 'Enable {name}',
       status: {
         ready: 'Ready',
@@ -842,7 +847,6 @@ export const en = {
             'Reads repositories, issues, and pull requests without creating, changing, or deleting GitHub content.',
         },
       },
-      customTitle: 'Custom MCP',
       customHint:
         'Import your own MCP servers. Credentials stay in the local daemon and are injected only into supported agent sessions.',
       customEmpty: 'No custom MCP servers imported yet.',
