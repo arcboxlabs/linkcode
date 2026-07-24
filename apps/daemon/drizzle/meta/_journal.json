@@ -50,6 +50,20 @@
       "when": 1784175697180,
       "tag": "0006_free_secret_warriors",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784883236095,
+      "tag": "0007_slow_puppet_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784883717182,
+      "tag": "0008_talented_nitro",
+      "breakpoints": true
     }
   ]
 }

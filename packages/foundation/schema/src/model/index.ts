@@ -23,3 +23,4 @@ export * from './terminal';
 export * from './tool-call';
 export * from './usage';
 export * from './workspace';
+export * from './worktree';

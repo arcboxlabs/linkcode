@@ -29,3 +29,4 @@ export { MCP_CAPABLE_AGENT_KINDS } from './simulator/mcp';
 export { SimulatorService } from './simulator/service';
 export type { PtyBackend, PtyOpenOptions, PtyProcess } from './terminal/pty-backend';
 export type { WorkspaceStore } from './workspace/workspace-store';
+export type { WorktreeStore } from './worktree/worktree-store';
