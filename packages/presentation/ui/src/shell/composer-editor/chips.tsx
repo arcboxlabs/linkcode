@@ -1,6 +1,5 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection';
-import { Badge } from 'coss-ui/components/badge';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import type { NodeKey } from 'lexical';
@@ -8,7 +7,9 @@ import { BookTextIcon, TerminalIcon, TriangleAlertIcon } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { fileBasename } from '../../chat/artifacts/file-kind';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
+import { Chip } from '../../chat/link-chip';
 import { cn } from '../../lib/cn';
 import type { ComposerDirectiveState, DirectivePlacementIssue } from './directive-state';
 import { commandStatus, directiveStateFor, shellStatus } from './directive-state';
@@ -19,8 +20,6 @@ function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T
   return useStore(directiveStateFor(editor), selector);
 }
 
-/** Match the editor's 14px text metrics and center within its full line box. */
-const CHIP_CLASS_NAME = 'mx-0.5 h-5 align-bottom text-sm sm:h-5 sm:text-sm';
 const SELECTED_RING_CLASS = {
   error: 'ring-2 ring-destructive/48',
   info: 'ring-2 ring-info/48',
@@ -77,19 +76,18 @@ function DirectiveChip({
   }
 
   const badge = (
-    <Badge
+    <Chip
       aria-describedby={reasonId}
       aria-invalid={reason ? true : undefined}
-      className={cn(CHIP_CLASS_NAME, selected && SELECTED_RING_CLASS[variant])}
+      className={cn(selected && SELECTED_RING_CLASS[variant])}
       data-selected={selected || undefined}
       render={<button disabled={disabled} type="button" />}
-      size="sm"
       variant={variant}
       onKeyDownCapture={keepEnterActivationLocal}
       onMouseDown={(event) => event.preventDefault()}
     >
       {children}
-    </Badge>
+    </Chip>
   );
   const trigger = <MenuTrigger render={badge} />;
   return (
@@ -196,12 +194,6 @@ export function ShellChip({ nodeKey }: { nodeKey: NodeKey }): React.ReactNode {
   );
 }
 
-const PATH_SEPARATOR_RE = /[/\\]/;
-
-function basename(path: string): string {
-  return path.split(PATH_SEPARATOR_RE).pop() || path;
-}
-
 export function MentionChip({
   nodeKey,
   path,
@@ -211,15 +203,13 @@ export function MentionChip({
 }): React.ReactNode {
   const [selected] = useLexicalNodeSelection(nodeKey);
   return (
-    <Badge
-      className={cn(CHIP_CLASS_NAME, selected && SELECTED_RING_CLASS.secondary)}
+    <Chip
+      className={cn(selected && SELECTED_RING_CLASS.secondary)}
       data-selected={selected || undefined}
-      size="sm"
       title={path}
-      variant="secondary"
     >
       <FileIdentityIcon path={path} />
-      {basename(path)}
-    </Badge>
+      {fileBasename(path)}
+    </Chip>
   );
 }

@@ -1,11 +1,12 @@
 import type { DOMExportOutput, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical';
 import { $applyNodeReplacement, DecoratorNode } from 'lexical';
+import { fileBasename } from '../../chat/artifacts/file-kind';
 import { CommandChip, MentionChip, ShellChip } from './chips';
 
 /**
  * Inline atomic tokens for the composer draft. Every node preserves its canonical flat-text
- * representation — `/name` for a command, `$` for shell, a quoted relative path for a mention —
- * so submit payloads and clipboard text stay agent-agnostic.
+ * representation — `/name` for a command, `$` for shell, a `[basename](./path)` markdown link
+ * for a mention — so submit payloads and clipboard text stay agent-agnostic.
  */
 
 function chipDOM(): HTMLElement {
@@ -132,8 +133,21 @@ export function $isShellNode(node: LexicalNode | null | undefined): node is Shel
 
 type SerializedMentionNode = Spread<{ path: string }, SerializedLexicalNode>;
 
-/** A file mention. Serializes as a quoted relative path: every agent understands that in prose
- * (its own fs tools read it), whereas `@path` is Claude-specific syntax. */
+/** Characters that break a raw markdown link destination: a space terminates it, parens
+ * unbalance it, and a literal `%` would collide with the render side's percent-decode. */
+const DESTINATION_UNSAFE_RE = /[% ()]/g;
+const DESTINATION_ESCAPES: Record<string, string> = {
+  '%': '%25',
+  ' ': '%20',
+  '(': '%28',
+  ')': '%29',
+};
+/** Brackets (Next.js `[slug].tsx` and friends) must be escaped inside a markdown link label. */
+const LABEL_ESCAPE_RE = /([\\[\]])/g;
+
+/** A file mention. Serializes as a markdown link with a `./`-relative destination: every agent
+ * reads it as prose (its own fs tools resolve the path, `@path` is Claude-specific syntax), and
+ * the chat renderer chips the sent message back through the same LinkChip pipeline. */
 export class MentionNode extends DecoratorNode<React.ReactNode> {
   __path: string;
 
@@ -171,7 +185,12 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
   }
 
   override getTextContent(): string {
-    return `"${this.__path.replaceAll('"', String.raw`\"`)}"`;
+    const label = fileBasename(this.__path).replace(LABEL_ESCAPE_RE, '\\$1');
+    const destination = this.__path.replace(
+      DESTINATION_UNSAFE_RE,
+      (char) => DESTINATION_ESCAPES[char] ?? char,
+    );
+    return `[${label}](./${destination})`;
   }
 
   override isInline(): true {

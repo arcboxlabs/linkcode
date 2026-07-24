@@ -8,6 +8,8 @@ import type { LoopStore, ScheduleStore } from './automation';
 import type { GitService } from './git/git-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { SessionStore } from './session/session-store';
+import type { SimulatorMcpProvider } from './simulator/mcp';
+import type { SimulatorService } from './simulator/service';
 import type { PtyBackend } from './terminal/pty-backend';
 import type { FileSuggestService } from './workspace/file-suggest-service';
 import type { WorkspaceStore } from './workspace/workspace-store';
@@ -17,6 +19,13 @@ export interface EngineDeps {
   factory?: AdapterFactory;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
+  /** iOS Simulator policy service, daemon-constructed around the sidecar client so the daemon's
+   * MCP endpoint and the engine share one claims registry (macOS hosts only); absent Engines
+   * have no simulator surface. */
+  simulators?: SimulatorService;
+  /** Mints the per-session simulator MCP endpoint injected into MCP-capable agents' start
+   * options; absent hosts inject nothing. */
+  simulatorMcp?: SimulatorMcpProvider;
   providerStore?: ProviderConfigStore;
   git?: GitService;
   fileSuggest?: FileSuggestService;

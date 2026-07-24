@@ -18,9 +18,11 @@ on:
 
 # Runners resolve through repo/org `vars` (ArcBox pins paid Blacksmith labels there);
 # forks without the vars fall back to GitHub-hosted labels with zero setup.
+# Pull request and release-branch CI keeps latest-run cancellation. Every master SHA gets a unique
+# group so a release-PR merge cannot be canceled or replaced before its exact SHA is tested.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/master' && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read

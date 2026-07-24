@@ -101,6 +101,14 @@ function spawnDaemon(): void {
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);
+  if (process.platform === 'darwin') {
+    const simSidecar = join(process.resourcesPath, 'linkcode-sim');
+    if (existsSync(simSidecar)) {
+      env.LINKCODE_SIM_SIDECAR_PATH = simSidecar;
+    } else {
+      log.warn(`[linkcode/desktop] sim sidecar missing at ${simSidecar}; simulators unavailable`);
+    }
+  }
   // Same DSN the Electron main process inlined at build time (signed builds only). Publishable id.
   const sentryDsn = import.meta.env.MAIN_VITE_SENTRY_DSN;
   if (sentryDsn) env.LINKCODE_SENTRY_DSN = sentryDsn;

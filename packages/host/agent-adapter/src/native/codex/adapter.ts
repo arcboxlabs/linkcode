@@ -21,6 +21,7 @@ import { EffortLevelSchema, textBlock } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
@@ -191,6 +192,36 @@ function sandboxPolicyFor(policyId: CodexPolicyId, writableRoots: string[]): unk
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
   };
+}
+
+/**
+ * `thread/start` `config` dotted-key overrides for MCP servers — the same override channel as
+ * `sandbox_workspace_write.writable_roots`. HTTP servers ride codex's streamable-HTTP MCP client,
+ * which sits behind `experimental_use_rmcp_client`. Header forwarding has no known config key, so
+ * a headered HTTP server is rejected loudly instead of silently connecting unauthenticated.
+ */
+export function codexMcpConfigOverrides(
+  servers: StartOptions['mcpServers'],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!servers?.length) return out;
+  let hasHttp = false;
+  for (const server of servers) {
+    const prefix = `mcp_servers.${server.name}`;
+    if (server.type === 'http') {
+      if (server.headers && !isObjectEmpty(server.headers)) {
+        throw new Error(`codex: MCP server ${server.name}: HTTP headers are not supported`);
+      }
+      hasHttp = true;
+      out[`${prefix}.url`] = server.url;
+    } else {
+      out[`${prefix}.command`] = server.command;
+      if (server.args) out[`${prefix}.args`] = server.args;
+      if (server.env) out[`${prefix}.env`] = server.env;
+    }
+  }
+  if (hasHttp) out.experimental_use_rmcp_client = true;
+  return out;
 }
 
 /** Map an app-server item status (`inProgress`/`completed`/`failed`/`declined`) to ours;
@@ -592,14 +623,18 @@ export class CodexAdapter extends BaseAgentAdapter {
     const resume = this.resumeFrom ?? undefined;
     this.resumeFrom = undefined;
     const preset = POLICY_PRESETS[this.policyId];
+    const configOverrides = {
+      ...(opts.additionalDirectories?.length && {
+        'sandbox_workspace_write.writable_roots': opts.additionalDirectories,
+      }),
+      ...codexMcpConfigOverrides(opts.mcpServers),
+    };
     const params = {
       cwd: opts.cwd,
       model: this.model,
       approvalPolicy: preset.approvalPolicy,
       ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
-      ...(opts.additionalDirectories?.length && {
-        config: { 'sandbox_workspace_write.writable_roots': opts.additionalDirectories },
-      }),
+      ...(!isObjectEmpty(configOverrides) && { config: configOverrides }),
     };
     // A fresh thread's rollout holds nothing yet: announcing its history id now would trigger the
     // clients' transcript seed read, whose uptoSeq cut can swallow the first prompt. Hold the

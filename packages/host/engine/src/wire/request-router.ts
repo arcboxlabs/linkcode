@@ -11,6 +11,7 @@ import type { ArtifactRequestHandler } from '../preview/request-handler';
 import type { ScriptRequestHandler } from '../scripts/request-handler';
 import type { HistoryRequestHandler } from '../session/history-request-handler';
 import type { SessionRequestHandler } from '../session/request-handler';
+import type { SimulatorRequestHandler } from '../simulator/request-handler';
 import type { TerminalRequestHandler } from '../terminal/request-handler';
 import type { FileRequestHandler } from '../workspace/file-request-handler';
 import type { WorkspaceRequestHandler } from '../workspace/request-handler';
@@ -27,6 +28,7 @@ interface RequestHandlers {
   readonly artifact: ArtifactRequestHandler;
   readonly automation: AutomationRequestHandler;
   readonly terminal: TerminalRequestHandler;
+  readonly simulator: SimulatorRequestHandler;
 }
 
 export class WireRequestRouter {
@@ -126,6 +128,28 @@ export class WireRequestRouter {
       case 'terminal.resize':
       case 'terminal.close': {
         return this.handlers.terminal.handle(p);
+      }
+      case 'simulator.status':
+      case 'simulator.list':
+      case 'simulator.boot':
+      case 'simulator.shutdown':
+      case 'simulator.install':
+      case 'simulator.launch':
+      case 'simulator.terminate':
+      case 'simulator.open-url':
+      case 'simulator.screenshot':
+      case 'simulator.screen-mask':
+      case 'simulator.tap':
+      case 'simulator.touch':
+      case 'simulator.pinch':
+      case 'simulator.paste':
+      case 'simulator.key':
+      case 'simulator.swipe':
+      case 'simulator.button':
+      case 'simulator.rotate':
+      case 'simulator.stream.start':
+      case 'simulator.stream.stop': {
+        return this.handlers.simulator.handle(p);
       }
       case 'agent-login.start':
       case 'agent-login.submit-code':

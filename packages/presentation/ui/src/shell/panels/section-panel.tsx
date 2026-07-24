@@ -1,11 +1,23 @@
+import {
+  Menu,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+} from 'coss-ui/components/menu';
+import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
+import { ShellIconButton } from '../shell-control';
 import type { ChromeSurface, PanelChromePortalProps } from './chrome-portal';
 import { getPanelChromePlacement, PanelContextualChromePortal } from './chrome-portal';
 import { PanelContextualControls } from './panel-controls';
+import { PanelTabCloseButton } from './panel-tab-close-button';
 import { SectionTerminalTabStrip } from './section-terminal-tabs';
-import type { PanelSection, PanelSectionTab } from './vocabulary';
+import type { OptionalPanelSection, PanelSection, PanelSectionTab } from './vocabulary';
 import {
+  OPTIONAL_PANEL_SECTIONS,
   PANEL_SECTIONS,
   PANEL_TAB_ACTIVE_CLASSNAME,
   PANEL_TAB_INACTIVE_CLASSNAME,
@@ -15,6 +27,8 @@ import {
 export interface SectionPanelState {
   open: boolean;
   activeSection: PanelSection;
+  /** The on-demand Simulator section is currently present in the strip. */
+  simulatorAdded: boolean;
   terminal: {
     tabs: PanelSectionTab[];
     activeTabId: string | null;
@@ -38,6 +52,10 @@ export interface SectionPanelRegionProps {
    * host portals the terminal tab stack into, so PTY instances survive docked ↔ maximized moves. */
   terminalContentTargetRef: (element: HTMLDivElement | null) => void;
   onSelectSection: (section: PanelSection) => void;
+  /** Adds an on-demand section from the strip's + menu and brings it forward. */
+  onAddSection: (section: OptionalPanelSection) => void;
+  /** Removes an on-demand section from the strip. */
+  onCloseSection: (section: OptionalPanelSection) => void;
   onSelectTerminalTab: (id: string) => void;
   onCloseTerminalTab: (id: string) => void;
   onAddTerminalTab: () => void;
@@ -59,6 +77,8 @@ export function SectionPanelRegion({
   sectionContent,
   terminalContentTargetRef,
   onSelectSection,
+  onAddSection,
+  onCloseSection,
   onSelectTerminalTab,
   onCloseTerminalTab,
   onAddTerminalTab,
@@ -105,7 +125,10 @@ export function SectionPanelRegion({
           >
             <SectionTabStrip
               activeSection={panel.activeSection}
+              simulatorAdded={panel.simulatorAdded}
               onSelectSection={onSelectSection}
+              onAddSection={onAddSection}
+              onCloseSection={onCloseSection}
             />
           </PanelContextualChromePortal>
           <PanelContextualChromePortal
@@ -129,12 +152,21 @@ export function SectionPanelRegion({
 
 function SectionTabStrip({
   activeSection,
+  simulatorAdded,
   onSelectSection,
+  onAddSection,
+  onCloseSection,
 }: {
   activeSection: PanelSection;
+  simulatorAdded: boolean;
   onSelectSection: (section: PanelSection) => void;
+  onAddSection: (section: OptionalPanelSection) => void;
+  onCloseSection: (section: OptionalPanelSection) => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.panel');
   const tWindow = useTranslations('workbench.panel.window');
+  const added: readonly OptionalPanelSection[] = simulatorAdded ? OPTIONAL_PANEL_SECTIONS : [];
+  const addable = OPTIONAL_PANEL_SECTIONS.filter((section) => !added.includes(section));
 
   return (
     <div className="flex h-full min-w-0 items-center gap-1">
@@ -160,6 +192,56 @@ function SectionTabStrip({
           </button>
         );
       })}
+      {added.map((section) => {
+        const label = tWindow(section);
+        return (
+          <div
+            key={section}
+            className={cn(
+              'group flex h-6 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
+              section === activeSection ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
+            )}
+          >
+            <button
+              type="button"
+              aria-label={label}
+              title={label}
+              aria-pressed={section === activeSection}
+              className="flex h-full min-w-0 items-center gap-1.5 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => onSelectSection(section)}
+            >
+              <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[section]}</span>
+              <span className="@max-[480px]/chrome-segment:hidden">{label}</span>
+            </button>
+            <PanelTabCloseButton
+              label={t('closeTab', { label })}
+              onClick={() => onCloseSection(section)}
+            />
+          </div>
+        );
+      })}
+      {addable.length > 0 && (
+        <Menu>
+          <MenuTrigger
+            render={
+              <ShellIconButton label={t('openWindow')}>
+                <PlusIcon />
+              </ShellIconButton>
+            }
+          />
+          <MenuPopup align="end" className="w-64" side="bottom">
+            <MenuGroup>
+              <MenuGroupLabel>{t('openWindow')}</MenuGroupLabel>
+              {addable.map((section) => (
+                <MenuItem key={section} onClick={() => onAddSection(section)}>
+                  <span className="[&_svg]:size-4">{PANEL_WINDOW_ICONS[section]}</span>
+                  <span>{tWindow(section)}</span>
+                </MenuItem>
+              ))}
+            </MenuGroup>
+          </MenuPopup>
+        </Menu>
+      )}
     </div>
   );
 }

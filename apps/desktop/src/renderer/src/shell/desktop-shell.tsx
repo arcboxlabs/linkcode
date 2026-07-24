@@ -132,6 +132,8 @@ export function DesktopShell({
       toggleMaxPanel: state.toggleMaxPanel,
       setActiveSection: state.setActiveSection,
       openRightPanelSection: state.openRightPanelSection,
+      addRightSection: state.addRightSection,
+      closeRightSection: state.closeRightSection,
       addRightTerminalTab: state.addRightTerminalTab,
       closeRightTerminalTab: state.closeRightTerminalTab,
       setActiveRightTerminalTab: state.setActiveRightTerminalTab,
@@ -251,6 +253,8 @@ export function DesktopShell({
     toggleMaxPanel,
     setActiveSection,
     openRightPanelSection,
+    addRightSection,
+    closeRightSection,
     addRightTerminalTab,
     closeRightTerminalTab,
     setActiveRightTerminalTab,
@@ -406,6 +410,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
+        activeSessionId={active?.sessionId ?? null}
         themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
@@ -413,6 +418,8 @@ export function DesktopShell({
         chromeSurface={chromeSurface}
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
+        onAddSection={addRightSection}
+        onCloseSection={closeRightSection}
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}

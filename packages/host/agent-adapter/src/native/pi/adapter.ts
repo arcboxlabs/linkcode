@@ -192,6 +192,12 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   protected async onStart(opts: StartOptions): Promise<void> {
+    // Reject rather than silently drop (the historyCapabilities discipline): pi's SDK has no MCP
+    // support at all, and the engine's injection gate already skips pi — an explicit request
+    // reaching here is a caller bug that must not degrade into missing tools.
+    if (opts.mcpServers?.length) {
+      throw new Error('pi: MCP servers are not supported');
+    }
     // Managed closure entry first (the packaged source, CODE-219), then node_modules
     // self-resolution (dev/standalone). The entry import is type-erased by the dynamic path;
     // the closure manifest is lockfile-generated, so its bytes match the compiled-against types.
