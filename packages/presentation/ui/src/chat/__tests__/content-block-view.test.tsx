@@ -27,13 +27,13 @@ it('opens file resource links through the artifact host actions', () => {
   expect(openFile).toHaveBeenCalledWith('/mock/linkcode/docs/ARCHITECTURE.md');
 });
 
-it('renders web resource links without remote favicon requests', () => {
+it('renders web resource links with favicon candidates', () => {
   const { getByRole } = render(
     <ContentBlockView block={resourceLink('https://example.com/doc')} />,
   );
   const link = getByRole('link', { name: 'ARCHITECTURE.md' });
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(link.querySelector('img')).toBeNull();
+  expect(link.querySelectorAll('img')).toHaveLength(2);
   expect(link.querySelector('svg')).not.toBeNull();
 });
 
