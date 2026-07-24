@@ -9,6 +9,7 @@ import type {
   ContentBlock,
   EffortLevel,
   ManagedAssetId,
+  ManagedAssetKey,
   ManagedAssetStatus,
   MessageId,
   PermissionOutcome,
@@ -26,7 +27,15 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
+import {
+  AGENT_INPUT_CAPABILITIES,
+  managedAgentAssetId,
+  managedAssetIdEquals,
+  managedAssetKey,
+  managedToolAssetId,
+  normalizeCwdKey,
+  textBlock,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -175,7 +184,7 @@ export class DevMockHost {
   private workspaceSeq = 0;
   private terminalSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
-  private readonly installedAssets = new Set<ManagedAssetId>();
+  private readonly installedAssets = new Set<ManagedAssetKey>();
 
   constructor(private readonly transport: Transport) {
     this.terminals.set(
@@ -190,7 +199,7 @@ export class DevMockHost {
    */
   private agentRuntimes(): AgentRuntimes {
     return {
-      'claude-code': this.installedAssets.has('agent:claude-code')
+      'claude-code': this.installedAssets.has(managedAssetKey(managedAgentAssetId('claude-code')))
         ? {
             status: 'available',
             source: 'managed',
@@ -198,7 +207,7 @@ export class DevMockHost {
             path: '/mock/assets/agent/claude-code/0.3.179/claude',
           }
         : { status: 'missing' },
-      codex: this.installedAssets.has('agent:codex')
+      codex: this.installedAssets.has(managedAssetKey(managedAgentAssetId('codex')))
         ? {
             status: 'available',
             source: 'managed',
@@ -213,18 +222,18 @@ export class DevMockHost {
   private assetStatuses(): ManagedAssetStatus[] {
     return (
       [
-        { id: 'agent:claude-code', wantedVersion: '0.3.179' },
-        { id: 'agent:codex', wantedVersion: '0.140.0' },
-        { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+        { id: managedAgentAssetId('claude-code'), wantedVersion: '0.3.179' },
+        { id: managedAgentAssetId('codex'), wantedVersion: '0.140.0' },
+        { id: managedToolAssetId('tectonic'), wantedVersion: '0.16.9' },
       ] as const
     ).map(({ id, wantedVersion }) => ({
       id,
       wantedVersion,
-      installed: this.installedAssets.has(id)
+      installed: this.installedAssets.has(managedAssetKey(id))
         ? {
             id,
             version: wantedVersion,
-            path: `/mock/assets/${id.replace(':', '/')}/${wantedVersion}/bin`,
+            path: `/mock/assets/${id.kind}/${id.name}/${wantedVersion}/bin`,
           }
         : undefined,
     }));
@@ -243,8 +252,10 @@ export class DevMockHost {
       // eslint-disable-next-line no-await-in-loop -- staged progress is deliberately sequential
       await wait(ASSET_PROGRESS_LATENCY_MS);
     }
-    this.installedAssets.add(id);
-    const status = this.assetStatuses().find((candidate) => candidate.id === id) ?? {
+    this.installedAssets.add(managedAssetKey(id));
+    const status = this.assetStatuses().find((candidate) =>
+      managedAssetIdEquals(candidate.id, id),
+    ) ?? {
       id,
       wantedVersion: '0.0.0',
     };

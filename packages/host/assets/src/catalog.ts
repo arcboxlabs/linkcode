@@ -1,4 +1,6 @@
 import type { ManagedAssetFormat, ManagedAssetId } from '@linkcode/schema';
+import { managedAgentAssetId, managedAssetIdEquals, managedToolAssetId } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import type { NpmClosure } from './closure';
 import { PI_CLOSURE } from './pi-closure.gen';
 import type { PlatformKey } from './platform';
@@ -140,9 +142,9 @@ function aigatewayArtifact(
   };
 }
 
-export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
-  'agent:claude-code': {
-    id: 'agent:claude-code',
+export const CATALOG: readonly AssetDescriptor[] = [
+  {
+    id: managedAgentAssetId('claude-code'),
     binaryBase: 'claude',
     version: { kind: 'sdk-version', package: '@anthropic-ai/claude-agent-sdk' },
     // Defaults to the glibc builds (matching the SDK's own resolution over -musl variants).
@@ -154,8 +156,8 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
       format: 'tgz',
     })),
   },
-  'agent:codex': {
-    id: 'agent:codex',
+  {
+    id: managedAgentAssetId('codex'),
     binaryBase: 'codex',
     // codex has no JS SDK since the app-server rewrite; the installed `@openai/codex` meta
     // package (the CLI carrier agent-adapter depends on) is the pair version source.
@@ -181,15 +183,15 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
       format: 'tgz',
     })),
   },
-  'agent:pi': {
-    id: 'agent:pi',
+  {
+    id: managedAgentAssetId('pi'),
     // Resolvable only in dev/standalone hosts (packaged apps exclude the closure from
     // node_modules); the manager falls back to the manifest's own version there.
     version: { kind: 'sdk-version', package: '@earendil-works/pi-coding-agent' },
     closure: PI_CLOSURE,
   },
-  'agent:opencode': {
-    id: 'agent:opencode',
+  {
+    id: managedAgentAssetId('opencode'),
     binaryBase: 'opencode',
     version: { kind: 'sdk-version', package: '@opencode-ai/sdk' },
     // opencode names its platform packages `windows`, not node's `win32`.
@@ -200,8 +202,8 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
       format: 'tgz',
     })),
   },
-  'tool:tectonic': {
-    id: 'tool:tectonic',
+  {
+    id: managedToolAssetId('tectonic'),
     binaryBase: 'tectonic',
     version: { kind: 'pinned', version: TECTONIC_VERSION },
     // Static musl builds on linux (no glibc floor); no arm64 windows build exists.
@@ -238,8 +240,8 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
       ),
     },
   },
-  'tool:aigateway': {
-    id: 'tool:aigateway',
+  {
+    id: managedToolAssetId('aigateway'),
     binaryBase: 'aigateway',
     version: { kind: 'pinned', version: AIGATEWAY_VERSION },
     // Static musl builds on linux; no arm64 windows build.
@@ -276,8 +278,11 @@ export const CATALOG: Record<ManagedAssetId, AssetDescriptor> = {
       ),
     },
   },
-} satisfies Record<ManagedAssetId, AssetDescriptor>;
+];
 
 export function descriptorFor(id: ManagedAssetId): AssetDescriptor {
-  return CATALOG[id];
+  return nullthrow(
+    CATALOG.find((candidate) => managedAssetIdEquals(candidate.id, id)),
+    `Unknown managed asset: ${id.kind}:${id.name}`,
+  );
 }

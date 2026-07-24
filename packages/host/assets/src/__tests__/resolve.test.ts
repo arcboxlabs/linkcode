@@ -1,9 +1,10 @@
+import { managedToolAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { CATALOG, isClosureDescriptor } from '../catalog';
+import { descriptorFor, isClosureDescriptor } from '../catalog';
 import { UnsupportedPlatformError } from '../errors';
 import { resolveArtifact } from '../resolve';
 
-const tectonic = CATALOG['tool:tectonic'];
+const tectonic = descriptorFor(managedToolAssetId('tectonic'));
 if (isClosureDescriptor(tectonic)) throw new Error('expected a binary descriptor');
 
 describe('resolveArtifact', () => {

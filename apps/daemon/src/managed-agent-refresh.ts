@@ -1,5 +1,6 @@
 import type { AssetManager } from '@linkcode/assets';
 import type { AgentRuntimes } from '@linkcode/schema';
+import { managedAgentAssetId } from '@linkcode/schema';
 
 /** The agent kinds the managed-asset store can install: CLI pairs (CODE-111/114) and pi's
  * in-process npm closure (CODE-219). */
@@ -12,7 +13,7 @@ export type ManagedAgentKind = (typeof MANAGED_AGENT_KINDS)[number];
  * superseded versions until their replacement lands, so this reads the same before or after it.
  */
 export function consentedManagedAgents(assets: AssetManager): ManagedAgentKind[] {
-  return MANAGED_AGENT_KINDS.filter((kind) => assets.hasInstallOnDisk(`agent:${kind}`));
+  return MANAGED_AGENT_KINDS.filter((kind) => assets.hasInstallOnDisk(managedAgentAssetId(kind)));
 }
 
 /**
@@ -27,6 +28,7 @@ export function agentsToRefresh(
   assets: AssetManager,
 ): ManagedAgentKind[] {
   return consented.filter(
-    (kind) => runtimes[kind]?.status !== 'available' || assets.needsRepair(`agent:${kind}`),
+    (kind) =>
+      runtimes[kind]?.status !== 'available' || assets.needsRepair(managedAgentAssetId(kind)),
   );
 }

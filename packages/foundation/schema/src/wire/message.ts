@@ -22,7 +22,8 @@ import { WirePayloadSchema } from './payload';
 // 50 adds two-finger pinch and IME pasteboard input (CODE-397).
 // 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
 // 52 adds the simulator device-rotation wire (CODE-408).
-export const WIRE_PROTOCOL_VERSION = 52 as const;
+// 53 migrates managed-asset IDs from public strings to discriminated objects.
+export const WIRE_PROTOCOL_VERSION = 53 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({
