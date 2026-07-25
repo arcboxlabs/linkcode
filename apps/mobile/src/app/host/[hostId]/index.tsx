@@ -1,31 +1,37 @@
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useSessions } from '@linkcode/client-core';
-import type { AgentKind, SessionId } from '@linkcode/schema';
+import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
 import {
+  AGENT_LABELS,
   EmptyState,
   groupThreadsByWorkspace,
   repositoryLabel,
   ScreenScroll,
-  SectionLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, ListGroup, Spinner, useThemeColor } from 'heroui-native';
-import { MessagesSquareIcon, SquareTerminalIcon } from 'lucide-react-native';
+import { Button, SearchField, Spinner, useThemeColor } from 'heroui-native';
+import { MessagesSquareIcon, SettingsIcon, SquareTerminalIcon } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
+import { RefreshControl, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { HostBar } from '../../../components/host-bar';
 import { HeaderIconButton } from '../../../components/navigation';
 import { NewThreadSheet } from '../../../components/new-thread-sheet';
-import { ThreadRow } from '../../../components/thread-row';
+import { ThreadList } from '../../../components/thread-list';
 import { captureMobileProductEvent } from '../../../runtime/product-analytics';
 import { useWorkspaces } from '../../../runtime/use-workspaces';
 import { useHostRegistryStore } from '../../../stores/host-store';
 
-/** Threads inbox: sessions grouped by workspace (project), a bottom host bar, and the
- * new-thread sheet. Empty workspace groups are hidden — the sheet is where they surface. */
+/** The title a thread is listed and searched under — the same fallback the row renders. */
+function threadTitle(session: SessionInfo): string {
+  return session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
+}
+
+/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, the
+ * connected host as a subtitle, and a search + new-thread footer. Empty workspace groups are
+ * hidden — the sheet is where they surface. */
 export default function ThreadsScreen(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
@@ -34,14 +40,24 @@ export default function ThreadsScreen(): React.ReactNode {
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
   const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
   const muted = useThemeColor('muted');
+  const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheetModal>(null);
 
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState('');
 
-  const groups = groupThreadsByWorkspace(withoutAutomationSessions(sessions), workspaces).filter(
-    (group) => group.sessions.length > 0,
-  );
+  const needle = query.trim().toLowerCase();
+  const groups = groupThreadsByWorkspace(withoutAutomationSessions(sessions), workspaces).reduce<
+    ThreadGroup[]
+  >((kept, group) => {
+    const matched =
+      needle === ''
+        ? group.sessions
+        : group.sessions.filter((session) => threadTitle(session).toLowerCase().includes(needle));
+    if (matched.length > 0) kept.push({ ...group, sessions: matched });
+    return kept;
+  }, []);
 
   const groupLabel = (group: ThreadGroup): string => {
     if (group.isChat) return t('chats');
@@ -93,14 +109,29 @@ export default function ThreadsScreen(): React.ReactNode {
           headerLargeTitle: true,
           title: t('title'),
           headerRight: () => (
-            <HeaderIconButton
-              icon={SquareTerminalIcon}
-              label={t('terminals')}
-              onPress={() => router.push(`/host/${hostId}/terminal`)}
-            />
+            <View className="flex-row items-center">
+              <HeaderIconButton
+                icon={SquareTerminalIcon}
+                label={t('terminals')}
+                onPress={() => router.push(`/host/${hostId}/terminal`)}
+              />
+              <HeaderIconButton
+                icon={SettingsIcon}
+                label={t('settings')}
+                onPress={() => router.push('/settings')}
+              />
+            </View>
           ),
         }}
       />
+      {/* The connected host reads as a subtitle of the screen, the way the reference puts the
+          machine under its title, rather than as a separate bar pinned to the bottom. */}
+      <View className="flex-row items-center gap-2 px-5 pb-2">
+        <View className="h-2 w-2 rounded-full bg-success" />
+        <Text className="min-w-0 flex-1 text-muted text-subhead" numberOfLines={1}>
+          {host?.name ?? ''}
+        </Text>
+      </View>
       <ScreenScroll
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -120,27 +151,28 @@ export default function ThreadsScreen(): React.ReactNode {
             }
           />
         ) : (
-          groups.map((group) => (
-            <View key={group.key} className="gap-2">
-              <SectionLabel>{groupLabel(group)}</SectionLabel>
-              <ListGroup>
-                {group.sessions.map((session) => (
-                  <ThreadRow
-                    key={session.sessionId}
-                    session={session}
-                    onPress={() => router.push(`/host/${hostId}/session/${session.sessionId}`)}
-                  />
-                ))}
-              </ListGroup>
-            </View>
-          ))
+          <ThreadList
+            groups={groups}
+            labelFor={groupLabel}
+            onOpenThread={(sessionId) => router.push(`/host/${hostId}/session/${sessionId}`)}
+          />
         )}
       </ScreenScroll>
-      <HostBar
-        hostName={host?.name ?? ''}
-        onNewThread={() => sheetRef.current?.present()}
-        onOpenSettings={() => router.push('/settings')}
-      />
+      <View
+        className="flex-row items-center gap-2 px-5 pt-2"
+        style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+      >
+        <SearchField className="min-w-0 flex-1" value={query} onChange={setQuery}>
+          <SearchField.Group>
+            <SearchField.SearchIcon />
+            <SearchField.Input placeholder={t('searchPlaceholder')} returnKeyType="search" />
+            <SearchField.ClearButton />
+          </SearchField.Group>
+        </SearchField>
+        <Button size="sm" onPress={() => sheetRef.current?.present()}>
+          <Button.Label>{t('newThread')}</Button.Label>
+        </Button>
+      </View>
       <NewThreadSheet
         ref={sheetRef}
         workspaces={workspaces}
