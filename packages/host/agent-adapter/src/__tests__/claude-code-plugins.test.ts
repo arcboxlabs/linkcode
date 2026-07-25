@@ -114,6 +114,13 @@ describe('ClaudeCodePluginAdapter', () => {
           { kind: 'skill', name: 'latex' },
         ],
         assets: [],
+        managementCapabilities: {
+          install: false,
+          uninstall: false,
+          update: false,
+          enable: false,
+          disable: false,
+        },
       }),
     ]);
     expect(command).toHaveBeenCalledWith(['plugin', 'list', '--available', '--json'], {

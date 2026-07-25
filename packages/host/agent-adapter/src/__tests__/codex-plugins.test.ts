@@ -133,6 +133,13 @@ describe('CodexPluginAdapter', () => {
             enabled: true,
           },
         ],
+        managementCapabilities: {
+          install: false,
+          uninstall: false,
+          update: false,
+          enable: false,
+          disable: false,
+        },
       }),
       expect.objectContaining({
         id: 'review@cloud-tools',
@@ -184,6 +191,24 @@ describe('CodexPluginAdapter', () => {
     await vi.advanceTimersByTimeAsync(30000);
 
     await rejection;
-    expect(close).toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('applies the discovery deadline while the app-server is starting', async () => {
+    vi.useFakeTimers();
+    const startServer: StartCodexPluginServer = (signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          'abort',
+          () => reject(new Error('codex: plugin discovery timed out')),
+          { once: true },
+        );
+      });
+
+    const discovery = new CodexPluginAdapter(startServer).list();
+    const rejection = expect(discovery).rejects.toThrow('plugin discovery timed out');
+    await vi.advanceTimersByTimeAsync(30000);
+
+    await rejection;
   });
 });

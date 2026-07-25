@@ -77,11 +77,11 @@ interface ClaudePackageMetadata {
 }
 
 const CLAUDE_MANAGEMENT_CAPABILITIES = {
-  install: true,
-  uninstall: true,
-  update: true,
-  enable: true,
-  disable: true,
+  install: false,
+  uninstall: false,
+  update: false,
+  enable: false,
+  disable: false,
 } as const;
 
 /**

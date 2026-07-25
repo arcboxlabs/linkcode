@@ -106,11 +106,11 @@ type CodexPluginSummary = z.infer<typeof CodexPluginSummarySchema>;
 type CodexPluginDetail = z.infer<typeof CodexPluginDetailSchema>;
 
 export type CodexPluginServer = Pick<CodexAppServer, 'request' | 'close'>;
-export type StartCodexPluginServer = () => Promise<CodexPluginServer>;
+export type StartCodexPluginServer = (signal: AbortSignal) => Promise<CodexPluginServer>;
 
 const CODEX_MANAGEMENT_CAPABILITIES = {
-  install: true,
-  uninstall: true,
+  install: false,
+  uninstall: false,
   update: false,
   enable: false,
   disable: false,
@@ -123,10 +123,22 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
   constructor(private readonly startServer: StartCodexPluginServer = startCodexPluginServer) {}
 
   async list(opts: PluginDiscoveryOptions = {}): Promise<Plugin[]> {
-    const server = await this.startServer();
-    const timeout = setTimeout(() => server.close(), DISCOVERY_TIMEOUT_MS);
+    const controller = new AbortController();
+    let server: CodexPluginServer | undefined;
+    let closed = false;
+    const closeOnce = (): void => {
+      if (closed || !server) return;
+      closed = true;
+      server.close();
+    };
+    const timeout = setTimeout(() => {
+      controller.abort(new Error('codex: plugin discovery timed out'));
+      closeOnce();
+    }, DISCOVERY_TIMEOUT_MS);
     try {
-      const value = await server.request('plugin/list', {
+      const activeServer = await this.startServer(controller.signal);
+      server = activeServer;
+      const value = await activeServer.request('plugin/list', {
         cwds: opts.cwd ? [opts.cwd] : undefined,
       });
       const catalog = CodexPluginListSchema.parse(value);
@@ -138,14 +150,14 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
           normalizeCodexPlugin(
             marketplace,
             summary,
-            await readCodexPluginDetail(server, marketplace, summary),
+            await readCodexPluginDetail(activeServer, marketplace, summary),
           ),
         ),
       );
       return plugins.sort((left, right) => left.id.localeCompare(right.id));
     } finally {
       clearTimeout(timeout);
-      server.close();
+      closeOnce();
     }
   }
 }
@@ -171,12 +183,13 @@ async function readCodexPluginDetail(
   }
 }
 
-async function startCodexPluginServer(): Promise<CodexPluginServer> {
+async function startCodexPluginServer(signal: AbortSignal): Promise<CodexPluginServer> {
   const binaryPath = agentRuntimeProber.resolveBinary('codex') ?? resolveCodexBinaryPath();
   return CodexAppServer.start({
     binaryPath,
     onNotification: noop,
     onExit: noop,
+    signal,
   });
 }
 
