@@ -141,6 +141,13 @@ fn main() {
         diag_button();
         return;
     }
+    // Diagnostic: report CoreSimulator's view of a device's boot state — the signal the stream
+    // pusher uses to reap a dead boot session: `linkcode-sim diag-state <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-state") {
+        diag_state();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -557,6 +564,17 @@ fn diag_button() {
     let input = private::Input::warm(&device).expect("HID unavailable for this device");
     let ok = input.button(button, std::time::Duration::from_millis(80));
     eprintln!("button({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): print whether CoreSimulator reports the device Booted — ground
+/// truth for the reap-on-shutdown signal in `interactive::push_stream`.
+#[cfg(target_os = "macos")]
+fn diag_state() {
+    let udid = std::env::args().nth(2).expect("usage: diag-state <udid>");
+    match private::SimDevice::resolve(&udid) {
+        Some(device) => eprintln!("is_booted({udid}) -> {}", device.is_booted()),
+        None => eprintln!("device {udid} not found"),
+    }
 }
 
 /// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the

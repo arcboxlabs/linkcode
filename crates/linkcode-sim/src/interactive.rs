@@ -108,6 +108,11 @@ mod imp {
     /// as unusable after this long with no new frame, and the pusher degrades to simctl.
     const SILENT_FALLBACK_AFTER: Duration = Duration::from_secs(3);
 
+    /// How often the pusher asks CoreSimulator whether its device is still booted. Deliberately
+    /// not gated on frame progress: a worker whose boot session ended out from under it can keep
+    /// delivering frames from the dead session, so silence is not a reliable death signal.
+    const STATE_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+
     /// Warmed HID clients and running streams, keyed by udid. Warming a client is expensive, so it
     /// is cached; a stream is one crash-isolated worker plus a pusher thread.
     struct Registry {
@@ -416,12 +421,35 @@ mod imp {
         Ok(json!({}))
     }
 
+    /// Reap a stream whose device's boot session has ended out from under it. The worker holds
+    /// framebuffer registrations that keep the dead session's HID routing half-alive, so a warmed
+    /// client "successfully" injects into it and every control goes silently dead (CODE-442) — an
+    /// out-of-band shutdown (Simulator.app, bare `simctl`) sends no op through this process, so
+    /// nothing else evicts. Killing the worker and forgetting the client makes the next attach or
+    /// injection start from the live device. Called from the pusher's own thread: the JoinHandle
+    /// is dropped, never joined — a thread cannot join itself.
+    fn reap_dead_device(udid: &str) {
+        let handle = registry()
+            .lock()
+            .expect("interactive registry poisoned")
+            .streams
+            .remove(udid);
+        if let Some(mut handle) = handle {
+            handle.stop.store(true, Ordering::Relaxed);
+            drop(handle.pusher.take());
+        }
+        forget(udid);
+        eprintln!("sim stream: device {udid} left Booted; reaped its stream and HID client");
+    }
+
     /// Push framebuffer frames to the daemon, adapting to the stream's live codec each frame so a
     /// reconfigure (JPEG↔H.264, fps) needs no pusher restart. JPEG is latest-wins — deduped by
     /// identity so a static screen doesn't flood, paced on a drift-free clock at the current fps;
     /// H.264 drains the ordered queue (deltas must not be dropped). If the crash-isolated worker
     /// gives up (or stays silent in JPEG mode), it degrades to `simctl io screenshot` — slower, but
     /// frames never stop; each wire frame carries its codec so a mixed stream stays decodable.
+    /// A silent stream on a device that is no longer booted is not degradation but death: the
+    /// pusher reaps itself (see `reap_dead_device`).
     fn push_stream(udid: &str, stream: &CaptureStream, stop: &AtomicBool, tx: &Sender<OutMsg>) {
         // simctl screenshots cost ~200-400ms, so poll the fallback well below the private fps.
         let fallback_interval = Duration::from_millis(500);
@@ -433,7 +461,17 @@ mod imp {
         // Last time a real private frame (either codec) reached the wire; a JPEG-mode silence past
         // the timeout means the framebuffer produced no callbacks, so degrade to simctl.
         let mut last_progress = Instant::now();
+        let mut state_check = Instant::now();
         while !stop.load(Ordering::Relaxed) {
+            // Reap a dead boot session on its own slow clock (see `STATE_CHECK_INTERVAL` for why
+            // frame progress cannot be the trigger).
+            if state_check.elapsed() >= STATE_CHECK_INTERVAL {
+                state_check = Instant::now();
+                if !SimDevice::resolve(udid).is_some_and(|device| device.is_booted()) {
+                    reap_dead_device(udid);
+                    return;
+                }
+            }
             // The worker gave up entirely: degrade to a public screenshot so frames never stop.
             if stream.is_dead() {
                 let tick = Instant::now();
