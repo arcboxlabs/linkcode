@@ -32,6 +32,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from './capture';
+import { useSimulatorPanelStore } from './panel-store';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -153,7 +154,10 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const client = useLinkCodeClient();
   const [status, setStatus] = useState<SimulatorStatus | null>(null);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
-  const [selectedUdid, setSelectedUdid] = useState<string | null>(null);
+  // Selection lives in the store, not here: agent activity can point the panel at a device before
+  // this component ever mounts (CODE-418).
+  const selectedUdid = useSimulatorPanelStore((state) => state.selectedUdid);
+  const selectDevice = useSimulatorPanelStore((state) => state.selectDevice);
   /** Screen-outline masks by udid as base64 PNGs; `null` = the host has none (generic rounding). */
   const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
@@ -375,7 +379,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       {deviceItems.length > 0 && device !== null && (
         <div className="flex shrink-0 flex-col gap-1 border-border border-b px-2 py-1.5">
           <div className="flex items-center">
-            <Select items={deviceItems} value={device.udid} onValueChange={setSelectedUdid}>
+            <Select
+              items={deviceItems}
+              value={device.udid}
+              onValueChange={(next) => {
+                if (next !== null) selectDevice(next);
+              }}
+            >
               <SelectPrimitive.Trigger
                 aria-label={t('simulatorSelectDevice')}
                 className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
