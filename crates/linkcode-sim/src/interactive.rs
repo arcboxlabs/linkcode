@@ -253,6 +253,8 @@ mod imp {
         let button = match button {
             ButtonKind::Home => Button::Home,
             ButtonKind::Lock => Button::Lock,
+            ButtonKind::VolumeUp => Button::VolumeUp,
+            ButtonKind::VolumeDown => Button::VolumeDown,
         };
         if input_for(udid)?.button(button, Duration::from_millis(80)) {
             Ok(json!({}))

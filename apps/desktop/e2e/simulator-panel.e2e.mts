@@ -39,7 +39,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 54;
+const WIRE_VERSION = 55;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -425,6 +425,22 @@ async function run(
       await win.getByRole('button', { name: 'Rotate', exact: true }).click();
       await waitForHashChange(beforeRotate, 'rotating the device');
       console.log('rotate button rotated the device');
+
+      // Simulator.app shortcut parity (CODE-414). The bindings are owner-scoped, not focus-scoped,
+      // so pressing on the window is enough while the panel is on screen. Home is the one with an
+      // unmistakable visual result, so it is what proves the chord actually reached the device;
+      // the volume keys are asserted only as far as "the panel accepted them without erroring",
+      // since the iOS volume HUD is too small to read out of a downsampled canvas hash.
+      const beforeHomeChord = await canvasHash();
+      await win.keyboard.press('Meta+Shift+KeyH');
+      await waitForHashChange(beforeHomeChord, 'the Home shortcut');
+      console.log('Cmd+Shift+H returned the device to the home screen');
+
+      await win.keyboard.press('Meta+ArrowUp');
+      await win.keyboard.press('Meta+ArrowDown');
+      await win.waitForTimeout(1000);
+      if ((await win.getByText('is busy').count()) > 0) fail('the volume shortcuts were refused');
+      console.log('Cmd+Up / Cmd+Down volume chords accepted (HUD needs a human eye)');
 
       // Live reconfigure (CODE-433): a stream start with new options retunes the running stream in
       // place. Assert the capture-worker process is NOT respawned (same pid) and the picture keeps

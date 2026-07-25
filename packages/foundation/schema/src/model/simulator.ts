@@ -62,6 +62,11 @@ export type SimulatorConsentState = z.infer<typeof SimulatorConsentStateSchema>;
  */
 export const MAX_SIMULATORS_PER_SESSION = 4;
 
+/** Hardware buttons the sidecar can press. Home/lock ride the legacy Indigo button message;
+ * the volume rockers are consumer-page HID usages (CODE-414). */
+export const SimulatorButtonSchema = z.enum(['home', 'lock', 'volumeUp', 'volumeDown']);
+export type SimulatorButton = z.infer<typeof SimulatorButtonSchema>;
+
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
 

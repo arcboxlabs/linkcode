@@ -54,6 +54,7 @@ export * from './simulator/auto-reveal';
 export * from './simulator/consent';
 export * from './simulator/panel';
 export * from './simulator/panel-store';
+export * from './simulator/shortcuts';
 export * from './simulator/stream-registry';
 export * from './surface/selection-store';
 export * from './surface/shell';

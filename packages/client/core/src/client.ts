@@ -38,6 +38,7 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorButton,
   SimulatorConsentDecision,
   SimulatorConsentState,
   SimulatorDevice,
@@ -794,7 +795,7 @@ export class LinkCodeClient {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.control.simulatorButton(sessionId, udid, button);
   }

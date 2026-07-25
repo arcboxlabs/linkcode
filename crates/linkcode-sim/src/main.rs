@@ -134,6 +134,13 @@ fn main() {
         diag_reconfigure();
         return;
     }
+    // Diagnostic: press a hardware button, for eyeballing the volume HUD against a real device:
+    // `linkcode-sim diag-button <udid> <home|lock|volume-up|volume-down>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-button") {
+        diag_button();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -520,6 +527,29 @@ fn diag_rotate() {
     let device = private::SimDevice::resolve(&udid).expect("device not found");
     let ok = device.set_orientation(orientation);
     eprintln!("set_orientation({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): press one hardware button on a booted device. Volume is the
+/// reason this exists — it is the one button whose only proof is the on-device HUD, and the
+/// consumer-page HID path it takes is different from home/lock's legacy button message.
+#[cfg(target_os = "macos")]
+fn diag_button() {
+    use crate::private::Button;
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-button <udid> <home|lock|volume-up|volume-down>");
+    let name = std::env::args().nth(3).unwrap_or_else(|| "home".to_owned());
+    let button = match name.as_str() {
+        "home" => Button::Home,
+        "lock" => Button::Lock,
+        "volume-up" => Button::VolumeUp,
+        "volume-down" => Button::VolumeDown,
+        other => panic!("unknown button: {other}"),
+    };
+    let device = private::SimDevice::resolve(&udid).expect("device not found");
+    let input = private::Input::warm(&device).expect("HID unavailable for this device");
+    let ok = input.button(button, std::time::Duration::from_millis(80));
+    eprintln!("button({name}) -> {ok}");
 }
 
 /// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the
