@@ -6,8 +6,22 @@ the same contract as every other client.
 
 - **The web renderer conventions do NOT apply here.** [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) (coss-ui, `createBrowserRouter`, `sdk`+`tayori`+SWR data-table, `react-hook-form`+`zodResolver`) targets the Vite / DOM renderers — none of it holds for React Native. Use the Expo / RN + HeroUI idioms instead.
 - **Shared code:** mobile consumes `@linkcode/ui` only through its **native** components (`packages/presentation/ui/src/native/**`), never its coss-ui web parts.
-- **Terminal canvas:** the RN route owns `LinkCodeClient`, attachment/controller state, and all
-  network I/O. Rendering is the native ghostty surface from
+- **Where code goes:** `src/runtime/**` + `src/stores/**` own transport, connection, and data-plane
+  wiring; `src/app/**` + `src/components/**` are presentation only. The hooks exported from
+  `runtime/` are the seam — extend a return value, never reshape one, so UI and runtime work can
+  land in parallel. A `runtime/` hook must **not** hand out a `RefObject`: `react-hooks/refs` then
+  taints every property read of that result at the call site ("Cannot access refs during render").
+  Expose a callback ref instead — `setRenderer` in `use-terminal-session.ts`. Destructure a hook's
+  result at the top of the component rather than reading `hook.x` inside JSX; the same rule fires on
+  member reads it cannot prove.
+- **Mobile hooks cannot be unit-tested yet** (CODE-444). Root vitest resolves react 19.2.7 while this
+  app pins 19.2.3 to match RN's bundled renderer, so `renderHook` on anything under `src/` dies with
+  `Cannot read properties of null (reading 'useState')`. `resolve.dedupe: ['react']` is not the fix —
+  it breaks the pin. Until a mobile vitest project exists, only pure functions are testable
+  (`src/runtime/__tests__/startup.test.ts` is the one example).
+- **Terminal canvas:** `runtime/use-terminal-session.ts` owns `LinkCodeClient`, attachment/controller
+  state, and all network I/O; the route only renders and navigates. Rendering is the native ghostty
+  surface from
   [`expo-libghostty`](https://github.com/arcboxlabs/expo-libghostty) — PTY bytes go in via the
   string API (`writeText` / `onInput.text`, matching the UTF-8 wire), the daemon's headless
   terminal is the sole reply authority, and the grid always tracks the local layout: a resize by
