@@ -126,6 +126,16 @@ module.exports = require('eslint-config-sukka').sukka(
     },
   },
   {
+    // `Image` in these screens is `@expo/ui`'s SwiftUI view (`systemName` SF Symbols), not an
+    // `<img>`: it has no `alt` prop, and the glyphs are decorative next to the row's own label.
+    // Scoped to the screens so the RN `Image` in `src/components` keeps its alt-text coverage.
+    name: 'linkcode/expo-ui-image-is-not-an-img',
+    files: ['apps/mobile/src/app/**/*.tsx'],
+    rules: {
+      'jsx-a11y/alt-text': 'off',
+    },
+  },
+  {
     // tsconfig files are JSONC by spec, and the root tsconfig.json carries a
     // load-bearing comment about its reference ordering.
     name: 'linkcode/tsconfig-is-jsonc',
