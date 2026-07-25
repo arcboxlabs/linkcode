@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { SessionIdSchema } from '../model/primitives';
 import {
+  SimulatorConsentDecisionSchema,
+  SimulatorConsentStateSchema,
   SimulatorDeviceSchema,
   SimulatorImageFormatSchema,
   SimulatorOrientationSchema,
@@ -48,6 +50,42 @@ export const simulatorWireVariants = [
     udid: z.string().min(1).optional(),
     tool: z.string(),
     phase: z.enum(['started', 'settled']),
+  }),
+  // ── Agent consent (CODE-420) ──
+  // Device-scoped, not turn-scoped: an agent's first tool call on an unknown device suspends
+  // while the user decides, which the agent-turn approval channel cannot express (it cancels its
+  // open asks whenever a turn goes idle). Decisions persist across sessions and daemon restarts.
+  z.object({ kind: z.literal('simulator.consent.get'), clientReqId: WireRequestIdSchema }),
+  z.object({
+    kind: z.literal('simulator.consent.state'),
+    replyTo: WireRequestIdSchema,
+    state: SimulatorConsentStateSchema,
+  }),
+  /** Record (or overwrite) a device decision; `decision` absent clears it back to "never asked". */
+  z.object({
+    kind: z.literal('simulator.consent.set'),
+    clientReqId: WireRequestIdSchema,
+    udid,
+    decision: SimulatorConsentDecisionSchema.optional(),
+  }),
+  /** Flip the global kill switch — every simulator MCP tool is refused while it is off. */
+  z.object({
+    kind: z.literal('simulator.consent.set-agent-tools'),
+    clientReqId: WireRequestIdSchema,
+    enabled: z.boolean(),
+  }),
+  /** An agent tool is waiting on a decision for `udid`. Broadcast: any attached client may answer,
+   * and the panel showing that device raises the prompt. */
+  z.object({
+    kind: z.literal('simulator.consent.required'),
+    sessionId: SessionIdSchema,
+    udid,
+    tool: z.string(),
+  }),
+  /** Consent state changed (a decision, a clear, or the kill switch) — keeps every client honest. */
+  z.object({
+    kind: z.literal('simulator.consent.changed'),
+    state: SimulatorConsentStateSchema,
   }),
   z.object({
     kind: z.literal('simulator.boot'),

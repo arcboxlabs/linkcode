@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
-import type { SimulatorMcpProvider, SimulatorService } from '@linkcode/engine';
+import type {
+  SimulatorConsentService,
+  SimulatorMcpProvider,
+  SimulatorService,
+} from '@linkcode/engine';
 import type { McpServer as McpServerEntry, SessionId } from '@linkcode/schema';
 // eslint-disable-next-line import-x/no-unresolved -- the SDK's exports-map subpaths (./server/*.js) defeat the resolver; tsc resolves them fine
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -47,12 +51,14 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
   private constructor(
     private readonly server: Server,
     private readonly simulators: SimulatorService,
+    private readonly consent: SimulatorConsentService,
     private readonly notify?: SimulatorMcpNotifications,
   ) {}
 
   static create(
     this: void,
     simulators: SimulatorService,
+    consent: SimulatorConsentService,
     notify?: SimulatorMcpNotifications,
   ): Promise<SimulatorMcpEndpoint> {
     return new Promise((resolve, reject) => {
@@ -61,7 +67,7 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         // handle() never rejects (it catches internally); the catch is stream-error paranoia.
         endpoint?.handle(req, res).catch(noop);
       });
-      endpoint = new SimulatorMcpEndpoint(server, simulators, notify);
+      endpoint = new SimulatorMcpEndpoint(server, simulators, consent, notify);
       server.once('error', reject);
       // Loopback only, ephemeral port: the endpoint carries no auth beyond its per-session
       // token path, so it must never be reachable off-host.
@@ -158,8 +164,11 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
       udid: string | undefined,
       op: () => Promise<string>,
     ): Promise<{ content: [{ type: 'text'; text: string }]; isError?: true }> => {
+      // Announced before the consent gate on purpose: a tool suspended waiting for the user is
+      // exactly when the panel should be showing this device.
       this.notify?.activity?.({ sessionId, udid, tool, phase: 'started' });
       try {
+        await this.consent.require(sessionId, udid, tool);
         return { content: [{ type: 'text', text: await op() }] };
       } catch (err) {
         return {
@@ -289,6 +298,7 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         const tool = 'sim_screenshot';
         this.notify?.activity?.({ sessionId, udid, tool, phase: 'started' });
         try {
+          await this.consent.require(sessionId, udid, tool);
           const chosen = format ?? 'jpeg';
           const image = await simulators.screenshot(sessionId, udid, chosen);
           return {

@@ -35,6 +35,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -667,6 +669,32 @@ export class ControlChannel {
       kind: 'simulator.screen-mask',
       clientReqId,
       udid,
+    }));
+  }
+
+  /** Current per-device agent consent plus the global agent-tools switch (CODE-420). */
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.sendCorrelated('simulatorConsentGet', (clientReqId) => ({
+      kind: 'simulator.consent.get',
+      clientReqId,
+    }));
+  }
+
+  /** Record a decision for a device; `undefined` clears it, so the next agent call asks again. */
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set',
+      clientReqId,
+      udid,
+      decision,
+    }));
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set-agent-tools',
+      clientReqId,
+      enabled,
     }));
   }
 
