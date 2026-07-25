@@ -1,24 +1,8 @@
 import type { ConversationItem } from '@linkcode/client-core';
-import type { ContentBlock, ToolKind } from '@linkcode/schema';
+import type { ContentBlock } from '@linkcode/schema';
 import { NativeMarkdown } from '@linkcode/ui/native';
 import { Spinner, useThemeColor } from 'heroui-native';
-import type { LucideIcon } from 'lucide-react-native';
-import {
-  BotIcon,
-  BrainIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  FileInputIcon,
-  FileTextIcon,
-  GlobeIcon,
-  SearchIcon,
-  SquarePenIcon,
-  SquareTerminalIcon,
-  Trash2Icon,
-  WrenchIcon,
-} from 'lucide-react-native';
+import { ChevronDownIcon, ChevronRightIcon, CircleAlertIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -37,19 +21,6 @@ const PLAN_STATUS_MARK = {
   cancelled: '×',
 } as const;
 
-const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
-  read: FileTextIcon,
-  edit: SquarePenIcon,
-  delete: Trash2Icon,
-  move: FileInputIcon,
-  search: SearchIcon,
-  execute: SquareTerminalIcon,
-  think: BrainIcon,
-  fetch: GlobeIcon,
-  task: BotIcon,
-  other: WrenchIcon,
-};
-
 /** Compact token counts ("193437" → "193.4k") — mirrors the web CompactionMarker's format. */
 function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
@@ -65,8 +36,8 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
     case 'message':
       return item.role === 'user' ? (
         <View className="flex-row justify-end">
-          <View className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5">
-            <Text className="text-accent-foreground text-body">{blocksToText(item.blocks)}</Text>
+          <View className="max-w-[85%] rounded-2xl bg-surface-secondary px-4 py-2.5">
+            <Text className="text-body text-foreground">{blocksToText(item.blocks)}</Text>
           </View>
         </View>
       ) : (
@@ -87,13 +58,7 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
     case 'reasoning':
       return <ReasoningRow text={blocksToText(item.blocks)} streaming={item.isStreaming} />;
     case 'tool':
-      return (
-        <ToolRow
-          kind={item.toolCall.kind}
-          title={item.toolCall.title}
-          status={item.toolCall.status}
-        />
-      );
+      return <ToolRow title={item.toolCall.title} status={item.toolCall.status} />;
     case 'plan':
       return (
         <View className="gap-1.5 rounded-lg bg-surface-secondary px-3 py-2.5">
@@ -183,47 +148,38 @@ function ReasoningRow({ text, streaming }: { text: string; streaming: boolean })
         className="flex-row items-center gap-1.5"
         onPress={() => setOpen((current) => !current)}
       >
-        <BrainIcon size={14} color={muted} />
-        <Text className="font-medium text-muted text-subhead">{t('reasoning')}</Text>
+        <Text className="text-muted text-subhead">{t('reasoning')}</Text>
         {streaming ? <Spinner size="sm" /> : <Chevron size={14} color={muted} />}
       </Pressable>
-      {open ? <Text className="pl-5 text-muted text-subhead">{text}</Text> : null}
+      {open ? <Text className="text-muted text-subhead">{text}</Text> : null}
     </View>
   );
 }
 
+/** A quiet, collapsed summary line — the chevron sits against the label rather than at the
+ *  row's trailing edge, so the row reads as one phrase. A failed call is common and often
+ *  expected here, so it stays in the muted voice and is marked by an icon rather than by
+ *  colouring the whole line; the icon is also what keeps the status off colour alone. */
 function ToolRow({
-  kind,
   title,
   status,
 }: {
-  kind: ToolKind;
   title: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
 }): React.ReactNode {
-  const [muted, success, danger] = useThemeColor(['muted', 'success', 'danger']);
-  const Icon = TOOL_ICONS[kind];
+  const [muted, danger] = useThemeColor(['muted', 'danger']);
 
   return (
-    <View className="flex-row items-center gap-2 pl-0.5">
-      <Icon size={14} color={status === 'failed' ? danger : muted} />
-      <Text
-        className={
-          status === 'failed'
-            ? 'min-w-0 flex-1 text-danger text-subhead'
-            : 'min-w-0 flex-1 text-muted text-subhead'
-        }
-        numberOfLines={1}
-      >
+    <View className="flex-row items-center gap-1">
+      <Text className="shrink text-muted text-subhead" numberOfLines={1}>
         {title}
       </Text>
+      {status === 'failed' ? <CircleAlertIcon size={13} color={danger} /> : null}
       {status === 'in_progress' ? (
         <Spinner size="sm" />
-      ) : status === 'completed' ? (
-        <CheckIcon size={14} color={success} />
-      ) : status === 'failed' ? (
-        <CircleAlertIcon size={14} color={danger} />
-      ) : null}
+      ) : (
+        <ChevronRightIcon size={14} color={muted} />
+      )}
     </View>
   );
 }
