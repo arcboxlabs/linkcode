@@ -212,14 +212,27 @@ mod imp {
     /// One phase of a streamed touch gesture. A `move`/`up` without an active stream is a benign
     /// race (a duplicate up, a move after cancel) and no-ops successfully.
     pub fn touch(udid: &str, phase: TouchPhase, x: f64, y: f64) -> Result<Value, OpError> {
+        // `down` is the one phase that can safely re-warm a stale client: nothing has been injected
+        // yet, so the retry costs only a fresh identifier. A mid-gesture phase must not — the new
+        // client would carry a new identifier and the guest would read it as a second finger
+        // rather than a continuation, so a gesture caught by a reboot is simply lost and the next
+        // `down` recovers. This is the path a canvas tap or drag takes, so it matters most.
+        if matches!(phase, TouchPhase::Down) {
+            return with_input(udid, "touch", |input| {
+                let id = input.allocate_touch();
+                registry()
+                    .lock()
+                    .expect("interactive registry poisoned")
+                    .touches
+                    .insert(udid.to_owned(), id);
+                input.touch_phase(x, y, id, private::Phase::Down)
+            });
+        }
         let input = input_for(udid)?;
         let mut reg = registry().lock().expect("interactive registry poisoned");
         let identifier = match phase {
-            TouchPhase::Down => {
-                let id = input.allocate_touch();
-                reg.touches.insert(udid.to_owned(), id);
-                Some(id)
-            }
+            // Returned above; `None` here degrades to a no-op rather than a panic.
+            TouchPhase::Down => None,
             TouchPhase::Move => reg.touches.get(udid).copied(),
             TouchPhase::Up => reg.touches.remove(udid),
         };
@@ -242,14 +255,26 @@ mod imp {
         a: (f64, f64),
         b: (f64, f64),
     ) -> Result<Value, OpError> {
+        // Same rule as `touch`: only the two-finger `down` may re-warm.
+        if matches!(phase, TouchPhase::Down) {
+            return with_input(udid, "pinch", |input| {
+                let ids = [input.allocate_touch(), input.allocate_touch()];
+                registry()
+                    .lock()
+                    .expect("interactive registry poisoned")
+                    .pinches
+                    .insert(udid.to_owned(), ids);
+                input.touch_pair(
+                    [(a.0, a.1, ids[0]), (b.0, b.1, ids[1])],
+                    private::Phase::Down,
+                )
+            });
+        }
         let input = input_for(udid)?;
         let mut reg = registry().lock().expect("interactive registry poisoned");
         let ids = match phase {
-            TouchPhase::Down => {
-                let ids = [input.allocate_touch(), input.allocate_touch()];
-                reg.pinches.insert(udid.to_owned(), ids);
-                Some(ids)
-            }
+            // Returned above; `None` here degrades to a no-op rather than a panic.
+            TouchPhase::Down => None,
             TouchPhase::Move => reg.pinches.get(udid).copied(),
             TouchPhase::Up => reg.pinches.remove(udid),
         };
