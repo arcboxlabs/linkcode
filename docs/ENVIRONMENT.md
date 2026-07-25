@@ -83,6 +83,9 @@ client configuration or new build.
 | `LINKCODE_HOST`, `LINKCODE_PORT` | daemon/webview/desktop E2E harnesses | Pin the harness daemon to `127.0.0.1` on an ephemeral port. |
 | `LINKCODE_PROFILE` | desktop E2E | Isolates a run's state universe. Must be identical on both sides — the desktop app and its daemon — or they follow different `runtime.json` files. |
 | `HOME` | every E2E harness | Redirected to a fresh temp dir so runs never touch the real `~/.linkcode`. Use a *fresh* one per run. |
+| `LINKCODE_E2E_KEEP_OPEN` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` hands the app over at the pause and waits for you to close the window instead of running a timer. The two section-close checks after the pause are given up in exchange — the alternative is yanking the window away from whoever is driving it. |
+| `LINKCODE_E2E_HOLD_MS` | `apps/desktop/e2e/simulator-panel.e2e.mts` | Widens the pause that leaves the window live to be driven by hand (default `30000`). For demoing the simulator panel rather than checking it. |
+| `LINKCODE_E2E_SKIP_RECLAIM` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` drops the closing CODE-419 reclaim check, whose last act is to SIGTERM the daemon — correct in a test, looks like a crash in a demo. The run then proves everything *except* reclaim-on-shutdown. |
 | `XDG_CONFIG_HOME` | `apps/desktop/e2e/packaged-smoke.e2e.mts` | Redirects Electron/Chromium config for the packaged run. |
 | `NODE_ENV` | `apps/webview/e2e/browser-smoke.e2e.mts` | Forced to `development` — the mock transport is guarded by `import.meta.env.DEV`. |
 | `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` | `packages/host/engine/tests/integration/git-status.test.ts` | Point git at fixture config so the machine's gitconfig (notably commit signing) can't leak into assertions. |
