@@ -234,8 +234,15 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
     let outcome = match request.op {
         Op::Probe => probe_with_capabilities(),
         Op::List => simctl::list(),
-        Op::Boot { udid } => simctl::boot(&udid),
-        Op::Shutdown { udid } => simctl::shutdown(&udid),
+        // Both ends of a boot session invalidate the warmed HID client bound to the old one.
+        Op::Boot { udid } => {
+            interactive::forget(&udid);
+            simctl::boot(&udid)
+        }
+        Op::Shutdown { udid } => {
+            interactive::forget(&udid);
+            simctl::shutdown(&udid)
+        }
         Op::Install { udid, app_path } => simctl::install(&udid, &app_path),
         Op::Launch { udid, bundle_id } => simctl::launch(&udid, &bundle_id),
         Op::Terminate { udid, bundle_id } => simctl::terminate(&udid, &bundle_id),

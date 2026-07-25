@@ -22,12 +22,15 @@ fn unsupported() -> OpError {
 
 #[cfg(target_os = "macos")]
 pub use imp::{
-    available, button, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+    available, button, forget, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
 };
 
 #[cfg(not(target_os = "macos"))]
 mod stubs {
     use super::*;
+
+    /// No cached HID client off macOS, so nothing to evict.
+    pub fn forget(_udid: &str) {}
 
     pub fn available() -> bool {
         false
@@ -82,7 +85,7 @@ mod stubs {
 
 #[cfg(not(target_os = "macos"))]
 pub use stubs::{
-    available, button, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+    available, button, forget, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
 };
 
 #[cfg(target_os = "macos")]
@@ -149,6 +152,20 @@ mod imp {
         }
     }
 
+    /// Drop the cached HID client and any in-flight gesture state for `udid`.
+    ///
+    /// A warmed `SimDeviceLegacyHIDClient` is bound to the boot session it was created in. Once the
+    /// device shuts down, that client is dead: sends still report success but nothing reaches the
+    /// guest, so the panel looks fine while every tap, button and key silently does nothing. Boot
+    /// and shutdown are the two moments a new session begins, so both evict — the next use re-warms
+    /// against the live device.
+    pub fn forget(udid: &str) {
+        let mut reg = registry().lock().expect("interactive registry poisoned");
+        reg.inputs.remove(udid);
+        reg.touches.remove(udid);
+        reg.pinches.remove(udid);
+    }
+
     /// Resolve (and cache) a warmed HID client for `udid`.
     fn input_for(udid: &str) -> Result<Arc<Input>, OpError> {
         let mut reg = registry().lock().expect("interactive registry poisoned");
@@ -163,12 +180,33 @@ mod imp {
         Ok(input)
     }
 
-    pub fn tap(udid: &str, x: f64, y: f64) -> Result<Value, OpError> {
-        if input_for(udid)?.tap(x, y, Duration::from_millis(80)) {
-            Ok(json!({}))
-        } else {
-            Err(OpError::new(ErrorCode::SimctlFailed, "tap failed"))
+    /// Run a discrete injection against the device's HID client, re-warming once if it fails.
+    ///
+    /// A warmed client is bound to the boot session it was created in, and a device can be shut
+    /// down and re-booted behind our back — from Simulator.app, from `simctl`, or by a boot the
+    /// engine short-circuited because the host already had the device up. The stale client then
+    /// builds no messages, so the failure is indistinguishable from "the device is gone" and the
+    /// panel goes dead with every control still looking healthy. Treat the first failure as
+    /// possibly-stale: drop the client, warm a fresh one, and try once more. A failed build
+    /// injected nothing, so the retry cannot double-send.
+    fn with_input(udid: &str, what: &str, op: impl Fn(&Input) -> bool) -> Result<Value, OpError> {
+        if op(input_for(udid)?.as_ref()) {
+            return Ok(json!({}));
         }
+        forget(udid);
+        if op(input_for(udid)?.as_ref()) {
+            return Ok(json!({}));
+        }
+        Err(OpError::new(
+            ErrorCode::SimctlFailed,
+            format!("{what} failed"),
+        ))
+    }
+
+    pub fn tap(udid: &str, x: f64, y: f64) -> Result<Value, OpError> {
+        with_input(udid, "tap", |input| {
+            input.tap(x, y, Duration::from_millis(80))
+        })
     }
 
     /// One phase of a streamed touch gesture. A `move`/`up` without an active stream is a benign
@@ -242,11 +280,9 @@ mod imp {
         };
         let steps = 10u32;
         let step = duration / (steps + 2);
-        if input_for(udid)?.swipe(x0, y0, x1, y1, steps, step) {
-            Ok(json!({}))
-        } else {
-            Err(OpError::new(ErrorCode::SimctlFailed, "swipe failed"))
-        }
+        with_input(udid, "swipe", |input| {
+            input.swipe(x0, y0, x1, y1, steps, step)
+        })
     }
 
     pub fn button(udid: &str, button: ButtonKind) -> Result<Value, OpError> {
@@ -256,11 +292,9 @@ mod imp {
             ButtonKind::VolumeUp => Button::VolumeUp,
             ButtonKind::VolumeDown => Button::VolumeDown,
         };
-        if input_for(udid)?.button(button, Duration::from_millis(80)) {
-            Ok(json!({}))
-        } else {
-            Err(OpError::new(ErrorCode::SimctlFailed, "button press failed"))
-        }
+        with_input(udid, "button press", |input| {
+            input.button(button, Duration::from_millis(80))
+        })
     }
 
     /// Rotate the interface orientation. Unlike the HID ops this needs no warmed `Input` — it is a
@@ -286,11 +320,9 @@ mod imp {
     }
 
     pub fn key(udid: &str, usage: u32, modifiers: &[u32]) -> Result<Value, OpError> {
-        if input_for(udid)?.key(usage, modifiers, Duration::from_millis(20)) {
-            Ok(json!({}))
-        } else {
-            Err(OpError::new(ErrorCode::SimctlFailed, "key press failed"))
-        }
+        with_input(udid, "key press", |input| {
+            input.key(usage, modifiers, Duration::from_millis(20))
+        })
     }
 
     pub fn stream_start(
