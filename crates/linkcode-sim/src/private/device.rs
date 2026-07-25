@@ -41,20 +41,27 @@ impl SimDevice {
         Retained::as_ptr(&self.object).cast_mut()
     }
 
-    /// CoreSimulator's `SimDeviceState`: 3 is Booted (0 Creating, 1 Shutdown, 2 Booting,
-    /// 4 ShuttingDown). Anything else means the boot session is over or not yet begun.
-    pub fn is_booted(&self) -> bool {
+    /// The raw `SimDeviceState`, or `None` if the KVC read fails.
+    pub fn state_raw(&self) -> Option<u64> {
         let key = NSString::from_str("state");
         // SAFETY: KVC read returning an NSNumber (or nil).
         let number: *mut AnyObject = unsafe { msg_send![&*self.object, valueForKey: &*key] };
         if number.is_null() {
-            return false;
+            return None;
         }
         // SAFETY: number is an NSNumber*; unsignedLongLongValue is its standard accessor.
-        let state: u64 = unsafe { msg_send![number, unsignedLongLongValue] };
-        state == 3
+        Some(unsafe { msg_send![number, unsignedLongLongValue] })
+    }
+
+    /// Whether the device is in a live boot session. Anything but Booted means the session is
+    /// over or not yet begun.
+    pub fn is_booted(&self) -> bool {
+        self.state_raw() == Some(STATE_BOOTED)
     }
 }
+
+/// CoreSimulator's `SimDeviceState` for Booted (0 Creating, 1 Shutdown, 2 Booting, 4 ShuttingDown).
+pub const STATE_BOOTED: u64 = 3;
 
 fn default_device_set() -> Option<Retained<AnyObject>> {
     let ctx = shared_service_context()?;

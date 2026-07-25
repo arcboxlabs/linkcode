@@ -91,6 +91,8 @@ pub use stubs::{
 #[cfg(target_os = "macos")]
 mod imp {
     use std::collections::HashMap;
+    use std::io::{BufRead, BufReader};
+    use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::thread;
@@ -131,6 +133,9 @@ mod imp {
         stream: Arc<CaptureStream>,
         stop: Arc<AtomicBool>,
         pusher: Option<thread::JoinHandle<()>>,
+        /// The crash-isolated `state-watcher` child relaying this device's state notifications;
+        /// killed with the stream. `None` if it failed to spawn — the pusher's poll covers alone.
+        watcher: Option<Child>,
     }
 
     fn registry() -> &'static Mutex<Registry> {
@@ -395,12 +400,16 @@ mod imp {
             let udid = udid.to_owned();
             move || push_stream(&udid, &stream, &stop, &tx)
         });
+        // Spawned before the insert lands: a notification-path reap blocks on the registry lock
+        // held here, so it can only run once the handle it must remove is actually in the map.
+        let watcher = spawn_state_watcher(udid);
         reg.streams.insert(
             udid.to_owned(),
             StreamHandle {
                 stream,
                 stop,
                 pusher: Some(pusher),
+                watcher,
             },
         );
         Ok(json!({ "streaming": true, "fps": fps, "scale": scale, "codec": codec }))
@@ -417,6 +426,7 @@ mod imp {
             if let Some(pusher) = handle.pusher.take() {
                 let _ = pusher.join();
             }
+            kill_watcher(&mut handle);
         }
         Ok(json!({}))
     }
@@ -428,7 +438,7 @@ mod imp {
     /// nothing else evicts. Killing the worker and forgetting the client makes the next attach or
     /// injection start from the live device. Called from the pusher's own thread: the JoinHandle
     /// is dropped, never joined — a thread cannot join itself.
-    fn reap_dead_device(udid: &str) {
+    fn reap_dead_device(udid: &str, via: &str) {
         let handle = registry()
             .lock()
             .expect("interactive registry poisoned")
@@ -437,9 +447,52 @@ mod imp {
         if let Some(mut handle) = handle {
             handle.stop.store(true, Ordering::Relaxed);
             drop(handle.pusher.take());
+            kill_watcher(&mut handle);
         }
         forget(udid);
-        eprintln!("sim stream: device {udid} left Booted; reaped its stream and HID client");
+        eprintln!(
+            "sim stream: device {udid} left Booted ({via}); reaped its stream and HID client"
+        );
+    }
+
+    fn kill_watcher(handle: &mut StreamHandle) {
+        if let Some(mut watcher) = handle.watcher.take() {
+            let _ = watcher.kill();
+            let _ = watcher.wait();
+        }
+    }
+
+    /// Spawn the notification watcher for `udid`, plus a reader thread that reaps the moment a
+    /// `state <n>` line reports the device out of Booted. This is the fast path to
+    /// [`reap_dead_device`]; the pusher's poll stays as the backstop, so a watcher that fails to
+    /// spawn, crashes, or goes silent costs latency, never correctness (contract in
+    /// `private/notify.rs`).
+    fn spawn_state_watcher(udid: &str) -> Option<Child> {
+        let exe = std::env::current_exe().ok()?;
+        let mut child = Command::new(exe)
+            .arg("state-watcher")
+            .arg(udid)
+            // Held open so an orphaned watcher (server death) sees EOF and exits itself.
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .ok()?;
+        let stdout = child.stdout.take()?;
+        let udid = udid.to_owned();
+        thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                let state = line
+                    .strip_prefix("state ")
+                    .and_then(|s| s.parse::<u64>().ok());
+                if state.is_some_and(|state| state != private::STATE_BOOTED) {
+                    reap_dead_device(&udid, "device notification");
+                    break;
+                }
+            }
+        });
+        Some(child)
     }
 
     /// Push framebuffer frames to the daemon, adapting to the stream's live codec each frame so a
@@ -468,7 +521,7 @@ mod imp {
             if state_check.elapsed() >= STATE_CHECK_INTERVAL {
                 state_check = Instant::now();
                 if !SimDevice::resolve(udid).is_some_and(|device| device.is_booted()) {
-                    reap_dead_device(udid);
+                    reap_dead_device(udid, "state poll");
                     return;
                 }
             }

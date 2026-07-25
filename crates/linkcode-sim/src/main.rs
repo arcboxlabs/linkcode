@@ -102,6 +102,14 @@ fn main() {
     if subcommand.as_deref() == Some("capture-worker") {
         capture::run_worker();
     }
+    // The crash-isolated device-state watcher (spawned by the sidecar alongside each stream).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("state-watcher") {
+        let udid = std::env::args()
+            .nth(2)
+            .expect("usage: state-watcher <udid>");
+        std::process::exit(private::notify::run_state_watcher(&udid));
+    }
     // Hidden diagnostic path to exercise the private-framework layer against a real booted device:
     // `linkcode-sim diag-interactive <udid> <out.jpg>`.
     #[cfg(target_os = "macos")]
