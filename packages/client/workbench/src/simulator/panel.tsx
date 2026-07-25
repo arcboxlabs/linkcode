@@ -33,9 +33,11 @@ import {
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
+import { useBackgroundSimulatorStreams } from './background-streams';
 import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from './capture';
 import { useSimulatorConsent, useSimulatorConsentRequest } from './consent';
-import { useSimulatorPanelStore } from './panel-store';
+import { SimulatorDeviceTabs } from './device-tabs';
+import { selectDeviceTabs, simulatorSessionKey, useSimulatorPanelStore } from './panel-store';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -50,6 +52,9 @@ import {
 } from './stream-settings-store';
 
 const BUSY_BANNER_MS = 3000;
+
+/** Stable empty list, so the no-device case never re-keys the background-stream effect. */
+const EMPTY_UDIDS: readonly string[] = [];
 
 /** Interface orientations in clockwise order, so the rotate button steps device rotation 90° CW
  * each press (portrait → home-on-right → upside-down → home-on-left → portrait). */
@@ -157,9 +162,12 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const client = useLinkCodeClient();
   const [status, setStatus] = useState<SimulatorStatus | null>(null);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
-  // Selection lives in the store, not here: agent activity can point the panel at a device before
-  // this component ever mounts (CODE-418).
-  const selectedUdid = useSimulatorPanelStore((state) => state.selectedUdid);
+  // Open devices live in the store, not here: agent activity can open one before this component
+  // ever mounts (CODE-418), and the cap is per thread, so the strip counts the way the host does.
+  const sessionKey = simulatorSessionKey(sessionId);
+  const tabs = useSimulatorPanelStore((state) => selectDeviceTabs(state, sessionKey));
+  const openDevice = useSimulatorPanelStore((state) => state.openDevice);
+  const closeDevice = useSimulatorPanelStore((state) => state.closeDevice);
   const selectDevice = useSimulatorPanelStore((state) => state.selectDevice);
   /** Screen-outline masks by udid as base64 PNGs; `null` = the host has none (generic rounding). */
   const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
@@ -206,7 +214,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     [client],
   );
 
-  const device = pickDevice(devices, selectedUdid);
+  // Until the user opens a second device the panel shows one implicitly, so a fresh thread needs no
+  // setup click. Opening another materializes that implicit tab first (see `addDevice`).
+  const defaultUdid = pickDefaultDevice(devices)?.udid ?? null;
+  const openUdids =
+    tabs.udids.length > 0 ? tabs.udids : defaultUdid === null ? EMPTY_UDIDS : [defaultUdid];
+  const activeUdid = tabs.activeUdid ?? defaultUdid;
+  const device = devices?.find((item) => item.udid === activeUdid) ?? null;
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
   // Optimistic until the probe resolves: assume interactive so a capable host streams immediately.
@@ -262,6 +276,16 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     if (udid === null) return;
     setSimulatorStreamOptions(client, udid, { fps, scale, codec });
   }, [client, udid, fps, scale, codec]);
+
+  // Every other open device keeps a low-rate stream so switching tabs is instant rather than a
+  // reconnect, without four full-rate encodes running on the host.
+  useBackgroundSimulatorStreams(
+    client,
+    sessionId,
+    openUdids.filter((open) => open !== activeUdid),
+    scale,
+    codec,
+  );
 
   const subscribeFrames = useCallback(
     (onFrame: (frame: SimulatorScreenFrame) => void) =>
@@ -339,6 +363,12 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       })
       .catch(flagBusy);
   };
+  // The first device is shown implicitly (no tab was ever opened), so materialize it before adding
+  // a second — otherwise opening one would replace what is on screen instead of joining it.
+  const addDevice = (next: string): void => {
+    if (defaultUdid !== null && tabs.udids.length === 0) openDevice(sessionKey, defaultUdid);
+    openDevice(sessionKey, next);
+  };
   const bootDevice = (): void => {
     if (sessionId === null || udid === null) return;
     // Booting is an explicit "I want this device here", so it also clears a stale detach.
@@ -377,54 +407,20 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     }
   };
 
-  const deviceItems = (devices ?? []).map((item) => ({
-    value: item.udid,
-    label: item.runtimeName === undefined ? item.name : `${item.name} · ${item.runtimeName}`,
-    booted: item.state === 'Booted',
-  }));
-
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {deviceItems.length > 0 && device !== null && (
+      {openUdids.length > 0 && device !== null && (
         <div className="flex shrink-0 flex-col gap-1 border-border border-b px-2 py-1.5">
-          <div className="flex items-center">
-            <Select
-              items={deviceItems}
-              value={device.udid}
-              onValueChange={(next) => {
-                if (next !== null) selectDevice(next);
-              }}
-            >
-              <SelectPrimitive.Trigger
-                aria-label={t('simulatorSelectDevice')}
-                className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="truncate font-medium">{device.name}</span>
-                {device.runtimeName !== undefined && (
-                  <span className="truncate text-muted-foreground">{device.runtimeName}</span>
-                )}
-                <SelectPrimitive.Icon>
-                  <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                </SelectPrimitive.Icon>
-              </SelectPrimitive.Trigger>
-              <SelectPopup>
-                {deviceItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    <span className="flex items-center gap-2">
-                      <span className="truncate">{item.label}</span>
-                      {item.booted && (
-                        <span
-                          aria-label={t('simulatorBooted')}
-                          title={t('simulatorBooted')}
-                          className="size-1.5 shrink-0 rounded-full bg-emerald-500"
-                        />
-                      )}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-            <div className="ml-auto flex items-center">
+          <div className="flex items-center gap-2">
+            <SimulatorDeviceTabs
+              devices={devices ?? []}
+              openUdids={openUdids}
+              activeUdid={activeUdid}
+              onSelect={(next) => selectDevice(sessionKey, next)}
+              onClose={(next) => closeDevice(sessionKey, next)}
+              onOpen={addDevice}
+            />
+            <div className="ml-auto flex shrink-0 items-center">
               {/* Agent access is a property of the device, so it sits with the device controls
                   rather than on the stage — reachable even when nothing is streaming. */}
               <Button
@@ -683,12 +679,8 @@ function CenteredHint({ children }: React.PropsWithChildren): React.ReactNode {
   );
 }
 
-function pickDevice(
-  devices: SimulatorDevice[] | null,
-  selectedUdid: string | null,
-): SimulatorDevice | null {
+/** The device a thread shows before it has opened any: a booted one if there is one. */
+function pickDefaultDevice(devices: SimulatorDevice[] | null): SimulatorDevice | null {
   if (!devices || devices.length === 0) return null;
-  const picked =
-    selectedUdid === null ? undefined : devices.find((item) => item.udid === selectedUdid);
-  return picked ?? devices.find((item) => item.state === 'Booted') ?? devices[0];
+  return devices.find((item) => item.state === 'Booted') ?? devices[0];
 }

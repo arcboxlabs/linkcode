@@ -55,6 +55,13 @@ export const SimulatorConsentStateSchema = z.object({
 });
 export type SimulatorConsentState = z.infer<typeof SimulatorConsentStateSchema>;
 
+/**
+ * How many simulators one thread may hold at once. Enforced by the engine's claim registry
+ * (`limit_exceeded`); clients read it to stop offering a fifth device rather than to re-implement
+ * the rule — the host stays the authority either way.
+ */
+export const MAX_SIMULATORS_PER_SESSION = 4;
+
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
 
