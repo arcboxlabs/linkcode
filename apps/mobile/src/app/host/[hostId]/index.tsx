@@ -12,9 +12,14 @@ import {
 } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, SearchField, Spinner, useThemeColor } from 'heroui-native';
-import { MessagesSquareIcon, SettingsIcon, SquareTerminalIcon } from 'lucide-react-native';
+import {
+  MessagesSquareIcon,
+  SettingsIcon,
+  SquarePenIcon,
+  SquareTerminalIcon,
+} from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { RefreshControl, Text, View } from 'react-native';
+import { Pressable, RefreshControl, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import { HeaderIconButton } from '../../../components/navigation';
@@ -39,7 +44,7 @@ export default function ThreadsScreen(): React.ReactNode {
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
   const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
-  const muted = useThemeColor('muted');
+  const [muted, background, foreground] = useThemeColor(['muted', 'background', 'foreground']);
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheetModal>(null);
 
@@ -169,9 +174,19 @@ export default function ThreadsScreen(): React.ReactNode {
             <SearchField.ClearButton />
           </SearchField.Group>
         </SearchField>
-        <Button size="sm" onPress={() => sheetRef.current?.present()}>
-          <Button.Label>{t('newThread')}</Button.Label>
-        </Button>
+        {/* Inverted rather than accent-tinted, matching the reference's near-black pill;
+            the token pair flips with the colour scheme so it stays legible in dark mode. */}
+        <Pressable
+          accessibilityRole="button"
+          className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5"
+          onPress={() => sheetRef.current?.present()}
+          style={({ pressed }) => ({ backgroundColor: foreground, opacity: pressed ? 0.7 : 1 })}
+        >
+          <SquarePenIcon size={15} color={background} />
+          <Text className="font-medium text-subhead" style={{ color: background }}>
+            {t('newThread')}
+          </Text>
+        </Pressable>
       </View>
       <NewThreadSheet
         ref={sheetRef}

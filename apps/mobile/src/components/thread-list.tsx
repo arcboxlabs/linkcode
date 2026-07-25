@@ -1,6 +1,6 @@
 import type { SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
-import { ListGroup, useThemeColor } from 'heroui-native';
+import { useThemeColor } from 'heroui-native';
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -68,7 +68,7 @@ export function ThreadList({
           collapsed={collapsed.has(group.key)}
           onToggle={() => toggle(group.key)}
         >
-          <ListGroup>
+          <View>
             {group.sessions.map((session) => (
               <ThreadRow
                 key={session.sessionId}
@@ -76,7 +76,7 @@ export function ThreadList({
                 onPress={() => onOpenThread(session.sessionId)}
               />
             ))}
-          </ListGroup>
+          </View>
         </CollapsibleGroup>
       ))}
     </View>
