@@ -18,6 +18,8 @@ import { Select, SelectItem, SelectPopup, SelectPrimitive } from 'coss-ui/compon
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import {
+  BotIcon,
+  BotOffIcon,
   CameraIcon,
   ChevronDownIcon,
   CircleStopIcon,
@@ -32,6 +34,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from './capture';
+import { useSimulatorConsent, useSimulatorConsentRequest } from './consent';
 import { useSimulatorPanelStore } from './panel-store';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
@@ -271,6 +274,12 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   );
   const measuredFps = useReceivedFps(subscribeFrames, showFps && canStream);
   const agentDriving = useSimulatorAgentActivity(client, udid);
+  const consent = useSimulatorConsent(client);
+  const consentRequest = useSimulatorConsentRequest(client);
+  const agentAccess = udid === null ? undefined : consent.decisionFor(udid);
+  /** Set while an agent is suspended on *this* device, waiting to be let in. */
+  const consentPrompt =
+    udid !== null && consentRequest?.udid === udid ? { udid, tool: consentRequest.tool } : null;
 
   const flagBusy = useCallback(() => {
     setBusy(true);
@@ -415,17 +424,42 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
                 ))}
               </SelectPopup>
             </Select>
-            {booted && sessionId !== null && (
+            <div className="ml-auto flex items-center">
+              {/* Agent access is a property of the device, so it sits with the device controls
+                  rather than on the stage — reachable even when nothing is streaming. */}
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="ml-auto text-muted-foreground"
-                aria-label={t('simulatorShutdown')}
-                onClick={shutdownDevice}
+                className={
+                  agentAccess === 'granted' ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                }
+                aria-label={
+                  agentAccess === 'granted' ? t('simulatorAgentRevoke') : t('simulatorAgentAllow')
+                }
+                aria-pressed={agentAccess === 'granted'}
+                onClick={() =>
+                  udid !== null &&
+                  consent.decide(udid, agentAccess === 'granted' ? 'denied' : 'granted')
+                }
               >
-                <PowerIcon className="size-4" />
+                {agentAccess === 'granted' ? (
+                  <BotIcon className="size-4" />
+                ) : (
+                  <BotOffIcon className="size-4" />
+                )}
               </Button>
-            )}
+              {booted && sessionId !== null && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground"
+                  aria-label={t('simulatorShutdown')}
+                  onClick={shutdownDevice}
+                >
+                  <PowerIcon className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
           {canStream && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -605,6 +639,28 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
             <Button variant="outline" size="sm" onClick={() => leaseRef.current?.restart()}>
               {t('simulatorRetry')}
             </Button>
+          </div>
+        )}
+        {consentPrompt !== null && (
+          // Over the whole panel, not the stage: an agent is blocked until this is answered, and
+          // the device may not even be streaming yet (its first tool call is often the boot).
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/90 px-6 text-center">
+            <span className="font-medium text-sm">{t('simulatorConsentTitle')}</span>
+            <span className="text-muted-foreground text-xs">
+              {t('simulatorConsentBody', { tool: consentPrompt.tool })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => consent.decide(consentPrompt.udid, 'denied')}
+              >
+                {t('simulatorConsentDeny')}
+              </Button>
+              <Button size="sm" onClick={() => consent.decide(consentPrompt.udid, 'granted')}>
+                {t('simulatorConsentAllow')}
+              </Button>
+            </div>
           </div>
         )}
         {busy && (

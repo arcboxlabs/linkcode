@@ -389,6 +389,13 @@ export const en = {
       simulatorHome: 'Home',
       simulatorLock: 'Lock screen',
       simulatorAgentDriving: 'An agent is using this device',
+      simulatorAgentAllow: 'Allow agents to use this device',
+      simulatorAgentRevoke: 'Stop allowing agents to use this device',
+      simulatorConsentTitle: 'An agent wants to control this device',
+      simulatorConsentBody:
+        'It is calling {tool}. The agent waits until you answer; denying leaves the device fully usable by hand.',
+      simulatorConsentAllow: 'Allow',
+      simulatorConsentDeny: 'Deny',
       simulatorBooted: 'Booted',
       simulatorShutdown: 'Shut down device',
       simulatorDetach: 'Detach simulator',
