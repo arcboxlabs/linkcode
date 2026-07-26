@@ -4,6 +4,12 @@
  * asserts the device picker reflects the host's real device list. When a booted simulator exists,
  * it also starts a pi session and asserts live frames paint the canvas end-to-end. Run
  * `pnpm -F @linkcode/desktop e2e:simulator` after building daemon and desktop; macOS only.
+ *
+ * Three knobs for driving it as a demo rather than a check: `LINKCODE_E2E_KEEP_OPEN=1` hands the
+ * app over at the pause and waits for the operator to close the window; `LINKCODE_E2E_HOLD_MS`
+ * widens that pause instead of ending it by hand; and `LINKCODE_E2E_SKIP_RECLAIM=1` drops the
+ * closing CODE-419 check — that one ends by killing the daemon, which is correct for a test and
+ * looks like a crash in front of an audience.
  */
 
 import type { ChildProcess } from 'node:child_process';
@@ -37,9 +43,22 @@ const electronBinary = require('electron') as unknown as string;
 
 const PORT = 43000 + (process.pid % 1000);
 
+/** How long the deep pass parks with the window live for a human to drive. */
+const HOLD_MS = positiveInt(process.env.LINKCODE_E2E_HOLD_MS) ?? 30000;
+/** Skip the reclaim check, whose last act is to SIGTERM the daemon (see the header). */
+const SKIP_RECLAIM = process.env.LINKCODE_E2E_SKIP_RECLAIM === '1';
+/** Park at the hold point until the operator closes the window, rather than on a timer. */
+const KEEP_OPEN = process.env.LINKCODE_E2E_KEEP_OPEN === '1';
+
+/** Parse an env override, ignoring anything that isn't a positive number. */
+function positiveInt(raw: string | undefined): number | undefined {
+  const value = Number(raw);
+  return raw !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 54;
+const WIRE_VERSION = 55;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -426,6 +445,22 @@ async function run(
       await waitForHashChange(beforeRotate, 'rotating the device');
       console.log('rotate button rotated the device');
 
+      // Simulator.app shortcut parity (CODE-414). The bindings are owner-scoped, not focus-scoped,
+      // so pressing on the window is enough while the panel is on screen. Home is the one with an
+      // unmistakable visual result, so it is what proves the chord actually reached the device;
+      // the volume keys are asserted only as far as "the panel accepted them without erroring",
+      // since the iOS volume HUD is too small to read out of a downsampled canvas hash.
+      const beforeHomeChord = await canvasHash();
+      await win.keyboard.press('Meta+Shift+KeyH');
+      await waitForHashChange(beforeHomeChord, 'the Home shortcut');
+      console.log('Cmd+Shift+H returned the device to the home screen');
+
+      await win.keyboard.press('Meta+ArrowUp');
+      await win.keyboard.press('Meta+ArrowDown');
+      await win.waitForTimeout(1000);
+      if ((await win.getByText('is busy').count()) > 0) fail('the volume shortcuts were refused');
+      console.log('Cmd+Up / Cmd+Down volume chords accepted (HUD needs a human eye)');
+
       // Live reconfigure (CODE-433): a stream start with new options retunes the running stream in
       // place. Assert the capture-worker process is NOT respawned (same pid) and the picture keeps
       // painting — the seamless path the panel's tuning row rides. A start on an already-running
@@ -584,8 +619,19 @@ async function run(
       await win.screenshot({ path: tapShot });
       console.log(`screenshot: ${tapShot}`);
     }
-    console.log('holding the window open for 30s for manual inspection…');
-    await win.waitForTimeout(30000);
+    if (KEEP_OPEN) {
+      // Demo mode: hand the app over and wait. Everything up to here has been asserted; the two
+      // checks below (closing the section) are given up deliberately, because the alternative is
+      // yanking the window out from under whoever is driving it.
+      console.log(
+        'app is yours — close the window when you are done (section-close checks skipped)',
+      );
+      await win.waitForEvent('close', { timeout: 0 });
+      console.log('window closed; tearing down the harness daemon');
+      return null;
+    }
+    console.log(`holding the window open for ${Math.round(HOLD_MS / 1000)}s — drive it by hand…`);
+    await win.waitForTimeout(HOLD_MS);
   } else {
     console.log('no booted simulator — skipping the live-stream pass');
   }
@@ -689,7 +735,11 @@ async function main(): Promise<void> {
       throw error;
     }
     // Last, because it ends the daemon: nothing above may depend on it afterwards.
-    if (reclaimTarget !== null) await assertShutdownReclaim(daemon, reclaimTarget);
+    if (reclaimTarget !== null && !SKIP_RECLAIM) {
+      await assertShutdownReclaim(daemon, reclaimTarget);
+    } else if (SKIP_RECLAIM) {
+      console.log('LINKCODE_E2E_SKIP_RECLAIM=1 — leaving the daemon up, reclaim NOT verified');
+    }
     passed = true;
     console.log('PASS');
   } finally {

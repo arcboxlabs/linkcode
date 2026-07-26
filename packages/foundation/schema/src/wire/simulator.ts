@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SessionIdSchema } from '../model/primitives';
 import {
+  SimulatorButtonSchema,
   SimulatorConsentDecisionSchema,
   SimulatorConsentStateSchema,
   SimulatorDeviceSchema,
@@ -15,7 +16,6 @@ import { WireRequestIdSchema } from './request';
 const udid = z.string().min(1);
 /** A normalized screen coordinate, 0..1 from the top-left. */
 const coord = z.number().min(0).max(1);
-const SimulatorButtonSchema = z.enum(['home', 'lock']);
 
 /**
  * iOS Simulator wire variants. Commands are session-scoped: the engine's simulator service

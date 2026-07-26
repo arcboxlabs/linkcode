@@ -102,6 +102,14 @@ fn main() {
     if subcommand.as_deref() == Some("capture-worker") {
         capture::run_worker();
     }
+    // The crash-isolated device-state watcher (spawned by the sidecar alongside each stream).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("state-watcher") {
+        let udid = std::env::args()
+            .nth(2)
+            .expect("usage: state-watcher <udid>");
+        std::process::exit(private::notify::run_state_watcher(&udid));
+    }
     // Hidden diagnostic path to exercise the private-framework layer against a real booted device:
     // `linkcode-sim diag-interactive <udid> <out.jpg>`.
     #[cfg(target_os = "macos")]
@@ -132,6 +140,20 @@ fn main() {
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("diag-reconfigure") {
         diag_reconfigure();
+        return;
+    }
+    // Diagnostic: press a hardware button, for eyeballing the volume HUD against a real device:
+    // `linkcode-sim diag-button <udid> <home|lock|volume-up|volume-down>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-button") {
+        diag_button();
+        return;
+    }
+    // Diagnostic: report CoreSimulator's view of a device's boot state — the signal the stream
+    // pusher uses to reap a dead boot session: `linkcode-sim diag-state <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-state") {
+        diag_state();
         return;
     }
 
@@ -227,8 +249,15 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
     let outcome = match request.op {
         Op::Probe => probe_with_capabilities(),
         Op::List => simctl::list(),
-        Op::Boot { udid } => simctl::boot(&udid),
-        Op::Shutdown { udid } => simctl::shutdown(&udid),
+        // Both ends of a boot session invalidate the warmed HID client bound to the old one.
+        Op::Boot { udid } => {
+            interactive::forget(&udid);
+            simctl::boot(&udid)
+        }
+        Op::Shutdown { udid } => {
+            interactive::forget(&udid);
+            simctl::shutdown(&udid)
+        }
         Op::Install { udid, app_path } => simctl::install(&udid, &app_path),
         Op::Launch { udid, bundle_id } => simctl::launch(&udid, &bundle_id),
         Op::Terminate { udid, bundle_id } => simctl::terminate(&udid, &bundle_id),
@@ -520,6 +549,40 @@ fn diag_rotate() {
     let device = private::SimDevice::resolve(&udid).expect("device not found");
     let ok = device.set_orientation(orientation);
     eprintln!("set_orientation({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): press one hardware button on a booted device. Volume is the
+/// reason this exists — it is the one button whose only proof is the on-device HUD, and the
+/// consumer-page HID path it takes is different from home/lock's legacy button message.
+#[cfg(target_os = "macos")]
+fn diag_button() {
+    use crate::private::Button;
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-button <udid> <home|lock|volume-up|volume-down>");
+    let name = std::env::args().nth(3).unwrap_or_else(|| "home".to_owned());
+    let button = match name.as_str() {
+        "home" => Button::Home,
+        "lock" => Button::Lock,
+        "volume-up" => Button::VolumeUp,
+        "volume-down" => Button::VolumeDown,
+        other => panic!("unknown button: {other}"),
+    };
+    let device = private::SimDevice::resolve(&udid).expect("device not found");
+    let input = private::Input::warm(&device).expect("HID unavailable for this device");
+    let ok = input.button(button, std::time::Duration::from_millis(80));
+    eprintln!("button({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): print whether CoreSimulator reports the device Booted — ground
+/// truth for the reap-on-shutdown signal in `interactive::push_stream`.
+#[cfg(target_os = "macos")]
+fn diag_state() {
+    let udid = std::env::args().nth(2).expect("usage: diag-state <udid>");
+    match private::SimDevice::resolve(&udid) {
+        Some(device) => eprintln!("is_booted({udid}) -> {}", device.is_booted()),
+        None => eprintln!("device {udid} not found"),
+    }
 }
 
 /// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the

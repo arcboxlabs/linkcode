@@ -137,6 +137,8 @@ fn default_scale() -> f64 {
 pub enum ButtonKind {
     Home,
     Lock,
+    VolumeUp,
+    VolumeDown,
 }
 
 /// Interface orientation for `rotate`; maps 1:1 onto the private `Orientation`.

@@ -91,11 +91,21 @@ const HOME_ARG0: u32 = 0x0;
 const LOCK_ARG0: u32 = 0x1;
 const LEGACY_BUTTON_TARGET: u32 = 0x33;
 
+/// HID consumer page, where the volume keys live. Unlike home/lock, the volume rockers are not on
+/// the legacy `IndigoHIDMessageForButton` path at all — they are ordinary HID usages routed through
+/// `IndigoHIDMessageForHIDArbitrary`, the same call the keyboard uses with page 7.
+const CONSUMER_USAGE_PAGE: u32 = 12;
+/// Consumer-page Volume Increment / Decrement (HID Usage Tables 1.12, §15).
+const VOLUME_UP_USAGE: u32 = 233;
+const VOLUME_DOWN_USAGE: u32 = 234;
+
 /// Which hardware button to press.
 #[derive(Clone, Copy)]
 pub enum Button {
     Home,
     Lock,
+    VolumeUp,
+    VolumeDown,
 }
 
 /// Touch phase for a streamed gesture.
@@ -243,11 +253,35 @@ impl Input {
         ok
     }
 
-    /// Press a hardware button (home/lock) for `hold`.
+    /// Press and release one consumer-page (page 12) HID usage — the volume rockers.
+    fn consumer_key(&self, usage: u32, hold: Duration) -> bool {
+        let Some(hid) = self.symbols.hid_arbitrary else {
+            return false;
+        };
+        let send_op = |operation: u32| -> bool {
+            // SAFETY: symbol resolved above; returns a malloc'd message consumed by send.
+            let message = unsafe { hid(TOUCH_TARGET, CONSUMER_USAGE_PAGE, usage, operation) };
+            if message.is_null() {
+                return false;
+            }
+            self.send_message(message);
+            true
+        };
+        if !send_op(1) {
+            return false;
+        }
+        sleep(hold.max(Duration::from_millis(20)));
+        send_op(2)
+    }
+
+    /// Press a hardware button for `hold`. Home and lock ride the legacy button message; the volume
+    /// rockers are consumer-page HID usages and take the arbitrary-HID path instead.
     pub fn button(&self, button: Button, hold: Duration) -> bool {
         let arg0 = match button {
             Button::Home => HOME_ARG0,
             Button::Lock => LOCK_ARG0,
+            Button::VolumeUp => return self.consumer_key(VOLUME_UP_USAGE, hold),
+            Button::VolumeDown => return self.consumer_key(VOLUME_DOWN_USAGE, hold),
         };
         // SAFETY: button fn resolved in `resolve_symbols`; direction 1=down, 2=up (0 crashes
         // backboardd). Each returns a freshly malloc'd message consumed by send (freeWhenDone).

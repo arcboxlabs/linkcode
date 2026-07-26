@@ -1,6 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type {
   SessionId,
+  SimulatorButton,
   SimulatorDevice,
   SimulatorOrientation,
   SimulatorStatus,
@@ -38,6 +39,7 @@ import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from 
 import { useSimulatorConsent, useSimulatorConsentRequest } from './consent';
 import { SimulatorDeviceTabs } from './device-tabs';
 import { selectDeviceTabs, simulatorSessionKey, useSimulatorPanelStore } from './panel-store';
+import { useSimulatorShortcuts } from './shortcuts';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -173,6 +175,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Shortcut owner: the chords below only fire while this panel is on screen. */
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const leaseRef = useRef<SimulatorStreamLease | null>(null);
   const rotateStateRef = useRef<{ udid: string | null; orientation: SimulatorOrientation }>({
     udid: null,
@@ -311,10 +315,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     busyTimerRef.current = setTimeout(() => setBusy(false), BUSY_BANNER_MS);
   }, []);
 
-  if (status !== null && !status.available) {
-    return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
-  }
-
   const handleTouch = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {
     if (ownerSessionId === null || udid === null) return;
     const request = client.simulatorTouch(ownerSessionId, udid, phase, point.x, point.y);
@@ -343,7 +343,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       .then(() => client.simulatorKey(ownerSessionId, udid, 0x19, [0xe3]))
       .catch(flagBusy);
   };
-  const pressButton = (button: 'home' | 'lock'): void => {
+  const pressButton = (button: SimulatorButton): void => {
     if (ownerSessionId === null || udid === null) return;
     void client.simulatorButton(ownerSessionId, udid, button).catch(flagBusy);
   };
@@ -399,6 +399,19 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       })
       .catch(flagBusy);
   };
+  // Simulator.app's chords, scoped to this panel (CODE-414). Declared before the availability
+  // guard below because hooks must run unconditionally.
+  useSimulatorShortcuts({
+    owner: panelRef,
+    enabled: ownerSessionId !== null && udid !== null,
+    onButton: pressButton,
+    onRotate: handleRotate,
+  });
+
+  if (status !== null && !status.available) {
+    return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
+  }
+
   const toggleRecording = (): void => {
     if (recorder.recording) {
       recorder.stop();
@@ -408,7 +421,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={panelRef} className="flex h-full min-h-0 flex-col">
       {openUdids.length > 0 && device !== null && (
         <div className="flex shrink-0 flex-col gap-1 border-border border-b px-2 py-1.5">
           <div className="flex items-center gap-2">

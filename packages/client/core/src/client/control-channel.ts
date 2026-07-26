@@ -35,6 +35,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorButton,
   SimulatorConsentDecision,
   SimulatorConsentState,
   SimulatorDevice,
@@ -829,7 +830,7 @@ export class ControlChannel {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.button',
