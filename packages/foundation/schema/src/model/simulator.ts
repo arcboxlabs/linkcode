@@ -33,6 +33,28 @@ export const SimulatorStatusSchema = z.object({
 });
 export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
 
+/**
+ * Whether an agent may drive a device (CODE-420). Absent = never asked; the first agent tool call
+ * on such a device suspends and asks the user. The panel's own manual control is never gated by
+ * this — a denied device is still fully usable by hand.
+ */
+export const SimulatorConsentDecisionSchema = z.enum(['granted', 'denied']);
+export type SimulatorConsentDecision = z.infer<typeof SimulatorConsentDecisionSchema>;
+
+export const SimulatorConsentEntrySchema = z.object({
+  udid: z.string().min(1),
+  decision: SimulatorConsentDecisionSchema,
+});
+export type SimulatorConsentEntry = z.infer<typeof SimulatorConsentEntrySchema>;
+
+/** Consent state as a whole: the per-device decisions plus the global agent-tools kill switch. */
+export const SimulatorConsentStateSchema = z.object({
+  entries: z.array(SimulatorConsentEntrySchema),
+  /** When false, every simulator MCP tool is refused regardless of per-device consent. */
+  agentToolsEnabled: z.boolean(),
+});
+export type SimulatorConsentState = z.infer<typeof SimulatorConsentStateSchema>;
+
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
 

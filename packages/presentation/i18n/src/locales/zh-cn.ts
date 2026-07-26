@@ -378,6 +378,13 @@ export const zhCN = {
       simulatorHome: '主屏幕',
       simulatorLock: '锁屏',
       simulatorAgentDriving: 'Agent 正在使用此设备',
+      simulatorAgentAllow: '允许 agent 使用此设备',
+      simulatorAgentRevoke: '取消 agent 对此设备的授权',
+      simulatorConsentTitle: 'Agent 请求控制此设备',
+      simulatorConsentBody:
+        '它想调用 {tool}。在你答复前，agent 会一直等待；拒绝不影响你自己操作这台设备。',
+      simulatorConsentAllow: '允许',
+      simulatorConsentDeny: '拒绝',
       simulatorBooted: '已启动',
       simulatorShutdown: '关闭设备',
       simulatorDetach: '断开画面',

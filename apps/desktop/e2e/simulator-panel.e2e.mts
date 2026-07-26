@@ -39,7 +39,7 @@ const PORT = 43000 + (process.pid % 1000);
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 53;
+const WIRE_VERSION = 54;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);

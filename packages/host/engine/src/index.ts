@@ -24,6 +24,8 @@ export type {
   SimulatorImageFormat,
   SimulatorProbe,
 } from './simulator/backend';
+export type { SimulatorConsentStore } from './simulator/consent';
+export { InMemorySimulatorConsentStore, SimulatorConsentService } from './simulator/consent';
 export type { SimulatorMcpProvider } from './simulator/mcp';
 export { MCP_CAPABLE_AGENT_KINDS } from './simulator/mcp';
 export { SimulatorService } from './simulator/service';

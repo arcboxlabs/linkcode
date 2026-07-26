@@ -6,6 +6,7 @@ import { noop } from 'foxts/noop';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
+import type { SimulatorConsentService } from './consent';
 import type { SimulatorService } from './service';
 
 type SimulatorRequest = Extract<
@@ -31,7 +32,10 @@ type SimulatorRequest = Extract<
       | 'simulator.rotate'
       | 'simulator.key'
       | 'simulator.stream.start'
-      | 'simulator.stream.stop';
+      | 'simulator.stream.stop'
+      | 'simulator.consent.get'
+      | 'simulator.consent.set'
+      | 'simulator.consent.set-agent-tools';
   }
 >;
 
@@ -52,6 +56,7 @@ export class SimulatorRequestHandler {
     private readonly simulators: SimulatorService | undefined,
     private readonly transport: Transport,
     private readonly responder: WireResponder,
+    private readonly consent: SimulatorConsentService,
   ) {}
 
   handle(payload: SimulatorRequest): Effect.Effect<void> {
@@ -280,6 +285,38 @@ export class SimulatorRequestHandler {
               this.unsubscribeFrames(payload.udid);
               await simulators.streamStop(payload.sessionId, payload.udid);
             }
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      // Consent is answered without a simulator backend: the settings surface must stay usable on
+      // a host that cannot run simulators at all.
+      case 'simulator.consent.get':
+        return this.responder.reply(
+          payload.clientReqId,
+          simulatorOperation('simulator.consent.get', 'Failed to read consent', async () => {
+            this.transport.send(
+              createWireMessage({
+                kind: 'simulator.consent.state',
+                replyTo: payload.clientReqId,
+                state: this.consent.state(),
+              }),
+            );
+            await Promise.resolve();
+          }),
+        );
+      case 'simulator.consent.set':
+        return this.responder.reply(
+          payload.clientReqId,
+          simulatorOperation('simulator.consent.set', 'Failed to record consent', async () => {
+            await this.consent.decide(payload.udid, payload.decision);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.consent.set-agent-tools':
+        return this.responder.reply(
+          payload.clientReqId,
+          simulatorOperation('simulator.consent.set', 'Failed to update consent', async () => {
+            await this.consent.setAgentToolsEnabled(payload.enabled);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );

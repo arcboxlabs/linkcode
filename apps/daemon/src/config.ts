@@ -2,12 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
   DAEMON_DEFAULT_PORT,
   ProviderConfigSchema,
+  SimulatorConsentStateSchema,
 } from '@linkcode/schema';
 import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
@@ -29,6 +30,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
+  simulatorConsent: SimulatorConsentState;
 }
 
 const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
@@ -40,6 +43,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  simulatorConsent?: unknown;
 }
 
 function configPath(): string {
@@ -101,7 +105,28 @@ export function loadConfig(): DaemonConfig {
     ),
     providers: parseProviders(file.providers),
     accounts: parseAccounts(file.accounts),
+    simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
+}
+
+/**
+ * A malformed blob falls back to "nothing decided yet", which re-asks rather than silently
+ * granting: consent is the one field where losing state must fail closed.
+ */
+function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
+  const empty: SimulatorConsentState = { entries: [], agentToolsEnabled: true };
+  if (raw === undefined) return empty;
+  const parsed = SimulatorConsentStateSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn({ operation: 'config.load' }, 'Dropping invalid simulator consent config');
+    return empty;
+  }
+  return parsed.data;
+}
+
+/** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
+export function saveSimulatorConsent(state: SimulatorConsentState): void {
+  writeConfigField('simulatorConsent', state);
 }
 
 /**
@@ -167,7 +192,10 @@ export function saveAccounts(accounts: Accounts): void {
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
+function writeConfigField(
+  key: 'providers' | 'accounts' | 'simulatorConsent',
+  value: unknown,
+): void {
   const path = configPath();
   let file: Record<string, unknown> = {};
   try {
