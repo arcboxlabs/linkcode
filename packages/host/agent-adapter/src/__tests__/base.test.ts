@@ -275,7 +275,7 @@ describe('BaseAgentAdapter command/shell defaults', () => {
     await a.start({ kind: 'pi', cwd: '/repo' });
     expect(a.seen).toContainEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: false, shellCommand: false },
+      capabilities: { slashCommands: true, shellCommand: false },
     });
   });
 

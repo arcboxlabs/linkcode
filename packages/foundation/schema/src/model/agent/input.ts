@@ -117,7 +117,7 @@ export const AGENT_INPUT_CAPABILITIES = {
   'claude-code': { slashCommands: true, shellCommand: false },
   codex: { slashCommands: true, shellCommand: true },
   opencode: { slashCommands: true, shellCommand: true },
-  pi: { slashCommands: false, shellCommand: false },
+  pi: { slashCommands: true, shellCommand: false },
   'grok-build': { slashCommands: false, shellCommand: false },
 } as const satisfies Readonly<Record<AgentKind, AgentCapabilities>>;
 

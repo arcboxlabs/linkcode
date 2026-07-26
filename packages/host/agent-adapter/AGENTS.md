@@ -22,7 +22,7 @@ Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin)
 | --- | --- | --- |
 | claude-code | `@anthropic-ai/claude-agent-sdk` | 0.3.206 |
 | codex | `@openai/codex` (CLI carrier — no JS SDK) | 0.144.1 |
-| opencode | `@opencode-ai/sdk` | 1.17.18 |
+| opencode | `@opencode-ai/sdk` | 1.18.3 |
 | pi | `@earendil-works/pi-coding-agent` | 0.80.6 |
 | grok-build | none (user-installed `grok` CLI; headless `-p`, not ACP) | detect `grok --version` (verified 0.2.102) |
 
@@ -45,8 +45,8 @@ Every new adapter MUST honor these (`base.ts`); downstream relies on them, they 
 | --- | --- | --- | --- |
 | claude-code | ✓ | `Query#supportedCommands()` at Query creation + `commands_changed` full-replace push | ✗ (`!` bash mode is a TUI input-box feature with no verified programmatic entry) |
 | codex | ✓ (`/compact` + enabled skills) | `skills/list` at start + `skills/changed` invalidation | ✓ `thread/shellCommand` |
-| opencode | ✓ | `command.list({directory})` once at start (no change events exist — snapshot only) | ✓ `session.shell` |
-| pi | ✗ (the SDK's own `session.prompt` still expands `/` text it receives — untouched pass-through) | — | ✗ |
+| opencode | ✓ (commands + skills) | `command.list({directory})` once at start (no change events exist — snapshot only); binary ≥1.18 includes skills as `source:'skill'` entries | ✓ `session.shell` |
+| pi | ✓ (prompt templates + skills as `skill:<name>`) | `DefaultResourceLoader.getPrompts()` + `getSkills()` once at start (snapshot only) | ✗ |
 
 - **claude-code**: invocation = pushing `/name args` as a plain user message — the vendored CLI parses a leading `/` on every user message even in SDK streaming-input mode (verified in the binary), so `onCommand` rides `onPrompt` and the normal result-frame settle. Live-verified on the pinned 0.3.206×2.1.206 pair: a local command run through that path returns a synthetic assistant message + a zero-cost `result` — status does not hang. `SlashCommand.aliases` ride the normalized `AgentCommand.aliases` field (`agentCommandMatches` accepts them in composer/engine; menus display only the canonical name; invocation pushes the typed alias, which the CLI resolves itself). `system/local_command_output` (never observed live, handled per SDK types) renders as assistant text bracketed by `freshSegment()`.
 - **claude-code `/usage` is the one intercepted command (CODE-213)**: mirroring the CLI's own TUI (a dialog, never transcript text), `onCommand` matching the catalog's `usage` entry (canonical or aliases `/cost`/`/stats`; literal name only until the async catalog lands) never forwards a prompt — `reportUsage()` serves it from the Query's get-usage control request and emits a structured `usage-report` event; failures emit a recoverable `error`, never a text fallback and never a silent no-op. No `result` frame follows, so `reportUsage` brackets itself with status `running`→`idle` per the base.ts turn contract — the control request is network-bound and can span a process respawn (crash / effort-max rebuild), and without the bracket the engine's input gate rejects concurrent input while the composer looks idle. The SDK method is EXPERIMENTAL (`usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` — the name itself warns it will be renamed); it is feature-detected and confined to `reportUsage()` + `mapClaudeUsageReport()` (which zod-parses the reply at the trust boundary), verified against SDK 0.3.206 (live: the pinned pair advertises `aliases:['cost','stats']`).
