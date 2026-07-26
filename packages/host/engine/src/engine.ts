@@ -35,6 +35,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorConsentService } from './simulator/consent';
 import { SimulatorRequestHandler } from './simulator/request-handler';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
@@ -105,7 +106,13 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
-  const simulatorRequests = new SimulatorRequestHandler(simulators, transport, responder);
+  const simulatorConsent = deps.simulatorConsent ?? new SimulatorConsentService();
+  const simulatorRequests = new SimulatorRequestHandler(
+    simulators,
+    transport,
+    responder,
+    simulatorConsent,
+  );
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
@@ -289,6 +296,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalize('file-host.shutdown', () => fileHost.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
+      // Release consent waiters first: a tool suspended on a prompt nobody can answer any more
+      // would otherwise hold the simulator shutdown behind its two-minute timeout.
+      simulatorConsent.close();
       yield* finalizeEffect('simulators.shutdown', simulators?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());

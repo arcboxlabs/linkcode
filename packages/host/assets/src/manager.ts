@@ -3,8 +3,10 @@ import type {
   AssetInstallEvent,
   InstalledAsset,
   ManagedAssetId,
+  ManagedAssetKey,
   ManagedAssetStatus,
 } from '@linkcode/schema';
+import { managedAssetKey } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AssetDescriptor } from './catalog';
 import { CATALOG, isClosureDescriptor } from './catalog';
@@ -33,17 +35,19 @@ export type { AssetInstallEvent } from '@linkcode/schema';
  * cannot change while the daemon runs; availability is a synchronous on-disk scan, `ensure()` async.
  */
 export class AssetManager {
-  private readonly descriptors: ReadonlyMap<ManagedAssetId, AssetDescriptor>;
-  private readonly wanted = new Map<ManagedAssetId, string | undefined>();
+  private readonly descriptors: ReadonlyMap<ManagedAssetKey, AssetDescriptor>;
+  private readonly wanted = new Map<ManagedAssetKey, { id: ManagedAssetId; version?: string }>();
   private readonly subscribers = new Set<(event: AssetInstallEvent) => void>();
 
   constructor(private readonly options: AssetManagerOptions = {}) {
-    const catalog = options.catalog ?? Object.values(CATALOG);
-    this.descriptors = new Map(catalog.map((descriptor) => [descriptor.id, descriptor]));
+    const catalog = options.catalog ?? CATALOG;
+    this.descriptors = new Map(
+      catalog.map((descriptor) => [managedAssetKey(descriptor.id), descriptor]),
+    );
     for (const descriptor of this.descriptors.values()) {
       const wanted = wantedVersion(descriptor.version, options.pinFrom);
       if (!isClosureDescriptor(descriptor)) {
-        this.wanted.set(descriptor.id, wanted);
+        this.wanted.set(managedAssetKey(descriptor.id), { id: descriptor.id, version: wanted });
         continue;
       }
       // A closure manifest is generated from the same lockfile the SDK pin comes from. When the
@@ -53,18 +57,21 @@ export class AssetManager {
       // exclude the closure from node_modules), the manifest itself is the pin: it was compiled
       // into this daemon alongside the adapter, so the pair agrees by construction.
       const stale = wanted !== undefined && wanted !== descriptor.closure.version;
-      this.wanted.set(descriptor.id, stale ? undefined : descriptor.closure.version);
+      this.wanted.set(managedAssetKey(descriptor.id), {
+        id: descriptor.id,
+        version: stale ? undefined : descriptor.closure.version,
+      });
     }
   }
 
   /** The version this host should run, when determinable. */
   wantedVersionOf(id: ManagedAssetId): string | undefined {
-    return this.wanted.get(id);
+    return this.wanted.get(managedAssetKey(id))?.version;
   }
 
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
-    return collectGarbage(this.wanted);
+    return collectGarbage(this.wanted.values());
   }
 
   /**
@@ -74,7 +81,7 @@ export class AssetManager {
    * file (Finder's `.DS_Store`) must not read as consent.
    */
   hasInstallOnDisk(id: ManagedAssetId): boolean {
-    if (!this.descriptors.has(id)) return false;
+    if (!this.descriptors.has(managedAssetKey(id))) return false;
     try {
       return readdirSync(assetDir(id), { withFileTypes: true }).some(
         (entry) => entry.isDirectory() && !entry.name.startsWith('.tmp-'),
@@ -87,7 +94,7 @@ export class AssetManager {
   /** Live snapshot for the `asset.list` wire resource. */
   statuses(): ManagedAssetStatus[] {
     return [...this.descriptors.values()].map((descriptor) => {
-      const version = this.wanted.get(descriptor.id);
+      const version = this.wanted.get(managedAssetKey(descriptor.id))?.version;
       const path = version ? installedPath(descriptor, version) : undefined;
       return {
         id: descriptor.id,
@@ -99,18 +106,18 @@ export class AssetManager {
 
   /** Synchronous: the managed executable path when the wanted version is fully installed. */
   managedBinary(id: ManagedAssetId): string | undefined {
-    const descriptor = this.descriptors.get(id);
+    const descriptor = this.descriptors.get(managedAssetKey(id));
     // A closure installs an importable module tree, not a spawnable binary (see managedEntry).
     if (!descriptor || isClosureDescriptor(descriptor)) return undefined;
-    const version = this.wanted.get(id);
+    const version = this.wanted.get(managedAssetKey(id))?.version;
     return version ? installedPath(descriptor, version) : undefined;
   }
 
   /** Synchronous: the entry module of an installed closure asset (in-process import target). */
   managedEntry(id: ManagedAssetId): string | undefined {
-    const descriptor = this.descriptors.get(id);
+    const descriptor = this.descriptors.get(managedAssetKey(id));
     if (!descriptor || !isClosureDescriptor(descriptor)) return undefined;
-    const version = this.wanted.get(id);
+    const version = this.wanted.get(managedAssetKey(id))?.version;
     return version ? installedPath(descriptor, version) : undefined;
   }
 
@@ -121,8 +128,8 @@ export class AssetManager {
    * repairable: first downloads stay user-prompted.
    */
   needsRepair(id: ManagedAssetId): boolean {
-    const descriptor = this.descriptors.get(id);
-    const version = this.wanted.get(id);
+    const descriptor = this.descriptors.get(managedAssetKey(id));
+    const version = this.wanted.get(managedAssetKey(id))?.version;
     if (!descriptor || !version || !installedPath(descriptor, version)) return false;
     return !installedComplete(descriptor, version, this.options.platform);
   }
@@ -135,8 +142,8 @@ export class AssetManager {
     id: ManagedAssetId,
     onProgress?: (progress: DownloadProgress) => void,
   ): Promise<InstalledAsset | undefined> {
-    const descriptor = this.descriptors.get(id);
-    const version = this.wanted.get(id);
+    const descriptor = this.descriptors.get(managedAssetKey(id));
+    const version = this.wanted.get(managedAssetKey(id))?.version;
     if (!descriptor || !version) return undefined;
     const emitProgress = (progress: DownloadProgress) => {
       onProgress?.(progress);

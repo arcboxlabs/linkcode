@@ -20,6 +20,8 @@ import {
   AttachedTerminalPanel,
   isAbsoluteFilePath,
   locateFileArtifact,
+  SimulatorAutoReveal,
+  suppressSimulatorAutoReveal,
   TerminalPanel,
   useCloudHosts,
   useSelectedHostStore,
@@ -238,6 +240,7 @@ export function DesktopShell({
   );
 
   const active = activeSession;
+  const activeSessionId = active?.sessionId ?? null;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -410,7 +413,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
-        activeSessionId={active?.sessionId ?? null}
+        activeSessionId={activeSessionId}
         themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
@@ -419,7 +422,14 @@ export function DesktopShell({
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
         onAddSection={addRightSection}
-        onCloseSection={closeRightSection}
+        onCloseSection={(section) => {
+          // Closing the simulator section is an explicit "not now" — stop auto-revealing it for
+          // this thread, however busy the agent gets on the device afterwards.
+          if (section === 'simulator' && activeSessionId !== null) {
+            suppressSimulatorAutoReveal(activeSessionId);
+          }
+          closeRightSection(section);
+        }}
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}
@@ -545,6 +555,12 @@ export function DesktopShell({
       data-shell-vertical-animating={verticalAnimating ? '' : undefined}
       data-shell-seam={sidebarTransition.paneVisible ? '' : undefined}
     >
+      {/* Headless: an agent reaching for a simulator brings the section forward once, so the user
+          sees the device it is working on without having to remember to add the section. */}
+      <SimulatorAutoReveal
+        sessionId={activeSessionId}
+        onReveal={() => openRightPanelSection('simulator')}
+      />
       <DesktopChrome
         header={header}
         navigation={navigation}

@@ -667,7 +667,10 @@ describe('NewSessionSurface', () => {
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: { type: 'prompt', content: [{ type: 'text', text: '"package.json"' }] },
+          input: {
+            type: 'prompt',
+            content: [{ type: 'text', text: '[package.json](./package.json)' }],
+          },
         }),
       ),
     );

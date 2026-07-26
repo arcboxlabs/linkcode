@@ -33,6 +33,40 @@ export const SimulatorStatusSchema = z.object({
 });
 export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
 
+/**
+ * Whether an agent may drive a device (CODE-420). Absent = never asked; the first agent tool call
+ * on such a device suspends and asks the user. The panel's own manual control is never gated by
+ * this — a denied device is still fully usable by hand.
+ */
+export const SimulatorConsentDecisionSchema = z.enum(['granted', 'denied']);
+export type SimulatorConsentDecision = z.infer<typeof SimulatorConsentDecisionSchema>;
+
+export const SimulatorConsentEntrySchema = z.object({
+  udid: z.string().min(1),
+  decision: SimulatorConsentDecisionSchema,
+});
+export type SimulatorConsentEntry = z.infer<typeof SimulatorConsentEntrySchema>;
+
+/** Consent state as a whole: the per-device decisions plus the global agent-tools kill switch. */
+export const SimulatorConsentStateSchema = z.object({
+  entries: z.array(SimulatorConsentEntrySchema),
+  /** When false, every simulator MCP tool is refused regardless of per-device consent. */
+  agentToolsEnabled: z.boolean(),
+});
+export type SimulatorConsentState = z.infer<typeof SimulatorConsentStateSchema>;
+
+/**
+ * How many simulators one thread may hold at once. Enforced by the engine's claim registry
+ * (`limit_exceeded`); clients read it to stop offering a fifth device rather than to re-implement
+ * the rule — the host stays the authority either way.
+ */
+export const MAX_SIMULATORS_PER_SESSION = 4;
+
+/** Hardware buttons the sidecar can press. Home/lock ride the legacy Indigo button message;
+ * the volume rockers are consumer-page HID usages (CODE-414). */
+export const SimulatorButtonSchema = z.enum(['home', 'lock', 'volumeUp', 'volumeDown']);
+export type SimulatorButton = z.infer<typeof SimulatorButtonSchema>;
+
 export const SimulatorImageFormatSchema = z.enum(['jpeg', 'png']);
 export type SimulatorImageFormat = z.infer<typeof SimulatorImageFormatSchema>;
 

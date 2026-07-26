@@ -47,8 +47,7 @@ export function assetsRoot(): string {
 }
 
 export function assetDir(id: ManagedAssetId): string {
-  const [namespace, name] = id.split(':', 2);
-  return join(assetsRoot(), namespace, name);
+  return join(assetsRoot(), id.kind, id.name);
 }
 
 export function versionDir(id: ManagedAssetId, version: string): string {

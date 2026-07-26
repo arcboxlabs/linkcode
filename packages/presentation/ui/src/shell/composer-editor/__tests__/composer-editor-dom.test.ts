@@ -31,6 +31,6 @@ describe('composer chip DOM export', () => {
       { discrete: true },
     );
 
-    expect(exported).toEqual(['/review', '$', String.raw`"a\"b.ts"`]);
+    expect(exported).toEqual(['/review', '$', '[a"b.ts](./a"b.ts)']);
   });
 });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { AssetManager } from '@linkcode/assets';
 import type { AgentRuntimes } from '@linkcode/schema';
+import { managedAgentAssetId } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { agentsToRefresh, consentedManagedAgents } from '../../src/managed-agent-refresh';
 
@@ -59,7 +60,7 @@ describe('boot managed-agent refresh (CODE-221)', () => {
     const assets = new AssetManager({
       catalog: [
         {
-          id: 'agent:codex',
+          id: managedAgentAssetId('codex'),
           binaryBase: 'codex',
           version: { kind: 'pinned', version: '1.0.0' },
           artifacts: {

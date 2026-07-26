@@ -1,5 +1,5 @@
 import type { SimulatorBackend } from '@linkcode/engine';
-import { SimulatorService } from '@linkcode/engine';
+import { SimulatorConsentService, SimulatorService } from '@linkcode/engine';
 import type { McpServer, SessionId } from '@linkcode/schema';
 // eslint-disable-next-line import-x/no-unresolved -- the SDK's exports-map subpaths defeat the resolver; tsc resolves them fine
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -53,6 +53,13 @@ function fakeBackend(): SimulatorBackend {
   };
 }
 
+/** Consent pre-granted for the fixture device, so a test exercises the tools and not the gate. */
+async function granted(udid = 'U-1'): Promise<SimulatorConsentService> {
+  const consent = new SimulatorConsentService();
+  await consent.decide(udid, 'granted');
+  return consent;
+}
+
 function urlOf(entry: McpServer | undefined): string {
   if (entry?.type !== 'http') throw new Error('expected an http MCP endpoint');
   return entry.url;
@@ -74,11 +81,15 @@ describe('SimulatorMcpEndpoint', () => {
 
   it('serves session-scoped tools over MCP streamable http', async () => {
     const activity: string[] = [];
-    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()), {
-      activity(a) {
-        activity.push(`${a.tool}:${a.phase}:${a.sessionId}`);
+    endpoint = await SimulatorMcpEndpoint.create(
+      new SimulatorService(fakeBackend()),
+      await granted(),
+      {
+        activity(a) {
+          activity.push(`${a.tool}:${a.phase}:${a.sessionId}`);
+        },
       },
-    });
+    );
     const entry = endpoint.endpointFor(S1);
     expect(entry).toMatchObject({ type: 'http', name: 'linkcode-sim' });
 
@@ -117,7 +128,7 @@ describe('SimulatorMcpEndpoint', () => {
 
   it('enforces cross-session ownership through the shared service', async () => {
     const service = new SimulatorService(fakeBackend());
-    endpoint = await SimulatorMcpEndpoint.create(service);
+    endpoint = await SimulatorMcpEndpoint.create(service, await granted());
     const first = await connect(urlOf(endpoint.endpointFor(S1)));
     const second = await connect(urlOf(endpoint.endpointFor(S2)));
 
@@ -137,8 +148,80 @@ describe('SimulatorMcpEndpoint', () => {
     await second.close();
   });
 
+  it('suspends an agent tool on an unknown device until the user answers', async () => {
+    const consent = new SimulatorConsentService();
+    const asked: string[] = [];
+    consent.setHooks({
+      ask(_sessionId, udid, tool) {
+        asked.push(`${tool}:${udid}`);
+        return true;
+      },
+      publish: noop,
+    });
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()), consent);
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    const call = client.callTool({ name: 'sim_boot', arguments: { udid: 'U-1' } });
+    // The tool must still be in flight: it is waiting on the prompt, not failing fast.
+    await vi.waitFor(() => expect(asked).toEqual(['sim_boot:U-1']));
+    await consent.decide('U-1', 'granted');
+    expect((await call).isError).toBeFalsy();
+
+    // The decision is remembered, so the next call goes straight through without asking again.
+    const second = await client.callTool({ name: 'sim_boot', arguments: { udid: 'U-1' } });
+    expect(second.isError).toBeFalsy();
+    expect(asked).toEqual(['sim_boot:U-1']);
+    await client.close();
+  });
+
+  it('refuses a denied device and tells the agent not to retry', async () => {
+    const consent = new SimulatorConsentService();
+    await consent.decide('U-1', 'denied');
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()), consent);
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    const refused = await client.callTool({ name: 'sim_boot', arguments: { udid: 'U-1' } });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.content)).toContain('do not retry');
+    await client.close();
+  });
+
+  it('refuses everything while the global kill switch is off, including device-less tools', async () => {
+    const consent = await granted();
+    await consent.setAgentToolsEnabled(false);
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()), consent);
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    const listed = await client.callTool({ name: 'sim_list_devices', arguments: {} });
+    expect(listed.isError).toBe(true);
+    expect(JSON.stringify(listed.content)).toContain('disabled for agents');
+
+    // And it lifts again without a restart.
+    await consent.setAgentToolsEnabled(true);
+    expect(
+      (await client.callTool({ name: 'sim_list_devices', arguments: {} })).isError,
+    ).toBeFalsy();
+    await client.close();
+  });
+
+  it('refuses an unknown device outright when no client is attached to ask', async () => {
+    // `ask` reporting false is the daemon's "nobody is listening" signal; blocking for the full
+    // timeout there would look like a hang to the agent.
+    const consent = new SimulatorConsentService();
+    consent.setHooks({ ask: () => false, publish: noop });
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()), consent);
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    const refused = await client.callTool({ name: 'sim_boot', arguments: { udid: 'U-1' } });
+    expect(refused.isError).toBe(true);
+    await client.close();
+  });
+
   it('rejects unknown tokens and released sessions', async () => {
-    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(fakeBackend()));
+    endpoint = await SimulatorMcpEndpoint.create(
+      new SimulatorService(fakeBackend()),
+      await granted(),
+    );
     const url = urlOf(endpoint.endpointFor(S1));
     endpoint.release(S1);
     await expect(connect(url)).rejects.toThrow();

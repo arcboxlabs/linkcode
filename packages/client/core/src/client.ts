@@ -38,6 +38,9 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -116,6 +119,12 @@ type SimulatorActivityCb = (activity: {
   tool: string;
   phase: 'started' | 'settled';
 }) => void;
+type SimulatorConsentRequiredCb = (request: {
+  sessionId: SessionId;
+  udid: string;
+  tool: string;
+}) => void;
+type SimulatorConsentChangedCb = (state: SimulatorConsentState) => void;
 /** A live stream frame: base64 bytes (JPEG image or Annex-B H.264 access unit) for one device. */
 type SimulatorFrameCb = (frame: {
   udid: string;
@@ -164,6 +173,8 @@ export class LinkCodeClient {
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
   private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
   private readonly simulatorActivitySubs = new Set<SimulatorActivityCb>();
+  private readonly simulatorConsentRequiredSubs = new Set<SimulatorConsentRequiredCb>();
+  private readonly simulatorConsentChangedSubs = new Set<SimulatorConsentChangedCb>();
   /** Framebuffer-frame listeners keyed by udid, so each panel tab only sees its device's frames. */
   private readonly simulatorFrameSubs = new Map<string, Set<SimulatorFrameCb>>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
@@ -353,6 +364,17 @@ export class LinkCodeClient {
         for (const cb of this.simulatorActivitySubs) {
           cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
         }
+        break;
+      case 'simulator.consent.state':
+        this.pending.resolve('simulatorConsentGet', p.replyTo, p.state);
+        break;
+      case 'simulator.consent.required':
+        for (const cb of this.simulatorConsentRequiredSubs) {
+          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool });
+        }
+        break;
+      case 'simulator.consent.changed':
+        for (const cb of this.simulatorConsentChangedSubs) cb(p.state);
         break;
       case 'simulator.stream.started':
         this.pending.resolve('simulatorStreamStart', p.replyTo, {
@@ -707,6 +729,18 @@ export class LinkCodeClient {
     return this.control.simulatorScreenMask(udid);
   }
 
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.control.simulatorConsentGet();
+  }
+
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.control.simulatorConsentSet(udid, decision);
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.control.simulatorConsentSetAgentTools(enabled);
+  }
+
   simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
     return this.control.simulatorTap(sessionId, udid, x, y);
   }
@@ -761,7 +795,7 @@ export class LinkCodeClient {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.control.simulatorButton(sessionId, udid, button);
   }
@@ -813,6 +847,17 @@ export class LinkCodeClient {
   subscribeSimulatorActivity(cb: SimulatorActivityCb): Unsubscribe {
     this.simulatorActivitySubs.add(cb);
     return () => this.simulatorActivitySubs.delete(cb);
+  }
+
+  /** An agent tool is suspended waiting for the user to decide about a device (CODE-420). */
+  subscribeSimulatorConsentRequired(cb: SimulatorConsentRequiredCb): Unsubscribe {
+    this.simulatorConsentRequiredSubs.add(cb);
+    return () => this.simulatorConsentRequiredSubs.delete(cb);
+  }
+
+  subscribeSimulatorConsentChanged(cb: SimulatorConsentChangedCb): Unsubscribe {
+    this.simulatorConsentChangedSubs.add(cb);
+    return () => this.simulatorConsentChangedSubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

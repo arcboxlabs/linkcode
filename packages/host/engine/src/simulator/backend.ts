@@ -31,7 +31,9 @@ export interface SimulatorProbe {
 export type SimulatorImageFormat = 'jpeg' | 'png';
 
 /** A hardware button the private HID layer can press. */
-export type SimulatorButton = 'home' | 'lock';
+export type { SimulatorButton } from '@linkcode/schema';
+
+import type { SimulatorButton } from '@linkcode/schema';
 
 /** Interface orientation for a rotate command (matches `UIInterfaceOrientation`). */
 export type SimulatorOrientation =

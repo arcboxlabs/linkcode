@@ -678,8 +678,8 @@ export function Composer({
     if (textTrigger?.kind !== 'mention') return;
     const trigger = textTrigger;
     setPlusCommandStart(null);
-    // A mention chip replacing the whole @token; it serializes as a quoted relative path —
-    // every agent understands that in prose, whereas @path is Claude-specific syntax.
+    // A mention chip replacing the whole @token; it serializes as a `[basename](./path)`
+    // markdown link — agents read it as prose, and the sent message chips it right back.
     withEditor(() => $replaceTriggerWith(trigger, $createMentionNode(entry.mention.value)));
     onMentionQueryChange?.(null);
   }

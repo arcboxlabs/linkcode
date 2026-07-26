@@ -1,10 +1,11 @@
 import type { ContentBlock } from '@linkcode/schema';
-import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { fileBasename } from './artifacts/file-kind';
 import { codeLanguageForResource } from './code-language';
 import { FilePreviewCard } from './file-preview-card';
 import { HighlightedCode } from './highlighted-code';
+import { LinkChip } from './link-chip';
+import { linkTargetForUri } from './link-target';
 import { Markdown, SmoothMarkdown } from './markdown';
 
 function resourceLabel(uri: string, fallback: string): string {
@@ -48,17 +49,7 @@ export function ContentBlockView({
         </audio>
       );
     case 'resource_link':
-      return (
-        <a
-          href={block.uri}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-sm text-foreground hover:opacity-80"
-        >
-          <FileTextIcon className="size-3.5" />
-          {t('resourceLink', { name: block.name })}
-        </a>
-      );
+      return <LinkChip target={linkTargetForUri(block.uri)}>{block.title ?? block.name}</LinkChip>;
     case 'resource': {
       const uri = block.resource.uri;
       const label = resourceLabel(uri, t('resource'));

@@ -102,6 +102,14 @@ fn main() {
     if subcommand.as_deref() == Some("capture-worker") {
         capture::run_worker();
     }
+    // The crash-isolated device-state watcher (spawned by the sidecar alongside each stream).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("state-watcher") {
+        let udid = std::env::args()
+            .nth(2)
+            .expect("usage: state-watcher <udid>");
+        std::process::exit(private::notify::run_state_watcher(&udid));
+    }
     // Hidden diagnostic path to exercise the private-framework layer against a real booted device:
     // `linkcode-sim diag-interactive <udid> <out.jpg>`.
     #[cfg(target_os = "macos")]
@@ -125,6 +133,27 @@ fn main() {
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("diag-rotate") {
         diag_rotate();
+        return;
+    }
+    // Diagnostic: prove a live reconfigure retunes the stream without respawning the worker:
+    // `linkcode-sim diag-reconfigure <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-reconfigure") {
+        diag_reconfigure();
+        return;
+    }
+    // Diagnostic: press a hardware button, for eyeballing the volume HUD against a real device:
+    // `linkcode-sim diag-button <udid> <home|lock|volume-up|volume-down>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-button") {
+        diag_button();
+        return;
+    }
+    // Diagnostic: report CoreSimulator's view of a device's boot state — the signal the stream
+    // pusher uses to reap a dead boot session: `linkcode-sim diag-state <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-state") {
+        diag_state();
         return;
     }
 
@@ -220,8 +249,15 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
     let outcome = match request.op {
         Op::Probe => probe_with_capabilities(),
         Op::List => simctl::list(),
-        Op::Boot { udid } => simctl::boot(&udid),
-        Op::Shutdown { udid } => simctl::shutdown(&udid),
+        // Both ends of a boot session invalidate the warmed HID client bound to the old one.
+        Op::Boot { udid } => {
+            interactive::forget(&udid);
+            simctl::boot(&udid)
+        }
+        Op::Shutdown { udid } => {
+            interactive::forget(&udid);
+            simctl::shutdown(&udid)
+        }
         Op::Install { udid, app_path } => simctl::install(&udid, &app_path),
         Op::Launch { udid, bundle_id } => simctl::launch(&udid, &bundle_id),
         Op::Terminate { udid, bundle_id } => simctl::terminate(&udid, &bundle_id),
@@ -397,6 +433,100 @@ fn diag_interactive() {
     );
 }
 
+/// Diagnostic (macOS only): prove `CaptureStream::reconfigure` retunes a running stream in place —
+/// the worker pid stays the same across a JPEG→H.264 + fps change, and H.264 units start flowing.
+/// `linkcode-sim diag-reconfigure <udid>`. Needs a booted device with an active framebuffer.
+#[cfg(target_os = "macos")]
+fn diag_reconfigure() {
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-reconfigure <udid>");
+    eprintln!(
+        "interactive available: {}",
+        private::interactive_available()
+    );
+
+    let stream = capture::CaptureStream::start(
+        udid.clone(),
+        capture::StreamParams {
+            fps: 30,
+            quality: 0.6,
+            scale: 1.0,
+            codec: rpc::StreamCodec::Jpeg,
+        },
+    );
+
+    // JPEG phase: wait for the first frame, then count distinct frames for ~2s.
+    let mut jpeg_frames = 0u32;
+    let mut last: Option<capture::Frame> = None;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) && !stream.is_dead() {
+        if let Some(frame) = stream.latest()
+            && last.as_ref().is_none_or(|prev| !Arc::ptr_eq(prev, &frame))
+        {
+            jpeg_frames += 1;
+            last = Some(frame);
+        }
+        thread::sleep(Duration::from_millis(30));
+    }
+    let pid_before = stream.worker_pid();
+    eprintln!("JPEG @30fps: worker pid={pid_before}, distinct frames≈{jpeg_frames}");
+
+    // Reconfigure to H.264 @15fps — expected to retune in place, no respawn.
+    stream.reconfigure(capture::StreamParams {
+        fps: 15,
+        quality: 0.6,
+        scale: 1.0,
+        codec: rpc::StreamCodec::H264,
+    });
+    let mut units = 0u32;
+    let mut keyframes = 0u32;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) {
+        if let Some(unit) = stream.next_encoded(Duration::from_millis(250)) {
+            units += 1;
+            if unit.key {
+                keyframes += 1;
+            }
+        }
+    }
+    let pid_after = stream.worker_pid();
+    eprintln!("H.264 @15fps: worker pid={pid_after}, units={units} (keyframes={keyframes})");
+
+    // Downscale live: the encoder is rebuilt at the scaled session size, so units must keep flowing
+    // (a VideoToolbox that refused the size mismatch would deliver none).
+    stream.reconfigure(capture::StreamParams {
+        fps: 15,
+        quality: 0.6,
+        scale: 0.5,
+        codec: rpc::StreamCodec::H264,
+    });
+    let mut scaled_units = 0u32;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) {
+        if stream.next_encoded(Duration::from_millis(250)).is_some() {
+            scaled_units += 1;
+        }
+    }
+    let pid_scaled = stream.worker_pid();
+    eprintln!("H.264 @15fps scale=0.5: worker pid={pid_scaled}, units={scaled_units}");
+
+    assert_eq!(
+        pid_before, pid_after,
+        "worker pid changed — reconfigure respawned the worker instead of retuning it"
+    );
+    assert!(pid_before != 0, "no worker was running to reconfigure");
+    assert!(units > 0, "no H.264 units after switching codec live");
+    assert_eq!(pid_after, pid_scaled, "rescaling respawned the worker");
+    assert!(
+        scaled_units > 0,
+        "no H.264 units at scale 0.5 — VideoToolbox refused the scaled session"
+    );
+    eprintln!(
+        "PASS: reconfigure retuned in place (pid stable {pid_before}); jpeg→h264 and h264 rescale both live"
+    );
+}
+
 /// Diagnostic (macOS only): inject an interface-orientation change against a booted device — the
 /// spike that decides whether the GraphicsServices `PurpleWorkspacePort` GSEvent path works before
 /// it is threaded through the stack. `linkcode-sim diag-rotate <udid> <portrait|portrait-upside-down|
@@ -419,6 +549,40 @@ fn diag_rotate() {
     let device = private::SimDevice::resolve(&udid).expect("device not found");
     let ok = device.set_orientation(orientation);
     eprintln!("set_orientation({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): press one hardware button on a booted device. Volume is the
+/// reason this exists — it is the one button whose only proof is the on-device HUD, and the
+/// consumer-page HID path it takes is different from home/lock's legacy button message.
+#[cfg(target_os = "macos")]
+fn diag_button() {
+    use crate::private::Button;
+    let udid = std::env::args()
+        .nth(2)
+        .expect("usage: diag-button <udid> <home|lock|volume-up|volume-down>");
+    let name = std::env::args().nth(3).unwrap_or_else(|| "home".to_owned());
+    let button = match name.as_str() {
+        "home" => Button::Home,
+        "lock" => Button::Lock,
+        "volume-up" => Button::VolumeUp,
+        "volume-down" => Button::VolumeDown,
+        other => panic!("unknown button: {other}"),
+    };
+    let device = private::SimDevice::resolve(&udid).expect("device not found");
+    let input = private::Input::warm(&device).expect("HID unavailable for this device");
+    let ok = input.button(button, std::time::Duration::from_millis(80));
+    eprintln!("button({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): print whether CoreSimulator reports the device Booted — ground
+/// truth for the reap-on-shutdown signal in `interactive::push_stream`.
+#[cfg(target_os = "macos")]
+fn diag_state() {
+    let udid = std::env::args().nth(2).expect("usage: diag-state <udid>");
+    match private::SimDevice::resolve(&udid) {
+        Some(device) => eprintln!("is_booted({udid}) -> {}", device.is_booted()),
+        None => eprintln!("device {udid} not found"),
+    }
 }
 
 /// Benchmark entry (macOS only): time the JPEG encode across a resolution/quality sweep and print the

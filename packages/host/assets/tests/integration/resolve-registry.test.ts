@@ -1,3 +1,4 @@
+import { managedAgentAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { AssetDescriptor } from '../../src/catalog';
 import { resolveArtifact } from '../../src/resolve';
@@ -14,7 +15,7 @@ describe('resolveArtifact registry integration', () => {
     });
     try {
       const descriptor: AssetDescriptor = {
-        id: 'agent:codex',
+        id: managedAgentAssetId('codex'),
         binaryBase: 'codex',
         version: { kind: 'pinned', version: '0.140.0' },
         artifacts: {

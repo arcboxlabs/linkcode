@@ -12,6 +12,7 @@ export * from './loop';
 export * from './managed-asset';
 export * from './permission';
 export * from './plan';
+export * from './plugin';
 export * from './primitives';
 export * from './provider-config';
 export * from './question';

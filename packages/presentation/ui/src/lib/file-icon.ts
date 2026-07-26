@@ -144,6 +144,42 @@ const BUILD_FILES = new Set(['cmakelists.txt', 'justfile', 'makefile', 'taskfile
 const CONFIG_FILES = new Set(['.editorconfig', '.stylelintrc', '.stylelintrc.json']);
 const PACKAGE_FILES = new Set(['podfile']);
 
+const KNOWN_EXTENSIONS = new Set([
+  'ics',
+  'lock',
+  'md',
+  'markdown',
+  ...Object.keys(MATERIAL_EXTENSION_ICONS),
+  ...ARCHIVE_EXTENSIONS,
+  ...AUDIO_EXTENSIONS,
+  ...BOOK_EXTENSIONS,
+  ...CODE_EXTENSIONS,
+  ...CONFIG_EXTENSIONS,
+  ...DATABASE_EXTENSIONS,
+  ...DOCUMENT_EXTENSIONS,
+  ...FONT_EXTENSIONS,
+  ...IMAGE_EXTENSIONS,
+  ...INSTALLER_EXTENSIONS,
+  ...JSON_EXTENSIONS,
+  ...MODEL_EXTENSIONS,
+  ...PALETTE_EXTENSIONS,
+  ...SPREADSHEET_EXTENSIONS,
+  ...TERMINAL_EXTENSIONS,
+  ...VIDEO_EXTENSIONS,
+]);
+
+/** Whether this basename or extension is a file identity the icon system recognizes. The chat
+ * renderer uses it as path evidence: a bare token chips only when it would also get a
+ * non-generic file icon, so prose like `origin/main` or `foo.bar` never chips. */
+export function hasKnownFileIdentity(name: string): boolean {
+  const basename = fileBasename(name).toLowerCase();
+  if (iconForFileName(basename) !== undefined) return true;
+  for (const [compoundExtension] of MATERIAL_COMPOUND_EXTENSION_ENTRIES) {
+    if (basename.endsWith(`.${compoundExtension}`)) return true;
+  }
+  return KNOWN_EXTENSIONS.has(fileExtension(basename));
+}
+
 export interface FileIconInput {
   kind?: string;
   mimeType?: string;
