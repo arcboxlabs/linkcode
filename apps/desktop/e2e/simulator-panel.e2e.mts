@@ -462,6 +462,41 @@ async function run(
         console.log('recording unsupported in this build — skipping the record assertion');
       }
 
+      // Detach (CODE-416): stops streaming in the panel without touching the device — the whole
+      // point is that it stays booted (an agent driving it must be unaffected).
+      await win.getByRole('button', { name: 'Detach simulator', exact: true }).click();
+      const attachButton = win.getByRole('button', { name: 'Attach simulator', exact: true });
+      await attachButton.waitFor({ state: 'visible', timeout: 10000 });
+      if (!bootedUdids().includes(bootedUdid)) fail('detaching shut the device down');
+      console.log('detach stopped the stream and left the device booted');
+
+      await attachButton.click();
+      await win.locator('canvas:visible').last().waitFor({ state: 'visible', timeout: 15000 });
+      const reattachDeadline = Date.now() + 20000;
+      let reattached = false;
+      while (!reattached && Date.now() < reattachDeadline) {
+        reattached = (await canvasSize()).width > 0;
+        if (!reattached) await wait(500);
+      }
+      if (!reattached) fail('re-attaching never repainted the canvas');
+      console.log('attach restored the live stream');
+
+      // Shut down last: it is the one control that ends the device, so nothing may depend on it
+      // afterwards. The panel must fall back to its Boot state.
+      await win.getByRole('button', { name: 'Shut down device', exact: true }).click();
+      const shutdownDeadline = Date.now() + 30000;
+      while (bootedUdids().includes(bootedUdid) && Date.now() < shutdownDeadline) await wait(500);
+      if (bootedUdids().includes(bootedUdid)) fail('the shutdown button left the device booted');
+      await win
+        .getByRole('button', { name: 'Boot', exact: true })
+        .waitFor({ state: 'visible', timeout: 20000 });
+      console.log('shutdown button ended the device and the panel fell back to Boot');
+      // Leave the host as we found it so a repeat run still has its precondition. Detached and
+      // non-blocking on purpose: a synchronous `simctl boot` can stall for seconds while
+      // CoreSimulator finishes tearing the device down, and blocking this event loop while
+      // Playwright holds its connection to Electron shows up later as a spurious "target closed".
+      spawn('xcrun', ['simctl', 'boot', bootedUdid], { stdio: 'ignore', detached: true }).unref();
+
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });
       console.log(`screenshot: ${tapShot}`);
@@ -553,6 +588,13 @@ async function main(): Promise<void> {
     }, downloadDir);
 
     const win = await app.firstWindow();
+    // Surface renderer failures directly: without these a crash only shows up as an opaque
+    // "target closed" from whatever Playwright call happens to be in flight.
+    win.on('pageerror', (error) => console.error(`renderer error: ${error.message}`));
+    win.on('crash', () => console.error('renderer crashed'));
+    win.on('console', (message) => {
+      if (message.type() === 'error') console.error(`renderer console: ${message.text()}`);
+    });
     try {
       await run(win, chatRoot, deepPass, downloadDir);
     } catch (error) {
