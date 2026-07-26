@@ -9,16 +9,19 @@ the same contract as every other client.
 - **Where code goes:** `src/runtime/**` + `src/stores/**` own transport, connection, and data-plane
   wiring; `src/app/**` + `src/components/**` are presentation only. The hooks exported from
   `runtime/` are the seam — extend a return value, never reshape one, so UI and runtime work can
-  land in parallel. A `runtime/` hook must **not** hand out a `RefObject`: `react-hooks/refs` then
-  taints every property read of that result at the call site ("Cannot access refs during render").
-  Expose a callback ref instead — `setRenderer` in `use-terminal-session.ts`. Destructure a hook's
-  result at the top of the component rather than reading `hook.x` inside JSX; the same rule fires on
-  member reads it cannot prove.
-- **Mobile hooks cannot be unit-tested yet** (CODE-444). Root vitest resolves react 19.2.7 while this
-  app pins 19.2.3 to match RN's bundled renderer, so `renderHook` on anything under `src/` dies with
-  `Cannot read properties of null (reading 'useState')`. `resolve.dedupe: ['react']` is not the fix —
-  it breaks the pin. Until a mobile vitest project exists, only pure functions are testable
-  (`src/runtime/__tests__/startup.test.ts` is the one example).
+  land in parallel. A `runtime/` hook must **not** hand out a `RefObject` — the ref-on-a-bag trap in
+  [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) applies here too even though that
+  file otherwise does not: `react-hooks/refs` taints every property read of the result at the call
+  site ("Cannot access refs during render"). Expose a callback ref instead (`setRenderer` in
+  `use-terminal-session.ts`), and destructure a hook's result at the top of the component rather
+  than reading `hook.x` inside JSX.
+- **Hook tests run in the `mobile` vitest project** (root `vitest.config.ts`), which pins
+  `react`/`react-dom` at the **root** copies. This app pins them to RN's bundled pair, one patch
+  behind, and `@testing-library/react` only exists hoisted at the root — two Reacts means a null
+  hook dispatcher (`Cannot read properties of null (reading 'useContext')`). Aliasing toward the
+  app's copies does not work: the renderer is an external dep resolved by Node, which never sees a
+  Vite alias. Same 19.2.x line, so hook semantics match; the app's runtime pin is untouched. Stub a
+  client with `__tests__/stub-client.ts` and add `// @vitest-environment jsdom` at the top.
 - **Terminal canvas:** `runtime/use-terminal-session.ts` owns `LinkCodeClient`, attachment/controller
   state, and all network I/O; the route only renders and navigates. Rendering is the native ghostty
   surface from
