@@ -1,4 +1,5 @@
 import type { SessionId } from '@linkcode/schema';
+import { MAX_SIMULATORS_PER_SESSION } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
@@ -27,8 +28,8 @@ export interface SimulatorHostStatus {
   reason?: string;
 }
 
-/** Mirrors the reference session model: at most four simulator panes per session. */
-const MAX_DEVICES_PER_SESSION = 4;
+/** At most four simulator panes per session; the panel reads the same constant for its tab cap. */
+const MAX_DEVICES_PER_SESSION = MAX_SIMULATORS_PER_SESSION;
 /** How long a released device we booted stays reserved before it is shut down and freed. */
 const IDLE_RECLAIM_MS = 10 * 60000;
 

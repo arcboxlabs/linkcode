@@ -5,7 +5,11 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SimulatorActivityClient } from '../agent-activity';
 import { useSimulatorAutoReveal } from '../auto-reveal';
-import { suppressSimulatorAutoReveal, useSimulatorPanelStore } from '../panel-store';
+import {
+  selectDeviceTabs,
+  suppressSimulatorAutoReveal,
+  useSimulatorPanelStore,
+} from '../panel-store';
 
 type Activity = Parameters<Parameters<SimulatorActivityClient['subscribeSimulatorActivity']>[0]>[0];
 
@@ -26,6 +30,12 @@ function fakeClient(): SimulatorActivityClient & { emit: (activity: Activity) =>
 }
 
 const SESSION = 's1' as SessionId;
+
+/** The devices the reveal opened for SESSION, in tab order. */
+function openTabs(): readonly string[] {
+  return selectDeviceTabs(useSimulatorPanelStore.getState(), SESSION).udids;
+}
+
 const OTHER_SESSION = 's2' as SessionId;
 
 function started(sessionId: SessionId, udid: string | undefined): Activity {
@@ -34,7 +44,7 @@ function started(sessionId: SessionId, udid: string | undefined): Activity {
 
 describe('useSimulatorAutoReveal', () => {
   beforeEach(() => {
-    useSimulatorPanelStore.setState({ selectedUdid: null, autoRevealSuppressed: {} });
+    useSimulatorPanelStore.setState({ tabsBySession: {}, autoRevealSuppressed: {} });
   });
   afterEach(cleanup);
 
@@ -45,13 +55,13 @@ describe('useSimulatorAutoReveal', () => {
 
     client.emit(started(SESSION, 'U-1'));
     expect(onReveal).toHaveBeenCalledTimes(1);
-    expect(useSimulatorPanelStore.getState().selectedUdid).toBe('U-1');
+    expect(openTabs()).toEqual(['U-1']);
 
     // The thread spent its one reveal: from here the panel is the user's, however busy the agent
-    // gets — including on a device they did not select.
+    // gets — including on a device they did not open.
     client.emit(started(SESSION, 'U-2'));
     expect(onReveal).toHaveBeenCalledTimes(1);
-    expect(useSimulatorPanelStore.getState().selectedUdid).toBe('U-1');
+    expect(openTabs()).toEqual(['U-1']);
   });
 
   it('ignores other threads and device-less tools', () => {
@@ -62,7 +72,7 @@ describe('useSimulatorAutoReveal', () => {
     client.emit(started(OTHER_SESSION, 'U-1'));
     client.emit(started(SESSION, undefined));
     expect(onReveal).not.toHaveBeenCalled();
-    expect(useSimulatorPanelStore.getState().selectedUdid).toBeNull();
+    expect(openTabs()).toEqual([]);
   });
 
   it('stays out of the way once the user closes the section', () => {

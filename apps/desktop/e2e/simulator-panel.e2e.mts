@@ -260,7 +260,8 @@ async function run(
   }
 
   // The panel body must reflect the daemon's real device probe.
-  const picker = win.locator('[aria-label="Select a device"]');
+  // One tab per open device (CODE-421); the panel opens one implicitly on a fresh thread.
+  const picker = win.locator('[role="tab"]:visible');
   const noDevices = win.getByText('No simulator devices found');
   const deadline = Date.now() + 15000;
   let bodyReady = false;
@@ -271,9 +272,9 @@ async function run(
     }
     await wait(500);
   }
-  if (!bodyReady) fail('the panel showed neither a device picker nor the empty-list hint');
+  if (!bodyReady) fail('the panel showed neither a device tab nor the empty-list hint');
   if ((await picker.count()) > 0) {
-    console.log(`device picker: ${JSON.stringify(await picker.first().textContent())}`);
+    console.log(`device tab: ${JSON.stringify(await picker.first().textContent())}`);
   } else {
     console.log('daemon reported no simulator devices');
   }
@@ -531,6 +532,35 @@ async function run(
       }
       if (!reattached) fail('re-attaching never repainted the canvas');
       console.log('attach restored the live stream');
+
+      // Multi-device tabs (CODE-421). The acceptance that matters is "switching tabs does not
+      // break the stream", so assert it the same way the reconfigure check does: the streaming
+      // device's capture-worker pid must survive a round trip to another tab and back. A second
+      // device needs no boot for this — parking on it is what takes the first one to the back.
+      const addDevice = win.locator('button[aria-label="Add a device"]:visible').first();
+      if ((await addDevice.count()) > 0 && !(await addDevice.isDisabled())) {
+        const pidBeforeSwitch = workerPid();
+        await addDevice.click();
+        await win.locator('[role="menuitem"]:visible').first().click();
+        await win.waitForTimeout(1500);
+        if ((await picker.count()) < 2) fail('opening a second device did not add a tab');
+
+        await picker.first().click();
+        await win.waitForTimeout(2000);
+        const pidAfterSwitch = workerPid();
+        if (pidAfterSwitch === null || pidAfterSwitch !== pidBeforeSwitch) {
+          fail(`switching tabs restarted the stream (pid ${pidBeforeSwitch} → ${pidAfterSwitch})`);
+        }
+        // And the picture is live again on the tab we came back to.
+        if ((await canvasSize()).width === 0) fail('the canvas went blank after switching back');
+        console.log(`tab switch kept the stream alive (capture-worker pid ${pidBeforeSwitch})`);
+
+        // Leave one tab open so the shutdown assertions below see the streaming device.
+        await win.locator('button[aria-label="Close this device"]:visible').last().click();
+        await win.waitForTimeout(500);
+      } else {
+        console.log('only one simulator device on this host — skipping the multi-device tab pass');
+      }
 
       // Shut down last: it is the one control that ends the device, so nothing may depend on it
       // afterwards. The panel must fall back to its Boot state.

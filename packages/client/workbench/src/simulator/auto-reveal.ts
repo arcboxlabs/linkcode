@@ -2,7 +2,11 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId } from '@linkcode/schema';
 import { useEffect } from 'foxact/use-abortable-effect';
 import type { SimulatorActivityClient } from './agent-activity';
-import { suppressSimulatorAutoReveal, useSimulatorPanelStore } from './panel-store';
+import {
+  simulatorSessionKey,
+  suppressSimulatorAutoReveal,
+  useSimulatorPanelStore,
+} from './panel-store';
 
 /**
  * Bring the Simulator section forward the first time an agent touches a device in `sessionId`, and
@@ -28,7 +32,7 @@ export function useSimulatorAutoReveal(
       if (activity.sessionId !== sessionId || activity.udid === undefined) return;
       if (useSimulatorPanelStore.getState().autoRevealSuppressed[sessionId]) return;
       suppressSimulatorAutoReveal(sessionId);
-      useSimulatorPanelStore.getState().selectDevice(activity.udid);
+      useSimulatorPanelStore.getState().openDevice(simulatorSessionKey(sessionId), activity.udid);
       onReveal();
     });
   }, [client, sessionId, onReveal]);
