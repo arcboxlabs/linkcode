@@ -3,40 +3,23 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import { linkcodeStateDirName } from '@linkcode/schema/daemon-runtime';
-import crossSpawn from 'cross-spawn';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 
-/** Startup output kept for the failure message when the server never reports readiness. */
-const STARTUP_OUTPUT_CAP = 8192;
-/** Rolling window the readiness regex runs over — bounded (unlike a capped-then-frozen buffer) so
- * a chatty startup cannot stop it matching. */
-const READINESS_WINDOW = 512;
-/** The server's readiness line: `opencode server listening on http://127.0.0.1:<port>`. The
- * trailing newline keeps a URL split across chunks from matching on its half-arrived prefix. */
-const RE_LISTENING = /listening on\s+(https?:\/\/\S+)\s*[\r\n]/;
+import type { OpencodeServeProcess } from './serve';
+import {
+  awaitServeReady,
+  ServeStartupExitError,
+  serveProcessExited,
+  spawnOpencodeServe,
+  terminateServe,
+} from './serve';
 
 /** The slice of `ChildProcess` this manager drives — a structural type so tests can hand in a
  * plain fake instead of force-casting through `unknown`. */
-export interface HistoryServerProcess {
-  readonly exitCode: number | null;
-  readonly signalCode: NodeJS.Signals | null;
-  readonly stdout: {
-    on(event: 'data', cb: (chunk: Buffer) => void): unknown;
-    destroy(): void;
-  } | null;
-  readonly stderr: {
-    on(event: 'data', cb: (chunk: Buffer) => void): unknown;
-    destroy(): void;
-  } | null;
-  once(event: 'exit', cb: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  once(event: 'error', cb: (err: Error) => void): unknown;
-  kill(signal?: NodeJS.Signals): boolean;
-  unref(): void;
-}
+export type HistoryServerProcess = OpencodeServeProcess;
 
 export interface OpencodeHistoryServerOptions {
-  /** Test seam — the real thing resolves `opencode` from PATH (vendoring is CODE-76) and spawns
-   * `opencode serve`. */
+  /** Test seam — the real thing spawns `opencode serve` from the probe-resolved binary
+   * ({@link spawnOpencodeServe}). */
   spawnServer?: (args: { port: number; cwd: string }) => HistoryServerProcess;
   allocatePort?: () => Promise<number>;
   /** Spawn cwd. opencode indexes its cwd as the default workspace, so this must be a neutral
@@ -58,18 +41,6 @@ export interface OpencodeHistoryServerLike {
 interface ServerGeneration {
   proc: HistoryServerProcess;
   ready: Promise<string>;
-}
-
-/** Exit is read off the process itself — both fields stay null until it is truly gone, so there
- * is no shadow flag to drift out of sync with reality. */
-function processExited(proc: HistoryServerProcess): boolean {
-  return proc.exitCode !== null || proc.signalCode !== null;
-}
-
-/** A startup-window death, as opposed to a timeout or spawn failure — the one failure mode worth
- * one automatic retry, because the pre-allocated port can be stolen between probe and bind. */
-class StartupExitError extends Error {
-  override name = 'StartupExitError';
 }
 
 /**
@@ -103,7 +74,7 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
    * daemon exit.) Process 'exit' handlers cannot wait; SIGKILL is the only reliable cleanup left. */
   private readonly onProcessExit = (): void => {
     const proc = this.current?.proc;
-    if (proc && !processExited(proc)) proc.kill('SIGKILL');
+    if (proc && !serveProcessExited(proc)) proc.kill('SIGKILL');
   };
 
   constructor(options: OpencodeHistoryServerOptions = {}) {
@@ -136,8 +107,8 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
     const generation = this.current;
     this.current = null;
     this.startPromise = null;
-    if (!generation || processExited(generation.proc)) return;
-    const stopping = terminate(generation.proc, this.shutdownGraceMs).finally(() => {
+    if (!generation || serveProcessExited(generation.proc)) return;
+    const stopping = terminateServe(generation.proc, this.shutdownGraceMs).finally(() => {
       if (this.stopping === stopping) this.stopping = null;
     });
     this.stopping = stopping;
@@ -145,7 +116,7 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   }
 
   private async ensureRunning(): Promise<string> {
-    if (this.current && !processExited(this.current.proc)) return this.current.ready;
+    if (this.current && !serveProcessExited(this.current.proc)) return this.current.ready;
     if (this.startPromise) return this.startPromise;
     this.startPromise = this.start().finally(() => {
       this.startPromise = null;
@@ -160,7 +131,7 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
     } catch (err) {
       // One retry with a fresh port: allocatePort is check-then-use, so the port can be stolen
       // between probe and bind (an immediate startup-window exit). A config failure just fails twice.
-      if (err instanceof StartupExitError) return this.spawnGeneration();
+      if (err instanceof ServeStartupExitError) return this.spawnGeneration();
       throw err;
     }
   }
@@ -171,7 +142,10 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
     if (this.stopping) await this.stopping;
     const port = await this.allocatePort();
     const proc = this.spawnServer({ port, cwd: this.neutralCwd });
-    const generation: ServerGeneration = { proc, ready: this.awaitReadiness(proc) };
+    const generation: ServerGeneration = {
+      proc,
+      ready: awaitServeReady(proc, { timeoutMs: this.readyTimeoutMs, what: 'history server' }),
+    };
     this.current = generation;
     if (!this.exitHookInstalled) {
       this.exitHookInstalled = true;
@@ -185,72 +159,13 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
       return await generation.ready;
     } catch (err) {
       if (this.current === generation) this.current = null;
-      if (!processExited(proc)) proc.kill('SIGKILL');
+      if (!serveProcessExited(proc)) proc.kill('SIGKILL');
       throw err;
     }
   }
 
-  private awaitReadiness(proc: HistoryServerProcess): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      /** Capped capture for failure messages only — readiness matching never depends on it. */
-      let output = '';
-      /** Bounded rolling tail the readiness regex runs over; grows with every chunk regardless of
-       * how much came before, so verbose startup output cannot freeze detection. */
-      let tail = '';
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      // Listeners stay attached after settling (guarded by `settled`): success destroys the pipes
-      // anyway, and a failed startup kills the process, so explicit removal buys nothing.
-      const settle = (fn: () => void): void => {
-        if (settled) return;
-        settled = true;
-        if (timer !== undefined) clearTimeout(timer);
-        fn();
-      };
-      const fail = (headline: string, startupExit = false): void => {
-        settle(() => {
-          const detail = output.trim();
-          const message = detail ? `${headline}\n${detail}` : headline;
-          reject(startupExit ? new StartupExitError(message) : new Error(message));
-        });
-      };
-      timer = setTimeout(() => {
-        fail(`opencode: history server startup timed out after ${this.readyTimeoutMs}ms`);
-      }, this.readyTimeoutMs);
-      timer.unref();
-      proc.stdout?.on('data', (chunk: Buffer) => {
-        if (settled) return;
-        const text = chunk.toString();
-        if (output.length < STARTUP_OUTPUT_CAP) output += text;
-        tail = (tail + text).slice(-READINESS_WINDOW);
-        const match = RE_LISTENING.exec(tail);
-        if (!match) return;
-        const url = match[1];
-        settle(() => {
-          // Detach the pipes and unref so an idle-but-running server never keeps the daemon's
-          // event loop alive; crash detection stays on the 'exit' listener.
-          proc.stdout?.destroy();
-          proc.stderr?.destroy();
-          proc.unref();
-          resolve(url);
-        });
-      });
-      proc.stderr?.on('data', (chunk: Buffer) => {
-        if (!settled && output.length < STARTUP_OUTPUT_CAP) output += chunk.toString();
-      });
-      proc.once('error', (err) => {
-        fail(
-          `opencode: failed to spawn history server (${extractErrorMessage(err) ?? 'unknown error'})`,
-        );
-      });
-      proc.once('exit', (code) => {
-        fail(`opencode: history server exited during startup (code ${code})`, true);
-      });
-    });
-  }
-
   private armIdleTimer(): void {
-    if (!this.current || processExited(this.current.proc)) return;
+    if (!this.current || serveProcessExited(this.current.proc)) return;
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
@@ -270,26 +185,7 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
 }
 
 function defaultSpawnServer(args: { port: number; cwd: string }): HistoryServerProcess {
-  // `--port=0` does NOT auto-allocate (falls back to 4096, verified live on 1.17.11) — the free
-  // port must be found up front. cross-spawn matches the SDK's PATH resolution, incl. Windows `.cmd`.
-  return crossSpawn('opencode', ['serve', '--hostname=127.0.0.1', `--port=${args.port}`], {
-    cwd: args.cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-}
-
-function terminate(proc: HistoryServerProcess, graceMs: number): Promise<void> {
-  if (processExited(proc)) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const killTimer = setTimeout(() => proc.kill('SIGKILL'), graceMs);
-    killTimer.unref();
-    proc.once('exit', () => {
-      clearTimeout(killTimer);
-      resolve();
-    });
-    proc.kill('SIGTERM');
-  });
+  return spawnOpencodeServe({ port: args.port, cwd: args.cwd });
 }
 
 let shared: OpencodeHistoryServer | null = null;
