@@ -377,6 +377,10 @@ export const zhCN = {
       simulatorRotate: '旋转',
       simulatorHome: '主屏幕',
       simulatorLock: '锁屏',
+      simulatorFrameRate: '帧率',
+      simulatorResolution: '分辨率',
+      simulatorEncoding: '编码',
+      simulatorFps: 'FPS',
     },
     git: {
       emptyTitle: '暂无活跃线程',
