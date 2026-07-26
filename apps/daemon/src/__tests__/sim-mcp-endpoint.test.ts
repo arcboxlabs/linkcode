@@ -12,7 +12,9 @@ import { SimulatorMcpEndpoint } from '../sim/mcp-endpoint';
 const S1 = 'session-1' as SessionId;
 const S2 = 'session-2' as SessionId;
 
-function fakeBackend(): SimulatorBackend {
+/** `satisfies` rather than a return annotation: it still checks the full backend contract, but
+ * keeps the inferred mock types so call assertions read the spies directly. */
+function fakeBackend() {
   return {
     probe: vi.fn(() =>
       Promise.resolve({ simctlPath: '/usr/bin/simctl', developerDir: '/dev', interactive: true }),
@@ -50,7 +52,7 @@ function fakeBackend(): SimulatorBackend {
     streamStop: vi.fn(asyncNoop),
     onFrame: vi.fn(() => noop),
     close: vi.fn(noop),
-  };
+  } satisfies SimulatorBackend;
 }
 
 /** Consent pre-granted for the fixture device, so a test exercises the tools and not the gate. */
@@ -101,10 +103,14 @@ describe('SimulatorMcpEndpoint', () => {
       'sim_launch',
       'sim_list_devices',
       'sim_open_url',
+      'sim_press_key',
       'sim_rotate',
       'sim_screenshot',
       'sim_shutdown',
+      'sim_swipe',
+      'sim_tap',
       'sim_terminate',
+      'sim_type_text',
     ]);
 
     const listed = await client.callTool({ name: 'sim_list_devices', arguments: {} });
@@ -123,6 +129,46 @@ describe('SimulatorMcpEndpoint', () => {
     ]);
     expect(activity).toContain('sim_screenshot:started:session-1');
     expect(activity).toContain('sim_screenshot:settled:session-1');
+    await client.close();
+  });
+
+  it('drives input on the normalized coordinate contract', async () => {
+    const backend = fakeBackend();
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(backend), await granted());
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    await client.callTool({ name: 'sim_tap', arguments: { udid: 'U-1', x: 0.5, y: 0.25 } });
+    expect(backend.tap).toHaveBeenCalledWith('U-1', 0.5, 0.25);
+
+    await client.callTool({
+      name: 'sim_swipe',
+      arguments: { udid: 'U-1', fromX: 0.5, fromY: 0.8, toX: 0.5, toY: 0.2, durationMs: 300 },
+    });
+    expect(backend.swipe).toHaveBeenCalledWith('U-1', { x: 0.5, y: 0.8 }, { x: 0.5, y: 0.2 }, 300);
+
+    // Passing screenshot pixels is the predictable agent mistake; the schema must reject them
+    // rather than clamp them into a corner tap that looks like it worked.
+    const pixels = await client.callTool({
+      name: 'sim_tap',
+      arguments: { udid: 'U-1', x: 600, y: 1200 },
+    });
+    expect(pixels.isError).toBe(true);
+    expect(backend.tap).toHaveBeenCalledTimes(1);
+    await client.close();
+  });
+
+  it('types through the pasteboard so non-US-layout text works', async () => {
+    const backend = fakeBackend();
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(backend), await granted());
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    await client.callTool({ name: 'sim_type_text', arguments: { udid: 'U-1', text: '你好 🎉' } });
+    expect(backend.paste).toHaveBeenCalledWith('U-1', '你好 🎉');
+    // Command+V commits it: the HID key path is a US-layout table that cannot express this text.
+    expect(backend.key).toHaveBeenCalledWith('U-1', 25, [227]);
+
+    await client.callTool({ name: 'sim_press_key', arguments: { udid: 'U-1', key: 'enter' } });
+    expect(backend.key).toHaveBeenLastCalledWith('U-1', 40, []);
     await client.close();
   });
 
