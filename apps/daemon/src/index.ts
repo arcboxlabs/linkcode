@@ -16,6 +16,7 @@ import {
   ManagedAgentAssetNameSchema,
   managedAgentAssetId,
   managedToolAssetId,
+  WIRE_PROTOCOL_VERSION,
 } from '@linkcode/schema';
 import { SimSidecarClient } from '@linkcode/sim';
 import { createWireMessage } from '@linkcode/transport';
@@ -160,6 +161,7 @@ async function main(): Promise<void> {
         name: 'linkcode-daemon',
         pid: process.pid,
         startedAt: Date.now(),
+        wireProtocolVersion: WIRE_PROTOCOL_VERSION,
         ...(profile !== undefined && { profile }),
       };
       const hub = new Hub();
