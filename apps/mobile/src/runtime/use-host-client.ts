@@ -99,5 +99,10 @@ function createController(host: HostProfile): ConnectionController<LinkCodeClien
         { duration_ms: outcome.durationMs },
       );
     },
+    // ~13s of dialing (250·2ⁿ capped at 5s), then stop and surface `error`. Unbounded retries
+    // would drain a phone in someone's pocket and never give up on a permanent failure — a wire
+    // version mismatch cannot heal. The AppState/NetInfo triggers restart a run when something
+    // actually changed, which is the only time another attempt can succeed.
+    retry: { retries: 6 },
   });
 }

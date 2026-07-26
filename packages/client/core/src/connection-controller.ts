@@ -69,7 +69,10 @@ export interface ConnectionControllerOptions<TClient> {
    * consumer routes this to `setDefaultClient`; clients without an ambient default omit it. */
   onPromote?: (client: TClient | null) => void;
   onOutcome?: (outcome: ConnectionOutcome) => void;
-  retry?: Partial<Pick<AsyncRetryOptions, 'factor' | 'maxTimeout' | 'minTimeout'>>;
+  /** `retries` defaults to infinity — right for a local daemon that will eventually come back,
+   * wrong for a battery-powered client, and wrong for a permanent failure such as a wire-protocol
+   * mismatch. Cap it to surface `error` and let the caller re-trigger deliberately. */
+  retry?: Partial<Pick<AsyncRetryOptions, 'factor' | 'maxTimeout' | 'minTimeout' | 'retries'>>;
 }
 
 interface ManagedGeneration<TClient> extends ConnectionGeneration<TClient> {
@@ -128,9 +131,10 @@ export class ConnectionController<TClient extends RecoverableClient> {
     this.onOutcome = options.onOutcome ?? noop;
     this.retryPolicy = {
       ...DEFAULT_RETRY_POLICY,
-      ...options.retry,
-      randomize: false,
       retries: Number.POSITIVE_INFINITY,
+      ...options.retry,
+      // Not overridable: recovery timing must stay deterministic for the tests that drive it.
+      randomize: false,
     };
     this.snapshot = { attempt: 0, contextGeneration: null, status: 'connecting' };
   }
