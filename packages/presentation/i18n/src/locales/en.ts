@@ -388,6 +388,7 @@ export const en = {
       simulatorRotate: 'Rotate',
       simulatorHome: 'Home',
       simulatorLock: 'Lock screen',
+      simulatorAgentDriving: 'An agent is using this device',
       simulatorBooted: 'Booted',
       simulatorShutdown: 'Shut down device',
       simulatorDetach: 'Detach simulator',
