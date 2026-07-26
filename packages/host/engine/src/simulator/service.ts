@@ -50,10 +50,11 @@ interface DeviceClaim {
  * reaching around this layer would bypass ownership and consent.
  *
  * Ownership model (mirrors the reference implementation): a device belongs to the session that
- * first drives it, and concurrent sessions never share one. When the owning session stops, a
- * device this service booted idles for {@link IDLE_RECLAIM_MS} — resuming work re-claims it in
- * place — then is shut down and freed. Devices the user booted are released immediately and
- * never shut down by the engine.
+ * first drives it, and concurrent sessions never share one. When the owning session stops — or the
+ * panel detaches, leaving nobody watching — a device this service booted idles for
+ * {@link IDLE_RECLAIM_MS}, then is shut down and freed; resuming work re-claims it in place.
+ * Devices the user booted are released immediately and never shut down by the engine, so a
+ * simulator started from Simulator.app or Xcode outlives us untouched.
  */
 export class SimulatorService {
   private readonly claims = new Map<string, DeviceClaim>();
@@ -252,8 +253,14 @@ export class SimulatorService {
    * device stays stuck until the daemon restarts. Only the current owner stops the stream; for a
    * stale session it is a no-op that never touches another session's claim. */
   async streamStop(sessionId: SessionId, udid: string): Promise<void> {
-    if (this.claims.get(udid)?.sessionId !== sessionId) return;
-    return this.backend.streamStop(udid);
+    const claim = this.claims.get(udid);
+    if (claim?.sessionId !== sessionId) return;
+    await this.backend.streamStop(udid);
+    // Detaching (CODE-416) leaves the device booted and still owned — the session lives on and an
+    // agent may keep driving it. But nothing is watching any more, so start the idle clock: a
+    // device we booted should not linger unattended. Any later operation on it disarms this again,
+    // so a device an agent is still working never expires out from under it.
+    if (claim.bootedByService) this.armIdleReclaim(udid, claim);
   }
 
   /**
@@ -349,7 +356,19 @@ export class SimulatorService {
       this.drop(udid);
       return;
     }
-    if (claim.idleTimer) clearTimeout(claim.idleTimer);
+    this.armIdleReclaim(udid, claim);
+  }
+
+  /**
+   * Start the clock after which a device we booted is shut down and freed. Only ever called for
+   * service-booted devices — a device the user booted is never ours to end.
+   *
+   * A clock already counting down is left alone rather than restarted: the triggers overlap (a
+   * session stop and the deferred stream stop that follows it), and each one restarting the window
+   * would keep pushing the reclaim out.
+   */
+  private armIdleReclaim(udid: string, claim: DeviceClaim): void {
+    if (claim.idleTimer) return;
     claim.idleTimer = setTimeout(() => {
       // Shut the device down before releasing its claim: dropping first opens a window where
       // another session claims and boots the same udid while this shutdown is still in flight,

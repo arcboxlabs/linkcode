@@ -8,6 +8,7 @@
 
 import type { ChildProcess } from 'node:child_process';
 import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
@@ -70,6 +71,13 @@ function bootedUdids(): string[] {
   } catch {
     return [];
   }
+}
+
+/** Poll the host until `udid`'s booted-ness matches `want`; simctl state changes are not instant. */
+async function waitForBooted(udid: string, want: boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 60000;
+  while (bootedUdids().includes(udid) !== want && Date.now() < deadline) await wait(500);
+  if (bootedUdids().includes(udid) !== want) fail(message);
 }
 
 function piOnPath(): boolean {
@@ -142,12 +150,55 @@ async function waitForDownload(dir: string, pattern: RegExp, label: string): Pro
   fail(`${label} never landed in ${dir}`);
 }
 
+/** The claim session + device the CODE-419 reclaim check reuses, so it never fights an existing claim. */
+interface ReclaimTarget {
+  sessionId: string;
+  udid: string;
+}
+
+/**
+ * CODE-419's acceptance, end to end: a device the *engine* booted must not outlive the daemon.
+ * Shuts the host device down, boots it back through the wire so the engine owns it, then drains
+ * the daemon and checks the host. A user-booted device would still be running at this point —
+ * that asymmetry is the whole feature, so the check is only meaningful with an engine boot.
+ */
+async function assertShutdownReclaim(daemon: ChildProcess, target: ReclaimTarget): Promise<void> {
+  const { sessionId, udid } = target;
+  await wireRequest({
+    kind: 'simulator.shutdown',
+    clientReqId: 'e2e-reclaim-shutdown',
+    sessionId,
+    udid,
+  });
+  await waitForBooted(udid, false, 'the device never shut down before the reclaim check');
+
+  const booted = await wireRequest({
+    kind: 'simulator.boot',
+    clientReqId: 'e2e-reclaim-boot',
+    sessionId,
+    udid,
+  });
+  if (booted.kind !== 'request.succeeded') {
+    fail(`engine boot for the reclaim check failed: ${JSON.stringify(booted)}`);
+  }
+  await waitForBooted(udid, true, 'the engine never booted the device for the reclaim check');
+
+  daemon.kill('SIGTERM');
+  await once(daemon, 'exit');
+  await waitForBooted(udid, false, 'the daemon exited leaving the device it booted running');
+  console.log('daemon shutdown reclaimed the device the engine booted');
+
+  // Leave the host as we found it, so the next run still has its booted-device precondition.
+  spawn('xcrun', ['simctl', 'boot', udid], { stdio: 'ignore', detached: true }).unref();
+}
+
 async function run(
   win: Page,
   chatRoot: string,
   deepPass: boolean,
   downloadDir: string,
-): Promise<void> {
+): Promise<ReclaimTarget | null> {
+  let reclaimTarget: ReclaimTarget | null = null;
   await win
     .locator('button[aria-label="Toggle side panel"]:visible')
     .first()
@@ -496,6 +547,8 @@ async function run(
       // CoreSimulator finishes tearing the device down, and blocking this event loop while
       // Playwright holds its connection to Electron shows up later as a spurious "target closed".
       spawn('xcrun', ['simctl', 'boot', bootedUdid], { stdio: 'ignore', detached: true }).unref();
+      // Reuse this session for the reclaim check: a second session would be refused the device.
+      reclaimTarget = { sessionId, udid: bootedUdid };
 
       const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
       await win.screenshot({ path: tapShot });
@@ -517,6 +570,7 @@ async function run(
     fail('the + menu did not return after removing the section');
   }
   console.log('simulator section closed; + menu restored');
+  return reclaimTarget;
 }
 
 async function main(): Promise<void> {
@@ -595,14 +649,17 @@ async function main(): Promise<void> {
     win.on('console', (message) => {
       if (message.type() === 'error') console.error(`renderer console: ${message.text()}`);
     });
+    let reclaimTarget: ReclaimTarget | null = null;
     try {
-      await run(win, chatRoot, deepPass, downloadDir);
+      reclaimTarget = await run(win, chatRoot, deepPass, downloadDir);
     } catch (error) {
       const shot = join(tmpdir(), `linkcode-e2e-simulator-${process.pid}.png`);
       await win.screenshot({ path: shot }).catch(noop);
       console.error(`screenshot: ${shot}`);
       throw error;
     }
+    // Last, because it ends the daemon: nothing above may depend on it afterwards.
+    if (reclaimTarget !== null) await assertShutdownReclaim(daemon, reclaimTarget);
     passed = true;
     console.log('PASS');
   } finally {
