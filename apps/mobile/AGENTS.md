@@ -14,11 +14,16 @@ the same contract as every other client.
   Expose a callback ref instead — `setRenderer` in `use-terminal-session.ts`. Destructure a hook's
   result at the top of the component rather than reading `hook.x` inside JSX; the same rule fires on
   member reads it cannot prove.
-- **Mobile hooks cannot be unit-tested yet** (CODE-444). Root vitest resolves react 19.2.7 while this
-  app pins 19.2.3 to match RN's bundled renderer, so `renderHook` on anything under `src/` dies with
-  `Cannot read properties of null (reading 'useState')`. `resolve.dedupe: ['react']` is not the fix —
-  it breaks the pin. Until a mobile vitest project exists, only pure functions are testable
-  (`src/runtime/__tests__/startup.test.ts` is the one example).
+- **Hooks are unit-testable through this app's own vitest project** (`vitest.config.ts`, declared in
+  the root config's `projects`). The app pins react/react-dom to RN's bundled version, so its copies
+  are nested while `@testing-library/react` is hoisted; left alone the two sides load different React
+  instances and every hook dies on a null dispatcher (CODE-444). The project aliases react/react-dom
+  to the **hoisted** pair so both agree — safe because the pin exists for Metro's bundle and vitest
+  never builds it. Consequence: **only RN-free modules belong here.** A test that reaches a `react-native`
+  or `expo-*` import needs a different harness, not a wider alias. `renderHook` needs a DOM, so such
+  tests carry `// @vitest-environment jsdom` (`src/runtime/__tests__/use-session-actions.test.tsx`).
+  Prefer driving a real `LinkCodeClient` over a fake one: a controlled `Transport` lets the assertions
+  land on wire payloads, which is where silent breakage actually lives (root `AGENTS.md`, Invariant 1).
 - **Terminal canvas:** `runtime/use-terminal-session.ts` owns `LinkCodeClient`, attachment/controller
   state, and all network I/O; the route only renders and navigates. Rendering is the native ghostty
   surface from
