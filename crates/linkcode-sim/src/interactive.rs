@@ -306,34 +306,30 @@ mod imp {
         let _ = input_for(udid);
         let fps = fps.clamp(1, 60);
         let scale = scale.clamp(0.1, 1.0);
+        let params = crate::capture::StreamParams {
+            fps,
+            quality: quality.clamp(0.1, 1.0),
+            scale,
+            codec,
+        };
         let mut reg = registry().lock().expect("interactive registry poisoned");
-        if reg.streams.contains_key(udid) {
-            // An idempotent retry keeps the documented success shape (PROTOCOL.md), with
-            // `alreadyStreaming` only as an extra flag, so a caller validating the result still sees
-            // `streaming`/`fps`/`scale`.
+        if let Some(handle) = reg.streams.get(udid) {
+            // A start on a running stream retunes it in place — no worker respawn, no XPC re-warm.
+            // The unified pusher and the worker pick up the new params; `alreadyStreaming` marks that
+            // this was a reconfigure, while the shape still carries `streaming`/`fps`/`scale`/`codec`.
+            handle.stream.reconfigure(params);
             return Ok(
-                json!({ "streaming": true, "fps": fps, "scale": scale, "alreadyStreaming": true }),
+                json!({ "streaming": true, "fps": fps, "scale": scale, "codec": codec, "alreadyStreaming": true }),
             );
         }
-        let stream = Arc::new(CaptureStream::start(
-            udid.to_owned(),
-            crate::capture::StreamParams {
-                fps,
-                quality: quality.clamp(0.1, 1.0),
-                scale,
-                codec,
-            },
-        ));
+        let stream = Arc::new(CaptureStream::start(udid.to_owned(), params));
         let stop = Arc::new(AtomicBool::new(false));
         let pusher = thread::spawn({
             let stream = Arc::clone(&stream);
             let stop = Arc::clone(&stop);
             let tx = tx.clone();
             let udid = udid.to_owned();
-            move || match codec {
-                StreamCodec::Jpeg => push_frames(&udid, fps, &stream, &stop, &tx),
-                StreamCodec::H264 => push_h264(&udid, &stream, &stop, &tx),
-            }
+            move || push_stream(&udid, &stream, &stop, &tx)
         });
         reg.streams.insert(
             udid.to_owned(),
@@ -361,78 +357,25 @@ mod imp {
         Ok(json!({}))
     }
 
-    /// Push framebuffer frames to the daemon at `fps`. Prefers the fast private capture stream; if
-    /// its crash-isolated worker gives up (the private API is unusable on this host/state), it
-    /// degrades to `simctl io screenshot` — slower, but frames never stop and the sidecar never
-    /// crashes. De-duplicates the private frames by identity so a static screen doesn't flood.
-    fn push_frames(
-        udid: &str,
-        fps: u32,
-        stream: &CaptureStream,
-        stop: &AtomicBool,
-        tx: &Sender<OutMsg>,
-    ) {
-        // Poll the private stream on a drift-free clock so a locked worker fps reaches the wire
-        // without the per-frame sleep overshoot that would otherwise sample it below target.
-        let mut clock = FrameClock::new(fps);
-        // simctl screenshots cost ~200-400ms, so poll them well below the private fps.
+    /// Push framebuffer frames to the daemon, adapting to the stream's live codec each frame so a
+    /// reconfigure (JPEG↔H.264, fps) needs no pusher restart. JPEG is latest-wins — deduped by
+    /// identity so a static screen doesn't flood, paced on a drift-free clock at the current fps;
+    /// H.264 drains the ordered queue (deltas must not be dropped). If the crash-isolated worker
+    /// gives up (or stays silent in JPEG mode), it degrades to `simctl io screenshot` — slower, but
+    /// frames never stop; each wire frame carries its codec so a mixed stream stays decodable.
+    fn push_stream(udid: &str, stream: &CaptureStream, stop: &AtomicBool, tx: &Sender<OutMsg>) {
+        // simctl screenshots cost ~200-400ms, so poll the fallback well below the private fps.
         let fallback_interval = Duration::from_millis(500);
-        // Retain the last-sent frame (not a raw pointer): comparing addresses alone risks ABA — a
-        // freed frame's address reused by a new one would read as "already sent".
+        let mut clock = FrameClock::new(stream.config().fps());
+        let mut clock_fps = stream.config().fps();
+        // Retain the last-sent JPEG frame (not a raw pointer): comparing addresses alone risks ABA —
+        // a freed frame's address reused by a new one would read as "already sent".
         let mut last: Option<Frame> = None;
-        // If the worker stays alive but never delivers (framebuffer registration produced no
-        // callbacks), fall back to simctl instead of sending nothing forever.
+        // Last time a real private frame (either codec) reached the wire; a JPEG-mode silence past
+        // the timeout means the framebuffer produced no callbacks, so degrade to simctl.
         let mut last_progress = Instant::now();
         while !stop.load(Ordering::Relaxed) {
-            // Prefer a fresh private frame; sending one marks the worker as producing.
-            if let Some(frame) = stream.latest()
-                && last.as_ref().is_none_or(|prev| !Arc::ptr_eq(prev, &frame))
-            {
-                last = Some(Arc::clone(&frame));
-                last_progress = Instant::now();
-                if let Ok(body) = encode_stream_frame(udid, &frame)
-                    && tx
-                        .send(OutMsg::Frame {
-                            type_byte: STREAM_FRAME,
-                            body,
-                        })
-                        .is_err()
-                {
-                    break; // daemon gone
-                }
-                clock.tick();
-                continue;
-            }
-            // No fresh private frame: if the worker gave up, or has been silent past the timeout,
-            // degrade to a public simctl screenshot so frames never stop.
-            if stream.is_dead() || last_progress.elapsed() >= SILENT_FALLBACK_AFTER {
-                let tick = Instant::now();
-                if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
-                    && let Ok(body) = encode_stream_frame(udid, &jpeg)
-                    && tx
-                        .send(OutMsg::Frame {
-                            type_byte: STREAM_FRAME,
-                            body,
-                        })
-                        .is_err()
-                {
-                    break; // daemon gone
-                }
-                if let Some(rest) = fallback_interval.checked_sub(tick.elapsed()) {
-                    thread::sleep(rest);
-                }
-            } else {
-                clock.tick();
-            }
-        }
-    }
-
-    /// Push H.264 access units in order (deltas must not be dropped). If the private worker gives
-    /// up, degrades to slow simctl JPEG frames — each wire frame carries its codec, so a mixed
-    /// stream stays decodable client-side.
-    fn push_h264(udid: &str, stream: &CaptureStream, stop: &AtomicBool, tx: &Sender<OutMsg>) {
-        let fallback_interval = Duration::from_millis(500);
-        while !stop.load(Ordering::Relaxed) {
+            // The worker gave up entirely: degrade to a public screenshot so frames never stop.
             if stream.is_dead() {
                 let tick = Instant::now();
                 if let Ok(jpeg) = crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
@@ -451,18 +394,67 @@ mod imp {
                 }
                 continue;
             }
-            let Some(unit) = stream.next_encoded(Duration::from_millis(250)) else {
-                continue;
-            };
-            if let Ok(body) = encode_stream_frame_h264(udid, unit.key, &unit.data)
-                && tx
-                    .send(OutMsg::Frame {
-                        type_byte: STREAM_FRAME_H264,
-                        body,
-                    })
-                    .is_err()
-            {
-                break; // daemon gone
+            match stream.config().codec() {
+                StreamCodec::H264 => {
+                    // The queue pop paces this branch (blocks up to 250ms for the next unit).
+                    let Some(unit) = stream.next_encoded(Duration::from_millis(250)) else {
+                        continue;
+                    };
+                    last_progress = Instant::now();
+                    if let Ok(body) = encode_stream_frame_h264(udid, unit.key, &unit.data)
+                        && tx
+                            .send(OutMsg::Frame {
+                                type_byte: STREAM_FRAME_H264,
+                                body,
+                            })
+                            .is_err()
+                    {
+                        break; // daemon gone
+                    }
+                }
+                StreamCodec::Jpeg => {
+                    let fps = stream.config().fps();
+                    if fps != clock_fps {
+                        clock = FrameClock::new(fps);
+                        clock_fps = fps;
+                    }
+                    if let Some(frame) = stream.latest()
+                        && last.as_ref().is_none_or(|prev| !Arc::ptr_eq(prev, &frame))
+                    {
+                        last = Some(Arc::clone(&frame));
+                        last_progress = Instant::now();
+                        if let Ok(body) = encode_stream_frame(udid, &frame)
+                            && tx
+                                .send(OutMsg::Frame {
+                                    type_byte: STREAM_FRAME,
+                                    body,
+                                })
+                                .is_err()
+                        {
+                            break; // daemon gone
+                        }
+                        clock.tick();
+                    } else if last_progress.elapsed() >= SILENT_FALLBACK_AFTER {
+                        let tick = Instant::now();
+                        if let Ok(jpeg) =
+                            crate::simctl::screenshot(udid, crate::rpc::ImageFormat::Jpeg)
+                            && let Ok(body) = encode_stream_frame(udid, &jpeg)
+                            && tx
+                                .send(OutMsg::Frame {
+                                    type_byte: STREAM_FRAME,
+                                    body,
+                                })
+                                .is_err()
+                        {
+                            break; // daemon gone
+                        }
+                        if let Some(rest) = fallback_interval.checked_sub(tick.elapsed()) {
+                            thread::sleep(rest);
+                        }
+                    } else {
+                        clock.tick();
+                    }
+                }
             }
         }
     }
