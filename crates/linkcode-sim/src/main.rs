@@ -464,14 +464,37 @@ fn diag_reconfigure() {
     let pid_after = stream.worker_pid();
     eprintln!("H.264 @15fps: worker pid={pid_after}, units={units} (keyframes={keyframes})");
 
+    // Downscale live: the encoder is rebuilt at the scaled session size, so units must keep flowing
+    // (a VideoToolbox that refused the size mismatch would deliver none).
+    stream.reconfigure(capture::StreamParams {
+        fps: 15,
+        quality: 0.6,
+        scale: 0.5,
+        codec: rpc::StreamCodec::H264,
+    });
+    let mut scaled_units = 0u32;
+    let phase = Instant::now();
+    while phase.elapsed() < Duration::from_secs(3) {
+        if stream.next_encoded(Duration::from_millis(250)).is_some() {
+            scaled_units += 1;
+        }
+    }
+    let pid_scaled = stream.worker_pid();
+    eprintln!("H.264 @15fps scale=0.5: worker pid={pid_scaled}, units={scaled_units}");
+
     assert_eq!(
         pid_before, pid_after,
         "worker pid changed — reconfigure respawned the worker instead of retuning it"
     );
     assert!(pid_before != 0, "no worker was running to reconfigure");
     assert!(units > 0, "no H.264 units after switching codec live");
+    assert_eq!(pid_after, pid_scaled, "rescaling respawned the worker");
+    assert!(
+        scaled_units > 0,
+        "no H.264 units at scale 0.5 — VideoToolbox refused the scaled session"
+    );
     eprintln!(
-        "PASS: reconfigure retuned in place (pid stable {pid_before}); codec switched jpeg→h264"
+        "PASS: reconfigure retuned in place (pid stable {pid_before}); jpeg→h264 and h264 rescale both live"
     );
 }
 

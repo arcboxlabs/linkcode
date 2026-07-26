@@ -131,8 +131,8 @@ const MAX_FAST_CRASHES: u32 = 6;
 pub struct StreamParams {
     pub fps: u32,
     pub quality: f64,
-    /// Downscale factor applied before JPEG encode (0..1; 1.0 = native resolution). H.264 always
-    /// encodes at native resolution — bitrate, not resolution, carries its bandwidth budget.
+    /// Downscale factor applied before encode (0..1; 1.0 = native resolution). JPEG resamples into a
+    /// smaller bitmap; H.264 sizes its compression session down and lets VideoToolbox scale into it.
     pub scale: f64,
     pub codec: StreamCodec,
 }
@@ -624,7 +624,11 @@ pub fn run_worker() -> ! {
             }
             StreamCodec::H264 => {
                 if let Some(surface) = screen.capture_surface() {
-                    let (width, height) = (surface.width(), surface.height());
+                    // `scale` is honored by sizing the session, not by touching the surface: the
+                    // encoder's dimensions are its *output*, and VideoToolbox scales the incoming
+                    // frame into them, so the zero-copy IOSurface path is preserved.
+                    let (width, height) =
+                        encoded_size(surface.width(), surface.height(), params.scale);
                     if encoder
                         .as_ref()
                         .is_none_or(|(_, w, h)| *w != width || *h != height)
@@ -650,6 +654,16 @@ pub fn run_worker() -> ! {
         clock.tick();
     }
     std::process::exit(0);
+}
+
+/// The H.264 session size for a `scale` factor. Sides are rounded down to even numbers because
+/// 4:2:0 chroma subsampling halves both axes; native size (`scale >= 1`) passes through untouched.
+fn encoded_size(width: usize, height: usize, scale: f64) -> (usize, usize) {
+    if scale >= 1.0 {
+        return (width, height);
+    }
+    let scaled = |side: usize| ((side as f64 * scale).round() as usize).max(2) & !1;
+    (scaled(width), scaled(height))
 }
 
 /// Write one `[u32 LE len][u8 flags][payload]` worker frame; false once the parent is gone.
@@ -682,6 +696,18 @@ mod tests {
         assert_eq!(decoded.quality, 0.42);
         assert_eq!(decoded.scale, 0.5);
         assert_eq!(decoded.codec, StreamCodec::H264);
+    }
+
+    #[test]
+    fn encoded_size_scales_to_even_sides() {
+        // Native passes through untouched, even when a side is odd.
+        assert_eq!(encoded_size(1206, 2622, 1.0), (1206, 2622));
+        assert_eq!(encoded_size(1207, 2622, 1.0), (1207, 2622));
+        // Scaled sides round to even (603 → 602) so 4:2:0 chroma stays whole.
+        assert_eq!(encoded_size(1206, 2622, 0.5), (602, 1310));
+        assert_eq!(encoded_size(1206, 2622, 0.25), (302, 656));
+        // A tiny scale never collapses a side below the 2px minimum.
+        assert_eq!(encoded_size(10, 10, 0.1), (2, 2));
     }
 
     #[test]
