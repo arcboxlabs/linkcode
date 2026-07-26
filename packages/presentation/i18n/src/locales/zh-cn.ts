@@ -978,7 +978,12 @@ export const zhCN = {
     },
     conversation: {
       emptyTitle: '还没有内容',
-      emptyHint: '这是 host 上会话的只读视图。',
+      emptyHint: '发一条消息，让 agent 在 host 上开始工作。',
+      composerPlaceholder: '发消息',
+      send: '发送',
+      stop: '停止',
+      sendError: '消息没能发出去，请重试。',
+      stopError: '没能停止这一轮，请重试。',
       reasoning: '思考',
       plan: '计划',
       approval: '权限请求',

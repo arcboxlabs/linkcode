@@ -1007,7 +1007,12 @@ export const en = {
     },
     conversation: {
       emptyTitle: 'Nothing here yet',
-      emptyHint: 'This is a read-only view of the session running on the host.',
+      emptyHint: 'Send a message to start working with the agent on the host.',
+      composerPlaceholder: 'Message',
+      send: 'Send',
+      stop: 'Stop',
+      sendError: 'Could not send the message. Try again.',
+      stopError: 'Could not stop the turn. Try again.',
       reasoning: 'Reasoning',
       plan: 'Plan',
       approval: 'Permission request',
