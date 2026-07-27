@@ -133,7 +133,7 @@ export function WebPreviewUrl({
         <GlobeIcon className="size-3.5 text-muted-foreground" />
       </InputGroupAddon>
       <InputGroupInput
-        className={cn('font-mono text-[12px] placeholder:text-muted-foreground/72', className)}
+        className={cn('font-mono text-xs placeholder:text-label-tertiary', className)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') onCommit?.(event.currentTarget.value);
         }}
@@ -176,7 +176,7 @@ export function WebPreviewConsole({
 }: WebPreviewConsoleProps): React.ReactNode {
   return (
     <Collapsible
-      className={cn('border-t border-border bg-muted/30 text-[12px]', className)}
+      className={cn('border-t border-border bg-muted/30 text-xs', className)}
       defaultOpen={defaultOpen}
       {...props}
     >

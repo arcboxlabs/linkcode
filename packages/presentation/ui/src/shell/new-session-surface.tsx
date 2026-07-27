@@ -404,7 +404,7 @@ function NewSessionContextBar({
         >
           {isChatSelected ? <MessagesSquareIcon /> : <FolderIcon />}
           <span className="max-w-48 truncate">{chipLabel}</span>
-          <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+          <ChevronDownIcon className="size-3 text-label-tertiary" />
         </MenuTrigger>
         <MenuPopup align="start" className="w-72" side="top" sideOffset={8}>
           <MenuRadioGroup
@@ -459,13 +459,13 @@ function NewSessionContextBar({
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <LaptopMinimalIcon />
         {t('workLocally')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {/* TODO(backend): branch/worktree selection for the new session — stub until the daemon exposes it. */}
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <GitBranchIcon />
         {t('branch')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {registerError != null && (
         <span className="min-w-0 truncate text-destructive text-xs">

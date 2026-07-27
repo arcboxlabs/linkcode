@@ -111,7 +111,7 @@ export function ServiceCatalogView({
     <div className="flex min-w-0 flex-1 flex-col gap-4">
       {GROUPS.map((group) => (
         <div key={group} className="flex flex-col gap-2">
-          <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-widest">
+          <span className="font-semibold text-2xs text-muted-foreground uppercase tracking-widest">
             {t(`group.${group}`)}
           </span>
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">

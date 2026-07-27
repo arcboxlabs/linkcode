@@ -190,7 +190,7 @@ function FileViewerNotice({
         </div>
       ) : null}
       {detail ? (
-        <div className="max-w-full truncate text-muted-foreground/80 text-xs">{detail}</div>
+        <div className="max-w-full truncate text-label-tertiary text-xs">{detail}</div>
       ) : null}
     </div>
   );

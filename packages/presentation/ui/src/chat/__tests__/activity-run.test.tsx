@@ -473,7 +473,7 @@ describe('ActivityRun', () => {
     for (const clause of regularClauses) {
       expect(clause.className).toContain('font-medium');
       expect(clause.className).toContain('opacity-80');
-      expect(clause.className).not.toContain('text-muted-foreground/70');
+      expect(clause.className).not.toContain('text-label-tertiary');
     }
     expect(regularClauses[0]?.parentElement?.className).toContain('shrink');
     expect(regularClauses[0]?.parentElement?.className).toContain('truncate');
