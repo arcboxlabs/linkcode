@@ -148,18 +148,12 @@ async function seedPiSession(cwd: string): Promise<string> {
   throw new Error(`session.start failed: ${JSON.stringify(reply)}`);
 }
 
-/** Wait for a download matching `pattern` to land in `dir` and finish being written. `ignore` holds
- * names an earlier assertion already claimed, so a second capture is not satisfied by the first. */
-async function waitForDownload(
-  dir: string,
-  pattern: RegExp,
-  label: string,
-  ignore: ReadonlySet<string> = new Set(),
-): Promise<string> {
+/** Wait for a download matching `pattern` to land in `dir` and finish being written. */
+async function waitForDownload(dir: string, pattern: RegExp, label: string): Promise<string> {
   const deadline = Date.now() + 20000;
   let lastSize = -1;
   while (Date.now() < deadline) {
-    const match = readdirSync(dir).find((name) => pattern.test(name) && !ignore.has(name));
+    const match = readdirSync(dir).find((name) => pattern.test(name));
     if (match !== undefined) {
       const path = join(dir, match);
       const size = statSync(path).size;
@@ -541,26 +535,23 @@ async function run(
       if (shotHeader !== 'PNG') fail(`saved screenshot is not a PNG (header ${shotHeader})`);
       console.log(`screenshot saved: ${savedShot} (${statSync(savedShot).size} bytes)`);
 
-      // The same capture from the keyboard (CODE-450): the chords are panel-scoped, so this also
-      // proves the binding is live while the panel holds focus.
-      await win
-        .locator('canvas:visible')
-        .last()
-        .click({ position: { x: 5, y: 5 } });
+      // The same capture from the keyboard (CODE-450). Capture filenames carry a second-resolution
+      // timestamp, so a second shot taken inside the same second reuses the name and overwrites
+      // instead of landing alongside — clear the first one and assert on any PNG arriving after.
+      rmSync(savedShot);
       await win.keyboard.press('Meta+KeyS');
-      const chordShot = await waitForDownload(
-        downloadDir,
-        /\.png$/,
-        'the Cmd+S screenshot',
-        new Set([basename(savedShot)]),
-      );
-      console.log(`Cmd+S saved a second screenshot: ${basename(chordShot)}`);
+      const chordShot = await waitForDownload(downloadDir, /\.png$/, 'the Cmd+S screenshot');
+      console.log(`Cmd+S saved a screenshot from the keyboard: ${basename(chordShot)}`);
 
       const recordButton = win.getByRole('button', { name: 'Record screen', exact: true });
       if ((await recordButton.count()) > 0) {
-        await recordButton.click();
+        // Started from the chord and stopped from the button, so one pass covers both entry points.
+        await win.keyboard.press('Meta+KeyR');
+        const stopButton = win.getByRole('button', { name: 'Stop recording', exact: true });
+        await stopButton.waitFor({ state: 'visible', timeout: 5000 });
+        console.log('Cmd+R started the recording');
         await win.waitForTimeout(3000);
-        await win.getByRole('button', { name: 'Stop recording', exact: true }).click();
+        await stopButton.click();
         const clip = await waitForDownload(downloadDir, /\.(?:mp4|webm)$/, 'the recording');
         console.log(`recording saved: ${clip} (${statSync(clip).size} bytes)`);
       } else {
