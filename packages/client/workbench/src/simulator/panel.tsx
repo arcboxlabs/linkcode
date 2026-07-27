@@ -440,7 +440,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
                 variant="ghost"
                 size="icon-sm"
                 className={
-                  agentAccess === 'granted' ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                  agentAccess === 'granted' ? 'text-muted-foreground' : 'text-label-quaternary'
                 }
                 aria-label={
                   agentAccess === 'granted' ? t('simulatorAgentRevoke') : t('simulatorAgentAllow')

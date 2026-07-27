@@ -21,6 +21,17 @@
  */
 @theme inline {
   --font-mono: var(--font-mono);
+
+  /* Label tiers below muted-foreground: tertiary = timestamps/weak hints, quaternary =
+     placeholders/pending edges. Inline so the mix resolves against each theme's value. */
+  --color-label-tertiary: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  --color-label-quaternary: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+@theme {
+  /* Bottom of the type scale (badges, chrome labels); no ad-hoc pixel sizes below xs. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(0.875 / 0.6875);
 }
 
 :root {
