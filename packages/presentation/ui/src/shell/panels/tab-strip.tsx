@@ -128,7 +128,7 @@ function PanelTabButton({
     >
       <button
         type="button"
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left outline-none transition-transform duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
         onClick={onSelect}
       >
         <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[tab.type]}</span>
