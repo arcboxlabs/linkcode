@@ -1,4 +1,6 @@
+import type { ProductChannel } from '@linkcode/schema/daemon-runtime';
 import { parseProfileName } from '@linkcode/schema/daemon-runtime';
+import { workspacesDirName } from '@linkcode/schema/product';
 import { app, dialog } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
@@ -13,7 +15,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
  * (`--profile=<name>` / `LINKCODE_PROFILE`) forking the same surfaces again; passed on to the
  * supervised daemon, which forks its state dir and device identity (see `apps/daemon/src/config.ts`).
  */
-export type Channel = 'release' | 'development';
+export type Channel = ProductChannel;
 
 export const CHANNEL: Channel =
   import.meta.env.MODE !== 'production' || !app.isPackaged ? 'development' : 'release';
@@ -53,5 +55,7 @@ const BASE_ID =
 
 export const APP_ID = PROFILE === undefined ? BASE_ID : `${BASE_ID}.${PROFILE}`;
 
-/** `~/LinkCode` holds user workspaces — shared across channels and profiles on purpose. */
-export { WORKSPACES_DIRNAME as DEFAULT_WORKSPACES_DIRNAME } from '@linkcode/schema/product';
+/** The channel's workspace directory (`~/LinkCode`, `~/LinkCode Development`) — shared across
+ * that channel's profiles on purpose, but never across channels (CODE-460). Must agree with the
+ * daemon's `chatWorkspaceRoot()`, which derives the same name from its own resolved channel. */
+export const DEFAULT_WORKSPACES_DIRNAME = workspacesDirName(CHANNEL);

@@ -31,6 +31,7 @@ import { installAsarSpawnFix } from './asar-spawn';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
+  daemonChannel,
   daemonProfile,
   databasePath,
   loadConfig,
@@ -136,8 +137,10 @@ const teardown: Runtime.Teardown = (exit, onExit) => {
  */
 async function main(): Promise<void> {
   // Resolved before anything (subcommands included) touches state paths: an invalid
-  // LINKCODE_PROFILE must abort here, not mid-command or as a default-profile daemon.
+  // LINKCODE_PROFILE or LINKCODE_CHANNEL must abort here, not mid-command or as a daemon that
+  // silently landed in the default universe.
   const profile = daemonProfile();
+  const channel = daemonChannel();
 
   // Subcommands run and exit instead of booting the host (a running daemon
   // picks the new sign-in state up on its next restart).
@@ -153,8 +156,9 @@ async function main(): Promise<void> {
     Shared,
     Effect.gen(function* () {
       const config = loadConfig();
-      // One daemon per profile — a second instance would share this profile's daemon.db and split
-      // sessions. Daemons of other profiles live in sibling state dirs and are not visible here.
+      // One daemon per universe (channel × profile) — a second instance would share this
+      // universe's daemon.db and split sessions. Daemons of other channels/profiles live in
+      // sibling state dirs and are not visible here.
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -170,6 +174,9 @@ async function main(): Promise<void> {
         startedAt: Date.now(),
         wireProtocolVersion: WIRE_PROTOCOL_VERSION,
         ...(profile !== undefined && { profile }),
+        // Absent means release on the wire, so only development needs stating — this keeps a
+        // release daemon's identity and runtime.json byte-identical to pre-split ones.
+        ...(channel !== 'release' && { channel }),
       };
       const hub = new Hub();
       yield* Effect.addFinalizer(() =>
