@@ -22,6 +22,16 @@ export function useSeededConversation(session: SessionInfo | null): Conversation
   const historyId = session?.historyId;
   const sessionId = session?.sessionId ?? null;
 
+  // Announce the session before reading its history: under `attached` delivery this is what makes
+  // its events arrive at all, and it also asks the daemon to re-broadcast the buffered state a
+  // late attacher missed — an open approval ask, the approval-policy advertisement. Those are
+  // ephemeral, so the seed's `uptoSeq` cut keeps them either way (CODE-35).
+  useEffect(() => {
+    if (!sessionId) return;
+    client.attachSession(sessionId);
+    return () => client.detachSession(sessionId);
+  }, [client, sessionId]);
+
   useEffect(
     (signal) => {
       if (!agentKind || !historyId || !sessionId) return;

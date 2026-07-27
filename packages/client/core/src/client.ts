@@ -38,6 +38,7 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionSubscriptionMode,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -580,6 +581,16 @@ export class LinkCodeClient {
   /** See {@link ControlChannel.attachSession}. */
   attachSession(sessionId: SessionId): void {
     this.control.attachSession(sessionId);
+  }
+
+  /** See {@link ControlChannel.detachSession}. */
+  detachSession(sessionId: SessionId): void {
+    this.control.detachSession(sessionId);
+  }
+
+  /** See {@link ControlChannel.setSubscriptionMode}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.control.setSubscriptionMode(mode);
   }
 
   setModel(sessionId: SessionId, model: string): Promise<RequestAck> {

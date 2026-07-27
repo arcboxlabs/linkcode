@@ -8,6 +8,12 @@ import {
 } from '../model/session';
 import { WireRequestIdSchema } from './request';
 
+/** Per-connection `agent.event` delivery scope. `all` is the default for every new connection and
+ * the historical broadcast; `attached` narrows delivery to sessions the connection announced via
+ * `session.attach`, which is what keeps a metered client off every other session's stream. */
+export const SessionSubscriptionModeSchema = z.enum(['all', 'attached']);
+export type SessionSubscriptionMode = z.infer<typeof SessionSubscriptionModeSchema>;
+
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [
   z.object({
@@ -45,7 +51,7 @@ export const sessionWireVariants = [
   z.object({
     kind: z.literal('subscription.set'),
     clientReqId: WireRequestIdSchema,
-    mode: z.enum(['all', 'attached']),
+    mode: SessionSubscriptionModeSchema,
   }),
   /** Resume a persisted (cold) session by its Link Code id; replies `session.started` with the SAME id. */
   z.object({
