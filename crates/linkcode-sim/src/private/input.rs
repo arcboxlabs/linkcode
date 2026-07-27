@@ -19,7 +19,7 @@
 //! Crown/Dial (watch) and returns otherwise. Scrolling on iOS is a touch gesture; the client's
 //! wheel→synthetic-drag translation is the platform-canonical path, not a stopgap.
 
-use std::ffi::c_void;
+use std::ffi::{c_ulong, c_void};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread::sleep;
@@ -81,7 +81,25 @@ unsafe extern "C" {
     fn CFRelease(cf: *const c_void);
     fn malloc_size(ptr: *const c_void) -> usize;
     fn mach_absolute_time() -> u64;
+    fn dispatch_queue_create(label: *const i8, attr: *const c_void) -> *mut c_void;
+    fn dispatch_group_create() -> *mut c_void;
+    fn dispatch_group_enter(group: *mut c_void);
+    fn dispatch_group_leave(group: *mut c_void);
+    fn dispatch_group_wait(group: *mut c_void, timeout: u64) -> isize;
+    fn dispatch_time(when: u64, delta: i64) -> u64;
+    fn dispatch_release(object: *mut c_void);
+    static _NSConcreteGlobalBlock: c_void;
 }
+
+/// `DISPATCH_TIME_NOW`.
+const DISPATCH_TIME_NOW: u64 = 0;
+
+/// How long a send waits for SimulatorKit's acknowledgement before giving up on the client.
+/// Measured on a real device the answer lands in ~0.1ms, success or dead-port error alike, so this
+/// is four orders of magnitude of headroom. It is kept this tight because the wait is synchronous
+/// and touch/pinch/key ops run inline on the sidecar's read loop (see `main.rs`) — a generous
+/// timeout would let one unanswered send stall every other request behind it.
+const SEND_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 
 const TRANSDUCER_FINGER: u32 = 2;
 const TOUCH_TARGET: u32 = 0x32;
@@ -148,6 +166,11 @@ const KEYBOARD_USAGE_PAGE: u32 = 7;
 
 /// A warmed HID client bound to one device, plus the resolved private symbols. Created lazily; a
 /// resolution failure means this host cannot inject input (the caller degrades to view-only).
+///
+/// Bound to **one boot session**: the client's mach port dies with the session, and every method
+/// here reports `false` once it does (see [`Input::send_message`]). There is no way to revive one —
+/// `-resetHIDSession` tears a *live* session down rather than re-establishing a dead one — so the
+/// only recovery is to drop the client and warm a new one against the live device.
 pub struct Input {
     client: Retained<AnyObject>,
     symbols: Symbols,
@@ -234,8 +257,7 @@ impl Input {
             if message.is_null() {
                 return false;
             }
-            self.send_message(message);
-            true
+            self.send_message(message)
         };
         for modifier in modifiers {
             if !send_op(*modifier, 1) {
@@ -264,8 +286,7 @@ impl Input {
             if message.is_null() {
                 return false;
             }
-            self.send_message(message);
-            true
+            self.send_message(message)
         };
         if !send_op(1) {
             return false;
@@ -289,14 +310,15 @@ impl Input {
         if down.is_null() {
             return false;
         }
-        self.send_message(down);
+        if !self.send_message(down) {
+            return false;
+        }
         sleep(hold.max(Duration::from_millis(20)));
         let up = unsafe { (self.symbols.button)(arg0, 2, LEGACY_BUTTON_TARGET) };
         if up.is_null() {
             return false;
         }
-        self.send_message(up);
-        true
+        self.send_message(up)
     }
 
     fn next_identifier(&self) -> u32 {
@@ -387,8 +409,7 @@ impl Input {
             return false;
         }
         patch_message(message);
-        self.send_message(message);
-        true
+        self.send_message(message)
     }
 
     fn warm_services(&self) {
@@ -402,26 +423,151 @@ impl Input {
             // SAFETY: service creators take no args and return a malloc'd message consumed by send.
             let message = unsafe { create() };
             if !message.is_null() {
+                // Priming only: a client warmed against a session that is already gone reports the
+                // dead port on the caller's first real injection, which is where the retry lives.
                 self.send_message(message);
                 sleep(Duration::from_millis(20));
             }
         }
     }
 
-    /// Dispatch a malloc'd Indigo message; `freeWhenDone: true` hands ownership to the client.
-    fn send_message(&self, message: *mut c_void) {
-        let null_obj: *mut AnyObject = ptr::null_mut();
+    /// Dispatch a malloc'd Indigo message and wait for SimulatorKit's verdict on it;
+    /// `freeWhenDone: true` hands ownership of the buffer to the client.
+    ///
+    /// `false` means the message reached nobody. The send itself is asynchronous and returns void,
+    /// so the completion handler is the *only* signal that distinguishes a delivered message from
+    /// one dropped on the floor — and dropping it on the floor is exactly what a client whose boot
+    /// session ended does. Discarding the completion (as this did until CODE-442) turns that into a
+    /// silent success: the panel stays lit, every control reports fine, and nothing reaches the
+    /// guest. Both of `HIDError`'s cases (`machPortInvalid`, `machPortNotConnected`) mean the mach
+    /// port is unusable, so a failure here is proof that nothing was delivered — which is what lets
+    /// the caller re-warm and retry without risking a double-send.
+    fn send_message(&self, message: *mut c_void) -> bool {
+        // SAFETY: both creators return owned dispatch objects, released on every path below.
+        let group = unsafe { dispatch_group_create() };
+        let queue = unsafe { dispatch_queue_create(c"linkcode.sim.hid".as_ptr(), ptr::null()) };
+        if group.is_null() || queue.is_null() {
+            // SAFETY: `message` is the malloc'd buffer the client would have freed for us.
+            unsafe { libc::free(message) };
+            return false;
+        }
+        // SAFETY: balanced by the `dispatch_group_leave` in `completion_invoke`.
+        unsafe { dispatch_group_enter(group) };
+        // Slot and block live on the heap, not this stack frame: a global block's `Block_copy` is a
+        // no-op returning the same pointer, so a late completion would write through dead memory
+        // (the same hazard `ax.rs` documents).
+        let slot = Box::into_raw(Box::new(SendSlot {
+            failed: false,
+            group,
+        }));
+        let completion = Box::into_raw(Box::new(completion_block(slot)));
         // SAFETY: the client implements sendWithMessage:freeWhenDone:completionQueue:completion:;
-        // message is a live malloc'd buffer the client frees.
+        // message is a live malloc'd buffer the client frees, and the block outlives the call on
+        // every path (see the timeout branch below).
         unsafe {
             let _: () = msg_send![
                 &*self.client,
                 sendWithMessage: message,
                 freeWhenDone: true,
-                completionQueue: null_obj,
-                completion: null_obj,
+                completionQueue: queue,
+                completion: completion.cast::<c_void>(),
             ];
         }
+        // SAFETY: DISPATCH_TIME_NOW plus a delta yields an absolute deadline for the wait.
+        let deadline =
+            unsafe { dispatch_time(DISPATCH_TIME_NOW, SEND_ACK_TIMEOUT.as_nanos() as i64) };
+        // SAFETY: the group is live and entered exactly once.
+        let timed_out = unsafe { dispatch_group_wait(group, deadline) } != 0;
+        if timed_out {
+            // Deliberately leak the slot, the block and the group: the send is still outstanding,
+            // so freeing them now would turn a stalled acknowledgement into a use-after-free. The
+            // caller drops this client on the failure, so the leak is bounded and one-off.
+            // SAFETY: the queue is referenced by dispatch itself, never by the completion handler.
+            unsafe { dispatch_release(queue) };
+            return false;
+        }
+        // SAFETY: the handler has run, so nothing else can reach either allocation; both came from
+        // `Box::into_raw` above and are reclaimed exactly once.
+        let failed = unsafe {
+            let slot = Box::from_raw(slot);
+            drop(Box::from_raw(completion));
+            slot.failed
+        };
+        // SAFETY: created by this function; the handler has finished with the group.
+        unsafe {
+            dispatch_release(group);
+            dispatch_release(queue);
+        }
+        !failed
+    }
+}
+
+/// Where one send's completion handler parks its verdict.
+struct SendSlot {
+    /// Set when SimulatorKit hands back a non-nil `HIDError`.
+    failed: bool,
+    group: *mut c_void,
+}
+
+// ── Hand-rolled block ───────────────────────────────────────────────────────────────────────────
+//
+// Same layout as `ax.rs` and `screen.rs`: a global block carrying one captured word, with a
+// signature. block2's `RcBlock` is used nowhere in this crate's private layer — it crashed the
+// callbacks these frameworks invoke (see `screen.rs`), so the recipe is hand-rolled throughout.
+
+#[repr(C)]
+struct BlockDescriptor {
+    reserved: c_ulong,
+    size: c_ulong,
+    /// Objective-C type encoding of the block signature; required with `BLOCK_HAS_SIGNATURE`.
+    signature: *const i8,
+}
+
+// SAFETY: the descriptor is immutable and its signature is a static NUL-terminated string.
+unsafe impl Sync for BlockDescriptor {}
+
+#[repr(C)]
+struct CaptureBlock {
+    isa: *const c_void,
+    flags: i32,
+    reserved: i32,
+    invoke: *const c_void,
+    descriptor: *const BlockDescriptor,
+    /// The one captured word: the [`SendSlot`] this completion writes into.
+    context: *mut c_void,
+}
+
+const BLOCK_IS_GLOBAL: i32 = 1 << 28;
+const BLOCK_HAS_SIGNATURE: i32 = 1 << 30;
+
+/// `void (^)(NSError *)` — `send`'s completion handler, from the Swift signature
+/// `completion: ((Error?) -> ())?`.
+const COMPLETION_SIGNATURE: &[u8] = b"v16@?0@8\0";
+
+static COMPLETION_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
+    reserved: 0,
+    size: size_of::<CaptureBlock>() as c_ulong,
+    signature: COMPLETION_SIGNATURE.as_ptr().cast::<i8>(),
+};
+
+/// Record whether the send errored and release the waiter.
+unsafe extern "C" fn completion_invoke(block: *mut CaptureBlock, error: *mut AnyObject) {
+    // SAFETY: `context` is the `SendSlot` pointer this block was built with, and `send_message`
+    // blocks on the group until this runs, so the slot is still alive.
+    let slot = unsafe { &mut *(*block).context.cast::<SendSlot>() };
+    slot.failed = !error.is_null();
+    // SAFETY: balances the `dispatch_group_enter` in `send_message`.
+    unsafe { dispatch_group_leave(slot.group) };
+}
+
+fn completion_block(slot: *mut SendSlot) -> CaptureBlock {
+    CaptureBlock {
+        isa: (&raw const _NSConcreteGlobalBlock).cast::<c_void>(),
+        flags: BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
+        reserved: 0,
+        invoke: completion_invoke as *const c_void,
+        descriptor: &raw const COMPLETION_DESCRIPTOR,
+        context: slot.cast::<c_void>(),
     }
 }
 
