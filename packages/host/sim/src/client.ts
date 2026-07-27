@@ -203,6 +203,11 @@ export class SimSidecarClient {
     await this.call('button', { udid, button });
   }
 
+  /** Shake the device (a Darwin notification UIKit turns into the gesture; macOS only). */
+  async shake(udid: string): Promise<void> {
+    await this.call('shake', { udid });
+  }
+
   /** Rotate the interface orientation (GraphicsServices GSEvent; macOS only). */
   async rotate(udid: string, orientation: SimOrientation): Promise<void> {
     await this.call('rotate', { udid, orientation });

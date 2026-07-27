@@ -256,6 +256,11 @@ export class SimulatorService {
     return this.backend.rotate(udid, orientation);
   }
 
+  async shake(sessionId: SessionId, udid: string): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.shake(udid);
+  }
+
   async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.key(udid, usage, modifiers);

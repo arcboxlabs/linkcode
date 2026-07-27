@@ -730,6 +730,11 @@ export class LinkCodeClient {
     return this.control.simulatorOpenUrl(sessionId, udid, url);
   }
 
+  /** Shake the device (undo-typing prompts, React Native's dev menu). */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorShake(sessionId, udid);
+  }
+
   /** Start the iOS runtime download; resolves once it is running, not once it finishes. */
   simulatorInstallRuntime(): Promise<RequestAck> {
     return this.control.simulatorInstallRuntime();

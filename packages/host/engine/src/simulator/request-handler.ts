@@ -30,6 +30,7 @@ type SimulatorRequest = Extract<
       | 'simulator.swipe'
       | 'simulator.button'
       | 'simulator.rotate'
+      | 'simulator.shake'
       | 'simulator.key'
       | 'simulator.describe-ui'
       | 'simulator.install-runtime'
@@ -265,6 +266,13 @@ export class SimulatorRequestHandler {
         return this.withSimulators(payload.clientReqId, (simulators) =>
           simulatorOperation('simulator.button', 'Failed to press button', async () => {
             await simulators.button(payload.sessionId, payload.udid, payload.button);
+            this.responder.sendSuccess(payload.clientReqId);
+          }),
+        );
+      case 'simulator.shake':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation('simulator.shake', 'Failed to shake device', async () => {
+            await simulators.shake(payload.sessionId, payload.udid);
             this.responder.sendSuccess(payload.clientReqId);
           }),
         );

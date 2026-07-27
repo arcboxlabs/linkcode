@@ -22,7 +22,8 @@ fn unsupported() -> OpError {
 
 #[cfg(target_os = "macos")]
 pub use imp::{
-    available, button, forget, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+    available, button, forget, key, pinch, rotate, shake, stream_start, stream_stop, swipe, tap,
+    touch,
 };
 
 #[cfg(not(target_os = "macos"))]
@@ -31,6 +32,10 @@ mod stubs {
 
     /// No cached HID client off macOS, so nothing to evict.
     pub fn forget(_udid: &str) {}
+
+    pub fn shake(_udid: &str) -> Result<Value, OpError> {
+        Err(unsupported())
+    }
 
     pub fn available() -> bool {
         false
@@ -85,7 +90,8 @@ mod stubs {
 
 #[cfg(not(target_os = "macos"))]
 pub use stubs::{
-    available, button, forget, key, pinch, rotate, stream_start, stream_stop, swipe, tap, touch,
+    available, button, forget, key, pinch, rotate, shake, stream_start, stream_stop, swipe, tap,
+    touch,
 };
 
 #[cfg(target_os = "macos")]
@@ -114,6 +120,9 @@ mod imp {
     /// not gated on frame progress: a worker whose boot session ended out from under it can keep
     /// delivering frames from the dead session, so silence is not a reliable death signal.
     const STATE_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+
+    /// The notification UIKit turns into a shake gesture inside the guest.
+    const SHAKE_NOTIFICATION: &str = "com.apple.UIKit.SimulatorShake";
 
     /// Warmed HID clients and running streams, keyed by udid. Warming a client is expensive, so it
     /// is cached; a stream is one crash-isolated worker plus a pusher thread.
@@ -211,6 +220,25 @@ mod imp {
             ErrorCode::SimctlFailed,
             format!("{what} failed"),
         ))
+    }
+
+    /// Shake the device.
+    ///
+    /// Not an HID injection at all: UIKit inside the guest listens for a Darwin notification, which
+    /// is the same route Simulator.app's own Device ▸ Shake takes. That makes this the one gesture
+    /// that needs no warmed HID client — and so no re-warm dance either.
+    pub fn shake(udid: &str) -> Result<Value, OpError> {
+        let device = SimDevice::resolve(udid).ok_or_else(|| {
+            OpError::new(ErrorCode::SimctlFailed, format!("device {udid} not found"))
+        })?;
+        if device.post_darwin_notification(SHAKE_NOTIFICATION) {
+            Ok(json!({}))
+        } else {
+            Err(OpError::new(
+                ErrorCode::SimctlFailed,
+                "the device refused the shake notification",
+            ))
+        }
     }
 
     pub fn tap(udid: &str, x: f64, y: f64) -> Result<Value, OpError> {

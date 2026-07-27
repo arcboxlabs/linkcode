@@ -138,6 +138,8 @@ export interface SimulatorBackend {
   button(udid: string, button: SimulatorButton): Promise<void>;
   /** Rotate the interface orientation (GraphicsServices GSEvent; macOS only). */
   rotate(udid: string, orientation: SimulatorOrientation): Promise<void>;
+  /** Shake the device (a Darwin notification UIKit turns into the gesture; macOS only). */
+  shake(udid: string): Promise<void>;
   /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
   key(udid: string, usage: number, modifiers: number[]): Promise<void>;
   /** The frontmost app's accessibility tree (private API; macOS only). */

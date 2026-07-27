@@ -665,6 +665,16 @@ export class ControlChannel {
     }));
   }
 
+  /** Shake the device — the gesture apps use for "undo typing" and, in React Native, the dev menu. */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shake',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
   /** Start the iOS runtime download. Resolves once it is running, not once it finishes — poll
    * {@link simulatorStatus} until the blocker clears to follow progress. */
   simulatorInstallRuntime(): Promise<RequestAck> {

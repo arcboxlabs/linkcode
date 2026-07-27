@@ -46,6 +46,7 @@ function fakeBackend() {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    shake: vi.fn(asyncNoop),
     installRuntime: vi.fn(asyncNoop),
     describeUi: vi.fn(() =>
       Promise.resolve({
@@ -126,6 +127,7 @@ describe('SimulatorMcpEndpoint', () => {
       'sim_press_key',
       'sim_rotate',
       'sim_screenshot',
+      'sim_shake',
       'sim_shutdown',
       'sim_swipe',
       'sim_tap',

@@ -419,6 +419,19 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         }),
     );
     server.registerTool(
+      'sim_shake',
+      {
+        description:
+          "Shake a booted iOS Simulator device. Apps use the shake gesture for 'undo typing' prompts, bug reporters, and — in React Native / Expo apps — to open the developer menu. This is not a touch, so it needs no coordinates.",
+        inputSchema: { udid: z.string().min(1) },
+      },
+      ({ udid }) =>
+        run('sim_shake', udid, async () => {
+          await simulators.shake(sessionId, udid);
+          return `shook ${udid}`;
+        }),
+    );
+    server.registerTool(
       'sim_screenshot',
       {
         description:
