@@ -95,14 +95,15 @@ export function DiffBlock({
 }): React.ReactNode {
   const fileDiff = chatFileDiff(content);
   const { path, oldPath } = content;
-  // `overflow-hidden`: the panel is rounded, but pierre's rows are square and full-bleed, so they
-  // need a clip to stay inside its corners.
+  // `overflow-clip`: the panel is rounded, but pierre's rows are square and full-bleed, so they
+  // need a clip to stay inside its corners. `clip` over `hidden` so the box cannot be scrolled
+  // programmatically out from under the collapsed peek.
   return (
     <FilePreviewCard
       headerEnd={<DiffCounter className="ml-auto gap-1.5" stats={diffContentStats(content)} />}
       label={oldPath ? `${oldPath} → ${path}` : undefined}
       navigation={navigation}
-      panelClassName={fileDiff ? 'chat-diff-surface overflow-hidden p-0' : undefined}
+      panelClassName={fileDiff ? 'chat-diff-surface overflow-clip p-0' : undefined}
       path={path}
     >
       {fileDiff ? <FileDiff fileDiff={fileDiff} options={CHAT_DIFF_OPTIONS} /> : undefined}

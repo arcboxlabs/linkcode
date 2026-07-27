@@ -146,6 +146,8 @@ export const en = {
       duration: 'Duration',
       size: 'Size',
       failed: 'Failed',
+      expand: 'Expand',
+      collapse: 'Collapse',
     },
     subagent: {
       label: 'Subagent',

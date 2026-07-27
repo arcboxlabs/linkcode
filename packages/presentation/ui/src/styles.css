@@ -343,6 +343,24 @@
     visibility: hidden;
   }
 
+  /* Collapsed file-card body: about ten rows at the chat mono scale (20px each, matching the diff
+     renderer's line height), so a long diff or file read previews instead of taking over the
+     timeline. The footer toggle lifts the clamp. */
+  /* `clip`, not `hidden`: a hidden box is still programmatically scrollable, so a focus move or
+     `scrollIntoView` inside the body could strand the peek mid-content. */
+  .chat-card-peek {
+    max-height: 12.5rem;
+    overflow: clip;
+  }
+
+  /* Separate from the clamp because the gradient is relative to the element's OWN height: applied
+     unconditionally it fades the last line of a short body that is not clipped at all, costing
+     legibility with nothing to reveal. Paint-only, so adding it cannot disturb the overflow
+     measurement that gates it. */
+  .chat-card-peek-fade {
+    mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent);
+  }
+
   /* `@pierre/diffs` renders the inline chat diff into a shadow root, so Tailwind utilities cannot
      reach its rows — only inherited custom properties can. Match the card's mono/xs type scale,
      and drop the library's 8px block padding: it frames a standalone viewer, but here the panel
