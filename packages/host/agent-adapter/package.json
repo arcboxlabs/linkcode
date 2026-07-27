@@ -17,7 +17,7 @@
     "@linkcode/common": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
-    "@openai/codex": "^0.144.1",
+    "@openai/codex": "^0.144.6",
     "@opencode-ai/sdk": "^1.18.3",
     "cross-spawn": "^7.0.6",
     "foxts": "^5.8.0",
