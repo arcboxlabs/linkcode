@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SessionIdSchema } from '../model/primitives';
 import {
+  SimulatorAxNodeSchema,
   SimulatorButtonSchema,
   SimulatorConsentDecisionSchema,
   SimulatorConsentStateSchema,
@@ -239,6 +240,22 @@ export const simulatorWireVariants = [
     udid,
     usage: z.number().int().nonnegative(),
     modifiers: z.array(z.number().int().nonnegative()).max(8),
+  }),
+  /** Read the frontmost app's accessibility tree. Costs a chain of XPC round-trips into the guest,
+   * so it is a request/reply command rather than anything stream-shaped. */
+  z.object({
+    kind: z.literal('simulator.describe-ui'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    maxDepth: z.number().int().nonnegative().max(64).optional(),
+    maxNodes: z.number().int().positive().max(5000).optional(),
+  }),
+  z.object({
+    kind: z.literal('simulator.described-ui'),
+    replyTo: WireRequestIdSchema,
+    udid,
+    tree: SimulatorAxNodeSchema,
   }),
   z.object({
     kind: z.literal('simulator.stream.start'),

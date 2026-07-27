@@ -12,6 +12,7 @@
     allow(dead_code, unused_imports, unused_variables)
 )]
 
+mod accessibility;
 mod capture;
 mod interactive;
 mod mask;
@@ -102,6 +103,11 @@ fn main() {
     if subcommand.as_deref() == Some("capture-worker") {
         capture::run_worker();
     }
+    // The crash-isolated accessibility reader (spawned per `describe-ui` op).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("ax-worker") {
+        std::process::exit(accessibility::run_worker());
+    }
     // The crash-isolated device-state watcher (spawned by the sidecar alongside each stream).
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("state-watcher") {
@@ -154,6 +160,13 @@ fn main() {
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("diag-state") {
         diag_state();
+        return;
+    }
+    // Diagnostic: prove the AXPTranslator bridge-token handshake reaches the guest's accessibility
+    // service: `linkcode-sim diag-ax <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-ax") {
+        diag_ax();
         return;
     }
 
@@ -333,6 +346,11 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             codec,
         } => interactive::stream_start(&udid, fps, quality, scale, codec, tx),
         Op::StreamStop { udid } => interactive::stream_stop(&udid),
+        Op::DescribeUi {
+            udid,
+            max_depth,
+            max_nodes,
+        } => accessibility::describe_ui(&udid, max_depth, max_nodes),
     };
     match outcome {
         Ok(result) => send(tx, RESULT, success_body(&request_id, result)),
@@ -572,6 +590,33 @@ fn diag_button() {
     let input = private::Input::warm(&device).expect("HID unavailable for this device");
     let ok = input.button(button, std::time::Duration::from_millis(80));
     eprintln!("button({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): wire the accessibility translator to a booted device and ask it
+/// for the frontmost application. This is the whole risk of the a11y-tree work in one command —
+/// the bridge-token delegate either reaches the guest's AX service or every query answers nil.
+#[cfg(target_os = "macos")]
+fn diag_ax() {
+    let udid = std::env::args().nth(2).expect("usage: diag-ax <udid>");
+    eprintln!("available: {}", private::ax::available());
+    let Some(translator) = private::ax::install(&udid) else {
+        eprintln!("install failed — no translator (see LINKCODE_SIM_DEBUG=1 for detail)");
+        return;
+    };
+    eprintln!("translator wired, token {:?}", private::ax::token());
+    let Some(translation) = private::ax::frontmost_application(&translator, 0) else {
+        eprintln!("frontmostApplication -> nil (handshake did not reach the guest)");
+        return;
+    };
+    let Some(element) = private::ax::platform_element(&translator, &translation) else {
+        eprintln!("macPlatformElementFromTranslation -> nil");
+        return;
+    };
+    let tree = private::ax::walk_tree(&element, private::ax::WalkLimits::default());
+    match serde_json::to_string_pretty(&tree) {
+        Ok(json) => println!("{json}"),
+        Err(err) => eprintln!("serialize failed: {err}"),
+    }
 }
 
 /// Diagnostic entry (macOS only): print whether CoreSimulator reports the device Booted — ground

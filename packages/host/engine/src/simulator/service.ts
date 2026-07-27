@@ -5,6 +5,8 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
 import type {
+  SimulatorAxLimits,
+  SimulatorAxNode,
   SimulatorBackend,
   SimulatorButton,
   SimulatorDeviceInfo,
@@ -235,6 +237,14 @@ export class SimulatorService {
   async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.key(udid, usage, modifiers);
+  }
+
+  async describeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: SimulatorAxLimits,
+  ): Promise<SimulatorAxNode> {
+    return this.withClaim(sessionId, udid, () => this.backend.describeUi(udid, limits));
   }
 
   /** Start streaming a device's framebuffer for a session, claiming it. */

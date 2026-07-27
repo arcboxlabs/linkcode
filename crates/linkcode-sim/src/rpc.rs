@@ -119,6 +119,24 @@ pub enum Op {
     },
     /// Stop a running framebuffer stream.
     StreamStop { udid: String },
+    /// Read the guest's accessibility tree (private API; P2). Served by a short-lived worker
+    /// process, so a drifted `AXPTranslator` ABI cannot take the sidecar down with it.
+    DescribeUi {
+        udid: String,
+        /// Deepest level to descend; `0` reports only the application root.
+        #[serde(default = "default_ax_depth")]
+        max_depth: u32,
+        /// Ceiling on total nodes, so a deep SwiftUI hierarchy cannot blow the caller's budget.
+        #[serde(default = "default_ax_nodes")]
+        max_nodes: usize,
+    },
+}
+
+fn default_ax_depth() -> u32 {
+    24
+}
+fn default_ax_nodes() -> usize {
+    800
 }
 
 fn default_fps() -> u32 {

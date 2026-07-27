@@ -89,3 +89,39 @@ export const SimulatorOrientationSchema = z.enum([
   'landscapeRight',
 ]);
 export type SimulatorOrientation = z.infer<typeof SimulatorOrientationSchema>;
+
+/** One node of the guest's accessibility tree.
+ *
+ * `frame` is `[x, y, width, height]` in device points, faithful to what the guest reports;
+ * `center` is that frame's centre normalized 0..1, which is the scale every pointer command takes
+ * — so a client can act on a node without knowing the device's pixel size. The recursion needs an
+ * explicit interface: zod cannot infer a self-referential shape. */
+export interface SimulatorAxNode {
+  role: string;
+  subrole?: string;
+  label?: string;
+  value?: string;
+  identifier?: string;
+  title?: string;
+  frame: [number, number, number, number];
+  center?: [number, number];
+  enabled: boolean;
+  focused?: boolean;
+  children?: SimulatorAxNode[];
+}
+
+export const SimulatorAxNodeSchema: z.ZodType<SimulatorAxNode> = z.lazy(() =>
+  z.object({
+    role: z.string(),
+    subrole: z.string().optional(),
+    label: z.string().optional(),
+    value: z.string().optional(),
+    identifier: z.string().optional(),
+    title: z.string().optional(),
+    frame: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+    center: z.tuple([z.number(), z.number()]).optional(),
+    enabled: z.boolean(),
+    focused: z.boolean().optional(),
+    children: z.array(SimulatorAxNodeSchema).optional(),
+  }),
+);
