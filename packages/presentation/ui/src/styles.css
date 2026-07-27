@@ -344,10 +344,13 @@
   }
 
   /* `@pierre/diffs` renders the inline chat diff into a shadow root, so Tailwind utilities cannot
-     reach its rows — only inherited custom properties can. Match the card's mono/xs type scale. */
+     reach its rows — only inherited custom properties can. Match the card's mono/xs type scale,
+     and drop the library's 8px block padding: it frames a standalone viewer, but here the panel
+     already provides the card's inset and the rows should meet its edges. */
   .chat-diff-surface {
     --diffs-font-family: var(--font-mono);
     --diffs-font-size: var(--text-xs);
+    --diffs-gap-block: 0;
   }
 
   /* The palette is all `light-dark()`, which reads `color-scheme` — and pierre hard-declares
