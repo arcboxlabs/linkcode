@@ -342,4 +342,23 @@
   .chat-terminal-output .ansi-hidden {
     visibility: hidden;
   }
+
+  /* `@pierre/diffs` renders the inline chat diff into a shadow root, so Tailwind utilities cannot
+     reach its rows — only inherited custom properties can. Match the card's mono/xs type scale. */
+  .chat-diff-surface {
+    --diffs-font-family: var(--font-mono);
+    --diffs-font-size: var(--text-xs);
+  }
+
+  /* The palette is all `light-dark()`, which reads `color-scheme` — and pierre hard-declares
+     `color-scheme: light dark` on its own `:host`, so an inherited value loses and the diff would
+     follow the OS instead of the app's `.dark` class. Outer-document rules matching the host
+     element outrank `:host`, so target the custom element itself. */
+  .chat-diff-surface diffs-container {
+    color-scheme: light;
+  }
+
+  .dark .chat-diff-surface diffs-container {
+    color-scheme: dark;
+  }
 }

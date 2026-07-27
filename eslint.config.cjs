@@ -47,6 +47,7 @@ module.exports = require('eslint-config-sukka').sukka(
         // Workspace tests belong to their source tsconfig or a tests/tsconfig.json referenced by
         // the root solution; listing them here too would breach typescript-eslint's 8-file cap.
         'vitest.config.ts',
+        'vitest.setup.ts',
       ],
     },
   },
