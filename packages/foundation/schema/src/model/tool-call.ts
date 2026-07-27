@@ -38,6 +38,28 @@ export const ToolDiffPatchSchema = z.object({
 });
 export type ToolDiffPatch = z.infer<typeof ToolDiffPatchSchema>;
 
+/** One `@@` group of a unified diff. Structurally what both jsdiff's `structuredPatch` and the
+ * claude SDK's `structuredPatch` hand back, so one formatter serves both. */
+export interface UnifiedDiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** Body lines, each already carrying its ` ` / `-` / `+` prefix. */
+  lines: readonly string[];
+}
+
+/** Hunks → `ToolDiffPatch.text`. Only the text crosses the wire, so the hunk shape stays a plain
+ * interface rather than a schema. */
+export function unifiedPatchText(hunks: readonly UnifiedDiffHunk[]): string {
+  return hunks
+    .flatMap((hunk) => [
+      `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+      ...hunk.lines,
+    ])
+    .join('\n');
+}
+
 /** Tool-call output content: a wrapped ContentBlock, a file diff, or a live terminal reference. */
 export const ToolCallContentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('content'), content: ContentBlockSchema }),

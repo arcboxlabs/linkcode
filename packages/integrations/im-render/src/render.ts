@@ -10,6 +10,7 @@ import type {
   ToolCallStatus,
   ToolCallUpdate,
 } from '@linkcode/schema';
+import { unifiedPatchText } from '@linkcode/schema';
 import { structuredPatch } from 'diff';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { blockquote, capLines, contentToMarkdown, fence } from './blocks';
@@ -74,14 +75,7 @@ function toolContentMarkdown(content: ToolCallContent, opts: RenderOptions): str
               content.newText ?? '',
             )
           : undefined;
-      const patchText =
-        suppliedPatch ??
-        generatedPatch?.hunks
-          .flatMap((hunk) => [
-            `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
-            ...hunk.lines,
-          ])
-          .join('\n');
+      const patchText = suppliedPatch ?? (generatedPatch && unifiedPatchText(generatedPatch.hunks));
       return patchText
         ? `✏\u{FE0F} \`${label}\`\n${fence(capLines(patchText, opts.maxCodeBlockLines), 'diff')}`
         : `✏\u{FE0F} \`${label}\``;
