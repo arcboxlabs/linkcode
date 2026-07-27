@@ -35,6 +35,12 @@
 }
 
 :root {
+  /* Motion scale: micro-interactions / panels & overlays / page-level emphasis.
+     Consume as `duration-(--motion-*)`; new animation picks a tier, never a bare number. */
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-emphasis: 350ms;
+
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
   --font-mono:

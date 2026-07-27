@@ -884,8 +884,8 @@ export function Composer({
               className={cn(
                 'transition-[background-color,padding] motion-reduce:transition-none',
                 frameVisible
-                  ? 'duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
-                  : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                  ? 'duration-(--motion-fast) ease-[cubic-bezier(0.2,0,0,1)]'
+                  : 'bg-transparent p-0 duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)]',
                 isDraggingOver && 'ring-2 ring-ring',
               )}
             >
