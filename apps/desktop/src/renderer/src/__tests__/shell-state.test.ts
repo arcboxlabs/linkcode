@@ -9,7 +9,6 @@ import {
   createRightFileTab,
   createRightTerminalTab,
   DEFAULT_LAYOUT,
-  durableBrowserUrl,
   openFileTabState,
   parsePersistedDesktopShellState,
   RIGHT_PANEL_MAX_SIZE,
@@ -267,6 +266,8 @@ describe('desktop shell state persistence', () => {
   it.each([
     'blob:http://localhost:5173/expired-preview',
     'http://file--3e2d018e14777dcb.localhost:19523/',
+    'http://artifact--turn-123.localhost:19523/',
+    'http://web--app-1a2b3c.localhost:19523/',
   ])('drops ephemeral URL %s from persisted browser state', (url) => {
     const source = createDefaultDesktopShellState();
     source.rightPanel.browser.url = url;
@@ -282,16 +283,6 @@ describe('desktop shell state persistence', () => {
       },
     });
     expect(parsed.rightPanel.browser.url).toBeNull();
-  });
-
-  it.each([
-    ['blob:http://localhost:5173/expired-preview', null],
-    ['http://file--3e2d018e14777dcb.localhost:19523/', null],
-    ['http://artifact--turn-123.localhost:19523/', null],
-    ['http://web--app-1a2b3c.localhost:19523/', null],
-    ['https://example.com/path', 'https://example.com/path'],
-  ])('filters durable browser URL %s', (url, expected) => {
-    expect(durableBrowserUrl(url)).toBe(expected);
   });
 });
 
