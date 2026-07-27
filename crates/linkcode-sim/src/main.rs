@@ -262,6 +262,7 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
     let outcome = match request.op {
         Op::Probe => probe_with_capabilities(),
         Op::List => simctl::list(),
+        Op::InstallRuntime => simctl::install_runtime(),
         // Both ends of a boot session invalidate the warmed HID client bound to the old one.
         Op::Boot { udid } => {
             interactive::forget(&udid);

@@ -665,6 +665,15 @@ export class ControlChannel {
     }));
   }
 
+  /** Start the iOS runtime download. Resolves once it is running, not once it finishes — poll
+   * {@link simulatorStatus} until the blocker clears to follow progress. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install-runtime',
+      clientReqId,
+    }));
+  }
+
   /** Resolves with the frontmost app's accessibility tree. Node centres are normalized 0..1, the
    * same scale {@link simulatorTap} takes, so a caller can act on a node it found by label. */
   simulatorDescribeUi(

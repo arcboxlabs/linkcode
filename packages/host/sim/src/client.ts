@@ -109,6 +109,11 @@ export class SimSidecarClient {
     return SimProbeSchema.parse(await this.call('probe', {}));
   }
 
+  /** Start the iOS runtime download; resolves as soon as it is running, not when it finishes. */
+  async installRuntime(): Promise<void> {
+    await this.call('installRuntime', {});
+  }
+
   async list(): Promise<SimDevice[]> {
     return SimListResultSchema.parse(await this.call('list', {})).devices;
   }

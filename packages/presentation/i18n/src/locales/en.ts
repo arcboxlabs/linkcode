@@ -376,6 +376,16 @@ export const en = {
       simulatorSelectDevice: 'Select a device',
       simulatorNoDevices: 'No simulator devices found',
       simulatorUnavailable: 'iOS Simulator is not available on this host',
+      simulatorSetupTitle: 'A few steps left before simulators work',
+      simulatorSetupStep: {
+        xcode: 'Install Xcode and its command-line tools',
+        runtime: 'Install an iOS runtime',
+        devices: 'Create a simulator device',
+      },
+      simulatorSetupDownload: 'Download the iOS runtime',
+      simulatorSetupDownloading: 'Downloading…',
+      simulatorSetupDownloadHint:
+        'Several gigabytes and usually tens of minutes. Leave this panel open — the steps tick themselves off.',
       simulatorNonInteractive:
         "This host can list simulators but can't stream their screen (SimulatorKit unavailable)",
       simulatorNoSession: 'Select a thread to drive the simulator',

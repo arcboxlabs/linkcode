@@ -58,7 +58,7 @@ function positiveInt(raw: string | undefined): number | undefined {
 
 /** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
  * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 57;
+const WIRE_VERSION = 58;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);

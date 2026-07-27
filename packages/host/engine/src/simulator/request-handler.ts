@@ -32,6 +32,7 @@ type SimulatorRequest = Extract<
       | 'simulator.rotate'
       | 'simulator.key'
       | 'simulator.describe-ui'
+      | 'simulator.install-runtime'
       | 'simulator.stream.start'
       | 'simulator.stream.stop'
       | 'simulator.consent.get'
@@ -142,6 +143,17 @@ export class SimulatorRequestHandler {
             await simulators.openUrl(payload.sessionId, payload.udid, payload.url);
             this.responder.sendSuccess(payload.clientReqId);
           }),
+        );
+      case 'simulator.install-runtime':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation(
+            'simulator.install-runtime',
+            'Failed to start the iOS runtime download',
+            async () => {
+              await simulators.installRuntime();
+              this.responder.sendSuccess(payload.clientReqId);
+            },
+          ),
         );
       case 'simulator.describe-ui':
         return this.withSimulators(payload.clientReqId, (simulators) =>
