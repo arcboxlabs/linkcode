@@ -31,6 +31,8 @@ type SimulatorRequest = Extract<
       | 'simulator.button'
       | 'simulator.rotate'
       | 'simulator.key'
+      | 'simulator.describe-ui'
+      | 'simulator.install-runtime'
       | 'simulator.stream.start'
       | 'simulator.stream.stop'
       | 'simulator.consent.get'
@@ -141,6 +143,38 @@ export class SimulatorRequestHandler {
             await simulators.openUrl(payload.sessionId, payload.udid, payload.url);
             this.responder.sendSuccess(payload.clientReqId);
           }),
+        );
+      case 'simulator.install-runtime':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation(
+            'simulator.install-runtime',
+            'Failed to start the iOS runtime download',
+            async () => {
+              await simulators.installRuntime();
+              this.responder.sendSuccess(payload.clientReqId);
+            },
+          ),
+        );
+      case 'simulator.describe-ui':
+        return this.withSimulators(payload.clientReqId, (simulators) =>
+          simulatorOperation(
+            'simulator.describe-ui',
+            'Failed to read the accessibility tree',
+            async () => {
+              const tree = await simulators.describeUi(payload.sessionId, payload.udid, {
+                maxDepth: payload.maxDepth,
+                maxNodes: payload.maxNodes,
+              });
+              this.transport.send(
+                createWireMessage({
+                  kind: 'simulator.described-ui',
+                  replyTo: payload.clientReqId,
+                  udid: payload.udid,
+                  tree,
+                }),
+              );
+            },
+          ),
         );
       case 'simulator.screenshot':
         return this.withSimulators(payload.clientReqId, (simulators) =>

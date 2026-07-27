@@ -96,7 +96,7 @@ export function StepItem({
 function StepItemIcon({ status }: { status: StepItemStatus }): React.ReactNode {
   switch (status) {
     case 'pending':
-      return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 shrink-0 text-label-quaternary" />;
     case 'in_progress':
       return (
         <CircleDashedIcon className="size-3.5 shrink-0 text-warning-foreground animate-spin" />
@@ -106,6 +106,6 @@ function StepItemIcon({ status }: { status: StepItemStatus }): React.ReactNode {
     case 'cancelled':
       return <CircleXIcon className="size-3.5 shrink-0 text-muted-foreground" />;
     default:
-      return <CircleIcon className="size-3.5 shrink-0 text-muted-foreground/60" />;
+      return <CircleIcon className="size-3.5 shrink-0 text-label-quaternary" />;
   }
 }

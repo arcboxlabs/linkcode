@@ -17,12 +17,16 @@ import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { logger } from '../logger';
 
-/** `simulator.activity` broadcast hook — the panel's "agent is driving this device" badge. */
+/** `simulator.activity` broadcast hook — the panel's "agent is driving this device" badge, and the
+ * pointer it draws when the tool acted on a specific spot. */
 export type SimulatorActivityNotify = (activity: {
   sessionId: SessionId;
   udid?: string;
   tool: string;
   phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without one. */
+  x?: number;
+  y?: number;
 }) => void;
 
 /** Broadcast hooks the daemon wires to the hub. `devicesChanged` mirrors the wire handler's
@@ -34,6 +38,34 @@ export interface SimulatorMcpNotifications {
 
 const SERVER_NAME = 'linkcode-sim';
 const RE_MCP_PATH = /^\/mcp\/([\w-]+)$/;
+
+/** HID keyboard usages (page 7) for the keys an agent cannot express as text. Decimal because
+ * Biome lowercases hex literals while the lint rule wants them uppercase. */
+const NAMED_KEY_USAGES = {
+  enter: 40,
+  escape: 41,
+  backspace: 42,
+  tab: 43,
+  space: 44,
+  delete: 76,
+  arrowRight: 79,
+  arrowLeft: 80,
+  arrowDown: 81,
+  arrowUp: 82,
+} as const;
+
+/** `V` held under left-GUI — the paste chord `sim_type_text` commits pasteboard text with. Typing
+ * through the pasteboard rather than per-character HID is what makes non-US-layout text (CJK,
+ * emoji) work at all: the key path is a US-layout table with no way to express them. */
+const PASTE_KEY_USAGE = 25;
+const LEFT_GUI_USAGE = 227;
+
+type NamedKey = keyof typeof NAMED_KEY_USAGES;
+
+const NAMED_KEY_NAMES = Object.keys(NAMED_KEY_USAGES) as [NamedKey, ...NamedKey[]];
+
+/** Normalized screen fraction; the wire's coordinate contract for every pointer op. */
+const COORD = z.number().min(0).max(1);
 
 /**
  * The daemon's built-in simulator MCP endpoint (CODE-395): a loopback HTTP server speaking MCP
@@ -163,10 +195,12 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
       tool: string,
       udid: string | undefined,
       op: () => Promise<string>,
+      /** Where the tool acts, for the panel's pointer; omitted by tools without a single point. */
+      at?: { x: number; y: number },
     ): Promise<{ content: [{ type: 'text'; text: string }]; isError?: true }> => {
       // Announced before the consent gate on purpose: a tool suspended waiting for the user is
       // exactly when the panel should be showing this device.
-      this.notify?.activity?.({ sessionId, udid, tool, phase: 'started' });
+      this.notify?.activity?.({ sessionId, udid, tool, phase: 'started', x: at?.x, y: at?.y });
       try {
         await this.consent.require(sessionId, udid, tool);
         return { content: [{ type: 'text', text: await op() }] };
@@ -176,7 +210,7 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
           isError: true,
         };
       } finally {
-        this.notify?.activity?.({ sessionId, udid, tool, phase: 'settled' });
+        this.notify?.activity?.({ sessionId, udid, tool, phase: 'settled', x: at?.x, y: at?.y });
       }
     };
 
@@ -285,6 +319,103 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         run('sim_rotate', udid, async () => {
           await simulators.rotate(sessionId, udid, orientation);
           return `rotated ${udid} to ${orientation}`;
+        }),
+    );
+    server.registerTool(
+      'describe_ui',
+      {
+        description:
+          "Read the frontmost app's accessibility tree from a booted iOS Simulator device: element roles, labels, values and positions. Prefer this over a screenshot for finding and acting on a control — it costs far fewer tokens and gives exact coordinates. Every node carries a `center` as NORMALIZED screen fractions (0..1), which is exactly what sim_tap takes, so you can find a node by its label and tap its centre without knowing the device's size. Screenshot instead when you need to judge how something looks.",
+        inputSchema: {
+          udid: z.string().min(1),
+          maxDepth: z.number().int().nonnegative().max(64).optional(),
+          maxNodes: z.number().int().positive().max(5000).optional(),
+        },
+      },
+      ({ udid, maxDepth, maxNodes }) =>
+        run('describe_ui', udid, async () => {
+          const tree = await simulators.describeUi(sessionId, udid, { maxDepth, maxNodes });
+          return JSON.stringify(tree);
+        }),
+    );
+    server.registerTool(
+      'sim_tap',
+      {
+        description:
+          'Tap a point on a booted iOS Simulator device. Coordinates are NORMALIZED screen fractions (0..1) — 0.5, 0.5 is the centre — NOT pixels, so the size of a screenshot is irrelevant. Screenshot afterwards to confirm what the tap did.',
+        inputSchema: { udid: z.string().min(1), x: COORD, y: COORD },
+      },
+      ({ udid, x, y }) =>
+        run(
+          'sim_tap',
+          udid,
+          async () => {
+            await simulators.tap(sessionId, udid, x, y);
+            return `tapped ${x}, ${y}`;
+          },
+          { x, y },
+        ),
+    );
+    server.registerTool(
+      'sim_swipe',
+      {
+        description:
+          'Swipe (drag) between two points on a booted iOS Simulator device — scrolling, paging, pull-to-refresh, edge-swipe back. Coordinates are NORMALIZED screen fractions (0..1), NOT pixels. Note the direction: to scroll DOWN the page, swipe UP (from a larger y to a smaller one), as a finger would.',
+        inputSchema: {
+          udid: z.string().min(1),
+          fromX: COORD,
+          fromY: COORD,
+          toX: COORD,
+          toY: COORD,
+          durationMs: z.number().int().positive().max(10000).optional(),
+        },
+      },
+      ({ udid, fromX, fromY, toX, toY, durationMs }) =>
+        run(
+          'sim_swipe',
+          udid,
+          async () => {
+            await simulators.swipe(
+              sessionId,
+              udid,
+              { x: fromX, y: fromY },
+              { x: toX, y: toY },
+              durationMs,
+            );
+            return `swiped ${fromX}, ${fromY} to ${toX}, ${toY}`;
+          },
+          // The origin: where the finger lands is where the pointer should appear.
+          { x: fromX, y: fromY },
+        ),
+    );
+    server.registerTool(
+      'sim_type_text',
+      {
+        description:
+          'Type text into the focused field of a booted iOS Simulator device. Tap the field first to focus it. Any Unicode works (CJK, emoji) because the text goes through the device pasteboard and is committed with Command+V, so this does not depend on a keyboard layout.',
+        inputSchema: { udid: z.string().min(1), text: z.string().min(1) },
+      },
+      ({ udid, text }) =>
+        run('sim_type_text', udid, async () => {
+          await simulators.paste(sessionId, udid, text);
+          await simulators.key(sessionId, udid, PASTE_KEY_USAGE, [LEFT_GUI_USAGE]);
+          return `typed ${text.length} characters`;
+        }),
+    );
+    server.registerTool(
+      'sim_press_key',
+      {
+        description:
+          'Press one non-text key on a booted iOS Simulator device (Return to submit, Escape to dismiss, Backspace to delete, arrows to move). Use sim_type_text for ordinary text.',
+        inputSchema: {
+          udid: z.string().min(1),
+          key: z.enum(NAMED_KEY_NAMES),
+        },
+      },
+      ({ udid, key }) =>
+        run('sim_press_key', udid, async () => {
+          await simulators.key(sessionId, udid, NAMED_KEY_USAGES[key], []);
+          return `pressed ${key}`;
         }),
     );
     server.registerTool(

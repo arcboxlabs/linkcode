@@ -59,7 +59,7 @@ export function CircularProgress({
         />
         <circle
           className={cn(
-            'fill-none stroke-current transition-[stroke-dashoffset] duration-500',
+            'fill-none stroke-current transition-[stroke-dashoffset] duration-(--motion-emphasis)',
             indicatorClassName,
           )}
           cx={center}

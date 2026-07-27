@@ -57,7 +57,7 @@ export function ServicesMenu({
             <MenuGroupLabel className="flex items-center gap-2">
               <HealthDot script={script} />
               <span className="min-w-0 flex-1 truncate font-medium">{script.scriptName}</span>
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
+              <span className="truncate font-mono text-2xs text-muted-foreground">
                 {script.command}
               </span>
             </MenuGroupLabel>
@@ -87,7 +87,7 @@ export function ServicesMenu({
                 {script.lifecycle === 'stopped' &&
                   script.exitCode !== undefined &&
                   script.exitCode !== 0 && (
-                    <span className="ml-auto text-[11px] text-destructive-foreground">
+                    <span className="ml-auto text-2xs text-destructive-foreground">
                       {t('exitCode', { code: script.exitCode ?? 'signal' })}
                     </span>
                   )}

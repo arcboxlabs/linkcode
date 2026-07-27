@@ -376,6 +376,16 @@ export const en = {
       simulatorSelectDevice: 'Select a device',
       simulatorNoDevices: 'No simulator devices found',
       simulatorUnavailable: 'iOS Simulator is not available on this host',
+      simulatorSetupTitle: 'A few steps left before simulators work',
+      simulatorSetupStep: {
+        xcode: 'Install Xcode and its command-line tools',
+        runtime: 'Install an iOS runtime',
+        devices: 'Create a simulator device',
+      },
+      simulatorSetupDownload: 'Download the iOS runtime',
+      simulatorSetupDownloading: 'Downloading…',
+      simulatorSetupDownloadHint:
+        'Several gigabytes and usually tens of minutes. Leave this panel open — the steps tick themselves off.',
       simulatorNonInteractive:
         "This host can list simulators but can't stream their screen (SimulatorKit unavailable)",
       simulatorNoSession: 'Select a thread to drive the simulator',
@@ -681,6 +691,10 @@ export const en = {
       textSizeLarge: 'Large',
       reduceMotion: 'Reduce motion',
       reduceMotionHint: 'Minimize animations and transitions.',
+      listDensity: 'List density',
+      listDensityHint: 'Row height for long lists such as the thread sidebar and history.',
+      listDensityComfortable: 'Comfortable',
+      listDensityCompact: 'Compact',
       filesTreeSide: 'File tree position',
       filesTreeSideHint: 'Which side of the Files panel the workspace tree docks to.',
       filesTreeSideLeft: 'Left',

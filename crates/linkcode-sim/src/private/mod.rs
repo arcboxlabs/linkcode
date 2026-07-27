@@ -5,6 +5,7 @@
 //! frameworks resolved, and the sidecar falls back to public `simctl` (screenshot polling, no touch)
 //! when they don't — so an Xcode without SimulatorKit is view-only, not broken.
 
+pub mod ax;
 pub(crate) mod debug;
 mod device;
 mod framework;

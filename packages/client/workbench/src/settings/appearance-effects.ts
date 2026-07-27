@@ -30,6 +30,8 @@ function applyAppearancePrefs(state: AppearancePrefsState): void {
   document.documentElement.style.fontSize = TEXT_SIZE_ROOT_PX[state.textSize];
   // Drives the CSS `.reduce-motion` reset in styles.css; JS-driven motion opts out via RenderPrefs.
   document.documentElement.classList.toggle('reduce-motion', state.reduceMotion);
+  // Drives the `--density-*` variable switch in styles.css.
+  document.documentElement.dataset.density = state.listDensity;
   applyFontOverride('--font-sans', state.uiFont);
   applyFontOverride('--font-mono', state.codeFont);
 }

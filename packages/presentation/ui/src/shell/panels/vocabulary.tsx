@@ -56,4 +56,4 @@ export const PANEL_WINDOW_ICONS: Record<PanelWindowType | OptionalPanelSection, 
 export const PANEL_TAB_ACTIVE_CLASSNAME =
   'border-transparent bg-accent font-semibold text-foreground';
 export const PANEL_TAB_INACTIVE_CLASSNAME =
-  'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground';
+  'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent active:text-foreground';

@@ -16,6 +16,8 @@ import {
   writeFrame,
 } from './codec';
 import type {
+  SimAxLimits,
+  SimAxNode,
   SimButton,
   SimDevice,
   SimImageFormat,
@@ -26,6 +28,7 @@ import type {
   SimTouchPhase,
 } from './schema';
 import {
+  SimDescribeUiResultSchema,
   SimLaunchResultSchema,
   SimListResultSchema,
   SimProbeSchema,
@@ -104,6 +107,11 @@ export class SimSidecarClient {
 
   async probe(): Promise<SimProbe> {
     return SimProbeSchema.parse(await this.call('probe', {}));
+  }
+
+  /** Start the iOS runtime download; resolves as soon as it is running, not when it finishes. */
+  async installRuntime(): Promise<void> {
+    await this.call('installRuntime', {});
   }
 
   async list(): Promise<SimDevice[]> {
@@ -203,6 +211,19 @@ export class SimSidecarClient {
   /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
   async key(udid: string, usage: number, modifiers: number[]): Promise<void> {
     await this.call('key', { udid, usage, modifiers });
+  }
+
+  /** The frontmost app's accessibility tree (private API; macOS only).
+   *
+   * Served by a short-lived worker process inside the sidecar, so a drifted `AXPTranslator` cannot
+   * take the sidecar down — a failure surfaces as this call rejecting, not as a dead sidecar. */
+  async describeUi(udid: string, limits?: SimAxLimits): Promise<SimAxNode> {
+    const result = await this.call('describeUi', {
+      udid,
+      maxDepth: limits?.maxDepth,
+      maxNodes: limits?.maxNodes,
+    });
+    return SimDescribeUiResultSchema.parse(result).tree;
   }
 
   /**

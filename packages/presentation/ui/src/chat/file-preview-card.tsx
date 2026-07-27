@@ -56,7 +56,7 @@ export function FilePreviewCard({
   const header = onOpen ? (
     <ChatCardHeader className="p-0">
       <button
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-1.5 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-1.5 text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:text-foreground"
         type="button"
         onClick={onOpen}
       >

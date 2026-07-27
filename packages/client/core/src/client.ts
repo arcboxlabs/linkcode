@@ -38,6 +38,7 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
   SimulatorConsentState,
@@ -118,6 +119,9 @@ type SimulatorActivityCb = (activity: {
   udid?: string;
   tool: string;
   phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without a single point. */
+  x?: number;
+  y?: number;
 }) => void;
 type SimulatorConsentRequiredCb = (request: {
   sessionId: SessionId;
@@ -357,12 +361,22 @@ export class LinkCodeClient {
       case 'simulator.screenshotted':
         this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
         break;
+      case 'simulator.described-ui':
+        this.pending.resolve('simulatorDescribeUi', p.replyTo, p.tree);
+        break;
       case 'simulator.devices.changed':
         for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
         break;
       case 'simulator.activity':
         for (const cb of this.simulatorActivitySubs) {
-          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
+          cb({
+            sessionId: p.sessionId,
+            udid: p.udid,
+            tool: p.tool,
+            phase: p.phase,
+            x: p.x,
+            y: p.y,
+          });
         }
         break;
       case 'simulator.consent.state':
@@ -714,6 +728,20 @@ export class LinkCodeClient {
 
   simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
     return this.control.simulatorOpenUrl(sessionId, udid, url);
+  }
+
+  /** Start the iOS runtime download; resolves once it is running, not once it finishes. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.control.simulatorInstallRuntime();
+  }
+
+  /** The frontmost app's accessibility tree; node centres are in {@link simulatorTap}'s units. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.control.simulatorDescribeUi(sessionId, udid, limits);
   }
 
   simulatorScreenshot(

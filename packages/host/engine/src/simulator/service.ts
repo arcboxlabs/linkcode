@@ -5,6 +5,8 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
 import type {
+  SimulatorAxLimits,
+  SimulatorAxNode,
   SimulatorBackend,
   SimulatorButton,
   SimulatorDeviceInfo,
@@ -26,6 +28,8 @@ export interface SimulatorHostStatus {
    * only when available. Clients gate the live panel on it. */
   interactive?: boolean;
   reason?: string;
+  /** The next step the user must take before a device can run; absent once one exists. */
+  blocker?: 'xcode' | 'runtime' | 'devices';
 }
 
 /** At most four simulator panes per session; the panel reads the same constant for its tab cap. */
@@ -90,12 +94,32 @@ export class SimulatorService {
   async status(): Promise<SimulatorHostStatus> {
     if (this.probedStatus) return this.probedStatus;
     try {
-      const probe = await this.backend.probe();
-      this.probedStatus = { available: true, ...probe };
-      return this.probedStatus;
+      // `blocker` is nullable off the sidecar (JSON `null` = nothing missing) but optional on the
+      // wire, so it is normalized here rather than teaching every consumer both spellings.
+      const { blocker, ...probe } = await this.backend.probe();
+      const status: SimulatorHostStatus = {
+        available: true,
+        ...probe,
+        ...(blocker && { blocker }),
+      };
+      // Only a fully-provisioned host is cached. A probe can succeed while the setup is still
+      // incomplete (Xcode without an iOS runtime), and caching that would freeze the client's
+      // checklist on a step the user is in the middle of finishing.
+      if (!blocker) this.probedStatus = status;
+      return status;
     } catch (error) {
-      return { available: false, reason: extractErrorMessage(error) ?? 'probe failed' };
+      return {
+        available: false,
+        reason: extractErrorMessage(error) ?? 'probe failed',
+        blocker: 'xcode',
+      };
     }
+  }
+
+  /** Start the iOS runtime download. Resolves once it is running: the download is tens of minutes
+   * and many gigabytes, so callers watch {@link status} for the runtime to appear instead. */
+  installRuntime(): Promise<void> {
+    return this.backend.installRuntime();
   }
 
   /** Read-only; claims are not required to look. */
@@ -235,6 +259,14 @@ export class SimulatorService {
   async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.key(udid, usage, modifiers);
+  }
+
+  async describeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: SimulatorAxLimits,
+  ): Promise<SimulatorAxNode> {
+    return this.withClaim(sessionId, udid, () => this.backend.describeUi(udid, limits));
   }
 
   /** Start streaming a device's framebuffer for a session, claiming it. */

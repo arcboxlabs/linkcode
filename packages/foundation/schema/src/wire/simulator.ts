@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SessionIdSchema } from '../model/primitives';
 import {
+  SimulatorAxNodeSchema,
   SimulatorButtonSchema,
   SimulatorConsentDecisionSchema,
   SimulatorConsentStateSchema,
@@ -32,6 +33,13 @@ export const simulatorWireVariants = [
     replyTo: WireRequestIdSchema,
     status: SimulatorStatusSchema,
   }),
+  /** Start the iOS runtime download (`xcodebuild -downloadPlatform iOS`). Fire-and-forget: it runs
+   * for tens of minutes and many gigabytes, so the reply only says it started — progress is
+   * observed by re-probing `simulator.status` until the runtime appears. */
+  z.object({
+    kind: z.literal('simulator.install-runtime'),
+    clientReqId: WireRequestIdSchema,
+  }),
   z.object({ kind: z.literal('simulator.list'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('simulator.listed'),
@@ -50,6 +58,11 @@ export const simulatorWireVariants = [
     udid: z.string().min(1).optional(),
     tool: z.string(),
     phase: z.enum(['started', 'settled']),
+    /** Where on the screen the tool acted, normalized 0..1 — present only for the pointer tools,
+     * so the panel can show *where* an agent is working and not merely that it is. A swipe reports
+     * its origin. Absent for everything that has no single point (boot, screenshot, describe_ui). */
+    x: coord.optional(),
+    y: coord.optional(),
   }),
   // ── Agent consent (CODE-420) ──
   // Device-scoped, not turn-scoped: an agent's first tool call on an unknown device suspends
@@ -239,6 +252,22 @@ export const simulatorWireVariants = [
     udid,
     usage: z.number().int().nonnegative(),
     modifiers: z.array(z.number().int().nonnegative()).max(8),
+  }),
+  /** Read the frontmost app's accessibility tree. Costs a chain of XPC round-trips into the guest,
+   * so it is a request/reply command rather than anything stream-shaped. */
+  z.object({
+    kind: z.literal('simulator.describe-ui'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+    maxDepth: z.number().int().nonnegative().max(64).optional(),
+    maxNodes: z.number().int().positive().max(5000).optional(),
+  }),
+  z.object({
+    kind: z.literal('simulator.described-ui'),
+    replyTo: WireRequestIdSchema,
+    udid,
+    tree: SimulatorAxNodeSchema,
   }),
   z.object({
     kind: z.literal('simulator.stream.start'),

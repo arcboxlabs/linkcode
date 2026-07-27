@@ -39,6 +39,7 @@ import { base64Blob, captureFileStem, downloadBlob, useSimulatorRecorder } from 
 import { useSimulatorConsent, useSimulatorConsentRequest } from './consent';
 import { SimulatorDeviceTabs } from './device-tabs';
 import { selectDeviceTabs, simulatorSessionKey, useSimulatorPanelStore } from './panel-store';
+import { SimulatorSetupChecklist } from './setup-checklist';
 import { useSimulatorShortcuts } from './shortcuts';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
@@ -54,6 +55,10 @@ import {
 } from './stream-settings-store';
 
 const BUSY_BANNER_MS = 3000;
+
+/** How often to re-probe while the host is still missing a provisioning step. Slow on purpose: the
+ * thing being waited on is a multi-gigabyte download or a human in Xcode, not a fast operation. */
+const SETUP_REPROBE_MS = 5000;
 
 /** Stable empty list, so the no-device case never re-keys the background-stream effect. */
 const EMPTY_UDIDS: readonly string[] = [];
@@ -163,6 +168,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
   const [status, setStatus] = useState<SimulatorStatus | null>(null);
+  /** True between clicking "download the runtime" and the runtime appearing in a later probe. */
+  const [installingRuntime, setInstallingRuntime] = useState(false);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
   // Open devices live in the store, not here: agent activity can open one before this component
   // ever mounts (CODE-418), and the cap is per thread, so the strip counts the way the host does.
@@ -193,14 +200,21 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
 
   useEffect(
     (signal) => {
-      void client
-        .simulatorStatus()
-        .then((value) => {
-          if (!signal.aborted) setStatus(value);
-        })
-        .catch(() => {
-          if (!signal.aborted) setStatus({ available: false });
-        });
+      const probe = (): void => {
+        void client
+          .simulatorStatus()
+          .then((value) => {
+            if (!signal.aborted) setStatus(value);
+          })
+          .catch(() => {
+            if (!signal.aborted) setStatus({ available: false });
+          });
+      };
+      probe();
+      // While the host is still being provisioned, keep asking: a step finished in Xcode (or by the
+      // download this panel started) should tick itself off without the user restarting anything.
+      // The engine only caches a fully-ready probe, so this really does re-read the host.
+      const reprobe = setInterval(probe, SETUP_REPROBE_MS);
       void client
         .simulatorList()
         .then((value) => {
@@ -211,6 +225,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
         });
       const unsubscribe = client.subscribeSimulatorDevicesChanged(setDevices);
       return () => {
+        clearInterval(reprobe);
         unsubscribe();
         clearTimeout(busyTimerRef.current);
       };
@@ -301,7 +316,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     [client, udid],
   );
   const measuredFps = useReceivedFps(subscribeFrames, showFps && canStream);
-  const agentDriving = useSimulatorAgentActivity(client, udid);
+  const agentActivity = useSimulatorAgentActivity(client, udid);
   const consent = useSimulatorConsent(client);
   const consentRequest = useSimulatorConsentRequest(client);
   const agentAccess = udid === null ? undefined : consent.decisionFor(udid);
@@ -417,8 +432,23 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     onToggleRecording: recorder.supported ? toggleRecording : null,
   });
 
-  if (status !== null && !status.available) {
-    return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
+  // A host that cannot run a device yet gets the step-by-step checklist rather than a dead end —
+  // `blocker` says which of the three things is missing, and the re-probe above ticks them off.
+  if (status !== null && (!status.available || status.blocker !== undefined)) {
+    return (
+      <SimulatorSetupChecklist
+        status={status}
+        installing={installingRuntime}
+        onInstallRuntime={
+          status.blocker === 'runtime'
+            ? () => {
+                setInstallingRuntime(true);
+                void client.simulatorInstallRuntime().catch(() => setInstallingRuntime(false));
+              }
+            : undefined
+        }
+      />
+    );
   }
 
   return (
@@ -441,7 +471,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
                 variant="ghost"
                 size="icon-sm"
                 className={
-                  agentAccess === 'granted' ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                  agentAccess === 'granted' ? 'text-muted-foreground' : 'text-label-quaternary'
                 }
                 aria-label={
                   agentAccess === 'granted' ? t('simulatorAgentRevoke') : t('simulatorAgentAllow')
@@ -541,7 +571,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           // The stage stays near-black in both themes (video-player convention) so the streamed
           // frame carries the contrast; everything on it uses fixed neutrals, not theme tokens.
           <div className="absolute inset-2 overflow-hidden rounded-lg bg-neutral-950">
-            {agentDriving && (
+            {agentActivity.active && (
               // Floats over the stage rather than displacing it, so the picture never shifts as an
               // agent starts and stops working. Input stays live — this informs, it does not lock.
               <div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 z-10 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 font-medium text-neutral-900 text-xs shadow-lg">
@@ -558,6 +588,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               onText={handleText}
               maskPng={masks[udid] ?? null}
               onScreenCanvas={setScreenCanvas}
+              agentPointer={agentActivity.point}
               placeholder={
                 <span className="text-neutral-400 text-sm">{t('simulatorConnecting')}</span>
               }

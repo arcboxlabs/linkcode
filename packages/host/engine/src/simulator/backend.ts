@@ -26,6 +26,8 @@ export interface SimulatorProbe {
   /** Whether the host can stream a framebuffer and inject HID input (private SimulatorKit layer),
    * not just run public simctl commands. */
   interactive: boolean;
+  /** What still stands between this host and a runnable device; absent once one exists. */
+  blocker?: 'runtime' | 'devices' | null;
 }
 
 export type SimulatorImageFormat = 'jpeg' | 'png';
@@ -44,6 +46,31 @@ export type SimulatorOrientation =
 
 /** One phase of a streamed touch gesture (one `down`, moves, one `up` per gesture). */
 export type SimulatorTouchPhase = 'down' | 'move' | 'up';
+
+/** One node of the guest's accessibility tree.
+ *
+ * `frame` is `[x, y, width, height]` in device points; `center` is that frame's centre normalized
+ * 0..1 against the screen — the same scale the pointer commands take, so a caller can act on a
+ * node without knowing the device's size. */
+export interface SimulatorAxNode {
+  role: string;
+  subrole?: string;
+  label?: string;
+  value?: string;
+  identifier?: string;
+  title?: string;
+  frame: [number, number, number, number];
+  center?: [number, number];
+  enabled: boolean;
+  focused?: boolean;
+  children?: SimulatorAxNode[];
+}
+
+/** Caps on a tree read; omitted fields fall back to the backend's defaults. */
+export interface SimulatorAxLimits {
+  maxDepth?: number;
+  maxNodes?: number;
+}
 
 /** A normalized (0..1) point on the device screen. */
 export interface SimulatorPoint {
@@ -113,6 +140,10 @@ export interface SimulatorBackend {
   rotate(udid: string, orientation: SimulatorOrientation): Promise<void>;
   /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
   key(udid: string, usage: number, modifiers: number[]): Promise<void>;
+  /** The frontmost app's accessibility tree (private API; macOS only). */
+  describeUi(udid: string, limits?: SimulatorAxLimits): Promise<SimulatorAxNode>;
+  /** Start the iOS runtime download; resolves once it is running, not once it completes. */
+  installRuntime(): Promise<void>;
   /** Start streaming `udid`'s framebuffer; frames arrive via {@link onFrame} listeners. */
   streamStart(udid: string, options?: SimulatorStreamOptions): Promise<SimulatorStreamStartResult>;
   /** Stop a running framebuffer stream. */

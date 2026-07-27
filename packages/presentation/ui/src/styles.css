@@ -21,14 +21,45 @@
  */
 @theme inline {
   --font-mono: var(--font-mono);
+
+  /* Label tiers below muted-foreground: tertiary = timestamps/weak hints, quaternary =
+     placeholders/pending edges. Inline so the mix resolves against each theme's value. */
+  --color-label-tertiary: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  --color-label-quaternary: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+@theme {
+  /* Bottom of the type scale (badges, chrome labels); no ad-hoc pixel sizes below xs. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(0.875 / 0.6875);
 }
 
 :root {
+  /* Motion scale: micro-interactions / panels & overlays / page-level emphasis.
+     Consume as `duration-(--motion-*)`; new animation picks a tier, never a bare number. */
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-emphasis: 350ms;
+
+  /* List density (data-density on the root, synced from the appearance store): long-list rows
+     read these instead of fixed paddings; skeletons must track the same vars. */
+  --density-row-py: 0.5rem;
+  /* Thread rows sit on coss-ui's fixed-height SidebarMenuButton (h-8), so density drives the
+     height directly there — padding alone cannot shrink a border-box fixed-height row. */
+  --density-thread-row-h: 2rem;
+  --density-history-skeleton-h: 3.25rem;
+
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
   --font-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
+}
+
+:root[data-density="compact"] {
+  --density-row-py: 0.25rem;
+  --density-thread-row-h: 1.75rem;
+  --density-history-skeleton-h: 2.75rem;
 }
 
 /* Reduce-motion preference (appearance setting, not the OS query — it can differ from the system
