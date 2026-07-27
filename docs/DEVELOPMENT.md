@@ -319,10 +319,12 @@ git apply --3way "$(ls -t .devenv/state/prek/patches/*.patch | head -1)"
 
 ## Identity: channel × profile isolation
 
-The desktop identity is two orthogonal axes (`apps/desktop/src/main/constants.ts`), and app name, `userData` dir, single-instance lock, and OS keychain (safeStorage) all derive from them; `src/main/identity.ts` applies the identity as main's **first import**, and boot logs a `userData: <path>` line as self-evidence.
+The identity is two orthogonal axes (`apps/desktop/src/main/constants.ts`), and the desktop's app name, `userData` dir, single-instance lock, and OS keychain (safeStorage) all derive from them; `src/main/identity.ts` applies the identity as main's **first import**, and boot logs a `userData: <path>` line as self-evidence. Since CODE-460 the **daemon's** state follows the same two axes, so a local build and an installed release share nothing at all.
 
 - **channel** — `CHANNEL === 'development'` for any build that is not the released app: `MODE !== 'production' || !app.isPackaged` (a production bundle run by the dev Electron binary is still a dev shell). `APP_NAME` is `'LinkCode Development'` for dev, `'LinkCode'` for release. Skipping any isolation axis clobbers release settings, steals its instance lock (the second instance exits 0 silently), or writes a safeStorage key under the dev binary's code signature — after which the release app prompts for the keychain password on first launch (macOS keychain ACLs pin the creator cdhash).
-- **profile** — an optional isolated universe: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir to `~/.linkcode-<name>` and its HQ device identity with it. Two profiles therefore run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. The devenv `daemon`/`desktop`/`app` scripts set `LINKCODE_PROFILE=dev` on their dev commands, so the daemon and the desktop share the profile and agree on its `runtime.json`; for another profile, invoke `pnpm -F … dev` directly with the value you want.
+- **profile** — an optional isolated universe *within* a channel: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir and HQ device identity with it. Profiles run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. The devenv `daemon`/`desktop`/`app` scripts pass **no** profile — the development channel is already its own universe; pass one yourself only to fork a second universe within that channel.
+
+The daemon is a separate process and cannot see `app.isPackaged`, so it resolves its own channel (`apps/daemon/src/paths.ts`): the desktop supervisor's injected `LINKCODE_CHANNEL` wins, else the build-time stamp tsup bakes in (`process.env.LINKCODE_BUILD_CHANNEL` → `release`), else `development`. Running the TS source is therefore a development daemon with nothing to remember, while a packaged one is release — and the devshell pack, which ships a `release`-stamped bundle inside a development shell, is corrected by the injection. Resolution is per call, never cached at module load: `instrument.ts` derives a state path in its module body and `--import` runs it before `index.ts`.
 
 Clean a polluted machine (also after the `LinkCode Dev` → `LinkCode Development` rename, which orphaned the old dir and keychain entry by design — a rename migration would carry ciphertext the new keychain entry cannot decrypt):
 
@@ -332,7 +334,21 @@ security delete-generic-password -s "LinkCode Dev Safe Storage"   # pre-rename l
 rm -rf "$HOME/Library/Application Support/LinkCode Dev"           # pre-rename leftover
 ```
 
-Every channel and the default profile deliberately **share** `~/.linkcode` (daemon) and `~/LinkCode` (workspaces); only an explicit `--profile` forks the daemon state, and `~/LinkCode` plus the managed asset store stay shared even then. This sharing is why the devenv dev scripts default to the `dev` profile: a dev daemon on the default profile would contend for `~/.linkcode`/`19523` with an installed release, and whichever binds first wins — the loser's client then dials a peer on a different `WIRE_PROTOCOL_VERSION`, every frame is silently dropped, and it surfaces as "Unable to connect to the daemon". `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
+### What each channel owns on disk
+
+Names come from `packages/foundation/schema/src/product.ts` — the one file a fork edits to rename its footprint.
+
+| | release | development |
+| --- | --- | --- |
+| daemon state (`config.json`, `daemon.db`, `runtime.json`, `hq.json`, `device-key.pem`) | `~/.linkcode` | `~/.linkcode.development` |
+| workspaces + daemon chat root | `~/LinkCode` | `~/LinkCode Development` |
+| managed asset store | `…/Application Support/LinkCode/assets` | `…/Application Support/LinkCode Development/assets` |
+
+A profile appends `-<name>` to the **state** directory only (`~/.linkcode.development-alpha`); workspaces and the asset store fork by channel alone. The development suffix is dot-separated on purpose: profile names forbid dots, so `--profile=development` can never reach the development channel's directory.
+
+Two things stay shared across channels by design: the agent CLIs' own homes (`~/.claude`, `~/.codex` — separating them would force a second agent login and cut you off from the CLI you use in a terminal), and the `linkcode://` scheme's OS-global nature, which is why the dev shell claims `linkcode-dev://` instead (CODE-182).
+
+Before CODE-460 the daemon state and workspaces were shared, and a dev daemon on the default profile contended for `~/.linkcode`/`19523` with an installed release: whichever bound first won, the loser's client dialed a peer on a different `WIRE_PROTOCOL_VERSION`, every frame was silently dropped, and it surfaced only as "Unable to connect to the daemon". Both daemons now coexist — the port hunt reads the occupant's `channel` off `GET /linkcode` and treats another channel as a neighbor, so the second one lands on 19524. `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
 
 ## Formatting and linting
 
