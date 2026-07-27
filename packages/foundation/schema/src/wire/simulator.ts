@@ -33,6 +33,13 @@ export const simulatorWireVariants = [
     replyTo: WireRequestIdSchema,
     status: SimulatorStatusSchema,
   }),
+  /** Start the iOS runtime download (`xcodebuild -downloadPlatform iOS`). Fire-and-forget: it runs
+   * for tens of minutes and many gigabytes, so the reply only says it started — progress is
+   * observed by re-probing `simulator.status` until the runtime appears. */
+  z.object({
+    kind: z.literal('simulator.install-runtime'),
+    clientReqId: WireRequestIdSchema,
+  }),
   z.object({ kind: z.literal('simulator.list'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('simulator.listed'),

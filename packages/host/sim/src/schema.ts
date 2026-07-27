@@ -85,6 +85,8 @@ export const SimProbeSchema = z.object({
   /** Whether the private SimulatorKit layer (framebuffer stream + HID) is reachable; simctl alone
    * is not enough to co-drive a device. Defaulted so an older sidecar reads as non-interactive. */
   interactive: z.boolean().default(false),
+  /** What still stands between this host and a runnable device; absent once one exists. */
+  blocker: z.enum(['runtime', 'devices']).nullish(),
 });
 export type SimProbe = z.infer<typeof SimProbeSchema>;
 

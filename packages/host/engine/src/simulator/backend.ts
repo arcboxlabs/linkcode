@@ -26,6 +26,8 @@ export interface SimulatorProbe {
   /** Whether the host can stream a framebuffer and inject HID input (private SimulatorKit layer),
    * not just run public simctl commands. */
   interactive: boolean;
+  /** What still stands between this host and a runnable device; absent once one exists. */
+  blocker?: 'runtime' | 'devices' | null;
 }
 
 export type SimulatorImageFormat = 'jpeg' | 'png';
@@ -140,6 +142,8 @@ export interface SimulatorBackend {
   key(udid: string, usage: number, modifiers: number[]): Promise<void>;
   /** The frontmost app's accessibility tree (private API; macOS only). */
   describeUi(udid: string, limits?: SimulatorAxLimits): Promise<SimulatorAxNode>;
+  /** Start the iOS runtime download; resolves once it is running, not once it completes. */
+  installRuntime(): Promise<void>;
   /** Start streaming `udid`'s framebuffer; frames arrive via {@link onFrame} listeners. */
   streamStart(udid: string, options?: SimulatorStreamOptions): Promise<SimulatorStreamStartResult>;
   /** Stop a running framebuffer stream. */

@@ -46,6 +46,7 @@ function fakeBackend() {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    installRuntime: vi.fn(asyncNoop),
     describeUi: vi.fn(() =>
       Promise.resolve({
         role: 'AXApplication',

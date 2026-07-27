@@ -366,6 +366,16 @@ export const zhCN = {
       simulatorSelectDevice: '选择设备',
       simulatorNoDevices: '未发现模拟器设备',
       simulatorUnavailable: '此主机不支持 iOS 模拟器',
+      simulatorSetupTitle: '还差几步就能用模拟器',
+      simulatorSetupStep: {
+        xcode: '安装 Xcode 及其命令行工具',
+        runtime: '安装 iOS 运行时',
+        devices: '创建一台模拟器设备',
+      },
+      simulatorSetupDownload: '下载 iOS 运行时',
+      simulatorSetupDownloading: '正在下载…',
+      simulatorSetupDownloadHint:
+        '下载体积数 GB、通常要几十分钟；可以留着这个面板，装好会自动打勾。',
       simulatorNonInteractive: '此主机能列出模拟器，但缺少 SimulatorKit，无法实时串流画面',
       simulatorNoSession: '选择一个线程后即可操控模拟器',
       simulatorBoot: '启动',

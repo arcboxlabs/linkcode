@@ -38,6 +38,7 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
   SimulatorConsentState,
@@ -727,6 +728,20 @@ export class LinkCodeClient {
 
   simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
     return this.control.simulatorOpenUrl(sessionId, udid, url);
+  }
+
+  /** Start the iOS runtime download; resolves once it is running, not once it finishes. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.control.simulatorInstallRuntime();
+  }
+
+  /** The frontmost app's accessibility tree; node centres are in {@link simulatorTap}'s units. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.control.simulatorDescribeUi(sessionId, udid, limits);
   }
 
   simulatorScreenshot(

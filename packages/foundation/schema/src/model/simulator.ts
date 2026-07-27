@@ -30,6 +30,13 @@ export const SimulatorStatusSchema = z.object({
   interactive: z.boolean().optional(),
   /** Why unavailable (e.g. Xcode missing); present when not available. */
   reason: z.string().optional(),
+  /** The next thing the user must do before a device can run, so a client can guide them step by
+   * step instead of reporting a dead end. Absent once a device exists.
+   *
+   * `xcode` — no Xcode or its command-line tools; `runtime` — Xcode, but no usable iOS runtime (a
+   * bare install ships without one, and an interrupted download leaves an unusable entry);
+   * `devices` — a runtime, but every device was deleted. */
+  blocker: z.enum(['xcode', 'runtime', 'devices']).optional(),
 });
 export type SimulatorStatus = z.infer<typeof SimulatorStatusSchema>;
 
