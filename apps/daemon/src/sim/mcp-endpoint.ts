@@ -17,12 +17,16 @@ import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { logger } from '../logger';
 
-/** `simulator.activity` broadcast hook — the panel's "agent is driving this device" badge. */
+/** `simulator.activity` broadcast hook — the panel's "agent is driving this device" badge, and the
+ * pointer it draws when the tool acted on a specific spot. */
 export type SimulatorActivityNotify = (activity: {
   sessionId: SessionId;
   udid?: string;
   tool: string;
   phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without one. */
+  x?: number;
+  y?: number;
 }) => void;
 
 /** Broadcast hooks the daemon wires to the hub. `devicesChanged` mirrors the wire handler's
@@ -191,10 +195,12 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
       tool: string,
       udid: string | undefined,
       op: () => Promise<string>,
+      /** Where the tool acts, for the panel's pointer; omitted by tools without a single point. */
+      at?: { x: number; y: number },
     ): Promise<{ content: [{ type: 'text'; text: string }]; isError?: true }> => {
       // Announced before the consent gate on purpose: a tool suspended waiting for the user is
       // exactly when the panel should be showing this device.
-      this.notify?.activity?.({ sessionId, udid, tool, phase: 'started' });
+      this.notify?.activity?.({ sessionId, udid, tool, phase: 'started', x: at?.x, y: at?.y });
       try {
         await this.consent.require(sessionId, udid, tool);
         return { content: [{ type: 'text', text: await op() }] };
@@ -204,7 +210,7 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
           isError: true,
         };
       } finally {
-        this.notify?.activity?.({ sessionId, udid, tool, phase: 'settled' });
+        this.notify?.activity?.({ sessionId, udid, tool, phase: 'settled', x: at?.x, y: at?.y });
       }
     };
 
@@ -340,10 +346,15 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         inputSchema: { udid: z.string().min(1), x: COORD, y: COORD },
       },
       ({ udid, x, y }) =>
-        run('sim_tap', udid, async () => {
-          await simulators.tap(sessionId, udid, x, y);
-          return `tapped ${x}, ${y}`;
-        }),
+        run(
+          'sim_tap',
+          udid,
+          async () => {
+            await simulators.tap(sessionId, udid, x, y);
+            return `tapped ${x}, ${y}`;
+          },
+          { x, y },
+        ),
     );
     server.registerTool(
       'sim_swipe',
@@ -360,16 +371,22 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         },
       },
       ({ udid, fromX, fromY, toX, toY, durationMs }) =>
-        run('sim_swipe', udid, async () => {
-          await simulators.swipe(
-            sessionId,
-            udid,
-            { x: fromX, y: fromY },
-            { x: toX, y: toY },
-            durationMs,
-          );
-          return `swiped ${fromX}, ${fromY} to ${toX}, ${toY}`;
-        }),
+        run(
+          'sim_swipe',
+          udid,
+          async () => {
+            await simulators.swipe(
+              sessionId,
+              udid,
+              { x: fromX, y: fromY },
+              { x: toX, y: toY },
+              durationMs,
+            );
+            return `swiped ${fromX}, ${fromY} to ${toX}, ${toY}`;
+          },
+          // The origin: where the finger lands is where the pointer should appear.
+          { x: fromX, y: fromY },
+        ),
     );
     server.registerTool(
       'sim_type_text',

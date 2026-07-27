@@ -51,6 +51,11 @@ export const simulatorWireVariants = [
     udid: z.string().min(1).optional(),
     tool: z.string(),
     phase: z.enum(['started', 'settled']),
+    /** Where on the screen the tool acted, normalized 0..1 — present only for the pointer tools,
+     * so the panel can show *where* an agent is working and not merely that it is. A swipe reports
+     * its origin. Absent for everything that has no single point (boot, screenshot, describe_ui). */
+    x: coord.optional(),
+    y: coord.optional(),
   }),
   // ── Agent consent (CODE-420) ──
   // Device-scoped, not turn-scoped: an agent's first tool call on an unknown device suspends

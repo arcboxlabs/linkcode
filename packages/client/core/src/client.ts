@@ -118,6 +118,9 @@ type SimulatorActivityCb = (activity: {
   udid?: string;
   tool: string;
   phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without a single point. */
+  x?: number;
+  y?: number;
 }) => void;
 type SimulatorConsentRequiredCb = (request: {
   sessionId: SessionId;
@@ -365,7 +368,14 @@ export class LinkCodeClient {
         break;
       case 'simulator.activity':
         for (const cb of this.simulatorActivitySubs) {
-          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
+          cb({
+            sessionId: p.sessionId,
+            udid: p.udid,
+            tool: p.tool,
+            phase: p.phase,
+            x: p.x,
+            y: p.y,
+          });
         }
         break;
       case 'simulator.consent.state':

@@ -25,7 +25,7 @@ import { WirePayloadSchema } from './payload';
 // 53 migrates managed-asset IDs from public strings to discriminated objects.
 // 54 adds the simulator agent-consent variants (CODE-420).
 // 55 adds the simulator volume buttons (CODE-414).
-export const WIRE_PROTOCOL_VERSION = 56 as const;
+export const WIRE_PROTOCOL_VERSION = 57 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({
