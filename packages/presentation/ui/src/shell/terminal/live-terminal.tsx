@@ -281,7 +281,10 @@ export function LiveTerminal({
     <div
       ref={frameRef}
       data-keyboard-shortcut-local=""
-      className={cn('relative p-2 opacity-0 transition-opacity duration-150', className)}
+      className={cn(
+        'relative p-2 opacity-0 transition-opacity duration-(--motion-fast)',
+        className,
+      )}
     >
       <div ref={containerRef} className="size-full" />
       {replayTruncated && (
