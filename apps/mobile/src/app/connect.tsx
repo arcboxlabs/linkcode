@@ -185,7 +185,9 @@ function ManualHostForm() {
       <Card.Body className="gap-4">
         <TextField>
           <Label>{t('nameLabel')}</Label>
+          {/* Its `Label` is a sibling, so nothing identifies the field itself to XCUITest. */}
           <Input
+            testID="host-name-input"
             value={name}
             onChangeText={setName}
             placeholder={t('namePlaceholder')}
@@ -196,6 +198,7 @@ function ManualHostForm() {
         <TextField>
           <Label>{t('urlLabel')}</Label>
           <Input
+            testID="host-url-input"
             value={url}
             onChangeText={(next) => {
               setUrl(next);
@@ -205,6 +208,9 @@ function ManualHostForm() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
+            // The URL is the only required field, so the return key finishes the form.
+            returnKeyType="go"
+            onSubmitEditing={submit}
             isInvalid={urlInvalid}
           />
           {urlInvalid ? <Text className="text-danger text-footnote">{t('invalidUrl')}</Text> : null}

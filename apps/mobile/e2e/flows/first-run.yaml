@@ -4,6 +4,10 @@
 appId: com.arcboxlabs.linkcode.mobile
 ---
 - launchApp
+# Deep-linked rather than relying on startup routing: with a host saved from an earlier session,
+# startup goes to that host instead, and this flow would be asserting against whatever state the
+# simulator happens to carry.
+- openLink: linkcode://sign-in
 
 - assertVisible: 'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.'
 - assertVisible: 'Sign in with Apple'
@@ -12,4 +16,7 @@ appId: com.arcboxlabs.linkcode.mobile
 # Skipping sign-in must reach host setup rather than dead-ending: a LAN/direct user never signs in.
 - tapOn: 'Skip — connect manually'
 - assertVisible: 'Connect to a host'
-- assertVisible: 'No hosts yet'
+# Assert what the screen always offers, not its empty state or the collapsed/expanded shape of the
+# manual form: a simulator that has been used before carries saved hosts and remembers whether the
+# form was open, and either would make this flow depend on leftover state.
+- assertVisible: 'Sign in to reach your machines from anywhere through LinkCode Cloud.'
