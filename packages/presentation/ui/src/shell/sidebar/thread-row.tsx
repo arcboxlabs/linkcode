@@ -78,7 +78,7 @@ export function ThreadRow({
               className={cn(
                 // No font-medium when active: IBM Plex Sans lacks CJK, so 500 falls back to
                 // PingFang Medium and mixed-script titles read artificially bold.
-                'py-(--density-row-py) data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
+                'h-(--density-thread-row-h) data-[active=true]:font-normal hover:bg-transparent data-[active=true]:hover:bg-sidebar-accent',
                 ImMenuComponent ? ROW_HOVER_PE_WIDE_CLASS : ROW_HOVER_PE_CLASS,
               )}
             />

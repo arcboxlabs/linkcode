@@ -44,6 +44,9 @@
   /* List density (data-density on the root, synced from the appearance store): long-list rows
      read these instead of fixed paddings; skeletons must track the same vars. */
   --density-row-py: 0.5rem;
+  /* Thread rows sit on coss-ui's fixed-height SidebarMenuButton (h-8), so density drives the
+     height directly there — padding alone cannot shrink a border-box fixed-height row. */
+  --density-thread-row-h: 2rem;
   --density-history-skeleton-h: 3.25rem;
 
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -55,6 +58,7 @@
 
 :root[data-density="compact"] {
   --density-row-py: 0.25rem;
+  --density-thread-row-h: 1.75rem;
   --density-history-skeleton-h: 2.75rem;
 }
 
