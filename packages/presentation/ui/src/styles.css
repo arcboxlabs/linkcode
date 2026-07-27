@@ -41,11 +41,21 @@
   --motion-normal: 250ms;
   --motion-emphasis: 350ms;
 
+  /* List density (data-density on the root, synced from the appearance store): long-list rows
+     read these instead of fixed paddings; skeletons must track the same vars. */
+  --density-row-py: 0.5rem;
+  --density-history-skeleton-h: 3.25rem;
+
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
   --font-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
+}
+
+:root[data-density="compact"] {
+  --density-row-py: 0.25rem;
+  --density-history-skeleton-h: 2.75rem;
 }
 
 /* Reduce-motion preference (appearance setting, not the OS query — it can differ from the system

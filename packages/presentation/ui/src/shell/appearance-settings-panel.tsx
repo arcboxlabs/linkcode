@@ -20,6 +20,8 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export type TextSize = 'small' | 'default' | 'large';
 /** Display-layer Files-tree dock side — mirrors the appearance store's `FilesTreeSide`. */
 export type FilesTreeSide = 'left' | 'right';
+/** Display-layer list density — mirrors the appearance store's `ListDensity`. */
+export type ListDensity = 'comfortable' | 'compact';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 
@@ -35,6 +37,13 @@ const TEXT_SIZE_LABEL_KEYS = {
   small: 'textSizeSmall',
   default: 'textSizeDefault',
   large: 'textSizeLarge',
+} as const;
+
+const LIST_DENSITIES: readonly ListDensity[] = ['comfortable', 'compact'];
+
+const LIST_DENSITY_LABEL_KEYS = {
+  comfortable: 'listDensityComfortable',
+  compact: 'listDensityCompact',
 } as const;
 
 const FILES_TREE_SIDES: readonly FilesTreeSide[] = ['right', 'left'];
@@ -87,6 +96,9 @@ export interface AppearanceSettingsPanelProps {
   /** Which side of the Files panel the workspace tree docks to. */
   filesTreeSide: FilesTreeSide;
   onFilesTreeSideChange: (filesTreeSide: FilesTreeSide) => void;
+  /** Row density for long list surfaces (thread sidebar, history). */
+  listDensity: ListDensity;
+  onListDensityChange: (listDensity: ListDensity) => void;
 }
 
 export function AppearanceSettingsPanel({
@@ -106,6 +118,8 @@ export function AppearanceSettingsPanel({
   onCodeFontChange,
   filesTreeSide,
   onFilesTreeSideChange,
+  listDensity,
+  onListDensityChange,
 }: AppearanceSettingsPanelProps): React.ReactNode {
   const t = useTranslations('settings.appearance');
   const uiFontListId = useId();
@@ -117,6 +131,10 @@ export function AppearanceSettingsPanel({
   const filesTreeSideItems = FILES_TREE_SIDES.map((value) => ({
     value,
     label: t(FILES_TREE_SIDE_LABEL_KEYS[value]),
+  }));
+  const listDensityItems = LIST_DENSITIES.map((value) => ({
+    value,
+    label: t(LIST_DENSITY_LABEL_KEYS[value]),
   }));
   const codeThemeLightItems = CODE_THEME_LIGHT_IDS.map((value) => ({
     value,
@@ -158,6 +176,27 @@ export function AppearanceSettingsPanel({
             </SelectTrigger>
             <SelectPopup>
               {textSizeItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </SettingsRow>
+        <SettingsRow title={t('listDensity')} description={t('listDensityHint')}>
+          <Select
+            items={listDensityItems}
+            value={listDensity}
+            onValueChange={(value) => {
+              const next = LIST_DENSITIES.find((density) => density === value);
+              if (next) onListDensityChange(next);
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {listDensityItems.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
                 </SelectItem>
