@@ -132,7 +132,7 @@ minimumReleaseAgeExclude:
   - "@expo/ui@56.0.19"
   - expo-constants@56.0.19
   - expo-router@56.2.12
-  - foxts@5.6.0
+  - foxts
   - uniwind@1.10.0
   - "@expo/cli@56.1.17"
   - "@expo/config-plugins@56.0.10"
@@ -180,6 +180,7 @@ minimumReleaseAgeExclude:
   - typescript@7.0.2
   - "@eslint-sukka/*"
   - "eslint-*-sukka"
+  - "eslint-plugin-vibe-proof"
   - "@next/eslint-plugin-next@16.2.11"
   # Upstream fixes for our terminal font reports, adopted same-day: restty#24/#25 + text-shaper#3
   # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
