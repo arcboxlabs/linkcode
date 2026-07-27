@@ -116,6 +116,9 @@ async function main(): Promise<void> {
       HOME: home,
       LINKCODE_PORT: String(PORT),
       LINKCODE_PROFILE: profile,
+      // The dist bundle is stamped `release`, the dev Electron shell resolves as `development` —
+      // without this they pick different state dirs and the shell never finds runtime.json.
+      LINKCODE_CHANNEL: 'development',
       LINKCODE_SIM_SIDECAR_PATH: simSidecar,
     },
     stdio: 'ignore',

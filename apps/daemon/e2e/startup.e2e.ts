@@ -66,6 +66,8 @@ async function main(): Promise<void> {
 
   let client: LinkCodeClient | null = null;
   try {
+    // Plain `.linkcode`, not the development sibling: this drives the tsup bundle, which is
+    // stamped `release` at build time (CODE-460). Running the TS source would land elsewhere.
     const runtimePath = join(home, '.linkcode', 'runtime.json');
     const runtime = await waitFor(
       () => {
