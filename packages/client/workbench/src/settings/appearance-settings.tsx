@@ -31,6 +31,8 @@ export function AppearanceSettingsContainer({
   const setCodeFont = useAppearancePrefsStore((state) => state.setCodeFont);
   const filesTreeSide = useAppearancePrefsStore((state) => state.filesTreeSide);
   const setFilesTreeSide = useAppearancePrefsStore((state) => state.setFilesTreeSide);
+  const listDensity = useAppearancePrefsStore((state) => state.listDensity);
+  const setListDensity = useAppearancePrefsStore((state) => state.setListDensity);
 
   return (
     <AppearanceSettingsPanel
@@ -50,6 +52,8 @@ export function AppearanceSettingsContainer({
       onCodeFontChange={setCodeFont}
       filesTreeSide={filesTreeSide}
       onFilesTreeSideChange={setFilesTreeSide}
+      listDensity={listDensity}
+      onListDensityChange={setListDensity}
     />
   );
 }
