@@ -1,0 +1,22 @@
+# Settings and terminal appearance render through @expo/ui, i.e. real SwiftUI rather than RN
+# views. XCUITest reads those natively, so they need no testID — this flow is also the regression
+# guard for that: if a migrated screen ever stops exposing its rows, it fails here.
+# Deep-linked because both screens are reachable without a host connection.
+appId: com.arcboxlabs.linkcode.mobile
+---
+- openLink: linkcode://settings
+
+- assertVisible: 'Settings'
+- assertVisible: 'Manage hosts'
+- assertVisible: 'Terminal appearance'
+# Section header, its toggle, and the footer that explains the toggle.
+- assertVisible: 'Privacy'
+- assertVisible: 'Share usage analytics'
+- assertVisible: 'Send feature usage events without conversations, code, paths, or terminal content. Off by default.'
+- assertVisible: 'Legal & Support'
+
+- tapOn: 'Terminal appearance'
+- assertVisible: 'Font size'
+- assertVisible: 'Color scheme'
+# The inline picker's rows carry the theme name; `Auto` is the default selection.
+- assertVisible: 'Auto'

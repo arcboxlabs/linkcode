@@ -1,0 +1,15 @@
+# First run with no saved host: the sign-in gate, and the manual route past it.
+# Needs no daemon — this path is entirely client-side, which is also why it is the one flow
+# that stays meaningful while the rest of the UI is being reworked.
+appId: com.arcboxlabs.linkcode.mobile
+---
+- launchApp
+
+- assertVisible: 'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.'
+- assertVisible: 'Sign in with Apple'
+- assertVisible: 'More sign-in options'
+
+# Skipping sign-in must reach host setup rather than dead-ending: a LAN/direct user never signs in.
+- tapOn: 'Skip — connect manually'
+- assertVisible: 'Connect to a host'
+- assertVisible: 'No hosts yet'

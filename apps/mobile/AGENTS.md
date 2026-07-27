@@ -47,7 +47,10 @@ the same contract as every other client.
   iOS 26.5: it reads RN text through `accessibilityText` and `testID` through `resource-id`, so flows
   can match on either. devenv's PATH shadows `xcrun` with a nix xcbuild shim (see below) and Maestro
   still worked, but that was with its XCUITest runner already installed on the device — a cold run on
-  a fresh simulator is unverified.
+  a fresh simulator is unverified. Flows live in `e2e/*.yaml`, run with
+  `pnpm -F @linkcode/mobile run e2e:ui` against whatever dev build is already installed. Keep them
+  daemon-free where the path allows it (`first-run`, `settings` both are) — a flow that needs a live
+  host also needs the spawn harness from `apps/daemon/e2e/startup.e2e.ts`, which no flow does yet.
 - **Dev builds, not Expo Go.** Cloud sign-in needs the real `linkcode://` scheme: Expo Go's `exp://…` callback origin is rejected by production HQ (`TRUSTED_ORIGINS` trusts only `https://linkcode.ai,linkcode://`; the `@better-auth/expo` server plugin auto-trusts `exp://` only under `NODE_ENV=development`), so "Sign in" silently 403s there. Build once with `pnpm -F @linkcode/mobile ios` (`expo run:ios`; generates the gitignored `ios/` via prebuild), then daily dev is `pnpm -F @linkcode/mobile start` — with `expo-dev-client` installed it targets the dev build, not Expo Go.
 - **Strip the nix toolchain env before `expo run:ios`.** The devenv shell exports `DEVELOPER_DIR`/`SDKROOT` (nix apple-sdk) plus `CC`/`CXX`/`LD`/`NIX_CFLAGS_COMPILE`/`NIX_LDFLAGS`/`MACOSX_DEPLOYMENT_TARGET`, which poison xcodebuild with nix libc++ headers (hundreds of `FP_NORMAL`/`uint8_t` errors), and its PATH puts a nix xcbuild `xcrun` shim before the real one (`xcrun is not configured correctly`). Build with:
   `devenv shell -- sh -c 'export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer PATH="/usr/bin:$PATH" SENTRY_DISABLE_AUTO_UPLOAD=true; unset SDKROOT CC CXX LD NIX_CFLAGS_COMPILE NIX_LDFLAGS MACOSX_DEPLOYMENT_TARGET; pnpm -F @linkcode/mobile ios'`
