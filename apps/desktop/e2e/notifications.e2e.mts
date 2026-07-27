@@ -134,7 +134,14 @@ async function main(): Promise<void> {
   try {
     daemon = spawn(process.execPath, ['dist/index.js'], {
       cwd: daemonDir,
-      env: { ...process.env, HOME: home, LINKCODE_PORT: String(PORT) },
+      // The dist bundle is stamped `release`, the dev Electron shell resolves as `development` —
+      // without this they pick different state dirs and the shell never finds runtime.json.
+      env: {
+        ...process.env,
+        HOME: home,
+        LINKCODE_PORT: String(PORT),
+        LINKCODE_CHANNEL: 'development',
+      },
       stdio: 'ignore',
     });
     await waitForDaemon();
