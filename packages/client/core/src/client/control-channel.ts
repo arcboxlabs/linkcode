@@ -35,6 +35,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
   SimulatorConsentState,
@@ -661,6 +662,23 @@ export class ControlChannel {
       sessionId,
       udid,
       format,
+    }));
+  }
+
+  /** Resolves with the frontmost app's accessibility tree. Node centres are normalized 0..1, the
+   * same scale {@link simulatorTap} takes, so a caller can act on a node it found by label. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.sendCorrelated('simulatorDescribeUi', (clientReqId) => ({
+      kind: 'simulator.describe-ui',
+      clientReqId,
+      sessionId,
+      udid,
+      maxDepth: limits?.maxDepth,
+      maxNodes: limits?.maxNodes,
     }));
   }
 

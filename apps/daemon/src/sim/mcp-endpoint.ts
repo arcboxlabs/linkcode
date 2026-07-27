@@ -316,6 +316,23 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
         }),
     );
     server.registerTool(
+      'describe_ui',
+      {
+        description:
+          "Read the frontmost app's accessibility tree from a booted iOS Simulator device: element roles, labels, values and positions. Prefer this over a screenshot for finding and acting on a control — it costs far fewer tokens and gives exact coordinates. Every node carries a `center` as NORMALIZED screen fractions (0..1), which is exactly what sim_tap takes, so you can find a node by its label and tap its centre without knowing the device's size. Screenshot instead when you need to judge how something looks.",
+        inputSchema: {
+          udid: z.string().min(1),
+          maxDepth: z.number().int().nonnegative().max(64).optional(),
+          maxNodes: z.number().int().positive().max(5000).optional(),
+        },
+      },
+      ({ udid, maxDepth, maxNodes }) =>
+        run('describe_ui', udid, async () => {
+          const tree = await simulators.describeUi(sessionId, udid, { maxDepth, maxNodes });
+          return JSON.stringify(tree);
+        }),
+    );
+    server.registerTool(
       'sim_tap',
       {
         description:

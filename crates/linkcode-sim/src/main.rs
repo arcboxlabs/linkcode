@@ -12,6 +12,7 @@
     allow(dead_code, unused_imports, unused_variables)
 )]
 
+mod accessibility;
 mod capture;
 mod interactive;
 mod mask;
@@ -101,6 +102,11 @@ fn main() {
     #[cfg(target_os = "macos")]
     if subcommand.as_deref() == Some("capture-worker") {
         capture::run_worker();
+    }
+    // The crash-isolated accessibility reader (spawned per `describe-ui` op).
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("ax-worker") {
+        std::process::exit(accessibility::run_worker());
     }
     // The crash-isolated device-state watcher (spawned by the sidecar alongside each stream).
     #[cfg(target_os = "macos")]
@@ -340,6 +346,11 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
             codec,
         } => interactive::stream_start(&udid, fps, quality, scale, codec, tx),
         Op::StreamStop { udid } => interactive::stream_stop(&udid),
+        Op::DescribeUi {
+            udid,
+            max_depth,
+            max_nodes,
+        } => accessibility::describe_ui(&udid, max_depth, max_nodes),
     };
     match outcome {
         Ok(result) => send(tx, RESULT, success_body(&request_id, result)),

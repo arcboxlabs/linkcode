@@ -46,6 +46,24 @@ function fakeBackend() {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    describeUi: vi.fn(() =>
+      Promise.resolve({
+        role: 'AXApplication',
+        label: 'Fixture',
+        frame: [0, 0, 400, 800] as [number, number, number, number],
+        center: [0.5, 0.5] as [number, number],
+        enabled: true,
+        children: [
+          {
+            role: 'AXButton',
+            label: 'Continue',
+            frame: [100, 400, 200, 40] as [number, number, number, number],
+            center: [0.5, 0.525] as [number, number],
+            enabled: true,
+          },
+        ],
+      }),
+    ),
     streamStart: vi.fn(() =>
       Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
     ),
@@ -98,6 +116,7 @@ describe('SimulatorMcpEndpoint', () => {
     const client = await connect(urlOf(entry));
     const tools = await client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([
+      'describe_ui',
       'sim_boot',
       'sim_install',
       'sim_launch',
@@ -169,6 +188,28 @@ describe('SimulatorMcpEndpoint', () => {
 
     await client.callTool({ name: 'sim_press_key', arguments: { udid: 'U-1', key: 'enter' } });
     expect(backend.key).toHaveBeenLastCalledWith('U-1', 40, []);
+    await client.close();
+  });
+
+  it('reports the accessibility tree with tap-ready coordinates', async () => {
+    const backend = fakeBackend();
+    endpoint = await SimulatorMcpEndpoint.create(new SimulatorService(backend), await granted());
+    const client = await connect(urlOf(endpoint.endpointFor(S1)));
+
+    const described = await client.callTool({
+      name: 'describe_ui',
+      arguments: { udid: 'U-1', maxDepth: 4, maxNodes: 50 },
+    });
+    expect(backend.describeUi).toHaveBeenCalledWith('U-1', { maxDepth: 4, maxNodes: 50 });
+    expect(described.isError).toBeFalsy();
+
+    // The point of the tool: a centre read off the tree is already in sim_tap's units, so the
+    // find-then-act round trip needs no conversion step an agent could get wrong.
+    const [content] = described.content as Array<{ text: string }>;
+    const tree = JSON.parse(content.text) as { children: Array<{ center: [number, number] }> };
+    const [x, y] = tree.children[0].center;
+    await client.callTool({ name: 'sim_tap', arguments: { udid: 'U-1', x, y } });
+    expect(backend.tap).toHaveBeenCalledWith('U-1', 0.5, 0.525);
     await client.close();
   });
 

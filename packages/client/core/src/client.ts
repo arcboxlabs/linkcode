@@ -357,6 +357,9 @@ export class LinkCodeClient {
       case 'simulator.screenshotted':
         this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
         break;
+      case 'simulator.described-ui':
+        this.pending.resolve('simulatorDescribeUi', p.replyTo, p.tree);
+        break;
       case 'simulator.devices.changed':
         for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
         break;

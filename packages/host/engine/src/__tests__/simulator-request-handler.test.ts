@@ -43,6 +43,13 @@ function fakeBackend() {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    describeUi: vi.fn(() =>
+      Promise.resolve({
+        role: 'AXApplication',
+        frame: [0, 0, 400, 800] as [number, number, number, number],
+        enabled: true,
+      }),
+    ),
     streamStart: vi.fn(() =>
       Promise.resolve({ streaming: true as const, fps: 60, scale: 1, codec: 'jpeg' as const }),
     ),

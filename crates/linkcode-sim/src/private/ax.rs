@@ -555,6 +555,20 @@ fn frame_property(element: &AnyObject) -> [f64; 4] {
     ]
 }
 
+/// Read `udid`'s accessibility tree in this process. Intended for the `ax-worker` child, not the
+/// long-lived server: everything below rides a private callback ABI.
+pub fn describe(udid: &str, limits: WalkLimits) -> Result<AxNode, String> {
+    if !available() {
+        return Err("accessibility translation is unavailable on this host".to_owned());
+    }
+    let translator = install(udid).ok_or("could not wire the accessibility translator")?;
+    let translation = frontmost_application(&translator, 0)
+        .ok_or("no frontmost application (is anything running on the device?)")?;
+    let element = platform_element(&translator, &translation)
+        .ok_or("the translation carried no platform element")?;
+    Ok(walk_tree(&element, limits))
+}
+
 /// Walk the whole tree from the application root.
 ///
 /// The root's own frame is the screen size in points, which is what every node's normalized centre
