@@ -10,6 +10,11 @@ export default defineConfig({
   // Desktop packaging copies only index.js into the asar (electron.vite.config.ts
   // bundle-daemon-artifact); a split bundle boots to ERR_MODULE_NOT_FOUND on the missing chunk-*.js.
   splitting: false,
+  // Stamps the channel into the bundle (CODE-460): a built daemon is a release artifact, while
+  // running the TS source leaves this undefined so `daemonChannel()` defaults to development. The
+  // desktop supervisor's LINKCODE_CHANNEL still outranks it — the devshell pack ships this very
+  // bundle inside a development shell.
+  define: { 'process.env.LINKCODE_BUILD_CHANNEL': JSON.stringify('release') },
   // Inlined CJS deps call `require()`; esbuild's ESM output has none, so provide one or boot dies
   // with "Dynamic require of ... is not supported". The private alias avoids redeclaring a bundled
   // module's own preserved `import { createRequire }` (the banner is prepended after esbuild).

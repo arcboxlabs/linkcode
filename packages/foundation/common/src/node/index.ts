@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { ProductChannel } from '@linkcode/schema/daemon-runtime';
 import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime';
 
 /**
@@ -34,8 +35,8 @@ export function isPidAlive(pid: number): boolean {
 }
 
 /** Path of the daemon's runtime discovery file under the user's home directory. */
-export function daemonRuntimeFilePath(profile?: string): string {
-  return join(homedir(), ...daemonRuntimeFileSegments(profile));
+export function daemonRuntimeFilePath(channel: ProductChannel, profile?: string): string {
+  return join(homedir(), ...daemonRuntimeFileSegments(channel, profile));
 }
 
 /** Ask the OS for a free loopback port (bind 0, read, close). Check-then-use — the port can be

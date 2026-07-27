@@ -4,14 +4,14 @@ import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { UtilityProcess } from 'electron';
 import { app, utilityProcess } from 'electron';
 import log from 'electron-log';
-import { PROFILE } from './constants';
+import { CHANNEL, PROFILE } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
 /**
  * Supervises the bundled daemon (out/daemon/index.mjs): forks it under Electron's Node via
  * `utilityProcess`, started on app-ready, SIGTERMed on quit; closing windows leaves it running.
- * It only spawns — the one-daemon-per-profile contract lives in the daemon itself
+ * It only spawns — the one-daemon-per-universe contract lives in the daemon itself
  * (apps/daemon/src/runtime.ts): an external daemon makes the child exit
  * DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down; which daemon clients dial is
  * discovery's job (runtime.json).
@@ -98,6 +98,9 @@ function spawnDaemon(): void {
   // inherited LINKCODE_PROFILE, and the default universe must not leak a stray env value through.
   if (PROFILE === undefined) delete env.LINKCODE_PROFILE;
   else env.LINKCODE_PROFILE = PROFILE;
+  // The channel cannot be inferred by the child: the devshell pack bundles a daemon stamped
+  // `release` at build time, and only this shell knows it is a development build (CODE-460).
+  env.LINKCODE_CHANNEL = CHANNEL;
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);

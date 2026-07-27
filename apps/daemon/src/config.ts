@@ -10,12 +10,12 @@ import {
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
 } from '@linkcode/schema';
-import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
+import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
-import { daemonProfile, daemonStateDir } from './paths';
+import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 
-export { daemonProfile } from './paths';
+export { daemonChannel, daemonProfile } from './paths';
 
 /**
  * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
@@ -57,7 +57,7 @@ export function databasePath(): string {
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
 export function runtimeFilePath(): string {
-  return daemonRuntimeFilePath(daemonProfile());
+  return daemonRuntimeFilePath(daemonChannel(), daemonProfile());
 }
 
 /** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
@@ -81,7 +81,7 @@ export function deviceKeysDir(): string {
  * independently — a system-plane invariant enforced regardless of which client is connected.
  */
 export function chatWorkspaceRoot(): string {
-  return join(homedir(), WORKSPACES_DIRNAME);
+  return join(homedir(), workspacesDirName(daemonChannel()));
 }
 
 export function loadConfig(): DaemonConfig {

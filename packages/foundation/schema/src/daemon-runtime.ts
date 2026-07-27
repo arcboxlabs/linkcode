@@ -1,6 +1,10 @@
 /** Zero-dependency half of the daemon discovery contract (see `model/daemon-discovery.ts`);
  * kept zod-free so the sandboxed Electron preload (no `require('zod')`) can import it. */
-import { STATE_DIR_BASENAME } from './product';
+import type { ProductChannel } from './product';
+import { stateDirBasename } from './product';
+
+export type { ProductChannel } from './product';
+export { parseProductChannel } from './product';
 
 /** Default TCP port of the local daemon: 0x4C43 — ascii "LC". */
 export const DAEMON_DEFAULT_PORT = 19523;
@@ -25,16 +29,22 @@ export function parseProfileName(raw: string | undefined): string | undefined {
   return raw;
 }
 
-/** The daemon state directory name under the user's home: `.linkcode`, or a profile sibling.
- * Validates its input so no caller can interpolate a traversal or separator — safety lives here. */
-export function linkcodeStateDirName(profile?: string): string {
+/** The daemon state directory name under the user's home: the channel's base name, or a profile
+ * sibling of it. Validates its input so no caller can interpolate a traversal or separator —
+ * safety lives here. `channel` is required: defaulting it would let a missed call site silently
+ * land a development build in the release universe, which is the whole bug class this prevents. */
+export function linkcodeStateDirName(channel: ProductChannel, profile?: string): string {
   const parsed = parseProfileName(profile);
-  return parsed === undefined ? STATE_DIR_BASENAME : `${STATE_DIR_BASENAME}-${parsed}`;
+  const base = stateDirBasename(channel);
+  return parsed === undefined ? base : `${base}-${parsed}`;
 }
 
 /** Runtime discovery file the daemon writes after binding, as path segments under the user's home directory. */
-export function daemonRuntimeFileSegments(profile?: string): readonly [string, string] {
-  return [linkcodeStateDirName(profile), 'runtime.json'];
+export function daemonRuntimeFileSegments(
+  channel: ProductChannel,
+  profile?: string,
+): readonly [string, string] {
+  return [linkcodeStateDirName(channel, profile), 'runtime.json'];
 }
 
 /** Exit code of a daemon that stood down because a live daemon already serves this profile (see

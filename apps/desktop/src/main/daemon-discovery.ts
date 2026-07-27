@@ -2,7 +2,7 @@ import { mkdirSync, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
 import { DAEMON_DEFAULT_URL, DaemonRuntimeInfoSchema } from '@linkcode/schema';
-import { PROFILE } from './constants';
+import { CHANNEL, PROFILE } from './constants';
 import { getSettings } from './settings';
 
 /**
@@ -14,7 +14,7 @@ export function resolveDaemonUrl(): string {
 }
 
 function discoverRuntimeUrl(): string | null {
-  const file = daemonRuntimeFilePath(PROFILE);
+  const file = daemonRuntimeFilePath(CHANNEL, PROFILE);
   const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(file));
   if (!parsed.success || !isPidAlive(parsed.data.pid)) return null;
   // The renderer connects over Socket.IO; ignore listeners it cannot dial.
@@ -30,7 +30,7 @@ const RUNTIME_WATCH_DEBOUNCE_MS = 100;
  * the file is created/removed across daemon lifetimes, and a watcher on a deleted inode goes blind.
  */
 export function watchDaemonRuntime(onChange: () => void): () => void {
-  const file = daemonRuntimeFilePath(PROFILE);
+  const file = daemonRuntimeFilePath(CHANNEL, PROFILE);
   // The daemon creates its state dir on first start; create it up front so watching never races that.
   mkdirSync(dirname(file), { recursive: true });
   let debounce: NodeJS.Timeout | null = null;

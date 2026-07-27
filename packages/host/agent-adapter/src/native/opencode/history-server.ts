@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import { linkcodeStateDirName } from '@linkcode/schema/daemon-runtime';
+import { resolveProductChannel } from '@linkcode/schema/product';
 
 import type { OpencodeServeProcess } from './serve';
 import {
@@ -43,6 +44,17 @@ interface ServerGeneration {
   ready: Promise<string>;
 }
 
+/** A neutral directory inside this channel's daemon state dir: opencode indexes its cwd as the
+ * default workspace, so the server must not start anywhere the user keeps code. The build stamp is
+ * read as a literal because that is what tsup's `define` substitutes (see `resolveProductChannel`). */
+function defaultNeutralCwd(): string {
+  const channel = resolveProductChannel(
+    process.env.LINKCODE_CHANNEL,
+    process.env.LINKCODE_BUILD_CHANNEL,
+  );
+  return join(homedir(), linkcodeStateDirName(channel), 'opencode-history');
+}
+
 /**
  * Daemon-shared `opencode serve` for history reads (CODE-171): history `list`/`read` run on
  * never-started adapter instances, so the backing server belongs to no live session — it is a
@@ -80,8 +92,7 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   constructor(options: OpencodeHistoryServerOptions = {}) {
     this.spawnServer = options.spawnServer ?? defaultSpawnServer;
     this.allocatePort = options.allocatePort ?? allocatePort;
-    this.neutralCwd =
-      options.neutralCwd ?? join(homedir(), linkcodeStateDirName(), 'opencode-history');
+    this.neutralCwd = options.neutralCwd ?? defaultNeutralCwd();
     this.idleMs = options.idleMs ?? 60000;
     this.readyTimeoutMs = options.readyTimeoutMs ?? 30000;
     this.shutdownGraceMs = options.shutdownGraceMs ?? 5000;

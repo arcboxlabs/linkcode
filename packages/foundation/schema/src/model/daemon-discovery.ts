@@ -14,10 +14,13 @@ export {
   daemonRuntimeFileSegments,
   linkcodeStateDirName,
   PROFILE_NAME_PATTERN,
+  type ProductChannel,
+  parseProductChannel,
   parseProfileName,
 } from '../daemon-runtime';
 
 import { PROFILE_NAME_PATTERN } from '../daemon-runtime';
+import { PRODUCT_CHANNELS } from '../product';
 
 /** HTTP path every daemon listener answers with its `DaemonIdentity`. */
 export const DAEMON_IDENTITY_PATH = '/linkcode';
@@ -34,6 +37,13 @@ export const DaemonIdentitySchema = z.object({
    * `profile` is: a daemon predating this field must still parse, or the singleton probe would
    * mistake it for absent and start a second daemon. */
   wireProtocolVersion: z.number().int().positive().optional(),
+  /** The daemon's channel; absent means `release` — every pre-CODE-460 daemon predates the split
+   * and served the universe that is now release's alone. Together with `profile` this identifies
+   * the state universe, which is what the port hunt compares to tell a double-start from a neighbor.
+   * Note this field cannot protect against a daemon that predates it: an older peer's schema
+   * silently strips it (zod objects strip unknown keys), which is why the channels also occupy
+   * disjoint port ranges — see `daemonBasePort` in `daemon-runtime.ts`. */
+  channel: z.enum(PRODUCT_CHANNELS).optional(),
 });
 export type DaemonIdentity = z.infer<typeof DaemonIdentitySchema>;
 
