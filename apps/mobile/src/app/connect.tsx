@@ -1,74 +1,72 @@
-import { EmptyState, ScreenScroll, SectionLabel } from '@linkcode/ui/native';
+import {
+  Button,
+  DisclosureGroup,
+  Form,
+  Host,
+  HStack,
+  ProgressView,
+  Section,
+  Spacer,
+  SwipeActions,
+  Text,
+  TextField,
+  useNativeState,
+} from '@expo/ui/swift-ui';
+import {
+  autocorrectionDisabled,
+  buttonStyle,
+  font,
+  foregroundStyle,
+  keyboardType,
+  onSubmit,
+  submitLabel,
+  textContentType,
+  textInputAutocapitalization,
+} from '@expo/ui/swift-ui/modifiers';
 import { Stack, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
-import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
+import { NavigationRow } from '../components/form-row';
 import { useCloudAccount } from '../runtime/cloud/account';
 import { ensureDeviceRegistered } from '../runtime/cloud/devices';
 import type { OnlineHost } from '../runtime/cloud/hosts';
 import { fetchOnlineHosts } from '../runtime/cloud/hosts';
 import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+const FOOTNOTE = font({ textStyle: 'footnote' });
+
 /**
  * Machine list & host registry. Signed in, online machines lead and manual URL entry
- * collapses into a fallback; signed out, a sign-in card leads and the form stays open.
+ * collapses into a disclosure row; signed out, a sign-in section leads and the form stays open.
  */
-export default function ConnectScreen() {
+export default function ConnectScreen(): React.ReactNode {
   const t = useTranslations('mobile.connect');
-  const router = useRouter();
   const account = useCloudAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
-  const removeHost = useHostRegistryStore((state) => state.removeHost);
-  const [manualOpen, setManualOpen] = useState(false);
 
   const signedIn = account.status === 'signed-in';
 
   return (
-    <ScreenScroll keyboardAware>
+    <>
       <Stack.Screen options={{ headerShown: true, headerLargeTitle: true, title: t('title') }} />
-      {account.status === 'signed-in' ? (
-        <MyMachinesSection userId={account.user.id} />
-      ) : account.status === 'signed-out' ? (
-        <SignInCard />
-      ) : null}
+      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <Form>
+          {account.status === 'signed-in' ? (
+            <MyMachinesSection userId={account.user.id} />
+          ) : account.status === 'signed-out' ? (
+            <SignInSection />
+          ) : null}
 
-      {hosts.length === 0 ? (
-        signedIn ? null : (
-          <EmptyState title={t('emptyTitle')} hint={t('emptyHint')} />
-        )
-      ) : (
-        <View className="gap-2">
-          <SectionLabel>{t('savedHosts')}</SectionLabel>
-          <ListGroup>
-            {hosts.map((host) => (
-              <ListGroup.Item key={host.id} onPress={() => router.push(`/host/${host.id}`)}>
-                <ListGroup.ItemContent>
-                  <ListGroup.ItemTitle>{host.name}</ListGroup.ItemTitle>
-                  <ListGroup.ItemDescription>
-                    {'url' in host ? host.url : t('viaTunnel')}
-                  </ListGroup.ItemDescription>
-                </ListGroup.ItemContent>
-                <ListGroup.ItemSuffix>
-                  <Button variant="danger-soft" size="sm" onPress={() => removeHost(host.id)}>
-                    <Button.Label>{t('remove')}</Button.Label>
-                  </Button>
-                </ListGroup.ItemSuffix>
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-        </View>
-      )}
+          {hosts.length > 0 ? <SavedHostsSection /> : null}
 
-      {signedIn && !manualOpen ? (
-        <Button variant="ghost" onPress={() => setManualOpen(true)}>
-          <Button.Label>{t('addManually')}</Button.Label>
-        </Button>
-      ) : (
-        <ManualHostForm />
-      )}
-    </ScreenScroll>
+          {/* Signed out there is nothing else to connect with, so the form opens itself. */}
+          <ManualHostSection startsExpanded={!signedIn} />
+        </Form>
+      </Host>
+    </>
   );
 }
 
@@ -109,116 +107,144 @@ function MyMachinesSection({ userId }: { userId: string }) {
   };
 
   return (
-    <View className="gap-2">
-      <View className="flex-row items-center justify-between">
-        <SectionLabel>{t('machines')}</SectionLabel>
-        <Button variant="ghost" size="sm" onPress={refresh}>
-          <Button.Label>{t('refresh')}</Button.Label>
-        </Button>
-      </View>
+    // A titled Section can't also carry an action, so the header is drawn by hand —
+    // footnote + secondary is what SwiftUI gives a plain `title` on iOS.
+    <Section
+      header={
+        <HStack>
+          <Text modifiers={[FOOTNOTE, SECONDARY]}>{t('machines')}</Text>
+          <Spacer />
+          <Button
+            label={t('refresh')}
+            onPress={refresh}
+            modifiers={[buttonStyle('plain'), FOOTNOTE]}
+          />
+        </HStack>
+      }
+    >
       {hostsError ? (
-        <Text className="text-danger text-subhead">{t('error')}</Text>
+        <Text modifiers={[foregroundStyle('red')]}>{t('error')}</Text>
       ) : onlineHosts === null ? (
-        <View className="items-start py-2">
-          <Spinner />
-        </View>
+        <ProgressView />
       ) : onlineHosts.length === 0 ? (
-        <Text className="text-muted text-subhead">{t('empty')}</Text>
+        <Text modifiers={[SECONDARY]}>{t('empty')}</Text>
       ) : (
-        <ListGroup>
-          {onlineHosts.map((host) => (
-            <ListGroup.Item key={host.hostId} onPress={() => openHost(host)}>
-              <ListGroup.ItemContent>
-                <ListGroup.ItemTitle>{host.name ?? host.hostId.slice(0, 8)}</ListGroup.ItemTitle>
-                <ListGroup.ItemDescription>{t('title')}</ListGroup.ItemDescription>
-              </ListGroup.ItemContent>
-            </ListGroup.Item>
-          ))}
-        </ListGroup>
+        onlineHosts.map((host) => (
+          <NavigationRow
+            key={host.hostId}
+            title={host.name ?? host.hostId.slice(0, 8)}
+            subtitle={t('title')}
+            onPress={() => openHost(host)}
+          />
+        ))
       )}
-    </View>
+    </Section>
   );
 }
 
 /** Signed-out lead-in: the account is how machines appear here. */
-function SignInCard() {
+function SignInSection(): React.ReactNode {
   const t = useTranslations('mobile.connect.cloud');
   const router = useRouter();
   return (
-    <Card>
-      <Card.Body className="gap-3">
-        <Text className="font-medium text-body text-foreground">{t('title')}</Text>
-        <Text className="text-muted text-subhead">{t('hint')}</Text>
-        <Button onPress={() => router.push('/sign-in')}>
-          <Button.Label>{t('signIn')}</Button.Label>
-        </Button>
-      </Card.Body>
-    </Card>
+    <Section title={t('title')} footer={<Text>{t('hint')}</Text>}>
+      <Button label={t('signIn')} onPress={() => router.push('/sign-in')} />
+    </Section>
+  );
+}
+
+/** Saved hosts, direct or tunnelled. Removal is the list's own swipe action rather than a
+ *  row button, so the row itself stays a single tap target for opening the host. */
+function SavedHostsSection(): React.ReactNode {
+  const t = useTranslations('mobile.connect');
+  const router = useRouter();
+  const hosts = useHostRegistryStore((state) => state.hosts);
+  const removeHost = useHostRegistryStore((state) => state.removeHost);
+
+  return (
+    <Section title={t('savedHosts')}>
+      {hosts.map((host) => (
+        <SwipeActions key={host.id}>
+          <SwipeActions.Actions>
+            <Button role="destructive" label={t('remove')} onPress={() => removeHost(host.id)} />
+          </SwipeActions.Actions>
+          <NavigationRow
+            title={host.name}
+            subtitle={'url' in host ? host.url : t('viaTunnel')}
+            onPress={() => router.push(`/host/${host.id}`)}
+          />
+        </SwipeActions>
+      ))}
+    </Section>
   );
 }
 
 /** Manual host entry: add a daemon by URL and open it. */
-function ManualHostForm() {
+function ManualHostSection({ startsExpanded }: { startsExpanded: boolean }): React.ReactNode {
   const t = useTranslations('mobile.connect');
   const router = useRouter();
   const addHost = useHostRegistryStore((state) => state.addHost);
 
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
+  // Null until the user decides either way. Seeding `useState` from `startsExpanded` would freeze
+  // the value taken during the account's `loading` render, leaving a signed-in user's form open.
+  const [expanded, setExpanded] = useState<boolean | null>(null);
   const [urlInvalid, setUrlInvalid] = useState(false);
+  // The fields are backed by native state rather than mirrored into React: `get()` reads what
+  // the field itself holds, so submitting never depends on a change event reaching JS first.
+  const name = useNativeState('');
+  const url = useNativeState('');
 
   const submit = () => {
-    const trimmedUrl = url.trim();
+    const trimmedUrl = url.get().trim();
     if (!HostUrlSchema.safeParse(trimmedUrl).success) {
       setUrlInvalid(true);
       return;
     }
-    const profile = addHost({ name: name.trim() || t('namePlaceholder'), url: trimmedUrl });
-    setName('');
-    setUrl('');
+    const profile = addHost({ name: name.get().trim() || t('namePlaceholder'), url: trimmedUrl });
+    name.set('');
+    url.set('');
     setUrlInvalid(false);
     router.push(`/host/${profile.id}`);
   };
 
   return (
-    <Card>
-      <Card.Body className="gap-4">
-        <TextField>
-          <Label>{t('nameLabel')}</Label>
-          {/* Its `Label` is a sibling, so nothing identifies the field itself to XCUITest. */}
-          <Input
+    <Section footer={<Text>{urlInvalid ? t('invalidUrl') : t('emptyHint')}</Text>}>
+      <DisclosureGroup
+        label={t('addManually')}
+        isExpanded={expanded ?? startsExpanded}
+        onIsExpandedChange={setExpanded}
+      >
+        {/* `LabeledContent` sizes the field to its text, leaving the rest of the row
+            untappable; an HStack lets the field take the remaining width. */}
+        <HStack spacing={12}>
+          <Text>{t('nameLabel')}</Text>
+          <TextField
             testID="host-name-input"
-            value={name}
-            onChangeText={setName}
+            text={name}
             placeholder={t('namePlaceholder')}
-            autoCapitalize="none"
-            autoCorrect={false}
+            modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled()]}
           />
-        </TextField>
-        <TextField>
-          <Label>{t('urlLabel')}</Label>
-          <Input
+        </HStack>
+        <HStack spacing={12}>
+          <Text>{t('urlLabel')}</Text>
+          <TextField
             testID="host-url-input"
-            value={url}
-            onChangeText={(next) => {
-              setUrl(next);
-              setUrlInvalid(false);
-            }}
+            text={url}
             placeholder={t('urlPlaceholder')}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            // The URL is the only required field, so the return key finishes the form.
-            returnKeyType="go"
-            onSubmitEditing={submit}
-            isInvalid={urlInvalid}
+            onTextChange={() => setUrlInvalid(false)}
+            modifiers={[
+              textInputAutocapitalization('never'),
+              autocorrectionDisabled(),
+              keyboardType('url'),
+              textContentType('URL'),
+              // The URL is the only required field, so the return key finishes the form.
+              submitLabel('go'),
+              onSubmit(submit),
+            ]}
           />
-          {urlInvalid ? <Text className="text-danger text-footnote">{t('invalidUrl')}</Text> : null}
-        </TextField>
-        <Button onPress={submit}>
-          <Button.Label>{t('add')}</Button.Label>
-        </Button>
-      </Card.Body>
-    </Card>
+        </HStack>
+        <Button label={t('add')} onPress={submit} />
+      </DisclosureGroup>
+    </Section>
   );
 }

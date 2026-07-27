@@ -867,7 +867,6 @@ export const zhCN = {
     },
     connect: {
       title: '连接 host',
-      emptyTitle: '还没有 host',
       emptyHint:
         '填入正在运行的 Link Code daemon 地址。iOS 模拟器上 http://127.0.0.1:19523 可直达本机 daemon。',
       nameLabel: '名称',

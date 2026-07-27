@@ -35,6 +35,22 @@ the same contract as every other client.
   on iOS; per-ABI libghostty-vt static libs on Android, rendered by the package's own Kotlin Canvas
   renderer) — it must stay in root `allowBuilds:`, and adding/upgrading it changes the native
   fingerprint (new dev build).
+- **Native screens are `@expo/ui` SwiftUI, and its layout rules are not RN's.** Settings, terminal
+  appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}` +
+  `useViewportSizeMeasurement`, or the Form collapses to its content). Three traps, each found only
+  by driving the simulator:
+  - **A view's hit area is its content, not its row.** `LabeledContent` sizes a `TextField` to the
+    text it holds, so taps in the rest of the row are lost — a field with a short placeholder is
+    effectively untappable while one with a long placeholder works. Use `HStack { Text, TextField }`,
+    and give any hand-built tappable row `contentShape(shapes.rectangle())`.
+  - **A `Button` filling a row swallows horizontal drags**, so a row inside `SwipeActions` opens its
+    route instead of revealing its actions. Rows that navigate use `onTapGesture` instead
+    (`components/form-row.tsx`) — which is also the closer stand-in for the `NavigationLink`
+    `@expo/ui` does not expose.
+  - **`TextField` has no `value` prop.** It is either uncontrolled or bound to `useNativeState`;
+    prefer the latter and read it with `.get()` at submit time, so submitting never depends on a
+    change event having reached JS. Keyboard behaviour comes from modifiers, not props
+    (`keyboardType`, `submitLabel`, `onSubmit`, `textInputAutocapitalization`).
 - **Styling = Uniwind + Tailwind v4, NOT NativeWind.** HeroUI Native 1.0's official companion is `uniwind` (`heroui-native` + `uniwind` + Tailwind v4): metro `withUniwindConfig`, babel is only `babel-preset-expo`, styles are CSS-first in `src/global.css`, and the generated `src/uniwind-types.d.ts` is committed and Biome-ignored. Earlier NativeWind plans are superseded — don't reach for `nativewind`. HeroUI Native still peers on `react-native-gesture-handler` **^2.x** — gesture-handler 3.x is off the table until HeroUI widens that peer.
 - **Versions are hard-pinned to the Expo SDK.** React Native must track the SDK's expected version (SDK 57 = RN 0.86.0 / reanimated 4.5.0 / worklets 0.10.0 / gesture-handler ~2.32.0; the SDK's own expectations live in `expo/bundledNativeModules.json` — align with `pnpm -F @linkcode/mobile exec expo install --fix`, then revert its `typescript` edit back to `catalog:`), and `react`/`react-dom` follow `bundledNativeModules.json` too (SDK 57 → 19.2.3). **That pin is Expo's, not RN's** — `react-native@0.86.0` peers on `react: ^19.2.3`, a caret range the catalog's 19.2.7 also satisfies, so don't argue from "RN requires exactly this". Hold the pin because `expo install --fix` rewrites anything else back, and because React's renderer internals are compiled against a matching `react` — a drift fails at runtime, subtly, not at build. The root pnpm catalog deliberately keeps its own 19.2.7 rather than unifying down: that trades one version fork for keeping the web apps' React cadence off the Expo SDK's. The cost of that trade is **two react copies in the tree**, which is what `vitest.config.ts` here works around (CODE-444). `@sentry/react-native` follows the SDK's expected line (~7.11.0 on SDK 57), not the package's own `latest`.
 - **Two RN-resolution traps:** after changing the RN version, run `pnpm dedupe react-native` (a residual nested copy at the old version, pulled by `packages/presentation/ui`'s optional peer, breaks uniwind's `className` augmentation); and install `@gorhom/bottom-sheet` even though it is only an optional peer — Metro statically resolves HeroUI's `try/catch` require of it and fails without it.
@@ -49,8 +65,23 @@ the same contract as every other client.
   still worked, but that was with its XCUITest runner already installed on the device — a cold run on
   a fresh simulator is unverified. Flows live in `e2e/*.yaml`, run with
   `pnpm -F @linkcode/mobile run e2e:ui` against whatever dev build is already installed. Keep them
-  daemon-free where the path allows it (`first-run`, `settings` both are) — a flow that needs a live
-  host also needs the spawn harness from `apps/daemon/e2e/startup.e2e.ts`, which no flow does yet.
+  daemon-free where the path allows it — all three are, `add-host` included: it points at a port with
+  nothing listening, and the host screen naming the URL it failed to reach *is* the proof the typed
+  text made it into the store. A flow that needs a live host also needs the spawn harness from
+  `apps/daemon/e2e/startup.e2e.ts`, which no flow does yet.
+  - **Every flow starts `stopApp` + `launchApp` + a `retry` group around its deep link.** `launchApp`
+    alone reuses a running process, so a flow inherits the previous one's navigation stack; and a
+    cold start redirects to the last active host when the persisted registry *hydrates*, which can
+    land after the deep link and replace the screen it opened — late enough that an immediate
+    `assertVisible` passes in the gap. `clearState` is not the fix: it wipes the dev client's Metro
+    URL. Retrying the link is.
+  - **Maestro can drive SwiftUI, with two gaps.** `hideKeyboard` does nothing on a Form, so submit
+    from the return key (`pressKey: Enter`) rather than a button the keyboard covers — and tapping a
+    covered element silently lands on the keyboard instead of failing. Revealing a swipe action needs
+    a longer drag than an element-relative `swipe` produces; only a screen-percentage drag works,
+    which makes the row's position an assumption, so `add-host` marks that cleanup `optional`.
+  - Assert **invariants of the screen**, not its current state. Flows that asserted an empty state, a
+    collapsed form, or the startup destination all broke on a simulator that had been used before.
 - **Dev builds, not Expo Go.** Cloud sign-in needs the real `linkcode://` scheme: Expo Go's `exp://…` callback origin is rejected by production HQ (`TRUSTED_ORIGINS` trusts only `https://linkcode.ai,linkcode://`; the `@better-auth/expo` server plugin auto-trusts `exp://` only under `NODE_ENV=development`), so "Sign in" silently 403s there. Build once with `pnpm -F @linkcode/mobile ios` (`expo run:ios`; generates the gitignored `ios/` via prebuild), then daily dev is `pnpm -F @linkcode/mobile start` — with `expo-dev-client` installed it targets the dev build, not Expo Go.
 - **Strip the nix toolchain env before `expo run:ios`.** The devenv shell exports `DEVELOPER_DIR`/`SDKROOT` (nix apple-sdk) plus `CC`/`CXX`/`LD`/`NIX_CFLAGS_COMPILE`/`NIX_LDFLAGS`/`MACOSX_DEPLOYMENT_TARGET`, which poison xcodebuild with nix libc++ headers (hundreds of `FP_NORMAL`/`uint8_t` errors), and its PATH puts a nix xcbuild `xcrun` shim before the real one (`xcrun is not configured correctly`). Build with:
   `devenv shell -- sh -c 'export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer PATH="/usr/bin:$PATH" SENTRY_DISABLE_AUTO_UPLOAD=true; unset SDKROOT CC CXX LD NIX_CFLAGS_COMPILE NIX_LDFLAGS MACOSX_DEPLOYMENT_TARGET; pnpm -F @linkcode/mobile ios'`

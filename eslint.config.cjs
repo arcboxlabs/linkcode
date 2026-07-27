@@ -126,13 +126,16 @@ module.exports = require('eslint-config-sukka').sukka(
     },
   },
   {
-    // `Image` in these screens is `@expo/ui`'s SwiftUI view (`systemName` SF Symbols), not an
-    // `<img>`: it has no `alt` prop, and the glyphs are decorative next to the row's own label.
-    // Scoped to the screens so the RN `Image` in `src/components` keeps its alt-text coverage.
-    name: 'linkcode/expo-ui-image-is-not-an-img',
-    files: ['apps/mobile/src/app/**/*.tsx'],
+    // jsx-a11y reads these as DOM props, but the JSX here is `@expo/ui`'s SwiftUI views:
+    // `Image` is an SF Symbol with no `alt` (decorative next to the row's own label), and
+    // `role` is SwiftUI's `ButtonRole`, not an ARIA role. Only files that render a real RN
+    // element are exempted back, so the checks still cover the shrinking non-SwiftUI set.
+    name: 'linkcode/expo-ui-props-are-not-dom-props',
+    files: ['apps/mobile/src/**/*.tsx'],
+    ignores: ['apps/mobile/src/components/brand-mark.tsx'],
     rules: {
       'jsx-a11y/alt-text': 'off',
+      'jsx-a11y/aria-role': 'off',
     },
   },
   {

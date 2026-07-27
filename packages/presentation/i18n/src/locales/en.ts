@@ -892,7 +892,6 @@ export const en = {
     },
     connect: {
       title: 'Connect to a host',
-      emptyTitle: 'No hosts yet',
       emptyHint:
         'Add the address of a running Link Code daemon. On the iOS simulator, http://127.0.0.1:19523 reaches the daemon on this machine.',
       nameLabel: 'Name',
