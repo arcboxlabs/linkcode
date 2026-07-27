@@ -301,7 +301,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     [client, udid],
   );
   const measuredFps = useReceivedFps(subscribeFrames, showFps && canStream);
-  const agentDriving = useSimulatorAgentActivity(client, udid);
+  const agentActivity = useSimulatorAgentActivity(client, udid);
   const consent = useSimulatorConsent(client);
   const consentRequest = useSimulatorConsentRequest(client);
   const agentAccess = udid === null ? undefined : consent.decisionFor(udid);
@@ -540,7 +540,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
           // The stage stays near-black in both themes (video-player convention) so the streamed
           // frame carries the contrast; everything on it uses fixed neutrals, not theme tokens.
           <div className="absolute inset-2 overflow-hidden rounded-lg bg-neutral-950">
-            {agentDriving && (
+            {agentActivity.active && (
               // Floats over the stage rather than displacing it, so the picture never shifts as an
               // agent starts and stops working. Input stays live — this informs, it does not lock.
               <div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 z-10 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 font-medium text-neutral-900 text-xs shadow-lg">
@@ -557,6 +557,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               onText={handleText}
               maskPng={masks[udid] ?? null}
               onScreenCanvas={setScreenCanvas}
+              agentPointer={agentActivity.point}
               placeholder={
                 <span className="text-neutral-400 text-sm">{t('simulatorConnecting')}</span>
               }
