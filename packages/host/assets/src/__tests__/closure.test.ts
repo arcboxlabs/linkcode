@@ -9,6 +9,8 @@ import { generateClosure } from '../closure-gen';
 import { AssetManager } from '../manager';
 import { PI_CLOSURE } from '../pi-closure.gen';
 
+const NON_REGISTRY_DEP_RE = /non-registry dependency/;
+
 function lockfileFixture(): string {
   return `
 lockfileVersion: '9.0'
@@ -82,7 +84,7 @@ snapshots:
       linked: 'link:../somewhere'
 `;
     expect(() => generateClosure({ lockfileText, rootPackage: 'root-pkg', entry: 'x' })).toThrow(
-      /non-registry dependency/,
+      NON_REGISTRY_DEP_RE,
     );
   });
 

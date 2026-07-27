@@ -27,6 +27,9 @@ const electronBinary = require('electron') as unknown as string;
 
 const PORT = 43000 + (process.pid % 1000);
 
+/** The untitled thread row reads "<agent> in <repository>". */
+const THREAD_ROW_RE = / in LinkCode$/;
+
 async function waitForDaemon(): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
@@ -152,7 +155,7 @@ async function main(): Promise<void> {
   }
   await win.getByRole('menuitem', { name: 'Simulator' }).click().catch(noop);
   await win.waitForTimeout(1000);
-  const row = win.getByText(/ in LinkCode$/).first();
+  const row = win.getByText(THREAD_ROW_RE).first();
   await row.waitFor({ state: 'visible', timeout: 15000 }).catch(noop);
   await row.click().catch(noop);
 

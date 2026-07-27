@@ -1,5 +1,6 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, AgentInput, StartOptions } from '@linkcode/schema';
+import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import {
@@ -792,10 +793,7 @@ describe('CodexAdapter message snapshots', () => {
 describe('CodexAdapter turn queueing', () => {
   const start: StartOptions = { kind: 'codex', cwd: '/repo' };
   const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
-  const settle = () =>
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
+  const settle = () => wait(0);
 
   it("keeps queueing while a drained prompt's turn/start is still in flight", async () => {
     const adapter = new TestCodex();

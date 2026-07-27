@@ -16,6 +16,7 @@ const descriptors = CATALOG.filter(
   (descriptor): descriptor is BinaryAssetDescriptor => !isClosureDescriptor(descriptor),
 );
 const HTTPS = /^https:\/\//;
+const WIN32_CODEX_BIN_RE = /\/bin\/codex\.exe$/;
 const CLAUDE_CODE_ID = managedAgentAssetId('claude-code');
 const CODEX_ID = managedAgentAssetId('codex');
 const OPENCODE_ID = managedAgentAssetId('opencode');
@@ -82,7 +83,7 @@ describe('CATALOG', () => {
         expect(source.extraMembers).toBeUndefined();
         continue;
       }
-      const vendorDir = source.member.replace(/\/bin\/codex\.exe$/, '');
+      const vendorDir = source.member.replace(WIN32_CODEX_BIN_RE, '');
       expect(source.extraMembers).toEqual([
         `${vendorDir}/codex-resources/codex-windows-sandbox-setup.exe`,
         `${vendorDir}/codex-resources/codex-command-runner.exe`,

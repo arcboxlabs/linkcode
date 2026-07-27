@@ -51,6 +51,11 @@ const SKIP_RECLAIM = process.env.LINKCODE_E2E_SKIP_RECLAIM === '1';
 /** Park at the hold point until the operator closes the window, rather than on a timer. */
 const KEEP_OPEN = process.env.LINKCODE_E2E_KEEP_OPEN === '1';
 
+/** The untitled thread row reads "<agent> in <repository>". */
+const THREAD_ROW_RE = / in LinkCode$/;
+const SCREENSHOT_FILE_RE = /\.png$/;
+const RECORDING_FILE_RE = /\.(?:mp4|webm)$/;
+
 /** Parse an env override, ignoring anything that isn't a positive number. */
 function positiveInt(raw: string | undefined): number | undefined {
   const value = Number(raw);
@@ -315,8 +320,8 @@ async function run(
     if ((await sectionTab.count()) === 0) {
       fail('the Simulator section did not restore from persisted shell state after reload');
     }
-    // The untitled row reads "<agent> in <repository>"; clicking it makes the thread active.
-    const row = win.getByText(/ in LinkCode$/).first();
+    // Clicking the untitled row makes the thread active.
+    const row = win.getByText(THREAD_ROW_RE).first();
     await row.waitFor({ state: 'visible', timeout: 15000 });
     await row.click();
     await win.waitForTimeout(1500);
@@ -377,7 +382,9 @@ async function run(
           ctx.drawImage(source, 0, 0, 32, 64);
           const data = ctx.getImageData(0, 0, 32, 64).data;
           let hash = 0;
-          for (let i = 0; i < data.length; i += 16) hash = ((hash * 31 + data[i]) & 0xffffff) >>> 0;
+          for (let i = 0; i < data.length; i += 16) {
+            hash = ((hash * 31 + data[i]) & 0xff_ff_ff) >>> 0;
+          }
           return hash;
         });
       const waitForHashChange = async (previous: number, label: string): Promise<number> => {
@@ -530,7 +537,7 @@ async function run(
       // button muxes the live canvas into a video container. Both save through a browser download,
       // which the harness redirected to `downloadDir`.
       await win.getByRole('button', { name: 'Save screenshot', exact: true }).click();
-      const savedShot = await waitForDownload(downloadDir, /\.png$/, 'the screenshot');
+      const savedShot = await waitForDownload(downloadDir, SCREENSHOT_FILE_RE, 'the screenshot');
       const shotHeader = readFileSync(savedShot).subarray(1, 4).toString('latin1');
       if (shotHeader !== 'PNG') fail(`saved screenshot is not a PNG (header ${shotHeader})`);
       console.log(`screenshot saved: ${savedShot} (${statSync(savedShot).size} bytes)`);
@@ -540,7 +547,11 @@ async function run(
       // instead of landing alongside — clear the first one and assert on any PNG arriving after.
       rmSync(savedShot);
       await win.keyboard.press('Meta+KeyS');
-      const chordShot = await waitForDownload(downloadDir, /\.png$/, 'the Cmd+S screenshot');
+      const chordShot = await waitForDownload(
+        downloadDir,
+        SCREENSHOT_FILE_RE,
+        'the Cmd+S screenshot',
+      );
       console.log(`Cmd+S saved a screenshot from the keyboard: ${basename(chordShot)}`);
 
       const recordButton = win.getByRole('button', { name: 'Record screen', exact: true });
@@ -552,7 +563,7 @@ async function run(
         console.log('Cmd+R started the recording');
         await win.waitForTimeout(3000);
         await stopButton.click();
-        const clip = await waitForDownload(downloadDir, /\.(?:mp4|webm)$/, 'the recording');
+        const clip = await waitForDownload(downloadDir, RECORDING_FILE_RE, 'the recording');
         console.log(`recording saved: ${clip} (${statSync(clip).size} bytes)`);
       } else {
         console.log('recording unsupported in this build — skipping the record assertion');

@@ -176,10 +176,12 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
 }
 
+const WHITESPACE_RUN_RE = /\s+/g;
+
 function titleFromContent(content: ContentBlock[]): string | undefined {
   for (const block of content) {
     if (block.type !== 'text') continue;
-    const text = block.text.trim().replaceAll(/\s+/g, ' ');
+    const text = block.text.trim().replaceAll(WHITESPACE_RUN_RE, ' ');
     if (text.length === 0) continue;
     return text.length > TITLE_MAX_LENGTH ? `${text.slice(0, TITLE_MAX_LENGTH - 1)}…` : text;
   }
