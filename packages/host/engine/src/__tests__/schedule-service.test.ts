@@ -11,6 +11,7 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ScheduleService } from '../automation/schedule-service';
 import { InMemoryScheduleStore } from '../automation/schedule-store';
@@ -201,9 +202,7 @@ function runsIn(sent: WirePayload[]) {
 }
 
 function flushAsyncWork(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  return wait(0);
 }
 
 const runEffect = Effect.runPromise;
@@ -518,7 +517,7 @@ describe('ScheduleService', () => {
     const { service, sent } = makeService(driver);
     // A mid-slot miss within grace: the default policy would catch up; `skip` suppresses the run.
     await runEffect(service.create({ ...INTERVAL_SPEC, misfirePolicy: 'skip' }));
-    clock += 150_000; // 2.5 intervals late → 30s past the latest slot
+    clock += 150000; // 2.5 intervals late → 30s past the latest slot
     await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 
@@ -538,7 +537,7 @@ describe('ScheduleService', () => {
     });
     service.bindRuntime(Effect.runFork);
     await runEffect(service.create(INTERVAL_SPEC));
-    clock += 150_000;
+    clock += 150000;
     await Effect.runPromise(service.tickOnce());
     await Effect.runPromise(service.settleAll());
 

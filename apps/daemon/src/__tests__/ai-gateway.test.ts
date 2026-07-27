@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SidecarChildProcess, SidecarSpawn } from '../ai-gateway';
 import { createAiGatewaySidecar, upstreamToToml } from '../ai-gateway';
 
+const EXIT_BEFORE_LISTENING_RE = /before listening/;
+const NO_BINARY_RE = /no aigateway binary/;
+
 const upstream: TranslatorUpstream = {
   baseUrl: 'https://api.openai.com/v1',
   apiKey: 'sk-up',
@@ -93,7 +96,7 @@ describe('createAiGatewaySidecar', () => {
       return child;
     };
     await expect(createAiGatewaySidecar({ spawn }).ensure(upstream)).rejects.toThrow(
-      /before listening/,
+      EXIT_BEFORE_LISTENING_RE,
     );
   });
 
@@ -115,6 +118,6 @@ describe('createAiGatewaySidecar', () => {
     delete process.env.LINKCODE_AIGATEWAY_PATH;
     await expect(
       createAiGatewaySidecar({ spawn: () => new FakeChild() }).ensure(upstream),
-    ).rejects.toThrow(/no aigateway binary/);
+    ).rejects.toThrow(NO_BINARY_RE);
   });
 });

@@ -37,6 +37,9 @@ const RE_OPUS_4_8 = /Opus 4.8/;
 const RE_MEDIUM_EFFORT = /Medium/;
 const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
+const RE_PI_SONNET = /Pi Sonnet/;
+const RE_APPROVAL_DEFAULT = /Default/;
+const RE_ACCEPT_EDITS = /Accept edits/;
 
 describe('NewSessionSurface', () => {
   it.each([
@@ -614,10 +617,10 @@ describe('NewSessionSurface', () => {
     await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByText('High'));
-    await user.click(screen.getByRole('button', { name: /Default/ }));
-    await user.click(await screen.findByRole('menuitemradio', { name: /Accept edits/ }));
+    await user.click(screen.getByRole('button', { name: RE_APPROVAL_DEFAULT }));
+    await user.click(await screen.findByRole('menuitemradio', { name: RE_ACCEPT_EDITS }));
     typeInComposer('catalog choices');
     await pressInComposer('Enter');
     await waitFor(() =>
@@ -631,7 +634,7 @@ describe('NewSessionSurface', () => {
     );
 
     onSubmit.mockClear();
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pi Sonnet' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
     typeInComposer('no stale effort');

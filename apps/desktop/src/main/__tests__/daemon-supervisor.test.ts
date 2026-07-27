@@ -23,8 +23,7 @@ const mocks = vi.hoisted(() => ({
   existsSync: vi.fn((path: unknown) => {
     const s = String(path);
     if (s.endsWith('instrument.mjs')) return mocks.instrumentPresent;
-    // Sidecar absence is fine in these tests (supervisor only warns).
-    if (s.includes('linkcode-pty')) return false;
+    // Everything else, the PTY sidecar included, reads as absent — fine here (supervisor only warns).
     return false;
   }),
 }));

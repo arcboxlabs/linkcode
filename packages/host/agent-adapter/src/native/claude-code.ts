@@ -309,16 +309,16 @@ function usageWindows(
     windows.push({ id, utilization: window.utilization, resetsAt: window.resets_at, durationMins });
   };
   push('five_hour', 300, limits.five_hour);
-  push('seven_day', 10_080, limits.seven_day);
-  push('seven_day_oauth_apps', 10_080, limits.seven_day_oauth_apps);
-  push('seven_day_opus', 10_080, limits.seven_day_opus);
-  push('seven_day_sonnet', 10_080, limits.seven_day_sonnet);
+  push('seven_day', 10080, limits.seven_day);
+  push('seven_day_oauth_apps', 10080, limits.seven_day_oauth_apps);
+  push('seven_day_opus', 10080, limits.seven_day_opus);
+  push('seven_day_sonnet', 10080, limits.seven_day_sonnet);
   for (const bucket of limits.model_scoped ?? []) {
     windows.push({
       label: bucket.display_name,
       utilization: bucket.utilization,
       resetsAt: bucket.resets_at,
-      durationMins: 10_080,
+      durationMins: 10080,
     });
   }
   return windows;
@@ -598,10 +598,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
     this.freshSegment();
-    type ClaudeImageBlock = {
+    interface ClaudeImageBlock {
       type: 'image';
       source: { type: 'base64'; media_type: SupportedAttachmentImageMimeType; data: string };
-    };
+    }
     const imageBlocksForClaude = imageBlocksFrom(content).reduce<ClaudeImageBlock[]>(
       (blocks, image) => {
         // The engine's attachment guard already rejected other types; the check here narrows our
