@@ -16,6 +16,7 @@ import { wait } from 'foxts/wait';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 import { io } from 'socket.io-client';
+import { WIRE_VERSION } from './wire-version.mts';
 
 const require = createRequire(import.meta.url);
 const desktopDir = resolve(import.meta.dirname, '..');
@@ -25,7 +26,6 @@ const simSidecar = join(repoRoot, 'target', 'release', 'linkcode-sim');
 const electronBinary = require('electron') as unknown as string;
 
 const PORT = 43000 + (process.pid % 1000);
-const WIRE_VERSION = 52;
 
 async function waitForDaemon(): Promise<void> {
   const deadline = Date.now() + 30000;

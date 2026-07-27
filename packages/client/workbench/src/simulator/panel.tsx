@@ -399,19 +399,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       })
       .catch(flagBusy);
   };
-  // Simulator.app's chords, scoped to this panel (CODE-414). Declared before the availability
-  // guard below because hooks must run unconditionally.
-  useSimulatorShortcuts({
-    owner: panelRef,
-    enabled: ownerSessionId !== null && udid !== null,
-    onButton: pressButton,
-    onRotate: handleRotate,
-  });
-
-  if (status !== null && !status.available) {
-    return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
-  }
-
   const toggleRecording = (): void => {
     if (recorder.recording) {
       recorder.stop();
@@ -419,6 +406,20 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       recorder.start(screenCanvas, captureFileStem(device.name));
     }
   };
+  // Simulator.app's chords, scoped to this panel (CODE-414). Declared before the availability
+  // guard below because hooks must run unconditionally.
+  useSimulatorShortcuts({
+    owner: panelRef,
+    enabled: ownerSessionId !== null && udid !== null,
+    onButton: pressButton,
+    onRotate: handleRotate,
+    onScreenshot: saveScreenshot,
+    onToggleRecording: recorder.supported ? toggleRecording : null,
+  });
+
+  if (status !== null && !status.available) {
+    return <CenteredHint>{t('simulatorUnavailable')}</CenteredHint>;
+  }
 
   return (
     <div ref={panelRef} className="flex h-full min-h-0 flex-col">
