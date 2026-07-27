@@ -414,6 +414,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       })
       .catch(flagBusy);
   };
+  const toggleRecording = (): void => {
+    if (recorder.recording) {
+      recorder.stop();
+    } else if (screenCanvas !== null && device !== null) {
+      recorder.start(screenCanvas, captureFileStem(device.name));
+    }
+  };
   // Simulator.app's chords, scoped to this panel (CODE-414). Declared before the availability
   // guard below because hooks must run unconditionally.
   useSimulatorShortcuts({
@@ -421,6 +428,8 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
     enabled: ownerSessionId !== null && udid !== null,
     onButton: pressButton,
     onRotate: handleRotate,
+    onScreenshot: saveScreenshot,
+    onToggleRecording: recorder.supported ? toggleRecording : null,
   });
 
   // A host that cannot run a device yet gets the step-by-step checklist rather than a dead end —
@@ -441,14 +450,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       />
     );
   }
-
-  const toggleRecording = (): void => {
-    if (recorder.recording) {
-      recorder.stop();
-    } else if (screenCanvas !== null && device !== null) {
-      recorder.start(screenCanvas, captureFileStem(device.name));
-    }
-  };
 
   return (
     <div ref={panelRef} className="flex h-full min-h-0 flex-col">

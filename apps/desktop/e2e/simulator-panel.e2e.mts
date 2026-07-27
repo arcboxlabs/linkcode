@@ -27,12 +27,13 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import type { ElectronApplication, Page } from 'playwright-core';
 import { _electron } from 'playwright-core';
 import { io } from 'socket.io-client';
+import { WIRE_VERSION } from './wire-version.mts';
 
 const require = createRequire(import.meta.url);
 const desktopDir = resolve(import.meta.dirname, '..');
@@ -55,10 +56,6 @@ function positiveInt(raw: string | undefined): number | undefined {
   const value = Number(raw);
   return raw !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
 }
-
-/** Must match `WIRE_PROTOCOL_VERSION` (node can't load the raw-TS schema barrel); a mismatch is
- * silently discarded by the daemon, surfacing here as the session.start timeout. */
-const WIRE_VERSION = 58;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -538,11 +535,23 @@ async function run(
       if (shotHeader !== 'PNG') fail(`saved screenshot is not a PNG (header ${shotHeader})`);
       console.log(`screenshot saved: ${savedShot} (${statSync(savedShot).size} bytes)`);
 
+      // The same capture from the keyboard (CODE-450). Capture filenames carry a second-resolution
+      // timestamp, so a second shot taken inside the same second reuses the name and overwrites
+      // instead of landing alongside — clear the first one and assert on any PNG arriving after.
+      rmSync(savedShot);
+      await win.keyboard.press('Meta+KeyS');
+      const chordShot = await waitForDownload(downloadDir, /\.png$/, 'the Cmd+S screenshot');
+      console.log(`Cmd+S saved a screenshot from the keyboard: ${basename(chordShot)}`);
+
       const recordButton = win.getByRole('button', { name: 'Record screen', exact: true });
       if ((await recordButton.count()) > 0) {
-        await recordButton.click();
+        // Started from the chord and stopped from the button, so one pass covers both entry points.
+        await win.keyboard.press('Meta+KeyR');
+        const stopButton = win.getByRole('button', { name: 'Stop recording', exact: true });
+        await stopButton.waitFor({ state: 'visible', timeout: 5000 });
+        console.log('Cmd+R started the recording');
         await win.waitForTimeout(3000);
-        await win.getByRole('button', { name: 'Stop recording', exact: true }).click();
+        await stopButton.click();
         const clip = await waitForDownload(downloadDir, /\.(?:mp4|webm)$/, 'the recording');
         console.log(`recording saved: ${clip} (${statSync(clip).size} bytes)`);
       } else {
