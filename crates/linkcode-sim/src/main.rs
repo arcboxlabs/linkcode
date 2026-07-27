@@ -156,6 +156,13 @@ fn main() {
         diag_state();
         return;
     }
+    // Diagnostic: prove the AXPTranslator bridge-token handshake reaches the guest's accessibility
+    // service: `linkcode-sim diag-ax <udid>`.
+    #[cfg(target_os = "macos")]
+    if subcommand.as_deref() == Some("diag-ax") {
+        diag_ax();
+        return;
+    }
 
     let (tx, rx) = channel::<OutMsg>();
 
@@ -572,6 +579,35 @@ fn diag_button() {
     let input = private::Input::warm(&device).expect("HID unavailable for this device");
     let ok = input.button(button, std::time::Duration::from_millis(80));
     eprintln!("button({name}) -> {ok}");
+}
+
+/// Diagnostic entry (macOS only): wire the accessibility translator to a booted device and ask it
+/// for the frontmost application. This is the whole risk of the a11y-tree work in one command —
+/// the bridge-token delegate either reaches the guest's AX service or every query answers nil.
+#[cfg(target_os = "macos")]
+fn diag_ax() {
+    let udid = std::env::args().nth(2).expect("usage: diag-ax <udid>");
+    eprintln!("available: {}", private::ax::available());
+    let Some(translator) = private::ax::install(&udid) else {
+        eprintln!("install failed — no translator (see LINKCODE_SIM_DEBUG=1 for detail)");
+        return;
+    };
+    eprintln!("translator wired, token {:?}", private::ax::token());
+    match private::ax::frontmost_application(&translator, 0) {
+        Some(app) => {
+            // The description is enough to prove the round-trip: a real element prints its class
+            // and address, whereas a failed handshake never gets this far.
+            let description: *mut objc2_foundation::NSString =
+                unsafe { objc2::msg_send![&*app, description] };
+            let text = if description.is_null() {
+                "<no description>".to_owned()
+            } else {
+                unsafe { (*description).to_string() }
+            };
+            eprintln!("frontmostApplication -> {text}");
+        }
+        None => eprintln!("frontmostApplication -> nil (handshake did not reach the guest)"),
+    }
 }
 
 /// Diagnostic entry (macOS only): print whether CoreSimulator reports the device Booted — ground
