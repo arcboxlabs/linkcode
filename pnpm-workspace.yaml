@@ -67,18 +67,18 @@ catalog:
   swr: ^2.4.2
   use-intl: ^4.13.1
   zustand: ^5.0.14
-  lucide-react: ^1.23.0
+  lucide-react: ^1.25.0
 
   # Web build
-  vite: ^8.1.4
+  vite: ^8.1.5
   "@vitejs/plugin-react": ^6.0.3
   "@rolldown/plugin-babel": ^0.2.3
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
-  tailwindcss: ^4.3.2
+  tailwindcss: ^4.3.3
   "@tailwindcss/postcss": ^4.3.2
-  "@tailwindcss/vite": ^4.3.2
+  "@tailwindcss/vite": ^4.3.3
 
   # Desktop / Electron
   electron: ^42.4.1

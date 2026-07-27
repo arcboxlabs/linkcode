@@ -41,7 +41,7 @@
   "author": "ArcBox Labs <team@arcbox.dev>",
   "license": "BUSL-1.1",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.3",
+    "@biomejs/biome": "^2.5.4",
     "@eslint-sukka/react": "^8.14.2",
     "@iconify-json/material-icon-theme": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
