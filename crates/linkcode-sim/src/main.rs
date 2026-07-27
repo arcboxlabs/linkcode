@@ -593,20 +593,18 @@ fn diag_ax() {
         return;
     };
     eprintln!("translator wired, token {:?}", private::ax::token());
-    match private::ax::frontmost_application(&translator, 0) {
-        Some(app) => {
-            // The description is enough to prove the round-trip: a real element prints its class
-            // and address, whereas a failed handshake never gets this far.
-            let description: *mut objc2_foundation::NSString =
-                unsafe { objc2::msg_send![&*app, description] };
-            let text = if description.is_null() {
-                "<no description>".to_owned()
-            } else {
-                unsafe { (*description).to_string() }
-            };
-            eprintln!("frontmostApplication -> {text}");
-        }
-        None => eprintln!("frontmostApplication -> nil (handshake did not reach the guest)"),
+    let Some(translation) = private::ax::frontmost_application(&translator, 0) else {
+        eprintln!("frontmostApplication -> nil (handshake did not reach the guest)");
+        return;
+    };
+    let Some(element) = private::ax::platform_element(&translator, &translation) else {
+        eprintln!("macPlatformElementFromTranslation -> nil");
+        return;
+    };
+    let tree = private::ax::walk_tree(&element, private::ax::WalkLimits::default());
+    match serde_json::to_string_pretty(&tree) {
+        Ok(json) => println!("{json}"),
+        Err(err) => eprintln!("serialize failed: {err}"),
     }
 }
 

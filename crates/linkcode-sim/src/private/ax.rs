@@ -139,19 +139,23 @@ fn send_request(device: *mut AnyObject, request: *mut AnyObject) -> *mut AnyObje
     // SAFETY: balanced by the `dispatch_group_leave` in the completion block.
     unsafe { dispatch_group_enter(group) };
 
-    let mut slot = ResponseSlot {
+    // Both the slot and the block live on the heap, not this stack frame: a global block's
+    // `Block_copy` is a no-op returning the same pointer, so the callee holds exactly what we hand
+    // it. If it fired after a stack-allocated pair went out of scope it would write through dead
+    // memory — an intermittent segfault that only shows up when a reply is late.
+    let slot = Box::into_raw(Box::new(ResponseSlot {
         response: ptr::null_mut(),
         group,
-    };
-    let mut completion = completion_block(&raw mut slot);
-    // SAFETY: the selector's ABI is (request, queue, block); all three outlive the call because we
-    // block on the group below before any of them is dropped.
+    }));
+    let completion = Box::into_raw(Box::new(completion_block(slot)));
+    // SAFETY: the selector's ABI is (request, queue, block); the block and its slot are heap-owned
+    // and outlive this call on every path (see the timeout branch below).
     unsafe {
         let _: () = msg_send![
             device,
             sendAccessibilityRequestAsync: request,
             completionQueue: queue,
-            completionHandler: &raw mut completion as *mut c_void,
+            completionHandler: completion.cast::<c_void>(),
         ];
     }
 
@@ -159,24 +163,37 @@ fn send_request(device: *mut AnyObject, request: *mut AnyObject) -> *mut AnyObje
     let deadline = unsafe { dispatch_time(DISPATCH_TIME_NOW, XPC_TIMEOUT.as_nanos() as i64) };
     // SAFETY: `group` is live and entered exactly once.
     let timed_out = unsafe { dispatch_group_wait(group, deadline) } != 0;
-    // SAFETY: both were created by this function and are no longer referenced after the wait.
+    if timed_out {
+        // Deliberately leak the slot, the block and the group. The request is still outstanding, so
+        // a late reply will run the completion handler; freeing any of the three now would turn a
+        // slow guest into a use-after-free. A timeout is rare and the leak is a few words.
+        dbg_log!("ax: XPC request timed out after {}s", XPC_TIMEOUT.as_secs());
+        // SAFETY: the queue is not referenced by the completion handler, only by dispatch itself.
+        unsafe { dispatch_release(queue) };
+        return empty_response();
+    }
+
+    // The handler has run, so nothing else can reach either allocation.
+    // SAFETY: both pointers came from `Box::into_raw` above and are reclaimed exactly once.
+    let response = unsafe {
+        let slot = Box::from_raw(slot);
+        drop(Box::from_raw(completion));
+        slot.response
+    };
+    // SAFETY: created by this function; the handler has finished with the group.
     unsafe {
         dispatch_release(group);
         dispatch_release(queue);
     }
-    if timed_out {
-        dbg_log!("ax: XPC request timed out after {}s", XPC_TIMEOUT.as_secs());
-        return empty_response();
-    }
-    if slot.response.is_null() {
+    if response.is_null() {
         empty_response()
     } else {
-        slot.response
+        response
     }
 }
 
-/// Where the completion handler parks its answer. The block writes through a raw pointer to this,
-/// which is sound because `send_request` blocks on `group` until the write has happened.
+/// Where the completion handler parks its answer. Heap-allocated by `send_request` and reclaimed
+/// there once the handler has run — or leaked on timeout, when the handler may still be pending.
 struct ResponseSlot {
     response: *mut AnyObject,
     group: *mut c_void,
@@ -399,4 +416,218 @@ pub fn frontmost_application(translator: &AnyObject, display: u32) -> Option<Ret
     }
     // SAFETY: the returned element is autoreleased; retain it to outlive the pool.
     unsafe { Retained::retain(element) }
+}
+
+/// Convert a translation object into the readable `AXPMacPlatformElement`. The translator hands
+/// back opaque translations; only the platform element answers the accessibility properties.
+pub fn platform_element(
+    translator: &AnyObject,
+    translation: &AnyObject,
+) -> Option<Retained<AnyObject>> {
+    // SAFETY: the selector takes a translation and returns an autoreleased platform element.
+    let element: *mut AnyObject =
+        unsafe { msg_send![translator, macPlatformElementFromTranslation: translation] };
+    if element.is_null() {
+        return None;
+    }
+    // SAFETY: autoreleased; retained so it outlives the enclosing pool.
+    unsafe { Retained::retain(element) }
+}
+
+/// One node of the guest's accessibility tree, in device points.
+///
+/// Coordinates stay in points here; normalizing against the screen is the caller's job, because
+/// only it knows the device size the agent's tap coordinates are expressed against.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AxNode {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subrole: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// `[x, y, width, height]` in device points.
+    pub frame: [f64; 4],
+    /// The frame's centre as `[x, y]` normalized 0..1 against the screen — the exact shape the
+    /// tap/swipe tools take, so an agent can act on a node without knowing the device's size.
+    /// Absent when the root reported no usable screen size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub center: Option<[f64; 2]>,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub focused: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<AxNode>,
+}
+
+/// Caps on a serialized tree. A deep SwiftUI hierarchy can run to thousands of nodes, which would
+/// blow an agent's tool-result budget long before it became useful.
+#[derive(Debug, Clone, Copy)]
+pub struct WalkLimits {
+    pub max_depth: u32,
+    pub max_nodes: usize,
+}
+
+impl Default for WalkLimits {
+    fn default() -> Self {
+        Self {
+            max_depth: 24,
+            max_nodes: 800,
+        }
+    }
+}
+
+/// Read a non-empty string property by KVC. `NSNumber` values are coerced so numeric
+/// `accessibilityValue`s (sliders, progress) surface as stable strings.
+fn string_property(element: &AnyObject, key: &str) -> Option<String> {
+    let key = NSString::from_str(key);
+    // SAFETY: KVC read returning any object (or nil).
+    let raw: *mut AnyObject = unsafe { msg_send![element, valueForKey: &*key] };
+    if raw.is_null() {
+        return None;
+    }
+    let string_class = AnyClass::get(c"NSString")?;
+    // SAFETY: isKindOfClass: is defined on NSObject.
+    let is_string: bool = unsafe { msg_send![raw, isKindOfClass: string_class] };
+    let text = if is_string {
+        // SAFETY: `raw` is an NSString for the duration of this read.
+        unsafe { (*raw.cast::<NSString>()).to_string() }
+    } else {
+        let number_class = AnyClass::get(c"NSNumber")?;
+        // SAFETY: isKindOfClass: is defined on NSObject.
+        let is_number: bool = unsafe { msg_send![raw, isKindOfClass: number_class] };
+        if !is_number {
+            return None;
+        }
+        // SAFETY: NSNumber answers `stringValue` with an autoreleased NSString.
+        let value: *mut NSString = unsafe { msg_send![raw, stringValue] };
+        if value.is_null() {
+            return None;
+        }
+        // SAFETY: valid for the duration of this read.
+        unsafe { (*value).to_string() }
+    };
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// Read a bool property by KVC, falling back when the key is missing or not a number.
+fn bool_property(element: &AnyObject, key: &str, fallback: bool) -> bool {
+    let key = NSString::from_str(key);
+    // SAFETY: KVC read returning any object (or nil).
+    let raw: *mut AnyObject = unsafe { msg_send![element, valueForKey: &*key] };
+    if raw.is_null() {
+        return fallback;
+    }
+    let Some(number_class) = AnyClass::get(c"NSNumber") else {
+        return fallback;
+    };
+    // SAFETY: isKindOfClass: is defined on NSObject.
+    let is_number: bool = unsafe { msg_send![raw, isKindOfClass: number_class] };
+    if !is_number {
+        return fallback;
+    }
+    // SAFETY: NSNumber answers boolValue.
+    unsafe { msg_send![raw, boolValue] }
+}
+
+/// `accessibilityFrame` returns a CGRect, which cannot ride KVC's object return — message it
+/// directly. Elements that do not answer the selector report an empty frame.
+fn frame_property(element: &AnyObject) -> [f64; 4] {
+    // SAFETY: respondsToSelector: is defined on NSObject.
+    let responds: bool =
+        unsafe { msg_send![element, respondsToSelector: sel!(accessibilityFrame)] };
+    if !responds {
+        return [0.0; 4];
+    }
+    // SAFETY: the selector is declared to return a CGRect by value.
+    let rect: CGRect = unsafe { msg_send![element, accessibilityFrame] };
+    [
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height,
+    ]
+}
+
+/// Walk the whole tree from the application root.
+///
+/// The root's own frame is the screen size in points, which is what every node's normalized centre
+/// is computed against — so the caller needs no separate notion of how big the device is.
+pub fn walk_tree(root: &AnyObject, limits: WalkLimits) -> AxNode {
+    let screen = frame_property(root);
+    let size = (screen[2] > 0.0 && screen[3] > 0.0).then_some((screen[2], screen[3]));
+    let mut budget = limits.max_nodes;
+    walk(root, limits, &mut budget, size)
+}
+
+/// Walk `element` and its descendants into a serializable tree, stopping at `limits`.
+///
+/// `budget` is shared across the whole walk (not per level), so a wide tree truncates as decisively
+/// as a deep one and the result always fits the caller's cap.
+fn walk(
+    element: &AnyObject,
+    limits: WalkLimits,
+    budget: &mut usize,
+    screen: Option<(f64, f64)>,
+) -> AxNode {
+    let frame = frame_property(element);
+    let node = AxNode {
+        role: string_property(element, "accessibilityRole")
+            .unwrap_or_else(|| "AXUnknown".to_owned()),
+        subrole: string_property(element, "accessibilitySubrole"),
+        label: string_property(element, "accessibilityLabel"),
+        value: string_property(element, "accessibilityValue"),
+        identifier: string_property(element, "accessibilityIdentifier"),
+        title: string_property(element, "accessibilityTitle"),
+        frame,
+        center: screen.map(|(width, height)| {
+            [
+                ((frame[0] + frame[2] / 2.0) / width).clamp(0.0, 1.0),
+                ((frame[1] + frame[3] / 2.0) / height).clamp(0.0, 1.0),
+            ]
+        }),
+        enabled: bool_property(element, "accessibilityEnabled", true)
+            || bool_property(element, "isAccessibilityEnabled", false),
+        focused: bool_property(element, "isAccessibilityFocused", false)
+            || bool_property(element, "accessibilityFocused", false),
+        children: Vec::new(),
+    };
+    *budget = budget.saturating_sub(1);
+    if limits.max_depth == 0 || *budget == 0 {
+        return node;
+    }
+
+    let key = NSString::from_str("accessibilityChildren");
+    // SAFETY: KVC read returning an NSArray (or nil).
+    let raw: *mut AnyObject = unsafe { msg_send![element, valueForKey: &*key] };
+    if raw.is_null() {
+        return node;
+    }
+    // SAFETY: `raw` is an NSArray; count is its standard accessor.
+    let count: usize = unsafe { msg_send![raw, count] };
+    let deeper = WalkLimits {
+        max_depth: limits.max_depth - 1,
+        ..limits
+    };
+    let mut node = node;
+    for index in 0..count {
+        if *budget == 0 {
+            break;
+        }
+        // SAFETY: index < count.
+        let child: *mut AnyObject = unsafe { msg_send![raw, objectAtIndex: index] };
+        if child.is_null() {
+            continue;
+        }
+        // SAFETY: the child is owned by the array, which outlives this loop.
+        node.children
+            .push(walk(unsafe { &*child }, deeper, budget, screen));
+    }
+    node
 }
