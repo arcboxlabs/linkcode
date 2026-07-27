@@ -17,6 +17,7 @@ import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
 import type { WorkbenchSessionDraft } from './selection-store';
 import { useSessionSelectionStore } from './selection-store';
+import { applySessionSwitchTransition } from './session-switch-transition';
 
 export interface WorkbenchSessions {
   sessions: SessionInfo[];
@@ -142,7 +143,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
 
   function select(id: SessionId): void {
     recordNavigation(currentLocation, { surface: 'thread', sessionId: id });
-    applySelection(id);
+    // Matched geometry: the clicked row's title travels to the conversation header.
+    applySessionSwitchTransition(id, () => applySelection(id));
   }
 
   function startDraft(workspaceId?: WorkspaceId): void {

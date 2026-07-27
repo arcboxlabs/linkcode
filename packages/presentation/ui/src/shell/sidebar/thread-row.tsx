@@ -94,7 +94,9 @@ export function ThreadRow({
               )}
             />
           </span>
-          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <span className="min-w-0 flex-1 truncate" data-thread-title={session.sessionId}>
+            {title}
+          </span>
         </PreviewCardTrigger>
         <SidebarPreviewCardPopup>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
