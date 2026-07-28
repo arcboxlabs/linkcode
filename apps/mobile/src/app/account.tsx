@@ -1,9 +1,21 @@
-import { ScreenScroll, SectionLabel } from '@linkcode/ui/native';
+import {
+  Button,
+  Form,
+  Host,
+  HStack,
+  Image,
+  ProgressView,
+  Section,
+  Spacer,
+  SwipeActions,
+  Text,
+  VStack,
+} from '@expo/ui/swift-ui';
+import { badge, buttonStyle, disabled, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { Redirect, Stack } from 'expo-router';
 import { noop } from 'foxact/noop';
-import { Avatar, Button, Card, Chip, ListGroup, Spinner } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 import type { CloudUser } from '../runtime/cloud/account';
 import { signOutOfCloud, useCloudAccount } from '../runtime/cloud/account';
@@ -16,53 +28,60 @@ import {
 } from '../runtime/cloud/devices';
 import { formatRelativeShort } from '../utils/relative-time';
 
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+const FOOTNOTE = font({ textStyle: 'footnote' });
+
 /** Account screen: profile, the account's device registry, and sign-out. */
-export default function AccountScreen() {
+export default function AccountScreen(): React.ReactNode {
   const t = useTranslations('mobile.account');
   const account = useCloudAccount();
 
-  if (account.status === 'loading') {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <Spinner />
-      </View>
-    );
-  }
   if (account.status === 'signed-out') return <Redirect href="/sign-in" />;
 
   return (
-    <ScreenScroll>
+    <>
       <Stack.Screen options={{ headerShown: true, title: t('title') }} />
-      <ProfileCard user={account.user} />
-      <DevicesSection />
-      <Button
-        variant="danger-soft"
-        onPress={() => {
-          void signOutOfCloud();
-        }}
-      >
-        <Button.Label>{t('signOut')}</Button.Label>
-      </Button>
-    </ScreenScroll>
+      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <Form>
+          {account.status === 'loading' ? (
+            <ProgressView />
+          ) : (
+            <>
+              <Section>
+                <ProfileRow user={account.user} />
+              </Section>
+              <DevicesSection />
+              <Section>
+                <Button
+                  role="destructive"
+                  label={t('signOut')}
+                  onPress={() => {
+                    void signOutOfCloud();
+                  }}
+                />
+              </Section>
+            </>
+          )}
+        </Form>
+      </Host>
+    </>
   );
 }
 
-function ProfileCard({ user }: { user: CloudUser }) {
+/** SF Symbol rather than the account's picture: `@expo/ui`'s `Image` takes SF Symbols, asset
+ *  catalog names, and local files — never a remote URL. Apple sign-in supplies no picture
+ *  anyway, so this is the fallback the old avatar already showed in the common case. */
+function ProfileRow({ user }: { user: CloudUser }): React.ReactNode {
   return (
-    <Card>
-      <Card.Body className="flex-row items-center gap-4">
-        <Avatar size="lg" alt={user.name}>
-          {user.image ? <Avatar.Image source={{ uri: user.image }} /> : null}
-          <Avatar.Fallback />
-        </Avatar>
-        <View className="flex-1 gap-1">
-          <Text className="font-semibold text-foreground text-headline">
-            {user.name || user.email}
-          </Text>
-          <Text className="text-muted text-subhead">{user.email}</Text>
-        </View>
-      </Card.Body>
-    </Card>
+    <HStack spacing={12}>
+      <Image systemName="person.crop.circle.fill" size={40} modifiers={[SECONDARY]} />
+      <VStack alignment="leading" spacing={2}>
+        <Text modifiers={[font({ textStyle: 'headline' })]}>{user.name || user.email}</Text>
+        <Text modifiers={[FOOTNOTE, SECONDARY]}>{user.email}</Text>
+      </VStack>
+      <Spacer />
+    </HStack>
   );
 }
 
@@ -140,50 +159,50 @@ function DevicesSection() {
   };
 
   return (
-    <View className="gap-2">
-      <View className="flex-row items-center justify-between">
-        <SectionLabel>{t('devices')}</SectionLabel>
-        <Button variant="ghost" size="sm" onPress={refresh}>
-          <Button.Label>{t('refresh')}</Button.Label>
-        </Button>
-      </View>
+    // A titled Section can't also carry an action, so the header is drawn by hand.
+    <Section
+      header={
+        <HStack>
+          <Text modifiers={[FOOTNOTE, SECONDARY]}>{t('devices')}</Text>
+          <Spacer />
+          <Button
+            label={t('refresh')}
+            onPress={refresh}
+            modifiers={[buttonStyle('plain'), FOOTNOTE]}
+          />
+        </HStack>
+      }
+    >
       {devicesError ? (
-        <Text className="text-danger text-subhead">{t('devicesError')}</Text>
+        <Text modifiers={[foregroundStyle('red')]}>{t('devicesError')}</Text>
       ) : devices === null ? (
-        <View className="items-start py-2">
-          <Spinner />
-        </View>
+        <ProgressView />
       ) : devices.length === 0 ? (
-        <Text className="text-muted text-subhead">{t('devicesEmpty')}</Text>
+        <Text modifiers={[SECONDARY]}>{t('devicesEmpty')}</Text>
       ) : (
-        <ListGroup>
-          {devices.map((device) => (
-            <ListGroup.Item key={device.id}>
-              <ListGroup.ItemContent>
-                <ListGroup.ItemTitle>{device.name}</ListGroup.ItemTitle>
-                <ListGroup.ItemDescription>{describeDevice(device)}</ListGroup.ItemDescription>
-              </ListGroup.ItemContent>
-              <ListGroup.ItemSuffix>
-                <View className="flex-row items-center gap-2">
-                  {device.id === enrolledId ? (
-                    <Chip size="sm" variant="soft">
-                      <Chip.Label>{t('thisDevice')}</Chip.Label>
-                    </Chip>
-                  ) : null}
-                  <Button
-                    variant="danger-soft"
-                    size="sm"
-                    isDisabled={busyId !== null}
-                    onPress={() => confirmRevoke(device)}
-                  >
-                    <Button.Label>{t('revoke')}</Button.Label>
-                  </Button>
-                </View>
-              </ListGroup.ItemSuffix>
-            </ListGroup.Item>
-          ))}
-        </ListGroup>
+        devices.map((device) => (
+          // Revoking is the row's swipe action, matching how saved hosts are removed. The
+          // confirmation stays an RN `Alert` — that already is the native alert.
+          <SwipeActions key={device.id}>
+            <SwipeActions.Actions>
+              <Button
+                role="destructive"
+                label={t('revoke')}
+                onPress={() => confirmRevoke(device)}
+                modifiers={[disabled(busyId !== null)]}
+              />
+            </SwipeActions.Actions>
+            <VStack
+              alignment="leading"
+              spacing={2}
+              modifiers={[device.id === enrolledId ? badge(t('thisDevice')) : badge()]}
+            >
+              <Text>{device.name}</Text>
+              <Text modifiers={[FOOTNOTE, SECONDARY]}>{describeDevice(device)}</Text>
+            </VStack>
+          </SwipeActions>
+        ))
       )}
-    </View>
+    </Section>
   );
 }
