@@ -59,7 +59,7 @@ export function CircularProgress({
         />
         <circle
           className={cn(
-            'fill-none stroke-current transition-[stroke-dashoffset] duration-500',
+            'fill-none stroke-current transition-[stroke-dashoffset] duration-(--motion-emphasis)',
             indicatorClassName,
           )}
           cx={center}
@@ -77,6 +77,6 @@ export function CircularProgress({
 }
 
 function progressPercent(value: number | null, min: number, max: number): number {
-  if (value === null || !Number.isFinite(value) || max === min) return 0;
+  if (max === min || value === null || !Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, ((value - min) * 100) / (max - min)));
 }

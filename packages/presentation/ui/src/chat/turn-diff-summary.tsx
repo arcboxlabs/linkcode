@@ -1,13 +1,24 @@
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
-import { ChevronDownIcon, FileDiffIcon, Undo2Icon } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { Frame } from 'coss-ui/components/frame';
+import { FileDiffIcon, Undo2Icon } from 'lucide-react';
+import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
+import { cn } from '../lib/cn';
+import { fileBasename } from './artifacts/file-kind';
 import { useArtifactHostActions } from './artifacts/host-actions';
+import { ChatCardActions, ChatCardHeader, ChatCardPanel } from './chat-card';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
+import { FileIdentityIcon } from './file-identity-icon';
 import type { TurnEdits, TurnFileEdit } from './turn-edits';
+import { FilePathTooltip } from './with-tooltip';
 
 const COLLAPSED_FILE_COUNT = 3;
 
@@ -29,46 +40,72 @@ export function TurnDiffSummary({
   const overflowFiles = edits.files.slice(COLLAPSED_FILE_COUNT);
 
   return (
-    <div className="my-1 rounded-xl border border-border bg-card text-sm">
-      <div className="flex items-center px-3 py-2 gap-1">
-        <div className="min-w-0 flex flex-1 gap-2 items-center">
-          <FileDiffIcon className="size-3.5 text-muted-foreground" />
-          <div className="font-medium">{t('title', { count: edits.files.length })}</div>
-          <DiffStat additions={edits.additions} deletions={edits.deletions} />
-        </div>
-        <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
-          <Undo2Icon />
-          {t('undo')}
-        </Button>
-        <Button disabled={!onReview} size="sm" type="button" variant="outline" onClick={onReview}>
-          {t('review')}
-        </Button>
-      </div>
-      <Collapsible className="border-border border-t px-3 py-1">
-        {visibleFiles.map((file) => (
-          <FileRow key={file.path} file={file} onOpenFile={openFile} />
-        ))}
-        {overflowFiles.length > 0 && (
-          <>
-            <CollapsibleContent>
-              {overflowFiles.map((file) => (
-                <FileRow key={file.path} file={file} onOpenFile={openFile} />
-              ))}
-            </CollapsibleContent>
-            <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-muted-foreground text-sm hover:text-foreground">
-              <span className="group-data-[panel-open]:hidden">
-                {t('showMore', { count: overflowFiles.length })}
-              </span>
-              <span className="hidden group-data-[panel-open]:inline">{t('showLess')}</span>
-              <ChevronDownIcon className="size-3.5 transition-transform group-data-[panel-open]:rotate-180" />
-            </CollapsibleTrigger>
-          </>
-        )}
-      </Collapsible>
-    </div>
+    <Frame className="my-1 text-sm">
+      <ChatCardHeader className="text-sm">
+        <ChatDisclosureIconSlot>
+          <FileDiffIcon />
+        </ChatDisclosureIconSlot>
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {t('title', { count: edits.files.length })}
+        </span>
+        <DiffStat additions={edits.additions} deletions={edits.deletions} />
+        <ChatCardActions>
+          <Button disabled={!onUndo} size="sm" type="button" variant="ghost" onClick={onUndo}>
+            <Undo2Icon />
+            {t('undo')}
+          </Button>
+          <Button disabled={!onReview} size="sm" type="button" variant="outline" onClick={onReview}>
+            {t('review')}
+          </Button>
+        </ChatCardActions>
+      </ChatCardHeader>
+      {edits.files.length > 0 ? (
+        <ChatCardPanel className="overflow-hidden px-0 py-1">
+          <Collapsible>
+            {visibleFiles.map((file) => (
+              <FileRow key={file.path} file={file} onOpenFile={openFile} />
+            ))}
+            {overflowFiles.length > 0 && (
+              <>
+                <ChatDisclosureContent>
+                  {overflowFiles.map((file) => (
+                    <FileRow key={file.path} file={file} onOpenFile={openFile} />
+                  ))}
+                </ChatDisclosureContent>
+                <CollapsibleTrigger
+                  className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-fit max-w-full px-3')}
+                >
+                  <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+                    <span
+                      className={cn(
+                        CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                        'group-data-[panel-open]:hidden',
+                      )}
+                    >
+                      {t('showMore', { count: overflowFiles.length })}
+                    </span>
+                    <span
+                      className={cn(
+                        CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                        'hidden group-data-[panel-open]:inline',
+                      )}
+                    >
+                      {t('showLess')}
+                    </span>
+                  </span>
+                  {/* Expands downward, collapses upward — not the tree-node right→down chevron. */}
+                  <ChatDisclosureChevron className="rotate-90 group-data-[panel-open]:-rotate-90" />
+                </CollapsibleTrigger>
+              </>
+            )}
+          </Collapsible>
+        </ChatCardPanel>
+      ) : null}
+    </Frame>
   );
 }
 
+/** Basename row with the file-identity icon; the full path lives in the hover tooltip. */
 function FileRow({
   file,
   onOpenFile,
@@ -76,29 +113,36 @@ function FileRow({
   file: TurnFileEdit;
   onOpenFile?: (path: string) => void;
 }): React.ReactNode {
-  const basenameStart = file.path.lastIndexOf('/') + 1;
+  const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
+  const rowClassName =
+    'flex w-full items-center gap-2 px-3 py-1 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
   const body = (
     <>
-      <span className="min-w-0 flex-1 truncate text-ellipsis text-sm">
-        <span className="text-muted-foreground transition-colors group-hover/file:text-foreground">
-          {file.path.slice(0, basenameStart)}
-        </span>
-        <span className="text-foreground">{file.path.slice(basenameStart)}</span>
-      </span>
+      <FileIdentityIcon className="shrink-0" path={file.path} ref={tooltipAnchorRef} />
+      <span className="min-w-0 flex-1 truncate">{fileBasename(file.path)}</span>
       <DiffStat additions={file.additions} deletions={file.deletions} />
     </>
   );
 
-  if (!onOpenFile) return <div className="flex items-center gap-2 py-1">{body}</div>;
-
   return (
-    <Button
-      className="group/file h-auto w-full justify-start rounded-none border-0 px-0 py-1 text-left font-normal text-sm hover:bg-transparent sm:text-sm"
-      variant="ghost"
-      onClick={() => onOpenFile(file.path)}
-    >
-      {body}
-    </Button>
+    <FilePathTooltip anchor={tooltipAnchorRef} tooltip={file.path}>
+      {onOpenFile ? (
+        <button
+          className={cn(
+            rowClassName,
+            'cursor-pointer transition-colors hover:bg-muted active:bg-muted',
+          )}
+          type="button"
+          onClick={() => onOpenFile(file.path)}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={rowClassName} tabIndex={0}>
+          {body}
+        </div>
+      )}
+    </FilePathTooltip>
   );
 }
 

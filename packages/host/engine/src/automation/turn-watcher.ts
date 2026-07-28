@@ -52,6 +52,17 @@ export function watchTurn(
       Effect.sync(() =>
         adapter.onEvent((event: AgentEvent) => {
           switch (event.type) {
+            case 'agent-message': {
+              if (event.content !== undefined) {
+                segments.set(
+                  event.messageId,
+                  event.content
+                    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+                    .join(''),
+                );
+              }
+              break;
+            }
             case 'agent-message-chunk':
               if (event.content.type === 'text') {
                 segments.set(

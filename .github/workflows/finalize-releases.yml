@@ -1,0 +1,144 @@
+name: Finalize Releases
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# A release PR merge starts CI and this workflow. Never cancel a finalizer after release-please has
+# created its tag: that ref is what starts the non-cancelable signed build.
+concurrency:
+  group: finalize-releases-master
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  finalize:
+    name: Finalize merged release PRs
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    steps:
+      # workflow_run is privileged, so only check out the protected default branch. The next step
+      # proves this script is byte-identical to the policy included in the CI-tested merge SHA.
+      - name: Checkout release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: master
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Verify release automation was CI-tested
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const path = '.github/scripts/release-automation.cjs'
+            const read = async (ref) => {
+              const response = await github.rest.repos.getContent({
+                ...context.repo,
+                path,
+                ref,
+              })
+              return response.data.sha
+            }
+            const [testedBlob, currentBlob] = await Promise.all([
+              read(process.env.TESTED_SHA),
+              read('master'),
+            ])
+            if (currentBlob !== testedBlob) {
+              throw new Error(`${path} changed after CI-tested release candidate ${process.env.TESTED_SHA}`)
+            }
+
+      - name: Mint release bot token
+        id: release-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      # Bind release-please to the exact commit that this successful CI run tested. Normal master
+      # pushes are no-ops, and release-please may only see this one pending Desktop release PR.
+      - name: Resolve tested release candidate
+        id: candidate
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ steps.release-token.outputs.token }}
+          script: |
+            const automation = require('./.github/scripts/release-automation.cjs')
+            await automation.resolveCandidate({
+              core,
+              github,
+              ...context.repo,
+              testedSha: process.env.TESTED_SHA,
+            })
+
+      # release-please reads these files from current master even when it releases an older, tested
+      # release-PR merge SHA. Ordinary commits may advance master; release policy must not drift.
+      - name: Verify tested release configuration is still current
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TESTED_SHA: ${{ steps.candidate.outputs.sha }}
+        with:
+          github-token: ${{ steps.release-token.outputs.token }}
+          script: |
+            const automation = require('./.github/scripts/release-automation.cjs')
+            await automation.verifyConfig({
+              github,
+              ...context.repo,
+              testedSha: process.env.TESTED_SHA,
+            })
+
+      # release-please recovers the version and notes from a merged release PR. Configured Releases
+      # stay draft, so users never see a release before its signed artifacts have been verified.
+      - name: Create draft releases
+        id: release
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          token: ${{ steps.release-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: master
+          skip-github-pull-request: true
+
+      # force-tag-creation makes release-please create the lightweight ref with the App token before
+      # it creates the draft. That tag push starts release-desktop.yml; validate that release-please
+      # acted on exactly the commit this CI run tested.
+      - name: Verify started Desktop release
+        if: ${{ steps.candidate.outputs.state == 'pending' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.sha }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          RELEASE_PLEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_PLEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        with:
+          github-token: ${{ steps.release-token.outputs.token }}
+          script: |
+            const automation = require('./.github/scripts/release-automation.cjs')
+            await automation.verifyStartedRelease({
+              core,
+              github,
+              ...context.repo,
+              releaseCreated: process.env.RELEASE_CREATED,
+              releasePleaseSha: process.env.RELEASE_PLEASE_SHA,
+              releasePleaseTag: process.env.RELEASE_PLEASE_TAG,
+              releaseSha: process.env.RELEASE_SHA,
+              releaseTag: process.env.RELEASE_TAG,
+            })

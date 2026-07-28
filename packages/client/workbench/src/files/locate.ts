@@ -66,6 +66,7 @@ export async function locateFileArtifact(
   if (candidates.length > 1) {
     for (const candidate of candidates) {
       try {
+        // eslint-disable-next-line no-await-in-loop -- candidates must be probed in priority order and stop at the first readable path.
         await readWorkspaceFile({ cwd, path: candidate });
         return candidate;
       } catch (error) {

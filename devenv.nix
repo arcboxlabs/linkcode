@@ -13,7 +13,8 @@
 
   languages.rust = {
     enable = true;
-    channel = "stable";
+    # Version and components come from rust-toolchain.toml so devenv, rustup, and CI agree.
+    toolchainFile = ./rust-toolchain.toml;
   };
 
   languages.javascript = {

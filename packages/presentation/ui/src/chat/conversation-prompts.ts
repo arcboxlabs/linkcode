@@ -1,4 +1,4 @@
-import type { PermissionOption, ToolCall, ToolCallUpdate } from '@linkcode/schema';
+import type { PermissionOption, Plan, ToolCall, ToolCallUpdate } from '@linkcode/schema';
 import type { ConversationItem, ConversationViewModel } from './types';
 
 export type PlanConversationItem = Extract<ConversationItem, { kind: 'plan' }>;
@@ -31,7 +31,8 @@ export function selectCurrentPlan(
 ): CurrentPlan | null {
   const turnId = latestUserTurnId(conversation.items);
   const plan = conversation.items.findLast(
-    (item): item is PlanConversationItem => item.kind === 'plan' && item.turnId === turnId,
+    (item): item is PlanConversationItem =>
+      item.kind === 'plan' && (item.updatedTurnId ?? item.turnId) === turnId,
   );
   if (!plan || plan.plan.entries.length === 0) return null;
 
@@ -39,12 +40,14 @@ export function selectCurrentPlan(
   const pending = plan.plan.entries.findIndex((entry) => entry.status === 'pending');
   const currentIndex =
     inProgress >= 0 ? inProgress : pending >= 0 ? pending : plan.plan.entries.length - 1;
+  const terminal = (status: Plan['entries'][number]['status']): boolean =>
+    status === 'completed' || status === 'cancelled';
 
   return {
     item: plan,
     currentIndex,
     total: plan.plan.entries.length,
-    complete: plan.plan.entries.every((entry) => entry.status === 'completed'),
+    complete: plan.plan.entries.every((entry) => terminal(entry.status)),
   };
 }
 
@@ -94,7 +97,7 @@ export function declinedToolCall(update: ToolCallUpdate): ToolCall {
     kind: update.kind ?? 'other',
     status: 'failed',
     content: update.content ?? [],
-    locations: update.locations,
+    locations: update.locations ?? undefined,
     rawInput: update.rawInput,
     rawOutput: update.rawOutput,
   };

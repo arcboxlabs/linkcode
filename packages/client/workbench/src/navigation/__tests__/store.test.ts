@@ -1,8 +1,9 @@
 import type { SessionId } from '@linkcode/schema';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { trueFn } from 'foxts/noop';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionSelectionStore } from '../../surface/selection-store';
 import type { NavLocation } from '../history';
-import { useNavigationHistoryStore } from '../store';
+import { installNavigationPerformanceObserver, useNavigationHistoryStore } from '../store';
 
 function sid(id: string): SessionId {
   return id as SessionId;
@@ -53,6 +54,20 @@ describe('openOverlay', () => {
     useNavigationHistoryStore.getState().openOverlay('settings');
 
     expect(useNavigationHistoryStore.getState().back).toEqual([thread('a')]);
+  });
+});
+
+describe('navigation performance observer', () => {
+  it('reports only the bounded destination surface for forward and history navigation', () => {
+    const observer = vi.fn();
+    const uninstall = installNavigationPerformanceObserver(observer);
+
+    useNavigationHistoryStore.getState().record(null, thread('private-session-id'));
+    useNavigationHistoryStore.setState({ back: [SETTINGS] });
+    useNavigationHistoryStore.getState().travel('back', thread('private-session-id'), trueFn);
+    uninstall();
+
+    expect(observer.mock.calls).toEqual([['thread'], ['settings']]);
   });
 });
 

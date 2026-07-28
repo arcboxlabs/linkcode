@@ -30,7 +30,7 @@ export interface AiGatewaySidecarOptions {
   spawn?: SidecarSpawn;
   /**
    * Resolve (installing on demand) the aigateway binary path — wired to the managed-asset store
-   * (`assets.ensure('tool:aigateway')`). `LINKCODE_AIGATEWAY_PATH` overrides it for dev / standalone.
+   * (`assets.ensure({ kind: 'tool', name: 'aigateway' })`). `LINKCODE_AIGATEWAY_PATH` overrides it for dev / standalone.
    */
   ensureBinary?: () => Promise<string | undefined>;
 }

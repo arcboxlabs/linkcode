@@ -9,6 +9,7 @@ import {
 } from '@linkcode/tunnel';
 import { never } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { Listeners } from './transport';
 import type { TunnelPeer } from './tunnel-peer';
 import { PeerConnection } from './tunnel-peer';
@@ -242,9 +243,7 @@ export class TunnelClient {
         }
       }
       const backoff = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, backoff * (0.8 + Math.random() * 0.4));
-      });
+      await wait(backoff * (0.8 + Math.random() * 0.4));
     }
   }
 

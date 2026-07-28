@@ -36,7 +36,7 @@ const SDK_USAGE_RESPONSE: SDKControlGetUsageResponse = {
   session: {
     total_cost_usd: 1.23,
     total_api_duration_ms: 4000,
-    total_duration_ms: 60_000,
+    total_duration_ms: 60000,
     total_lines_added: 10,
     total_lines_removed: 2,
     model_usage: {
@@ -47,8 +47,8 @@ const SDK_USAGE_RESPONSE: SDKControlGetUsageResponse = {
         cacheCreationInputTokens: 5,
         webSearchRequests: 0,
         costUSD: 1.23,
-        contextWindow: 200_000,
-        maxOutputTokens: 32_000,
+        contextWindow: 200000,
+        maxOutputTokens: 32000,
       },
     },
   },
@@ -88,7 +88,7 @@ const EXPECTED_USAGE_REPORT: UsageReport = {
   session: {
     totalCostUsd: 1.23,
     totalApiDurationMs: 4000,
-    totalDurationMs: 60_000,
+    totalDurationMs: 60000,
     totalLinesAdded: 10,
     totalLinesRemoved: 2,
     modelUsage: {
@@ -107,8 +107,8 @@ const EXPECTED_USAGE_REPORT: UsageReport = {
     // per-model 'Fable' bucket flattens into the same table (weekly, labelled, no id).
     windows: [
       { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
-      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10_080 },
-      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10_080 },
+      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10080 },
+      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10080 },
     ],
     extraUsage: { isEnabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
   },
@@ -183,6 +183,10 @@ class FakeQuery {
       yield next;
     }
   }
+}
+
+function pushMessages(query: FakeQuery, ...messages: WireMessage[]): void {
+  for (const message of messages) query.push(message);
 }
 
 const queries: FakeQuery[] = [];
@@ -343,10 +347,23 @@ describe('ClaudeCodeAdapter slash commands', () => {
     await prompt(adapter);
     const q0 = queries[0];
 
-    q0.push({
-      type: 'stream_event',
-      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before' } },
-    });
+    pushMessages(
+      q0,
+      {
+        type: 'stream_event',
+        uuid: 'before-start-frame',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'message_start', message: { id: 'before-message' } },
+      },
+      {
+        type: 'stream_event',
+        uuid: 'before-row',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'before' } },
+      },
+    );
     await vi.waitFor(() => {
       expect(agentChunks(events)).toHaveLength(1);
     });
@@ -366,10 +383,23 @@ describe('ClaudeCodeAdapter slash commands', () => {
     expect(output.content).toEqual(textBlock('Usage: 42% used'));
     expect(output.messageId).not.toBe(before.messageId);
 
-    q0.push({
-      type: 'stream_event',
-      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after' } },
-    });
+    pushMessages(
+      q0,
+      {
+        type: 'stream_event',
+        uuid: 'after-start-frame',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'message_start', message: { id: 'after-message' } },
+      },
+      {
+        type: 'stream_event',
+        uuid: 'after-row',
+        parent_tool_use_id: null,
+        session_id: 's1',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'after' } },
+      },
+    );
     await vi.waitFor(() => {
       expect(agentChunks(events)).toHaveLength(3);
     });

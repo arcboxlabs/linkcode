@@ -1,17 +1,11 @@
 # LinkCode development
 
-The local runbook: run the apps, run the tests, debug a stuck daemon. For architecture and package boundaries read [`ARCHITECTURE.md`](./ARCHITECTURE.md); for engineering discipline read [`../AGENTS.md`](../AGENTS.md).
+The local runbook: run the apps, run the tests, debug a stuck daemon. For architecture and package boundaries read [`ARCHITECTURE.md`](./ARCHITECTURE.md); for engineering discipline read [`../AGENTS.md`](../AGENTS.md); for every environment variable the project reads read [`ENVIRONMENT.md`](./ENVIRONMENT.md).
 
 ## Prerequisites
 
 > [!NOTE]
-> `devenv` is recommended: it pins Node.js 26, pnpm 11, stable Rust, and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
-
-Without `devenv`, install these yourself:
-
-- Node.js 24 or newer
-- pnpm 11
-- stable Rust with `rustfmt` and Clippy
+> `devenv` is recommended: it pins Node.js 26, pnpm 11, the Rust toolchain from [`rust-toolchain.toml`](../rust-toolchain.toml), and the `prek` pre-commit hooks. It is not required if your local toolchain already matches.
 
 With `devenv`, enter the pinned environment:
 
@@ -19,7 +13,40 @@ With `devenv`, enter the pinned environment:
 devenv shell
 ```
 
-Install JavaScript dependencies through pnpm only:
+Without `devenv`, install these yourself:
+
+- **Node.js 24 or newer** (`.nvmrc` pins 26 for CI) and **pnpm 11**. Always pnpm, never npm or npx.
+- **rustup.** The version, `rustfmt`, `clippy`, and `rust-analyzer` all come from [`rust-toolchain.toml`](../rust-toolchain.toml) — rustup reads it automatically and installs that exact toolchain the first time you run `cargo` in this repo, so a given commit always builds with the same compiler. Bumping the pin also needs `devenv update rust-overlay`: the devenv-side toolchain can only resolve versions present in the locked rust-overlay manifests.
+- **A platform native toolchain** (below). Neither `devenv` nor rustup provides the system C/C++ toolchain, and both the PTY sidecar's linker and the native node modules (`better-sqlite3`) need it.
+
+### Native toolchain per platform
+
+**Ubuntu / Debian.** Build tools plus the Electron/Chromium runtime libraries:
+
+```bash
+sudo apt-get install -y build-essential pkg-config python3 ca-certificates curl xz-utils
+# Electron/Chromium runtime libraries — playwright resolves the per-release package names for you
+# (needs `pnpm install` first; this is what CI runs):
+pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+```
+
+If you would rather not go through playwright, the equivalent explicit set is `libasound2 libatk-bridge2.0-0 libdrm2 libgbm1 libgtk-3-0 libnss3 libxkbcommon0 libxss1` (on 24.04 the `t64` packages provide these names). Headless runs additionally need `xvfb` and `dbus-x11`, and `e2e:window-bounds` needs a window manager — `openbox` is what CI uses, because maximize is a window-manager operation. Cross-building the sidecar for linux-arm64 needs `gcc-aarch64-linux-gnu`.
+
+**macOS.** Xcode Command Line Tools are enough for everything except packaging:
+
+```bash
+xcode-select --install
+```
+
+Packaging (`package`, `package:devshell`) additionally needs **full Xcode 26 or newer**: electron-builder runs `actool` over `assets/linkcode.icon` to emit `Assets.car`, and older `actool` cannot read the Icon Composer source.
+
+**Windows.** Install **Visual Studio 2022 Build Tools** with the *Desktop development with C++* workload — that provides the MSVC v143 toolset and the Windows SDK, which the `*-pc-windows-msvc` Rust target's linker and node-gyp both require. NSIS packaging needs nothing beyond it. Cross-building the sidecar for win-arm64 additionally needs the `Microsoft.VisualStudio.Component.VC.Tools.ARM64` component (CI installs it in [`.github/actions/build-sidecar`](../.github/actions/build-sidecar/action.yml)).
+
+### `.agents/setup` is not a general setup script
+
+[`.agents/setup`](../.agents/setup) provisions a **fresh Amp orb container** (Ubuntu): it apt-installs the native and VNC packages, installs Nix and devenv, then runs `pnpm install --frozen-lockfile` and `cargo fetch --locked`. It assumes a root-capable throwaway container and installs a system-wide Nix daemon — do not run it on your own machine. Use the steps above instead.
+
+### Install dependencies
 
 ```bash
 pnpm install
@@ -90,6 +117,19 @@ The daemon resolves the binary (`resolveSidecarPath`, `apps/daemon/src/pty/sidec
 3. **Prod** (a tsup `.js` bundle can't trust that relative depth): with no override it logs an error and returns `''` — terminals are unconfigured.
 
 The release build is used in dev on purpose, so the daemon's fallback path matches the build script. If terminals fail in dev, rebuild the sidecar first, then see the terminal triage below.
+
+## Build semantics
+
+Four different things are called "build"; none of them implies the others.
+
+| Command | What it actually does |
+| --- | --- |
+| `pnpm build` (root) | `turbo run build` — each workspace's own `build` script in dependency order (`dist/`, `out/`, `build/`, `.vite/`). It does **not** invoke cargo, does **not** package the desktop app, and skips `apps/mobile`, which has no `build` script. |
+| `pnpm -F @linkcode/daemon build:rust` | `cargo build -p linkcode-pty --release` → `target/release/linkcode-pty`, the path the dev daemon falls back to. Deliberately outside the turbo graph. For CI parity in tests use the debug build instead: `cargo build --locked -p linkcode-pty`. |
+| `pnpm -F @linkcode/desktop package` / `package:devshell` | The full product. Both first run `stage:host-runtime` (build the daemon bundle, then `stage-sidecar.mts`, which cargo-builds the sidecar and copies it to `apps/desktop/sidecar/<arch>` for electron-builder's `extraResources`), then go through `scripts/package-app.mts` — never a bare `electron-builder`. `package` is the production variant; `package:devshell` adds `--mode devshell` + `--dir` for the unsigned `LinkCode Development.app`. Release packaging is CI-only; there is no `dist` script. |
+| `pnpm -F @linkcode/mobile smoke:export` | Production Expo Router **exports** for Android and iOS (`expo-export/`), asserting Hermes bytecode, source maps, and that the expected routes were bundled. It is an app-entry bundle gate, not a native build: real binaries come from `expo run:ios` / `expo run:android` locally and from EAS profiles (`apps/mobile/eas.json`) for distribution. |
+
+`stage-sidecar.mts --all` additionally cross-builds the platform's second release arch (`CROSS_BUILDS`); that path is CI's and needs the extra rustup target plus the cross linker from the platform notes above.
 
 ## Testing
 
@@ -188,7 +228,7 @@ HOME=<fakeHOME> <vendored>/claude -p 'Reply ok' --model haiku   # smoke test
 
 Agent files land under `<fakeHOME>/LinkCode` (`chatWorkspaceRoot = homedir()/LinkCode`). Detect turn-end by `form button[type="submit"]` reappearing (it is `type=button` while a run is active / showing Stop). Auto/bypass here is the approval-policy "Bypass permissions" option wired through the SDK's `setPermissionMode` (`claude-code.ts`) — there is no daemon env var for it (the CLI-side `CLAUDE_CODE_ENABLE_AUTO_MODE` concerns Bedrock/gateway auth only; see `packages/host/agent-adapter/AGENTS.md`).
 
-**Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (there is **no** `run package` script). It stages the host runtime, runs `node scripts/build.mts --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`scripts/dev.mts --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, and the asar-unpack debug trick. Electron flags such as `--remote-debugging-port` and `--profile` pass through `dev`/`dev:mock` with or without a `--` separator (e.g. `pnpm -F @linkcode/desktop dev --remote-debugging-port=9222`).
+**Packaged product.** Build with `pnpm -F @linkcode/desktop run package:devshell` (`package` is the production variant — use the devshell one for E2E). It stages the host runtime, runs `node scripts/build.mts --mode devshell`, then `electron-builder --dir --config electron-builder.devshell.yml` (`productName: LinkCode Development`, `identity: null` — unsigned by design), so you launch `LinkCode Development.app`. `dev:mock` (`scripts/dev.mts --mode mock`) exists for the CDP-attach flow. Memory-only driving switches (real flags, not repo-verifiable): `--use-mock-keychain` for the keychain modal, a packaged-vs-unpackaged `--user-data-dir` inversion, and the asar-unpack debug trick. Electron flags such as `--remote-debugging-port` and `--profile` pass through `dev`/`dev:mock` with or without a `--` separator (e.g. `pnpm -F @linkcode/desktop dev --remote-debugging-port=9222`).
 
 **Feature gotchas (memory-sourced).** The composer is disabled with no thread ("Create or pick a thread first") — click the Chats `+` first. "Ask permissions" stalls a Task at approval — switch to "Bypass permissions" before spawning an agent. Clicking a sidebar thread row needs Playwright `force: true`. Match the active row by `classList.contains('bg-sidebar-accent')` exactly (`className.includes` also matches the hover variant). Webview artifact E2E (`pnpm -F @linkcode/webview run dev:mock`): mock `blob:` URLs can't cross the Electron webview process (promotion fails `ERR_FILE_NOT_FOUND`) — use a real http URL.
 

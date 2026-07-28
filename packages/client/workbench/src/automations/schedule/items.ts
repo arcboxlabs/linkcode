@@ -14,11 +14,12 @@ export interface AutomationListItem {
 
 const NAME_EXCERPT_MAX = 60;
 const STATUS_RANK: Record<ScheduleStatus, number> = { active: 0, paused: 1, completed: 2 };
+const RE_WHITESPACE = /\s+/g;
 
 function displayName(schedule: Schedule): string {
   const name = schedule.spec.name?.trim();
   if (name) return name;
-  const prompt = schedule.spec.prompt.trim().replaceAll(/\s+/g, ' ');
+  const prompt = schedule.spec.prompt.trim().replaceAll(RE_WHITESPACE, ' ');
   return prompt.length > NAME_EXCERPT_MAX ? `${prompt.slice(0, NAME_EXCERPT_MAX - 1)}…` : prompt;
 }
 

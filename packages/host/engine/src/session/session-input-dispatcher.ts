@@ -1,3 +1,4 @@
+import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
 import { Effect } from 'effect';
@@ -58,14 +59,22 @@ export class SessionInputDispatcher {
           try: () => assertAttachmentContentAllowed(input.content),
           catch: (e) => e,
         });
-        events.broadcast(sessionId, [{ type: 'user-message', content: input.content }]);
+        events.broadcast(sessionId, [
+          { type: 'user-message', messageId: nextMessageId(), content: input.content },
+        ]);
         records.setTitleFromContent(sessionId, input.content);
       } else if (input.type === 'command' || input.type === 'shell-command') {
         const text =
           input.type === 'command'
             ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
             : `$ ${input.command}`;
-        events.broadcast(sessionId, [{ type: 'user-message', content: [{ type: 'text', text }] }]);
+        events.broadcast(sessionId, [
+          {
+            type: 'user-message',
+            messageId: nextMessageId(),
+            content: [{ type: 'text', text }],
+          },
+        ]);
       }
       const responseInput =
         input.type === 'permission-response' || input.type === 'question-response'

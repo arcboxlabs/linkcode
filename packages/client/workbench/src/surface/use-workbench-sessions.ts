@@ -9,8 +9,9 @@ import type {
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { withoutAutomationSessions } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useRef } from 'react';
+import { captureProductEvent } from '../analytics/product-analytics';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
@@ -24,8 +25,9 @@ export interface WorkbenchSessions {
   activeId: SessionId | null;
   /** First load of the session list — the cue for the sidebar to show a skeleton, not an empty state. */
   isLoading: boolean;
-  /** Non-null while the new-session page is up (explicitly opened, or the list loaded empty);
-   * `active` is forced null for its duration. Selecting or creating a session clears it. */
+  /** Non-null while the new-session page is up (explicitly opened, or the default landing state
+   * whenever no thread is selected); `active` is forced null for its duration. Selecting or
+   * creating a session clears it. */
   draft: WorkbenchSessionDraft | null;
   select: (id: SessionId) => void;
   startDraft: (workspaceId?: WorkspaceId) => void;
@@ -49,8 +51,9 @@ export interface WorkbenchSessions {
   refresh: () => void;
 }
 
-/** The loaded-empty landing draft — module-level so its identity is stable across renders. */
-const EMPTY_LIST_DRAFT: WorkbenchSessionDraft = { workspaceId: null };
+/** The default landing draft (New Session page) — module-level so its identity is stable across
+ * renders. */
+const LANDING_DRAFT: WorkbenchSessionDraft = { workspaceId: null };
 
 /**
  * Session orchestration over the daemon's persisted session list: the daemon is the single
@@ -73,25 +76,23 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     () => [...(remoteSessions ?? [])].sort((a, b) => a.createdAt - b.createdAt),
     [remoteSessions],
   );
-  // Automation-created sessions are hidden from the Threads sidebar and the landing fallbacks; the
-  // full `sessions` stays for explicit by-id resolution (an automation detail view opens its run).
+  // Automation-created sessions are hidden from the Threads sidebar; the full `sessions` stays for
+  // explicit by-id resolution (an automation detail view opens its run).
   const visibleSessions = useMemo(() => withoutAutomationSessions(sessions), [sessions]);
 
-  // The page is also the landing state once the list has loaded empty — there is nothing to
-  // select, so the auto-select-recent fallback below would render a dead conversation column. An
-  // all-automation list counts as empty for landing unless one was explicitly selected from its
-  // run detail; explicit selections resolve against the full session list below.
-  const listLoadedEmpty =
-    !isLoading && remoteSessions != null && visibleSessions.length === 0 && selectedId === null;
-  const draft = explicitDraft ?? (listLoadedEmpty ? EMPTY_LIST_DRAFT : null);
+  // Nothing explicitly opened — a fresh window, or after closing the open thread — lands on the New
+  // Session page: every thread stays one click away in the sidebar, so we skip straight to the
+  // new-thread draft instead of auto-opening an arbitrary recent session (an all-automation list
+  // has nothing to open either; an explicit automation selection resolves against the full list).
+  const draft = explicitDraft ?? (selectedId === null ? LANDING_DRAFT : null);
 
   const active = useMemo(() => {
     if (draft) return null;
-    // An explicit selection absent from the loaded list must NOT fall back to a different thread
-    // (wrong conversation). Hold null; the effect below refreshes the list so it resolves.
-    if (selectedId) return sessionById(sessions, selectedId);
-    return preferredActiveSession(visibleSessions) ?? visibleSessions.at(-1) ?? null;
-  }, [draft, selectedId, sessions, visibleSessions]);
+    // Only an explicit selection resolves a conversation. One absent from the loaded list must NOT
+    // fall back to a different thread (wrong conversation); hold null while the effect below
+    // refreshes the list so a click-through to a not-yet-listed session resolves.
+    return sessionById(sessions, selectedId);
+  }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
   const recordNavigation = useNavigationHistoryStore((state) => state.record);
@@ -114,8 +115,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
   // not-yet-listed session resolves; deduped per id so a genuinely gone session doesn't spin.
   const refreshedForRef = useRef<SessionId | null>(null);
-  useAbortableEffect(() => {
-    if (selectedId == null || draft) return;
+  useEffect(() => {
+    if (draft || selectedId == null) return;
     if (sessionById(sessions, selectedId)) {
       refreshedForRef.current = null;
       return;
@@ -184,12 +185,26 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     approvalPolicyId?: string;
     modeId?: SessionModeId;
   }): Promise<SessionId> {
+    const startedAt = Date.now();
     // Captured now: by resolve time the surface still shows the draft, and the recorded
     // transition should be draft → new thread.
     const from = currentLocation;
     // Rejections propagate to the caller (the new-session page stays up); onError above still
     // reports them via the error banner.
-    const sessionId = await createMutation.trigger({ opts });
+    let sessionId: SessionId;
+    try {
+      sessionId = await createMutation.trigger({ opts });
+    } catch (error) {
+      captureProductEvent('thread create failed', {
+        agent_kind: opts.kind,
+        duration_ms: Date.now() - startedAt,
+      });
+      throw error;
+    }
+    captureProductEvent('thread created', {
+      agent_kind: opts.kind,
+      duration_ms: Date.now() - startedAt,
+    });
     // The list must contain the new session before selection flips: otherwise `active` falls
     // back to the previous session for a render and its conversation flashes (CODE-103).
     await mutate().catch(noop);
@@ -200,9 +215,13 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }
 
   function close(id: SessionId): void {
+    // Closing the open thread drops back to the New Session landing; closing any other thread
+    // leaves the current selection untouched.
+    if (id === selectedId) setSelectedId(null);
     void closeMutation
       .trigger({ sessionId: id })
       .then(() => {
+        captureProductEvent('thread closed', {});
         void mutate();
       })
       .catch(noop);
@@ -238,13 +257,6 @@ function sessionById(
   if (!sessionId) return null;
   for (const session of sessions) {
     if (session.sessionId === sessionId) return session;
-  }
-  return null;
-}
-
-function preferredActiveSession(sessions: readonly SessionInfo[]): SessionInfo | null {
-  for (const session of sessions) {
-    if (session.status === 'running' || session.status === 'awaiting-input') return session;
   }
   return null;
 }

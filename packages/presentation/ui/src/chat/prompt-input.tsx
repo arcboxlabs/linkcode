@@ -22,7 +22,7 @@ export function PromptInput({
     <form className={cn('w-full', className)} onSubmit={handleSubmit} {...props}>
       {/* The group's own focus/disabled styling keys on literal input/textarea selectors; the
        * composer's contenteditable editor needs these equivalents keyed on its data-slot. */}
-      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none has-[[data-slot=composer-editor][contenteditable=false]]:opacity-64 has-[[data-slot=composer-editor][contenteditable=false]]:before:shadow-none has-[[data-slot=composer-editor]:focus-visible]:border-ring has-[[data-slot=composer-editor]:focus-visible]:ring-[3px] has-[[data-slot=composer-editor]:focus-visible]:before:shadow-none">
+      <InputGroup className="overflow-hidden rounded-2xl bg-card shadow-none before:rounded-2xl has-[[data-slot=composer-editor][contenteditable=false]]:opacity-64 has-[[data-slot=composer-editor][contenteditable=false]]:before:shadow-none has-[[data-slot=composer-editor]:focus-visible]:border-ring has-[[data-slot=composer-editor]:focus-visible]:ring-[3px] has-[[data-slot=composer-editor]:focus-visible]:before:shadow-none">
         {children}
       </InputGroup>
     </form>
@@ -54,13 +54,26 @@ export function PromptInputTools({ className, ...props }: PromptInputToolsProps)
 
 export type PromptInputButtonProps = React.ComponentProps<typeof Button>;
 
+// Concentric with the composer shell: rounded-2xl(16) outer minus the footer inset
+// lands the inner controls at radius-md, not the button default radius-lg.
+const PROMPT_INPUT_CONTROL_RADIUS_CLASS = 'rounded-md before:rounded-[calc(var(--radius-md)-1px)]';
+
 export function PromptInputButton({
+  className,
   size = 'icon-sm',
   type = 'button',
   variant = 'ghost',
   ...props
 }: PromptInputButtonProps): React.ReactNode {
-  return <Button size={size} type={type} variant={variant} {...props} />;
+  return (
+    <Button
+      className={cn(PROMPT_INPUT_CONTROL_RADIUS_CLASS, className)}
+      size={size}
+      type={type}
+      variant={variant}
+      {...props}
+    />
+  );
 }
 
 export type PromptInputSubmitStatus = 'ready' | 'submitted' | 'streaming' | 'error';
@@ -75,6 +88,7 @@ export function PromptInputSubmit({
   onStop,
   onClick,
   children,
+  className,
   size = 'icon-sm',
   variant = 'default',
   ...props
@@ -83,6 +97,7 @@ export function PromptInputSubmit({
 
   return (
     <Button
+      className={cn(PROMPT_INPUT_CONTROL_RADIUS_CLASS, className)}
       onClick={(event) => {
         if (isRunning && onStop) {
           event.preventDefault();

@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { noop } from 'foxts/noop';
+import { falseFn, noop, trueFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { waitFor } from 'foxts/wait-for';
 import type { ElectronApplication } from 'playwright-core';
@@ -110,10 +110,15 @@ async function main(): Promise<void> {
     app = null;
     app = await launch();
     await app.firstWindow();
-    await wait(1000);
-    const maximized = await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].isMaximized(),
-    );
+    // Maximize restore is an async WM round-trip under X11; a fixed sleep + single
+    // sample flakes on CI — poll to a deadline like the pre-close check.
+    const maximized = await waitFor(
+      () => app?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()),
+      100,
+      AbortSignal.timeout(10000),
+    )
+      .then(trueFn)
+      .catch(falseFn);
     if (!maximized) fail('maximized state did not survive the relaunch');
     console.log('maximized state restored');
 

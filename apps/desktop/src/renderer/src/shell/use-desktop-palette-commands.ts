@@ -3,7 +3,7 @@ import type { PanelSide } from '@linkcode/ui/shell/panels';
 import type { PaletteCommand } from '@linkcode/workbench';
 import { useCommandPaletteStore } from '@linkcode/workbench';
 import { noop } from 'foxact/noop';
-import { useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
 import { openDesktopSettings } from '../settings/store';
 
@@ -33,7 +33,7 @@ export function useDesktopPaletteCommands({
 }: UseDesktopPaletteCommandsOptions): void {
   const tPalette = useTranslations('workbench.palette');
 
-  useAbortableEffect(() => {
+  useEffect(() => {
     const settingsShortcut = formatKeyboardShortcut(
       SETTINGS_SHORTCUT,
       desktopPlatform === 'darwin' ? 'mac' : 'non-mac',

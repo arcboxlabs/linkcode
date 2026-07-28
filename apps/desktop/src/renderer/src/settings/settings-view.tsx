@@ -248,7 +248,7 @@ export function SettingsView(): React.ReactNode {
                 searchValue={searchQuery}
                 onSearchChange={setSearchQuery}
                 onSearchSubmit={() => {
-                  const first = visibleGroups.flatMap((group) => group.items)[0];
+                  const first = visibleGroups.flatMap((group) => group.items).at(0);
                   if (first === undefined) return;
                   // A query that matched an accordion child by name lands on that child, not
                   // the parent's default selection ("codex" → History import → Codex).
@@ -265,10 +265,7 @@ export function SettingsView(): React.ReactNode {
           </div>
           <main className="flex min-w-0 flex-1 flex-col bg-background">
             <div className="min-w-0 flex-1 overflow-y-auto pt-(--lc-chrome-h)">
-              {/* The providers tab is a master/detail split and needs the extra width. */}
-              <div
-                className={`mx-auto p-6 ${category === 'providers' ? 'max-w-5xl' : 'max-w-2xl'}`}
-              >
+              <div className="mx-auto max-w-2xl p-6">
                 {/* History import portals its own chrome header, so it owns its title. */}
                 {category === 'history-import' ? null : (
                   <SettingsPageTitle>{t(`tabs.${category}`)}</SettingsPageTitle>

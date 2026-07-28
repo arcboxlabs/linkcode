@@ -1,15 +1,17 @@
 import type { AgentKind } from '@linkcode/schema';
 import { cn } from '../lib/cn';
-import { ActivityGroup } from './activity-group';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
+import { ActivityRun } from './activity-run';
 import { CompactionMarker } from './compaction-marker';
 import { ContentBlockView } from './content-block-view';
 import { positionalBlockEntries } from './content-derived-keys';
+import type { QuestionConversationItem } from './conversation-prompts';
 import { declinedToolCall } from './conversation-prompts';
 import { assistantTurnText, latestReceivedAt, turnModel } from './conversation-text';
 import { ErrorMessage } from './error-message';
 import { Message, MessageContent } from './message';
+import { QuestionCallItem } from './question-call-item';
 import { SubagentCard } from './subagent-card';
 import { partitionSubagentItems } from './subagents';
 import { ThoughtBlock } from './thought-block';
@@ -32,6 +34,8 @@ export interface TurnSegmentViewProps {
   declined: ReadonlySet<string>;
   snapshottedToolIds: ReadonlySet<string>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
@@ -53,6 +57,8 @@ export function TurnSegmentView({
   declined,
   snapshottedToolIds,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   TerminalBlockComponent,
   onExpandTask,
   onReviewChanges,
@@ -73,41 +79,60 @@ export function TurnSegmentView({
   const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
 
   const renderEntry = (entry: TimelineEntry): React.ReactNode => {
-    if (entry.type === 'task') {
+    if (entry.type === 'run') {
       return (
-        <SubagentCard
-          key={entry.item.id}
-          awaitingApproval={awaitingApproval}
-          childrenByParent={childrenByParent}
-          declined={declined}
-          items={childrenByParent.get(entry.item.toolCall.toolCallId) ?? []}
-          onExpand={onExpandTask}
-          TerminalBlockComponent={TerminalBlockComponent}
-          toolCall={entry.item.toolCall}
-        />
-      );
-    }
-    if (entry.type === 'group') {
-      return (
-        <ActivityGroup
+        <ActivityRun
           key={entry.id}
-          group={entry}
-          TerminalBlockComponent={TerminalBlockComponent}
-        />
-      );
-    }
-    if (entry.type === 'single') {
-      return (
-        <ToolCallItem
-          key={entry.item.id}
-          awaitingApproval={awaitingApproval.has(entry.item.toolCall.toolCallId)}
-          declined={declined.has(entry.item.toolCall.toolCallId)}
-          toolCall={entry.item.toolCall}
+          awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
+          declined={declined}
+          run={entry}
           TerminalBlockComponent={TerminalBlockComponent}
         />
       );
     }
     const item = entry.item;
+    if (item.kind === 'tool' && item.toolCall.kind === 'task') {
+      return (
+        <SubagentCard
+          key={item.id}
+          awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
+          childrenByParent={childrenByParent}
+          declined={declined}
+          items={childrenByParent.get(item.toolCall.toolCallId) ?? []}
+          onExpand={onExpandTask}
+          TerminalBlockComponent={TerminalBlockComponent}
+          toolCall={item.toolCall}
+        />
+      );
+    }
+    if (item.kind === 'tool') {
+      const question = questionsByToolCall.get(item.toolCall.toolCallId);
+      if (question) {
+        return (
+          <QuestionCallItem
+            key={item.id}
+            awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+            question={question}
+            toolCall={item.toolCall}
+          />
+        );
+      }
+      return (
+        <ToolCallItem
+          key={item.id}
+          awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+          awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+          declined={declined.has(item.toolCall.toolCallId)}
+          toolCall={item.toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      );
+    }
+
     switch (item.kind) {
       case 'message':
         if (item.role === 'user') return <UserMessage key={item.id} item={item} />;
@@ -126,7 +151,16 @@ export function TurnSegmentView({
           </Message>
         );
       case 'reasoning':
-        return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={item.isStreaming} />;
+        return (
+          <ThoughtBlock
+            key={item.id}
+            blocks={item.blocks}
+            endedAt={item.endedAt}
+            isStreaming={item.isStreaming}
+            startedAt={item.startedAt}
+            summary={item.summary}
+          />
+        );
       case 'compaction':
         return (
           <CompactionMarker

@@ -20,12 +20,14 @@ import {
   AttachedTerminalPanel,
   isAbsoluteFilePath,
   locateFileArtifact,
+  SimulatorAutoReveal,
+  suppressSimulatorAutoReveal,
   TerminalPanel,
   useCloudHosts,
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
@@ -132,6 +134,8 @@ export function DesktopShell({
       toggleMaxPanel: state.toggleMaxPanel,
       setActiveSection: state.setActiveSection,
       openRightPanelSection: state.openRightPanelSection,
+      addRightSection: state.addRightSection,
+      closeRightSection: state.closeRightSection,
       addRightTerminalTab: state.addRightTerminalTab,
       closeRightTerminalTab: state.closeRightTerminalTab,
       setActiveRightTerminalTab: state.setActiveRightTerminalTab,
@@ -214,9 +218,9 @@ export function DesktopShell({
   // Tab content mounts lazily on the panel's first settled open, so no shell is spawned for a
   // panel that is never shown. Latched during render — React's prescribed state adjustment.
   const [rightContentMounted, setRightContentMounted] = useState(false);
-  if (rightTransition.phase === 'open' && !rightContentMounted) setRightContentMounted(true);
+  if (!rightContentMounted && rightTransition.phase === 'open') setRightContentMounted(true);
   const [bottomContentMounted, setBottomContentMounted] = useState(false);
-  if (bottomTransition.phase === 'open' && !bottomContentMounted) setBottomContentMounted(true);
+  if (!bottomContentMounted && bottomTransition.phase === 'open') setBottomContentMounted(true);
 
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
@@ -226,7 +230,7 @@ export function DesktopShell({
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void systemBridge.app.version().then((value) => {
         if (!signal.aborted) setAppVersion(`v${value}`);
@@ -236,6 +240,7 @@ export function DesktopShell({
   );
 
   const active = activeSession;
+  const activeSessionId = active?.sessionId ?? null;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -251,6 +256,8 @@ export function DesktopShell({
     toggleMaxPanel,
     setActiveSection,
     openRightPanelSection,
+    addRightSection,
+    closeRightSection,
     addRightTerminalTab,
     closeRightTerminalTab,
     setActiveRightTerminalTab,
@@ -406,6 +413,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
+        activeSessionId={activeSessionId}
         themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
@@ -413,6 +421,15 @@ export function DesktopShell({
         chromeSurface={chromeSurface}
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
+        onAddSection={addRightSection}
+        onCloseSection={(section) => {
+          // Closing the simulator section is an explicit "not now" — stop auto-revealing it for
+          // this thread, however busy the agent gets on the device afterwards.
+          if (section === 'simulator' && activeSessionId !== null) {
+            suppressSimulatorAutoReveal(activeSessionId);
+          }
+          closeRightSection(section);
+        }}
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}
@@ -538,6 +555,12 @@ export function DesktopShell({
       data-shell-vertical-animating={verticalAnimating ? '' : undefined}
       data-shell-seam={sidebarTransition.paneVisible ? '' : undefined}
     >
+      {/* Headless: an agent reaching for a simulator brings the section forward once, so the user
+          sees the device it is working on without having to remember to add the section. */}
+      <SimulatorAutoReveal
+        sessionId={activeSessionId}
+        onReveal={() => openRightPanelSection('simulator')}
+      />
       <DesktopChrome
         header={header}
         navigation={navigation}

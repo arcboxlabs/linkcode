@@ -1,3 +1,4 @@
+import { managedAgentAssetId, managedToolAssetId } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assetDir, assetsRootFor, versionDir } from '../paths';
 
@@ -44,7 +45,9 @@ describe('store layout', () => {
 
   it('maps the asset id namespace to a directory level, resolved at call time', () => {
     vi.stubEnv('LINKCODE_ASSETS_DIR', '/store');
-    expect(assetDir('agent:claude-code')).toBe('/store/agent/claude-code');
-    expect(versionDir('tool:tectonic', '0.16.9')).toBe('/store/tool/tectonic/0.16.9');
+    expect(assetDir(managedAgentAssetId('claude-code'))).toBe('/store/agent/claude-code');
+    expect(versionDir(managedToolAssetId('tectonic'), '0.16.9')).toBe(
+      '/store/tool/tectonic/0.16.9',
+    );
   });
 });

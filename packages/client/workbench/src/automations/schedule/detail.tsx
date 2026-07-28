@@ -55,7 +55,10 @@ export function ScheduleDetail({
   const runOnce = useMutation(runScheduleOnce);
   const remove = useMutation(deleteSchedule);
 
-  const schedule = schedules?.find((candidate) => candidate.scheduleId === scheduleId);
+  const schedulesById = new Map(
+    (schedules ?? []).map((schedule) => [schedule.scheduleId, schedule] as const),
+  );
+  const schedule = schedulesById.get(scheduleId);
   if (!schedule) {
     return (
       <Empty className="h-full">
@@ -90,7 +93,7 @@ export function ScheduleDetail({
         <TimeFact label={t('schedule.lastRun')} ts={schedule.lastRunAt} />
       </dl>
 
-      {schedule.status !== 'completed' ? (
+      {schedule.status === 'completed' ? null : (
         <div className="flex flex-wrap gap-2">
           {schedule.status === 'active' ? (
             <Button
@@ -151,7 +154,7 @@ export function ScheduleDetail({
             </AlertDialogPopup>
           </AlertDialog>
         </div>
-      ) : null}
+      )}
 
       <section className="flex min-h-0 flex-col gap-2">
         <h3 className="font-medium text-sm">{t('schedule.runs')}</h3>
@@ -179,13 +182,13 @@ function RunRow({
   onOpenSession: (sessionId: SessionId) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.automations');
-  const startedLabel = useRelativeTimeLabel(run.startedAt ?? 0);
+  const startedLabel = useRelativeTimeLabel(run.startedAt);
   const { sessionId } = run;
   return (
     <li className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
       <Badge variant={RUN_BADGE[run.status]}>{t(`schedule.runStatus.${run.status}`)}</Badge>
       <span className="text-muted-foreground text-xs" title={absoluteTime(run.startedAt)}>
-        {run.startedAt === undefined ? '—' : startedLabel}
+        {startedLabel}
       </span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">
         {run.error ?? run.summary ?? ''}

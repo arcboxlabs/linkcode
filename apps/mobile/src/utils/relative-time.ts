@@ -1,4 +1,4 @@
-const MINUTE = 60_000;
+const MINUTE = 60000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const WEEK = 604_800_000;

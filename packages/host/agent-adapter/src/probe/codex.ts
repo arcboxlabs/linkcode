@@ -7,6 +7,11 @@ import { AgentCliProbe } from './base';
 
 const execFileAsync = promisify(execFile);
 
+const CODEX_VERSION_RE = /^codex-cli (\d+\.\d+\.\d+(?:-\S+)?)/;
+const NOT_LOGGED_IN_RE = /^Not logged in\b/m;
+const LOGGED_IN_CHATGPT_RE = /^Logged in using ChatGPT\b/m;
+const LOGGED_IN_APIKEY_RE = /^Logged in using an API key\b/m;
+
 export class CodexProbe extends AgentCliProbe {
   readonly kind = 'codex' as const;
   protected readonly binaryBase = 'codex';
@@ -16,7 +21,7 @@ export class CodexProbe extends AgentCliProbe {
 
   /** `codex --version` prints `codex-cli 0.142.4`. */
   parseVersion(stdout: string): string | undefined {
-    return /^codex-cli (\d+\.\d+\.\d+(?:-\S+)?)/.exec(stdout.trim())?.[1];
+    return CODEX_VERSION_RE.exec(stdout.trim())?.[1];
   }
 
   protected platformPackageBase(): string {
@@ -59,8 +64,8 @@ export class CodexProbe extends AgentCliProbe {
  * (fail-open) for unrecognized wording — a rephrasing CLI degrades to "unknown" instead of
  * wrongly blocking a signed-in user. */
 export function parseCodexLoginStatus(output: string): AgentAuthStatus | undefined {
-  if (/^Not logged in\b/m.test(output)) return { loggedIn: false };
-  if (/^Logged in using ChatGPT\b/m.test(output)) return { loggedIn: true, method: 'chatgpt' };
-  if (/^Logged in using an API key\b/m.test(output)) return { loggedIn: true, method: 'apikey' };
+  if (NOT_LOGGED_IN_RE.test(output)) return { loggedIn: false };
+  if (LOGGED_IN_CHATGPT_RE.test(output)) return { loggedIn: true, method: 'chatgpt' };
+  if (LOGGED_IN_APIKEY_RE.test(output)) return { loggedIn: true, method: 'apikey' };
   return undefined;
 }

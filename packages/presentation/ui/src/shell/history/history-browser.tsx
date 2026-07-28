@@ -1,4 +1,12 @@
 import type { AgentHistoryId } from '@linkcode/schema';
+import {
+  AlertDialog,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from 'coss-ui/components/alert-dialog';
 import { Button } from 'coss-ui/components/button';
 import {
   Empty,
@@ -51,6 +59,71 @@ export interface HistoryBrowserListProps {
   onRefresh: () => void;
 }
 
+export interface HistoryImportAllDialogProps {
+  open: boolean;
+  importableCount: number;
+  scanFailedCount: number;
+  importing: boolean;
+  result: { importedCount: number; failedCount: number } | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}
+
+export function HistoryImportAllDialog({
+  open,
+  importableCount,
+  scanFailedCount,
+  importing,
+  result,
+  onOpenChange,
+  onConfirm,
+}: HistoryImportAllDialogProps): React.ReactNode {
+  const t = useTranslations('settings.historyImport');
+  const completed = result !== null;
+  const partial = (result?.failedCount ?? 0) > 0;
+
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => !importing && onOpenChange(next)}>
+      <AlertDialogPopup>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {completed
+              ? t(partial ? 'importAllPartialTitle' : 'importAllCompleteTitle')
+              : t('importAllTitle')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {completed
+              ? t(partial ? 'importAllPartialResult' : 'importAllCompleteResult', {
+                  imported: result.importedCount,
+                  failed: result.failedCount,
+                })
+              : t('importAllDescription', { count: importableCount })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {!completed && scanFailedCount > 0 && (
+          <p className="px-6 pb-2 text-muted-foreground text-xs">
+            {t('importAllScanWarning', { count: scanFailedCount })}
+          </p>
+        )}
+        <AlertDialogFooter>
+          {completed ? (
+            <Button onClick={() => onOpenChange(false)}>{t('importAllClose')}</Button>
+          ) : (
+            <>
+              <Button variant="outline" disabled={importing} onClick={() => onOpenChange(false)}>
+                {t('importAllCancel')}
+              </Button>
+              <Button loading={importing} onClick={onConfirm}>
+                {t('importAllConfirm', { count: importableCount })}
+              </Button>
+            </>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
+  );
+}
+
 /** One provider's importable conversation rows (settings portal main pane). */
 export function HistoryBrowserList({
   entries,
@@ -74,7 +147,7 @@ export function HistoryBrowserList({
     return (
       <div className="flex flex-col gap-1">
         {createFixedArray(5).map((index) => (
-          <Skeleton key={index} className="h-13 w-full rounded-md" />
+          <Skeleton key={index} className="h-(--density-history-skeleton-h) w-full rounded-md" />
         ))}
       </div>
     );
@@ -211,7 +284,7 @@ function HistoryBrowserRow({
   ].filter(Boolean);
 
   return (
-    <li className="-mx-3 flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent/50">
+    <li className="-mx-3 flex items-center gap-3 rounded-md px-3 py-(--density-row-py) hover:bg-accent/50">
       <div className="min-w-0 flex-1">
         {/* No font-medium: the CJK fallback font renders it artificially bold. */}
         <div className="truncate text-sm">{entry.title}</div>

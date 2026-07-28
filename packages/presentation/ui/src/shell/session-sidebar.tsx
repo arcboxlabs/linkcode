@@ -249,18 +249,19 @@ export function HostFooter({
 
   return (
     <Popover>
-      <SidebarFooter className="shrink-0 px-2 py-1">
+      {/* 40px footer: py-2 + 24px controls mirrors the 40px chrome bar's 8px grid. */}
+      <SidebarFooter className="shrink-0 px-2 py-2">
         <div ref={footerRef} className="flex items-center gap-1">
           <PopoverTrigger
             render={
               <Button
-                size="icon-sm"
+                size="icon-xs"
                 variant="ghost"
                 className="relative"
                 aria-label={state ? `Local Host · ${state}` : 'Local Host'}
               >
                 <ServerIcon />
-                <span className="absolute right-1 bottom-1 size-2 rounded-full bg-success ring-2 ring-sidebar" />
+                <span className="absolute right-0.5 bottom-0.5 size-2 rounded-full bg-success ring-2 ring-sidebar" />
               </Button>
             }
           />
@@ -268,10 +269,10 @@ export function HostFooter({
             {account ? (
               <PopoverTrigger
                 render={
-                  <Button size="icon-sm" variant="ghost" aria-label={t('account')}>
-                    <Avatar className="size-6">
+                  <Button size="icon-xs" variant="ghost" aria-label={t('account')}>
+                    <Avatar className="size-5">
                       {account.image && <AvatarImage src={account.image} alt={account.name} />}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-2xs">
                         {accountInitial(account)}
                       </AvatarFallback>
                     </Avatar>
@@ -282,7 +283,7 @@ export function HostFooter({
               <PopoverClose
                 render={
                   <Button
-                    size="icon-sm"
+                    size="icon-xs"
                     variant="ghost"
                     aria-label={t('signInCloud')}
                     loading={authPending}
@@ -297,7 +298,7 @@ export function HostFooter({
             <PopoverClose
               render={
                 <Button
-                  size="icon-sm"
+                  size="icon-xs"
                   variant="ghost"
                   aria-label={tPalette('openSettings')}
                   disabled={!onOpenSettings}
@@ -474,7 +475,7 @@ function RemoteHostList({
                 <span className="size-1.5 shrink-0 rounded-full bg-success" />
                 <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
                 {host.statusLabel && (
-                  <span className="shrink-0 font-normal text-muted-foreground text-xs">
+                  <span className="shrink-0 font-normal text-muted-foreground text-xs tabular-nums">
                     {host.statusLabel}
                   </span>
                 )}

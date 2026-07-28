@@ -16,6 +16,14 @@ export interface WorkspaceServicesMenuProps {
   onViewLogs?: (terminalId: string) => void;
 }
 
+function handleMutationError(error: unknown): void {
+  toastManager.add({ title: extractErrorMessage(error), type: 'error' });
+}
+
+function openExternal(url: string): void {
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 /**
  * The workspace services chip: declared scripts with run/stop/view/preview-link actions. Preview
  * links follow the persisted open-URL preference; hosts without an in-app browser always open
@@ -27,20 +35,13 @@ export function WorkspaceServicesMenu({
   onViewLogs,
 }: WorkspaceServicesMenuProps): React.ReactNode {
   const { data: scripts } = useWorkspaceScripts(cwd);
-  const onError = (error: unknown): void => {
-    toastManager.add({ title: extractErrorMessage(error), type: 'error' });
-  };
-  const startMutation = useMutation(startWorkspaceScript, { onError });
-  const stopMutation = useMutation(stopWorkspaceScript, { onError });
+  const startMutation = useMutation(startWorkspaceScript, { onError: handleMutationError });
+  const stopMutation = useMutation(stopWorkspaceScript, { onError: handleMutationError });
   const behavior = useOpenUrlPreferenceStore((state) => state.behavior);
   const setBehavior = useOpenUrlPreferenceStore((state) => state.setBehavior);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   if (cwd === undefined || !scripts || scripts.length === 0) return null;
-
-  function openExternal(url: string): void {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
 
   function openUrl(url: string): void {
     if (!onOpenInApp || behavior === 'external') {

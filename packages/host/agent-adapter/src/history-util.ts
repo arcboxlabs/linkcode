@@ -1,7 +1,6 @@
 import type { AgentHistoryEvent, AgentHistoryId, MessageId, Timestamp } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { MAX_ATTACHMENT_TOTAL_BASE64_LENGTH, textBlock } from '@linkcode/schema';
 import { clamp } from 'foxts/clamp';
-import { nextMessageId } from './adapter';
 
 export function asHistoryId(value: string): AgentHistoryId {
   return value as AgentHistoryId;
@@ -38,18 +37,56 @@ export function cursorFromTotal(
   return offset + limit < totalCount ? String(offset + limit) : undefined;
 }
 
+/** Base64 payload one replayed event embeds — user messages are where attachments ride. */
+function eventAttachmentLength(event: AgentHistoryEvent): number {
+  if (event.event.type !== 'user-message') return 0;
+  let total = 0;
+  for (const block of event.event.content) {
+    if (block.type === 'image' || block.type === 'audio') total += block.data.length;
+    else if (block.type === 'resource' && 'blob' in block.resource) {
+      total += block.resource.blob.length;
+    }
+  }
+  return total;
+}
+
+/** Page slice bounded by event count AND aggregate embedded-attachment payload. One
+ * `history.read.result` travels as a single logical transport message, and the tunnel silently
+ * drops any message its reassembly buffer cannot hold — so image-heavy transcripts must fan
+ * across cursor pages instead of concentrating attachments into one reply. The budget is
+ * `MAX_ATTACHMENT_TOTAL_BASE64_LENGTH` (what transports already size a maximal prompt's frame
+ * for); a page's first event always ships, since per-prompt caps keep any single event within
+ * that budget on its own. */
+export function sliceHistoryEventPage(
+  events: readonly AgentHistoryEvent[],
+  offset: number,
+  limit: number,
+): { events: AgentHistoryEvent[]; cursor: string | undefined } {
+  const page: AgentHistoryEvent[] = [];
+  let payloadLength = 0;
+  for (let index = offset; index < events.length && page.length < limit; index += 1) {
+    const attachmentLength = eventAttachmentLength(events[index]);
+    if (page.length > 0 && payloadLength + attachmentLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
+      break;
+    }
+    payloadLength += attachmentLength;
+    page.push(events[index]);
+  }
+  const next = offset + page.length;
+  return { events: page, cursor: next < events.length ? String(next) : undefined };
+}
+
 export function textHistoryEvent(
   historyId: AgentHistoryId,
   role: 'user' | 'assistant',
-  itemId: string | undefined,
+  itemId: string,
   value: unknown,
   ts?: Timestamp,
   parentToolCallId?: string,
 ): AgentHistoryEvent | undefined {
   const text = textFromUnknown(value);
   if (text.trim().length === 0) return undefined;
-  // agent-message-chunk now requires a messageId (the grouping authority); guarantee one.
-  const messageId = itemId ? asMessageId(itemId) : nextMessageId();
+  const messageId = asMessageId(itemId);
   return {
     historyId,
     itemId,
@@ -57,12 +94,12 @@ export function textHistoryEvent(
     event:
       role === 'user'
         ? { type: 'user-message', messageId, content: [textBlock(text)] }
-        : { type: 'agent-message-chunk', messageId, parentToolCallId, content: textBlock(text) },
+        : { type: 'agent-message', messageId, parentToolCallId, content: [textBlock(text)] },
   };
 }
 
-/** The thought counterpart of `textHistoryEvent` (same empty-drop rule): replayed reasoning must
- * emit as `agent-thought-chunk`, never fold into message text — the wire keeps them distinct. */
+/** The thought counterpart of `textHistoryEvent` (same empty-drop rule): replayed reasoning emits
+ * as a whole `agent-thought` and never folds into assistant prose. */
 export function thoughtHistoryEvent(
   historyId: AgentHistoryId,
   messageId: string,
@@ -76,10 +113,10 @@ export function thoughtHistoryEvent(
     itemId: messageId,
     ts,
     event: {
-      type: 'agent-thought-chunk',
+      type: 'agent-thought',
       messageId: asMessageId(messageId),
       parentToolCallId,
-      content: textBlock(text),
+      content: [textBlock(text)],
     },
   };
 }

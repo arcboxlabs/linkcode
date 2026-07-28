@@ -71,7 +71,7 @@ export function rollUpChecks(rollup: readonly GhCheck[] | null | undefined): Git
   let sawPending = false;
   for (const check of rollup) {
     const outcome = check.state ?? (check.status === 'COMPLETED' ? check.conclusion : null);
-    if (outcome == null || outcome === 'PENDING' || outcome === 'EXPECTED') sawPending = true;
+    if (outcome === 'EXPECTED' || outcome === 'PENDING' || outcome == null) sawPending = true;
     else if (FAILING_OUTCOMES.has(outcome)) sawFailing = true;
   }
   if (sawFailing) return 'failing';

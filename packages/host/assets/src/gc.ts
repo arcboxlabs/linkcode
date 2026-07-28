@@ -20,9 +20,11 @@ export interface GcReport {
  * replacement lands they are the only evidence of the user's install consent (CODE-221), and an
  * offline refresh failure must not erase it. Strictly best-effort — GC never takes the boot down.
  */
-export function collectGarbage(wanted: ReadonlyMap<ManagedAssetId, string | undefined>): GcReport {
+export function collectGarbage(
+  wanted: Iterable<Readonly<{ id: ManagedAssetId; version?: string }>>,
+): GcReport {
   const report: GcReport = { removed: [], skipped: [] };
-  for (const [id, version] of wanted) {
+  for (const { id, version } of wanted) {
     if (!version) continue;
     const dir = assetDir(id);
     let entries: string[];

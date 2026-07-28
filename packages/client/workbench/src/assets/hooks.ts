@@ -1,6 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { listAssets } from '@linkcode/sdk';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useData } from '../runtime/tayori';
 
 /**
@@ -12,7 +12,7 @@ export function useAssets() {
   const result = useData(listAssets, {});
   const { mutate } = result;
 
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeAssetSettled(() => {
         if (!signal.aborted) void mutate();

@@ -113,6 +113,17 @@ export interface NewSessionSurfaceProps {
 
 const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
 
+function workspaceById(
+  workspaces: readonly WorkspaceRecord[],
+  workspaceId: WorkspaceId | null,
+): WorkspaceRecord | null {
+  if (workspaceId === null) return null;
+  for (const workspace of workspaces) {
+    if (workspace.workspaceId === workspaceId) return workspace;
+  }
+  return null;
+}
+
 /** Unified new-session page: heading + shared `Composer` + workspace context bar. Model, effort,
  * and workflow-mode picks ride into the submission; the session reflects them from then on. */
 export function NewSessionSurface({
@@ -153,8 +164,7 @@ export function NewSessionSurface({
   const [pending, setPending] = useState(false);
 
   const selectableWorkspaces = chatWorkspace ? [chatWorkspace, ...workspaces] : workspaces;
-  const selected =
-    selectableWorkspaces.find((workspace) => workspace.workspaceId === workspaceId) ?? null;
+  const selected = workspaceById(selectableWorkspaces, workspaceId);
   const isChatSelected = selected != null && selected === chatWorkspace;
   const localModel = selectedModels[provider];
   const selectedModel =
@@ -175,7 +185,7 @@ export function NewSessionSurface({
   const currentPolicyId =
     selectedPolicies[provider] ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
-    catalog && catalog.policies.length > 0 && currentPolicyId
+    currentPolicyId && catalog && catalog.policies.length > 0
       ? { availablePolicies: catalog.policies, currentPolicyId }
       : undefined;
 
@@ -393,7 +403,7 @@ function NewSessionContextBar({
         >
           {isChatSelected ? <MessagesSquareIcon /> : <FolderIcon />}
           <span className="max-w-48 truncate">{chipLabel}</span>
-          <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+          <ChevronDownIcon className="size-3 text-label-tertiary" />
         </MenuTrigger>
         <MenuPopup align="start" className="w-72" side="top" sideOffset={8}>
           <MenuRadioGroup
@@ -448,13 +458,13 @@ function NewSessionContextBar({
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <LaptopMinimalIcon />
         {t('workLocally')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {/* TODO(backend): branch/worktree selection for the new session — stub until the daemon exposes it. */}
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <GitBranchIcon />
         {t('branch')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {registerError != null && (
         <span className="min-w-0 truncate text-destructive text-xs">

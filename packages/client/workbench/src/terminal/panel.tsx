@@ -1,7 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { Button } from 'coss-ui/components/button';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
@@ -54,7 +54,7 @@ export function TerminalPanel({
   // letting typed keystrokes vanish silently.
   const [inputLost, setInputLost] = useState(false);
   const { terminalId } = snapshot;
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (terminalId === null) return;
     const unsubscribe = client.subscribeTerminalError(terminalId, () => {
       setInputLost(true);

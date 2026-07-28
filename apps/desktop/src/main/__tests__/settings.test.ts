@@ -23,6 +23,22 @@ afterEach(() => {
 });
 
 describe('desktop settings persistence', () => {
+  it('leaves the history import onboarding pending on a first install', async () => {
+    const settings = await import('../settings');
+
+    expect(settings.getSettings().historyImportOnboardingHandled).toBe(false);
+  });
+
+  it('treats settings from an existing user as already handled', async () => {
+    writeFileSync(join(mocks.userData, 'settings.json'), JSON.stringify({ theme: 'dark' }));
+    const settings = await import('../settings');
+
+    expect(settings.getSettings()).toMatchObject({
+      theme: 'dark',
+      historyImportOnboardingHandled: true,
+    });
+  });
+
   it('does not publish a new in-memory endpoint when persistence fails', async () => {
     const settings = await import('../settings');
     expect(settings.getSettings().daemonUrl).toBeNull();

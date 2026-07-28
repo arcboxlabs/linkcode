@@ -88,9 +88,9 @@ describe('groupTimeline task entries', () => {
     const entries = groupTimeline([before, task, after]);
 
     expect(entries).toEqual([
-      { type: 'single', item: before },
-      { type: 'task', item: task },
-      { type: 'single', item: after },
+      { type: 'item', item: before },
+      { type: 'item', item: task },
+      { type: 'item', item: after },
     ]);
   });
 });

@@ -20,6 +20,8 @@ import {
   TUNNEL_SUBPROTOCOL,
 } from '../tunnel-protocol';
 
+const HOST_HANDOFF_FRAME_RE = /^host\.handoff:/;
+
 class FakeWebSocket {
   static readonly instances: FakeWebSocket[] = [];
 
@@ -498,7 +500,7 @@ describe('TunnelTransportServer', () => {
       candidate.emit('message', { data: TUNNEL_HOST_PREPARED_FRAME });
       await Promise.resolve();
       await Promise.resolve();
-      expect(oldSocket.sent).toContainEqual(expect.stringMatching(/^host\.handoff:/));
+      expect(oldSocket.sent).toContainEqual(expect.stringMatching(HOST_HANDOFF_FRAME_RE));
 
       oldSocket.close();
       candidate.emit('message', { data: TUNNEL_HOST_READY_ACK_FRAME });

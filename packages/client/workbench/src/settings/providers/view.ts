@@ -165,10 +165,12 @@ function providerAccountListItem(
   return {
     id: account.id,
     label: account.label,
+    credentialType: account.credential.type,
     boundAgents: boundAgentKinds(providers, account.id),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
     ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
+    ...(account.endpoint !== undefined && { protocol: account.endpoint.protocol }),
     ...(auth !== undefined && {
       auth: {
         loggedIn: auth.loggedIn,
@@ -217,7 +219,7 @@ export function withEnabled(
   kind: AgentKind,
   enabled: boolean,
 ): ProvidersConfig {
-  return { ...providers, [kind]: { ...(providers[kind] ?? {}), enabled } };
+  return { ...providers, [kind]: { ...providers[kind], enabled } };
 }
 
 /** Set (or, with undefined, clear) an agent's default model. */

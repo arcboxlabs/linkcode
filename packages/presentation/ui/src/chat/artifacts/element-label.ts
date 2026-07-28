@@ -10,13 +10,14 @@ export interface DiagramElement {
 }
 
 const MAX_LABEL_LENGTH = 120;
+const RE_WHITESPACE = /\s+/g;
 
 /** Mermaid groups its clickable shapes under `<g>` elements carrying these classes
  * (flowchart nodes, sequence actors, subgraph clusters, gantt tasks, edge labels). */
 const MERMAID_NODE_CLASSES = new Set(['node', 'actor', 'cluster', 'task', 'edgeLabel']);
 
 function normalizeLabel(raw: string | null): string | null {
-  const label = raw?.replaceAll(/\s+/g, ' ').trim();
+  const label = raw?.replaceAll(RE_WHITESPACE, ' ').trim();
   if (!label) return null;
   return label.length > MAX_LABEL_LENGTH ? `${label.slice(0, MAX_LABEL_LENGTH)}…` : label;
 }
@@ -24,7 +25,7 @@ function normalizeLabel(raw: string | null): string | null {
 function hasMermaidNodeClass(el: DiagramElement): boolean {
   const classAttr = el.getAttribute('class');
   if (!classAttr) return false;
-  return classAttr.split(/\s+/).some((cls) => MERMAID_NODE_CLASSES.has(cls));
+  return classAttr.split(RE_WHITESPACE).some((cls) => MERMAID_NODE_CLASSES.has(cls));
 }
 
 /** Walk from the clicked element up to (excluding) the diagram root and return the

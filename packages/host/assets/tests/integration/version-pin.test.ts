@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { managedAgentAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { CATALOG } from '../../src/catalog';
+import { descriptorFor } from '../../src/catalog';
 import { wantedVersion } from '../../src/version-pin';
 
 const SEMVER = /^\d+\.\d+\.\d+/;
@@ -44,9 +45,11 @@ describe('wantedVersion', () => {
   });
 
   it('pins every agent asset from the SDKs installed in this repo', () => {
-    expect(wantedVersion(CATALOG['agent:claude-code'].version)).toMatch(SEMVER);
-    expect(wantedVersion(CATALOG['agent:codex'].version)).toMatch(SEMVER);
-    expect(wantedVersion(CATALOG['agent:opencode'].version)).toMatch(SEMVER);
-    expect(wantedVersion(CATALOG['agent:pi'].version)).toMatch(SEMVER);
+    expect(wantedVersion(descriptorFor(managedAgentAssetId('claude-code')).version)).toMatch(
+      SEMVER,
+    );
+    expect(wantedVersion(descriptorFor(managedAgentAssetId('codex')).version)).toMatch(SEMVER);
+    expect(wantedVersion(descriptorFor(managedAgentAssetId('opencode')).version)).toMatch(SEMVER);
+    expect(wantedVersion(descriptorFor(managedAgentAssetId('pi')).version)).toMatch(SEMVER);
   });
 });

@@ -34,7 +34,10 @@ export function RuntimeThreadImMenu({
   const actions = useCloudImActions();
   const [pending, setPending] = useState(false);
 
-  const row = bindings.data?.find((binding) => binding.sessionId === session.sessionId);
+  const bindingsBySessionId = new Map(
+    (bindings.data ?? []).map((binding) => [binding.sessionId, binding] as const),
+  );
+  const row = bindingsBySessionId.get(session.sessionId);
   // undefined = still loading; null = definitively unbound.
   const binding =
     overview.data === undefined || (linked && bindings.data === undefined)

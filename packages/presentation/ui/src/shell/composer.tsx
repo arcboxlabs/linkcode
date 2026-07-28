@@ -278,7 +278,7 @@ export function Composer({
 
   const textTrigger = useMemo(() => {
     const trigger = snapshot.trigger;
-    return trigger && trigger.flatStart !== dismissedStart && !shellActive ? trigger : null;
+    return !shellActive && trigger && trigger.flatStart !== dismissedStart ? trigger : null;
   }, [dismissedStart, shellActive, snapshot.trigger]);
   const commandSource: ComposerCommandSource | null =
     plusCommandStart === null
@@ -445,11 +445,11 @@ export function Composer({
   function submit(): void {
     const editor = editorRef.current;
     if (
+      hasPendingAttachment ||
+      sendBlocked ||
       !editor ||
       interactionDisabled ||
-      submissionPendingRef.current ||
-      sendBlocked ||
-      hasPendingAttachment
+      submissionPendingRef.current
     ) {
       return;
     }
@@ -651,7 +651,7 @@ export function Composer({
     const retainedSelection = editor.getEditorState().read(() => $getSelection()?.clone() ?? null);
     editor.update(
       () => {
-        if ($getSelection() === null && retainedSelection !== null) {
+        if (retainedSelection !== null && $getSelection() === null) {
           $setSelection(retainedSelection);
         }
         mutate(editor);
@@ -678,8 +678,8 @@ export function Composer({
     if (textTrigger?.kind !== 'mention') return;
     const trigger = textTrigger;
     setPlusCommandStart(null);
-    // A mention chip replacing the whole @token; it serializes as a quoted relative path —
-    // every agent understands that in prose, whereas @path is Claude-specific syntax.
+    // A mention chip replacing the whole @token; it serializes as a `[basename](./path)`
+    // markdown link — agents read it as prose, and the sent message chips it right back.
     withEditor(() => $replaceTriggerWith(trigger, $createMentionNode(entry.mention.value)));
     onMentionQueryChange?.(null);
   }
@@ -884,8 +884,8 @@ export function Composer({
               className={cn(
                 'transition-[background-color,padding] motion-reduce:transition-none',
                 frameVisible
-                  ? 'duration-200 ease-[cubic-bezier(0.2,0,0,1)]'
-                  : 'bg-transparent p-0 duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                  ? 'duration-(--motion-fast) ease-[cubic-bezier(0.2,0,0,1)]'
+                  : 'bg-transparent p-0 duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)]',
                 isDraggingOver && 'ring-2 ring-ring',
               )}
             >
@@ -931,7 +931,8 @@ export function Composer({
                 onSubmit={submit}
                 className={cn(
                   'relative z-10',
-                  frameVisible && '*:[[data-slot=input-group]]:rounded-xl',
+                  frameVisible &&
+                    '*:[[data-slot=input-group]]:rounded-xl *:[[data-slot=input-group]]:before:rounded-xl',
                 )}
               >
                 {attachments.length > 0 ? (

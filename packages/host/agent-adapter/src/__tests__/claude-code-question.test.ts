@@ -233,6 +233,16 @@ describe('ClaudeCodeAdapter AskUserQuestion', () => {
     await wait(0);
 
     expect(events.some((e) => e.type === 'question-request')).toBe(false);
-    expect(events.some((e) => e.type === 'permission-request')).toBe(true);
+    const toolIndex = events.findIndex(
+      (event) => event.type === 'tool-call' && event.toolCall.toolCallId === 'toolu_ask1',
+    );
+    const requestIndex = events.findIndex((event) => event.type === 'permission-request');
+    expect(toolIndex).toBeGreaterThanOrEqual(0);
+    expect(requestIndex).toBeGreaterThan(toolIndex);
+    expect(events[requestIndex]).toMatchObject({
+      title: 'AskUserQuestion',
+      subject: { type: 'tool-call', toolCallId: 'toolu_ask1' },
+    });
+    expect(events[requestIndex]).not.toHaveProperty('toolCall');
   });
 });

@@ -43,6 +43,8 @@ describe('Pi history', () => {
       entry('u', { role: 'user', content: 'hello' }),
       entry('a', {
         role: 'assistant',
+        responseId: 'pi-response-1',
+        timestamp: 42,
         content: [
           { type: 'thinking', thinking: 'hmm' },
           { type: 'text', text: 'answer' },
@@ -59,14 +61,16 @@ describe('Pi history', () => {
     ]);
     expect(events.map(({ event }) => event.type)).toEqual([
       'user-message',
-      'agent-thought-chunk',
-      'agent-message-chunk',
+      'agent-thought',
+      'agent-message',
       'tool-call',
       'tool-call',
     ]);
     expect(events.at(-1)?.event).toMatchObject({
       toolCall: { toolCallId: 'tool', status: 'completed', locations: [{ path: 'a.ts' }] },
     });
+    expect(events[1]).toMatchObject({ itemId: 'pi-response-1:thought:0' });
+    expect(events[2]).toMatchObject({ itemId: 'pi-response-1:message:1' });
   });
 
   it('marks cancelled and nonzero bash executions as failed', () => {

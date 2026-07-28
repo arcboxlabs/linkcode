@@ -1,8 +1,19 @@
 import type { ContentBlock } from '@linkcode/schema';
-import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { CodeBlock } from './code-block';
+import { fileBasename } from './artifacts/file-kind';
+import { codeLanguageForResource } from './code-language';
+import { FilePreviewCard } from './file-preview-card';
+import { HighlightedCode } from './highlighted-code';
+import { LinkChip } from './link-chip';
+import { linkTargetForUri } from './link-target';
 import { Markdown, SmoothMarkdown } from './markdown';
+
+function resourceLabel(uri: string, fallback: string): string {
+  const visible = uri.split('#', 1)[0]?.split('?', 1)[0] ?? '';
+  if (visible.endsWith('/')) return fallback;
+  const label = fileBasename(visible);
+  return label && !label.includes(':') ? label : fallback;
+}
 
 export function ContentBlockView({
   block,
@@ -26,7 +37,7 @@ export function ContentBlockView({
       return (
         <img
           alt=""
-          className="my-2 max-h-80 max-w-full rounded-lg border border-border"
+          className="my-2 max-h-80 max-w-full rounded-xl border border-border"
           src={block.uri ?? `data:${block.mimeType};base64,${block.data}`}
         />
       );
@@ -38,23 +49,22 @@ export function ContentBlockView({
         </audio>
       );
     case 'resource_link':
-      return (
-        <a
-          href={block.uri}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-sm text-foreground hover:opacity-80"
-        >
-          <FileTextIcon className="size-3.5" />
-          {t('resourceLink', { name: block.name })}
-        </a>
-      );
-    case 'resource':
+      return <LinkChip target={linkTargetForUri(block.uri)}>{block.title ?? block.name}</LinkChip>;
+    case 'resource': {
+      const uri = block.resource.uri;
+      const label = resourceLabel(uri, t('resource'));
       return 'text' in block.resource ? (
-        <CodeBlock code={block.resource.text} title={block.resource.uri} />
+        <FilePreviewCard label={label} navigation={null} panelClassName="p-0" path={uri}>
+          <HighlightedCode
+            className="p-3"
+            code={block.resource.text}
+            language={codeLanguageForResource(uri, block.resource.mimeType)}
+          />
+        </FilePreviewCard>
       ) : (
-        <span className="text-sm text-muted-foreground">{t('resource')}</span>
+        <FilePreviewCard label={label} navigation={null} path={uri} />
       );
+    }
     default:
       return null;
   }

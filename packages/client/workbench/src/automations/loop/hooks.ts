@@ -1,7 +1,7 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { LoopId, LoopLogEntry } from '@linkcode/schema';
 import { inspectLoop, listLoops } from '@linkcode/sdk';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import { useSyncExternalStore } from 'react';
 import { useData } from '../../runtime/tayori';
@@ -14,7 +14,7 @@ export function useLoops() {
   const client = useLinkCodeClient();
   const result = useData(listLoops, {}, { keepPreviousData: true });
   const { mutate } = result;
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeLoopEvents(() => {
         if (!signal.aborted) void mutate();
@@ -32,7 +32,7 @@ export function useLoopInspection(loopId: LoopId | null) {
   const client = useLinkCodeClient();
   const result = useData(inspectLoop, loopId === null ? null : { loopId });
   const { mutate } = result;
-  useAbortableEffect(
+  useEffect(
     (signal) =>
       client.subscribeLoopEvents((event) => {
         const matches =

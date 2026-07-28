@@ -8,15 +8,15 @@ export const MOCK_REPLY =
 export const MOCK_USAGE_REPORT: UsageReport = {
   session: {
     totalCostUsd: 1.87,
-    totalApiDurationMs: 42_000,
-    totalDurationMs: 340_000,
+    totalApiDurationMs: 42000,
+    totalDurationMs: 340000,
     totalLinesAdded: 120,
     totalLinesRemoved: 34,
     modelUsage: {
       'claude-opus-4-8': {
-        inputTokens: 12_400,
+        inputTokens: 12400,
         outputTokens: 5200,
-        cacheReadTokens: 88_000,
+        cacheReadTokens: 88000,
         cacheCreationTokens: 9100,
         totalCostUsd: 1.87,
       },
@@ -26,8 +26,8 @@ export const MOCK_USAGE_REPORT: UsageReport = {
   rateLimits: {
     windows: [
       { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
-      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10_080 },
-      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10_080 },
+      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10080 },
+      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10080 },
     ],
     extraUsage: { isEnabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
   },

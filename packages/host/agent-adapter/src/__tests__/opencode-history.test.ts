@@ -214,15 +214,15 @@ describe('mapOpencodeHistoryEvents', () => {
       },
     ]);
     expect(events.map((e) => e.event.type)).toEqual([
-      'agent-thought-chunk',
-      'agent-message-chunk',
+      'agent-thought',
+      'agent-message',
       'tool-call',
     ]);
     expect(events[0]).toMatchObject({ itemId: 'prt-r1', ts: 50 });
     expect(events[0].event).toMatchObject({ messageId: 'prt-r1' });
     expect(events[1].event).toMatchObject({
       messageId: 'prt-x1',
-      content: { type: 'text', text: 'the answer' },
+      content: [{ type: 'text', text: 'the answer' }],
     });
     expect(events[2].event).toMatchObject({ toolCall: { toolCallId: 'prt-t1' } });
   });

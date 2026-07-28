@@ -1,11 +1,13 @@
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { MobileHome, ScreenScroll, SectionLabel } from '@linkcode/ui/native';
 import { Stack, useRouter } from 'expo-router';
-import { Card, ListGroup, useThemeColor } from 'heroui-native';
+import { Card, ControlField, Description, Label, ListGroup, useThemeColor } from 'heroui-native';
 import { ChevronRightIcon } from 'lucide-react-native';
 import { Alert, Linking, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { useCloudAccount } from '../runtime/cloud/account';
+import { setMobileProductAnalyticsEnabled } from '../runtime/product-analytics';
+import { useAnalyticsPreferenceStore } from '../stores/analytics-store';
 
 const PRIVACY_POLICY_URL = 'https://linkcode.ai/privacy';
 const TERMS_OF_SERVICE_URL = 'https://linkcode.ai/terms';
@@ -17,6 +19,7 @@ export default function SettingsScreen(): React.ReactNode {
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
   const account = useCloudAccount();
+  const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const muted = useThemeColor('muted');
   const chevron = <ChevronRightIcon size={16} color={muted} />;
 
@@ -58,6 +61,20 @@ export default function SettingsScreen(): React.ReactNode {
             <ListGroup.ItemSuffix>{chevron}</ListGroup.ItemSuffix>
           </ListGroup.Item>
         </ListGroup>
+
+        <View className="gap-2">
+          <SectionLabel>{t('privacy')}</SectionLabel>
+          <ControlField
+            isSelected={productAnalyticsEnabled}
+            onSelectedChange={setMobileProductAnalyticsEnabled}
+          >
+            <View className="flex-1">
+              <Label>{t('analytics')}</Label>
+              <Description>{t('analyticsHint')}</Description>
+            </View>
+            <ControlField.Indicator />
+          </ControlField>
+        </View>
 
         <View className="gap-2">
           <SectionLabel>{t('legalAndSupport')}</SectionLabel>

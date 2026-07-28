@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   EffortLevel,
   PermissionOption,
+  PermissionSubject,
   Plan,
   Question,
   SessionStatus,
@@ -57,6 +58,12 @@ export type ConversationItem = (
       blocks: ContentBlock[];
       isStreaming: boolean;
       parentToolCallId?: string;
+      /** Best-known time of the first chunk in this reasoning item. */
+      startedAt?: number;
+      /** Best-known time of the next semantic boundary in the same scope. */
+      endedAt?: number;
+      /** Reserved for a future provider-supplied summary; never derived from `blocks`. */
+      summary?: string;
     }
   | { kind: 'tool'; id: string; turnId: ConversationTurnId; toolCall: ToolCall }
   | {
@@ -72,12 +79,23 @@ export type ConversationItem = (
       postTokens?: number;
       summary?: string;
     }
-  | { kind: 'plan'; id: string; turnId: ConversationTurnId; plan: Plan }
+  | {
+      kind: 'plan';
+      id: string;
+      /** Timeline placement stays fixed at first sight so turn segments remain contiguous. */
+      turnId: ConversationTurnId;
+      /** Turn that most recently emitted this plan, used by current-plan selectors. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    }
   | {
       kind: 'approval';
       id: string;
       turnId: ConversationTurnId;
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;
@@ -183,7 +201,7 @@ export function createConversationBuilder(): ConversationBuilder {
   const messageIndex = new Map<string, number>();
   // compactionId → item index, so partial compaction re-emits merge into one marker.
   const compactionIndex = new Map<string, number>();
-  const planIndexByTurn = new Map<ConversationTurnId, number>();
+  const planIndexById = new Map<string, number>();
   /** Asks in arrival order; explicit resolution events are their only settlement authority. */
   const approvals: string[] = [];
   const questionAsks: string[] = [];
@@ -194,6 +212,8 @@ export function createConversationBuilder(): ConversationBuilder {
   const promptResponseStatuses = new Map<string, 'open' | 'responding'>();
   /** Every ask requestId ever folded — attach-replayed duplicates are dropped. */
   const seenAskIds = new Set<string>();
+  /** parentToolCallId (undefined = main agent) → the reasoning item currently open in that scope. */
+  const activeReasoningByScope = new Map<string | undefined, number>();
   let currentTurnId: ConversationTurnId = null;
   let gen = 0;
   let status: SessionStatus | null = null;
@@ -207,15 +227,34 @@ export function createConversationBuilder(): ConversationBuilder {
   let availableModels: AgentModelOption[] | null = null;
   let capabilities: AgentCapabilities | null = null;
   let stopReason: StopReason | null = null;
+  let turnStopped = false;
   let cached: Conversation | null = null;
 
   const genId = (prefix: string): string => `${prefix}-${gen++}`;
 
-  // Bucket an agent message / thought chunk into its messageId-keyed item (creating it on first sight).
-  const openAgentStream = (
+  const endActiveReasoning = (scope: string | undefined, endedAt: number | undefined): void => {
+    const index = activeReasoningByScope.get(scope);
+    if (index === undefined) return;
+    activeReasoningByScope.delete(scope);
+    if (endedAt === undefined) return;
+    const item = items[index];
+    if (item.kind === 'reasoning' && item.endedAt === undefined) {
+      items[index] = { ...item, endedAt };
+    }
+  };
+
+  const endAllActiveReasoning = (endedAt: number | undefined): void => {
+    for (const scope of activeReasoningByScope.keys()) {
+      endActiveReasoning(scope, endedAt);
+    }
+  };
+
+  // Upsert one agent message/thought identity. Whole snapshots replace; chunks append.
+  const upsertAgentContent = (
     kind: 'message' | 'reasoning',
     messageId: string,
-    block: ContentBlock,
+    content: readonly ContentBlock[] | undefined,
+    mode: 'append' | 'replace',
     receivedAt: number | undefined,
     parentToolCallId: string | undefined,
   ): void => {
@@ -225,21 +264,31 @@ export function createConversationBuilder(): ConversationBuilder {
       if (item.kind === kind) {
         items[existing] = {
           ...item,
-          blocks: appendBlock(item.blocks, block),
+          blocks:
+            content === undefined
+              ? item.blocks
+              : mode === 'replace'
+                ? [...content]
+                : content.reduce<ContentBlock[]>(
+                    (blocks, block) => appendBlock(blocks, block),
+                    item.blocks,
+                  ),
           receivedAt: receivedAt ?? item.receivedAt,
+          parentToolCallId: parentToolCallId ?? item.parentToolCallId,
           // Backfill a model the adapter only reported after this message opened.
           ...(item.kind === 'message' && { model: item.model ?? currentModel ?? undefined }),
         };
         return;
       }
     }
+    endActiveReasoning(parentToolCallId, receivedAt);
     if (kind === 'message') {
       items.push({
         kind: 'message',
         id: messageId,
         turnId: currentTurnId,
         role: 'assistant',
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
         receivedAt,
@@ -250,11 +299,13 @@ export function createConversationBuilder(): ConversationBuilder {
         kind: 'reasoning',
         id: messageId,
         turnId: currentTurnId,
-        blocks: [block],
+        blocks: content === undefined ? [] : [...content],
         isStreaming: false,
         parentToolCallId,
+        startedAt: receivedAt,
         receivedAt,
       });
+      activeReasoningByScope.set(parentToolCallId, items.length - 1);
     }
     messageIndex.set(messageId, items.length - 1);
   };
@@ -263,33 +314,70 @@ export function createConversationBuilder(): ConversationBuilder {
     cached = null;
     switch (event.type) {
       case 'user-message': {
-        // A complete, atomic message: opens a new turn and is pushed whole (never grouped/appended).
+        const existing = messageIndex.get(event.messageId);
+        if (existing !== undefined) {
+          const item = items[existing];
+          if (item.kind === 'message' && item.role === 'user') {
+            items[existing] = {
+              ...item,
+              blocks: [...event.content],
+              receivedAt: receivedAt ?? item.receivedAt,
+            };
+          }
+          break;
+        }
+        // A new complete message opens a turn; replay of the same id replaces it above.
+        endAllActiveReasoning(receivedAt);
+        turnStopped = false;
         currentTurnId = genId('turn');
         items.push({
           kind: 'message',
-          id: event.messageId ?? genId('user-message'),
+          id: event.messageId,
           turnId: currentTurnId,
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
           receivedAt,
         });
+        messageIndex.set(event.messageId, items.length - 1);
         break;
       }
-      case 'agent-message-chunk':
-        openAgentStream(
+      case 'agent-message':
+        upsertAgentContent(
           'message',
           event.messageId,
           event.content,
+          'replace',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-message-chunk':
+        upsertAgentContent(
+          'message',
+          event.messageId,
+          [event.content],
+          'append',
+          receivedAt,
+          event.parentToolCallId,
+        );
+        break;
+      case 'agent-thought':
+        upsertAgentContent(
+          'reasoning',
+          event.messageId,
+          event.content,
+          'replace',
           receivedAt,
           event.parentToolCallId,
         );
         break;
       case 'agent-thought-chunk':
-        openAgentStream(
+        upsertAgentContent(
           'reasoning',
           event.messageId,
-          event.content,
+          [event.content],
+          'append',
           receivedAt,
           event.parentToolCallId,
         );
@@ -299,6 +387,7 @@ export function createConversationBuilder(): ConversationBuilder {
         // Every event is a full snapshot, so replace-by-id; no merge, no synthesis.
         const existing = toolIndex.get(event.toolCall.toolCallId);
         if (existing === undefined) {
+          endActiveReasoning(event.toolCall.parentToolCallId, receivedAt);
           items.push({
             kind: 'tool',
             id: event.toolCall.toolCallId,
@@ -319,12 +408,29 @@ export function createConversationBuilder(): ConversationBuilder {
         }
         break;
       }
+      case 'tool-call-content-chunk': {
+        const existing = toolIndex.get(event.toolCallId);
+        if (existing === undefined) break;
+        const item = items[existing];
+        if (item.kind === 'tool') {
+          items[existing] = {
+            ...item,
+            toolCall: {
+              ...item.toolCall,
+              content: [...item.toolCall.content, event.content],
+            },
+            receivedAt: receivedAt ?? item.receivedAt,
+          };
+        }
+        break;
+      }
 
       case 'compaction': {
         // The boundary arrives more than once (metadata first, summary later; history replay
         // repeats the compactionId) — merge, so a partial emit never wipes earlier fields.
         const existing = compactionIndex.get(event.compactionId);
         if (existing === undefined) {
+          endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'compaction',
             id: event.compactionId,
@@ -355,22 +461,25 @@ export function createConversationBuilder(): ConversationBuilder {
       }
 
       case 'plan': {
-        const planIndex = planIndexByTurn.get(currentTurnId);
+        const planIndex = planIndexById.get(event.plan.planId);
         if (planIndex === undefined) {
+          endActiveReasoning(undefined, receivedAt);
           items.push({
             kind: 'plan',
-            id: genId('plan'),
+            id: event.plan.planId,
             turnId: currentTurnId,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt,
           });
-          planIndexByTurn.set(currentTurnId, items.length - 1);
+          planIndexById.set(event.plan.planId, items.length - 1);
           break;
         }
         const item = items[planIndex];
         if (item.kind === 'plan') {
           items[planIndex] = {
             ...item,
+            updatedTurnId: currentTurnId,
             plan: event.plan,
             receivedAt: receivedAt ?? item.receivedAt,
           };
@@ -400,6 +509,12 @@ export function createConversationBuilder(): ConversationBuilder {
         capabilities = event.capabilities;
         break;
       case 'status':
+        if (event.status !== 'starting' && event.status !== 'running') {
+          endAllActiveReasoning(receivedAt);
+          turnStopped = true;
+        } else {
+          turnStopped = false;
+        }
         status = event.status;
         break;
       case 'token-usage':
@@ -409,10 +524,13 @@ export function createConversationBuilder(): ConversationBuilder {
         usageReport = event.report;
         break;
       case 'stop':
+        endAllActiveReasoning(receivedAt);
+        turnStopped = true;
         stopReason = event.stopReason;
         break;
 
       case 'error':
+        endActiveReasoning(undefined, receivedAt);
         items.push({
           kind: 'error',
           id: genId('error'),
@@ -424,16 +542,39 @@ export function createConversationBuilder(): ConversationBuilder {
         });
         break;
 
-      case 'permission-request':
+      case 'permission-request': {
         // The engine re-broadcasts open asks on session.attach; a duplicate must not add a card.
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
+        const subject = event.subject ?? {
+          type: 'tool-call' as const,
+          toolCallId: event.toolCall?.toolCallId ?? event.requestId,
+        };
+        const linkedIndex = subject.toolCallId ? toolIndex.get(subject.toolCallId) : undefined;
+        const linkedItem = linkedIndex === undefined ? undefined : items[linkedIndex];
+        const linkedToolCall = linkedItem?.kind === 'tool' ? linkedItem.toolCall : undefined;
+        const title = event.title ?? event.toolCall?.title ?? event.requestId;
+        const toolCall =
+          linkedToolCall ??
+          event.toolCall ??
+          (subject.type === 'command'
+            ? {
+                toolCallId: subject.toolCallId ?? event.requestId,
+                title,
+                kind: 'execute' as const,
+                rawInput: { command: subject.command, cwd: subject.cwd },
+              }
+            : { toolCallId: subject.toolCallId, title });
+        endActiveReasoning(toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'approval',
           id: event.requestId,
           turnId: currentTurnId,
           requestId: event.requestId,
-          toolCall: event.toolCall,
+          title,
+          description: event.description,
+          subject,
+          toolCall,
           options: event.options,
           responding:
             !permissionResolutions.has(event.requestId) &&
@@ -444,9 +585,11 @@ export function createConversationBuilder(): ConversationBuilder {
         approvalIndex.set(event.requestId, items.length - 1);
         approvals.push(event.requestId);
         break;
+      }
       case 'question-request':
         if (seenAskIds.has(event.requestId)) break;
         seenAskIds.add(event.requestId);
+        endActiveReasoning(event.toolCall.parentToolCallId ?? undefined, receivedAt);
         items.push({
           kind: 'question',
           id: event.requestId,
@@ -529,10 +672,14 @@ export function createConversationBuilder(): ConversationBuilder {
     if (cached) return cached;
 
     const out = [...items];
-    const isSessionStreaming = status === 'running' || status === 'starting';
+    const isSessionStreaming = !turnStopped && (status === 'running' || status === 'starting');
     if (isSessionStreaming) {
+      for (const index of activeReasoningByScope.values()) {
+        const reasoning = out[index];
+        if (reasoning.kind === 'reasoning') out[index] = { ...reasoning, isStreaming: true };
+      }
       const last = out.at(-1);
-      if (last?.kind === 'reasoning' || (last?.kind === 'message' && last.role === 'assistant')) {
+      if (last?.kind === 'message' && last.role === 'assistant') {
         out[out.length - 1] = { ...last, isStreaming: true };
       }
     }

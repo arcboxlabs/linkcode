@@ -116,8 +116,7 @@ function buildConversation(shape: LoadShape): ConversationViewModel {
     }
     if (t % 4 === 0) {
       const taskId = 't' + String(t) + '-task';
-      items.push(toolItem(turnId, taskId, 'task'));
-      items.push({
+      items.push(toolItem(turnId, taskId, 'task'), {
         kind: 'message',
         id: 'sub-' + String(t),
         turnId,

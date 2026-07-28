@@ -6,7 +6,7 @@ export function cadenceLabel(
   t: (key: string, values?: Record<string, number>) => string,
 ): string {
   if (cadence.type === 'interval') {
-    return t('schedule.everyMinutes', { minutes: Math.round(cadence.everyMs / 60_000) });
+    return t('schedule.everyMinutes', { minutes: Math.round(cadence.everyMs / 60000) });
   }
   return cadence.timezone ? `${cadence.expression} (${cadence.timezone})` : cadence.expression;
 }

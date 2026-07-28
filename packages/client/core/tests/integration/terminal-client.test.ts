@@ -7,6 +7,7 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../../src/client';
 import { createConnectedLocalClient } from '../support/local-client';
@@ -65,9 +66,7 @@ function metadata(terminalId: string, controllerAttachmentId: string | null): Te
 
 // Let the rejected send promise's `.catch` handler run.
 function flushMicrotasks(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  return wait(0);
 }
 
 describe('LinkCodeClient terminal error channel', () => {

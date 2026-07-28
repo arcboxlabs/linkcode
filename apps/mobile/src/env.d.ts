@@ -7,6 +7,9 @@ declare namespace NodeJS {
   interface ProcessEnv {
     /** Inlined by Metro/EAS at bundle time. Publishable id; empty unless set. */
     EXPO_PUBLIC_SENTRY_DSN?: string;
+    /** Public PostHog project configuration; both values are required or analytics no-ops. */
+    EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN?: string;
+    EXPO_PUBLIC_POSTHOG_HOST?: string;
   }
 }
 

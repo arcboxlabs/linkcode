@@ -4,11 +4,39 @@ import { AgentEventSchema } from '../event';
 const toolCall = { toolCallId: 'tool-1', title: 'Prompt' };
 
 describe('interactive request schemas', () => {
-  it('accepts valid permission and question events through AgentEventSchema', () => {
+  it('accepts modern tool and command permission subjects', () => {
     expect(
       AgentEventSchema.safeParse({
         type: 'permission-request',
         requestId: 'permission-1',
+        title: 'Edit file',
+        description: 'Update the generated client',
+        subject: { type: 'tool-call', toolCallId: 'tool-1' },
+        options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentEventSchema.safeParse({
+        type: 'permission-request',
+        requestId: 'permission-2',
+        title: 'Run command',
+        subject: {
+          type: 'command',
+          command: 'pnpm test',
+          cwd: '/repo',
+          toolCallId: 'tool-2',
+          terminalId: 'terminal-1',
+        },
+        options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts the legacy embedded tool call and valid question events', () => {
+    expect(
+      AgentEventSchema.safeParse({
+        type: 'permission-request',
+        requestId: 'permission-legacy',
         toolCall,
         options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
       }).success,
@@ -29,6 +57,19 @@ describe('interactive request schemas', () => {
         ],
       }).success,
     ).toBe(true);
+  });
+
+  it('rejects a permission request without a complete prompt or legacy tool call', () => {
+    const parsed = AgentEventSchema.safeParse({
+      type: 'permission-request',
+      requestId: 'permission-1',
+      title: 'Run command',
+      options: [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }],
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues).toContainEqual(expect.objectContaining({ path: ['subject'] }));
+    }
   });
 
   it.each([

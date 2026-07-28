@@ -39,7 +39,6 @@ export function QuestionPrompt({
   const [focusAfterNavigation, setFocusAfterNavigation] = useState(false);
   const [lastAction, setLastAction] = useState<LastAction>(null);
   const question = item.questions[index];
-  const header = question.header ?? t('badge');
   const response = responses.get(question.questionId) ?? EMPTY_RESPONSE;
   const customDraft = customDrafts.get(question.questionId) ?? '';
   const isLastQuestion = index === item.questions.length - 1;
@@ -112,6 +111,7 @@ export function QuestionPrompt({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
     if (
+      responding ||
       event.defaultPrevented ||
       event.repeat ||
       event.nativeEvent.isComposing ||
@@ -120,7 +120,6 @@ export function QuestionPrompt({
       event.ctrlKey ||
       event.altKey ||
       event.shiftKey ||
-      responding ||
       !isWithinPrompt(event) ||
       isEditableTarget(event.target)
     ) {
@@ -141,7 +140,7 @@ export function QuestionPrompt({
     updateResponse({ selectedIds });
     // Single-select auto-advance remounts the page and focuses its first choice; focusing the
     // outgoing page's control here would announce an element about to be torn down.
-    if (question.multiSelect || isLastQuestion) {
+    if (isLastQuestion || question.multiSelect) {
       event.currentTarget
         .querySelectorAll<HTMLElement>('[data-prompt-choice]')
         .item(optionIndex)
@@ -155,13 +154,13 @@ export function QuestionPrompt({
   function handleArrowKeyDown(event: React.KeyboardEvent<HTMLFormElement>): void {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     if (
+      responding ||
       event.defaultPrevented ||
       event.nativeEvent.isComposing ||
       event.metaKey ||
       event.ctrlKey ||
       event.altKey ||
       event.shiftKey ||
-      responding ||
       !isWithinPrompt(event)
     ) {
       return;
@@ -193,7 +192,6 @@ export function QuestionPrompt({
       onSubmit={handleSubmit}
     >
       <PromptCard
-        badge={header}
         busyLabel={lastAction ? undefined : tp('responding')}
         disabled={responding}
         error={

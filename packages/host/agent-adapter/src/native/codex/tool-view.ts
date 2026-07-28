@@ -7,6 +7,9 @@ import type {
 } from '@linkcode/schema';
 import { isRecord, stringField } from '../../history-util';
 
+/** Codex exposes one current plan but no id on live plan notifications or rollout snapshots. */
+export const CODEX_PLAN_ID = 'codex-current';
+
 /**
  * The presentation shapes codex tool activity renders with — the single source for BOTH the live
  * adapter (`adapter.ts`) and the history replay (`history-tools.ts`), so a live turn and its
@@ -74,6 +77,7 @@ export function codexPlanEntries(steps: unknown): PlanEntry[] {
 
 function planStatus(status: string | undefined): PlanEntry['status'] {
   if (status === 'completed') return 'completed';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
   if (status === 'in_progress' || status === 'inProgress') return 'in_progress';
   return 'pending';
 }

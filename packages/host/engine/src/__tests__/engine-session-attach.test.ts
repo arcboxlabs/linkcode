@@ -26,7 +26,15 @@ const QUESTION_ASK: AgentEvent = {
 const PERMISSION_ASK: AgentEvent = {
   type: 'permission-request',
   requestId: 'perm-1',
-  toolCall: { toolCallId: 't2', title: 'Run' },
+  title: 'Run',
+  subject: { type: 'tool-call', toolCallId: 't2' },
+  options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+};
+
+const LEGACY_PERMISSION_ASK: AgentEvent = {
+  type: 'permission-request',
+  requestId: 'legacy-perm-1',
+  toolCall: { toolCallId: 'legacy-t2', title: 'Legacy run' },
   options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
 };
 
@@ -50,6 +58,7 @@ describe('engine session attach', () => {
     const { sent, inject, adapter, sessionId } = await startedHarness();
     adapter.emit({ type: 'status', status: 'running' });
     adapter.emit(PERMISSION_ASK);
+    adapter.emit(LEGACY_PERMISSION_ASK);
     adapter.emit(QUESTION_ASK);
 
     const mark = sent.length;
@@ -57,6 +66,7 @@ describe('engine session attach', () => {
     const replayed = eventsAfter(sent, mark);
     expect(replayed[0]).toEqual({ type: 'status', status: 'running' });
     expect(replayed).toContainEqual(PERMISSION_ASK);
+    expect(replayed).toContainEqual(LEGACY_PERMISSION_ASK);
     expect(replayed).toContainEqual(QUESTION_ASK);
   });
 

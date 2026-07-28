@@ -113,7 +113,7 @@ export function SettingsSidebarNav({
               }
               // Escape clears an active query locally; when empty it bubbles on to the
               // surface-level handler (the desktop overlay closes on Escape).
-              if (event.key === 'Escape' && searchValue !== '') {
+              if (searchValue !== '' && event.key === 'Escape') {
                 event.stopPropagation();
                 onSearchChange('');
               }

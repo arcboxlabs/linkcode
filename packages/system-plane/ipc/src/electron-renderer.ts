@@ -24,6 +24,7 @@ const FALLBACK_SETTINGS: DesktopSettings = {
   theme: 'system',
   locale: null,
   daemonUrl: null,
+  historyImportOnboardingHandled: true,
 };
 
 export function createElectronSystemBridge(

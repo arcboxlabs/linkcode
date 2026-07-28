@@ -1,5 +1,6 @@
 import type { Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import { updateAccountFromDraft } from '../add-flow';
 import {
   accountConfigSnippet,
   boundAgentKinds,
@@ -103,6 +104,8 @@ describe('view helpers', () => {
           service: 'openai-api',
           serviceLabel: 'OpenAI API',
           endpoint: 'https://api.openai.com/v1',
+          protocol: 'openai-chat',
+          credentialType: 'api-key',
           boundAgents: ['claude-code'],
         },
         {
@@ -110,6 +113,7 @@ describe('view helpers', () => {
           label: 'Claude subscription',
           service: 'claude-sub',
           serviceLabel: 'Claude',
+          credentialType: 'oauth',
           auth: { loggedIn: true, email: 'claude@example.com' },
           boundAgents: ['codex'],
         },
@@ -117,6 +121,39 @@ describe('view helpers', () => {
       detectedLogins: [{ service: 'chatgpt-sub', label: 'ChatGPT', email: 'codex@example.com' }],
       bindingCount: 2,
       agentCount: 5,
+    });
+  });
+
+  it('updates editable account fields without replacing its identity or hidden fields', () => {
+    const account: Accounts[number] = {
+      id: 'acc_a',
+      label: 'Old gateway',
+      createdAt: 123,
+      service: 'openrouter',
+      credential: { type: 'api-key', key: 'old-secret' },
+      endpoint: { baseUrl: 'https://old.example.com/v1', protocol: 'openai-chat' },
+      model: 'old-model',
+      extraEnv: { GATEWAY_MODE: 'strict' },
+    };
+
+    expect(
+      updateAccountFromDraft(account, {
+        label: 'New gateway',
+        type: 'auth-token',
+        secret: 'new-secret',
+        baseUrl: 'https://new.example.com/v1',
+        protocol: 'anthropic',
+        model: 'new-model',
+      }),
+    ).toEqual({
+      id: 'acc_a',
+      label: 'New gateway',
+      createdAt: 123,
+      service: 'openrouter',
+      credential: { type: 'auth-token', token: 'new-secret' },
+      endpoint: { baseUrl: 'https://new.example.com/v1', protocol: 'anthropic' },
+      model: 'new-model',
+      extraEnv: { GATEWAY_MODE: 'strict' },
     });
   });
 });

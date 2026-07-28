@@ -38,6 +38,16 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SimulatorAxNode,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
+  SimulatorDevice,
+  SimulatorImageFormat,
+  SimulatorOrientation,
+  SimulatorStatus,
+  SimulatorStreamCodec,
+  SimulatorTouchPhase,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -103,6 +113,29 @@ export interface AssetSettledEvent {
 type AssetProgressCb = (event: AssetProgressEvent) => void;
 type AssetSettledCb = (event: AssetSettledEvent) => void;
 type AgentRuntimesChangedCb = (runtimes: AgentRuntimes) => void;
+type SimulatorDevicesChangedCb = (devices: SimulatorDevice[]) => void;
+type SimulatorActivityCb = (activity: {
+  sessionId: SessionId;
+  udid?: string;
+  tool: string;
+  phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without a single point. */
+  x?: number;
+  y?: number;
+}) => void;
+type SimulatorConsentRequiredCb = (request: {
+  sessionId: SessionId;
+  udid: string;
+  tool: string;
+}) => void;
+type SimulatorConsentChangedCb = (state: SimulatorConsentState) => void;
+/** A live stream frame: base64 bytes (JPEG image or Annex-B H.264 access unit) for one device. */
+type SimulatorFrameCb = (frame: {
+  udid: string;
+  codec: SimulatorStreamCodec;
+  key: boolean;
+  data: string;
+}) => void;
 type ConnectionCloseCb = (error: Error) => void;
 
 /** A broadcast about a schedule's or its runs' state — the three `schedule.*` push variants. */
@@ -142,6 +175,12 @@ export class LinkCodeClient {
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
+  private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
+  private readonly simulatorActivitySubs = new Set<SimulatorActivityCb>();
+  private readonly simulatorConsentRequiredSubs = new Set<SimulatorConsentRequiredCb>();
+  private readonly simulatorConsentChangedSubs = new Set<SimulatorConsentChangedCb>();
+  /** Framebuffer-frame listeners keyed by udid, so each panel tab only sees its device's frames. */
+  private readonly simulatorFrameSubs = new Map<string, Set<SimulatorFrameCb>>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
@@ -306,6 +345,62 @@ export class LinkCodeClient {
         break;
       case 'agent-runtime.changed':
         for (const cb of this.agentRuntimesChangedSubs) cb(p.runtimes);
+        break;
+      case 'simulator.status.result':
+        this.pending.resolve('simulatorStatus', p.replyTo, p.status);
+        break;
+      case 'simulator.listed':
+        this.pending.resolve('simulatorList', p.replyTo, p.devices);
+        break;
+      case 'simulator.launched':
+        this.pending.resolve('simulatorLaunch', p.replyTo, p.pid);
+        break;
+      case 'simulator.screen-masked':
+        this.pending.resolve('simulatorScreenMask', p.replyTo, p.data);
+        break;
+      case 'simulator.screenshotted':
+        this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
+        break;
+      case 'simulator.described-ui':
+        this.pending.resolve('simulatorDescribeUi', p.replyTo, p.tree);
+        break;
+      case 'simulator.devices.changed':
+        for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
+        break;
+      case 'simulator.activity':
+        for (const cb of this.simulatorActivitySubs) {
+          cb({
+            sessionId: p.sessionId,
+            udid: p.udid,
+            tool: p.tool,
+            phase: p.phase,
+            x: p.x,
+            y: p.y,
+          });
+        }
+        break;
+      case 'simulator.consent.state':
+        this.pending.resolve('simulatorConsentGet', p.replyTo, p.state);
+        break;
+      case 'simulator.consent.required':
+        for (const cb of this.simulatorConsentRequiredSubs) {
+          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool });
+        }
+        break;
+      case 'simulator.consent.changed':
+        for (const cb of this.simulatorConsentChangedSubs) cb(p.state);
+        break;
+      case 'simulator.stream.started':
+        this.pending.resolve('simulatorStreamStart', p.replyTo, {
+          fps: p.fps,
+          scale: p.scale,
+          codec: p.codec,
+        });
+        break;
+      case 'simulator.stream.frame':
+        for (const cb of this.simulatorFrameSubs.get(p.udid) ?? []) {
+          cb({ udid: p.udid, codec: p.codec, key: p.key, data: p.data });
+        }
         break;
       case 'asset.listed':
         this.pending.resolve('assetList', p.replyTo, p.assets);
@@ -600,6 +695,202 @@ export class LinkCodeClient {
   subscribeAgentRuntimesChanged(cb: AgentRuntimesChangedCb): Unsubscribe {
     this.agentRuntimesChangedSubs.add(cb);
     return () => this.agentRuntimesChangedSubs.delete(cb);
+  }
+
+  /** Whether this host can drive iOS Simulators; gate the whole simulator surface on it. */
+  simulatorStatus(): Promise<SimulatorStatus> {
+    return this.control.simulatorStatus();
+  }
+
+  simulatorList(): Promise<SimulatorDevice[]> {
+    return this.control.simulatorList();
+  }
+
+  simulatorBoot(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorBoot(sessionId, udid);
+  }
+
+  simulatorShutdown(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorShutdown(sessionId, udid);
+  }
+
+  simulatorInstall(sessionId: SessionId, udid: string, appPath: string): Promise<RequestAck> {
+    return this.control.simulatorInstall(sessionId, udid, appPath);
+  }
+
+  simulatorLaunch(sessionId: SessionId, udid: string, bundleId: string): Promise<number | null> {
+    return this.control.simulatorLaunch(sessionId, udid, bundleId);
+  }
+
+  simulatorTerminate(sessionId: SessionId, udid: string, bundleId: string): Promise<RequestAck> {
+    return this.control.simulatorTerminate(sessionId, udid, bundleId);
+  }
+
+  simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
+    return this.control.simulatorOpenUrl(sessionId, udid, url);
+  }
+
+  /** Shake the device (undo-typing prompts, React Native's dev menu). */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorShake(sessionId, udid);
+  }
+
+  /** Start the iOS runtime download; resolves once it is running, not once it finishes. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.control.simulatorInstallRuntime();
+  }
+
+  /** The frontmost app's accessibility tree; node centres are in {@link simulatorTap}'s units. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.control.simulatorDescribeUi(sessionId, udid, limits);
+  }
+
+  simulatorScreenshot(
+    sessionId: SessionId,
+    udid: string,
+    format?: SimulatorImageFormat,
+  ): Promise<{ format: SimulatorImageFormat; data: string }> {
+    return this.control.simulatorScreenshot(sessionId, udid, format);
+  }
+
+  /** The device's screen-outline mask as base64 PNG — clip the stream to the real screen shape. */
+  simulatorScreenMask(udid: string): Promise<string> {
+    return this.control.simulatorScreenMask(udid);
+  }
+
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.control.simulatorConsentGet();
+  }
+
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.control.simulatorConsentSet(udid, decision);
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.control.simulatorConsentSetAgentTools(enabled);
+  }
+
+  simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
+    return this.control.simulatorTap(sessionId, udid, x, y);
+  }
+
+  /** Press one keyboard key (HID usage on page 7) with modifier usages held around it. */
+  simulatorKey(
+    sessionId: SessionId,
+    udid: string,
+    usage: number,
+    modifiers: number[],
+  ): Promise<RequestAck> {
+    return this.control.simulatorKey(sessionId, udid, usage, modifiers);
+  }
+
+  /** One phase of a streamed touch gesture; the caller owns the down/move/up sequencing. */
+  simulatorTouch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<RequestAck> {
+    return this.control.simulatorTouch(sessionId, udid, phase, x, y);
+  }
+
+  /** One phase of a streamed two-finger gesture (pinch/zoom); both finger positions normalized. */
+  simulatorPinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<RequestAck> {
+    return this.control.simulatorPinch(sessionId, udid, phase, a, b);
+  }
+
+  /** Set the device pasteboard; pair with a Cmd+V key press to inject arbitrary Unicode. */
+  simulatorPaste(sessionId: SessionId, udid: string, text: string): Promise<RequestAck> {
+    return this.control.simulatorPaste(sessionId, udid, text);
+  }
+
+  simulatorSwipe(
+    sessionId: SessionId,
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<RequestAck> {
+    return this.control.simulatorSwipe(sessionId, udid, from, to, durationMs);
+  }
+
+  simulatorButton(
+    sessionId: SessionId,
+    udid: string,
+    button: SimulatorButton,
+  ): Promise<RequestAck> {
+    return this.control.simulatorButton(sessionId, udid, button);
+  }
+
+  simulatorRotate(
+    sessionId: SessionId,
+    udid: string,
+    orientation: SimulatorOrientation,
+  ): Promise<RequestAck> {
+    return this.control.simulatorRotate(sessionId, udid, orientation);
+  }
+
+  /** Start streaming a device's framebuffer; frames arrive via {@link subscribeSimulatorFrames}. */
+  simulatorStreamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: { fps?: number; quality?: number; scale?: number; codec?: SimulatorStreamCodec },
+  ): Promise<{ fps: number; scale: number; codec: SimulatorStreamCodec }> {
+    return this.control.simulatorStreamStart(sessionId, udid, options);
+  }
+
+  simulatorStreamStop(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorStreamStop(sessionId, udid);
+  }
+
+  /** Subscribe to a device's live framebuffer frames; pair with {@link simulatorStreamStart}. */
+  subscribeSimulatorFrames(udid: string, cb: SimulatorFrameCb): Unsubscribe {
+    let set = this.simulatorFrameSubs.get(udid);
+    if (!set) {
+      set = new Set();
+      this.simulatorFrameSubs.set(udid, set);
+    }
+    set.add(cb);
+    return () => {
+      const current = this.simulatorFrameSubs.get(udid);
+      if (!current) return;
+      current.delete(cb);
+      if (current.size === 0) this.simulatorFrameSubs.delete(udid);
+    };
+  }
+
+  /** Pushed after a state-changing simulator command (boot/shutdown) with a fresh device list. */
+  subscribeSimulatorDevicesChanged(cb: SimulatorDevicesChangedCb): Unsubscribe {
+    this.simulatorDevicesChangedSubs.add(cb);
+    return () => this.simulatorDevicesChangedSubs.delete(cb);
+  }
+
+  /** Agent MCP tool activity on simulators — drives the "agent is using this device" badge. */
+  subscribeSimulatorActivity(cb: SimulatorActivityCb): Unsubscribe {
+    this.simulatorActivitySubs.add(cb);
+    return () => this.simulatorActivitySubs.delete(cb);
+  }
+
+  /** An agent tool is suspended waiting for the user to decide about a device (CODE-420). */
+  subscribeSimulatorConsentRequired(cb: SimulatorConsentRequiredCb): Unsubscribe {
+    this.simulatorConsentRequiredSubs.add(cb);
+    return () => this.simulatorConsentRequiredSubs.delete(cb);
+  }
+
+  subscribeSimulatorConsentChanged(cb: SimulatorConsentChangedCb): Unsubscribe {
+    this.simulatorConsentChangedSubs.add(cb);
+    return () => this.simulatorConsentChangedSubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {

@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { managedAgentAssetId, managedAssetIdEquals } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NpmClosureAssetDescriptor } from '../../src/catalog';
 import { AssetManager } from '../../src/manager';
@@ -9,6 +10,8 @@ import type { TgzFixture } from '../support/fixtures';
 import { makePackageTgz } from '../support/fixtures';
 import type { LocalServer } from '../support/local-server';
 import { startLocalServer } from '../support/local-server';
+
+const OPENCODE_ID = managedAgentAssetId('opencode');
 
 const servers: LocalServer[] = [];
 afterEach(async () => {
@@ -38,7 +41,7 @@ describe('closure install', () => {
     servers.push(server);
 
     const descriptor: NpmClosureAssetDescriptor = {
-      id: 'agent:opencode',
+      id: OPENCODE_ID,
       version: { kind: 'pinned', version: '1.0.0' },
       closure: {
         version: '1.0.0',
@@ -68,14 +71,14 @@ describe('closure install', () => {
     };
 
     const manager = new AssetManager({ catalog: [descriptor], registries: [server.url] });
-    expect(manager.managedEntry('agent:opencode')).toBeUndefined();
+    expect(manager.managedEntry(OPENCODE_ID)).toBeUndefined();
 
     const progress: number[] = [];
-    const installed = await manager.ensure('agent:opencode', ({ receivedBytes }) => {
+    const installed = await manager.ensure(OPENCODE_ID, ({ receivedBytes }) => {
       progress.push(receivedBytes);
     });
 
-    const root = versionDir('agent:opencode', '1.0.0');
+    const root = versionDir(OPENCODE_ID, '1.0.0');
     expect(installed?.path).toBe(join(root, 'node_modules/tool-a/dist/index.js'));
     expect(existsSync(join(root, 'node_modules/tool-a/package.json'))).toBe(true);
     expect(existsSync(join(root, 'node_modules/tool-a/node_modules/tool-b/index.js'))).toBe(true);
@@ -85,9 +88,9 @@ describe('closure install', () => {
     expect(progress.at(-1)).toBeGreaterThan(0);
 
     // Spawn-path resolution must never hand out a module tree; the entry rides managedEntry.
-    expect(manager.managedBinary('agent:opencode')).toBeUndefined();
-    expect(manager.managedEntry('agent:opencode')).toBe(installed?.path);
-    const status = manager.statuses().find((entry) => entry.id === 'agent:opencode');
+    expect(manager.managedBinary(OPENCODE_ID)).toBeUndefined();
+    expect(manager.managedEntry(OPENCODE_ID)).toBe(installed?.path);
+    const status = manager.statuses().find((entry) => managedAssetIdEquals(entry.id, OPENCODE_ID));
     expect(status?.installed?.path).toBe(installed?.path);
   });
 });

@@ -7,12 +7,20 @@ import type {
   AgentHistoryEvent,
   AgentHistoryId,
   AgentHistorySession,
+  ContentBlock,
   ToolCall,
+} from '@linkcode/schema';
+import {
+  isSupportedAttachmentImageMimeType,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_TOTAL_BYTES,
+  textBlock,
 } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { not } from 'foxts/guard';
 import {
   asHistoryId,
+  asMessageId,
   compactRecord,
   firstText,
   isRecord,
@@ -25,6 +33,34 @@ import {
 import { codexToolAnnounce, codexToolSettle } from './history-tools';
 
 const WHITESPACE_RUN_RE = /\s+/g;
+const DATA_IMAGE_RE = /^data:([^;,]+);base64,(.*)$/;
+const CODEX_IMAGE_OPEN_RE = /^<image name=\[Image #[1-9]\d*\] path="[^"\r\n]+">$/;
+const MAX_ATTACHMENT_BASE64_LENGTH = 4 * Math.ceil(MAX_ATTACHMENT_BYTES / 3);
+
+function isBase64(data: string): boolean {
+  if (data.length % 4 !== 0) return false;
+  const payloadLength = data.endsWith('==')
+    ? data.length - 2
+    : data.endsWith('=')
+      ? data.length - 1
+      : data.length;
+  for (let index = 0; index < payloadLength; index += 1) {
+    const code = data.codePointAt(index) ?? -1;
+    const isDigit = code >= 48 && code <= 57;
+    const isUppercase = code >= 65 && code <= 90;
+    const isLowercase = code >= 97 && code <= 122;
+    if (!isDigit && !isUppercase && !isLowercase && code !== 43 && code !== 47) return false;
+  }
+  for (let index = payloadLength; index < data.length; index += 1) {
+    if (data.codePointAt(index) !== 61) return false;
+  }
+  return true;
+}
+
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return (data.length / 4) * 3 - padding;
+}
 
 /** Codex persists machine-injected context as ordinary user-role messages recognizable only by
  * their leading marker; they must not replay as user bubbles or become a title preview. The XML
@@ -46,6 +82,20 @@ export function isSyntheticCodexUserText(text: string): boolean {
   return SYNTHETIC_USER_MARKERS.some((marker) => trimmed.startsWith(marker));
 }
 
+function isCodexImageMarker(parts: unknown[], index: number): boolean {
+  const part = parts[index];
+  if (!isRecord(part) || stringField(part, 'type') !== 'input_text') return false;
+  const text = stringField(part, 'text');
+  if (!text) return false;
+  const previous = parts[index - 1];
+  const next = parts[index + 1];
+  const nextIsImage = isRecord(next) && stringField(next, 'type') === 'input_image';
+  const previousIsImage = isRecord(previous) && stringField(previous, 'type') === 'input_image';
+  return (
+    (nextIsImage && CODEX_IMAGE_OPEN_RE.test(text)) || (previousIsImage && text === '</image>')
+  );
+}
+
 /** codex 0.144 glues AGENTS.md and `<environment_context>` into ONE user row as separate content
  * parts, so the row is machine-injected when ANY part carries a marker — checking only the joined
  * text would miss every part after the first. Markers alone can false-positive on a pasted prompt,
@@ -58,10 +108,18 @@ export function isSyntheticCodexUserPayload(
   realPromptTexts?: ReadonlySet<string>,
 ): boolean {
   const content = payload.content;
-  const texts = (Array.isArray(content) ? content : [payload]).map((part) => textFromUnknown(part));
+  const parts = Array.isArray(content) ? content : [payload];
+  const texts = parts.map((part) => textFromUnknown(part));
   const marked = texts.filter((text) => isSyntheticCodexUserText(text));
   if (marked.length === 0) return false;
-  return !realPromptTexts || !marked.every((text) => realPromptTexts.has(text));
+  if (!realPromptTexts) return true;
+  if (marked.every((text) => realPromptTexts.has(text))) return false;
+  const hasImage = parts.some(
+    (part) => isRecord(part) && stringField(part, 'type') === 'input_image',
+  );
+  if (!hasImage) return true;
+  const echoedText = texts.filter((_text, index) => !isCodexImageMarker(parts, index)).join('');
+  return !realPromptTexts.has(echoedText);
 }
 
 /** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */
@@ -75,6 +133,66 @@ export function collectCodexPromptTexts(rows: JsonRecord[]): Set<string> {
     if (message) texts.add(message);
   }
   return texts;
+}
+
+/** Convert Codex's persisted response content without trusting an arbitrary URL or local path.
+ * 0.144.1 stores both app-server data images and TUI local images as `input_image` data URLs; the
+ * latter are surrounded by synthetic path-bearing text markers, which are presentation metadata
+ * rather than user text. Remote/file URLs and malformed or oversized payloads stay adapter-local. */
+function codexUserContent(value: unknown): ContentBlock[] {
+  if (!Array.isArray(value)) return [];
+  const blocks: ContentBlock[] = [];
+  let attachmentBytes = 0;
+  value.forEach((part, index) => {
+    if (!isRecord(part)) return;
+    const type = stringField(part, 'type');
+    if (type === 'input_text') {
+      const text = stringField(part, 'text');
+      if (!text) return;
+      if (isCodexImageMarker(value, index)) return;
+      blocks.push(textBlock(text));
+      return;
+    }
+    if (type !== 'input_image') return;
+    const url = stringField(part, 'image_url');
+    const match = url ? DATA_IMAGE_RE.exec(url) : null;
+    if (!match) return;
+    const [, mimeType, data] = match;
+    if (
+      !isSupportedAttachmentImageMimeType(mimeType) ||
+      data.length === 0 ||
+      data.length > MAX_ATTACHMENT_BASE64_LENGTH ||
+      !isBase64(data)
+    ) {
+      return;
+    }
+    const byteLength = base64ByteLength(data);
+    if (
+      byteLength > MAX_ATTACHMENT_BYTES ||
+      attachmentBytes + byteLength > MAX_ATTACHMENT_TOTAL_BYTES
+    ) {
+      return;
+    }
+    attachmentBytes += byteLength;
+    blocks.push({ type: 'image', data, mimeType });
+  });
+  return blocks;
+}
+
+function codexUserHistoryEvent(
+  historyId: AgentHistoryId,
+  itemId: string,
+  payload: JsonRecord,
+  ts?: AgentHistoryEvent['ts'],
+): AgentHistoryEvent | undefined {
+  const content = codexUserContent(payload.content);
+  if (content.length === 0) return undefined;
+  return {
+    historyId,
+    itemId,
+    ts,
+    event: { type: 'user-message', messageId: asMessageId(itemId), content },
+  };
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -237,12 +355,19 @@ async function readCodexTranscriptSummary(
       case 'response_item': {
         const role = stringField(payload, 'role');
         if (role !== 'user' && role !== 'assistant') continue;
-        const text = textFromUnknown(payload);
-        if (text.trim().length === 0) continue;
-        if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) continue;
+        let text: string;
+        if (role === 'user') {
+          if (isSyntheticCodexUserPayload(payload, promptTexts)) continue;
+          const content = codexUserContent(payload.content);
+          if (content.length === 0) continue;
+          text = content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n');
+        } else {
+          text = textFromUnknown(payload);
+          if (text.trim().length === 0) continue;
+        }
         messageCount += 1;
-        if (role === 'user') firstUserText ??= previewText(text);
-        else firstAssistantText ??= previewText(text);
+        if (role === 'user' && text.trim().length > 0) firstUserText ??= previewText(text);
+        else if (role === 'assistant') firstAssistantText ??= previewText(text);
 
         break;
       }
@@ -396,7 +521,10 @@ export function mapCodexHistoryEvents(
     if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
-    const event = textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
+    const event =
+      role === 'user'
+        ? codexUserHistoryEvent(historyId, itemId, payload, timestampMs(row.timestamp))
+        : textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
     if (event) events.push(event);
   });
   return events;

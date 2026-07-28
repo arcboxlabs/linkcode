@@ -1,12 +1,12 @@
 import type { ToolCall } from '@linkcode/schema';
 import {
   BotIcon,
-  BrainIcon,
   FileOutputIcon,
   FileTextIcon,
   GlobeIcon,
   PencilIcon,
   SearchIcon,
+  SparklesIcon,
   TerminalIcon,
   Trash2Icon,
   WrenchIcon,
@@ -174,7 +174,7 @@ export interface ToolCallHeaderSummary {
   tooltip?: string;
 }
 
-/** One compact, non-debug detail for singleton headers and collapsed group summaries. */
+/** One compact, non-debug detail for singleton tool headers. */
 export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary | undefined {
   let label: string | undefined;
   switch (toolCall.kind) {
@@ -206,8 +206,7 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
 }
 
 /** Header context beside a visible tool name: the kind summary, else — for an MCP call, whose
- * name alone doesn't say where it runs — the server (full slug on hover). Collapsed group joins
- * must NOT use this: with no tool name in sight, the server label would read as one. */
+ * name alone doesn't say where it runs — the server (full slug on hover). */
 export function toolCallContextSummary(toolCall: ToolCall): ToolCallHeaderSummary | undefined {
   const summary = toolCallHeaderSummary(toolCall);
   if (summary) return summary;
@@ -235,7 +234,7 @@ export const TOOL_KIND_ICONS: Record<
   move: FileOutputIcon,
   search: SearchIcon,
   execute: TerminalIcon,
-  think: BrainIcon,
+  think: SparklesIcon,
   fetch: GlobeIcon,
   task: BotIcon,
   other: WrenchIcon,

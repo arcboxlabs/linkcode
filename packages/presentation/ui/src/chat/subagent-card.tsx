@@ -1,22 +1,27 @@
 import type { ToolCall } from '@linkcode/schema';
-import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from 'coss-ui/components/collapsible';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Spinner } from 'coss-ui/components/spinner';
-import { BotIcon, ChevronRightIcon, Maximize2Icon } from 'lucide-react';
+import { BotIcon, Maximize2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { ContentBlockView } from './content-block-view';
 import { contentDerivedEntries } from './content-derived-keys';
+import type { QuestionConversationItem } from './conversation-prompts';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
 import { Message, MessageContent } from './message';
+import { QuestionCallItem } from './question-call-item';
 import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
-import { TOOL_DETAIL_SCROLL_CLASS_NAME } from './tool';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
 import { toolCallDisplayText } from './tool-result-content';
 import { toolCallFailureMessage } from './tool-utils';
@@ -30,6 +35,8 @@ interface SubagentTranscriptProps {
   /** The whole slice's parent→children buckets, so nested spawns can recurse into their own card. */
   childrenByParent: ReadonlyMap<string, ConversationItem[]>;
   awaitingApproval: ReadonlySet<string>;
+  awaitingAnswer: ReadonlySet<string>;
+  questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   declined: ReadonlySet<string>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onExpand?: (toolCallId: string) => void;
@@ -44,6 +51,8 @@ export function SubagentTranscript({
   items,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
   onExpand,
@@ -72,13 +81,25 @@ export function SubagentTranscript({
               </Message>
             );
           case 'reasoning':
-            return <ThoughtBlock key={item.id} blocks={item.blocks} isStreaming={false} />;
-          case 'tool':
+            return (
+              <ThoughtBlock
+                key={item.id}
+                blocks={item.blocks}
+                endedAt={item.endedAt}
+                isStreaming={item.isStreaming}
+                startedAt={item.startedAt}
+                summary={item.summary}
+                constrainHeight={false}
+              />
+            );
+          case 'tool': {
             if (item.toolCall.kind === 'task') {
               return (
                 <SubagentCardContent
                   key={item.id}
                   awaitingApproval={awaitingApproval}
+                  awaitingAnswer={awaitingAnswer}
+                  questionsByToolCall={questionsByToolCall}
                   childrenByParent={childrenByParent}
                   constrainHeight={false}
                   declined={declined}
@@ -89,16 +110,30 @@ export function SubagentTranscript({
                 />
               );
             }
+            const question = questionsByToolCall.get(item.toolCall.toolCallId);
+            if (question) {
+              return (
+                <QuestionCallItem
+                  key={item.id}
+                  awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
+                  constrainHeight={false}
+                  question={question}
+                  toolCall={item.toolCall}
+                />
+              );
+            }
             return (
               <ToolCallItem
                 key={item.id}
                 awaitingApproval={awaitingApproval.has(item.toolCall.toolCallId)}
+                awaitingAnswer={awaitingAnswer.has(item.toolCall.toolCallId)}
                 constrainHeight={false}
                 declined={declined.has(item.toolCall.toolCallId)}
                 toolCall={item.toolCall}
                 TerminalBlockComponent={TerminalBlockComponent}
               />
             );
+          }
           default:
             return null;
         }
@@ -128,61 +163,57 @@ export function SubagentCard(props: SubagentCardProps): React.ReactNode {
 }
 
 /** Inline collapsible card for one subagent run. Auto-open while running, but the user's toggle
- * always wins (unlike ActivityGroup's forced-open) — a subagent can run for minutes. */
+ * always wins — a subagent can run for minutes. */
 function SubagentCardContent({
   toolCall,
   items,
   childrenByParent,
   awaitingApproval,
+  awaitingAnswer,
+  questionsByToolCall,
   declined,
   TerminalBlockComponent,
   onExpand,
   constrainHeight,
 }: SubagentCardProps & { constrainHeight: boolean }): React.ReactNode {
   const t = useTranslations('workbench.subagent');
-  const tg = useTranslations('workbench.toolGroup');
 
   const isRunning = toolCall.status === 'in_progress' || toolCall.status === 'pending';
+  const hasFailedActivity =
+    toolCall.status === 'failed' ||
+    items.some((item) => item.kind === 'tool' && item.toolCall.status === 'failed');
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
   const open = manualOpen ?? isRunning;
 
-  const toolCount = items.reduce((count, item) => count + (item.kind === 'tool' ? 1 : 0), 0);
-  const failedCount = items.reduce(
-    (count, item) => count + (item.kind === 'tool' && item.toolCall.status === 'failed' ? 1 : 0),
-    0,
-  );
   const input = subagentTaskInput(toolCall.rawInput);
 
   return (
     <Collapsible className="w-full" onOpenChange={setManualOpen} open={open}>
       <div className="flex w-full items-center gap-2">
-        <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm">
-          {isRunning ? (
-            <Spinner className="size-3.5 shrink-0 text-foreground" />
-          ) : (
-            <BotIcon
-              className={
-                toolCall.status === 'failed'
-                  ? 'size-3.5 shrink-0 text-destructive-foreground'
-                  : 'size-3.5 shrink-0 text-muted-foreground'
-              }
-            />
-          )}
-          <span className="shrink-0 text-foreground">{input.subagentType ?? t('label')}</span>
-          {toolCount > 0 ? (
-            <Badge size="sm" variant="secondary">
-              {t('steps', { count: toolCount })}
-            </Badge>
-          ) : null}
-          {failedCount > 0 ? (
-            <Badge size="sm" variant="error">
-              {tg('failed', { count: failedCount })}
-            </Badge>
-          ) : null}
-          <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-            {input.description ?? toolCall.title}
+        <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'min-w-0 flex-1')}>
+          <ChatDisclosureIconSlot>
+            {isRunning ? (
+              <Spinner className="text-foreground" />
+            ) : (
+              <BotIcon
+                className={cn(
+                  hasFailedActivity ? 'text-destructive-foreground' : 'text-muted-foreground',
+                )}
+              />
+            )}
+          </ChatDisclosureIconSlot>
+          <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+            <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>
+              {input.subagentType ?? t('label')}
+            </span>
+            <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>
+              {input.description ?? toolCall.title}
+            </span>
           </span>
-          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+          {hasFailedActivity ? (
+            <span className="shrink-0 text-destructive-foreground text-xs">{t('failedBadge')}</span>
+          ) : null}
+          <ChatDisclosureChevron />
         </CollapsibleTrigger>
         {onExpand ? (
           <Button
@@ -198,15 +229,16 @@ function SubagentCardContent({
           </Button>
         ) : null}
       </div>
-      <CollapsibleContent
-        className={cn(
-          'mt-1 space-y-2 border-l-2 border-border pl-3',
-          // Nested task cards share the root card's scroll container to avoid scroll traps.
-          constrainHeight && TOOL_DETAIL_SCROLL_CLASS_NAME,
-        )}
+      <ChatDisclosureContent
+        bodyClassName="space-y-2"
+        className="mt-1 border-l-2 border-border pl-3"
+        // Nested task cards share the root card's scroll container to avoid scroll traps.
+        constrainHeight={constrainHeight}
       >
         <SubagentTranscript
           awaitingApproval={awaitingApproval}
+          awaitingAnswer={awaitingAnswer}
+          questionsByToolCall={questionsByToolCall}
           childrenByParent={childrenByParent}
           declined={declined}
           items={items}
@@ -214,7 +246,7 @@ function SubagentCardContent({
           TerminalBlockComponent={TerminalBlockComponent}
           toolCall={toolCall}
         />
-      </CollapsibleContent>
+      </ChatDisclosureContent>
     </Collapsible>
   );
 }
