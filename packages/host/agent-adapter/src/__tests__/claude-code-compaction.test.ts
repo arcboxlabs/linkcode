@@ -235,9 +235,7 @@ describe('buildClaudeTranscriptSupplement', () => {
       // Error results carry a plain string — nothing to project.
       resultRow('r3', ['toolu_4'], 'String to replace not found'),
     ]);
-    expect([...supplement.toolUseResults.entries()]).toEqual([
-      ['toolu_1', { code: 200, codeText: 'OK' }],
-    ]);
+    expect([...supplement.toolUseResults]).toEqual([['toolu_1', { code: 200, codeText: 'OK' }]]);
 
     // An Edit result keys both projections off the one raw field: the envelope keeps the small
     // scalars (dropping the bulk `originalFile`), and the patch survives the same filter, which
@@ -261,7 +259,7 @@ describe('buildClaudeTranscriptSupplement', () => {
         structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a'] }],
       }),
     ]);
-    expect([...edits.toolUseResults.entries()]).toEqual([
+    expect([...edits.toolUseResults]).toEqual([
       [
         'toolu_1',
         {
@@ -273,7 +271,7 @@ describe('buildClaudeTranscriptSupplement', () => {
         },
       ],
     ]);
-    expect([...edits.toolUsePatches.entries()]).toEqual([
+    expect([...edits.toolUsePatches]).toEqual([
       [
         'toolu_1',
         [
