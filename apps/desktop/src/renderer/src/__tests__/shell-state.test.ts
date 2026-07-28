@@ -2,6 +2,7 @@ import type { DesktopShellState, RightPanelState } from '@renderer/shell/store/m
 import {
   BOTTOM_PANEL_MAX_SIZE,
   BOTTOM_PANEL_MIN_SIZE,
+  closeBrowserTabState,
   closeSectionTabState,
   createDefaultDesktopShellState,
   createDefaultRightPanelState,
@@ -420,6 +421,23 @@ describe('closeSectionTabState', () => {
     const terminal = { tabs: [a], activeTabId: a.id };
 
     expect(closeSectionTabState(terminal, 'missing')).toBe(terminal);
+  });
+});
+
+describe('closeBrowserTabState', () => {
+  it('seeds a new empty tab after closing the final visible browser tab', () => {
+    const tab = createRightBrowserTab('https://example.com');
+    const panel: RightPanelState = {
+      ...createDefaultRightPanelState(),
+      open: true,
+      activeSection: 'browser',
+      browser: { tabs: [tab], activeTabId: tab.id },
+    };
+
+    const browser = closeBrowserTabState(panel, tab.id).browser;
+    expect(browser.tabs).toHaveLength(1);
+    expect(browser.tabs[0]).toMatchObject({ url: null, title: null });
+    expect(browser.activeTabId).toBe(browser.tabs[0].id);
   });
 });
 

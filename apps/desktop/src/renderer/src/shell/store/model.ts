@@ -249,6 +249,12 @@ export function closeSectionTabState<Tab extends PanelSectionTab>(
   return { tabs: nextTabs, activeTabId: nextActiveId };
 }
 
+/** Closes a browser tab and keeps the visible browser section seeded. */
+export function closeBrowserTabState(panel: RightPanelState, id: string): RightPanelState {
+  const next = { ...panel, browser: closeSectionTabState(panel.browser, id) };
+  return panel.open ? seedBrowserSection(next) : next;
+}
+
 /** Opens (or re-focuses) a file viewer tab; one tab per distinct path. */
 export function openFileTabState(files: RightPanelFilesState, path: string): RightPanelFilesState {
   const existing = files.tabs.find((tab) => tab.path === path);

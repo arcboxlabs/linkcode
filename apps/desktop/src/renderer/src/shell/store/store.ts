@@ -10,6 +10,7 @@ import type {
   PersistedDesktopShellState,
 } from './model';
 import {
+  closeBrowserTabState,
   closeSectionTabState,
   createDefaultDesktopShellState,
   createRightBrowserTab,
@@ -338,10 +339,7 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
         closeRightBrowserTab(id) {
           updateShellState((current) => ({
             ...current,
-            rightPanel: {
-              ...current.rightPanel,
-              browser: closeSectionTabState(current.rightPanel.browser, id),
-            },
+            rightPanel: closeBrowserTabState(current.rightPanel, id),
           }));
         },
 
