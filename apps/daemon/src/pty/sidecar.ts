@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '@linkcode/engine';
 import { Listeners } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
+import { logger } from '../logger';
 import type { Frame } from './codec';
 import {
   CLOSE,
+  CREDIT,
   decodeDataFrame,
   ERROR,
   EXIT,
@@ -65,10 +67,12 @@ export class SidecarPtyBackend implements PtyBackend {
   private readonly decoder = new FrameDecoder();
   private readonly terminals = new Map<string, LiveTerminal>();
   private readonly pending = new Map<string, PendingOpen>();
+  private closed = false;
 
   constructor(private readonly binaryPath: string) {}
 
   open(terminalId: string, opts: PtyOpenOptions): Promise<PtyProcess> {
+    if (this.closed) return Promise.reject(new Error('pty backend shutdown'));
     // Unconfigured binary (see `resolveSidecarPath`): fail with a clear, stable message instead of
     // `spawn('')`, which would surface as a confusing "sidecar exited" error on every open.
     if (!this.binaryPath) {
@@ -91,6 +95,7 @@ export class SidecarPtyBackend implements PtyBackend {
         // an unspecified shell belongs in the user's home, like a fresh terminal app tab.
         cwd: opts.cwd ?? homedir(),
         env: opts.env ?? {},
+        credit: opts.credit,
       }),
     );
     return new Promise<PtyProcess>((resolve, reject) => {
@@ -108,6 +113,8 @@ export class SidecarPtyBackend implements PtyBackend {
   }
 
   shutdown(): void {
+    if (this.closed) return;
+    this.closed = true;
     const child = this.child;
     this.child = null;
     this.decoder.reset();
@@ -130,9 +137,14 @@ export class SidecarPtyBackend implements PtyBackend {
       try {
         for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
       } catch (err) {
-        console.error(
-          `[linkcode/daemon] pty sidecar protocol error (chunk length ${chunk.length}, ${this.terminals.size} active terminal(s)):`,
-          err,
+        logger.error(
+          {
+            err,
+            operation: 'pty.decode',
+            chunkLength: chunk.length,
+            activeTerminalCount: this.terminals.size,
+          },
+          'PTY sidecar protocol error',
         );
         child.kill();
         this.onChildGone();
@@ -220,6 +232,7 @@ export class SidecarPtyBackend implements PtyBackend {
       write: (data) => this.send(INPUT, encodeDataFrame(terminalId, Buffer.from(data, 'utf8'))),
       resize: (cols, rows) =>
         this.send(RESIZE, Buffer.from(JSON.stringify({ terminalId, cols, rows }))),
+      grantRead: (bytes) => this.send(CREDIT, Buffer.from(JSON.stringify({ terminalId, bytes }))),
       kill: () => this.send(CLOSE, Buffer.from(JSON.stringify({ terminalId }))),
     };
   }
@@ -277,8 +290,9 @@ export function resolveSidecarPath(): string {
     const repoRoot = join(dirname(here), '..', '..', '..', '..');
     return join(repoRoot, 'target', 'release', binaryName());
   }
-  console.error(
-    '[linkcode/daemon] pty sidecar is not configured: set LINKCODE_PTY_SIDECAR_PATH to the built linkcode-pty binary. Terminals will be unavailable.',
+  logger.warn(
+    { operation: 'pty.resolve' },
+    'PTY sidecar is not configured; terminals will be unavailable',
   );
   return '';
 }

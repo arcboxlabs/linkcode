@@ -9,6 +9,7 @@ import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { loopIterations, loops } from './db/schema';
+import { logger } from './logger';
 
 type LoopRow = typeof loops.$inferSelect;
 type LoopIterationRow = typeof loopIterations.$inferSelect;
@@ -79,8 +80,8 @@ function parseAll<Row, T>(rows: Row[], parse: (row: Row) => T): T[] {
   for (const row of rows) {
     try {
       parsed.push(parse(row));
-    } catch (err) {
-      console.error('Dropping malformed loop row:', err);
+    } catch {
+      logger.warn({ operation: 'loop.load' }, 'Dropping malformed loop row');
     }
   }
   return parsed;

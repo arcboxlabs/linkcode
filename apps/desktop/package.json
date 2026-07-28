@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -14,8 +14,13 @@
     "stage:host-runtime": "pnpm -F @linkcode/daemon build && node scripts/stage-sidecar.mts",
     "package": "pnpm run stage:host-runtime && node scripts/build.mts && node scripts/package-app.mts",
     "package:devshell": "pnpm run stage:host-runtime && node scripts/build.mts --mode devshell && node scripts/package-app.mts --devshell",
+    "e2e:unpackaged": "pnpm -F @linkcode/daemon build && pnpm run build && node e2e/unpackaged-smoke.e2e.mts",
+    "e2e:packaged:smoke": "pnpm --dir ../.. exec tsx apps/desktop/e2e/packaged-smoke.e2e.mts",
+    "e2e:packaged": "pnpm run package:devshell && pnpm run e2e:packaged:smoke",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
+    "e2e:simulator": "node e2e/simulator-panel.e2e.mts",
+    "e2e:window-bounds": "node e2e/window-bounds.e2e.mts",
     "e2e:browser-tabs": "node e2e/browser-tabs.e2e.mts",
     "e2e:browser-broker": "node e2e/browser-broker.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"

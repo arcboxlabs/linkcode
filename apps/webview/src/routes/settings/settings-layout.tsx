@@ -1,4 +1,4 @@
-import { SettingsSidebarNav, ShellSidebar, TitleStrip } from '@linkcode/ui';
+import { SettingsPageTitle, SettingsSidebarNav, ShellSidebar } from '@linkcode/ui';
 import { filterSettingsNavGroups, useSettingsSearchKeywords } from '@linkcode/workbench';
 import {
   BellIcon,
@@ -24,6 +24,7 @@ const SETTINGS_ROUTES: Record<string, string> = {
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
+const RE_TRAILING_SLASH = /\/$/;
 
 export function SettingsLayout(): React.ReactNode {
   const t = useTranslations('settings');
@@ -117,6 +118,8 @@ export function SettingsLayout(): React.ReactNode {
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
+  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
+  const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -129,9 +132,8 @@ export function SettingsLayout(): React.ReactNode {
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
             onSearchSubmit={() => {
-              const first = visibleGroups.flatMap((group) => group.items)[0];
-              const route = first === undefined ? undefined : SETTINGS_ROUTES[first.key];
-              if (route !== undefined) void navigate(route);
+              const first = visibleGroups.flatMap((group) => group.items).at(0);
+              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key]);
             }}
             searchEmptyLabel={t('searchNoResults')}
             groups={visibleGroups}
@@ -139,14 +141,11 @@ export function SettingsLayout(): React.ReactNode {
         </ShellSidebar>
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
-        <TitleStrip className="border-border border-b">
-          <span className="min-w-0 truncate font-semibold text-sm">{t('title')}</span>
-        </TitleStrip>
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {/* The providers page is a master/detail split and needs the extra width. */}
-          <div
-            className={`mx-auto p-6 ${isActive(pathname, 'providers') ? 'max-w-5xl' : 'max-w-2xl'}`}
-          >
+          <div className="mx-auto max-w-2xl p-6">
+            {activeLabel === undefined ? null : (
+              <SettingsPageTitle>{activeLabel}</SettingsPageTitle>
+            )}
             <Outlet />
           </div>
         </div>
@@ -167,5 +166,5 @@ function isActive(
     | 'agents'
     | 'messaging',
 ): boolean {
-  return pathname.replace(/\/$/, '') === `/settings${section ? `/${section}` : ''}`;
+  return pathname.replace(RE_TRAILING_SLASH, '') === `/settings${section ? `/${section}` : ''}`;
 }

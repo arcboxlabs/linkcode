@@ -11,7 +11,7 @@ import { isAllowedBrowserUrl } from '@linkcode/ui/shell/browser';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { z } from 'zod';
 import { useDesktopShellStore } from '../store/store';
-import { getBrowserWebview } from './webview-registry';
+import { getBrowserWebviewGeneration, getReadyBrowserWebview } from './webview-registry';
 
 /** Snapshot ref marker attribute; selectors target it so refs survive without CSS-path math. */
 const REF_ATTRIBUTE = 'data-linkcode-ref';
@@ -25,7 +25,7 @@ const TypeArgsSchema = RefArgsSchema.extend({ text: z.string() });
 const EvaluateArgsSchema = TabArgsSchema.extend({ js: z.string().min(1) });
 
 interface SnapshotRecord {
-  url: string;
+  generation: number;
   refs: Set<string>;
 }
 
@@ -76,24 +76,40 @@ function listTabs(): BrowserTabInfo[] {
   }));
 }
 
-function assertTab(tabId: string): void {
+function findTab(tabId: string): BrowserTabInfo {
   const { browser } = useDesktopShellStore.getState().rightPanel;
-  if (!browser.tabs.some((tab) => tab.id === tabId)) {
+  const tab = browser.tabs.find((candidate) => candidate.id === tabId);
+  if (!tab) {
     throw new CommandError('no-such-tab', `no browser tab ${tabId}`);
   }
+  return { ...tab, active: tab.id === browser.activeTabId };
 }
 
-function requireWebview(tabId: string) {
-  assertTab(tabId);
-  const webview = getBrowserWebview(tabId);
-  // eslint-disable-next-line sukka/prefer-nullthrow -- the throw must carry a closed BrowserCommandErrorCode, which nullthrow/invariant cannot attach
-  if (!webview) {
+function assertTab(tabId: string): void {
+  findTab(tabId);
+}
+
+function assertPageTab(tabId: string): void {
+  const tab = findTab(tabId);
+  if (tab.url === null) {
     throw new CommandError(
       'no-such-tab',
       `tab ${tabId} has no page loaded yet (navigate it first)`,
     );
   }
-  return webview;
+}
+
+async function requireReadyWebview(tabId: string) {
+  assertPageTab(tabId);
+  const ready = await getReadyBrowserWebview(tabId);
+  // eslint-disable-next-line sukka/prefer-nullthrow -- the throw must carry a closed BrowserCommandErrorCode, which nullthrow/invariant cannot attach
+  if (!ready) {
+    throw new CommandError(
+      'no-such-tab',
+      `tab ${tabId} has no page loaded yet (navigate it first)`,
+    );
+  }
+  return ready;
 }
 
 /**
@@ -142,13 +158,13 @@ export class BrowserCommandExecutor {
       case 'tab.back': {
         const { tabId } = parseArgs(TabArgsSchema, args);
         this.snapshots.delete(tabId);
-        requireWebview(tabId).goBack();
+        (await requireReadyWebview(tabId)).webview.goBack();
         return null;
       }
       case 'tab.reload': {
         const { tabId } = parseArgs(TabArgsSchema, args);
         this.snapshots.delete(tabId);
-        requireWebview(tabId).reload();
+        (await requireReadyWebview(tabId)).webview.reload();
         return null;
       }
       case 'tab.close': {
@@ -174,7 +190,7 @@ export class BrowserCommandExecutor {
         return screenshot(parseArgs(TabArgsSchema, args).tabId);
       case 'tab.evaluate': {
         const { tabId, js } = parseArgs(EvaluateArgsSchema, args);
-        const webview = requireWebview(tabId);
+        const { webview } = await requireReadyWebview(tabId);
         try {
           return await webview.executeJavaScript(js);
         } catch (err) {
@@ -187,24 +203,24 @@ export class BrowserCommandExecutor {
   }
 
   private async snapshot(tabId: string): Promise<BrowserSnapshot> {
-    const webview = requireWebview(tabId);
+    const { webview, generation } = await requireReadyWebview(tabId);
     const result = (await webview.executeJavaScript(SNAPSHOT_SCRIPT).catch((err: unknown) => {
       throw new CommandError('execution-failed', extractErrorMessage(err) ?? 'snapshot failed');
     })) as BrowserSnapshot;
     this.snapshots.set(tabId, {
-      url: result.url,
+      generation,
       refs: new Set(result.nodes.map((node) => node.ref)),
     });
     return result;
   }
 
   private async runOnRef(tabId: string, ref: string, script: string): Promise<void> {
-    const webview = requireWebview(tabId);
     const record = this.snapshots.get(tabId);
     if (!record?.refs.has(ref)) {
       throw new CommandError('stale-ref', `unknown ref ${ref}; take a fresh tab.snapshot first`);
     }
-    if (webview.getURL() !== record.url) {
+    const { webview, generation } = await requireReadyWebview(tabId);
+    if (generation !== record.generation || getBrowserWebviewGeneration(tabId) !== generation) {
       this.snapshots.delete(tabId);
       throw new CommandError(
         'stale-ref',
@@ -232,7 +248,7 @@ async function screenshot(tabId: string): Promise<{ mimeType: string; base64: st
   const store = useDesktopShellStore.getState();
   store.openRightPanelSection('browser');
   store.setActiveRightBrowserTab(tabId);
-  const webview = requireWebview(tabId);
+  const { webview } = await requireReadyWebview(tabId);
   const image = await webview.capturePage();
   return { mimeType: 'image/png', base64: image.toPNG().toString('base64') };
 }

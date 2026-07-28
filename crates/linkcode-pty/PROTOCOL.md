@@ -35,6 +35,7 @@ Daemon to sidecar:
 | `0x02` | `INPUT` | binary [`DataFrame`](#data-frame-body) |
 | `0x03` | `RESIZE` | JSON [`ResizeParams`](#resize) |
 | `0x04` | `CLOSE` | JSON [`CloseParams`](#close) |
+| `0x05` | `CREDIT` | JSON [`CreditParams`](#credit) |
 
 Sidecar to daemon:
 
@@ -91,6 +92,7 @@ Fields:
 | `args` | string[] | no | Defaults to `[]`. |
 | `cwd` | string or null | no | Working directory. If omitted/null, the sidecar does not set one. |
 | `env` | object | no | Additional environment variables. Defaults to `{}`. |
+| `credit` | number or null | no | Initial [read-credit](#credit) budget in bytes (Rust `u64`). Omitted/null means unthrottled. |
 
 Behavior:
 
@@ -119,7 +121,18 @@ Behavior:
 }
 ```
 
-`CLOSE` requests termination. Cleanup is reported by the later `EXIT` frame from the reader thread when the PTY reaches EOF and the child has been reaped.
+`CLOSE` requests termination. Cleanup is reported by the later `EXIT` frame from the reader thread when the PTY reaches EOF and the child has been reaped. `CLOSE` also lifts the terminal's [read-credit](#credit) gate so a parked reader can drain to that EOF; the dying process is unthrottled from this point on.
+
+### `CREDIT`
+
+```json
+{
+  "terminalId": "term-mj7w5r-1",
+  "bytes": 65536
+}
+```
+
+Grants `bytes` of additional PTY read budget to one terminal (flow control). A terminal opened with a `credit` field reads at most its remaining budget from the PTY and parks once the budget hits zero — the kernel PTY buffer then fills and the shell's writes block, propagating backpressure into a flooding process. Terminals opened without `credit` ignore grants and stay unthrottled (compatibility with pre-credit daemons). `CREDIT` is best effort: an unknown or already-exited `terminalId` is ignored. Sidecar shutdown, like `CLOSE`, releases every gate so parked readers can reach EOF.
 
 ### `OPENED`
 

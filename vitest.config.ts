@@ -17,6 +17,9 @@ export default defineConfig({
     include: [
       'packages/**/src/**/__tests__/**/*.test.{ts,tsx}',
       'apps/**/src/**/__tests__/**/*.test.{ts,tsx}',
+      'packages/**/tests/{contract,integration}/**/*.test.{ts,tsx}',
+      'apps/**/tests/{contract,integration}/**/*.test.{ts,tsx}',
+      '.github/scripts/**/*.test.mjs',
     ],
     environment: 'node',
   },

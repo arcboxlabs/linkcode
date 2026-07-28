@@ -2,16 +2,20 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
   DAEMON_DEFAULT_PORT,
-  linkcodeStateDirName,
   ProviderConfigSchema,
-  parseProfileName,
+  SimulatorConsentStateSchema,
 } from '@linkcode/schema';
+import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
+import { logger } from './logger';
+import { daemonProfile, daemonStateDir } from './paths';
+
+export { daemonProfile } from './paths';
 
 /**
  * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
@@ -26,6 +30,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
+  simulatorConsent: SimulatorConsentState;
 }
 
 const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
@@ -37,29 +43,16 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
-}
-
-/**
- * Profile from `LINKCODE_PROFILE` (`undefined` = default): every path below — and the device
- * identity HQ sees — forks with it. Resolved per call so tests can vary the env; an invalid name
- * throws and aborts boot rather than silently landing in the default universe.
- */
-export function daemonProfile(): string | undefined {
-  return parseProfileName(process.env.LINKCODE_PROFILE);
-}
-
-/** The daemon's state directory: `~/.linkcode`, or the profile sibling `~/.linkcode-<name>`. */
-function stateDir(): string {
-  return join(homedir(), linkcodeStateDirName(daemonProfile()));
+  simulatorConsent?: unknown;
 }
 
 function configPath(): string {
-  return join(stateDir(), 'config.json');
+  return join(daemonStateDir(), 'config.json');
 }
 
 /** The daemon's SQLite database (session registry), next to config.json. */
 export function databasePath(): string {
-  return join(stateDir(), 'daemon.db');
+  return join(daemonStateDir(), 'daemon.db');
 }
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
@@ -69,17 +62,17 @@ export function runtimeFilePath(): string {
 
 /** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
 export function hqCredentialsPath(): string {
-  return join(stateDir(), 'hq.json');
+  return join(daemonStateDir(), 'hq.json');
 }
 
 /** The device's Ed25519 private key (PKCS#8 PEM), next to config.json; written 0600. */
 export function deviceKeyPath(): string {
-  return join(stateDir(), 'device-key.pem');
+  return join(daemonStateDir(), 'device-key.pem');
 }
 
 /** Hardware-wrapped device-key handles (@arcboxlabs/deviceid), next to config.json. */
 export function deviceKeysDir(): string {
-  return join(stateDir(), 'keys');
+  return join(daemonStateDir(), 'keys');
 }
 
 /**
@@ -88,7 +81,7 @@ export function deviceKeysDir(): string {
  * independently — a system-plane invariant enforced regardless of which client is connected.
  */
 export function chatWorkspaceRoot(): string {
-  return join(homedir(), 'LinkCode');
+  return join(homedir(), WORKSPACES_DIRNAME);
 }
 
 export function loadConfig(): DaemonConfig {
@@ -112,7 +105,28 @@ export function loadConfig(): DaemonConfig {
     ),
     providers: parseProviders(file.providers),
     accounts: parseAccounts(file.accounts),
+    simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
+}
+
+/**
+ * A malformed blob falls back to "nothing decided yet", which re-asks rather than silently
+ * granting: consent is the one field where losing state must fail closed.
+ */
+function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
+  const empty: SimulatorConsentState = { entries: [], agentToolsEnabled: true };
+  if (raw === undefined) return empty;
+  const parsed = SimulatorConsentStateSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn({ operation: 'config.load' }, 'Dropping invalid simulator consent config');
+    return empty;
+  }
+  return parsed.data;
+}
+
+/** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
+export function saveSimulatorConsent(state: SimulatorConsentState): void {
+  writeConfigField('simulatorConsent', state);
 }
 
 /**
@@ -122,14 +136,14 @@ export function loadConfig(): DaemonConfig {
 function parseAccounts(raw: unknown): Accounts {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
-    console.error('Invalid accounts config: expected an array, got', raw);
+    logger.warn({ operation: 'config.load' }, 'Invalid accounts config: expected an array');
     return [];
   }
   const accounts: Accounts = [];
   for (const value of raw) {
     const account = AccountSchema.safeParse(value);
     if (!account.success) {
-      console.error('Invalid account config, dropping entry:', account.error);
+      logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
     }
     accounts.push(account.data);
@@ -144,19 +158,22 @@ function parseAccounts(raw: unknown): Accounts {
 function parseProviders(raw: unknown): ProvidersConfig {
   if (raw === undefined) return {};
   if (!isRecord(raw)) {
-    console.error('Invalid providers config: expected an object, got', raw);
+    logger.warn({ operation: 'config.load' }, 'Invalid providers config: expected an object');
     return {};
   }
   const providers: ProvidersConfig = {};
   for (const [key, value] of Object.entries(raw)) {
     const kind = AgentKindSchema.safeParse(key);
     if (!kind.success) {
-      console.error(`Invalid providers config: unknown agent kind "${key}"`, kind.error);
+      logger.warn(
+        { agentKind: key, operation: 'config.load' },
+        'Dropping config for unknown agent kind',
+      );
       continue;
     }
     const config = ProviderConfigSchema.safeParse(value);
     if (!config.success) {
-      console.error(`Invalid providers config for "${key}":`, config.error);
+      logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;
     }
     providers[kind.data] = config.data;
@@ -175,7 +192,10 @@ export function saveAccounts(accounts: Accounts): void {
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
+function writeConfigField(
+  key: 'providers' | 'accounts' | 'simulatorConsent',
+  value: unknown,
+): void {
   const path = configPath();
   let file: Record<string, unknown> = {};
   try {

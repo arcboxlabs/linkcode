@@ -1,0 +1,35 @@
+{
+  "name": "@linkcode/assets",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate:pi-closure": "tsx scripts/generate-pi-closure.mts",
+    "lint": "eslint --format=sukka ."
+  },
+  "dependencies": {
+    "@linkcode/schema": "workspace:*",
+    "foxts": "^5.8.0",
+    "mac-system-proxy": "^1.0.4",
+    "make-fetch-happen": "^16.0.1",
+    "p-map": "^7.0.5",
+    "semver": "^7.8.5",
+    "ssri": "^14.0.0",
+    "tar": "^7.5.20",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/make-fetch-happen": "^10.0.4",
+    "@types/node": "catalog:",
+    "@types/semver": "^7.7.1",
+    "@types/ssri": "^7.1.5",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "^2.9.0"
+  }
+}

@@ -1,7 +1,7 @@
 import type { UpdaterStatus } from '@linkcode/ipc';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
@@ -20,7 +20,7 @@ export function AboutTab(): React.ReactNode {
   const [version, setVersion] = useState('');
   const [status, setStatus] = useState<UpdaterStatus>('idle');
 
-  useAbortableEffect((signal) => {
+  useEffect((signal) => {
     void systemBridge.app.version().then((value) => {
       if (!signal.aborted) setVersion(value);
     });

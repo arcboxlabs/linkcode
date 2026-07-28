@@ -475,30 +475,36 @@ function DefaultLeftChromeControls({
   const t = useTranslations('workbench.palette');
 
   return (
-    <>
+    // The sidebar toggle and the history pair are separate groups: sectionGap between
+    // them, controlGap within the pair.
+    <div className="flex h-full items-center gap-(--lc-chrome-section-gap)">
       <ShellIconButton
         label={t('toggleSidebar')}
         shortcut={sidebarShortcut}
         aria-pressed={sidebarOpen}
+        className={sidebarOpen ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
+        data-pressed={sidebarOpen ? '' : undefined}
         onClick={sidebarOpen ? onHideSidebar : onShowSidebar}
       >
         <PanelLeftIcon className="size-4" />
       </ShellIconButton>
-      <ShellIconButton
-        label={t('goBack')}
-        disabled={navigation?.canGoBack !== true}
-        onClick={navigation?.onBack}
-      >
-        <ChevronLeftIcon className="size-4" />
-      </ShellIconButton>
-      <ShellIconButton
-        label={t('goForward')}
-        disabled={navigation?.canGoForward !== true}
-        onClick={navigation?.onForward}
-      >
-        <ChevronRightIcon className="size-4" />
-      </ShellIconButton>
-    </>
+      <div className="flex items-center gap-(--lc-chrome-control-gap)">
+        <ShellIconButton
+          label={t('goBack')}
+          disabled={navigation?.canGoBack !== true}
+          onClick={navigation?.onBack}
+        >
+          <ChevronLeftIcon className="size-4" />
+        </ShellIconButton>
+        <ShellIconButton
+          label={t('goForward')}
+          disabled={navigation?.canGoForward !== true}
+          onClick={navigation?.onForward}
+        >
+          <ChevronRightIcon className="size-4" />
+        </ShellIconButton>
+      </div>
+    </div>
   );
 }
 

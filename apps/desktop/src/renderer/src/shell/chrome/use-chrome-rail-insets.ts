@@ -48,9 +48,10 @@ function setRailInset(
   contentElement: HTMLElement | null,
 ): void {
   const contentWidth = contentElement?.getBoundingClientRect().width ?? 0;
+  // sectionGap, not controlGap: the rail and the segment content are separate groups.
   const inset =
     contentWidth > 0
-      ? DESKTOP_CHROME_METRICS.edgePadding + contentWidth + DESKTOP_CHROME_METRICS.controlGap
+      ? DESKTOP_CHROME_METRICS.edgePadding + contentWidth + DESKTOP_CHROME_METRICS.sectionGap
       : DESKTOP_CHROME_METRICS.edgePadding;
 
   root.style.setProperty(property, `${inset}px`);

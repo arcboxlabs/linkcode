@@ -17,6 +17,7 @@ import { wait } from 'foxts/wait';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 import { io } from 'socket.io-client';
+import { WIRE_VERSION } from './wire-version.mts';
 
 const require = createRequire(import.meta.url);
 const desktopDir = resolve(import.meta.dirname, '..');
@@ -25,8 +26,6 @@ const electronBinary = require('electron') as unknown as string;
 
 const PORT = 45000 + (process.pid % 1000);
 const PROFILE = `e2e-broker-${process.pid}`;
-/** Must match packages/schema/src/wire (Invariant 1 — a drift silently drops every frame). */
-const WIRE_VERSION = 38;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -148,10 +147,9 @@ async function main(): Promise<void> {
       env: { ...process.env, HOME: home, LINKCODE_PROFILE: PROFILE },
     });
     const win = await app.firstWindow();
-    await win.locator('textarea').first().waitFor({ state: 'visible', timeout: 30000 });
-    // Give the workbench a beat to register itself as the browser host.
-    await win.waitForTimeout(2000);
-
+    await win
+      .locator('[data-slot="composer-editor"][contenteditable="true"]')
+      .waitFor({ state: 'visible', timeout: 30000 });
     client = createWireClient();
     client.send({ kind: 'ping' });
     await client.next((payload) => payload.kind === 'pong');
@@ -170,13 +168,19 @@ async function main(): Promise<void> {
     const activeTabId = active.id;
     console.log(`tabs.open round-tripped through the desktop executor (${tabs.length} tabs)`);
 
-    // Let the new tab's webview mount (it registers with the executor on render).
-    await wait(2000);
     const invalid = await execute(client, 'r-bad', 'tab.click', { tabId: activeTabId, ref: '@e1' });
     if (invalid.ok !== false) fail('tab.click without a snapshot should fail');
     const error = invalid.error as { code: string };
     if (error.code !== 'stale-ref') fail(`expected stale-ref, got ${JSON.stringify(error)}`);
     console.log('ref discipline enforced (stale-ref without a snapshot)');
+
+    const snapshot = await execute(client, 'r-snapshot', 'tab.snapshot', { tabId: activeTabId });
+    if (snapshot.ok !== true) fail(`tab.snapshot failed: ${JSON.stringify(snapshot)}`);
+    const snapshotData = snapshot.data as { url: string; title: string };
+    if (!snapshotData.url.startsWith('https://example.com/')) {
+      fail(`snapshot did not observe example.com: ${JSON.stringify(snapshotData)}`);
+    }
+    console.log(`webview ready (${snapshotData.title})`);
 
     // Quit the desktop: the broker must degrade to the closed host-unavailable code.
     await app.close();

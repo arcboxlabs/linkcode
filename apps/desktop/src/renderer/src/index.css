@@ -42,6 +42,31 @@
   --lc-shell-sidebar-divider: color-mix(in srgb, var(--foreground) 20%, var(--background));
 }
 
+/*
+ * Seam depth over the divider: the opaque content reads as slightly raised over the
+ * recessed translucent sidebar. Light casts a soft ambient shadow into the sidebar; dark
+ * lights the content's near edge instead, since a dark-on-dark shadow is invisible.
+ * `data-shell-seam` ties this to the sidebar border's lifecycle; inset so the cells'
+ * overflow-hidden can't clip it.
+ */
+.linkcode-desktop-shell {
+  --lc-shell-seam-shadow: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --lc-shell-seam-highlight: transparent;
+}
+
+.dark .linkcode-desktop-shell {
+  --lc-shell-seam-shadow: transparent;
+  --lc-shell-seam-highlight: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.linkcode-desktop-shell[data-shell-seam] [data-shell-pane="sidebar"] {
+  box-shadow: inset -10px 0 12px -10px var(--lc-shell-seam-shadow);
+}
+
+.linkcode-desktop-shell[data-shell-seam] [data-shell-pane="main"] {
+  box-shadow: inset 2px 0 2px -1px var(--lc-shell-seam-highlight);
+}
+
 .linkcode-chrome-grid,
 .linkcode-shell-grid {
   /* Keep in sync with the pane minima in shell/store/model.ts. A closed pane writes 0,

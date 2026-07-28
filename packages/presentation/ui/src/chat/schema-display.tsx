@@ -1,0 +1,424 @@
+import { Badge } from 'coss-ui/components/badge';
+import { Card } from 'coss-ui/components/card';
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { cn } from '../lib/cn';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+} from './disclosure-header';
+
+const PATH_PARAM_RE = /\{[^}]+\}/g;
+
+// TODO(linkcode-schema): Provisional UI-only schema endpoint model, not yet wired to daemon/client schema.
+// Move or replace with @linkcode/schema types when tools expose structured API/schema metadata.
+export interface ChatSchemaEndpoint {
+  id: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  description?: string;
+  parameters?: ChatSchemaParameter[];
+  requestBody?: ChatSchemaProperty[];
+  responseBody?: ChatSchemaProperty[];
+}
+
+export interface ChatSchemaParameter {
+  id: string;
+  name: string;
+  type: string;
+  required?: boolean;
+  description?: string;
+  location?: 'path' | 'query' | 'header';
+}
+
+export interface ChatSchemaProperty {
+  id: string;
+  name: string;
+  type: string;
+  required?: boolean;
+  description?: string;
+  properties?: ChatSchemaProperty[];
+  items?: ChatSchemaProperty;
+}
+
+export type SchemaDisplayProps = React.ComponentProps<'div'> & {
+  endpoint: ChatSchemaEndpoint;
+};
+
+export function SchemaDisplay({
+  className,
+  endpoint,
+  children,
+  ...props
+}: SchemaDisplayProps): React.ReactNode {
+  return (
+    <Card className={cn('my-2 overflow-hidden text-sm', className)} {...props}>
+      {children ?? (
+        <>
+          <SchemaDisplayHeader endpoint={endpoint} />
+          {endpoint.description ? (
+            <SchemaDisplayDescription>{endpoint.description}</SchemaDisplayDescription>
+          ) : null}
+          <SchemaDisplayBody>
+            {endpoint.parameters && endpoint.parameters.length > 0 ? (
+              <SchemaDisplayParameters parameters={endpoint.parameters} />
+            ) : null}
+            {endpoint.requestBody && endpoint.requestBody.length > 0 ? (
+              <SchemaDisplayProperties label="Request Body" properties={endpoint.requestBody} />
+            ) : null}
+            {endpoint.responseBody && endpoint.responseBody.length > 0 ? (
+              <SchemaDisplayProperties label="Response" properties={endpoint.responseBody} />
+            ) : null}
+          </SchemaDisplayBody>
+        </>
+      )}
+    </Card>
+  );
+}
+
+export type SchemaDisplayHeaderProps = React.ComponentProps<'div'> & {
+  endpoint: ChatSchemaEndpoint;
+};
+
+export function SchemaDisplayHeader({
+  className,
+  endpoint,
+  children,
+  ...props
+}: SchemaDisplayHeaderProps): React.ReactNode {
+  return (
+    <div
+      className={cn('flex min-w-0 items-center gap-2 border-b border-border px-3 py-2', className)}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <SchemaDisplayMethod method={endpoint.method} />
+          <SchemaDisplayPath path={endpoint.path} />
+        </>
+      )}
+    </div>
+  );
+}
+
+export type SchemaDisplayMethodProps = React.ComponentProps<typeof Badge> & {
+  method: ChatSchemaEndpoint['method'];
+};
+
+export function SchemaDisplayMethod({
+  className,
+  method,
+  children,
+  ...props
+}: SchemaDisplayMethodProps): React.ReactNode {
+  return (
+    <Badge className={cn('font-mono', className)} variant={methodVariant(method)} {...props}>
+      {children ?? method}
+    </Badge>
+  );
+}
+
+export type SchemaDisplayPathProps = React.ComponentProps<'div'> & {
+  path: string;
+};
+
+export function SchemaDisplayPath({
+  className,
+  path,
+  children,
+  ...props
+}: SchemaDisplayPathProps): React.ReactNode {
+  return (
+    <div className={cn('min-w-0 truncate font-mono text-foreground', className)} {...props}>
+      {children ?? renderPath(path)}
+    </div>
+  );
+}
+
+export type SchemaDisplayDescriptionProps = React.ComponentProps<'div'>;
+
+export function SchemaDisplayDescription({
+  className,
+  ...props
+}: SchemaDisplayDescriptionProps): React.ReactNode {
+  return (
+    <div
+      className={cn('border-b border-border px-3 py-2 text-muted-foreground', className)}
+      {...props}
+    />
+  );
+}
+
+export type SchemaDisplayBodyProps = React.ComponentProps<'div'>;
+
+export function SchemaDisplayBody({
+  className,
+  ...props
+}: SchemaDisplayBodyProps): React.ReactNode {
+  return <div className={cn('divide-y divide-border', className)} {...props} />;
+}
+
+export type SchemaDisplayParametersProps = React.ComponentProps<typeof Collapsible> & {
+  parameters: readonly ChatSchemaParameter[];
+};
+
+export function SchemaDisplayParameters({
+  className,
+  parameters,
+  children,
+  defaultOpen = true,
+  ...props
+}: SchemaDisplayParametersProps): React.ReactNode {
+  return (
+    <Collapsible className={className} defaultOpen={defaultOpen} {...props}>
+      {children ?? (
+        <>
+          <SchemaDisplaySectionTrigger count={parameters.length} label="Parameters" />
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
+            {parameters.map((parameter) => (
+              <SchemaDisplayParameter key={parameter.id} parameter={parameter} />
+            ))}
+          </ChatDisclosureContent>
+        </>
+      )}
+    </Collapsible>
+  );
+}
+
+export type SchemaDisplayParameterProps = React.ComponentProps<'div'> & {
+  parameter: ChatSchemaParameter;
+};
+
+export function SchemaDisplayParameter({
+  className,
+  parameter,
+  children,
+  ...props
+}: SchemaDisplayParameterProps): React.ReactNode {
+  return (
+    <div className={cn('px-8 py-2', className)} {...props}>
+      {children ?? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-foreground">{parameter.name}</span>
+            <Badge variant="outline">{parameter.type}</Badge>
+            {parameter.location ? <Badge variant="secondary">{parameter.location}</Badge> : null}
+            {parameter.required ? <Badge variant="error">required</Badge> : null}
+          </div>
+          {parameter.description ? (
+            <div className="mt-1 text-xs text-muted-foreground">{parameter.description}</div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+export type SchemaDisplayPropertiesProps = React.ComponentProps<typeof Collapsible> & {
+  label: string;
+  properties: readonly ChatSchemaProperty[];
+};
+
+export function SchemaDisplayProperties({
+  className,
+  label,
+  properties,
+  children,
+  defaultOpen = true,
+  ...props
+}: SchemaDisplayPropertiesProps): React.ReactNode {
+  return (
+    <Collapsible className={className} defaultOpen={defaultOpen} {...props}>
+      {children ?? (
+        <>
+          <SchemaDisplaySectionTrigger count={properties.length} label={label} />
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+          >
+            {properties.map((schemaProperty) => (
+              <SchemaDisplayProperty key={schemaProperty.id} schemaProperty={schemaProperty} />
+            ))}
+          </ChatDisclosureContent>
+        </>
+      )}
+    </Collapsible>
+  );
+}
+
+export type SchemaDisplayPropertyProps = React.ComponentProps<'div'> & {
+  schemaProperty: ChatSchemaProperty;
+  depth?: number;
+};
+
+export function SchemaDisplayProperty({
+  className,
+  schemaProperty,
+  depth = 0,
+  children,
+  ...props
+}: SchemaDisplayPropertyProps): React.ReactNode {
+  const hasChildren = Boolean(schemaProperty.properties?.length || schemaProperty.items);
+  const paddingLeft = `${2 + depth}rem`;
+
+  if (hasChildren) {
+    return (
+      <Collapsible defaultOpen={depth < 2}>
+        <div className={className} {...props}>
+          <CollapsibleTrigger
+            className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full py-2 pr-3 hover:bg-muted')}
+            style={{ paddingLeft }}
+          >
+            <SchemaPropertySummary schemaProperty={schemaProperty} />
+            <ChatDisclosureChevron />
+          </CollapsibleTrigger>
+          {schemaProperty.description ? (
+            <div className="pb-2 text-xs text-muted-foreground" style={{ paddingLeft }}>
+              {schemaProperty.description}
+            </div>
+          ) : null}
+          <ChatDisclosureContent
+            bodyClassName="divide-y divide-border"
+            className="border-t border-border"
+            constrainHeight={false}
+          >
+            {children ??
+              schemaProperty.properties?.map((child) => (
+                <SchemaDisplayProperty key={child.id} depth={depth + 1} schemaProperty={child} />
+              ))}
+            {schemaProperty.items ? (
+              <SchemaDisplayProperty depth={depth + 1} schemaProperty={schemaProperty.items} />
+            ) : null}
+          </ChatDisclosureContent>
+        </div>
+      </Collapsible>
+    );
+  }
+
+  return (
+    <div className={cn('py-2 pr-3', className)} style={{ paddingLeft }} {...props}>
+      {children ?? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <SchemaPropertySummary schemaProperty={schemaProperty} />
+          </div>
+          {schemaProperty.description ? (
+            <div className="mt-1 pl-5 text-xs text-muted-foreground">
+              {schemaProperty.description}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+export type SchemaDisplayExampleProps = React.ComponentProps<'pre'>;
+
+export function SchemaDisplayExample({
+  className,
+  ...props
+}: SchemaDisplayExampleProps): React.ReactNode {
+  return (
+    <pre
+      className={cn('m-3 overflow-auto rounded-md bg-muted p-3 font-mono text-xs', className)}
+      {...props}
+    />
+  );
+}
+
+function SchemaDisplaySectionTrigger({
+  label,
+  count,
+}: {
+  label: string;
+  count?: number;
+}): React.ReactNode {
+  return (
+    <CollapsibleTrigger
+      className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'w-full px-3 py-2 hover:bg-muted')}
+    >
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>{label}</span>
+      </span>
+      {typeof count === 'number' ? (
+        <Badge className="shrink-0" variant="secondary">
+          {count}
+        </Badge>
+      ) : null}
+      <ChatDisclosureChevron />
+    </CollapsibleTrigger>
+  );
+}
+
+function SchemaPropertySummary({
+  schemaProperty,
+}: {
+  schemaProperty: ChatSchemaProperty;
+}): React.ReactNode {
+  return (
+    <>
+      <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+        <span className={cn(CHAT_DISCLOSURE_TITLE_CLASS_NAME, 'font-mono')}>
+          {schemaProperty.name}
+        </span>
+      </span>
+      <Badge className="shrink-0" variant="outline">
+        {schemaProperty.type}
+      </Badge>
+      {schemaProperty.required ? (
+        <Badge className="shrink-0" variant="error">
+          required
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
+function renderPath(path: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+
+  for (const match of path.matchAll(PATH_PARAM_RE)) {
+    const index = match.index;
+    if (index > cursor) {
+      parts.push(<span key={`text-${cursor}`}>{path.slice(cursor, index)}</span>);
+    }
+    const value = match[0];
+    parts.push(
+      <span key={`param-${index}`} className="text-info-foreground">
+        {value}
+      </span>,
+    );
+    cursor = index + value.length;
+  }
+
+  if (cursor < path.length) {
+    parts.push(<span key={`text-${cursor}`}>{path.slice(cursor)}</span>);
+  }
+
+  return parts.length > 0 ? parts : path;
+}
+
+function methodVariant(
+  method: ChatSchemaEndpoint['method'],
+): React.ComponentProps<typeof Badge>['variant'] {
+  switch (method) {
+    case 'GET':
+      return 'success';
+    case 'DELETE':
+      return 'error';
+    case 'POST':
+      return 'info';
+    case 'PUT':
+    case 'PATCH':
+      return 'warning';
+    default:
+      return 'secondary';
+  }
+}

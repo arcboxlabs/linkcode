@@ -14,13 +14,15 @@ export const CHROME_TARGET = 'chrome148';
 // the bundle resolves to .ts under app.asar/node_modules and crashes on launch
 // (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Derived from package.json so a new workspace
 // import can never be missed; everything else in `dependencies` stays external.
+const ELECTRON_SUBPATH_RE = /^electron\/.+/;
+
 export function nodeExternals(alsoBundle: readonly string[] = []): Array<string | RegExp> {
   const external = Object.entries(dependencies).flatMap(([name, version]) =>
     version.startsWith('workspace:') || alsoBundle.includes(name) ? [] : [name],
   );
   return [
     'electron',
-    /^electron\/.+/,
+    ELECTRON_SUBPATH_RE,
     ...builtinModules.flatMap((m) => [m, `node:${m}`]),
     ...external,
     new RegExp(`^(${external.join('|')})/`),

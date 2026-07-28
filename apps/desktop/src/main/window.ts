@@ -1,10 +1,11 @@
 import { release } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { BrowserDownloadDone } from '@linkcode/ipc';
+import type { BrowserDownloadDone, BrowserShortcutAction } from '@linkcode/ipc';
 import {
   BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
+  BROWSER_SHORTCUT_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   UPDATER_STATUS_CHANNEL,
 } from '@linkcode/ipc';
@@ -20,6 +21,12 @@ import { APP_NAME } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { systemContextFor } from './system-context';
 import { onUpdaterStatus } from './updater';
+import {
+  deriveDefaultWindowSize,
+  MIN_WINDOW_SIZE,
+  persistWindowStateOnClose,
+  readWindowState,
+} from './window-state';
 
 /** Must match the renderer's Browser-pane `<webview partition>`. */
 const BROWSER_PARTITION = 'persist:linkcode-browser';
@@ -61,21 +68,20 @@ export function createDesktopWindow(): BrowserWindow {
 }
 
 function createWindow(): BrowserWindow {
+  const restored = readWindowState();
   const win = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 940,
-    minHeight: 600,
-    center: true,
+    ...(restored ? restored.bounds : { ...deriveDefaultWindowSize(), center: true }),
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     icon,
     title: APP_NAME,
     titleBarStyle: 'hidden',
     // macOS 26 Tahoe (Darwin ≥ 25) shrank the traffic-light frame height 16pt → 14pt (same fix as
-    // microsoft/vscode#279769); y = floor((48 − frameHeight) / 2) centers the buttons on the 48px
+    // microsoft/vscode#279769); y = floor((40 − frameHeight) / 2) centers the buttons on the 40px
     // chrome bar (renderer DESKTOP_CHROME_METRICS.height).
     ...(process.platform === 'darwin' && {
-      trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 17 : 16 },
+      trafficLightPosition: { x: 16, y: Number.parseFloat(release()) >= 25 ? 13 : 12 },
     }),
     ...desktopBackdropOptions(),
     webPreferences: {
@@ -91,10 +97,17 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  persistWindowStateOnClose(win);
   const updateBackgroundColor = (): void => {
     win.setBackgroundColor(desktopBackgroundColor());
   };
-  win.on('ready-to-show', () => win.show());
+  win.on('ready-to-show', () => {
+    // Display-state restore waits for first show: maximize() on a hidden window shows it early
+    // on Windows, and setFullScreen must not race the initial paint.
+    if (restored?.maximized) win.maximize();
+    if (restored?.fullScreen) win.setFullScreen(true);
+    win.show();
+  });
   nativeTheme.on('updated', updateBackgroundColor);
   win.on('closed', () => nativeTheme.off('updated', updateBackgroundColor));
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -128,6 +141,12 @@ function createWindow(): BrowserWindow {
       if (isHttpUrl(url) && !win.isDestroyed()) win.webContents.send(BROWSER_OPEN_TAB_CHANNEL, url);
       return { action: 'deny' };
     });
+    guest.on('before-input-event', (event, input) => {
+      const action = browserShortcutAction(input);
+      if (action === null || win.isDestroyed()) return;
+      event.preventDefault();
+      win.webContents.send(BROWSER_SHORTCUT_CHANNEL, action);
+    });
   });
 
   void loadRenderer(win);
@@ -141,6 +160,39 @@ function isHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function browserShortcutAction(input: Electron.Input): BrowserShortcutAction | null {
+  const primary =
+    process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+  if (
+    !primary ||
+    input.type !== 'keyDown' ||
+    input.isAutoRepeat ||
+    input.isComposing ||
+    input.alt
+  ) {
+    return null;
+  }
+  if ((input.code === 'KeyF' || input.key.toLowerCase() === 'f') && !input.shift) return 'find';
+  if (
+    input.code === 'Equal' ||
+    input.code === 'NumpadAdd' ||
+    input.key === '=' ||
+    input.key === '+'
+  ) {
+    return 'zoom-in';
+  }
+  if (
+    (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') &&
+    !input.shift
+  ) {
+    return 'zoom-out';
+  }
+  if ((input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') && !input.shift) {
+    return 'zoom-reset';
+  }
+  return null;
 }
 
 /** Mirrors {@link loadRenderer}'s allowed targets: the dev server origin, or the packaged entry file. */

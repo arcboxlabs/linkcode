@@ -1,0 +1,50 @@
+import type { GitRemoteIdentity } from '@linkcode/schema';
+
+/** Hosts that resolve to a hosting provider. Adding GitLab/Bitbucket (or self-hosted instances)
+ * starts by extending this map — the schema vocabulary and provider seam are already in place. */
+const PROVIDER_BY_HOST: Record<string, GitRemoteIdentity['provider']> = {
+  'github.com': 'github',
+  'ssh.github.com': 'github',
+};
+
+const LEADING_SLASHES_RE = /^\/+/;
+const TRAILING_SLASHES_RE = /\/+$/;
+const GIT_SUFFIX_RE = /\.git$/;
+
+/** Parse a git remote URL (scp-like, `ssh://`, `git://`, or `http(s)://`) into a provider identity;
+ * null when the host is not a supported provider or the path is not exactly `owner/repo`. */
+export function parseRemoteIdentity(url: string): GitRemoteIdentity | null {
+  const location = parseRemoteLocation(url.trim());
+  if (!location) return null;
+  const provider = PROVIDER_BY_HOST[location.host];
+  if (!provider) return null;
+
+  const path = location.path
+    .replace(LEADING_SLASHES_RE, '')
+    .replace(TRAILING_SLASHES_RE, '')
+    .replace(GIT_SUFFIX_RE, '');
+  const segments = path.split('/');
+  if (segments.length !== 2 || segments.some((segment) => segment.length === 0)) return null;
+
+  return { provider, host: location.host, owner: segments[0], repo: segments[1] };
+}
+
+// scp-like syntax has no scheme: user@host:path
+const SCP_LIKE_REMOTE = /^[^@/]+@([^:/]+):(.+)$/;
+
+const REMOTE_PROTOCOLS = new Set(['https:', 'http:', 'ssh:', 'git:']);
+
+function parseRemoteLocation(url: string): { host: string; path: string } | null {
+  const scpLike = SCP_LIKE_REMOTE.exec(url);
+  if (scpLike) return { host: scpLike[1].toLowerCase(), path: scpLike[2] };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (!REMOTE_PROTOCOLS.has(parsed.protocol)) return null;
+  if (parsed.hostname.length === 0) return null;
+  return { host: parsed.hostname.toLowerCase(), path: parsed.pathname };
+}

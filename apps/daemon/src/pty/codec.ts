@@ -10,6 +10,7 @@ export const OPEN = 0x01;
 export const INPUT = 0x02;
 export const RESIZE = 0x03;
 export const CLOSE = 0x04;
+export const CREDIT = 0x05;
 // Sidecar → daemon.
 export const OPENED = 0x81;
 export const OUTPUT = 0x82;

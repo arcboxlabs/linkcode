@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   app: {
     isPackaged: true,
     on: vi.fn(),
+    quit: vi.fn(),
     // constants.ts resolves the profile at import time (supervisor → constants).
     commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
   },
@@ -22,8 +23,7 @@ const mocks = vi.hoisted(() => ({
   existsSync: vi.fn((path: unknown) => {
     const s = String(path);
     if (s.endsWith('instrument.mjs')) return mocks.instrumentPresent;
-    // Sidecar absence is fine in these tests (supervisor only warns).
-    if (s.includes('linkcode-pty')) return false;
+    // Everything else, the PTY sidecar included, reads as absent — fine here (supervisor only warns).
     return false;
   }),
 }));
@@ -52,6 +52,7 @@ interface FakeUtilityProcess {
   stderr: PassThrough;
   kill: ReturnType<typeof vi.fn>;
   on(event: 'exit', listener: (code: number) => void): FakeUtilityProcess;
+  once(event: 'exit', listener: (code: number) => void): FakeUtilityProcess;
   emitExit(code: number): void;
 }
 
@@ -60,19 +61,28 @@ let runtimeChanged: (() => void) | null;
 let children: FakeUtilityProcess[];
 
 function fakeUtilityProcess(): FakeUtilityProcess {
-  let exitListener: ((code: number) => void) | null = null;
+  const exitListeners: Array<(code: number) => void> = [];
   return {
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     kill: vi.fn(),
     on(_event, listener) {
-      exitListener = listener;
+      exitListeners.push(listener);
       return this;
     },
+    once(event, listener) {
+      return this.on(event, listener);
+    },
     emitExit(code) {
-      exitListener?.(code);
+      for (const listener of exitListeners) listener(code);
     },
   };
+}
+
+function beforeQuit(): (event: { preventDefault: () => void }) => void {
+  const registered = mocks.app.on.mock.calls.find(([event]) => event === 'before-quit');
+  if (!registered) throw new Error('supervisor did not register a before-quit handler');
+  return registered[1] as (event: { preventDefault: () => void }) => void;
 }
 
 async function startSupervisor(): Promise<typeof import('../daemon-supervisor')> {
@@ -151,6 +161,36 @@ describe('daemon supervisor recovery', () => {
     vi.advanceTimersByTime(1000);
 
     expect(children).toHaveLength(1);
+  });
+
+  it('holds the quit until the SIGTERMed daemon has exited', async () => {
+    await startSupervisor();
+    const preventDefault = vi.fn();
+
+    beforeQuit()({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(children[0].kill).toHaveBeenCalledTimes(1);
+    expect(mocks.app.quit).not.toHaveBeenCalled();
+
+    children[0].emitExit(0);
+    expect(mocks.app.quit).toHaveBeenCalledTimes(1);
+
+    // The re-quit must run to completion — no second drain, no respawn.
+    beforeQuit()({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(children).toHaveLength(1);
+  });
+
+  it('quits anyway when the daemon overruns its drain grace', async () => {
+    await startSupervisor();
+    const preventDefault = vi.fn();
+
+    beforeQuit()({ preventDefault });
+    vi.advanceTimersByTime(5000);
+
+    expect(mocks.app.quit).toHaveBeenCalledTimes(1);
+    expect(mocks.log.warn).toHaveBeenCalledWith(expect.stringContaining('did not drain in time'));
   });
 
   it('preloads instrument.mjs when present and leaves DSN unset without a signed-build inject', async () => {

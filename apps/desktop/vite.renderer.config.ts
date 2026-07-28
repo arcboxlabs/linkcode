@@ -14,6 +14,9 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? './' : '/',
   envDir: __dirname,
   envPrefix: ['RENDERER_VITE_', 'VITE_'],
+  define: {
+    __LINKCODE_SENTRY_ENABLED__: JSON.stringify(Boolean(process.env.MAIN_VITE_SENTRY_DSN)),
+  },
   plugins: [
     react(),
     // plugin-react 6 dropped its built-in babel pass; React Compiler runs via rolldown's babel

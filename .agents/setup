@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "==> Installing native build prerequisites"
+sudo apt-get update -qq
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+  build-essential \
+  ca-certificates \
+  curl \
+  dbus-x11 \
+  libasound2 \
+  libatk-bridge2.0-0 \
+  libdrm2 \
+  libgbm1 \
+  libgtk-3-0 \
+  libnss3 \
+  libxkbcommon0 \
+  libxss1 \
+  novnc \
+  pkg-config \
+  python3 \
+  websockify \
+  x11vnc \
+  xauth \
+  xz-utils \
+  xvfb
+
+if [ ! -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  echo "==> Installing Nix"
+  curl --proto '=https' --tlsv1.2 -fsSL https://artifacts.nixos.org/nix-installer \
+    | sh -s -- install --no-confirm
+fi
+
+. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+export PATH="$HOME/.nix-profile/bin:$PATH"
+
+if ! nix --extra-experimental-features nix-command store info >/dev/null 2>&1; then
+  echo "Nix is present but unusable; the installation may be incomplete." >&2
+  echo "Run /nix/nix-installer uninstall --no-confirm, then rerun .agents/setup." >&2
+  exit 1
+fi
+
+if ! command -v devenv >/dev/null 2>&1; then
+  echo "==> Installing devenv"
+  nixpkgs_revision="$(python3 -c 'import json; print(json.load(open("devenv.lock"))["nodes"]["nixpkgs-src"]["locked"]["rev"])')"
+  nix-env --install --attr devenv \
+    -f "https://github.com/NixOS/nixpkgs/archive/${nixpkgs_revision}.tar.gz"
+fi
+
+echo "==> Installing JavaScript dependencies"
+devenv shell -- pnpm install --frozen-lockfile
+
+echo "==> Ensuring the Electron runtime is downloaded"
+devenv shell -- pnpm exec electron --version >/dev/null
+
+echo "==> Fetching Rust dependencies"
+devenv shell -- cargo fetch --locked
+
+echo "==> Building the terminal PTY sidecar"
+devenv shell -- pnpm -F @linkcode/daemon run build:rust
+
+echo "==> Building the daemon bundle required by Electron development"
+devenv shell -- pnpm -F @linkcode/daemon run build
+
+echo "==> Starting supervised Orb development services"
+amp orb services ensure
+
+echo "==> Orb setup complete"

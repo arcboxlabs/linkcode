@@ -1,0 +1,28 @@
+services:
+  linkcode-daemon:
+    command: >-
+      . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh;
+      export PATH="$HOME/.nix-profile/bin:$PATH";
+      export LINKCODE_PROFILE=orb;
+      export LINKCODE_PTY_SIDECAR_PATH="$PWD/target/release/linkcode-pty";
+      exec devenv shell -- pnpm -F @linkcode/daemon run dev
+
+  linkcode-desktop-vnc:
+    command: >-
+      . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh;
+      export PATH="$HOME/.nix-profile/bin:$PATH";
+      exec devenv shell -- .agents/orb/desktop-vnc
+    access: same-as-thread
+    portal:
+      title: LinkCode Electron Desktop
+      description: Interactive 1440x900 Electron desktop with high-quality noVNC scaling.
+
+  linkcode-devtools:
+    command: >-
+      . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh;
+      export PATH="$HOME/.nix-profile/bin:$PATH";
+      exec devenv shell -- node .agents/orb/cdp-proxy.cjs
+    access: same-as-thread
+    portal:
+      title: LinkCode DevTools
+      description: Chrome DevTools for the Electron renderer.

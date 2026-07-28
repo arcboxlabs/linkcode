@@ -1,5 +1,5 @@
-import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
-import { useRouter } from 'expo-router';
+import { EmptyState, ScreenScroll, SectionLabel } from '@linkcode/ui/native';
+import { Stack, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { Button, Card, Input, Label, ListGroup, Spinner, TextField } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,7 +26,8 @@ export default function ConnectScreen() {
   const signedIn = account.status === 'signed-in';
 
   return (
-    <ScreenScroll title={t('title')} keyboardAware>
+    <ScreenScroll keyboardAware>
+      <Stack.Screen options={{ headerShown: true, headerLargeTitle: true, title: t('title') }} />
       {account.status === 'signed-in' ? (
         <MyMachinesSection userId={account.user.id} />
       ) : account.status === 'signed-out' ? (
@@ -68,17 +69,6 @@ export default function ConnectScreen() {
         <ManualHostForm />
       )}
     </ScreenScroll>
-  );
-}
-
-function SectionLabel({ children }: React.PropsWithChildren) {
-  return (
-    <Text
-      className="text-[11px] text-muted"
-      style={{ fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' }}
-    >
-      {children}
-    </Text>
   );
 }
 
@@ -127,15 +117,13 @@ function MyMachinesSection({ userId }: { userId: string }) {
         </Button>
       </View>
       {hostsError ? (
-        <Text className="text-[13px] text-danger">{t('error')}</Text>
+        <Text className="text-danger text-subhead">{t('error')}</Text>
       ) : onlineHosts === null ? (
         <View className="items-start py-2">
           <Spinner />
         </View>
       ) : onlineHosts.length === 0 ? (
-        <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-          {t('empty')}
-        </Text>
+        <Text className="text-muted text-subhead">{t('empty')}</Text>
       ) : (
         <ListGroup>
           {onlineHosts.map((host) => (
@@ -159,12 +147,8 @@ function SignInCard() {
   return (
     <Card>
       <Card.Body className="gap-3">
-        <Text className="text-[15px] text-foreground" style={{ fontWeight: '500' }}>
-          {t('title')}
-        </Text>
-        <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-          {t('hint')}
-        </Text>
+        <Text className="font-medium text-body text-foreground">{t('title')}</Text>
+        <Text className="text-muted text-subhead">{t('hint')}</Text>
         <Button onPress={() => router.push('/sign-in')}>
           <Button.Label>{t('signIn')}</Button.Label>
         </Button>
@@ -223,7 +207,7 @@ function ManualHostForm() {
             keyboardType="url"
             isInvalid={urlInvalid}
           />
-          {urlInvalid ? <Text className="text-[12px] text-danger">{t('invalidUrl')}</Text> : null}
+          {urlInvalid ? <Text className="text-danger text-footnote">{t('invalidUrl')}</Text> : null}
         </TextField>
         <Button onPress={submit}>
           <Button.Label>{t('add')}</Button.Label>

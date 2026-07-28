@@ -2,6 +2,7 @@ import type { CloudAccount } from '@linkcode/ui';
 import { useState } from 'react';
 import useSWR from 'swr';
 import { useShallow } from 'zustand/react/shallow';
+import { traceRendererIpc } from '../ipc';
 import { useCloudAuthStore } from './store';
 
 /**
@@ -41,10 +42,10 @@ export function useCloudAccount(): CloudAccountView {
   );
 
   const [avatarBust, setAvatarBust] = useState(0);
-  useSWR('cloud-auth/user', () => window.getUser(), {
+  useSWR('cloud-auth/user', () => traceRendererIpc('cloud.auth.get-user', () => window.getUser()), {
     revalidateOnFocus: true,
     onSuccess(fresh) {
-      useCloudAuthStore.setState({ user: fresh ?? null });
+      useCloudAuthStore.getState().publishUser(fresh ?? null);
       setAvatarBust(Date.now());
     },
   });

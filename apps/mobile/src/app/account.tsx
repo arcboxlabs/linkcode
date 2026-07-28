@@ -1,10 +1,10 @@
-import { ScreenScroll } from '@linkcode/ui/native';
-import { Redirect } from 'expo-router';
+import { ScreenScroll, SectionLabel } from '@linkcode/ui/native';
+import { Redirect, Stack } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { Avatar, Button, Card, Chip, ListGroup, Spinner } from 'heroui-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import type { CloudUser } from '../runtime/cloud/account';
 import { signOutOfCloud, useCloudAccount } from '../runtime/cloud/account';
 import type { CloudDevice } from '../runtime/cloud/devices';
@@ -14,6 +14,7 @@ import {
   getEnrolledDeviceId,
   revokeDevice,
 } from '../runtime/cloud/devices';
+import { formatRelativeShort } from '../utils/relative-time';
 
 /** Account screen: profile, the account's device registry, and sign-out. */
 export default function AccountScreen() {
@@ -30,7 +31,8 @@ export default function AccountScreen() {
   if (account.status === 'signed-out') return <Redirect href="/sign-in" />;
 
   return (
-    <ScreenScroll title={t('title')}>
+    <ScreenScroll>
+      <Stack.Screen options={{ headerShown: true, title: t('title') }} />
       <ProfileCard user={account.user} />
       <DevicesSection />
       <Button
@@ -54,10 +56,10 @@ function ProfileCard({ user }: { user: CloudUser }) {
           <Avatar.Fallback />
         </Avatar>
         <View className="flex-1 gap-1">
-          <Text className="text-[17px] text-foreground" style={{ fontWeight: '600' }}>
+          <Text className="font-semibold text-foreground text-headline">
             {user.name || user.email}
           </Text>
-          <Text className="text-[13px] text-muted">{user.email}</Text>
+          <Text className="text-muted text-subhead">{user.email}</Text>
         </View>
       </Card.Body>
     </Card>
@@ -70,7 +72,6 @@ function ProfileCard({ user }: { user: CloudUser }) {
  */
 function DevicesSection() {
   const t = useTranslations('mobile.account');
-  const format = useFormatter();
 
   const [devices, setDevices] = useState<CloudDevice[] | null>(null);
   const [devicesError, setDevicesError] = useState(false);
@@ -134,33 +135,26 @@ function DevicesSection() {
     const kind = t(`deviceKind.${device.kind}`);
     const platform = device.platform ? `${kind} · ${device.platform}` : kind;
     return device.lastSeenAt
-      ? `${platform} · ${t('lastSeen', { time: format.relativeTime(new Date(device.lastSeenAt)) })}`
+      ? `${platform} · ${t('lastSeen', { time: formatRelativeShort(new Date(device.lastSeenAt).getTime()) })}`
       : platform;
   };
 
   return (
     <View className="gap-2">
       <View className="flex-row items-center justify-between">
-        <Text
-          className="text-[11px] text-muted"
-          style={{ fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' }}
-        >
-          {t('devices')}
-        </Text>
+        <SectionLabel>{t('devices')}</SectionLabel>
         <Button variant="ghost" size="sm" onPress={refresh}>
           <Button.Label>{t('refresh')}</Button.Label>
         </Button>
       </View>
       {devicesError ? (
-        <Text className="text-[13px] text-danger">{t('devicesError')}</Text>
+        <Text className="text-danger text-subhead">{t('devicesError')}</Text>
       ) : devices === null ? (
         <View className="items-start py-2">
           <Spinner />
         </View>
       ) : devices.length === 0 ? (
-        <Text className="text-[13px] text-muted" style={{ lineHeight: 18 }}>
-          {t('devicesEmpty')}
-        </Text>
+        <Text className="text-muted text-subhead">{t('devicesEmpty')}</Text>
       ) : (
         <ListGroup>
           {devices.map((device) => (

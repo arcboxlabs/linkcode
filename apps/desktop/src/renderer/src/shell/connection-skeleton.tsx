@@ -9,7 +9,7 @@ import { Skeleton } from 'coss-ui/components/skeleton';
 export function ConnectionSkeleton(): React.ReactNode {
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-[286px] shrink-0 flex-col gap-3 px-4 pt-12 pb-4">
+      <aside className="flex w-[288px] shrink-0 flex-col gap-3 px-4 pt-12 pb-4">
         <Skeleton className="h-5 w-28" />
         <Skeleton className="h-5 w-24" />
         <Skeleton className="h-5 w-32" />

@@ -18,7 +18,7 @@
       "!**/.expo",
       "!**/node_modules",
       "!**/expo-export",
-      "!packages/coss-ui",
+      "!packages/vendor/coss-ui",
       "!**/.repos",
       "!**/pnpm-lock.yaml"
     ]
@@ -47,7 +47,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/schema/src/terminal.ts"],
+      "includes": ["packages/foundation/schema/src/terminal.ts"],
       "formatter": { "enabled": false }
     },
     {

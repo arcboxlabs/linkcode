@@ -12,7 +12,7 @@
 
 appId: com.arcboxlabs.linkcode.desktop
 productName: LinkCode
-copyright: Copyright © 2026 ArcBox Labs
+copyright: Copyright © 2026 ArcBox, Inc. All rights reserved.
 
 # The `linkcode://` / `linkcode-dev://` deep-link scheme is declared per channel, NOT here. This
 # base is shared by both channels, and electron-builder CONCATENATES arrays inherited via `extends`
@@ -23,7 +23,7 @@ copyright: Copyright © 2026 ArcBox Labs
 # cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.
 electronVersion: 42.4.1
 
-# Keep only the Chromium locales for languages the app ships (packages/i18n/src/index.ts —
+# Keep only the Chromium locales for languages the app ships (packages/presentation/i18n/src/index.ts —
 # extend this list when a locale is added there). Drops ~48 MB of framework .lproj/.pak data.
 # The matcher lowercases but does NOT normalize separators, and locale file names differ per
 # platform, so both spellings are load-bearing: mac frameworks use `en.lproj`/`zh_CN.lproj`
@@ -53,6 +53,9 @@ files:
   - '!node_modules/@openai/codex-darwin-*/**'
   - '!node_modules/@openai/codex-linux-*/**'
   - '!node_modules/@openai/codex-win32-*/**'
+  # The pi npm closure needs no glob here (CODE-219): it is a managed download, and its SDK is a
+  # devDependency of agent-adapter, so the `--prod deploy` staging never contains it.
+  # verify-artifacts.mts guards against reintroduction.
   # Dead weight in the deploy closure (CODE-215). @linkcode/* are raw-TS workspace sources —
   # main/preload/daemon all bundle them, and migrations run from out/drizzle, so nothing resolves
   # them from node_modules at runtime. better-sqlite3/deps is the sqlite3 C amalgamation:
@@ -61,9 +64,10 @@ files:
   - '!node_modules/@linkcode/**'
   - '!node_modules/better-sqlite3/deps/**'
 
-# The PTY sidecar (crates/linkcode-pty), staged per arch by scripts/stage-sidecar.mjs. It is a
-# real executable, so it must live outside the asar; the daemon supervisor points
-# LINKCODE_PTY_SIDECAR_PATH at it under process.resourcesPath (src/main/daemon-supervisor.ts).
+# The sidecar binaries (crates/linkcode-pty everywhere; crates/linkcode-sim on macOS), staged per
+# arch by scripts/stage-sidecar.mts. They are real executables, so they must live outside the
+# asar; the daemon supervisor points LINKCODE_PTY_SIDECAR_PATH at the PTY one under
+# process.resourcesPath (src/main/daemon-supervisor.ts).
 extraResources:
   - from: sidecar/${arch}
     to: .
@@ -80,6 +84,13 @@ publish:
 # process.arch and falls back to the *first* entry otherwise — the default unsuffixed x64 name
 # would send x64 clients whatever happens to be listed first.
 artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Archive compression for zip / NSIS / etc. Default `normal` packs zip at 7z -mx=7; `maximum`
+# bumps zip to -mx=9 -mfb=258 -mpass=15 (other formats already use -mx=9). A few MB smaller
+# download at the cost of slower packaging. Blockmap generation keeps its own fixed settings —
+# delta-update math is unaffected. On the default FUSE2 AppImage toolset this also maps to xz
+# squashfs unless `appImage.compression` overrides it.
+compression: maximum
 
 mac:
   # Apple Icon Composer source. Single shared copy at the repo-root assets/ dir (also consumed
@@ -150,3 +161,11 @@ linux:
       arch: [x64, arm64]
   # rpm/snap need extra host tooling (rpm/fakeroot, snapcraft); add install steps to
   # build-desktop.yml's Linux job before enabling them here.
+
+# AppImage squashfs codec. Explicit `xz` (not only root `compression: maximum` fallthrough): on
+# the default FUSE2 toolset (`toolsets.appimage` unset / `0.0.0`) mksquashfs gets
+# `-comp xz -Xdict-size 100% -b 1048576` — smaller than gzip, slightly slower first mount. Static
+# runtime toolsets (`>= 1.0.0`) map xz → zstd; stay on FUSE2 unless that path is deliberately
+# upgraded.
+appImage:
+  compression: xz

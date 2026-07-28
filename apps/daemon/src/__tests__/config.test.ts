@@ -10,6 +10,8 @@ import {
   loadConfig,
   runtimeFilePath,
 } from '../config';
+import { logger } from '../logger';
+import { telemetryConfigCachePath } from '../paths';
 
 let savedHome: string | undefined;
 
@@ -46,7 +48,7 @@ const validAccount = {
 
 describe('loadConfig providers', () => {
   it('keeps valid provider entries and drops an invalid one, logging the error', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeConfig({
       'claude-code': { enabled: true, defaultModel: 'sonnet' },
       codex: { enabled: 'not-a-boolean' },
@@ -61,7 +63,7 @@ describe('loadConfig providers', () => {
   });
 
   it('drops an entry keyed by an unknown agent kind, logging the error', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeConfig({
       'claude-code': { enabled: true },
       'not-a-real-agent': { enabled: true },
@@ -76,7 +78,7 @@ describe('loadConfig providers', () => {
   });
 
   it('falls back to an empty object when providers is not an object', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeConfig('nonsense');
 
     const config = loadConfig();
@@ -86,7 +88,7 @@ describe('loadConfig providers', () => {
   });
 
   it('defaults to an empty object without logging when providers is absent', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeConfig(undefined);
     // JSON.stringify drops an `undefined` value entirely, so the field is simply missing.
 
@@ -110,6 +112,7 @@ describe('profile-scoped state paths', () => {
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
     expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 
   it('treats an empty LINKCODE_PROFILE as the default profile', () => {
@@ -133,7 +136,7 @@ describe('profile-scoped state paths', () => {
 
 describe('loadConfig accounts', () => {
   it('keeps valid accounts and drops an invalid one, logging the error', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig([
       validAccount,
       // Missing the api-key `key` — fails the credential union.
@@ -147,7 +150,7 @@ describe('loadConfig accounts', () => {
   });
 
   it('falls back to an empty array when accounts is not an array', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig({ not: 'an array' });
 
     const config = loadConfig();
@@ -157,7 +160,7 @@ describe('loadConfig accounts', () => {
   });
 
   it('defaults to an empty array without logging when accounts is absent', () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(noop);
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig(undefined);
 
     const config = loadConfig();

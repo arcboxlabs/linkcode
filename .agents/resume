@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ ! -r /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+  echo "Expected Nix; rerun .agents/setup" >&2
+  exit 1
+fi
+
+. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+export PATH="$HOME/.nix-profile/bin:$PATH"
+
+if ! nix --extra-experimental-features nix-command store info >/dev/null 2>&1; then
+  echo "Nix is present but unusable; rerun .agents/setup" >&2
+  exit 1
+fi
+
+if ! command -v devenv >/dev/null 2>&1 || ! devenv version >/dev/null 2>&1; then
+  echo "Expected devenv; rerun .agents/setup" >&2
+  exit 1
+fi
+
+if [ ! -x target/release/linkcode-pty ]; then
+  echo "Rebuilding the missing terminal PTY sidecar"
+  devenv shell -- pnpm -F @linkcode/daemon run build:rust
+fi
+
+if [ ! -f apps/daemon/dist/index.js ]; then
+  echo "Rebuilding the missing daemon bundle"
+  devenv shell -- pnpm -F @linkcode/daemon run build
+fi
+
+echo "Ensuring supervised Orb development services are running"
+amp orb services ensure

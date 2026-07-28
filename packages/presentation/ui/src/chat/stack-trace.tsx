@@ -1,0 +1,222 @@
+import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { AlertTriangleIcon } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { cn } from '../lib/cn';
+import type { CopyIconButtonProps } from './copy-icon-button';
+import { CopyIconButton } from './copy-icon-button';
+import type { ChatDisclosureContentProps } from './disclosure-content';
+import { ChatDisclosureContent } from './disclosure-content';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  CHAT_DISCLOSURE_TRIGGER_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from './disclosure-header';
+import type { ParsedStackFrame, ParsedStackTrace } from './stack-trace-parser';
+import { formatStackLocationPart, parseStackTrace } from './stack-trace-parser';
+
+// TODO(linkcode-schema): Provisional UI-only stack trace model, not yet wired to daemon/client schema.
+// Move or replace with @linkcode/schema types when test/tool outputs expose structured stack traces.
+export interface ChatStackTrace {
+  id: string;
+  trace: string;
+  title?: string;
+  language?: string;
+}
+
+export type StackTraceProps = React.ComponentProps<typeof Collapsible> & {
+  stackTrace: ChatStackTrace;
+  onFilePathClick?: (filePath: string, line?: number, column?: number) => void;
+};
+
+export function StackTrace({
+  className,
+  stackTrace,
+  defaultOpen = false,
+  onFilePathClick,
+  children,
+  ...props
+}: StackTraceProps): React.ReactNode {
+  const [open, setOpen] = useState(defaultOpen);
+  const parsed = useMemo(() => parseStackTrace(stackTrace.trace), [stackTrace.trace]);
+
+  return (
+    <Collapsible
+      className={cn(
+        'my-2 overflow-hidden rounded-2xl border border-border bg-card font-mono text-xs',
+        className,
+      )}
+      open={open}
+      onOpenChange={setOpen}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <StackTraceHeader open={open} parsed={parsed} stackTrace={stackTrace} />
+          <StackTraceContent>
+            <StackTraceFrames frames={parsed.frames} onFilePathClick={onFilePathClick} />
+            <StackTraceRaw trace={stackTrace.trace} />
+          </StackTraceContent>
+        </>
+      )}
+    </Collapsible>
+  );
+}
+
+export type StackTraceHeaderProps = React.ComponentProps<'div'> & {
+  parsed: ParsedStackTrace;
+  stackTrace: ChatStackTrace;
+  open: boolean;
+};
+
+export function StackTraceHeader({
+  className,
+  parsed,
+  stackTrace,
+  open,
+  children,
+  ...props
+}: StackTraceHeaderProps): React.ReactNode {
+  return (
+    <div
+      className={cn(
+        'flex w-full items-center gap-2 px-3 py-2 hover:bg-muted active:bg-muted',
+        className,
+      )}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'flex-1 py-0')}>
+            <ChatDisclosureIconSlot className="text-destructive-foreground">
+              <AlertTriangleIcon />
+            </ChatDisclosureIconSlot>
+            <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+              <span
+                className={cn(
+                  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+                  'text-destructive-foreground opacity-100',
+                )}
+              >
+                {stackTrace.title ?? parsed.errorType ?? 'Error'}
+              </span>
+              {parsed.errorMessage ? (
+                <span className={CHAT_DISCLOSURE_SUMMARY_CLASS_NAME}>: {parsed.errorMessage}</span>
+              ) : null}
+            </span>
+            <ChatDisclosureChevron open={open} />
+          </CollapsibleTrigger>
+          <StackTraceCopyButton trace={stackTrace.trace} />
+        </>
+      )}
+    </div>
+  );
+}
+
+export type StackTraceContentProps = ChatDisclosureContentProps;
+
+export function StackTraceContent({
+  className,
+  ...props
+}: StackTraceContentProps): React.ReactNode {
+  return (
+    <ChatDisclosureContent
+      className={cn('border-t border-border bg-muted/30', className)}
+      {...props}
+    />
+  );
+}
+
+export type StackTraceFramesProps = React.ComponentProps<'div'> & {
+  frames: readonly ParsedStackFrame[];
+  showInternalFrames?: boolean;
+  onFilePathClick?: (filePath: string, line?: number, column?: number) => void;
+};
+
+export function StackTraceFrames({
+  className,
+  frames,
+  showInternalFrames = true,
+  onFilePathClick,
+  ...props
+}: StackTraceFramesProps): React.ReactNode {
+  const visibleFrames = showInternalFrames ? frames : frames.filter((frame) => !frame.isInternal);
+
+  return (
+    <div className={cn('space-y-1 p-3', className)} {...props}>
+      {visibleFrames.length === 0 ? (
+        <div className="text-muted-foreground">No stack frames</div>
+      ) : (
+        visibleFrames.map((frame) => (
+          <div
+            key={frame.raw}
+            className={cn(
+              'min-w-0 truncate',
+              frame.isInternal ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          >
+            <span className="text-muted-foreground">at </span>
+            {frame.functionName ? <span>{frame.functionName} </span> : null}
+            {frame.filePath ? (
+              <button
+                className="underline decoration-dotted hover:text-primary disabled:no-underline"
+                disabled={!onFilePathClick}
+                onClick={() =>
+                  onFilePathClick?.(frame.filePath ?? '', frame.lineNumber, frame.columnNumber)
+                }
+                type="button"
+              >
+                {frame.filePath}
+                {formatStackLocationPart(frame.lineNumber)}
+                {formatStackLocationPart(frame.columnNumber)}
+              </button>
+            ) : (
+              <span>{frame.raw.startsWith('at ') ? frame.raw.slice(3) : frame.raw}</span>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+export type StackTraceRawProps = React.ComponentProps<'pre'> & {
+  trace: string;
+};
+
+export function StackTraceRaw({ className, trace, ...props }: StackTraceRawProps): React.ReactNode {
+  return (
+    <pre
+      className={cn('overflow-x-auto border-t border-border p-3 text-muted-foreground', className)}
+      {...props}
+    >
+      {trace}
+    </pre>
+  );
+}
+
+export type StackTraceCopyButtonProps = Omit<
+  CopyIconButtonProps,
+  'value' | 'label' | 'stopPropagation' | 'iconClassName'
+> & {
+  trace: string;
+};
+
+export function StackTraceCopyButton({
+  className,
+  trace,
+  ...props
+}: StackTraceCopyButtonProps): React.ReactNode {
+  return (
+    <CopyIconButton
+      className={cn('shrink-0', className)}
+      iconClassName="size-3.5"
+      label="stack trace"
+      stopPropagation
+      value={trace}
+      {...props}
+    />
+  );
+}

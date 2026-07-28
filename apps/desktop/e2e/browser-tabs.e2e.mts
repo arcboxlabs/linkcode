@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { falseFn, noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
@@ -74,8 +74,53 @@ async function waitForTab(win: Page, name: string): Promise<void> {
   await button.waitFor({ state: 'visible', timeout: 15000 });
 }
 
+async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
+  await app.firstWindow();
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    const main = app.windows().find((page) => page.url().endsWith('/out/renderer/index.html'));
+    if (main !== undefined) return main;
+    await wait(50);
+  }
+  return fail('desktop main window did not appear');
+}
+
+function logPageErrors(page: Page): void {
+  page.on('pageerror', (error) => console.error('renderer page error:', error));
+  page.on('crash', () => console.error('renderer page crashed:', page.url()));
+}
+
+function watchAppErrors(app: ElectronApplication): void {
+  for (const page of app.windows()) logPageErrors(page);
+  app.on('window', logPageErrors);
+}
+
+async function sendGuestShortcut(
+  app: ElectronApplication,
+  urlPrefix: string,
+  keyCode: string,
+): Promise<void> {
+  const sent = await app.evaluate(
+    ({ webContents }, { prefix, key }) => {
+      const guest = webContents
+        .getAllWebContents()
+        .find((contents) => contents.getURL().startsWith(prefix));
+      if (guest === undefined) return false;
+      const modifiers: Electron.InputEvent['modifiers'] = [
+        process.platform === 'darwin' ? 'meta' : 'control',
+      ];
+      guest.focus();
+      guest.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers });
+      guest.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers });
+      return true;
+    },
+    { prefix: urlPrefix, key: keyCode },
+  );
+  if (!sent) fail(`no guest WebContents for ${urlPrefix}`);
+}
+
 async function run(win: Page, app: ElectronApplication, pagePort: number): Promise<void> {
-  const composer = win.locator('textarea').first();
+  const composer = win.locator('[data-slot="composer-editor"][contenteditable="true"]');
   await composer.waitFor({ state: 'visible', timeout: 30000 });
   await win.waitForTimeout(1000);
 
@@ -95,6 +140,28 @@ async function run(win: Page, app: ElectronApplication, pagePort: number): Promi
   await waitForTab(win, 'E2E Page One');
   console.log('navigation retitled the tab from the page title');
 
+  // App-owned shortcuts must still work while the guest WebContents owns focus; guest key events
+  // do not bubble to the renderer's keyboard registry.
+  const guest = app.windows().find((page) => page.url().startsWith(`http://127.0.0.1:${pagePort}`));
+  if (guest === undefined) fail('did not find the webview guest page');
+  await guest.locator('body').click();
+  await sendGuestShortcut(app, `http://127.0.0.1:${pagePort}`, 'f');
+  await win.getByPlaceholder('Find…').waitFor({ state: 'visible' });
+  await win.keyboard.press('Escape');
+  await guest.locator('body').click();
+  await sendGuestShortcut(app, `http://127.0.0.1:${pagePort}`, '=');
+  await win.waitForTimeout(100);
+  const zoomLevel = await app.evaluate(
+    ({ webContents }, prefix) =>
+      webContents
+        .getAllWebContents()
+        .find((contents) => contents.getURL().startsWith(prefix))
+        ?.getZoomLevel(),
+    `http://127.0.0.1:${pagePort}`,
+  );
+  if (zoomLevel === undefined || zoomLevel <= 0) fail('focused guest zoom shortcut did not run');
+  console.log('focused guest find and zoom shortcuts reached the active browser tab');
+
   // New tab: a second, empty instance appears and becomes active.
   await win.getByRole('button', { name: 'New tab', exact: true }).click();
   await waitForTab(win, 'Browser 2');
@@ -103,8 +170,6 @@ async function run(win: Page, app: ElectronApplication, pagePort: number): Promi
   // Popup: click the target=_blank link inside the FIRST tab's webview guest page. The guest
   // is a separate Playwright page; main must reroute the popup into a new in-app tab.
   await win.getByRole('button', { name: 'E2E Page One', exact: true }).click();
-  const guest = app.windows().find((page) => page.url().startsWith(`http://127.0.0.1:${pagePort}`));
-  if (guest === undefined) fail('did not find the webview guest page');
   await guest.click('#pop');
   await waitForTab(win, 'E2E Popup Page');
   console.log('guest popup landed in a new in-app tab');
@@ -120,12 +185,20 @@ async function run(win: Page, app: ElectronApplication, pagePort: number): Promi
   console.log('closed the popup tab');
 }
 
-async function assertRestored(win: Page): Promise<void> {
-  const composer = win.locator('textarea').first();
-  await composer.waitFor({ state: 'visible', timeout: 30000 });
+async function assertRestored(
+  win: Page,
+  app: ElectronApplication,
+  pagePort: number,
+): Promise<void> {
   // activeSection persisted as browser; the navigated tab reloads and re-reports its title.
   await waitForTab(win, 'E2E Page One');
   await waitForTab(win, 'Browser 2');
+  await win.getByRole('button', { name: 'E2E Page One', exact: true }).click();
+  const guest = app.windows().find((page) => page.url().startsWith(`http://127.0.0.1:${pagePort}`));
+  if (guest === undefined) fail('did not restore the webview guest page');
+  await guest.locator('body').click();
+  await sendGuestShortcut(app, `http://127.0.0.1:${pagePort}`, 'f');
+  await win.getByPlaceholder('Find…').waitFor({ state: 'visible' });
   console.log('tabs restored after restart');
 }
 
@@ -138,12 +211,12 @@ async function main(): Promise<void> {
   }
 
   const home = mkdtempSync(join(tmpdir(), 'linkcode-e2e-home-'));
-  const userData = mkdtempSync(join(tmpdir(), 'linkcode-e2e-userdata-'));
   const { server, port } = await startPageServer();
   console.log(`page server on :${port}`);
 
   let daemon: ChildProcess | null = null;
   let app: ElectronApplication | null = null;
+  let userData: string | null = null;
   let passed = false;
   try {
     daemon = spawn(process.execPath, ['dist/index.js'], {
@@ -164,13 +237,16 @@ async function main(): Promise<void> {
       });
 
     app = await launch();
-    let win = await app.firstWindow();
+    watchAppErrors(app);
+    userData = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
+    let win = await waitForMainWindow(app);
     try {
       await run(win, app, port);
       await app.close();
       app = await launch();
-      win = await app.firstWindow();
-      await assertRestored(win);
+      watchAppErrors(app);
+      win = await waitForMainWindow(app);
+      await assertRestored(win, app, port);
     } catch (error) {
       const shot = join(tmpdir(), `linkcode-e2e-browser-tabs-${process.pid}.png`);
       await win.screenshot({ path: shot }).catch(noop);
@@ -183,19 +259,11 @@ async function main(): Promise<void> {
     await app?.close().catch(noop);
     daemon?.kill('SIGTERM');
     server.close();
-    // Identity resolution ignores $HOME for appData, so the profile's userData lands in the
-    // real Application Support; always remove that profile universe.
-    const profileUserData = join(
-      homedir(),
-      'Library/Application Support',
-      `LinkCode Development (${PROFILE})`,
-    );
-    rmSync(profileUserData, { recursive: true, force: true });
+    if (userData !== null) rmSync(userData, { recursive: true, force: true });
     if (passed) {
       rmSync(home, { recursive: true, force: true });
-      rmSync(userData, { recursive: true, force: true });
     } else {
-      console.error(`kept for debugging: HOME=${home} userData=${userData}`);
+      console.error(`kept for debugging: HOME=${home}`);
       process.exitCode = 1;
     }
   }
