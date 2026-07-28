@@ -334,6 +334,7 @@ fn serve(request: Request, tx: &Sender<OutMsg>) {
         } => interactive::swipe(&udid, x0, y0, x1, y1, duration_ms),
         Op::Button { udid, button } => interactive::button(&udid, button),
         Op::Rotate { udid, orientation } => interactive::rotate(&udid, orientation),
+        Op::Shake { udid } => interactive::shake(&udid),
         Op::Key {
             udid,
             usage,

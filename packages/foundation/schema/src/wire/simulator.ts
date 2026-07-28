@@ -234,6 +234,14 @@ export const simulatorWireVariants = [
     udid,
     button: SimulatorButtonSchema,
   }),
+  /** Shake the device. Not HID and not a GSEvent: UIKit inside the guest listens for a Darwin
+   * notification, which is the route Simulator.app's own Device menu takes. */
+  z.object({
+    kind: z.literal('simulator.shake'),
+    clientReqId: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
+    udid,
+  }),
   /** Rotate the device's interface orientation (a GraphicsServices GSEvent, not HID). A guest app
    * that doesn't support the target orientation silently keeps its frame — not observable here. */
   z.object({

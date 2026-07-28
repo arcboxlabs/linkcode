@@ -41,6 +41,19 @@ impl SimDevice {
         Retained::as_ptr(&self.object).cast_mut()
     }
 
+    /// Post a Darwin notification into the guest.
+    ///
+    /// This is how Simulator.app's own Device menu drives the gestures that have no HID
+    /// representation — its `simulateShake` posts `com.apple.UIKit.SimulatorShake` and UIKit inside
+    /// the guest turns it into a shake. Far simpler than the Indigo motion path, which would need a
+    /// hand-reversed CoreMotion payload to say the same thing.
+    pub fn post_darwin_notification(&self, name: &str) -> bool {
+        let name = NSString::from_str(name);
+        let mut error: *mut AnyObject = ptr::null_mut();
+        // SAFETY: the selector takes an NSString and an `(NSError**)` out-param, returning BOOL.
+        unsafe { msg_send![&*self.object, postDarwinNotification: &*name, error: &mut error] }
+    }
+
     /// The raw `SimDeviceState`, or `None` if the KVC read fails.
     pub fn state_raw(&self) -> Option<u64> {
         let key = NSString::from_str("state");

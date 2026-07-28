@@ -119,6 +119,8 @@ pub enum Op {
     },
     /// Stop a running framebuffer stream.
     StreamStop { udid: String },
+    /// Shake the device (a Darwin notification, not an HID event).
+    Shake { udid: String },
     /// Start the iOS runtime download and return immediately (see `simctl::install_runtime`).
     InstallRuntime,
     /// Read the guest's accessibility tree (private API; P2). Served by a short-lived worker

@@ -40,6 +40,7 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    shake: vi.fn(asyncNoop),
     installRuntime: vi.fn(asyncNoop),
     describeUi: vi.fn(() =>
       Promise.resolve({
