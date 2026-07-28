@@ -1,3 +1,4 @@
+import { isPreviewOrigin } from '@linkcode/transport';
 import type {
   PanelSection,
   PanelSectionTab,
@@ -321,7 +322,8 @@ export function serializeDesktopShellState(state: DesktopShellState): PersistedD
 }
 
 function durableBrowserUrl(url: string | null): string | null {
-  return url?.startsWith('blob:') ? null : url;
+  if (url === null) return null;
+  return url.startsWith('blob:') || isPreviewOrigin(url) ? null : url;
 }
 
 function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
