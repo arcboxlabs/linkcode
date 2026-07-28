@@ -1,5 +1,6 @@
+import { nullthrow } from 'foxact/nullthrow';
 import { describe, expect, it } from 'vitest';
-import { chatFileDiff } from '../diff-block';
+import { chatFileDiff, hasAuthoritativeLineNumbers } from '../diff-block';
 import type { DiffToolCallContent } from '../diff-utils';
 
 function diff(content: Omit<DiffToolCallContent, 'type'>): DiffToolCallContent {
@@ -105,5 +106,41 @@ describe('chatFileDiff', () => {
     ['an unchanged pair', diff({ change: 'modify', path: 'a.ts', oldText: 'x\n', newText: 'x\n' })],
   ])('draws nothing for %s', (_label, content) => {
     expect(chatFileDiff(content)).toBeNull();
+  });
+});
+
+describe('hasAuthoritativeLineNumbers', () => {
+  function verdictFor(content: DiffToolCallContent): boolean {
+    return hasAuthoritativeLineNumbers(content, nullthrow(chatFileDiff(content)));
+  }
+
+  it('trusts patch hunk offsets — pierre marks the patch branch isPartial', () => {
+    const content = diff({
+      change: 'modify',
+      path: 'src/a.ts',
+      patch: { format: 'git_patch', text: '@@ -26,3 +26,3 @@\n ctx\n-a\n+b' },
+    });
+    // The rule keys off isPartial as "parsed from a patch"; pin that reading of pierre.
+    expect(nullthrow(chatFileDiff(content)).isPartial).toBe(true);
+    expect(verdictFor(content)).toBe(true);
+  });
+
+  it('trusts a whole-file write, where 1..N is exact by adapter contract', () => {
+    expect(verdictFor(diff({ change: 'add', path: 'new.ts', newText: 'x\ny\n' }))).toBe(true);
+  });
+
+  it.each([
+    [
+      'a modify fragment',
+      diff({ change: 'modify', path: 'a.ts', oldText: 'a\nb\n', newText: 'a\nc\n' }),
+    ],
+    [
+      'a move with region text',
+      diff({ change: 'move', oldPath: 'old.ts', path: 'new.ts', oldText: 'a\n', newText: 'b\n' }),
+    ],
+    ['a delete with region text', diff({ change: 'delete', path: 'gone.ts', oldText: 'x\n' })],
+  ])('hides the gutter for %s — its hunk starts at 1 regardless of true position', (_label, content) => {
+    expect(nullthrow(chatFileDiff(content)).isPartial).toBe(false);
+    expect(verdictFor(content)).toBe(false);
   });
 });

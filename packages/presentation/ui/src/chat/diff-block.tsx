@@ -39,6 +39,23 @@ const CHAT_DIFF_OPTIONS: FileDiffOptions<undefined> = {
   hunkSeparators: 'metadata',
 };
 
+const CHAT_DIFF_UNNUMBERED_OPTIONS: FileDiffOptions<undefined> = {
+  ...CHAT_DIFF_OPTIONS,
+  disableLineNumbers: true,
+};
+
+/** The gutter renders only when its numbers are true file positions. A parsed patch carries real
+ * hunk offsets (`isPartial` is pierre's parsed-from-patch marker), and a Write is whole-file by
+ * adapter contract, so 1..N is exact. Everything else on the text branch is a region —
+ * `old_string`/`new_string`, codex replay hunk bodies — whose synthesized hunk starts at 1, and
+ * numbering those rows would assert the fragment sits at the top of the file. */
+export function hasAuthoritativeLineNumbers(
+  content: DiffToolCallContent,
+  fileDiff: FileDiffMetadata,
+): boolean {
+  return fileDiff.isPartial || content.change === 'add';
+}
+
 /** A hunk stream with no `---`/`+++` (or `diff --git`) preamble. Both producers emit one: codex
  * forwards its app-server `unified_diff` verbatim, and the claude adapter formats
  * `structuredPatch` hunks. Pierre parses zero hunks out of that, so the card would render blank. */
@@ -106,7 +123,16 @@ export function DiffBlock({
       panelClassName={fileDiff ? 'chat-diff-surface overflow-clip p-0' : undefined}
       path={path}
     >
-      {fileDiff ? <FileDiff fileDiff={fileDiff} options={CHAT_DIFF_OPTIONS} /> : undefined}
+      {fileDiff ? (
+        <FileDiff
+          fileDiff={fileDiff}
+          options={
+            hasAuthoritativeLineNumbers(content, fileDiff)
+              ? CHAT_DIFF_OPTIONS
+              : CHAT_DIFF_UNNUMBERED_OPTIONS
+          }
+        />
+      ) : undefined}
     </FilePreviewCard>
   );
 }
