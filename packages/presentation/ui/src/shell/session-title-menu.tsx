@@ -27,18 +27,18 @@ import { ShellIconButton } from './shell-control';
 export type FileManagerKind = 'darwin' | 'win32' | 'other';
 
 /** One editor the host detected; `id` is opaque and travels back on open. */
-export interface ThreadTitleMenuEditor {
+export interface SessionTitleMenuEditor {
   id: string;
   label: string;
 }
 
-export interface ThreadTitleMenuProps {
+export interface SessionTitleMenuProps {
   /** Copied verbatim by the copy item. */
   title: string;
   pinned: boolean;
   fileManager: FileManagerKind;
   /** Detected editors; empty hides the open-in-editor item entirely. */
-  editors: ThreadTitleMenuEditor[];
+  editors: SessionTitleMenuEditor[];
   onTogglePin: () => void;
   onReveal: () => void;
   onOpenInEditor: (editorId: string) => void;
@@ -53,7 +53,7 @@ const REVEAL_KEY = {
 } as const;
 
 /** The chrome title's overflow menu: what you can do to the thread you're looking at. */
-export function ThreadTitleMenu({
+export function SessionTitleMenu({
   title,
   pinned,
   fileManager,
@@ -62,7 +62,7 @@ export function ThreadTitleMenu({
   onReveal,
   onOpenInEditor,
   onClose,
-}: ThreadTitleMenuProps): React.ReactNode {
+}: SessionTitleMenuProps): React.ReactNode {
   const t = useTranslations('workbench.threadMenu');
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
@@ -110,7 +110,7 @@ function EditorItem({
   label,
   onOpen,
 }: {
-  editors: ThreadTitleMenuEditor[];
+  editors: SessionTitleMenuEditor[];
   label: string;
   onOpen: (editorId: string) => void;
 }): React.ReactNode {

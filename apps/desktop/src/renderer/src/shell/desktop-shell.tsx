@@ -1,5 +1,5 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
-import type { ComposerAttachment, FileManagerKind, ThreadTitleMenuEditor } from '@linkcode/ui';
+import type { ComposerAttachment, FileManagerKind, SessionTitleMenuEditor } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
@@ -8,7 +8,7 @@ import {
   HostFooter,
   NewSessionSurface,
   SessionSidebar,
-  ThreadTitleMenu,
+  SessionTitleMenu,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import {
@@ -165,7 +165,7 @@ export function DesktopShell({
   );
   const desktopPlatform = systemBridge.app.platform;
   const [appVersion, setAppVersion] = useState('');
-  const [editors, setEditors] = useState<ThreadTitleMenuEditor[]>([]);
+  const [editors, setEditors] = useState<SessionTitleMenuEditor[]>([]);
   const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
   const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
   const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
@@ -611,7 +611,7 @@ export function DesktopShell({
         }
         titleMenu={
           titledSession ? (
-            <ThreadTitleMenu
+            <SessionTitleMenu
               // The header title is what the chrome actually renders — copy what is on screen.
               title={header.title}
               pinned={pinnedSessionIds.includes(titledSession.sessionId)}
