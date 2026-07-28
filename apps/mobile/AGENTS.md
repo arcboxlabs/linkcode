@@ -1,8 +1,10 @@
 # apps/mobile — Expo / React Native client
 
-Expo + React Native, UI in **HeroUI** (not coss-ui). Reaches the host through the
-`server` tunnel; business data still travels over the `transport` + `@linkcode/schema`,
-the same contract as every other client.
+Expo + React Native. Screens that are lists or forms render **`@expo/ui`** (real SwiftUI);
+**HeroUI** remains for the React Native surfaces that cannot cross over — see the two bullets on
+`@expo/ui` below for which those are and why. Reaches the host through the `server` tunnel;
+business data still travels over the `transport` + `@linkcode/schema`, the same contract as every
+other client.
 
 - **The web renderer conventions do NOT apply here.** [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) (coss-ui, `createBrowserRouter`, `sdk`+`tayori`+SWR data-table, `react-hook-form`+`zodResolver`) targets the Vite / DOM renderers — none of it holds for React Native. Use the Expo / RN + HeroUI idioms instead.
 - **Shared code:** mobile consumes `@linkcode/ui` only through its **native** components (`packages/presentation/ui/src/native/**`), never its coss-ui web parts.
@@ -51,6 +53,21 @@ the same contract as every other client.
     prefer the latter and read it with `.get()` at submit time, so submitting never depends on a
     change event having reached JS. Keyboard behaviour comes from modifiers, not props
     (`keyboardType`, `submitLabel`, `onSubmit`, `textInputAutocapitalization`).
+  - Two more shapes worth knowing: a `Section`'s `isExpanded` is honoured **only** under
+    `listStyle('sidebar')` — that list style is what makes the thread groups collapsible, not a
+    cosmetic choice; and `BottomSheet` is a plain native view that mounts in the **RN** tree, not a
+    `Host` child (only its contents are SwiftUI).
+- **What deliberately stays React Native, and why.** `@expo/ui` renders SwiftUI, so anything whose
+  indispensable part is an RN view cannot cross over — RN→SwiftUI is the supported direction, and
+  going back needs `RNHostView`, whose bidirectional nesting is the very thing 57.0.5 had to fix.
+  So: **sign-in** (`AppleAuthenticationButton` is an RN view and `@expo/ui` has no Sign in with
+  Apple), the **conversation surface** — timeline, composer, and the screen holding them (excluded
+  by the redesign decision; the composer also rides `react-native-keyboard-controller`), the
+  **terminal canvas** (`expo-libghostty`), the **startup splash** (`BrandMark` is a bundled RN
+  image), and the **navigation header** (react-navigation). Two smaller losses are accepted rather
+  than worked around: `Image` takes SF Symbols, asset-catalog names, and local file URIs but
+  **never a remote URL**, so the account avatar is an SF Symbol; and the agent brand marks are RN
+  SVG components, so thread rows and the new-thread picker name the agent in text instead.
 - **Styling = Uniwind + Tailwind v4, NOT NativeWind.** HeroUI Native 1.0's official companion is `uniwind` (`heroui-native` + `uniwind` + Tailwind v4): metro `withUniwindConfig`, babel is only `babel-preset-expo`, styles are CSS-first in `src/global.css`, and the generated `src/uniwind-types.d.ts` is committed and Biome-ignored. Earlier NativeWind plans are superseded — don't reach for `nativewind`. HeroUI Native still peers on `react-native-gesture-handler` **^2.x** — gesture-handler 3.x is off the table until HeroUI widens that peer.
 - **Versions are hard-pinned to the Expo SDK.** React Native must track the SDK's expected version (SDK 57 = RN 0.86.0 / reanimated 4.5.0 / worklets 0.10.0 / gesture-handler ~2.32.0; the SDK's own expectations live in `expo/bundledNativeModules.json` — align with `pnpm -F @linkcode/mobile exec expo install --fix`, then revert its `typescript` edit back to `catalog:`), and `react`/`react-dom` follow `bundledNativeModules.json` too (SDK 57 → 19.2.3). **That pin is Expo's, not RN's** — `react-native@0.86.0` peers on `react: ^19.2.3`, a caret range the catalog's 19.2.7 also satisfies, so don't argue from "RN requires exactly this". Hold the pin because `expo install --fix` rewrites anything else back, and because React's renderer internals are compiled against a matching `react` — a drift fails at runtime, subtly, not at build. The root pnpm catalog deliberately keeps its own 19.2.7 rather than unifying down: that trades one version fork for keeping the web apps' React cadence off the Expo SDK's. The cost of that trade is **two react copies in the tree**, which is what `vitest.config.ts` here works around (CODE-444). `@sentry/react-native` follows the SDK's expected line (~7.11.0 on SDK 57), not the package's own `latest`.
 - **Two RN-resolution traps:** after changing the RN version, run `pnpm dedupe react-native` (a residual nested copy at the old version, pulled by `packages/presentation/ui`'s optional peer, breaks uniwind's `className` augmentation); and install `@gorhom/bottom-sheet` even though it is only an optional peer — Metro statically resolves HeroUI's `try/catch` require of it and fails without it.
