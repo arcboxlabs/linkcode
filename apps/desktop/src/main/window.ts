@@ -166,10 +166,10 @@ function browserShortcutAction(input: Electron.Input): BrowserShortcutAction | n
   const primary =
     process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
   if (
+    !primary ||
     input.type !== 'keyDown' ||
     input.isAutoRepeat ||
     input.isComposing ||
-    !primary ||
     input.alt
   ) {
     return null;
