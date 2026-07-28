@@ -210,13 +210,23 @@ mod imp {
     /// possible at all — while the verdict was being discarded, a stale client reported a clean
     /// success for every injection and the panel went dead with all its controls looking healthy
     /// (CODE-442). Treat the first failure as possibly-stale: drop the client, warm a fresh one,
-    /// and try once more. A failed send means the port was unusable, so nothing was delivered and
-    /// the retry cannot double-send.
+    /// and try once more. A *refused* send names an unusable port, so nothing was delivered and the
+    /// retry cannot double-send — but a send that was never acknowledged at all proves nothing, so
+    /// that one retires the client without repeating the injection.
     fn with_input(udid: &str, what: &str, op: impl Fn(&Input) -> bool) -> Result<Value, OpError> {
-        if op(input_for(udid)?.as_ref()) {
+        let input = input_for(udid)?;
+        if op(input.as_ref()) {
             return Ok(json!({}));
         }
+        let stalled = input.is_stalled();
+        drop(input);
         forget(udid);
+        if stalled {
+            return Err(OpError::new(
+                ErrorCode::SimctlFailed,
+                format!("{what} was never acknowledged; the HID client has been dropped"),
+            ));
+        }
         eprintln!("sim input: {what} on {udid} found a dead HID session; re-warming the client");
         if op(input_for(udid)?.as_ref()) {
             return Ok(json!({}));

@@ -10,7 +10,7 @@
 //! delegate class at runtime and installs it — the one place in this crate that declares an
 //! Objective-C class rather than only messaging existing ones.
 
-use std::ffi::{CString, c_ulong, c_void};
+use std::ffi::{CString, c_void};
 use std::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -22,6 +22,7 @@ use objc2::{msg_send, sel};
 use objc2_core_foundation::CGRect;
 use objc2_foundation::NSString;
 
+use super::block::{self, BlockDescriptor, CaptureBlock};
 use super::debug::dbg_log;
 use super::device::SimDevice;
 
@@ -55,7 +56,6 @@ unsafe extern "C" {
     fn dispatch_group_wait(group: *mut c_void, timeout: u64) -> isize;
     fn dispatch_time(when: u64, delta: i64) -> u64;
     fn dispatch_release(object: *mut c_void);
-    static _NSConcreteGlobalBlock: c_void;
 }
 
 /// `DISPATCH_TIME_NOW`.
@@ -199,52 +199,19 @@ struct ResponseSlot {
     group: *mut c_void,
 }
 
-// ── Hand-rolled blocks ──────────────────────────────────────────────────────────────────────────
+// ── Blocks ──────────────────────────────────────────────────────────────────────────────────────
 //
-// Same layout as `screen.rs`: a global block with a signature, because the framework reads the
-// signature and rejects a signature-less block. The dispatcher's returned block is captureless by
+// Layout and ownership rules live in `block.rs`. The dispatcher's returned block is captureless by
 // design (see `CURRENT_DEVICE`); the XPC completion block is the one exception and carries a single
 // pointer, which is safe only because its creator blocks until it has run.
-
-#[repr(C)]
-struct BlockDescriptor {
-    reserved: c_ulong,
-    size: c_ulong,
-    signature: *const i8,
-}
-
-// SAFETY: descriptors are immutable and their signatures are static NUL-terminated strings.
-unsafe impl Sync for BlockDescriptor {}
-
-#[repr(C)]
-struct CaptureBlock {
-    isa: *const c_void,
-    flags: i32,
-    reserved: i32,
-    invoke: *const c_void,
-    descriptor: *const BlockDescriptor,
-    /// The one captured word; unused by the captureless dispatcher block.
-    context: *mut c_void,
-}
-
-const BLOCK_IS_GLOBAL: i32 = 1 << 28;
-const BLOCK_HAS_SIGNATURE: i32 = 1 << 30;
 
 /// `void (^)(id)` — the XPC completion handler.
 const COMPLETION_SIGNATURE: &[u8] = b"v16@?0@8\0";
 /// `id (^)(id)` — the request router the dispatcher hands back to the translator.
 const ROUTER_SIGNATURE: &[u8] = b"@16@?0@8\0";
 
-static COMPLETION_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
-    reserved: 0,
-    size: size_of::<CaptureBlock>() as c_ulong,
-    signature: COMPLETION_SIGNATURE.as_ptr().cast::<i8>(),
-};
-static ROUTER_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
-    reserved: 0,
-    size: size_of::<CaptureBlock>() as c_ulong,
-    signature: ROUTER_SIGNATURE.as_ptr().cast::<i8>(),
-};
+static COMPLETION_DESCRIPTOR: BlockDescriptor = block::descriptor(COMPLETION_SIGNATURE);
+static ROUTER_DESCRIPTOR: BlockDescriptor = block::descriptor(ROUTER_SIGNATURE);
 
 /// The XPC completion handler: store the response and release the waiter.
 unsafe extern "C" fn completion_invoke(block: *mut CaptureBlock, response: *mut AnyObject) {
@@ -268,26 +235,20 @@ unsafe extern "C" fn router_invoke(
 }
 
 fn completion_block(slot: *mut ResponseSlot) -> CaptureBlock {
-    CaptureBlock {
-        isa: (&raw const _NSConcreteGlobalBlock).cast::<c_void>(),
-        flags: BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
-        reserved: 0,
-        invoke: completion_invoke as *const c_void,
-        descriptor: &raw const COMPLETION_DESCRIPTOR,
-        context: slot.cast::<c_void>(),
-    }
+    block::capture_block(
+        completion_invoke as *const c_void,
+        &raw const COMPLETION_DESCRIPTOR,
+        slot.cast::<c_void>(),
+    )
 }
 
 /// The router block, leaked on purpose: AXPTranslator retains it for as long as it keeps the token.
 fn router_block() -> *mut c_void {
-    let block = Box::new(CaptureBlock {
-        isa: (&raw const _NSConcreteGlobalBlock).cast::<c_void>(),
-        flags: BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
-        reserved: 0,
-        invoke: router_invoke as *const c_void,
-        descriptor: &raw const ROUTER_DESCRIPTOR,
-        context: ptr::null_mut(),
-    });
+    let block = Box::new(block::capture_block(
+        router_invoke as *const c_void,
+        &raw const ROUTER_DESCRIPTOR,
+        ptr::null_mut(),
+    ));
     Box::into_raw(block).cast::<c_void>()
 }
 

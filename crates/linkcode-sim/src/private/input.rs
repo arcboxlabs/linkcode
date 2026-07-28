@@ -19,9 +19,10 @@
 //! Crown/Dial (watch) and returns otherwise. Scrolling on iOS is a touch gesture; the client's
 //! wheel→synthetic-drag translation is the platform-canonical path, not a stopgap.
 
-use std::ffi::{c_ulong, c_void};
+use std::ffi::c_void;
 use std::ptr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
 
+use super::block::{self, BlockDescriptor, CaptureBlock};
 use super::device::SimDevice;
 use super::framework;
 
@@ -87,8 +89,6 @@ unsafe extern "C" {
     fn dispatch_group_leave(group: *mut c_void);
     fn dispatch_group_wait(group: *mut c_void, timeout: u64) -> isize;
     fn dispatch_time(when: u64, delta: i64) -> u64;
-    fn dispatch_release(object: *mut c_void);
-    static _NSConcreteGlobalBlock: c_void;
 }
 
 /// `DISPATCH_TIME_NOW`.
@@ -175,10 +175,15 @@ pub struct Input {
     client: Retained<AnyObject>,
     symbols: Symbols,
     touch_counter: AtomicU32,
+    gate: *mut SendGate,
+    completion: *mut CaptureBlock,
+    /// Held across each send and its acknowledgement, so the one gate is never in two sends at
+    /// once. Discrete ops (tap, button, swipe) run on their own request threads.
+    send_lock: Mutex<()>,
 }
 
-// SAFETY: the sidecar serializes input per device; the HID client and C fn pointers are only touched
-// under that serialization.
+// SAFETY: the HID client and C fn pointers are only touched under `send_lock`; the gate is reached
+// only through atomics and outlives every reader, and the block is never written after it is built.
 unsafe impl Send for Input {}
 unsafe impl Sync for Input {}
 
@@ -188,13 +193,25 @@ impl Input {
     pub fn warm(device: &SimDevice) -> Option<Input> {
         let symbols = resolve_symbols()?;
         let client = make_hid_client(device)?;
+        let gate = SendGate::create()?;
         let input = Input {
             client,
             symbols,
             touch_counter: AtomicU32::new(0),
+            gate,
+            completion: Box::into_raw(Box::new(completion_block(gate))),
+            send_lock: Mutex::new(()),
         };
         input.warm_services();
         Some(input)
+    }
+
+    /// Whether a send on this client went unanswered. Such a client is finished — its acknowledgement
+    /// bookkeeping is unbalanced — and, unlike a refused send, an unanswered one is no proof that
+    /// nothing was delivered, so the caller must not repeat the operation on a fresh client.
+    pub fn is_stalled(&self) -> bool {
+        // SAFETY: the gate outlives this `Input` (see `SendGate`).
+        unsafe { &*self.gate }.stalled.load(Ordering::Acquire)
     }
 
     /// Allocate the shared identifier for one caller-driven touch stream (down → moves → up).
@@ -440,135 +457,104 @@ impl Input {
     /// session ended does. Discarding the completion (as this did until CODE-442) turns that into a
     /// silent success: the panel stays lit, every control reports fine, and nothing reaches the
     /// guest. Both of `HIDError`'s cases (`machPortInvalid`, `machPortNotConnected`) mean the mach
-    /// port is unusable, so a failure here is proof that nothing was delivered — which is what lets
-    /// the caller re-warm and retry without risking a double-send.
+    /// port is unusable, so a *refused* send is proof that nothing was delivered — which is what
+    /// lets the caller re-warm and retry without risking a double-send. A send that is never
+    /// answered at all carries no such proof: it retires the client instead ([`Input::is_stalled`]).
     fn send_message(&self, message: *mut c_void) -> bool {
-        // SAFETY: both creators return owned dispatch objects, released on every path below.
-        let group = unsafe { dispatch_group_create() };
-        let queue = unsafe { dispatch_queue_create(c"linkcode.sim.hid".as_ptr(), ptr::null()) };
-        if group.is_null() || queue.is_null() {
+        let _serialized = self.send_lock.lock().expect("hid send lock poisoned");
+        // SAFETY: the gate outlives this `Input` (see `SendGate`).
+        let gate = unsafe { &*self.gate };
+        if gate.stalled.load(Ordering::Acquire) {
             // SAFETY: `message` is the malloc'd buffer the client would have freed for us.
             unsafe { libc::free(message) };
             return false;
         }
+        gate.failed.store(false, Ordering::Relaxed);
         // SAFETY: balanced by the `dispatch_group_leave` in `completion_invoke`.
-        unsafe { dispatch_group_enter(group) };
-        // Slot and block live on the heap, not this stack frame: a global block's `Block_copy` is a
-        // no-op returning the same pointer, so a late completion would write through dead memory
-        // (the same hazard `ax.rs` documents).
-        let slot = Box::into_raw(Box::new(SendSlot {
-            failed: false,
-            group,
-        }));
-        let completion = Box::into_raw(Box::new(completion_block(slot)));
+        unsafe { dispatch_group_enter(gate.group) };
         // SAFETY: the client implements sendWithMessage:freeWhenDone:completionQueue:completion:;
-        // message is a live malloc'd buffer the client frees, and the block outlives the call on
-        // every path (see the timeout branch below).
+        // message is a live malloc'd buffer the client frees, and the block outlives every caller.
         unsafe {
             let _: () = msg_send![
                 &*self.client,
                 sendWithMessage: message,
                 freeWhenDone: true,
-                completionQueue: queue,
-                completion: completion.cast::<c_void>(),
+                completionQueue: gate.queue,
+                completion: self.completion.cast::<c_void>(),
             ];
         }
         // SAFETY: DISPATCH_TIME_NOW plus a delta yields an absolute deadline for the wait.
         let deadline =
             unsafe { dispatch_time(DISPATCH_TIME_NOW, SEND_ACK_TIMEOUT.as_nanos() as i64) };
-        // SAFETY: the group is live and entered exactly once.
-        let timed_out = unsafe { dispatch_group_wait(group, deadline) } != 0;
-        if timed_out {
-            // Deliberately leak the slot, the block and the group: the send is still outstanding,
-            // so freeing them now would turn a stalled acknowledgement into a use-after-free. The
-            // caller drops this client on the failure, so the leak is bounded and one-off.
-            // SAFETY: the queue is referenced by dispatch itself, never by the completion handler.
-            unsafe { dispatch_release(queue) };
+        // SAFETY: the group is live and entered exactly once above.
+        if unsafe { dispatch_group_wait(gate.group, deadline) } != 0 {
+            // The acknowledgement is still outstanding, so the group's count stays unbalanced and
+            // no later wait on it would mean anything. Retire the whole client rather than try to
+            // repair it; `is_stalled` also tells the caller this failure is not safe to retry.
+            gate.stalled.store(true, Ordering::Release);
             return false;
         }
-        // SAFETY: the handler has run, so nothing else can reach either allocation; both came from
-        // `Box::into_raw` above and are reclaimed exactly once.
-        let failed = unsafe {
-            let slot = Box::from_raw(slot);
-            drop(Box::from_raw(completion));
-            slot.failed
-        };
-        // SAFETY: created by this function; the handler has finished with the group.
-        unsafe {
-            dispatch_release(group);
-            dispatch_release(queue);
-        }
-        !failed
+        !gate.failed.load(Ordering::Acquire)
     }
 }
 
-/// Where one send's completion handler parks its verdict.
-struct SendSlot {
-    /// Set when SimulatorKit hands back a non-nil `HIDError`.
-    failed: bool,
+/// The completion side of one client's sends: the queue they are acknowledged on, the group the
+/// sender parks on, and where the handler leaves its verdict.
+///
+/// Allocated once per warmed client and **never freed**, nor is the block built over it. A global
+/// block's `Block_copy` hands back the same pointer, so the callee releases *this* allocation — and
+/// that release can run after the handler has already woken the sender, which would put it on dead
+/// memory. Two small allocations per warmed client is a cheaper price than proving the last release
+/// has happened, and clients are warmed once per device outside the re-warm path.
+struct SendGate {
+    queue: *mut c_void,
     group: *mut c_void,
+    /// Set by the handler when SimulatorKit hands back a `HIDError`.
+    failed: AtomicBool,
+    /// Set when an acknowledgement never arrived; the client is finished at that point.
+    stalled: AtomicBool,
 }
 
-// ── Hand-rolled block ───────────────────────────────────────────────────────────────────────────
-//
-// Same layout as `ax.rs` and `screen.rs`: a global block carrying one captured word, with a
-// signature. block2's `RcBlock` is used nowhere in this crate's private layer — it crashed the
-// callbacks these frameworks invoke (see `screen.rs`), so the recipe is hand-rolled throughout.
-
-#[repr(C)]
-struct BlockDescriptor {
-    reserved: c_ulong,
-    size: c_ulong,
-    /// Objective-C type encoding of the block signature; required with `BLOCK_HAS_SIGNATURE`.
-    signature: *const i8,
+impl SendGate {
+    /// `None` if libdispatch refuses the queue or group, which leaves the client unusable.
+    fn create() -> Option<*mut SendGate> {
+        // SAFETY: both creators return owned dispatch objects; they are never released (see above).
+        let queue = unsafe { dispatch_queue_create(c"linkcode.sim.hid".as_ptr(), ptr::null()) };
+        let group = unsafe { dispatch_group_create() };
+        if queue.is_null() || group.is_null() {
+            return None;
+        }
+        Some(Box::into_raw(Box::new(SendGate {
+            queue,
+            group,
+            failed: AtomicBool::new(false),
+            stalled: AtomicBool::new(false),
+        })))
+    }
 }
-
-// SAFETY: the descriptor is immutable and its signature is a static NUL-terminated string.
-unsafe impl Sync for BlockDescriptor {}
-
-#[repr(C)]
-struct CaptureBlock {
-    isa: *const c_void,
-    flags: i32,
-    reserved: i32,
-    invoke: *const c_void,
-    descriptor: *const BlockDescriptor,
-    /// The one captured word: the [`SendSlot`] this completion writes into.
-    context: *mut c_void,
-}
-
-const BLOCK_IS_GLOBAL: i32 = 1 << 28;
-const BLOCK_HAS_SIGNATURE: i32 = 1 << 30;
 
 /// `void (^)(NSError *)` — `send`'s completion handler, from the Swift signature
 /// `completion: ((Error?) -> ())?`.
 const COMPLETION_SIGNATURE: &[u8] = b"v16@?0@8\0";
 
-static COMPLETION_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
-    reserved: 0,
-    size: size_of::<CaptureBlock>() as c_ulong,
-    signature: COMPLETION_SIGNATURE.as_ptr().cast::<i8>(),
-};
+static COMPLETION_DESCRIPTOR: BlockDescriptor = block::descriptor(COMPLETION_SIGNATURE);
 
-/// Record whether the send errored and release the waiter.
+/// Record whether the send errored, then release the waiter. Ordering matters: the verdict must be
+/// visible before the sender can wake.
 unsafe extern "C" fn completion_invoke(block: *mut CaptureBlock, error: *mut AnyObject) {
-    // SAFETY: `context` is the `SendSlot` pointer this block was built with, and `send_message`
-    // blocks on the group until this runs, so the slot is still alive.
-    let slot = unsafe { &mut *(*block).context.cast::<SendSlot>() };
-    slot.failed = !error.is_null();
+    // SAFETY: `context` is the `SendGate` this block was built with, which outlives every send.
+    let gate = unsafe { &*(*block).context.cast::<SendGate>() };
+    gate.failed.store(!error.is_null(), Ordering::Release);
     // SAFETY: balances the `dispatch_group_enter` in `send_message`.
-    unsafe { dispatch_group_leave(slot.group) };
+    unsafe { dispatch_group_leave(gate.group) };
 }
 
-fn completion_block(slot: *mut SendSlot) -> CaptureBlock {
-    CaptureBlock {
-        isa: (&raw const _NSConcreteGlobalBlock).cast::<c_void>(),
-        flags: BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE,
-        reserved: 0,
-        invoke: completion_invoke as *const c_void,
-        descriptor: &raw const COMPLETION_DESCRIPTOR,
-        context: slot.cast::<c_void>(),
-    }
+fn completion_block(gate: *mut SendGate) -> CaptureBlock {
+    block::capture_block(
+        completion_invoke as *const c_void,
+        &raw const COMPLETION_DESCRIPTOR,
+        gate.cast::<c_void>(),
+    )
 }
 
 /// Patch the two byte slots the trackpad wrapper leaves uninitialised: the touch-target routing tag
