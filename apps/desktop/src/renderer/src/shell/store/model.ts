@@ -37,13 +37,22 @@ export interface RightPanelFilesState {
   activeTabId: string | null;
 }
 
-/** The right panel's single-instance in-app browser (Electron webview). */
-export interface RightPanelBrowserState {
+/** One open page in the right panel's browser section (its own Electron webview). */
+export interface BrowserSectionTab extends PanelSectionTab {
   url: string | null;
+  /** Last title reported by the page; null falls back to an index-derived label. */
+  title: string | null;
+}
+
+/** The right panel's in-app browser: webview sub-tabs, mirroring the terminal section. */
+export interface RightPanelBrowserState {
+  tabs: BrowserSectionTab[];
+  activeTabId: string | null;
 }
 
 /** The right panel: fixed Diff/Terminal/Browser/Files sections, with per-instance
- * sub-tabs for Terminal (PTYs) and Files (viewers), plus the on-demand Simulator section. */
+ * sub-tabs for Terminal (PTYs), Browser (webviews), and Files (viewers), plus the on-demand
+ * Simulator section. */
 export interface RightPanelState {
   open: boolean;
   activeSection: PanelSection;
@@ -85,7 +94,9 @@ export interface PersistedRightPanelState {
   activeTerminalTabIndex: number;
   fileTabPaths: string[];
   activeFileTabIndex: number;
-  browserUrl: string | null;
+  /** Null entries are empty tabs, kept so activeBrowserTabIndex stays aligned. */
+  browserTabUrls: Array<string | null>;
+  activeBrowserTabIndex: number;
 }
 
 export interface PersistedPanelState {
@@ -125,6 +136,9 @@ const MAX_PERSISTED_RIGHT_TERMINAL_TABS = 20;
 
 /** Defensive cap on the file tab count restored from persisted state. */
 const MAX_PERSISTED_RIGHT_FILE_TABS = 20;
+
+/** Defensive cap on the browser tab count restored from persisted state. */
+const MAX_PERSISTED_RIGHT_BROWSER_TABS = 20;
 
 let tabSequence = 0;
 
@@ -169,7 +183,7 @@ export function createDefaultRightPanelState(): RightPanelState {
     simulatorAdded: false,
     terminal: { tabs: [], activeTabId: null },
     files: { tabs: [], activeTabId: null },
-    browser: { url: null },
+    browser: { tabs: [], activeTabId: null },
   };
 }
 
@@ -201,24 +215,31 @@ export function seedTerminalSection(terminal: RightPanelTerminalState): RightPan
 }
 
 /** Brings `section` forward, seeding the terminal section's first tab when it becomes visible;
- * revealing the on-demand simulator section also adds it to the strip. */
+ * the Browser section follows the same invariant, and revealing the on-demand Simulator section
+ * also adds it to the strip. */
 export function revealSectionState(
   panel: RightPanelState,
   section: PanelSection,
   open: boolean,
 ): RightPanelState {
-  return {
+  const revealed = {
     ...panel,
     open,
     activeSection: section,
     simulatorAdded: panel.simulatorAdded || section === 'simulator',
     terminal: open && section === 'terminal' ? seedTerminalSection(panel.terminal) : panel.terminal,
   };
+  return open ? seedBrowserSection(revealed) : revealed;
 }
 
 export function createRightFileTab(path: string): FileSectionTab {
   tabSequence += 1;
   return { id: `right-file-${tabSequence}`, path };
+}
+
+export function createRightBrowserTab(url: string | null = null): BrowserSectionTab {
+  tabSequence += 1;
+  return { id: `right-browser-${tabSequence}`, url, title: null };
 }
 
 /** Removes a section sub-tab, falling back the active tab to a neighbor if it was the one closed. */
@@ -237,6 +258,12 @@ export function closeSectionTabState<Tab extends PanelSectionTab>(
   return { tabs: nextTabs, activeTabId: nextActiveId };
 }
 
+/** Closes a browser tab and keeps the visible browser section seeded. */
+export function closeBrowserTabState(panel: RightPanelState, id: string): RightPanelState {
+  const next = { ...panel, browser: closeSectionTabState(panel.browser, id) };
+  return panel.open ? seedBrowserSection(next) : next;
+}
+
 /** Opens (or re-focuses) a file viewer tab; one tab per distinct path. */
 export function openFileTabState(files: RightPanelFilesState, path: string): RightPanelFilesState {
   const existing = files.tabs.find((tab) => tab.path === path);
@@ -245,6 +272,36 @@ export function openFileTabState(files: RightPanelFilesState, path: string): Rig
   }
   const tab = createRightFileTab(path);
   return { tabs: [...files.tabs, tab], activeTabId: tab.id };
+}
+
+/** Navigates the active browser tab (title resets until the page reports one), or seeds a first tab. */
+export function openBrowserUrlState(
+  browser: RightPanelBrowserState,
+  url: string,
+): RightPanelBrowserState {
+  const active = browser.tabs.find((tab) => tab.id === browser.activeTabId);
+  if (active) return updateBrowserTabState(browser, active.id, { url, title: null });
+  const tab = createRightBrowserTab(url);
+  return { tabs: [...browser.tabs, tab], activeTabId: tab.id };
+}
+
+/** The browser section always activates with at least one (possibly empty) tab. */
+export function seedBrowserSection(panel: RightPanelState): RightPanelState {
+  if (panel.activeSection !== 'browser' || panel.browser.tabs.length > 0) return panel;
+  const tab = createRightBrowserTab();
+  return { ...panel, browser: { tabs: [tab], activeTabId: tab.id } };
+}
+
+export function updateBrowserTabState(
+  browser: RightPanelBrowserState,
+  tabId: string,
+  patch: Partial<Pick<BrowserSectionTab, 'url' | 'title'>>,
+): RightPanelBrowserState {
+  if (!browser.tabs.some((tab) => tab.id === tabId)) return browser;
+  return {
+    ...browser,
+    tabs: browser.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...patch } : tab)),
+  };
 }
 
 export function pushExpandedPanel(stack: PanelSide[], side: PanelSide): PanelSide[] {
@@ -402,7 +459,8 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       // Absent in pre-files persisted payloads; the catches make the section start empty.
       fileTabPaths: z.array(z.string().min(1)).catch([]),
       activeFileTabIndex: FiniteNumberSchema.int().catch(0),
-      browserUrl: z.string().min(1).nullable().catch(null),
+      browserTabUrls: z.array(z.string().min(1).nullable()).catch([]),
+      activeBrowserTabIndex: FiniteNumberSchema.int().catch(0),
     })
     .catch({
       open: fallback.open,
@@ -412,7 +470,8 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       activeTerminalTabIndex: 0,
       fileTabPaths: [],
       activeFileTabIndex: 0,
-      browserUrl: null,
+      browserTabUrls: [],
+      activeBrowserTabIndex: 0,
     })
     .transform(
       ({
@@ -423,7 +482,8 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
         activeTerminalTabIndex,
         fileTabPaths,
         activeFileTabIndex,
-        browserUrl,
+        browserTabUrls,
+        activeBrowserTabIndex,
       }) => {
         const tabCount = clamp(terminalTabCount, 0, MAX_PERSISTED_RIGHT_TERMINAL_TABS);
         const tabs = createFixedArray(tabCount).map(() => createRightTerminalTab());
@@ -437,6 +497,11 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
           tabs,
           activeTabId: tabs.length > 0 ? tabs[activeIndex].id : null,
         };
+        const browserTabs = browserTabUrls
+          .slice(0, MAX_PERSISTED_RIGHT_BROWSER_TABS)
+          .map((url) => createRightBrowserTab(durableBrowserUrl(url)));
+        const activeBrowserIndex =
+          browserTabs.length > 0 ? clamp(activeBrowserTabIndex, 0, browserTabs.length - 1) : 0;
         // A persisted active on-demand section without its membership falls back to the default.
         const section =
           activeSection === 'simulator' && !simulatorAdded ? fallback.activeSection : activeSection;
@@ -450,7 +515,10 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
           },
-          browser: { url: durableBrowserUrl(browserUrl) },
+          browser: {
+            tabs: browserTabs,
+            activeTabId: browserTabs.length > 0 ? browserTabs[activeBrowserIndex].id : null,
+          },
         };
       },
     );
@@ -473,7 +541,12 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
       0,
       Math.max(0, panel.files.tabs.length - 1),
     ),
-    browserUrl: durableBrowserUrl(panel.browser.url),
+    browserTabUrls: panel.browser.tabs.map((tab) => durableBrowserUrl(tab.url)),
+    activeBrowserTabIndex: clamp(
+      panel.browser.tabs.findIndex((tab) => tab.id === panel.browser.activeTabId),
+      0,
+      Math.max(0, panel.browser.tabs.length - 1),
+    ),
   };
 }
 
