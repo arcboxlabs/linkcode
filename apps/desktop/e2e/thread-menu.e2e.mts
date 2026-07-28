@@ -31,6 +31,7 @@ const electronBinary = require('electron') as unknown as string;
 const PORT = 44000 + (process.pid % 1000);
 const SESSION_ID = 'e2e-thread-menu-session';
 const SESSION_TITLE = 'Seeded thread for the title menu';
+const REVEAL_MENU_ITEM_PATTERN = /Reveal in Finder|Show in File|file manager/;
 
 /** Throws rather than exiting: `main()`'s catch captures a screenshot and its finally reaps the
  * daemon and the Electron app, none of which run past a `process.exit`. */
@@ -141,7 +142,7 @@ async function run(win: Page, app: ElectronApplication, workspace: string): Prom
 
   // Reveal: the swapped-in main handler records the path instead of opening a file manager.
   await openMenu(win);
-  const reveal = win.getByRole('menuitem', { name: /Reveal in Finder|Show in File|file manager/ });
+  const reveal = win.getByRole('menuitem', { name: REVEAL_MENU_ITEM_PATTERN });
   if ((await reveal.count()) === 0) fail('the menu has no reveal item');
   await reveal.click();
   await win.waitForTimeout(1000);
