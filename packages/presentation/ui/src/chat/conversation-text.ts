@@ -23,11 +23,11 @@ export function assistantTurnText(items: readonly ConversationItem[]): string {
 
 /** The model that served the turn: its last assistant message's stamp. */
 export function turnModel(items: readonly ConversationItem[]): string | undefined {
-  let model: string | undefined;
-  for (const item of items) {
-    if (item.kind === 'message' && item.role === 'assistant' && item.model) model = item.model;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'message' && item.role === 'assistant' && item.model) return item.model;
   }
-  return model;
+  return undefined;
 }
 
 /** Best-known time of the latest-stamped item — the turn's approximate end time. */

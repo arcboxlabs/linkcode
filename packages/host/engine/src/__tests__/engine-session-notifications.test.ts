@@ -48,8 +48,9 @@ describe('engine session notifications', () => {
     adapters[0].emit({
       type: 'permission-request',
       requestId: 'perm-1',
-      toolCall: { toolCallId: 'tc-1', title: 'Bash: rm -rf node_modules' },
-      options: [],
+      title: 'Bash: rm -rf node_modules',
+      subject: { type: 'tool-call', toolCallId: 'tc-1' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
     });
     adapters[0].emit({
       type: 'question-request',

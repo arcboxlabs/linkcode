@@ -248,7 +248,7 @@ export function SettingsView(): React.ReactNode {
                 searchValue={searchQuery}
                 onSearchChange={setSearchQuery}
                 onSearchSubmit={() => {
-                  const first = visibleGroups.flatMap((group) => group.items)[0];
+                  const first = visibleGroups.flatMap((group) => group.items).at(0);
                   if (first === undefined) return;
                   // A query that matched an accordion child by name lands on that child, not
                   // the parent's default selection ("codex" → History import → Codex).

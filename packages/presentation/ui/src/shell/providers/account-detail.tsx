@@ -361,7 +361,7 @@ function BindingRow({
         </div>
         <p className="truncate text-muted-foreground text-xs">{note}</p>
       </div>
-      {binding.bound && modelOptions ? (
+      {modelOptions && binding.bound ? (
         <ModelSelect
           options={
             modelOptions.some((option) => option.id === binding.currentModel) ||

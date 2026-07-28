@@ -3,7 +3,7 @@ import { isKeyboardShortcutLocalTarget, useKeyboardShortcut } from '@linkcode/ui
 import type { BrowserFindState } from '@linkcode/ui/shell/browser';
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { noop } from 'foxts/noop';
 import { useEffectEvent, useRef, useState } from 'react';
@@ -73,22 +73,21 @@ export function BrowserWebviewPane({
   );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [webview, setWebview] = useState<WebviewTag | null>(null);
-  const [webviewReady, setWebviewReady] = useState(false);
+  // The guest that reached `dom-ready`, held by identity rather than as a boolean: a replacement
+  // element is then simply not the ready one, with no reset to keep in sync.
+  const [readyGuest, setReadyGuest] = useState<WebviewTag | null>(null);
+  const guestReady = webview !== null && readyGuest === webview;
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
   const [find, setFind] = useState<BrowserFindState | null>(null);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
   const captureWebview = (element: HTMLWebViewElement | null): void => {
-    setWebviewReady(false);
     setWebview(element as WebviewTag | null);
   };
 
   const syncDocumentState = useEffectEvent((currentUrl: string, currentTitle: string) => {
     if (currentUrl.length > 0) setBrowserTabUrl(tabId, currentUrl);
     if (currentTitle.length > 0) setBrowserTabTitle(tabId, currentTitle);
-  });
-  const reportLoadFailure = useEffectEvent((description: string) => {
-    setNav((prev) => ({ ...prev, failure: t('loadFailed', { error: description }) }));
   });
 
   useLayoutEffect(() => {
@@ -105,7 +104,7 @@ export function BrowserWebviewPane({
     };
     const syncDocument = (): void => {
       ready = true;
-      setWebviewReady(true);
+      setReadyGuest(webview);
       sync();
       syncDocumentState(webview.getURL(), webview.getTitle());
     };
@@ -120,7 +119,10 @@ export function BrowserWebviewPane({
     const onFail = (event: Electron.DidFailLoadEvent): void => {
       // -3 = ERR_ABORTED: fired for cancelled loads (e.g. quick re-navigation), not real failures.
       if (event.errorCode === -3 || !event.isMainFrame) return;
-      reportLoadFailure(event.errorDescription);
+      setNav((prev) => ({
+        ...prev,
+        failure: t('loadFailed', { error: event.errorDescription }),
+      }));
     };
     const onFoundInPage = (event: Electron.FoundInPageEvent): void => {
       setFind((prev) =>
@@ -150,13 +152,15 @@ export function BrowserWebviewPane({
       webview.removeEventListener('did-fail-load', onFail);
       webview.removeEventListener('found-in-page', onFoundInPage);
     };
-  }, [webview]);
+  }, [webview, t]);
 
   // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
   // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
   // restarts it on their next visit.
-  useAbortableEffect(() => {
-    if (webview === null || !webviewReady || visible) return;
+  // Gated on `dom-ready`: the resident webview normally mounts hidden, and calling guest methods
+  // before attachment can throw synchronously. A guest that never became ready has nothing playing.
+  useEffect(() => {
+    if (webview === null || !guestReady || visible) return;
     // Guest may detach after the readiness check, in which case there is nothing to pause.
     void Promise.resolve()
       .then(() =>
@@ -165,28 +169,28 @@ export function BrowserWebviewPane({
         ),
       )
       .catch(noop);
-  }, [webview, webviewReady, visible]);
+  }, [webview, guestReady, visible]);
 
   const openFind = (): void => {
     setFind((prev) => prev ?? { query: '', matches: null });
   };
   const closeFind = (): void => {
-    if (webviewReady) webview?.stopFindInPage('clearSelection');
+    if (guestReady) webview?.stopFindInPage('clearSelection');
     setFind(null);
   };
   const changeFindQuery = (query: string): void => {
     setFind({ query, matches: null });
-    if (!webviewReady) return;
+    if (!guestReady) return;
     if (query.length > 0) webview?.findInPage(query);
     else webview?.stopFindInPage('clearSelection');
   };
   const stepFind = (forward: boolean): void => {
-    if (webviewReady && find !== null && find.query.length > 0) {
+    if (guestReady && find !== null && find.query.length > 0) {
       webview?.findInPage(find.query, { forward, findNext: true });
     }
   };
   const zoom = (action: 'in' | 'out' | 'reset'): void => {
-    applyZoom(webview, webviewReady, action);
+    applyZoom(webview, guestReady, action);
   };
 
   // Owner-scoped chords: the registry only fires these while this tab's pane is the
@@ -244,19 +248,19 @@ export function BrowserWebviewPane({
           setFind((prev) => prev ?? { query: '', matches: null });
           break;
         case 'zoom-in':
-          applyZoom(webview, webviewReady, 'in');
+          applyZoom(webview, guestReady, 'in');
           break;
         case 'zoom-out':
-          applyZoom(webview, webviewReady, 'out');
+          applyZoom(webview, guestReady, 'out');
           break;
         case 'zoom-reset':
-          applyZoom(webview, webviewReady, 'reset');
+          applyZoom(webview, guestReady, 'reset');
           break;
         default:
           break;
       }
     });
-  }, [systemBridge, tabId, visible, webview, webviewReady]);
+  }, [systemBridge, tabId, visible, webview, guestReady]);
 
   return (
     <div ref={rootRef} className="h-full min-h-0">
@@ -268,15 +272,15 @@ export function BrowserWebviewPane({
         failure={nav.failure}
         find={find}
         onNavigate={(next) => setBrowserTabUrl(tabId, next)}
-        onBack={() => webviewReady && webview?.goBack()}
-        onForward={() => webviewReady && webview?.goForward()}
-        onReload={() => webviewReady && webview?.reload()}
+        onBack={() => guestReady && webview?.goBack()}
+        onForward={() => guestReady && webview?.goForward()}
+        onReload={() => guestReady && webview?.reload()}
         onFindQueryChange={changeFindQuery}
         onFindStep={stepFind}
         onFindClose={closeFind}
         onOpenFind={openFind}
         onZoom={zoom}
-        onOpenDevTools={() => webviewReady && webview?.openDevTools()}
+        onOpenDevTools={() => guestReady && webview?.openDevTools()}
       >
         {url !== null && (
           <webview

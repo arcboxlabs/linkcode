@@ -1,7 +1,10 @@
 <h4 align="right"><strong>English</strong> | <a href="docs/README.zh-CN.md">简体中文</a></h4>
 
 <p align="center">
-    <img src="./assets/icon.png" width="138" alt="LinkCode"/>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/icon/icon-dark.svg">
+      <img src="https://static.linkcode.ai/icon/icon-light.svg" width="138" alt="LinkCode"/>
+    </picture>
 </p>
 
 <h1 align="center">LinkCode</h1>
@@ -16,18 +19,23 @@
     <img alt="GitHub commit" src="https://img.shields.io/github/commit-activity/m/arcboxlabs/linkcode?style=flat"></a>
     <a href="LICENSE" target="_blank">
     <img alt="License" src="https://img.shields.io/badge/license-BUSL--1.1-blue?style=flat"></a>
-    <a href="https://twitter.com/arcboxlabs" target="_blank">
-    <img alt="twitter" src="https://img.shields.io/badge/follow-arcboxlabs-green?style=social&logo=Twitter"></a>
-    <img alt="Hits" src="https://hits.aprilnea.com/hits?url=https://github.com/arcboxlabs/linkcode">
+    <a href="https://x.com/linkcodeai" target="_blank">
+    <img alt="follow on X" src="https://img.shields.io/badge/follow-LinkCodeAI-000000?style=flat&logo=X&logoColor=white"></a>
+    <a href="https://arcbox.link/discord" target="_blank">
+    <img alt="Discord" src="https://img.shields.io/badge/Discord-join-5865F2?style=flat&logo=discord&logoColor=white"></a>
 </div>
 
 <p align="center">
     <a href="#install">Install</a> ·
     <a href="#features">Features</a> ·
     <a href="#supported-agents">Supported Agents</a> ·
-    <a href="#how-it-works">How It Works</a> ·
-    <a href="#development">Development</a>
+    <a href="#how-it-works">How It Works</a>
 </p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-dark-rounded.webp?v=dee6283">
+  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-light-rounded.webp?v=dee6283" alt="LinkCode">
+</picture>
 
 LinkCode is one workspace for all your coding agents. A host on your machine takes over Claude Code, Codex, OpenCode, Pi, and Grok Build, normalizes their divergent events into a single contract, and serves the same threads to every client — start an agent at your desk, keep an eye on it from anywhere.
 
@@ -39,7 +47,8 @@ LinkCode is one workspace for all your coding agents. A host on your machine tak
 - **Workspace at hand** — file tree, git panel, and project scripts with dev-server preview, right next to the conversation.
 - **Automations** — schedule agent runs, or loop a prompt until the work is done.
 - **Your history, kept in place** — sessions stay in each agent's own local history; LinkCode lists, imports, and resumes them without copying a transcript.
-- **Local-first** — the host binds to loopback and your code never leaves the machine; remote access is an explicit tunnel through LinkCode Cloud (companion mobile app in active development).
+- **Local-first** — the host binds to loopback and your code never leaves the machine.
+- **Remote & mobile control** *(not ready)* — an explicit tunnel through LinkCode Cloud will let you reach your host from anywhere and drive it from the companion mobile app; both are still in development.
 
 ## Supported Agents
 
@@ -59,24 +68,38 @@ LinkCode is one workspace for all your coding agents. A host on your machine tak
 ```mermaid
 flowchart LR
     subgraph machine["Your machine"]
-        DESKTOP["Desktop"]
-        WEB["Browser"]
-        DAEMON["Daemon<br/>engine · adapters · PTY"]
-        AGENTS["Claude Code · Codex · OpenCode<br/>Pi · Grok Build"]
+        DESKTOP("Desktop")
+        WEB("Browser")
+        DAEMON("Daemon<br/>engine · adapters · PTY")
+        AGENTS("Claude Code · Codex · OpenCode<br/>Pi · Grok Build")
     end
-    CLOUD["LinkCode Cloud<br/>relay"]
-    MOBILE["Mobile"]
+    CLOUD("LinkCode Cloud<br/>relay")
+    MOBILE("Mobile")
 
     DESKTOP <--> DAEMON
     WEB <--> DAEMON
     DAEMON <--> AGENTS
     DAEMON <--> CLOUD
     CLOUD <--> MOBILE
+
+    classDef client fill:#88888826,stroke:#88888880
+    classDef host fill:#2F81F71A,stroke:#2F81F7,stroke-width:2px
+    classDef muted fill:#88888812,stroke:#88888880,stroke-dasharray:4 3
+    class DESKTOP,WEB,MOBILE client
+    class DAEMON host
+    class AGENTS,CLOUD muted
+    style machine fill:#88888809,stroke:#88888840
+    linkStyle default stroke:#888888B0,stroke-width:1.5px
+    linkStyle 3,4 stroke:#888888B0,stroke-width:1.5px,stroke-dasharray:4 3
 ```
 
 A local daemon hosts the engine and one adapter per agent. Adapters normalize each agent's native events into a single zod-validated data contract, carried over a versioned wire protocol; clients are thin renderers of that one normalized conversation, so desktop, browser, and mobile stay identical whether they connect directly or through the Cloud tunnel. The full picture — layers, contracts, and the data-plane/system-plane split — is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Install
+
+<a href="https://linkcode.ai/download"><img src="https://static.linkcode.ai/badge/download.svg" alt="Download LinkCode" height="40"></a>
+
+The button grabs the latest build for your platform. Prefer a package manager or a specific artifact:
 
 ### macOS
 
@@ -92,30 +115,6 @@ Download the installer (`.exe`), `.AppImage`, or `.deb` from the [latest release
 
 The desktop app keeps itself up to date automatically.
 
-## Development
-
-Prerequisites: Node.js 24+, pnpm 11, and stable Rust — or let [`devenv`](https://devenv.sh) pin all of them for you.
-
-```bash
-pnpm install
-devenv shell -- app   # daemon + desktop, in dev mode
-```
-
-Without devenv, the same sequence is:
-
-```bash
-pnpm -F @linkcode/daemon run build:rust
-pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev
-```
-
-| Doc | What's inside |
-| --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, the single data contract, transport and wire protocol |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Runbook: run every surface, test, E2E, triage |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | Packaging, signing, notarization, publishing |
-
-Contributions are welcome — [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the toolchain, checks, and PR conventions. Community expectations live in the [Code of Conduct](CODE_OF_CONDUCT.md), and [`SUPPORT.md`](SUPPORT.md) covers where to get help.
-
 ## License
 
-LinkCode is source-available under the [Business Source License 1.1](LICENSE); its logos and brand assets are licensed separately (see [`assets/LICENSE`](assets/LICENSE) and the [Brand Usage Terms](assets/BRAND.md)).
+LinkCode is source-available under the [Business Source License 1.1](LICENSE); its logos and brand assets are licensed separately (see [`assets/LICENSE`](assets/LICENSE) and the [Brand Usage Terms](assets/BRAND.md)). Forking? [`docs/FORKING.md`](docs/FORKING.md) covers the rebranding checklist and a safe redistribution path.

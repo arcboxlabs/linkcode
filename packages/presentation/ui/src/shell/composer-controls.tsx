@@ -1,4 +1,5 @@
 import type { AgentKind, ApprovalPolicy, EffortLevel, SessionMode } from '@linkcode/schema';
+import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
   Menu,
@@ -16,6 +17,7 @@ import {
 } from 'coss-ui/components/menu';
 import { Separator } from 'coss-ui/components/separator';
 import {
+  BrainCircuitIcon,
   ChevronDownIcon,
   ListTodoIcon,
   PlusIcon,
@@ -38,6 +40,16 @@ function optionById<T extends { id: string }>(
 ): T | undefined {
   for (const option of options ?? []) {
     if (option.id === id) return option;
+  }
+  return undefined;
+}
+
+function policyById(
+  policies: readonly ApprovalPolicy[],
+  policyId: string | null,
+): ApprovalPolicy | undefined {
+  for (const policy of policies) {
+    if (policy.policyId === policyId) return policy;
   }
   return undefined;
 }
@@ -84,7 +96,7 @@ export function ApprovalPolicyMenu({
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   if (policies.length === 0) return null;
-  const active = policies.find((policy) => policy.policyId === currentPolicyId) ?? policies[0];
+  const active = policyById(policies, currentPolicyId) ?? policies[0];
 
   return (
     <Menu>
@@ -102,7 +114,7 @@ export function ApprovalPolicyMenu({
       >
         <ShieldIcon />
         <span className="@max-[480px]/composer:sr-only">{active.name}</span>
-        <ChevronDownIcon className="size-3 text-muted-foreground/72 @max-[480px]/composer:hidden" />
+        <ChevronDownIcon className="size-3 text-label-tertiary @max-[480px]/composer:hidden" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
@@ -170,10 +182,18 @@ export function SessionModeChip({
   );
 }
 
-/** Muted availability badge on a provider submenu item; nothing renders for a ready runtime. */
+/** Availability badge on a provider submenu item; nothing renders for a ready runtime. */
 function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
   if (!cue) return null;
+  const variant =
+    cue.state === 'missing' || cue.state === 'needs-login'
+      ? 'outline'
+      : cue.state === 'downloading'
+        ? 'info'
+        : cue.state === 'failed'
+          ? 'error'
+          : 'warning';
   const label =
     cue.state === 'missing'
       ? t('badgeMissing')
@@ -184,7 +204,11 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
           : cue.state === 'needs-login'
             ? t('badgeNeedsLogin')
             : t('badgeUnverified');
-  return <span className="ml-auto shrink-0 text-muted-foreground text-xs">{label}</span>;
+  return (
+    <Badge className="font-normal" variant={variant}>
+      {label}
+    </Badge>
+  );
 }
 
 /** Codex-style model trigger: [provider glyph] model + effort, opening reasoning/model/provider menus. */
@@ -231,33 +255,36 @@ export function ModelSelectorMenu({
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
   const modelLabel = selectedModel?.label ?? selectedModelId ?? t('modelDefault');
+  const effortLabel = selectedEffort?.label ?? t('effortDefault');
   // A draft provider picker must keep the model axis visible even when that provider discovers
   // its concrete model only after session start (OpenCode/Pi). The live update replaces Default.
   const showsModel = providers.length > 0 || hasModels || selectedModelId !== null;
 
   if (!hasEfforts && !showsModel && providers.length === 0) return null;
+  const selectorLabels: string[] = [];
+  if (provider) selectorLabels.push(AGENT_LABELS[provider]);
+  if (showsModel) selectorLabels.push(modelLabel);
+  if (hasEfforts) selectorLabels.push(`${t('reasoning')}: ${effortLabel}`);
 
   return (
     <Menu>
       <MenuTrigger
+        aria-label={selectorLabels.join(', ')}
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
-        {providers.length > 0 && provider ? (
-          <AgentIcon className="text-muted-foreground" kind={provider} variant="ghost" />
-        ) : null}
+        {provider && providers.length > 0 ? <AgentIcon kind={provider} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
-          <span className="font-normal text-muted-foreground">
-            <span className="@max-[480px]/composer:sr-only">
-              {selectedEffort?.label ?? t('effortDefault')}
-            </span>
+          <span className="flex items-center gap-2 font-normal text-muted-foreground">
+            <span aria-hidden>·</span>
+            <span className="@max-[480px]/composer:sr-only">{effortLabel}</span>
             <span aria-hidden className="hidden @max-[480px]/composer:inline">
               {selectedEffort?.shortLabel ?? t('effortShort')}
             </span>
           </span>
         ) : null}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
         {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}
@@ -284,7 +311,12 @@ export function ModelSelectorMenu({
           <>
             {hasEfforts ? <MenuSeparator /> : null}
             <MenuSub>
-              <MenuSubTrigger>{modelLabel}</MenuSubTrigger>
+              <MenuSubTrigger>
+                <span className="flex size-4 shrink-0 items-center justify-center">
+                  <BrainCircuitIcon className="size-4" />
+                </span>
+                {modelLabel}
+              </MenuSubTrigger>
               <MenuSubPopup className="w-56">
                 <MenuRadioGroup
                   value={selectedModel?.id ?? selectedModelId ?? ''}
@@ -331,30 +363,32 @@ export function ModelSelectorMenu({
             </MenuSub>
           </>
         ) : null}
-        {providers.length > 0 && onSelectProvider ? (
+        {onSelectProvider && providers.length > 0 ? (
           <MenuSub>
             <MenuSubTrigger>
               {provider ? (
                 <>
-                  <AgentIcon kind={provider} variant="ghost" />
+                  <AgentIcon kind={provider} variant="brand" />
                   {AGENT_LABELS[provider]}
                 </>
               ) : (
                 t('provider')
               )}
             </MenuSubTrigger>
-            <MenuSubPopup className="w-48">
+            <MenuSubPopup className="w-60">
               <MenuRadioGroup
                 value={provider ?? ''}
                 onValueChange={(value) => onSelectProvider(value as AgentKind)}
               >
                 {providers.map((kind) => (
-                  <MenuRadioItem key={kind} closeOnClick value={kind}>
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <AgentIcon kind={kind} variant="ghost" />
-                      {AGENT_LABELS[kind]}
+                  <MenuRadioItem key={kind} className="pe-2" closeOnClick value={kind}>
+                    <span className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <AgentIcon kind={kind} variant="brand" />
+                        <span className="truncate">{AGENT_LABELS[kind]}</span>
+                      </span>
+                      <RuntimeCueBadge cue={runtimeCues?.[kind]} />
                     </span>
-                    <RuntimeCueBadge cue={runtimeCues?.[kind]} />
                   </MenuRadioItem>
                 ))}
               </MenuRadioGroup>

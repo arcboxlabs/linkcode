@@ -21,7 +21,7 @@ export const TERMINAL_SIDECAR_WINDOW_BYTES = 1024 * 1024;
 /** Clear screen + scrollback + home: substitutes a journal-truncation gap so the stream stays
  * renderable — the viewer loses the dropped scrollback but never sees a torn escape sequence
  * from mid-stream resumption without it. */
-const GAP_CLEAR = '\u001B[2J\u001B[3J\u001B[H';
+const GAP_CLEAR = '\u{1B}[2J\u{1B}[3J\u{1B}[H';
 
 interface AttachmentFlow {
   /** `deliveredChars` at attach-reply time; this attachment only accounts for chars after it. */

@@ -1,4 +1,5 @@
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
+import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
 import { useEffect, useEffectEvent, useSyncExternalStore } from 'react';
 import type { KeyboardPlatform, KeyboardShortcuts } from './registry';
 import { createKeyboardShortcutRegistry } from './registry';
@@ -35,7 +36,7 @@ export function useKeyboardShortcutListener(): void {
 }
 
 export function useKeyboardShortcut(binding: KeyboardShortcutBinding): void {
-  const handler = useEffectEvent(binding.handler);
+  const handler = useStableHandler(binding.handler);
   const when = useEffectEvent((event: KeyboardEvent) => binding.when?.(event) ?? true);
   const { actionId, owner, shortcut } = binding;
 
@@ -48,7 +49,7 @@ export function useKeyboardShortcut(binding: KeyboardShortcutBinding): void {
         shortcut,
         when,
       }),
-    [actionId, owner, shortcut],
+    [actionId, handler, owner, shortcut],
   );
 }
 

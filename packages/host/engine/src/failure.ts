@@ -4,6 +4,8 @@ export type RequestErrorCode =
   | 'invalid_request'
   | 'not_found'
   | 'conflict'
+  /** The request was understood and refused — the user withheld consent, not a broken call. */
+  | 'forbidden'
   | 'unsupported'
   | 'limit_exceeded'
   | 'cancelled';
@@ -22,6 +24,7 @@ export type OperationSubsystem =
   | 'pty'
   | 'runtime-probe'
   | 'script'
+  | 'simulator'
   | 'store'
   | 'translator'
   | 'transport';

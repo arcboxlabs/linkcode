@@ -1,7 +1,7 @@
 import type { ToolCall } from '@linkcode/schema';
 import { createFixedArray } from 'foxact/create-fixed-array';
 
-interface DiffRow {
+export interface DiffRow {
   id: string;
   type: 'add' | 'del' | 'ctx';
   text: string;
@@ -72,14 +72,39 @@ export function diffLines(oldStr: string, newStr: string): DiffRow[] {
   return rows;
 }
 
+/** Parse display rows from a git/unified patch. File and hunk headers are metadata, not changes. */
+export function patchLines(patch: string): DiffRow[] {
+  const rows: DiffRow[] = [];
+  let inHunk = false;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) {
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk || line.startsWith(String.raw`\ No newline at end of file`)) continue;
+    const prefix = line[0];
+    if (prefix !== '+' && prefix !== '-' && prefix !== ' ') continue;
+    rows.push({
+      id: String(rows.length),
+      type: prefix === '+' ? 'add' : prefix === '-' ? 'del' : 'ctx',
+      text: line.slice(1),
+    });
+  }
+  return rows;
+}
+
 /** Line-level add/delete counts for a diff, shared with group headers that sum across files. */
 export interface DiffStats {
   additions: number;
   deletions: number;
 }
 
-export function diffStats(oldText: string | undefined, newText: string): DiffStats {
-  const rows = diffLines(oldText ?? '', newText);
+export function diffStats(
+  oldText: string | undefined,
+  newText: string | undefined,
+  patch?: string,
+): DiffStats {
+  const rows = patch === undefined ? diffLines(oldText ?? '', newText ?? '') : patchLines(patch);
   return {
     additions: rows.filter((row) => row.type === 'add').length,
     deletions: rows.filter((row) => row.type === 'del').length,
@@ -95,7 +120,7 @@ const diffContentStatsCache = new WeakMap<DiffToolCallContent, DiffStats>();
 export function diffContentStats(content: DiffToolCallContent): DiffStats {
   const cached = diffContentStatsCache.get(content);
   if (cached) return cached;
-  const stats = diffStats(content.oldText, content.newText);
+  const stats = diffStats(content.oldText, content.newText, content.patch?.text);
   diffContentStatsCache.set(content, stats);
   return stats;
 }

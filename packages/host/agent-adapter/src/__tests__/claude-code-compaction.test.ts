@@ -303,7 +303,7 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => `${e.event.type}:${e.itemId ?? ''}`)).toEqual([
       'user-message:u0',
-      'agent-message-chunk:u1',
+      'agent-message:u1',
       `compaction:${BOUNDARY_UUID}`,
       'user-message:u2',
     ]);
@@ -340,9 +340,9 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
     expect(result.events.map((e) => `${e.event.type}:${e.itemId ?? ''}`)).toEqual([
       'user-message:pre0',
-      'agent-message-chunk:pre1',
+      'agent-message:pre1',
       `compaction:${BOUNDARY_UUID}`,
-      'agent-message-chunk:kept',
+      'agent-message:kept',
       'user-message:after',
     ]);
   });

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentHistoryId, AgentKind } from '@linkcode/schema';
+import type { AgentEvent, AgentHistoryId, AgentKind, MessageId } from '@linkcode/schema';
 import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { SeedCacheStorage } from '../seed-cache';
@@ -8,7 +8,11 @@ const kind: AgentKind = 'claude-code';
 const historyId = (value: string): AgentHistoryId => value as AgentHistoryId;
 
 function userText(text: string): AgentEvent {
-  return { type: 'user-message', content: [{ type: 'text', text }] };
+  return {
+    type: 'user-message',
+    messageId: `user:${text}` as MessageId,
+    content: [{ type: 'text', text }],
+  };
 }
 
 function seedEvent(text: string, ts?: number): { event: AgentEvent; ts?: number } {

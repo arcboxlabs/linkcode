@@ -1,17 +1,23 @@
 import { useLinkCodeClient, useTerminalOutput } from '@linkcode/client-core';
 import { TerminalBlock } from '@linkcode/ui';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 /** Adapter subscribing a rendered `TerminalBlock` to the daemon-backed terminal output stream. */
-export function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): React.ReactNode {
+export function RuntimeTerminalBlock({
+  terminalId,
+  command,
+}: {
+  terminalId: string;
+  command?: string;
+}): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
   const output = useTerminalOutput(terminalId);
   const [failedTerminalId, setFailedTerminalId] = useState<string | null>(null);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       let attached = false;
       void client
@@ -44,5 +50,5 @@ export function RuntimeTerminalBlock({ terminalId }: { terminalId: string }): Re
       </div>
     );
   }
-  return <TerminalBlock terminalId={terminalId} output={output} />;
+  return <TerminalBlock command={command} terminalId={terminalId} output={output} />;
 }

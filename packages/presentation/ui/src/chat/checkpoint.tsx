@@ -29,7 +29,7 @@ export function Checkpoint({
 }: CheckpointProps): React.ReactNode {
   return (
     <div
-      className={cn('my-2 flex items-center gap-2 text-[13px] text-muted-foreground', className)}
+      className={cn('my-2 flex items-center gap-2 text-xs text-muted-foreground', className)}
       {...props}
     >
       {children ??
@@ -38,11 +38,11 @@ export function Checkpoint({
             <CheckpointIcon />
             <div className="min-w-0 flex-1">
               <div className="truncate text-foreground">{checkpoint.label}</div>
-              <div className="truncate text-[12px]">
+              <div className="truncate text-xs">
                 {checkpoint.description ?? checkpoint.commitSha ?? checkpoint.createdAt}
               </div>
             </div>
-            {checkpoint.restorable && onRestore ? (
+            {onRestore && checkpoint.restorable ? (
               <CheckpointTrigger
                 tooltip="Restore checkpoint"
                 onClick={() => onRestore(checkpoint)}

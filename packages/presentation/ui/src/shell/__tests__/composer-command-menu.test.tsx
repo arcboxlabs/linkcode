@@ -155,6 +155,21 @@ function imageFileWithSize(name: string, size: number): File {
 afterEach(cleanup);
 
 describe('Composer command menu', () => {
+  it('keeps the input shell and inset frame radii synchronized', () => {
+    const { container } = render(composer());
+    const form = container.querySelector('form');
+    const inputGroup = form?.querySelector('[data-slot="input-group"]');
+
+    expect(inputGroup?.classList.contains('rounded-2xl')).toBe(true);
+    expect(inputGroup?.classList.contains('before:rounded-2xl')).toBe(true);
+    expect(form?.classList.contains('*:[[data-slot=input-group]]:rounded-xl')).toBe(false);
+
+    typeInComposer('/');
+
+    expect(form?.classList.contains('*:[[data-slot=input-group]]:rounded-xl')).toBe(true);
+    expect(form?.classList.contains('*:[[data-slot=input-group]]:before:rounded-xl')).toBe(true);
+  });
+
   it('exposes autocomplete semantics on the focused editor and preserves modified arrows', async () => {
     const { container } = render(composer());
     const editor = composerTextbox();
@@ -351,7 +366,10 @@ describe('Composer command menu', () => {
       },
     });
     // The tray shows the preview image only once the file read settles into `ready`.
-    await screen.findByRole('img', { name: 'probe.png' });
+    const attachmentImage = await screen.findByRole('img', { name: 'probe.png' });
+    const attachmentCard = attachmentImage.closest('[data-slot="card"]');
+    expect(attachmentCard?.classList.contains('rounded-2xl')).toBe(true);
+    expect(attachmentCard?.classList.contains('rounded-xl')).toBe(false);
 
     typeInComposer('/compact');
     await pressInComposer('Escape');

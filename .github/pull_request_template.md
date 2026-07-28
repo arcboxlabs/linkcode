@@ -11,4 +11,5 @@
 - [ ] `pnpm check:ci` and `pnpm test` both pass (plus `cargo fmt` / `clippy` / `test` for Rust changes)
 - [ ] I ran the affected surface and observed the change working
 - [ ] If a wire message changed: `WIRE_PROTOCOL_VERSION` is bumped
+- [ ] New code and assets are my own work, or their origin and license compatibility are noted above
 - [ ] Docs and comments are updated where behavior changed

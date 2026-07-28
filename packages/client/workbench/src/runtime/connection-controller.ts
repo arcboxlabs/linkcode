@@ -4,6 +4,7 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import type { AsyncRetryOptions } from 'foxts/async-retry';
 import { asyncRetry } from 'foxts/async-retry';
 import { noop } from 'foxts/noop';
+import { captureProductEvent } from '../analytics/product-analytics';
 
 const DEFAULT_RETRY_POLICY = {
   factor: 2,
@@ -58,6 +59,9 @@ interface RecoveryRun {
   readonly id: number;
   readonly abortController: AbortController;
   readonly explicit: boolean;
+  readonly recovered: boolean;
+  readonly startedAt: number;
+  currentAttempt: number;
 }
 
 interface WorkbenchConnectionControllerOptions {
@@ -171,6 +175,9 @@ export class WorkbenchConnectionController {
       abortController: new AbortController(),
       explicit,
       id: ++this.nextRunId,
+      recovered: this.contextGeneration?.ready === true,
+      startedAt: Date.now(),
+      currentAttempt: 0,
     };
     this.run = run;
     this.publish({
@@ -182,6 +189,10 @@ export class WorkbenchConnectionController {
 
     void this.recover(run).catch((error: unknown) => {
       if (!this.isCurrent(run) || run.abortController.signal.aborted) return;
+      captureProductEvent('host connection failed', {
+        attempt: run.currentAttempt,
+        duration_ms: Date.now() - run.startedAt,
+      });
       this.publish({
         ...this.snapshot,
         error: unwrapConnectionError(error),
@@ -193,8 +204,9 @@ export class WorkbenchConnectionController {
   private async recover(run: RecoveryRun): Promise<void> {
     const generation = await asyncRetry(
       async (bail, attempt) => {
+        run.currentAttempt = attempt;
         const source = this.source;
-        if (run.explicit && attempt === 1 && source.onExplicitRetry) {
+        if (attempt === 1 && run.explicit && source.onExplicitRetry) {
           this.explicitHookPending = true;
           try {
             await source.onExplicitRetry();
@@ -243,6 +255,11 @@ export class WorkbenchConnectionController {
       endpoint: generation.endpoint,
       error: undefined,
       status: 'ready',
+    });
+    captureProductEvent('host connection ready', {
+      attempt: generation.attempt,
+      duration_ms: Date.now() - run.startedAt,
+      recovered: run.recovered,
     });
   }
 

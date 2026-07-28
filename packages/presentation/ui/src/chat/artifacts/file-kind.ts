@@ -30,20 +30,9 @@ export function fileBasename(path: string): string {
   return slash === -1 ? path : path.slice(slash + 1);
 }
 
-/** The panel-capable artifact kind for a file path, or null when nothing can view it. */
+/** The panel-capable artifact kind for a file path, or null when nothing can view it. Only a
+ * capability hint for the viewer's renderer switch and video routing — never a chip gate:
+ * unknown utf8 kinds fall back to the viewer's code renderer (`filePathTarget` classifies). */
 export function artifactKindForPath(path: string): string | null {
   return KIND_BY_EXTENSION[fileExtension(path)] ?? null;
-}
-
-const MAX_INLINE_PATH_LENGTH = 256;
-const INLINE_PATH_RE = /^(?:\.{1,2}\/|\/)?[\w.@+-]+(?:\/[\w.@+-]+)*$/;
-
-/** Whether an inline-code span is a linkable workspace path. Deliberately conservative: single
- * token, path-safe characters, viewer-known extension — a stray `foo.bar` stays plain code. */
-export function detectInlineFilePath(text: string): string | null {
-  const candidate = text.trim();
-  if (candidate.length === 0 || candidate.length > MAX_INLINE_PATH_LENGTH) return null;
-  if (!INLINE_PATH_RE.test(candidate)) return null;
-  if (artifactKindForPath(candidate) === null) return null;
-  return candidate;
 }

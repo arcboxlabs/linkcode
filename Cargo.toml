@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/linkcode-pty"]
+members = ["crates/linkcode-pty", "crates/linkcode-sim"]
 resolver = "2"
 
 [workspace.package]

@@ -1,4 +1,5 @@
 import { Badge } from 'coss-ui/components/badge';
+import { Card } from 'coss-ui/components/card';
 import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
@@ -31,10 +32,7 @@ export function PackageInfo({
   ...props
 }: PackageInfoProps): React.ReactNode {
   return (
-    <div
-      className={cn('my-2 rounded-lg border border-border bg-card p-3 text-sm', className)}
-      {...props}
-    >
+    <Card className={cn('my-2 p-3 text-sm', className)} {...props}>
       {children ?? (
         <>
           <PackageInfoHeader packageInfo={packageInfo} />
@@ -46,7 +44,7 @@ export function PackageInfo({
           ) : null}
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -108,7 +106,7 @@ export function PackageInfoVersion({
   children,
   ...props
 }: PackageInfoVersionProps): React.ReactNode {
-  if (!packageInfo.currentVersion && !packageInfo.newVersion && !children) return null;
+  if (!children && !packageInfo.currentVersion && !packageInfo.newVersion) return null;
 
   return (
     <div

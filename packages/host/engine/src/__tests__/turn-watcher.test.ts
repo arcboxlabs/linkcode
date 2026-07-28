@@ -41,8 +41,9 @@ function permissionRequest(title: string): AgentEvent {
   return {
     type: 'permission-request',
     requestId: 'req-1',
-    toolCall: { toolCallId: 'tc-1', title },
-    options: [],
+    title,
+    subject: { type: 'tool-call', toolCallId: 'tc-1' },
+    options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
   };
 }
 

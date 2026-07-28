@@ -14,7 +14,7 @@ import {
 } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -45,7 +45,7 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
     importableCount: bulk.importableCount,
   });
 
-  useAbortableEffect(() => {
+  useEffect(() => {
     if (onboardingAction !== 'complete') return;
     void markOnboardingHandled().catch(noop);
   }, [onboardingAction, markOnboardingHandled]);

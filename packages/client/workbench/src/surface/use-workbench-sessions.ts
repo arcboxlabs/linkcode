@@ -9,8 +9,9 @@ import type {
 import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
 import { withoutAutomationSessions } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useRef } from 'react';
+import { captureProductEvent } from '../analytics/product-analytics';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
@@ -114,8 +115,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Refresh the list once when an explicit selection isn't in it yet, so a click-through to a
   // not-yet-listed session resolves; deduped per id so a genuinely gone session doesn't spin.
   const refreshedForRef = useRef<SessionId | null>(null);
-  useAbortableEffect(() => {
-    if (selectedId == null || draft) return;
+  useEffect(() => {
+    if (draft || selectedId == null) return;
     if (sessionById(sessions, selectedId)) {
       refreshedForRef.current = null;
       return;
@@ -184,12 +185,26 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     approvalPolicyId?: string;
     modeId?: SessionModeId;
   }): Promise<SessionId> {
+    const startedAt = Date.now();
     // Captured now: by resolve time the surface still shows the draft, and the recorded
     // transition should be draft → new thread.
     const from = currentLocation;
     // Rejections propagate to the caller (the new-session page stays up); onError above still
     // reports them via the error banner.
-    const sessionId = await createMutation.trigger({ opts });
+    let sessionId: SessionId;
+    try {
+      sessionId = await createMutation.trigger({ opts });
+    } catch (error) {
+      captureProductEvent('thread create failed', {
+        agent_kind: opts.kind,
+        duration_ms: Date.now() - startedAt,
+      });
+      throw error;
+    }
+    captureProductEvent('thread created', {
+      agent_kind: opts.kind,
+      duration_ms: Date.now() - startedAt,
+    });
     // The list must contain the new session before selection flips: otherwise `active` falls
     // back to the previous session for a render and its conversation flashes (CODE-103).
     await mutate().catch(noop);
@@ -206,6 +221,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     void closeMutation
       .trigger({ sessionId: id })
       .then(() => {
+        captureProductEvent('thread closed', {});
         void mutate();
       })
       .catch(noop);

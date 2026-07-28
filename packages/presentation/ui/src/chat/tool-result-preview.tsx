@@ -1,5 +1,6 @@
 import type { ToolCall, ToolCallContent } from '@linkcode/schema';
 import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
+import { Fragment } from 'react';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
 import { CodeBlock } from './code-block';
 import { ContentBlockView } from './content-block-view';
@@ -8,6 +9,7 @@ import { DiffBlock } from './diff-block';
 import { FilePreviewCard } from './file-preview-card';
 import type { ToolCallFilePresentation } from './file-tool-presentation';
 import { toolCallDiffNavigation, toolCallFilePresentation } from './file-tool-presentation';
+import { HighlightedCode } from './highlighted-code';
 import { Markdown } from './markdown';
 import { Terminal } from './terminal';
 import { TerminalBlock } from './terminal-block';
@@ -20,11 +22,17 @@ import {
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
-import { TOOL_KIND_ICONS, toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+import { toolCallCommand, toolCallDisplayTitle } from './tool-utils';
+
+/** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
+export type TerminalBlockComponent = React.ComponentType<{
+  terminalId: string;
+  command?: string;
+}>;
 
 interface ToolResultPreviewProps {
   toolCall: ToolCall;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
 }
 
 function RenderedContent({
@@ -33,24 +41,27 @@ function RenderedContent({
   toolCall,
 }: {
   content: ToolCallContent;
-  TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  TerminalBlockComponent?: TerminalBlockComponent;
   toolCall: ToolCall;
 }): React.ReactNode {
   if (content.type === 'content') return <ContentBlockView block={content.content} />;
   if (content.type === 'diff') {
     return (
       <DiffBlock
-        navigation={toolCallDiffNavigation(toolCall, content.path, content.newText)}
+        navigation={toolCallDiffNavigation(toolCall, content)}
         path={content.path}
+        oldPath={content.oldPath}
         oldText={content.oldText}
         newText={content.newText}
+        patch={content.patch?.text}
       />
     );
   }
+  const command = toolCallCommand(toolCall);
   if (TerminalBlockComponent) {
-    return <TerminalBlockComponent terminalId={content.terminalId} />;
+    return <TerminalBlockComponent command={command} terminalId={content.terminalId} />;
   }
-  return <TerminalBlock terminalId={content.terminalId} />;
+  return <TerminalBlock command={command} terminalId={content.terminalId} />;
 }
 
 function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): React.ReactNode {
@@ -109,14 +120,14 @@ function FileCallText({
     return <Markdown>{previewText}</Markdown>;
   }
   return (
-    <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-      <code>{previewText}</code>
-    </pre>
+    <HighlightedCode
+      code={previewText}
+      language={file.ambiguous ? undefined : fileExtension(file.path)}
+    />
   );
 }
 
-/** File calls without structured diffs share one identity/navigation header across every block.
- * This matters for Pi resource results and Codex multi-file receipts whose text has no path key. */
+/** File reads share one identity/navigation header across every returned content block. */
 function FileCallPreview({
   content,
   file,
@@ -156,7 +167,8 @@ function FileCallPreview({
   );
 }
 
-function MixedFilePreview({
+/** Mutation result text is a receipt or warning, not a snapshot of the touched file. */
+function FileMutationPreview({
   content,
   file,
   TerminalBlockComponent,
@@ -167,6 +179,18 @@ function MixedFilePreview({
 }): React.ReactNode {
   const receiptContent = content.filter((item) => item.type !== 'diff');
   const firstReceipt = receiptContent[0];
+  const hasDiff = content.some((item) => item.type === 'diff');
+
+  if (content.length === 0) {
+    return (
+      <FilePreviewCard
+        label={file.label}
+        navigation={file.navigation ?? null}
+        path={file.path}
+        tooltip={file.tooltip}
+      />
+    );
+  }
 
   return contentDerivedEntries(content).map(({ item, key }) => {
     if (item.type === 'diff') {
@@ -182,13 +206,21 @@ function MixedFilePreview({
     }
     if (item !== firstReceipt) return null;
     return (
-      <FileCallPreview
-        key={`${toolCall.toolCallId}:receipts`}
-        content={receiptContent}
-        file={file}
-        toolCall={toolCall}
-        TerminalBlockComponent={TerminalBlockComponent}
-      />
+      <Fragment key={`${toolCall.toolCallId}:receipts`}>
+        {!hasDiff || file.ambiguous ? (
+          <FilePreviewCard
+            label={file.label}
+            navigation={file.navigation ?? null}
+            path={file.path}
+            tooltip={file.tooltip}
+          />
+        ) : null}
+        <ContentList
+          content={receiptContent}
+          toolCall={toolCall}
+          TerminalBlockComponent={TerminalBlockComponent}
+        />
+      </Fragment>
     );
   });
 }
@@ -199,19 +231,7 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
     case 'read': {
       return (
         <ToolPreviewCard icon={FileTextIcon} title={displayTitle}>
-          <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-            <code>{text}</code>
-          </pre>
-        </ToolPreviewCard>
-      );
-    }
-    case 'edit':
-    case 'delete':
-    case 'move': {
-      const Icon = TOOL_KIND_ICONS[toolCall.kind];
-      return (
-        <ToolPreviewCard icon={Icon} title={displayTitle}>
-          <Markdown>{text}</Markdown>
+          <HighlightedCode code={text} />
         </ToolPreviewCard>
       );
     }
@@ -239,6 +259,10 @@ function renderTextPreview(toolCall: ToolCall, text: string): React.ReactNode {
         </ToolPreviewCard>
       );
     }
+    // Mutation receipts and reasoning summaries are auxiliary prose, not artifacts — no card.
+    case 'edit':
+    case 'delete':
+    case 'move':
     case 'think':
     case 'task':
       return <Markdown>{text}</Markdown>;
@@ -290,7 +314,7 @@ function ExecutePreview({
           toolCall={toolCall}
         />
       ))}
-      {terminalContent.length === 0 || output ? (
+      {output || terminalContent.length === 0 ? (
         <Terminal
           title={toolCallCommand(toolCall) ?? toolCallDisplayTitle(toolCall)}
           output={output}
@@ -314,7 +338,7 @@ export function ToolResultPreview({
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');
-    if (!hasDiff) {
+    if (!hasDiff && toolCall.kind === 'read') {
       return (
         <FileCallPreview
           content={content}
@@ -324,9 +348,9 @@ export function ToolResultPreview({
         />
       );
     }
-    if (content.some((item) => item.type !== 'diff')) {
+    if (toolCall.kind !== 'read') {
       return (
-        <MixedFilePreview
+        <FileMutationPreview
           content={content}
           file={file}
           toolCall={toolCall}

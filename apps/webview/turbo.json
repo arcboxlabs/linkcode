@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "env": ["VITE_SENTRY_DSN"]
+      "env": ["VITE_SENTRY_DSN", "VITE_POSTHOG_PROJECT_TOKEN", "VITE_POSTHOG_HOST"]
     }
   }
 }

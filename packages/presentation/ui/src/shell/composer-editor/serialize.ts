@@ -219,13 +219,13 @@ export function $analyzeDirectives(): DirectiveAnalysis {
   const directives: EditorDirective[] = [];
   for (const child of root.getChildren()) $collectDirectives(child, directives);
 
-  const firstBlock = root.getFirstChild();
-  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
-  const leading = first ? $asEditorDirective(first) : null;
   if (directives.length === 0) {
     return { blockedKeys: [], composition: { kind: 'none' }, leading: null };
   }
-  if (directives.length === 1 && leading) {
+  const firstBlock = root.getFirstChild();
+  const first = $isElementNode(firstBlock) ? firstBlock.getFirstChild() : null;
+  const leading = first ? $asEditorDirective(first) : null;
+  if (leading && directives.length === 1) {
     return {
       blockedKeys: [],
       composition: { directive: leading, kind: 'ready' },
@@ -266,11 +266,11 @@ function $removeComposerChip(node: LexicalNode): void {
   const previousEndsInWhitespace =
     $isTextNode(previous) && WHITESPACE_RE.test(previous.getTextContent().at(-1) ?? '');
   const nextStartsWithWhitespace =
-    $isTextNode(next) && WHITESPACE_RE.test(next.getTextContent()[0] ?? '');
+    $isTextNode(next) && WHITESPACE_RE.test(next.getTextContent().slice(0, 1));
 
   if (nextStartsWithWhitespace && (!previous || previousEndsInWhitespace)) {
     next.setTextContent(next.getTextContent().slice(1));
-    if (next.getTextContentSize() === 0 && !next.getNextSibling() && previousEndsInWhitespace) {
+    if (previousEndsInWhitespace && next.getTextContentSize() === 0 && !next.getNextSibling()) {
       previous.setTextContent(previous.getTextContent().slice(0, -1));
     }
   } else if (!next && previousEndsInWhitespace) {
@@ -303,14 +303,14 @@ export function $moveDirectiveToStart(nodeKey: NodeKey): void {
     $isTextNode(previous) &&
     $isTextNode(next) &&
     WHITESPACE_RE.test(previous.getTextContent().at(-1) ?? '') &&
-    WHITESPACE_RE.test(next.getTextContent()[0] ?? '')
+    WHITESPACE_RE.test(next.getTextContent().slice(0, 1))
   ) {
     next.setTextContent(next.getTextContent().slice(1));
   }
   if (first) first.insertBefore(node);
   else firstBlock.append(node);
   const following = node.getNextSibling();
-  if ($isTextNode(following) && WHITESPACE_RE.test(following.getTextContent()[0] ?? '')) {
+  if ($isTextNode(following) && WHITESPACE_RE.test(following.getTextContent().slice(0, 1))) {
     following.select(1, 1);
     return;
   }

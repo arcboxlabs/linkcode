@@ -1,6 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SessionNotification } from '@linkcode/schema';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useTranslations } from 'use-intl';
 import { useSessionSelectionStore } from '../surface/selection-store';
 import { useNotificationPrefsStore } from './prefs-store';
@@ -27,7 +27,7 @@ export function useSessionNotifications(present: PresentSessionNotification | un
   const t = useTranslations('workbench.notifications');
   const tk = useTranslations('workbench.agentKind');
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       if (!present) return;
       return client.subscribeSessionNotification((notification) => {

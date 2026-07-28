@@ -11,6 +11,7 @@ import {
   runtimeFilePath,
 } from '../config';
 import { logger } from '../logger';
+import { telemetryConfigCachePath } from '../paths';
 
 let savedHome: string | undefined;
 
@@ -111,6 +112,7 @@ describe('profile-scoped state paths', () => {
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
     expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 
   it('treats an empty LINKCODE_PROFILE as the default profile', () => {

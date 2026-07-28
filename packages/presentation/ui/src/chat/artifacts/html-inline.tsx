@@ -37,15 +37,17 @@ export function HtmlInline({ artifact, isIncomplete }: InlineArtifactProps): Rea
 
   if (activeUrl === null) {
     return (
-      <div className="relative">
-        <FenceFallback code={code} language="html" note={error ?? undefined} />
-        <div className="-mt-1 mb-2 flex justify-end">
-          <Button size="xs" variant="outline" className="gap-1.5" onClick={expand}>
+      <FenceFallback
+        action={
+          <Button size="xs" variant="ghost" className="gap-1.5" onClick={expand}>
             <PlayIcon className="size-3.5" />
             {t('expandPreview')}
           </Button>
-        </div>
-      </div>
+        }
+        code={code}
+        language="html"
+        note={error ?? undefined}
+      />
     );
   }
 

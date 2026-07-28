@@ -61,6 +61,7 @@ function seedHistory(shape: LoadShape): AgentEvent[] {
   for (let t = 0; t < shape.turns; t += 1) {
     events.push({
       type: 'user-message',
+      messageId: `user-${t}` as MessageId,
       content: [{ type: 'text', text: `Please work on task ${t}` }],
     });
     for (let k = 0; k < shape.toolsPerTurn; k += 1) {
@@ -112,8 +113,10 @@ function seedHistory(shape: LoadShape): AgentEvent[] {
       });
     }
     const messageId = `asst-${t}`;
-    events.push(textChunk(messageId, `Summary of turn ${t}.\n`));
-    events.push(textChunk(messageId, lines(8, `detail-${t}-`)));
+    events.push(
+      textChunk(messageId, `Summary of turn ${t}.\n`),
+      textChunk(messageId, lines(8, `detail-${t}-`)),
+    );
   }
   return events;
 }

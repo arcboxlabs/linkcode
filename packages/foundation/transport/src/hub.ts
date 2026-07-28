@@ -181,7 +181,9 @@ export class Hub implements Transport {
     }
 
     for (const conn of this.conns) {
-      if (p.kind === 'agent.event') {
+      // Session-scoped events (agent activity, high-frequency framebuffer frames) reach only
+      // connections that carry that session — never a global broadcast.
+      if (p.kind === 'agent.event' || p.kind === 'simulator.stream.frame') {
         const subscription = this.subscriptions.get(conn);
         if (subscription?.mode === 'attached' && !subscription.attached.has(p.sessionId)) {
           continue;

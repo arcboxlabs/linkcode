@@ -26,7 +26,6 @@ const PersistedSeedSchema = z.object({
 const memoByStorage = new WeakMap<SeedCacheStorage, Map<string, ConversationSeed | null>>();
 
 function defaultStorage(): SeedCacheStorage | null {
-  // eslint-disable-next-line sukka/react-prefer-foxact-persistent -- imperative fetch-time cache, not render state; foxact's localStorage hooks don't apply
   return typeof localStorage === 'undefined' ? null : localStorage;
 }
 
@@ -125,6 +124,7 @@ export function persistSeed(
     memoFor(storage).set(key, { events: seed.events, uptoSeq: 0 });
   } catch (err) {
     // The cache is an optimization; failing to write it must not break the conversation surface.
+    // eslint-disable-next-line no-console -- cache failures are non-fatal but still need a developer diagnostic.
     console.warn('[LinkCode] failed to persist conversation seed', err);
   }
 }

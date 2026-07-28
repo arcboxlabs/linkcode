@@ -1,9 +1,15 @@
 import type { QuestionOutcome } from '@linkcode/schema';
-import { ChevronRightIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { CircularProgress } from '../chat/circular-progress';
 import type { CurrentPlan, PermissionDecision } from '../chat/conversation-prompts';
 import { selectCurrentPlan, selectPendingPromptItems } from '../chat/conversation-prompts';
+import {
+  CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+  CHAT_DISCLOSURE_TEXT_CLASS_NAME,
+  CHAT_DISCLOSURE_TITLE_CLASS_NAME,
+  ChatDisclosureChevron,
+  ChatDisclosureIconSlot,
+} from '../chat/disclosure-header';
 import { Step, StepContent, StepHeader, StepItem } from '../chat/step';
 import type { ConversationViewModel } from '../chat/types';
 import { cn } from '../lib/cn';
@@ -73,23 +79,24 @@ function StepPromptRow({ plan }: { plan: CurrentPlan }): React.ReactNode {
   return (
     <Step className="my-0 px-3 py-1.5" defaultOpen={false}>
       <StepHeader title={t('title')}>
-        <CircularProgress
-          className="size-3.5 shrink-0 text-muted-foreground"
-          value={plan.currentIndex + 1}
-          max={plan.total}
-        />
-        <span className="shrink-0">
-          {t('title')} {t('progress', { current: plan.currentIndex + 1, total: plan.total })}
+        <ChatDisclosureIconSlot className="text-muted-foreground">
+          <CircularProgress className="size-3.5" value={plan.currentIndex + 1} max={plan.total} />
+        </ChatDisclosureIconSlot>
+        <span className={CHAT_DISCLOSURE_TEXT_CLASS_NAME}>
+          <span className={CHAT_DISCLOSURE_TITLE_CLASS_NAME}>
+            {t('title')} {t('progress', { current: plan.currentIndex + 1, total: plan.total })}
+          </span>
+          <span
+            className={cn(
+              CHAT_DISCLOSURE_SUMMARY_CLASS_NAME,
+              'font-normal text-muted-foreground',
+              plan.complete && 'line-through',
+            )}
+          >
+            {entry.content}
+          </span>
         </span>
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate font-normal text-muted-foreground',
-            plan.complete && 'text-muted-foreground line-through',
-          )}
-        >
-          {entry.content}
-        </span>
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+        <ChatDisclosureChevron />
       </StepHeader>
       <StepContent>
         {plan.item.plan.entries.map((item, index) => (

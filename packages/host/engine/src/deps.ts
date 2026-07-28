@@ -8,6 +8,9 @@ import type { LoopStore, ScheduleStore } from './automation';
 import type { GitService } from './git/git-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { SessionStore } from './session/session-store';
+import type { SimulatorConsentService } from './simulator/consent';
+import type { SimulatorMcpProvider } from './simulator/mcp';
+import type { SimulatorService } from './simulator/service';
 import type { PtyBackend } from './terminal/pty-backend';
 import type { FileSuggestService } from './workspace/file-suggest-service';
 import type { WorkspaceStore } from './workspace/workspace-store';
@@ -17,6 +20,17 @@ export interface EngineDeps {
   factory?: AdapterFactory;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
+  /** iOS Simulator policy service, daemon-constructed around the sidecar client so the daemon's
+   * MCP endpoint and the engine share one claims registry (macOS hosts only); absent Engines
+   * have no simulator surface. */
+  simulators?: SimulatorService;
+  /** Mints the per-session simulator MCP endpoint injected into MCP-capable agents' start
+   * options; absent hosts inject nothing. */
+  simulatorMcp?: SimulatorMcpProvider;
+  /** Per-device agent-consent gate, daemon-constructed for the same reason as `simulators`: the
+   * MCP endpoint consults it before every tool call, and the engine answers the wire about it.
+   * The default is volatile and never asks anyone, so an embedding without one is not gated. */
+  simulatorConsent?: SimulatorConsentService;
   providerStore?: ProviderConfigStore;
   git?: GitService;
   fileSuggest?: FileSuggestService;

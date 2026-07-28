@@ -13,6 +13,7 @@
     "./shell/git": "./src/shell/git/index.ts",
     "./shell/panels": "./src/shell/panels/index.ts",
     "./shell/scripts": "./src/shell/scripts/index.ts",
+    "./shell/simulator": "./src/shell/simulator/index.ts",
     "./shell/terminal": "./src/shell/terminal/index.ts",
     "./styles.css": "./src/styles.css"
   },

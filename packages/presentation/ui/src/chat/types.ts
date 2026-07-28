@@ -7,6 +7,7 @@ import type {
   EffortLevel,
   PermissionOption,
   PermissionOutcome,
+  PermissionSubject,
   Plan,
   PromptResolutionSource,
   Question,
@@ -48,6 +49,14 @@ export type ConversationItem =
       blocks: ContentBlock[];
       isStreaming: boolean;
       parentToolCallId?: string;
+      /** Client-observed lifetime of this reasoning item; history may not provide either value. */
+      startedAt?: number;
+      endedAt?: number;
+      /**
+       * TODO: Populate only from an explicit provider-authored public summary. Never derive this
+       * from private reasoning blocks.
+       */
+      summary?: string;
     })
   | (ConversationItemBase & { kind: 'tool'; toolCall: ToolCall })
   | (ConversationItemBase & {
@@ -59,10 +68,18 @@ export type ConversationItem =
       postTokens?: number;
       summary?: string;
     })
-  | (ConversationItemBase & { kind: 'plan'; plan: Plan })
+  | (ConversationItemBase & {
+      kind: 'plan';
+      /** Turn that most recently emitted this stable plan identity. */
+      updatedTurnId?: ConversationTurnId;
+      plan: Plan;
+    })
   | (ConversationItemBase & {
       kind: 'approval';
       requestId: string;
+      title?: string;
+      description?: string;
+      subject?: PermissionSubject;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
       responding: boolean;

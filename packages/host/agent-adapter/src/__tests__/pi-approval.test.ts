@@ -100,6 +100,19 @@ describe('Pi approval gate', () => {
     await expect(always).resolves.toBeUndefined();
     await expect(gate(call('always-2'))).resolves.toBeUndefined();
     expect(requests(events)).toHaveLength(2);
+    expect(requests(events)[0]).toMatchObject({
+      title: 'bash',
+      subject: { type: 'tool-call', toolCallId: 'once' },
+    });
+    expect(requests(events)[0]).not.toHaveProperty('toolCall');
+    const firstToolIndex = events.findIndex(
+      (event) => event.type === 'tool-call' && event.toolCall.toolCallId === 'once',
+    );
+    const firstRequestIndex = events.findIndex(
+      (event) => event.type === 'permission-request' && event.subject?.toolCallId === 'once',
+    );
+    expect(firstToolIndex).toBeGreaterThanOrEqual(0);
+    expect(firstRequestIndex).toBeGreaterThan(firstToolIndex);
     expect(requests(events)[0].options.map((option) => option.optionId)).toEqual([
       'allow',
       'always',

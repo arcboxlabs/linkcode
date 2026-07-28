@@ -2,7 +2,7 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
 import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect as useAbortableEffect } from 'foxact/use-abortable-effect';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import {
   Button,
@@ -38,7 +38,7 @@ export default function TerminalsScreen(): React.ReactNode {
 
   const load = useCallback(() => client.listTerminals(), [client]);
 
-  useAbortableEffect(
+  useEffect(
     (signal) => {
       void load()
         .then((nextTerminals) => {

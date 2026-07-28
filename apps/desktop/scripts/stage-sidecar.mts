@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Build the PTY sidecar (crates/linkcode-pty) and stage it where electron-builder's
- * `extraResources: sidecar/${arch}` (electron-builder.yml) picks it up. Default = host arch
+ * Build the sidecar binaries (crates/linkcode-pty everywhere; crates/linkcode-sim on macOS,
+ * where Apple's simulator runs) and stage them where electron-builder's
+ * `extraResources: sidecar/${arch}` (electron-builder.yml) picks them up. Default = host arch
  * (local `package`); `--all` adds the cross arch (CI, .github/actions/build-sidecar).
  */
 import { execFileSync } from 'node:child_process';
@@ -30,21 +31,25 @@ const CROSS_BUILDS: Partial<Record<NodeJS.Platform, CrossBuild>> = {
 
 const desktopDir = join(import.meta.dirname, '..');
 const repoRoot = join(desktopDir, '..', '..');
-const binary = process.platform === 'win32' ? 'linkcode-pty.exe' : 'linkcode-pty';
+/** linkcode-sim drives Apple's iOS Simulator, which exists only on macOS. */
+const crates = process.platform === 'darwin' ? ['linkcode-pty', 'linkcode-sim'] : ['linkcode-pty'];
 
 function stage(arch: string, cross?: CrossBuild): void {
-  const cargoArgs = ['build', '-p', 'linkcode-pty', '--release'];
+  const cargoArgs = ['build', '--release', ...crates.flatMap((crate) => ['-p', crate])];
   if (cross) cargoArgs.push('--target', cross.target);
   execFileSync('cargo', cargoArgs, {
     cwd: repoRoot,
     stdio: 'inherit',
     env: { ...process.env, ...cross?.env },
   });
-  const built = join(repoRoot, 'target', ...(cross ? [cross.target] : []), 'release', binary);
   const destDir = join(desktopDir, 'sidecar', arch);
   mkdirSync(destDir, { recursive: true });
-  cpSync(built, join(destDir, binary));
-  console.log(`staged ${built} -> ${join(destDir, binary)}`);
+  for (const crate of crates) {
+    const binary = process.platform === 'win32' ? `${crate}.exe` : crate;
+    const built = join(repoRoot, 'target', ...(cross ? [cross.target] : []), 'release', binary);
+    cpSync(built, join(destDir, binary));
+    console.log(`staged ${built} -> ${join(destDir, binary)}`);
+  }
 }
 
 const { values } = parseArgs({ options: { all: { type: 'boolean' } } });

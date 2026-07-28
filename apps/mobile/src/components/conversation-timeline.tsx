@@ -34,6 +34,7 @@ const PLAN_STATUS_MARK = {
   pending: '○',
   in_progress: '◐',
   completed: '●',
+  cancelled: '×',
 } as const;
 
 const TOOL_ICONS: Record<ToolKind, LucideIcon> = {
@@ -102,7 +103,7 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
               // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; index is stable because plans are replaced wholesale
               key={index}
               className={
-                entry.status === 'completed'
+                entry.status === 'completed' || entry.status === 'cancelled'
                   ? 'text-muted text-subhead'
                   : 'text-foreground text-subhead'
               }

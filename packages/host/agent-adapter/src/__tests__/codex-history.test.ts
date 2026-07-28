@@ -43,10 +43,7 @@ describe('mapCodexHistoryEvents', () => {
         content: [{ type: 'output_text', text: 'hi there' }],
       }),
     ]);
-    expect(events.map((event) => event.event.type)).toEqual([
-      'user-message',
-      'agent-message-chunk',
-    ]);
+    expect(events.map((event) => event.event.type)).toEqual(['user-message', 'agent-message']);
     expect(events[0].ts).toBe(Date.parse('2026-07-01T00:00:00Z'));
   });
 
@@ -418,6 +415,7 @@ describe('mapCodexHistoryEvents', () => {
     });
     const diff = {
       type: 'diff',
+      change: 'modify',
       path: 'greet.py',
       oldText: '    print("hello")',
       newText: '    print("goodbye")',
@@ -426,6 +424,36 @@ describe('mapCodexHistoryEvents', () => {
     // Settle keeps the announce's diff blocks — the receipt text is not the record.
     expect(tools[1]).toMatchObject({ status: 'completed', kind: 'edit' });
     expect(tools[1].content).toEqual([diff]);
+  });
+
+  it('replays add, delete, and move sections without inventing missing text', () => {
+    const view = applyPatchToolView(
+      [
+        '*** Begin Patch',
+        '*** Add File: added.ts',
+        '+export {};',
+        '*** Delete File: removed.bin',
+        '*** Update File: old.ts',
+        '*** Move to: new.ts',
+        '*** End Patch',
+      ].join('\n'),
+    );
+
+    expect(view).toEqual({
+      content: [
+        { type: 'diff', change: 'add', path: 'added.ts', newText: 'export {};' },
+        { type: 'diff', change: 'delete', path: 'removed.bin' },
+        {
+          type: 'diff',
+          change: 'move',
+          path: 'new.ts',
+          oldPath: 'old.ts',
+          oldText: undefined,
+          newText: undefined,
+        },
+      ],
+      locations: [{ path: 'added.ts' }, { path: 'removed.bin' }, { path: 'new.ts' }],
+    });
   });
 
   it('appends the receipt text when an apply_patch settles with a nonzero exit code', () => {
@@ -446,7 +474,14 @@ describe('mapCodexHistoryEvents', () => {
     const settled = toolCalls(events)[1];
     expect(settled.status).toBe('failed');
     expect(settled.content).toEqual([
-      { type: 'diff', path: 'a.txt', oldText: 'x', newText: 'y' },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'a.txt',
+        oldPath: undefined,
+        oldText: 'x',
+        newText: 'y',
+      },
       { type: 'content', content: { type: 'text', text: 'patch does not apply\n' } },
     ]);
   });
@@ -457,7 +492,7 @@ describe('mapCodexHistoryEvents', () => {
         type: 'function_call',
         name: 'update_plan',
         arguments:
-          '{"plan":[{"step":"read the code","status":"completed"},{"step":"fix it","status":"in_progress"}]}',
+          '{"plan":[{"step":"read the code","status":"completed"},{"step":"fix it","status":"in_progress"},{"step":"skip it","status":"cancelled"}]}',
         call_id: 'call_plan1',
       }),
       responseItem({
@@ -470,9 +505,11 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'plan',
       plan: {
+        planId: 'codex-current',
         entries: [
           { content: 'read the code', priority: 'medium', status: 'completed' },
           { content: 'fix it', priority: 'medium', status: 'in_progress' },
+          { content: 'skip it', priority: 'medium', status: 'cancelled' },
         ],
       },
     });
@@ -590,7 +627,7 @@ describe('mapCodexHistoryEvents', () => {
       'user-message',
       'tool-call',
       'tool-call',
-      'agent-message-chunk',
+      'agent-message',
     ]);
   });
 
@@ -615,7 +652,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events.map((event) => event.event.type)).toEqual([
       'user-message',
       'compaction',
-      'agent-message-chunk',
+      'agent-message',
     ]);
     expect(events[1]).toMatchObject({
       itemId: 'w-2',
@@ -676,14 +713,16 @@ describe('applyPatchToolView', () => {
       { path: 'gone.txt' },
     ]);
     expect(view?.content).toEqual([
-      { type: 'diff', path: 'new.txt', newText: 'line one\nline two' },
+      { type: 'diff', change: 'add', path: 'new.txt', newText: 'line one\nline two' },
       {
         type: 'diff',
+        change: 'move',
         path: 'new-name.txt',
+        oldPath: 'old-name.txt',
         oldText: 'context\nbefore',
         newText: 'context\nafter',
       },
-      { type: 'content', content: { type: 'text', text: 'Deleted gone.txt' } },
+      { type: 'diff', change: 'delete', path: 'gone.txt' },
     ]);
   });
 
@@ -692,8 +731,22 @@ describe('applyPatchToolView', () => {
       '*** Begin Patch\n*** Update File: a.py\n@@\n-one\n+ONE\n@@\n-two\n+TWO\n*** End Patch\n',
     );
     expect(view?.content).toEqual([
-      { type: 'diff', path: 'a.py', oldText: 'one', newText: 'ONE' },
-      { type: 'diff', path: 'a.py', oldText: 'two', newText: 'TWO' },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'a.py',
+        oldPath: undefined,
+        oldText: 'one',
+        newText: 'ONE',
+      },
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'a.py',
+        oldPath: undefined,
+        oldText: 'two',
+        newText: 'TWO',
+      },
     ]);
   });
 

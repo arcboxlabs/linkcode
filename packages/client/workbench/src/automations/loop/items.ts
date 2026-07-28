@@ -12,6 +12,7 @@ export interface LoopListItem {
 }
 
 const NAME_EXCERPT_MAX = 60;
+const RE_WHITESPACE = /\s+/g;
 /** Running first (needs attention), then the rest by recency. */
 const STATUS_RANK: Record<LoopStatus, number> = {
   running: 0,
@@ -23,7 +24,7 @@ const STATUS_RANK: Record<LoopStatus, number> = {
 function displayName(loop: LoopRecord): string {
   const name = loop.spec.name?.trim();
   if (name) return name;
-  const prompt = loop.spec.prompt.trim().replaceAll(/\s+/g, ' ');
+  const prompt = loop.spec.prompt.trim().replaceAll(RE_WHITESPACE, ' ');
   return prompt.length > NAME_EXCERPT_MAX ? `${prompt.slice(0, NAME_EXCERPT_MAX - 1)}…` : prompt;
 }
 

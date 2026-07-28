@@ -16,9 +16,13 @@ on:
           - Dry Run
           - Release
 
+# Runners resolve through repo/org `vars` (ArcBox pins paid Blacksmith labels there);
+# forks without the vars fall back to GitHub-hosted labels with zero setup.
+# Pull request and release-branch CI keeps latest-run cancellation. Every master SHA gets a unique
+# group so a release-PR merge cannot be canceled or replaced before its exact SHA is tested.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/master' && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read
@@ -29,7 +33,7 @@ env:
 jobs:
   typescript:
     name: TypeScript
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     steps:
@@ -46,10 +50,9 @@ jobs:
           cache: pnpm
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: '' # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -83,7 +86,7 @@ jobs:
 
   desktop:
     name: Desktop App Entry
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 30
 
     steps:
@@ -100,10 +103,9 @@ jobs:
           cache: pnpm
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ''
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -111,7 +113,7 @@ jobs:
       - name: Install Electron system dependencies
         run: |
           pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
-          sudo apt-get install --no-install-recommends -y openbox
+          sudo apt-get install --no-install-recommends -y openbox x11-utils
 
       - name: Test unpackaged app entry
         run: xvfb-run -a pnpm -F @linkcode/desktop e2e:unpackaged
@@ -122,6 +124,12 @@ jobs:
             openbox >/tmp/linkcode-openbox.log 2>&1 &
             wm_pid=$!
             trap "kill $wm_pid 2>/dev/null || true" EXIT
+            # Maximize needs a managing WM; wait for the EWMH readiness marker instead
+            # of racing openbox startup.
+            for _ in $(seq 1 50); do
+              xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q "window id" && break
+              sleep 0.2
+            done
             pnpm -F @linkcode/desktop e2e:window-bounds
           '
 
@@ -130,7 +138,7 @@ jobs:
 
   webview:
     name: Webview Browser Entry
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
@@ -155,9 +163,19 @@ jobs:
       - name: Test production and mock browser entries
         run: pnpm -F @linkcode/webview e2e:browser
 
+      # Never expose production telemetry configuration to pull-request code. The browser smoke
+      # above deliberately runs without it; push/manual builds separately verify the real bundle.
+      - name: Build production bundle with telemetry
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN_WEBVIEW }}
+          VITE_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          VITE_POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        run: pnpm -F @linkcode/webview build
+
   mobile:
     name: Mobile Native Bundles
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
@@ -177,24 +195,27 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Export Android and iOS app entries
+        # SENTRY_AUTH_TOKEN intentionally stays in EAS: ordinary CI does not upload source maps.
+        env:
+          EXPO_PUBLIC_SENTRY_DSN: ${{ github.event_name != 'pull_request' && secrets.SENTRY_DSN_MOBILE || '' }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ github.event_name != 'pull_request' && secrets.POSTHOG_PROJECT_TOKEN || '' }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ github.event_name != 'pull_request' && secrets.POSTHOG_HOST || '' }}
         run: pnpm -F @linkcode/mobile smoke:export
 
   rust:
     name: Rust
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # rustfmt and clippy come from rust-toolchain.toml's components.
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt, clippy
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+          rustflags: ''
 
       - name: Format
         run: cargo fmt --check
@@ -207,7 +228,7 @@ jobs:
 
   all-green:
     name: All Green
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 5
     needs:
       - typescript

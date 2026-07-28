@@ -1,0 +1,779 @@
+/**
+ * Simulator-panel E2E (CODE-397): boots an isolated daemon (with the linkcode-sim sidecar) + the
+ * built desktop app, summons the on-demand Simulator section from the right panel's + menu, and
+ * asserts the device picker reflects the host's real device list. When a booted simulator exists,
+ * it also starts a pi session and asserts live frames paint the canvas end-to-end. Run
+ * `pnpm -F @linkcode/desktop e2e:simulator` after building daemon and desktop; macOS only.
+ *
+ * Three knobs for driving it as a demo rather than a check: `LINKCODE_E2E_KEEP_OPEN=1` hands the
+ * app over at the pause and waits for the operator to close the window; `LINKCODE_E2E_HOLD_MS`
+ * widens that pause instead of ending it by hand; and `LINKCODE_E2E_SKIP_RECLAIM=1` drops the
+ * closing CODE-419 check — that one ends by killing the daemon, which is correct for a test and
+ * looks like a crash in front of an audience.
+ */
+
+import type { ChildProcess } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
+import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
+import type { ElectronApplication, Page } from 'playwright-core';
+import { _electron } from 'playwright-core';
+import { io } from 'socket.io-client';
+import { WIRE_VERSION } from './wire-version.mts';
+
+const require = createRequire(import.meta.url);
+const desktopDir = resolve(import.meta.dirname, '..');
+const daemonDir = resolve(desktopDir, '../daemon');
+const repoRoot = resolve(desktopDir, '../..');
+const simSidecar = join(repoRoot, 'target', 'release', 'linkcode-sim');
+const electronBinary = require('electron') as unknown as string;
+
+const PORT = 43000 + (process.pid % 1000);
+
+/** How long the deep pass parks with the window live for a human to drive. */
+const HOLD_MS = positiveInt(process.env.LINKCODE_E2E_HOLD_MS) ?? 30000;
+/** Skip the reclaim check, whose last act is to SIGTERM the daemon (see the header). */
+const SKIP_RECLAIM = process.env.LINKCODE_E2E_SKIP_RECLAIM === '1';
+/** Park at the hold point until the operator closes the window, rather than on a timer. */
+const KEEP_OPEN = process.env.LINKCODE_E2E_KEEP_OPEN === '1';
+
+/** The untitled thread row reads "<agent> in <repository>". */
+const THREAD_ROW_RE = / in LinkCode$/;
+const SCREENSHOT_FILE_RE = /\.png$/;
+const RECORDING_FILE_RE = /\.(?:mp4|webm)$/;
+
+/** Parse an env override, ignoring anything that isn't a positive number. */
+function positiveInt(raw: string | undefined): number | undefined {
+  const value = Number(raw);
+  return raw !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function fail(message: string): never {
+  console.error(`FAIL: ${message}`);
+  process.exit(1);
+}
+
+async function waitForDaemon(): Promise<void> {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(`http://127.0.0.1:${PORT}/socket.io/?EIO=4&transport=polling`);
+      return;
+    } catch {
+      await wait(250);
+    }
+  }
+  fail(`daemon did not come up on port ${PORT}`);
+}
+
+function bootedUdids(): string[] {
+  try {
+    const raw = execFileSync('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], {
+      encoding: 'utf8',
+    });
+    const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ udid: string }>> };
+    return Object.values(parsed.devices)
+      .flat()
+      .map((device) => device.udid);
+  } catch {
+    return [];
+  }
+}
+
+/** Poll the host until `udid`'s booted-ness matches `want`; simctl state changes are not instant. */
+async function waitForBooted(udid: string, want: boolean, message: string): Promise<void> {
+  const deadline = Date.now() + 60000;
+  while (bootedUdids().includes(udid) !== want && Date.now() < deadline) await wait(500);
+  if (bootedUdids().includes(udid) !== want) fail(message);
+}
+
+function piOnPath(): boolean {
+  try {
+    execFileSync('which', ['pi'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** One correlated request over a fresh wire connection; resolves with the reply payload. */
+function wireRequest(
+  payload: Record<string, unknown> & { clientReqId: string },
+): Promise<Record<string, unknown>> {
+  const socket = io(`http://127.0.0.1:${PORT}`, { transports: ['websocket'] });
+  return new Promise<Record<string, unknown>>((_resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${String(payload.kind)} timed out (stale WIRE_VERSION pin?)`));
+    }, 60000);
+    socket.on('frame', (raw: unknown) => {
+      const reply = (raw as { payload?: Record<string, unknown> }).payload;
+      if (reply?.replyTo !== payload.clientReqId) return;
+      clearTimeout(timer);
+      _resolve(reply);
+    });
+    socket.on('connect', () => {
+      socket.emit('frame', {
+        v: WIRE_VERSION,
+        id: `e2e-${Date.now().toString(36)}`,
+        ts: Date.now(),
+        payload,
+      });
+    });
+    socket.on('connect_error', (error: Error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  }).finally(() => socket.close());
+}
+
+/** Seed the stream-claim session over the wire: the panel binds to the active thread. */
+async function seedPiSession(cwd: string): Promise<string> {
+  const reply = await wireRequest({
+    kind: 'session.start',
+    clientReqId: 'e2e-session',
+    opts: { kind: 'pi', cwd },
+  });
+  if (reply.kind === 'session.started' && typeof reply.sessionId === 'string') {
+    return reply.sessionId;
+  }
+  throw new Error(`session.start failed: ${JSON.stringify(reply)}`);
+}
+
+/** Wait for a download matching `pattern` to land in `dir` and finish being written. */
+async function waitForDownload(dir: string, pattern: RegExp, label: string): Promise<string> {
+  const deadline = Date.now() + 20000;
+  let lastSize = -1;
+  while (Date.now() < deadline) {
+    const match = readdirSync(dir).find((name) => pattern.test(name));
+    if (match !== undefined) {
+      const path = join(dir, match);
+      const size = statSync(path).size;
+      // Two equal reads mean the writer is done, so the assertion never sees a partial file.
+      if (size === lastSize && size > 0) return path;
+      lastSize = size;
+    }
+    await wait(300);
+  }
+  fail(`${label} never landed in ${dir}`);
+}
+
+/** The claim session + device the CODE-419 reclaim check reuses, so it never fights an existing claim. */
+interface ReclaimTarget {
+  sessionId: string;
+  udid: string;
+}
+
+/**
+ * CODE-419's acceptance, end to end: a device the *engine* booted must not outlive the daemon.
+ * Shuts the host device down, boots it back through the wire so the engine owns it, then drains
+ * the daemon and checks the host. A user-booted device would still be running at this point —
+ * that asymmetry is the whole feature, so the check is only meaningful with an engine boot.
+ */
+async function assertShutdownReclaim(daemon: ChildProcess, target: ReclaimTarget): Promise<void> {
+  const { sessionId, udid } = target;
+  await wireRequest({
+    kind: 'simulator.shutdown',
+    clientReqId: 'e2e-reclaim-shutdown',
+    sessionId,
+    udid,
+  });
+  await waitForBooted(udid, false, 'the device never shut down before the reclaim check');
+
+  const booted = await wireRequest({
+    kind: 'simulator.boot',
+    clientReqId: 'e2e-reclaim-boot',
+    sessionId,
+    udid,
+  });
+  if (booted.kind !== 'request.succeeded') {
+    fail(`engine boot for the reclaim check failed: ${JSON.stringify(booted)}`);
+  }
+  await waitForBooted(udid, true, 'the engine never booted the device for the reclaim check');
+
+  daemon.kill('SIGTERM');
+  await once(daemon, 'exit');
+  await waitForBooted(udid, false, 'the daemon exited leaving the device it booted running');
+  console.log('daemon shutdown reclaimed the device the engine booted');
+
+  // Leave the host as we found it, so the next run still has its booted-device precondition.
+  spawn('xcrun', ['simctl', 'boot', udid], { stdio: 'ignore', detached: true }).unref();
+}
+
+async function run(
+  win: Page,
+  chatRoot: string,
+  deepPass: boolean,
+  downloadDir: string,
+): Promise<ReclaimTarget | null> {
+  let reclaimTarget: ReclaimTarget | null = null;
+  await win
+    .locator('button[aria-label="Toggle side panel"]:visible')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 });
+  await win.waitForTimeout(2000);
+
+  // The right panel starts closed on a fresh profile, leaving its chrome strip hit-testing
+  // behind the main pane. Toggle it open until the + trigger is actually clickable (a trial
+  // click probes actionability without clicking) — the open animation makes one wait racy.
+  const toggle = win.locator('button[aria-label="Toggle side panel"]:visible').first();
+  const plus = win.locator('button[aria-label="Open window"]:visible');
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') {
+    await toggle.click();
+    await win.waitForTimeout(600);
+    if ((await toggle.getAttribute('aria-pressed')) !== 'true') {
+      fail('the right panel did not open from its chrome toggle');
+    }
+  }
+  // Both panels label their + "Open window" and locator order is not stable, so probe every
+  // match with a trial click and keep the one that is actually actionable.
+  let plusTarget = null as Awaited<ReturnType<typeof plus.all>>[number] | null;
+  const plusDeadline = Date.now() + 15000;
+  while (plusTarget === null && Date.now() < plusDeadline) {
+    for (const candidate of await plus.all()) {
+      try {
+        await candidate.click({ trial: true, timeout: 1000 });
+        plusTarget = candidate;
+        break;
+      } catch {
+        // Covered instance (collapsed panel); try the next match.
+      }
+    }
+    if (plusTarget === null) await wait(500);
+  }
+  if (plusTarget === null) {
+    const shot = join(tmpdir(), `linkcode-e2e-simulator-plus-${process.pid}.png`);
+    await win.screenshot({ path: shot });
+    console.error(`screenshot: ${shot}`);
+    console.error(`toggle aria-pressed: ${await toggle.getAttribute('aria-pressed')}`);
+    for (const candidate of await plus.all()) {
+      console.error(`plus box: ${JSON.stringify(await candidate.boundingBox())}`);
+    }
+    fail('the section strip + trigger never became clickable');
+  }
+
+  const plusBefore = await plus.count();
+  await plusTarget.click();
+  await win.getByRole('menuitem', { name: 'Simulator' }).click();
+  await win.waitForTimeout(2000);
+
+  const sectionTab = win.locator('button[aria-label="Simulator"][aria-pressed="true"]:visible');
+  if ((await sectionTab.count()) === 0) fail('adding Simulator did not activate its section tab');
+  console.log('simulator section summoned and active');
+
+  // The right panel's + trigger disappears once the only optional section is added.
+  const plusAfter = await win.locator('button[aria-label="Open window"]:visible').count();
+  if (plusAfter !== plusBefore - 1) {
+    fail('the section strip + menu should hide while every optional section is added');
+  }
+
+  // The panel body must reflect the daemon's real device probe.
+  // One tab per open device (CODE-421); the panel opens one implicitly on a fresh thread.
+  const picker = win.locator('[role="tab"]:visible');
+  const noDevices = win.getByText('No simulator devices found');
+  const deadline = Date.now() + 15000;
+  let bodyReady = false;
+  while (Date.now() < deadline) {
+    if ((await picker.count()) > 0 || (await noDevices.count()) > 0) {
+      bodyReady = true;
+      break;
+    }
+    await wait(500);
+  }
+  if (!bodyReady) fail('the panel showed neither a device tab nor the empty-list hint');
+  if ((await picker.count()) > 0) {
+    console.log(`device tab: ${JSON.stringify(await picker.first().textContent())}`);
+  } else {
+    console.log('daemon reported no simulator devices');
+  }
+
+  const summonShot = join(tmpdir(), `linkcode-e2e-simulator-summon-${process.pid}.png`);
+  await win.screenshot({ path: summonShot });
+  console.log(`screenshot: ${summonShot}`);
+
+  if (deepPass && (await picker.count()) > 0) {
+    // Deep pass: with a session claim the booted device streams; frames must paint the canvas.
+    const sessionId = await seedPiSession(chatRoot);
+    console.log(`pi session seeded for the stream claim: ${sessionId}`);
+    // The wire-seeded session came from another connection; reload so the fresh session.list
+    // includes it. This doubles as the persisted-panel restore check: the Simulator section
+    // must come back open after the reload (shell-state v3).
+    await win.reload();
+    await win
+      .locator('button[aria-label="Toggle side panel"]:visible')
+      .first()
+      .waitFor({ state: 'visible', timeout: 30000 });
+    await win.waitForTimeout(2000);
+    if ((await sectionTab.count()) === 0) {
+      fail('the Simulator section did not restore from persisted shell state after reload');
+    }
+    // Clicking the untitled row makes the thread active.
+    const row = win.getByText(THREAD_ROW_RE).first();
+    await row.waitFor({ state: 'visible', timeout: 15000 });
+    await row.click();
+    await win.waitForTimeout(1500);
+
+    // The device paints two layered canvases; the screen (last in DOM) carries the framebuffer.
+    const canvas = win.locator('canvas:visible');
+    const frameDeadline = Date.now() + 30000;
+    let painted: { width: number; height: number } | null = null;
+    while (Date.now() < frameDeadline) {
+      if ((await canvas.count()) > 0) {
+        const size = await canvas.last().evaluate((el) => {
+          const c = el as HTMLCanvasElement;
+          return { width: c.width, height: c.height };
+        });
+        if (size.width > 0 && size.height > 0) {
+          painted = size;
+          break;
+        }
+      }
+      await wait(500);
+    }
+    if (!painted) fail('no frame painted the simulator canvas within 30s');
+    console.log(`canvas painted at ${painted.width}x${painted.height}`);
+
+    const streamShot = join(tmpdir(), `linkcode-e2e-simulator-stream-${process.pid}.png`);
+    await win.screenshot({ path: streamShot });
+    console.log(`screenshot: ${streamShot}`);
+
+    // Drive Safari to a real page through the claim session, then hold the window open for
+    // manual inspection/screenshots of the live stream.
+    const bootedUdid = bootedUdids()[0];
+    if (bootedUdid !== undefined) {
+      const opened = await wireRequest({
+        kind: 'simulator.open-url',
+        clientReqId: 'e2e-open-url',
+        sessionId,
+        udid: bootedUdid,
+        url: 'http://linkcode.ai',
+      });
+      console.log(`open-url reply: ${JSON.stringify(opened.kind)}`);
+      await win.waitForTimeout(5000);
+      const safariShot = join(tmpdir(), `linkcode-e2e-simulator-safari-${process.pid}.png`);
+      await win.screenshot({ path: safariShot });
+      console.log(`screenshot: ${safariShot}`);
+
+      // Interactive drive-through: the panel's Home button and a canvas tap must actually move
+      // the device. Each step is asserted by the painted screen layer changing (downsampled hash);
+      // it is the last canvas (the chassis is a static first layer that never changes).
+      const deviceCanvas = win.locator('canvas:visible').last();
+      const canvasHash = (): Promise<number> =>
+        deviceCanvas.evaluate((el) => {
+          const source = el as HTMLCanvasElement;
+          const probe = document.createElement('canvas');
+          probe.width = 32;
+          probe.height = 64;
+          const ctx = probe.getContext('2d');
+          if (ctx === null) return -1;
+          ctx.drawImage(source, 0, 0, 32, 64);
+          const data = ctx.getImageData(0, 0, 32, 64).data;
+          let hash = 0;
+          for (let i = 0; i < data.length; i += 16) {
+            hash = ((hash * 31 + data[i]) & 0xff_ff_ff) >>> 0;
+          }
+          return hash;
+        });
+      const waitForHashChange = async (previous: number, label: string): Promise<number> => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const next = await canvasHash();
+          if (next !== previous && next !== -1) return next;
+          await wait(500);
+        }
+        fail(`device screen did not change after ${label}`);
+      };
+
+      const onSafari = await canvasHash();
+      await win.getByRole('button', { name: 'Home', exact: true }).click();
+      const onHome = await waitForHashChange(onSafari, 'pressing Home');
+      console.log('panel Home button returned the device to the home screen');
+
+      // Tap Safari in the dock through the screen canvas. Coordinates are screen-normalized now
+      // (the canvas is exactly the screen, no bezel) — the dock Safari icon sits at ≈ (0.41, 0.93).
+      const box = await deviceCanvas.boundingBox();
+      if (!box) fail('device canvas has no bounding box');
+      await deviceCanvas.click({
+        position: { x: box.width * 0.41, y: box.height * 0.93 },
+      });
+      const onSafariAgain = await waitForHashChange(onHome, 'tapping the dock');
+      console.log('canvas tap reopened Safari from the dock');
+
+      // Streamed-touch drag: press, move upward in real time, release — the page must scroll.
+      await win.waitForTimeout(1500);
+      const dragX = box.x + box.width * 0.5;
+      const dragY = box.y + box.height * 0.6;
+      await win.mouse.move(dragX, dragY);
+      await win.mouse.down();
+      for (let step = 1; step <= 10; step += 1) {
+        await win.mouse.move(dragX, dragY - step * box.height * 0.03);
+        await win.waitForTimeout(20);
+      }
+      await win.mouse.up();
+      await waitForHashChange(onSafariAgain, 'dragging to scroll');
+      console.log('streamed-touch drag scrolled the page');
+
+      // Option-drag pinch: two mirrored fingers (wire `simulator.pinch`). The page may or may not
+      // zoom, so this only proves the two-finger pipeline drives the device without erroring.
+      const cx = box.x + box.width * 0.5;
+      const cy = box.y + box.height * 0.45;
+      await win.keyboard.down('Alt');
+      await win.mouse.move(cx, cy);
+      await win.mouse.down();
+      for (let step = 1; step <= 8; step += 1) {
+        await win.mouse.move(cx + step * box.width * 0.03, cy + step * box.height * 0.03);
+        await win.waitForTimeout(20);
+      }
+      await win.mouse.up();
+      await win.keyboard.up('Alt');
+      if ((await sectionTab.count()) === 0) fail('the panel died during the pinch gesture');
+      console.log('option-drag pinch drove a two-finger gesture');
+
+      // Rotate: the panel's rotate button injects an orientation GSEvent; Safari re-lays-out to
+      // landscape, so the streamed framebuffer must change.
+      const beforeRotate = await canvasHash();
+      await win.getByRole('button', { name: 'Rotate', exact: true }).click();
+      await waitForHashChange(beforeRotate, 'rotating the device');
+      console.log('rotate button rotated the device');
+
+      // Simulator.app shortcut parity (CODE-414). The bindings are owner-scoped, not focus-scoped,
+      // so pressing on the window is enough while the panel is on screen. Home is the one with an
+      // unmistakable visual result, so it is what proves the chord actually reached the device;
+      // the volume keys are asserted only as far as "the panel accepted them without erroring",
+      // since the iOS volume HUD is too small to read out of a downsampled canvas hash.
+      const beforeHomeChord = await canvasHash();
+      await win.keyboard.press('Meta+Shift+KeyH');
+      await waitForHashChange(beforeHomeChord, 'the Home shortcut');
+      console.log('Cmd+Shift+H returned the device to the home screen');
+
+      await win.keyboard.press('Meta+ArrowUp');
+      await win.keyboard.press('Meta+ArrowDown');
+      await win.waitForTimeout(1000);
+      if ((await win.getByText('is busy').count()) > 0) fail('the volume shortcuts were refused');
+      console.log('Cmd+Up / Cmd+Down volume chords accepted (HUD needs a human eye)');
+
+      // Live reconfigure (CODE-433): a stream start with new options retunes the running stream in
+      // place. Assert the capture-worker process is NOT respawned (same pid) and the picture keeps
+      // painting — the seamless path the panel's tuning row rides. A start on an already-running
+      // stream is the same wire the panel sends when a dropdown changes.
+      const workerPid = (): string | null => {
+        try {
+          return execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], { encoding: 'utf8' })
+            .trim()
+            .split('\n', 1)[0];
+        } catch {
+          return null;
+        }
+      };
+      const pidBefore = workerPid();
+      if (pidBefore === null) fail('no capture-worker process running before reconfigure');
+      const canvasSize = (): Promise<{ width: number; height: number }> =>
+        deviceCanvas.evaluate((el) => {
+          const c = el as HTMLCanvasElement;
+          return { width: c.width, height: c.height };
+        });
+      const waitForNarrowerCanvas = async (from: number, label: string): Promise<number> => {
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          const { width } = await canvasSize();
+          if (width < from) return width;
+          await wait(500);
+        }
+        fail(`canvas never shrank after ${label}`);
+      };
+
+      // Downscale live (CODE-434): H.264 honors `scale` by sizing its compression session down, so
+      // the *decoded* frame — and therefore the canvas backing store — must halve. This is the proof
+      // the Resolution control is not a no-op under the default codec.
+      const nativeWidth = (await canvasSize()).width;
+      await wireRequest({
+        kind: 'simulator.stream.start',
+        clientReqId: 'e2e-rescale',
+        sessionId,
+        udid: bootedUdid,
+        codec: 'h264',
+        scale: 0.5,
+      });
+      const scaledWidth = await waitForNarrowerCanvas(nativeWidth, 'scaling the stream to 50%');
+      const ratio = scaledWidth / nativeWidth;
+      if (ratio < 0.4 || ratio > 0.6) {
+        fail(`scaled canvas is ${scaledWidth}px vs native ${nativeWidth}px — not ≈50%`);
+      }
+      console.log(`stream rescaled live: canvas ${nativeWidth}px → ${scaledWidth}px wide`);
+
+      const beforeReconfigure = await canvasHash();
+      // A start on an already-running stream (switching codec here) must retune it, not respawn the
+      // worker: the same pid before and after is the proof it happened in place. The wire reply omits
+      // the sidecar's internal `alreadyStreaming` flag, so the pid is the observable signal.
+      await wireRequest({
+        kind: 'simulator.stream.start',
+        clientReqId: 'e2e-reconfigure',
+        sessionId,
+        udid: bootedUdid,
+        codec: 'jpeg',
+        fps: 30,
+      });
+      await waitForHashChange(beforeReconfigure, 'reconfiguring the stream');
+      const pidAfter = workerPid();
+      if (pidAfter !== pidBefore) {
+        fail(`capture-worker respawned on reconfigure (pid ${pidBefore} → ${pidAfter ?? 'gone'})`);
+      }
+      console.log(`live reconfigure retuned in place (capture-worker pid stable ${pidBefore})`);
+
+      // Capture controls (CODE-415): the screenshot button saves a real device PNG, and the record
+      // button muxes the live canvas into a video container. Both save through a browser download,
+      // which the harness redirected to `downloadDir`.
+      await win.getByRole('button', { name: 'Save screenshot', exact: true }).click();
+      const savedShot = await waitForDownload(downloadDir, SCREENSHOT_FILE_RE, 'the screenshot');
+      const shotHeader = readFileSync(savedShot).subarray(1, 4).toString('latin1');
+      if (shotHeader !== 'PNG') fail(`saved screenshot is not a PNG (header ${shotHeader})`);
+      console.log(`screenshot saved: ${savedShot} (${statSync(savedShot).size} bytes)`);
+
+      // The same capture from the keyboard (CODE-450). Capture filenames carry a second-resolution
+      // timestamp, so a second shot taken inside the same second reuses the name and overwrites
+      // instead of landing alongside — clear the first one and assert on any PNG arriving after.
+      rmSync(savedShot);
+      await win.keyboard.press('Meta+KeyS');
+      const chordShot = await waitForDownload(
+        downloadDir,
+        SCREENSHOT_FILE_RE,
+        'the Cmd+S screenshot',
+      );
+      console.log(`Cmd+S saved a screenshot from the keyboard: ${basename(chordShot)}`);
+
+      const recordButton = win.getByRole('button', { name: 'Record screen', exact: true });
+      if ((await recordButton.count()) > 0) {
+        // Started from the chord and stopped from the button, so one pass covers both entry points.
+        await win.keyboard.press('Meta+KeyR');
+        const stopButton = win.getByRole('button', { name: 'Stop recording', exact: true });
+        await stopButton.waitFor({ state: 'visible', timeout: 5000 });
+        console.log('Cmd+R started the recording');
+        await win.waitForTimeout(3000);
+        await stopButton.click();
+        const clip = await waitForDownload(downloadDir, RECORDING_FILE_RE, 'the recording');
+        console.log(`recording saved: ${clip} (${statSync(clip).size} bytes)`);
+      } else {
+        console.log('recording unsupported in this build — skipping the record assertion');
+      }
+
+      // Detach (CODE-416): stops streaming in the panel without touching the device — the whole
+      // point is that it stays booted (an agent driving it must be unaffected).
+      await win.getByRole('button', { name: 'Detach simulator', exact: true }).click();
+      const attachButton = win.getByRole('button', { name: 'Attach simulator', exact: true });
+      await attachButton.waitFor({ state: 'visible', timeout: 10000 });
+      if (!bootedUdids().includes(bootedUdid)) fail('detaching shut the device down');
+      console.log('detach stopped the stream and left the device booted');
+
+      await attachButton.click();
+      await win.locator('canvas:visible').last().waitFor({ state: 'visible', timeout: 15000 });
+      const reattachDeadline = Date.now() + 20000;
+      let reattached = false;
+      while (!reattached && Date.now() < reattachDeadline) {
+        reattached = (await canvasSize()).width > 0;
+        if (!reattached) await wait(500);
+      }
+      if (!reattached) fail('re-attaching never repainted the canvas');
+      console.log('attach restored the live stream');
+
+      // Multi-device tabs (CODE-421). The acceptance that matters is "switching tabs does not
+      // break the stream", so assert it the same way the reconfigure check does: the streaming
+      // device's capture-worker pid must survive a round trip to another tab and back. A second
+      // device needs no boot for this — parking on it is what takes the first one to the back.
+      const addDevice = win.locator('button[aria-label="Add a device"]:visible').first();
+      if ((await addDevice.count()) > 0 && !(await addDevice.isDisabled())) {
+        const pidBeforeSwitch = workerPid();
+        await addDevice.click();
+        await win.locator('[role="menuitem"]:visible').first().click();
+        await win.waitForTimeout(1500);
+        if ((await picker.count()) < 2) fail('opening a second device did not add a tab');
+
+        await picker.first().click();
+        await win.waitForTimeout(2000);
+        const pidAfterSwitch = workerPid();
+        if (pidAfterSwitch === null || pidAfterSwitch !== pidBeforeSwitch) {
+          fail(`switching tabs restarted the stream (pid ${pidBeforeSwitch} → ${pidAfterSwitch})`);
+        }
+        // And the picture is live again on the tab we came back to.
+        if ((await canvasSize()).width === 0) fail('the canvas went blank after switching back');
+        console.log(`tab switch kept the stream alive (capture-worker pid ${pidBeforeSwitch})`);
+
+        // Leave one tab open so the shutdown assertions below see the streaming device.
+        await win.locator('button[aria-label="Close this device"]:visible').last().click();
+        await win.waitForTimeout(500);
+      } else {
+        console.log('only one simulator device on this host — skipping the multi-device tab pass');
+      }
+
+      // Shut down last: it is the one control that ends the device, so nothing may depend on it
+      // afterwards. The panel must fall back to its Boot state.
+      await win.getByRole('button', { name: 'Shut down device', exact: true }).click();
+      const shutdownDeadline = Date.now() + 30000;
+      while (bootedUdids().includes(bootedUdid) && Date.now() < shutdownDeadline) await wait(500);
+      if (bootedUdids().includes(bootedUdid)) fail('the shutdown button left the device booted');
+      await win
+        .getByRole('button', { name: 'Boot', exact: true })
+        .waitFor({ state: 'visible', timeout: 20000 });
+      console.log('shutdown button ended the device and the panel fell back to Boot');
+      // Leave the host as we found it so a repeat run still has its precondition. Detached and
+      // non-blocking on purpose: a synchronous `simctl boot` can stall for seconds while
+      // CoreSimulator finishes tearing the device down, and blocking this event loop while
+      // Playwright holds its connection to Electron shows up later as a spurious "target closed".
+      spawn('xcrun', ['simctl', 'boot', bootedUdid], { stdio: 'ignore', detached: true }).unref();
+      // Reuse this session for the reclaim check: a second session would be refused the device.
+      reclaimTarget = { sessionId, udid: bootedUdid };
+
+      const tapShot = join(tmpdir(), `linkcode-e2e-simulator-tap-${process.pid}.png`);
+      await win.screenshot({ path: tapShot });
+      console.log(`screenshot: ${tapShot}`);
+    }
+    if (KEEP_OPEN) {
+      // Demo mode: hand the app over and wait. Everything up to here has been asserted; the two
+      // checks below (closing the section) are given up deliberately, because the alternative is
+      // yanking the window out from under whoever is driving it.
+      console.log(
+        'app is yours — close the window when you are done (section-close checks skipped)',
+      );
+      await win.waitForEvent('close', { timeout: 0 });
+      console.log('window closed; tearing down the harness daemon');
+      return null;
+    }
+    console.log(`holding the window open for ${Math.round(HOLD_MS / 1000)}s — drive it by hand…`);
+    await win.waitForTimeout(HOLD_MS);
+  } else {
+    console.log('no booted simulator — skipping the live-stream pass');
+  }
+
+  // Closing the section removes it from the strip and falls back to the default section.
+  await win.locator('button[aria-label="Close Simulator"]:visible').first().click();
+  await win.waitForTimeout(1000);
+  if ((await win.locator('button[aria-label="Simulator"]:visible').count()) !== 0) {
+    fail('closing the Simulator section did not remove its tab');
+  }
+  if ((await win.locator('button[aria-label="Open window"]:visible').count()) !== plusBefore) {
+    fail('the + menu did not return after removing the section');
+  }
+  console.log('simulator section closed; + menu restored');
+  return reclaimTarget;
+}
+
+async function main(): Promise<void> {
+  if (process.platform !== 'darwin') fail('simulator E2E is macOS-only');
+  if (!existsSync(join(daemonDir, 'dist/index.js'))) {
+    fail('apps/daemon/dist is missing — run `pnpm -F @linkcode/daemon build` first');
+  }
+  if (!existsSync(join(desktopDir, 'out/main/index.js'))) {
+    fail('apps/desktop/out is missing — run `pnpm -F @linkcode/desktop build` first');
+  }
+  if (!existsSync(simSidecar)) {
+    fail('target/release/linkcode-sim is missing — run `cargo build --release -p linkcode-sim`');
+  }
+
+  const home = mkdtempSync(join(tmpdir(), 'linkcode-e2e-home-'));
+  const userData = mkdtempSync(join(tmpdir(), 'linkcode-e2e-userdata-'));
+  const chatRoot = join(home, 'LinkCode');
+  mkdirSync(chatRoot, { recursive: true });
+  // A fake $HOME cannot move Electron's appData on macOS, so localStorage (the persisted shell
+  // state) would leak across runs through the real ~/Library. A per-run profile isolates the
+  // app-name universe instead — the daemon must carry the SAME profile to be discovered.
+  const profile = `e2e-sim-${process.pid}`;
+  const appSupport = join(
+    process.env.HOME ?? home,
+    'Library',
+    'Application Support',
+    `LinkCode Development (${profile})`,
+  );
+  // Locale-stable text locators + no first-install import prompt over the shell.
+  mkdirSync(appSupport, { recursive: true });
+  writeFileSync(
+    join(appSupport, 'settings.json'),
+    `${JSON.stringify({ locale: 'en', historyImportOnboardingHandled: true }, null, 2)}\n`,
+  );
+  const deepPass = bootedUdids().length > 0 && piOnPath();
+  console.log(`live-stream pass (booted device + pi CLI): ${deepPass ? 'yes' : 'no'}`);
+
+  let daemon: ChildProcess | null = null;
+  let app: ElectronApplication | null = null;
+  let passed = false;
+  try {
+    daemon = spawn(process.execPath, ['dist/index.js'], {
+      cwd: daemonDir,
+      env: {
+        ...process.env,
+        HOME: home,
+        LINKCODE_PORT: String(PORT),
+        LINKCODE_PROFILE: profile,
+        LINKCODE_SIM_SIDECAR_PATH: simSidecar,
+      },
+      stdio: 'ignore',
+    });
+    await waitForDaemon();
+    console.log(`daemon up on :${PORT} (HOME=${home})`);
+
+    app = await _electron.launch({
+      executablePath: electronBinary,
+      args: [desktopDir, `--user-data-dir=${userData}`, '--use-mock-keychain'],
+      env: { ...process.env, HOME: home, LINKCODE_PROFILE: profile },
+    });
+
+    // Captures download through the browser's normal flow, so pin the destination from the main
+    // process to make the assertions deterministic.
+    const downloadDir = mkdtempSync(join(tmpdir(), 'linkcode-e2e-downloads-'));
+    await app.evaluate(({ session }, dir: string) => {
+      session.defaultSession.on('will-download', (_event, item) => {
+        item.setSavePath(`${dir}/${item.getFilename()}`);
+      });
+    }, downloadDir);
+
+    const win = await app.firstWindow();
+    // Surface renderer failures directly: without these a crash only shows up as an opaque
+    // "target closed" from whatever Playwright call happens to be in flight.
+    win.on('pageerror', (error) => console.error(`renderer error: ${error.message}`));
+    win.on('crash', () => console.error('renderer crashed'));
+    win.on('console', (message) => {
+      if (message.type() === 'error') console.error(`renderer console: ${message.text()}`);
+    });
+    let reclaimTarget: ReclaimTarget | null = null;
+    try {
+      reclaimTarget = await run(win, chatRoot, deepPass, downloadDir);
+    } catch (error) {
+      const shot = join(tmpdir(), `linkcode-e2e-simulator-${process.pid}.png`);
+      await win.screenshot({ path: shot }).catch(noop);
+      console.error(`screenshot: ${shot}`);
+      throw error;
+    }
+    // Last, because it ends the daemon: nothing above may depend on it afterwards.
+    if (reclaimTarget !== null && !SKIP_RECLAIM) {
+      await assertShutdownReclaim(daemon, reclaimTarget);
+    } else if (SKIP_RECLAIM) {
+      console.log('LINKCODE_E2E_SKIP_RECLAIM=1 — leaving the daemon up, reclaim NOT verified');
+    }
+    passed = true;
+    console.log('PASS');
+  } finally {
+    await app?.close().catch(noop);
+    daemon?.kill('SIGTERM');
+    if (passed) {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(userData, { recursive: true, force: true });
+      rmSync(appSupport, { recursive: true, force: true });
+    } else {
+      console.error(`kept for debugging: HOME=${home} userData=${userData} appData=${appSupport}`);
+      process.exitCode = 1;
+    }
+  }
+}
+
+void main();

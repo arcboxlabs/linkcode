@@ -9,6 +9,7 @@ import type {
   ContentBlock,
   EffortLevel,
   ManagedAssetId,
+  ManagedAssetKey,
   ManagedAssetStatus,
   MessageId,
   PermissionOutcome,
@@ -26,7 +27,15 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { AGENT_INPUT_CAPABILITIES, normalizeCwdKey, textBlock } from '@linkcode/schema';
+import {
+  AGENT_INPUT_CAPABILITIES,
+  managedAgentAssetId,
+  managedAssetIdEquals,
+  managedAssetKey,
+  managedToolAssetId,
+  normalizeCwdKey,
+  textBlock,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
@@ -47,6 +56,9 @@ import { mockScriptDeclarations } from './data/scripts';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
+  SHOWCASE_ACTIVITY_RUN_INTRO,
+  SHOWCASE_ACTIVITY_RUN_NARRATION,
+  SHOWCASE_ACTIVITY_RUN_THOUGHT,
   SHOWCASE_ARCHITECTURE_LINK,
   SHOWCASE_ARTIFACTS_CONTENT,
   SHOWCASE_COMMANDS_NARRATION,
@@ -61,6 +73,7 @@ import {
   SHOWCASE_FILES_NARRATION,
   SHOWCASE_IMAGE,
   SHOWCASE_INTRO_CONTENT,
+  SHOWCASE_MARKDOWN_CONTENT,
   SHOWCASE_PERMISSION_DENIED_CONTENT,
   SHOWCASE_PERMISSION_GRANTED_CONTENT,
   SHOWCASE_PERMISSIONS,
@@ -171,7 +184,7 @@ export class DevMockHost {
   private workspaceSeq = 0;
   private terminalSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
-  private readonly installedAssets = new Set<ManagedAssetId>();
+  private readonly installedAssets = new Set<ManagedAssetKey>();
 
   constructor(private readonly transport: Transport) {
     this.terminals.set(
@@ -182,11 +195,11 @@ export class DevMockHost {
 
   /**
    * Onboarding fixtures (CODE-112), one kind per state: claude-code missing (downloadable), codex
-   * out-of-range (unverified-continue + paired-download), pi builtin, opencode absent until CODE-76.
+   * out-of-range (unverified-continue + paired-download), pi builtin, opencode absent (unevaluated).
    */
   private agentRuntimes(): AgentRuntimes {
     return {
-      'claude-code': this.installedAssets.has('agent:claude-code')
+      'claude-code': this.installedAssets.has(managedAssetKey(managedAgentAssetId('claude-code')))
         ? {
             status: 'available',
             source: 'managed',
@@ -194,7 +207,7 @@ export class DevMockHost {
             path: '/mock/assets/agent/claude-code/0.3.179/claude',
           }
         : { status: 'missing' },
-      codex: this.installedAssets.has('agent:codex')
+      codex: this.installedAssets.has(managedAssetKey(managedAgentAssetId('codex')))
         ? {
             status: 'available',
             source: 'managed',
@@ -209,18 +222,18 @@ export class DevMockHost {
   private assetStatuses(): ManagedAssetStatus[] {
     return (
       [
-        { id: 'agent:claude-code', wantedVersion: '0.3.179' },
-        { id: 'agent:codex', wantedVersion: '0.140.0' },
-        { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+        { id: managedAgentAssetId('claude-code'), wantedVersion: '0.3.179' },
+        { id: managedAgentAssetId('codex'), wantedVersion: '0.140.0' },
+        { id: managedToolAssetId('tectonic'), wantedVersion: '0.16.9' },
       ] as const
     ).map(({ id, wantedVersion }) => ({
       id,
       wantedVersion,
-      installed: this.installedAssets.has(id)
+      installed: this.installedAssets.has(managedAssetKey(id))
         ? {
             id,
             version: wantedVersion,
-            path: `/mock/assets/${id.replace(':', '/')}/${wantedVersion}/bin`,
+            path: `/mock/assets/${id.kind}/${id.name}/${wantedVersion}/bin`,
           }
         : undefined,
     }));
@@ -239,8 +252,10 @@ export class DevMockHost {
       // eslint-disable-next-line no-await-in-loop -- staged progress is deliberately sequential
       await wait(ASSET_PROGRESS_LATENCY_MS);
     }
-    this.installedAssets.add(id);
-    const status = this.assetStatuses().find((candidate) => candidate.id === id) ?? {
+    this.installedAssets.add(managedAssetKey(id));
+    const status = this.assetStatuses().find((candidate) =>
+      managedAssetIdEquals(candidate.id, id),
+    ) ?? {
       id,
       wantedVersion: '0.0.0',
     };
@@ -898,6 +913,7 @@ export class DevMockHost {
       case 'shell-command':
         this.emit(sessionId, {
           type: 'user-message',
+          messageId: this.nextMessageId('mock-user'),
           content: [textBlock(`$ ${input.command}`)],
         });
         this.sendSuccess(replyTo);
@@ -925,6 +941,7 @@ export class DevMockHost {
 
     this.emit(session.sessionId, {
       type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
       content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
     });
     session.status = 'running';
@@ -950,9 +967,13 @@ export class DevMockHost {
     content: ContentBlock[],
   ): Promise<void> {
     const text = promptText(content);
-    if (!session.title && text) session.title = text.slice(0, 80);
+    if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
-    this.emit(session.sessionId, { type: 'user-message', content });
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
+      content,
+    });
     this.emit(session.sessionId, { type: 'status', status: 'running' });
 
     // Cancel/stop bump the session epoch; a stale epoch means this turn was cancelled and the
@@ -1043,7 +1064,11 @@ export class DevMockHost {
     const script: AgentEvent[] = [
       { type: 'status', status: 'running' },
       { type: 'current-mode-update', currentModeId: 'mock-showcase' },
-      { type: 'user-message', content: SHOWCASE_USER_CONTENT },
+      {
+        type: 'user-message',
+        messageId: this.nextMessageId('mock-showcase-user'),
+        content: SHOWCASE_USER_CONTENT,
+      },
       {
         type: 'agent-thought-chunk',
         messageId: this.nextMessageId('mock-showcase-thought'),
@@ -1072,6 +1097,11 @@ export class DevMockHost {
       },
       {
         type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-showcase-markdown'),
+        content: SHOWCASE_MARKDOWN_CONTENT,
+      },
+      {
+        type: 'agent-message-chunk',
         messageId: this.nextMessageId('mock-showcase-artifacts'),
         content: SHOWCASE_ARTIFACTS_CONTENT,
       },
@@ -1094,6 +1124,25 @@ export class DevMockHost {
         content: SHOWCASE_COMMANDS_NARRATION,
       },
       ...toolEvents(bursts.wrapUp),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-activity-run-intro'),
+        content: SHOWCASE_ACTIVITY_RUN_INTRO,
+      },
+      {
+        type: 'agent-thought-chunk',
+        messageId: this.nextMessageId('mock-activity-run-thought'),
+        content: SHOWCASE_ACTIVITY_RUN_THOUGHT,
+      },
+      ...toolEvents(bursts.activityRun.beforeNarration),
+      {
+        type: 'agent-message-chunk',
+        messageId: this.nextMessageId('mock-activity-run-note'),
+        content: SHOWCASE_ACTIVITY_RUN_NARRATION,
+      },
+      ...toolEvents([bursts.activityRun.singleton]),
+      ...toolEvents([bursts.activityRun.taskBoundary]),
+      ...toolEvents(bursts.activityRun.afterTask),
     ];
 
     for (const event of script) {
@@ -1113,11 +1162,20 @@ export class DevMockHost {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,
       });
+      // The tool snapshot is the timeline authority; the following ask only references it.
+      // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
+      const announced = await this.emitShowcaseEvent(session, epoch, {
+        type: 'tool-call',
+        toolCall: permission.toolCall,
+      });
+      if (!announced) return false;
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       const emitted = await this.emitShowcaseEvent(session, epoch, {
         type: 'permission-request',
         requestId: permission.requestId,
-        toolCall: permission.toolCall,
+        title: permission.title,
+        description: permission.description,
+        subject: permission.subject,
         options: permission.options,
       });
       if (!emitted) return false;

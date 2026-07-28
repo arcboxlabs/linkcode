@@ -34,12 +34,19 @@ const RE_MODEL_DEFAULT = /modelDefault/;
 const RE_SONNET_5 = /Sonnet 5/;
 const RE_CONFIGURED_CLAUDE_MODEL = /configured\/claude-model/;
 const RE_OPUS_4_8 = /Opus 4.8/;
+const RE_MEDIUM_EFFORT = /Medium/;
+const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
+const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
+const RE_PI_SONNET = /Pi Sonnet/;
+const RE_APPROVAL_DEFAULT = /Default/;
+const RE_ACCEPT_EDITS = /Accept edits/;
 
 describe('NewSessionSurface', () => {
   it.each([
     'claude-code',
     'codex',
     'opencode',
+    'pi',
   ] as const)('submits a leading slash command for %s', async (provider) => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
@@ -89,6 +96,26 @@ describe('NewSessionSurface', () => {
     );
 
     expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
+  });
+
+  it('names the model selector with its agent, model, and reasoning effort', () => {
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Claude Code, Sonnet 5, reasoning: effortDefault',
+      }),
+    ).toBeTruthy();
   });
 
   it.each([
@@ -275,15 +302,12 @@ describe('NewSessionSurface', () => {
     expect(screen.queryByRole('img', { name: 'accepted.png' })).toBeNull();
   });
 
-  it.each([
-    'pi',
-    'grok-build',
-  ] as const)('blocks unsupported slash commands for %s', async (provider) => {
+  it('blocks unsupported slash commands for grok-build', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialProvider: 'grok-build', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -376,7 +400,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /Medium/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_MEDIUM_EFFORT })).toBeTruthy();
     typeInComposer('hello again');
     await pressInComposer('Enter');
 
@@ -403,7 +427,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /custom\/claude-model/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_CUSTOM_CLAUDE_MODEL })).toBeTruthy();
     typeInComposer('hello');
     await pressInComposer('Enter');
 
@@ -486,7 +510,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /anthropic\/claude-sonnet-4-6/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_DYNAMIC_CLAUDE_MODEL })).toBeTruthy();
     typeInComposer('use remembered dynamic model');
     await pressInComposer('Enter');
 
@@ -593,10 +617,10 @@ describe('NewSessionSurface', () => {
     await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByText('High'));
-    await user.click(screen.getByRole('button', { name: /Default/ }));
-    await user.click(await screen.findByRole('menuitemradio', { name: /Accept edits/ }));
+    await user.click(screen.getByRole('button', { name: RE_APPROVAL_DEFAULT }));
+    await user.click(await screen.findByRole('menuitemradio', { name: RE_ACCEPT_EDITS }));
     typeInComposer('catalog choices');
     await pressInComposer('Enter');
     await waitFor(() =>
@@ -610,7 +634,7 @@ describe('NewSessionSurface', () => {
     );
 
     onSubmit.mockClear();
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pi Sonnet' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
     typeInComposer('no stale effort');
@@ -646,7 +670,10 @@ describe('NewSessionSurface', () => {
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: { type: 'prompt', content: [{ type: 'text', text: '"package.json"' }] },
+          input: {
+            type: 'prompt',
+            content: [{ type: 'text', text: '[package.json](./package.json)' }],
+          },
         }),
       ),
     );

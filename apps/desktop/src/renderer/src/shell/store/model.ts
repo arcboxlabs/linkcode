@@ -1,3 +1,4 @@
+import { isPreviewOrigin } from '@linkcode/transport';
 import type {
   PanelSection,
   PanelSectionTab,
@@ -5,7 +6,7 @@ import type {
   PanelTab,
   PanelWindowType,
 } from '@linkcode/ui/shell/panels';
-import { PANEL_SECTIONS, PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
+import { ALL_PANEL_SECTIONS, PANEL_WINDOW_TYPES } from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
 import { createFixedArray } from 'foxts/create-fixed-array';
 import { z } from 'zod';
@@ -50,10 +51,13 @@ export interface RightPanelBrowserState {
 }
 
 /** The right panel: fixed Diff/Terminal/Browser/Files sections, with per-instance
- * sub-tabs for Terminal (PTYs), Browser (webviews), and Files (viewers). */
+ * sub-tabs for Terminal (PTYs), Browser (webviews), and Files (viewers), plus the on-demand
+ * Simulator section. */
 export interface RightPanelState {
   open: boolean;
   activeSection: PanelSection;
+  /** The on-demand Simulator section is present in the strip. */
+  simulatorAdded: boolean;
   terminal: RightPanelTerminalState;
   files: RightPanelFilesState;
   browser: RightPanelBrowserState;
@@ -85,6 +89,7 @@ export interface PersistedDesktopShellState {
 export interface PersistedRightPanelState {
   open: boolean;
   activeSection: PanelSection;
+  simulatorAdded: boolean;
   terminalTabCount: number;
   activeTerminalTabIndex: number;
   fileTabPaths: string[];
@@ -138,7 +143,7 @@ const MAX_PERSISTED_RIGHT_BROWSER_TABS = 20;
 let tabSequence = 0;
 
 const PanelSideSchema = z.enum(['right', 'bottom']);
-const PanelSectionSchema = z.enum(PANEL_SECTIONS);
+const PanelSectionSchema = z.enum(ALL_PANEL_SECTIONS);
 const PanelWindowTypeSchema = z.enum(PANEL_WINDOW_TYPES);
 const FiniteNumberSchema = z.number();
 
@@ -175,6 +180,7 @@ export function createDefaultRightPanelState(): RightPanelState {
   return {
     open: false,
     activeSection: 'diff',
+    simulatorAdded: false,
     terminal: { tabs: [], activeTabId: null },
     files: { tabs: [], activeTabId: null },
     browser: { tabs: [], activeTabId: null },
@@ -208,7 +214,9 @@ export function seedTerminalSection(terminal: RightPanelTerminalState): RightPan
   return { tabs: [tab], activeTabId: tab.id };
 }
 
-/** Brings `section` forward, seeding sections that must never become visible without a tab. */
+/** Brings `section` forward, seeding the terminal section's first tab when it becomes visible;
+ * the Browser section follows the same invariant, and revealing the on-demand Simulator section
+ * also adds it to the strip. */
 export function revealSectionState(
   panel: RightPanelState,
   section: PanelSection,
@@ -218,6 +226,7 @@ export function revealSectionState(
     ...panel,
     open,
     activeSection: section,
+    simulatorAdded: panel.simulatorAdded || section === 'simulator',
     terminal: open && section === 'terminal' ? seedTerminalSection(panel.terminal) : panel.terminal,
   };
   return open ? seedBrowserSection(revealed) : revealed;
@@ -370,7 +379,8 @@ export function serializeDesktopShellState(state: DesktopShellState): PersistedD
 }
 
 function durableBrowserUrl(url: string | null): string | null {
-  return url?.startsWith('blob:') ? null : url;
+  if (url === null) return null;
+  return url.startsWith('blob:') || isPreviewOrigin(url) ? null : url;
 }
 
 function createPersistedShellStateSchema(): z.ZodType<DesktopShellState> {
@@ -443,6 +453,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
     .object({
       open: z.boolean().catch(fallback.open),
       activeSection: PanelSectionSchema.catch(fallback.activeSection),
+      simulatorAdded: z.boolean().catch(false),
       terminalTabCount: FiniteNumberSchema.int().nonnegative().catch(0),
       activeTerminalTabIndex: FiniteNumberSchema.int().catch(0),
       // Absent in pre-files persisted payloads; the catches make the section start empty.
@@ -454,6 +465,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
     .catch({
       open: fallback.open,
       activeSection: fallback.activeSection,
+      simulatorAdded: false,
       terminalTabCount: 0,
       activeTerminalTabIndex: 0,
       fileTabPaths: [],
@@ -465,6 +477,7 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
       ({
         open,
         activeSection,
+        simulatorAdded,
         terminalTabCount,
         activeTerminalTabIndex,
         fileTabPaths,
@@ -489,11 +502,15 @@ function createPersistedRightPanelSchema(): z.ZodType<RightPanelState> {
           .map((url) => createRightBrowserTab(durableBrowserUrl(url)));
         const activeBrowserIndex =
           browserTabs.length > 0 ? clamp(activeBrowserTabIndex, 0, browserTabs.length - 1) : 0;
+        // A persisted active on-demand section without its membership falls back to the default.
+        const section =
+          activeSection === 'simulator' && !simulatorAdded ? fallback.activeSection : activeSection;
 
         return {
           open,
-          activeSection,
-          terminal: open && activeSection === 'terminal' ? seedTerminalSection(terminal) : terminal,
+          activeSection: section,
+          simulatorAdded,
+          terminal: open && section === 'terminal' ? seedTerminalSection(terminal) : terminal,
           files: {
             tabs: fileTabs,
             activeTabId: fileTabs.length > 0 ? fileTabs[activeFileIndex].id : null,
@@ -511,6 +528,7 @@ function serializeRightPanel(panel: RightPanelState): PersistedRightPanelState {
   return {
     open: panel.open,
     activeSection: panel.activeSection,
+    simulatorAdded: panel.simulatorAdded,
     terminalTabCount: panel.terminal.tabs.length,
     activeTerminalTabIndex: clamp(
       panel.terminal.tabs.findIndex((tab) => tab.id === panel.terminal.activeTabId),

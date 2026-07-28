@@ -62,7 +62,7 @@ export function useFileMentionSource(): FileMentionSource {
 
   const { data } = useData(
     suggestWorkspaceFiles,
-    live.cwd === undefined || effectiveQuery === null
+    effectiveQuery === null || live.cwd === undefined
       ? null
       : { cwd: live.cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
     {

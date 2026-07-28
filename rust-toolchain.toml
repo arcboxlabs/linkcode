@@ -1,0 +1,10 @@
+# Single source of truth for the Rust toolchain: rustup reads it directly, devenv reads it through
+# `languages.rust.toolchainFile`, and CI reads it through actions-rust-lang/setup-rust-toolchain.
+# Bumping the channel here also needs `devenv update rust-overlay` — the devenv-side toolchain can
+# only resolve versions present in the locked rust-overlay manifests.
+# Cross targets stay out of this file: they are per-platform and would otherwise be fetched on every
+# developer machine (see .github/actions/build-sidecar).
+[toolchain]
+channel = "1.96.0"
+profile = "minimal"
+components = ["rustfmt", "clippy", "rust-analyzer"]

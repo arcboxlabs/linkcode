@@ -122,13 +122,13 @@ function PanelTabButton({
   return (
     <div
       className={cn(
-        'group flex h-7 max-w-44 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
+        'group flex h-6 max-w-44 shrink-0 items-center overflow-hidden rounded-md border text-xs [-webkit-app-region:no-drag]',
         active ? PANEL_TAB_ACTIVE_CLASSNAME : PANEL_TAB_INACTIVE_CLASSNAME,
       )}
     >
       <button
         type="button"
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left outline-none transition-transform duration-(--motion-fast) focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
         onClick={onSelect}
       >
         <span className="shrink-0 [&_svg]:size-3.5">{PANEL_WINDOW_ICONS[tab.type]}</span>

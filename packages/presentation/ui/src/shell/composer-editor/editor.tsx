@@ -230,7 +230,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_DOWN_COMMAND,
         (event) => {
-          if (hasModifier(event) || !menuOpen || !menuHasItems) return false;
+          if (!menuHasItems || !menuOpen || hasModifier(event)) return false;
           event.preventDefault();
           forwardToRelay(event);
           return true;
@@ -240,7 +240,7 @@ function KeyboardPlugin({
       editor.registerCommand(
         KEY_ARROW_UP_COMMAND,
         (event) => {
-          if (hasModifier(event) || !menuOpen || !menuHasItems) return false;
+          if (!menuHasItems || !menuOpen || hasModifier(event)) return false;
           event.preventDefault();
           forwardToRelay(event);
           return true;

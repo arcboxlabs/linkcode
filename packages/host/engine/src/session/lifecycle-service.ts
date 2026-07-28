@@ -57,7 +57,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolved = yield* startOptions.resolve(options);
+      const resolved = yield* startOptions.resolve(options, sessionId);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -122,7 +122,7 @@ export class SessionLifecycleService {
     const { history, sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({ ...options, kind });
+      const startOptions = yield* resolver.resolve({ ...options, kind }, sessionId);
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -165,7 +165,10 @@ export class SessionLifecycleService {
       const historyId = this.records.historyId(sessionId);
       const { history, sessions, startOptions: resolver, workspaces } = this;
       return Effect.gen(function* () {
-        const startOptions = yield* resolver.resolve({ kind: record.kind, cwd: record.cwd });
+        const startOptions = yield* resolver.resolve(
+          { kind: record.kind, cwd: record.cwd },
+          sessionId,
+        );
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
         if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
@@ -189,11 +192,10 @@ export class SessionLifecycleService {
     const { sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({
-        kind: options.kind,
-        cwd: options.cwd,
-        model: options.model,
-      });
+      const startOptions = yield* resolver.resolve(
+        { kind: options.kind, cwd: options.cwd, model: options.model },
+        sessionId,
+      );
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,

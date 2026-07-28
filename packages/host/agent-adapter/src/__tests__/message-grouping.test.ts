@@ -13,10 +13,20 @@ import { PiAdapter } from '../native/pi';
  * the SDK loop, so test subclasses expose them.
  */
 
+type AgentMessage = Extract<AgentEvent, { type: 'agent-message' }>;
 type AgentMessageChunk = Extract<AgentEvent, { type: 'agent-message-chunk' }>;
+type AgentThoughtChunk = Extract<AgentEvent, { type: 'agent-thought-chunk' }>;
+
+function agentMessages(events: AgentEvent[]): AgentMessage[] {
+  return events.filter((e): e is AgentMessage => e.type === 'agent-message');
+}
 
 function agentChunks(events: AgentEvent[]): AgentMessageChunk[] {
   return events.filter((e): e is AgentMessageChunk => e.type === 'agent-message-chunk');
+}
+
+function agentThoughts(events: AgentEvent[]): AgentThoughtChunk[] {
+  return events.filter((e): e is AgentThoughtChunk => e.type === 'agent-thought-chunk');
 }
 
 /** Capture every emitted event from an adapter into a flat list. */
@@ -38,9 +48,22 @@ class TestClaude extends ClaudeCodeAdapter {
   }
 }
 
+function claudeMessageStart(messageId: string): object {
+  return {
+    type: 'stream_event',
+    uuid: 'start-frame',
+    session_id: 's1',
+    parent_tool_use_id: null,
+    event: { type: 'message_start', message: { id: messageId } },
+  };
+}
+
 function claudeTextDelta(text: string): object {
   return {
     type: 'stream_event',
+    uuid: `delta-frame-${text}`,
+    session_id: 's1',
+    parent_tool_use_id: null,
     event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
   };
 }
@@ -75,6 +98,7 @@ function piDriver(): AdapterDriver {
 function claudeDriver(): AdapterDriver {
   const adapter = new TestClaude();
   const seen = record(adapter);
+  adapter.feed(claudeMessageStart('claude-before-tool'));
   return {
     seen,
     text: (delta) => adapter.feed(claudeTextDelta(delta)),
@@ -87,6 +111,7 @@ function claudeDriver(): AdapterDriver {
         type: 'user',
         message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
       });
+      adapter.feed(claudeMessageStart('claude-after-tool'));
     },
   };
 }
@@ -118,15 +143,89 @@ describe('PiAdapter message grouping', () => {
     adapter.feed({ type: 'agent_start' });
     adapter.feed({
       type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'a' },
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 0,
+        delta: 'a',
+        partial: { responseId: 'pi-response-1', timestamp: 42 },
+      },
     });
     adapter.feed({
       type: 'message_update',
-      assistantMessageEvent: { type: 'text_delta', delta: 'b' },
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 0,
+        delta: 'b',
+        partial: { responseId: 'pi-response-1', timestamp: 42 },
+      },
     });
 
     const chunks = agentChunks(seen);
     expect(chunks).toHaveLength(2);
     expect(chunks[0].messageId).toBe(chunks[1].messageId);
+    expect(chunks[0].messageId).toBe('pi-response-1:message:0');
+  });
+
+  it('uses one provider block id for live deltas and the completed whole message', () => {
+    const adapter = new TestPi();
+    const seen = record(adapter);
+    const partial = { responseId: 'pi-response-1', timestamp: 42 };
+
+    adapter.feed({ type: 'agent_start' });
+    adapter.feed({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'text_delta',
+        contentIndex: 1,
+        delta: 'draft',
+        partial,
+      },
+    });
+    adapter.feed({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'text_end',
+        contentIndex: 1,
+        content: 'final',
+        partial,
+      },
+    });
+
+    expect(agentChunks(seen)[0].messageId).toBe('pi-response-1:message:1');
+    expect(agentMessages(seen)).toEqual([
+      {
+        type: 'agent-message',
+        messageId: 'pi-response-1:message:1',
+        parentToolCallId: undefined,
+        content: [{ type: 'text', text: 'final' }],
+      },
+    ]);
+  });
+});
+
+describe('ClaudeCodeAdapter message identity', () => {
+  it('uses the provider message id across SDK frames and history', () => {
+    const adapter = new TestClaude();
+    const seen = record(adapter);
+
+    adapter.feed(claudeMessageStart('provider-message'));
+    adapter.feed(claudeTextDelta('a'));
+    adapter.feed(claudeTextDelta('b'));
+    adapter.feed({
+      type: 'stream_event',
+      uuid: 'thought-delta-frame',
+      session_id: 's1',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'thinking_delta', thinking: 'hmm' },
+      },
+    });
+
+    expect(agentChunks(seen).map((chunk) => chunk.messageId)).toEqual([
+      'provider-message',
+      'provider-message',
+    ]);
+    expect(agentThoughts(seen).map((event) => event.messageId)).toEqual(['provider-message:think']);
   });
 });

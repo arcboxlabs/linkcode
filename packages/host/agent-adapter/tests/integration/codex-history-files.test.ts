@@ -109,7 +109,7 @@ describe('CodexAdapter history', () => {
       const read = await adapter.readHistory({ historyId: session.historyId, limit: 10 });
       expect(read.events.map((event) => event.event.type)).toEqual([
         'user-message',
-        'agent-message-chunk',
+        'agent-message',
       ]);
       expect(read.events[0]?.event).toMatchObject({
         type: 'user-message',
@@ -117,9 +117,9 @@ describe('CodexAdapter history', () => {
         content: [{ type: 'text', text: 'hello' }],
       });
       expect(read.events[1]?.event).toMatchObject({
-        type: 'agent-message-chunk',
+        type: 'agent-message',
         messageId: 'assistant-1',
-        content: { type: 'text', text: 'world' },
+        content: [{ type: 'text', text: 'world' }],
       });
     } finally {
       if (previousCodexHome === undefined) env.CODEX_HOME = undefined;

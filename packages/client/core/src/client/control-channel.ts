@@ -35,6 +35,16 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorAxNode,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
+  SimulatorDevice,
+  SimulatorImageFormat,
+  SimulatorOrientation,
+  SimulatorStatus,
+  SimulatorStreamCodec,
+  SimulatorTouchPhase,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -560,6 +570,352 @@ export class ControlChannel {
       kind: 'loop.inspect',
       clientReqId,
       loopId,
+    }));
+  }
+
+  // iOS Simulator (CODE-394). Commands are session-scoped: the engine claims the device for
+  // `sessionId` (ownership/cap rules) before touching it. Gate the whole surface on
+  // `simulatorStatus().available`.
+
+  simulatorStatus(): Promise<SimulatorStatus> {
+    return this.sendCorrelated('simulatorStatus', (clientReqId) => ({
+      kind: 'simulator.status',
+      clientReqId,
+    }));
+  }
+
+  simulatorList(): Promise<SimulatorDevice[]> {
+    return this.sendCorrelated('simulatorList', (clientReqId) => ({
+      kind: 'simulator.list',
+      clientReqId,
+    }));
+  }
+
+  simulatorBoot(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.boot',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  simulatorShutdown(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shutdown',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  simulatorInstall(sessionId: SessionId, udid: string, appPath: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install',
+      clientReqId,
+      sessionId,
+      udid,
+      appPath,
+    }));
+  }
+
+  /** Resolves with the launched pid (`null` when the host could not report one). */
+  simulatorLaunch(sessionId: SessionId, udid: string, bundleId: string): Promise<number | null> {
+    return this.sendCorrelated('simulatorLaunch', (clientReqId) => ({
+      kind: 'simulator.launch',
+      clientReqId,
+      sessionId,
+      udid,
+      bundleId,
+    }));
+  }
+
+  simulatorTerminate(sessionId: SessionId, udid: string, bundleId: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.terminate',
+      clientReqId,
+      sessionId,
+      udid,
+      bundleId,
+    }));
+  }
+
+  simulatorOpenUrl(sessionId: SessionId, udid: string, url: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.open-url',
+      clientReqId,
+      sessionId,
+      udid,
+      url,
+    }));
+  }
+
+  /** Resolves with base64-encoded image bytes in the requested format (default jpeg). */
+  simulatorScreenshot(
+    sessionId: SessionId,
+    udid: string,
+    format?: SimulatorImageFormat,
+  ): Promise<{ format: SimulatorImageFormat; data: string }> {
+    return this.sendCorrelated('simulatorScreenshot', (clientReqId) => ({
+      kind: 'simulator.screenshot',
+      clientReqId,
+      sessionId,
+      udid,
+      format,
+    }));
+  }
+
+  /** Shake the device — the gesture apps use for "undo typing" and, in React Native, the dev menu. */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shake',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  /** Start the iOS runtime download. Resolves once it is running, not once it finishes — poll
+   * {@link simulatorStatus} until the blocker clears to follow progress. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install-runtime',
+      clientReqId,
+    }));
+  }
+
+  /** Resolves with the frontmost app's accessibility tree. Node centres are normalized 0..1, the
+   * same scale {@link simulatorTap} takes, so a caller can act on a node it found by label. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.sendCorrelated('simulatorDescribeUi', (clientReqId) => ({
+      kind: 'simulator.describe-ui',
+      clientReqId,
+      sessionId,
+      udid,
+      maxDepth: limits?.maxDepth,
+      maxNodes: limits?.maxNodes,
+    }));
+  }
+
+  /** Resolves with the device's screen-outline mask as base64 PNG (no session claim). */
+  simulatorScreenMask(udid: string): Promise<string> {
+    return this.sendCorrelated('simulatorScreenMask', (clientReqId) => ({
+      kind: 'simulator.screen-mask',
+      clientReqId,
+      udid,
+    }));
+  }
+
+  /** Current per-device agent consent plus the global agent-tools switch (CODE-420). */
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.sendCorrelated('simulatorConsentGet', (clientReqId) => ({
+      kind: 'simulator.consent.get',
+      clientReqId,
+    }));
+  }
+
+  /** Record a decision for a device; `undefined` clears it, so the next agent call asks again. */
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set',
+      clientReqId,
+      udid,
+      decision,
+    }));
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set-agent-tools',
+      clientReqId,
+      enabled,
+    }));
+  }
+
+  simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.tap',
+      clientReqId,
+      sessionId,
+      udid,
+      x,
+      y,
+    }));
+  }
+
+  simulatorKey(
+    sessionId: SessionId,
+    udid: string,
+    usage: number,
+    modifiers: number[],
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.key',
+      clientReqId,
+      sessionId,
+      udid,
+      usage,
+      modifiers,
+    }));
+  }
+
+  simulatorTouch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    x: number,
+    y: number,
+  ): Promise<RequestAck> {
+    // `move` phases fire at up to 60 Hz; a per-move round-trip would stall the gesture, so they go
+    // out unacked (the engine skips the reply). `down`/`up` stay correlated so a claim conflict or
+    // the gesture's completion is still observable.
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.touch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x,
+          y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.touch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
+      x,
+      y,
+    }));
+  }
+
+  simulatorPinch(
+    sessionId: SessionId,
+    udid: string,
+    phase: SimulatorTouchPhase,
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): Promise<RequestAck> {
+    if (phase === 'move') {
+      this.transport.send(
+        createWireMessage({
+          kind: 'simulator.pinch',
+          clientReqId: this.pending.nextClientReqId(),
+          sessionId,
+          udid,
+          phase,
+          x0: a.x,
+          y0: a.y,
+          x1: b.x,
+          y1: b.y,
+        }),
+      );
+      return Promise.resolve({ ok: true });
+    }
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.pinch',
+      clientReqId,
+      sessionId,
+      udid,
+      phase,
+      x0: a.x,
+      y0: a.y,
+      x1: b.x,
+      y1: b.y,
+    }));
+  }
+
+  simulatorPaste(sessionId: SessionId, udid: string, text: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.paste',
+      clientReqId,
+      sessionId,
+      udid,
+      text,
+    }));
+  }
+
+  simulatorSwipe(
+    sessionId: SessionId,
+    udid: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    durationMs?: number,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.swipe',
+      clientReqId,
+      sessionId,
+      udid,
+      x0: from.x,
+      y0: from.y,
+      x1: to.x,
+      y1: to.y,
+      durationMs,
+    }));
+  }
+
+  simulatorButton(
+    sessionId: SessionId,
+    udid: string,
+    button: SimulatorButton,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.button',
+      clientReqId,
+      sessionId,
+      udid,
+      button,
+    }));
+  }
+
+  simulatorRotate(
+    sessionId: SessionId,
+    udid: string,
+    orientation: SimulatorOrientation,
+  ): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.rotate',
+      clientReqId,
+      sessionId,
+      udid,
+      orientation,
+    }));
+  }
+
+  /** Resolves with the accepted `{ fps, scale, codec }`; frames then arrive as `simulator.stream.frame`. */
+  simulatorStreamStart(
+    sessionId: SessionId,
+    udid: string,
+    options?: { fps?: number; quality?: number; scale?: number; codec?: SimulatorStreamCodec },
+  ): Promise<{ fps: number; scale: number; codec: SimulatorStreamCodec }> {
+    return this.sendCorrelated('simulatorStreamStart', (clientReqId) => ({
+      kind: 'simulator.stream.start',
+      clientReqId,
+      sessionId,
+      udid,
+      fps: options?.fps,
+      quality: options?.quality,
+      scale: options?.scale,
+      codec: options?.codec,
+    }));
+  }
+
+  simulatorStreamStop(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.stream.stop',
+      clientReqId,
+      sessionId,
+      udid,
     }));
   }
 

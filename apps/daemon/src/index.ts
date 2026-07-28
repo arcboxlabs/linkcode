@@ -8,9 +8,18 @@ import {
   EngineService,
   makeEngineInfrastructureLayer,
   PreviewRouteRegistry,
+  SimulatorConsentService,
+  SimulatorService,
 } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
-import { DAEMON_EXIT_ALREADY_RUNNING, ManagedAssetIdSchema } from '@linkcode/schema';
+import {
+  DAEMON_EXIT_ALREADY_RUNNING,
+  ManagedAgentAssetNameSchema,
+  managedAgentAssetId,
+  managedToolAssetId,
+} from '@linkcode/schema';
+import { SimSidecarClient } from '@linkcode/sim';
+import { createWireMessage } from '@linkcode/transport';
 import { Hub } from '@linkcode/transport/server';
 import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
@@ -19,7 +28,13 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import type { DaemonConfig } from './config';
-import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
+import {
+  chatWorkspaceRoot,
+  daemonProfile,
+  databasePath,
+  loadConfig,
+  saveSimulatorConsent,
+} from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
@@ -36,6 +51,8 @@ import {
 } from './runtime';
 import { createScheduleStore } from './schedule-store';
 import { createSessionStore } from './session-store';
+import { resolveSimSidecarPath } from './sim/backend';
+import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
 
 // After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
@@ -189,15 +206,16 @@ async function main(): Promise<void> {
         });
       }
       agentRuntimeProber.setManagedResolver((kind) => {
-        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
-        return id.success ? assets.managedBinary(id.data) : undefined;
+        const name = ManagedAgentAssetNameSchema.safeParse(kind);
+        return name.success ? assets.managedBinary(managedAgentAssetId(name.data)) : undefined;
       });
       // In-process agents (pi) import a managed closure entry instead of spawning (CODE-219).
       agentRuntimeProber.setManagedEntryResolver((kind) => {
-        const id = ManagedAssetIdSchema.safeParse(`agent:${kind}`);
-        if (!id.success) return;
-        const path = assets.managedEntry(id.data);
-        const version = assets.wantedVersionOf(id.data);
+        const name = ManagedAgentAssetNameSchema.safeParse(kind);
+        if (!name.success) return;
+        const id = managedAgentAssetId(name.data);
+        const path = assets.managedEntry(id);
+        const version = assets.wantedVersionOf(id);
         return path && version ? { path, version } : undefined;
       });
       // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
@@ -206,9 +224,55 @@ async function main(): Promise<void> {
       // status`) that take seconds on a cold machine — listener bind must not wait on them, or
       // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
       const agentRuntimesReady = agentRuntimeProber.collect();
+      // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
+      // simulator surface at all, which is what the capability gate reads. The daemon owns the
+      // service (not just the sidecar client) so the MCP endpoint and the engine share one
+      // device-claims registry.
+      const simSidecarPath = resolveSimSidecarPath();
+      const simulators = simSidecarPath
+        ? new SimulatorService(new SimSidecarClient(simSidecarPath))
+        : undefined;
+      // Decisions persist in config.json, so a grant outlives the session that earned it. The ask
+      // hook reports whether anyone is attached: with no client there is nobody to answer, and
+      // suspending the agent for two minutes would just look like a hang.
+      const simulatorConsent = new SimulatorConsentService({
+        load: () => Promise.resolve(config.simulatorConsent),
+        save: (state) => Promise.resolve(saveSimulatorConsent(state)),
+      });
+      yield* Effect.promise(() => simulatorConsent.init());
+      simulatorConsent.setHooks({
+        ask(sessionId, udid, tool) {
+          if (hub.size === 0) return false;
+          hub.send(
+            createWireMessage({ kind: 'simulator.consent.required', sessionId, udid, tool }),
+          );
+          return true;
+        },
+        publish(state) {
+          hub.send(createWireMessage({ kind: 'simulator.consent.changed', state }));
+        },
+      });
+      const simulatorMcp = simulators
+        ? yield* Effect.promise(() =>
+            SimulatorMcpEndpoint.create(simulators, simulatorConsent, {
+              activity(activity) {
+                hub.send(createWireMessage({ kind: 'simulator.activity', ...activity }));
+              },
+              devicesChanged(devices) {
+                hub.send(createWireMessage({ kind: 'simulator.devices.changed', devices }));
+              },
+            }),
+          )
+        : undefined;
+      if (simulatorMcp) {
+        yield* Effect.addFinalizer(() => finalize(() => simulatorMcp.close()));
+      }
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
+        simulators,
+        simulatorMcp,
+        simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
@@ -227,7 +291,7 @@ async function main(): Promise<void> {
         // Local Anthropic⇄OpenAI translation for cross-protocol accounts (arcboxlabs/aigateway).
         // The binary installs on demand from the asset store; LINKCODE_AIGATEWAY_PATH overrides.
         translator: createAiGatewaySidecar({
-          ensureBinary: async () => (await assets.ensure('tool:aigateway'))?.path,
+          ensureBinary: async () => (await assets.ensure(managedToolAssetId('aigateway')))?.path,
         }),
       });
       const EngineReady = Layer.effectDiscard(
@@ -240,7 +304,7 @@ async function main(): Promise<void> {
             .then((agentRuntimes) => {
               for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
                 void assets
-                  .ensure(`agent:${kind}`)
+                  .ensure(managedAgentAssetId(kind))
                   .catch((err) => {
                     logger.warn(
                       { err, agentKind: kind, operation: 'asset.ensure' },

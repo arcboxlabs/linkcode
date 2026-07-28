@@ -80,7 +80,9 @@ describe('desktop shell state persistence', () => {
     });
 
     expect(state.sidebarOpen).toBe(true);
+    expect(state.expansionStack).toEqual([]);
     expect(state.rightPanel).toEqual(createDefaultRightPanelState());
+    expect(panelTypes(state.bottomPanel)).toEqual(['terminal']);
   });
 
   it('clamps latest layout values', () => {
@@ -218,6 +220,34 @@ describe('desktop shell state persistence', () => {
     expect(state.rightPanel.activeSection).toBe('diff');
   });
 
+  it('falls the active section back to diff when the simulator section lost its membership', () => {
+    const payload = {
+      version: 3,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'simulator',
+        simulatorAdded: false,
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    };
+
+    const dropped = parsePersistedDesktopShellState(payload);
+    expect(dropped.rightPanel.activeSection).toBe('diff');
+    expect(dropped.rightPanel.simulatorAdded).toBe(false);
+
+    const kept = parsePersistedDesktopShellState({
+      ...payload,
+      rightPanel: { ...payload.rightPanel, simulatorAdded: true },
+    });
+    expect(kept.rightPanel.activeSection).toBe('simulator');
+    expect(kept.rightPanel.simulatorAdded).toBe(true);
+  });
+
   it('caps a corrupted terminal tab count', () => {
     const state = parsePersistedDesktopShellState({
       version: 3,
@@ -256,10 +286,11 @@ describe('desktop shell state persistence', () => {
 
   it('round trips the latest serialized shape', () => {
     const fileTab = createRightFileTab('/w/PLAN.md');
-    const browserTab = createRightBrowserTab('http://web--app-1a2b3c.localhost:19523');
+    const browserTab = createRightBrowserTab('https://docs.example.com');
     const rightPanel: RightPanelState = {
       open: true,
       activeSection: 'browser',
+      simulatorAdded: true,
       terminal: { tabs: [createRightTerminalTab(), createRightTerminalTab()], activeTabId: null },
       files: { tabs: [fileTab, createRightFileTab('/w/report.pdf')], activeTabId: fileTab.id },
       browser: {
@@ -284,6 +315,7 @@ describe('desktop shell state persistence', () => {
     expect(parsed.layout).toEqual(source.layout);
     expect(parsed.expansionStack).toEqual(['right', 'bottom']);
     expect(parsed.rightPanel.activeSection).toBe('browser');
+    expect(parsed.rightPanel.simulatorAdded).toBe(true);
     expect(parsed.rightPanel.terminal.tabs).toHaveLength(2);
     expect(parsed.rightPanel.files.tabs.map((tab) => tab.path)).toEqual([
       '/w/PLAN.md',
@@ -292,19 +324,21 @@ describe('desktop shell state persistence', () => {
     expect(parsed.rightPanel.files.activeTabId).toBe(parsed.rightPanel.files.tabs[0].id);
     expect(parsed.rightPanel.browser.tabs.map((tab) => tab.url)).toEqual([
       'https://example.com',
-      'http://web--app-1a2b3c.localhost:19523',
+      'https://docs.example.com',
     ]);
     expect(parsed.rightPanel.browser.activeTabId).toBe(parsed.rightPanel.browser.tabs[1].id);
     expect(panelTypes(parsed.bottomPanel)).toEqual(['files']);
   });
 
-  it('keeps blob-URL tabs but drops their renderer-scoped URLs', () => {
+  it.each([
+    'blob:http://localhost:5173/expired-preview',
+    'http://file--3e2d018e14777dcb.localhost:19523/',
+    'http://artifact--turn-123.localhost:19523/',
+    'http://web--app-1a2b3c.localhost:19523/',
+  ])('keeps ephemeral tabs but drops their renderer-scoped URL %s', (url) => {
     const source = createDefaultDesktopShellState();
     source.rightPanel.browser = {
-      tabs: [
-        createRightBrowserTab('blob:http://localhost:5173/expired-preview'),
-        createRightBrowserTab('https://example.com'),
-      ],
+      tabs: [createRightBrowserTab(url), createRightBrowserTab('https://example.com')],
       activeTabId: null,
     };
 
@@ -475,6 +509,15 @@ describe('revealSectionState', () => {
 
     expect(revealed.activeSection).toBe('files');
     expect(revealed.terminal.tabs).toEqual([]);
+  });
+
+  it('adds the simulator section to the strip when revealing it', () => {
+    const panel = createDefaultRightPanelState();
+
+    const revealed = revealSectionState(panel, 'simulator', true);
+
+    expect(revealed.activeSection).toBe('simulator');
+    expect(revealed.simulatorAdded).toBe(true);
   });
 });
 

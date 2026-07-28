@@ -83,6 +83,9 @@ function materializeStaging(): void {
 /** Doc files that must survive the prune: license/attribution texts we redistribute. */
 const KEEP_DOC = /^(?:licen[cs]e|notice|copying)/i;
 
+const TS_SOURCE_RE = /\.[mc]?ts$/;
+const MARKDOWN_RE = /\.(?:md|markdown)$/i;
+
 /**
  * Drop build-time-only file classes from the staged node_modules before electron-builder collects
  * the asar (CODE-215): sourcemaps, TypeScript sources and declarations, and markdown docs — ~50 MB
@@ -100,8 +103,8 @@ function pruneStaging(): void {
     if (!entry.isFile()) continue;
     const prunable =
       entry.name.endsWith('.map') ||
-      /\.[mc]?ts$/.test(entry.name) ||
-      (/\.(?:md|markdown)$/i.test(entry.name) && !KEEP_DOC.test(entry.name));
+      TS_SOURCE_RE.test(entry.name) ||
+      (MARKDOWN_RE.test(entry.name) && !KEEP_DOC.test(entry.name));
     if (!prunable) continue;
     const path = join(entry.parentPath, entry.name);
     bytes += statSync(path).size;
@@ -109,7 +112,7 @@ function pruneStaging(): void {
     rmSync(path);
   }
   console.log(
-    `pruned ${files} runtime-dead files (${Math.round(bytes / 1048576)} MB) from staging`,
+    `pruned ${files} runtime-dead files (${Math.round(bytes / 1_048_576)} MB) from staging`,
   );
 }
 

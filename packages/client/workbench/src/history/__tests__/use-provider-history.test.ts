@@ -52,7 +52,7 @@ beforeEach(() => {
       const response = responses.get(request.agentKind) ?? {};
       const changedProvider = previousKind !== undefined && previousKind !== request.agentKind;
       const data =
-        response.data === undefined && changedProvider && options?.keepPreviousData !== false
+        changedProvider && response.data === undefined && options?.keepPreviousData !== false
           ? previousData
           : response.data;
 

@@ -15,6 +15,7 @@ import { requestWireVariants } from './request';
 import { scheduleWireVariants } from './schedule';
 import { scriptWireVariants } from './script';
 import { sessionWireVariants } from './session';
+import { simulatorWireVariants } from './simulator';
 import { terminalWireVariants } from './terminal';
 import { workspaceWireVariants } from './workspace';
 
@@ -37,6 +38,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...artifactWireVariants,
   ...agentWireVariants,
   ...terminalWireVariants,
+  ...simulatorWireVariants,
   ...keepAliveWireVariants,
 ]);
 export type WirePayload = z.infer<typeof WirePayloadSchema>;

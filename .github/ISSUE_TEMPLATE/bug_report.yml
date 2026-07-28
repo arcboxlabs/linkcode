@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report! Please check [SUPPORT.md](https://github.com/arcboxlabs/linkcode/blob/master/SUPPORT.md) and search existing issues first.
+        Thanks for the report! Please check [SUPPORT.md](https://github.com/arcboxlabs/linkcode/blob/master/.github/SUPPORT.md) and search existing issues first.
   - type: textarea
     id: what-happened
     attributes:

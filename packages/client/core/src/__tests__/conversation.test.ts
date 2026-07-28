@@ -18,7 +18,16 @@ function text(t: string, messageId = 'm1'): AgentEvent {
 function userText(t: string): AgentEvent {
   return {
     type: 'user-message',
+    messageId: `user:${t}` as MessageId,
     content: [{ type: 'text', text: t }],
+  };
+}
+function thought(t: string, messageId: string, parentToolCallId?: string): AgentEvent {
+  return {
+    type: 'agent-thought-chunk',
+    messageId: messageId as MessageId,
+    parentToolCallId,
+    content: { type: 'text', text: t },
   };
 }
 
@@ -179,11 +188,16 @@ describe('buildConversation', () => {
     }
   });
 
-  it('replaces a tool call by id with each full snapshot', () => {
+  it('appends tool content chunks until the next full snapshot replaces them', () => {
     const c = buildConversation([
       {
         type: 'tool-call',
         toolCall: { toolCallId: 't1', title: 'Edit', kind: 'edit', status: 'pending', content: [] },
+      },
+      {
+        type: 'tool-call-content-chunk',
+        toolCallId: 't1',
+        content: { type: 'content', content: { type: 'text', text: 'superseded' } },
       },
       {
         type: 'tool-call',
@@ -192,27 +206,26 @@ describe('buildConversation', () => {
           title: 'Edit',
           kind: 'edit',
           status: 'in_progress',
-          content: [],
+          content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
         },
       },
       {
-        type: 'tool-call',
-        toolCall: {
-          toolCallId: 't1',
-          title: 'Edit',
-          kind: 'edit',
-          status: 'completed',
-          content: [{ type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' }],
-        },
+        type: 'tool-call-content-chunk',
+        toolCallId: 't1',
+        content: { type: 'content', content: { type: 'text', text: 'updated' } },
       },
     ]);
     expect(c.items).toHaveLength(1);
     const item = c.items[0];
     expect(item.kind).toBe('tool');
     if (item.kind === 'tool') {
-      expect(item.toolCall.status).toBe('completed');
+      expect(item.toolCall.status).toBe('in_progress');
       expect(item.toolCall.title).toBe('Edit');
       expect(toolCallDiffs(item.toolCall)).toHaveLength(1);
+      expect(item.toolCall.content).toEqual([
+        { type: 'diff', path: '/a.ts', oldText: 'a', newText: 'b' },
+        { type: 'content', content: { type: 'text', text: 'updated' } },
+      ]);
     }
   });
 
@@ -249,13 +262,54 @@ describe('buildConversation', () => {
     if (tool.kind === 'tool') expect(tool.toolCall.parentToolCallId).toBe('toolu_task');
   });
 
-  it('keeps only the latest plan per turn', () => {
+  it('replaces whole message content, preserves omitted bodies, then resumes appending chunks', () => {
+    const messageId = 'm-whole' as MessageId;
+    const c = buildConversation([
+      text('draft', messageId),
+      {
+        type: 'agent-message',
+        messageId,
+        content: [{ type: 'text', text: 'corrected' }],
+      },
+      { type: 'agent-message', messageId },
+      text(' final', messageId),
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    expect(c.items[0]).toMatchObject({
+      id: messageId,
+      blocks: [{ type: 'text', text: 'corrected final' }],
+    });
+  });
+
+  it('upserts replayed user messages by stable identity', () => {
+    const messageId = 'user-stable' as MessageId;
+    const c = buildConversation([
+      { type: 'user-message', messageId, content: [{ type: 'text', text: 'draft' }] },
+      { type: 'user-message', messageId, content: [{ type: 'text', text: 'final' }] },
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    expect(c.items[0]).toMatchObject({
+      id: messageId,
+      blocks: [{ type: 'text', text: 'final' }],
+    });
+  });
+
+  it('replaces plans by stable identity and keeps distinct plans separate', () => {
     const c = buildConversation([
       userText('first'),
-      { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
       {
         type: 'plan',
         plan: {
+          planId: 'plan-1',
+          entries: [{ content: 'a', priority: 'high', status: 'pending' }],
+        },
+      },
+      {
+        type: 'plan',
+        plan: {
+          planId: 'plan-1',
           entries: [
             { content: 'a', priority: 'high', status: 'completed' },
             { content: 'b', priority: 'low', status: 'pending' },
@@ -265,7 +319,20 @@ describe('buildConversation', () => {
       userText('second'),
       {
         type: 'plan',
-        plan: { entries: [{ content: 'c', priority: 'medium', status: 'pending' }] },
+        plan: {
+          planId: 'plan-1',
+          entries: [
+            { content: 'a', priority: 'high', status: 'completed' },
+            { content: 'b', priority: 'low', status: 'cancelled' },
+          ],
+        },
+      },
+      {
+        type: 'plan',
+        plan: {
+          planId: 'plan-2',
+          entries: [{ content: 'c', priority: 'medium', status: 'pending' }],
+        },
       },
     ]);
     const plans = c.items.filter((i) => i.kind === 'plan');
@@ -276,9 +343,11 @@ describe('buildConversation', () => {
     expect(firstPlan.plan.entries[0]?.status).toBe('completed');
     expect(secondPlan.plan.entries).toHaveLength(1);
     expect(firstPlan.turnId).not.toBe(secondPlan.turnId);
+    expect(firstPlan.updatedTurnId).toBe(secondPlan.turnId);
+    expect(secondPlan.updatedTurnId).toBe(secondPlan.turnId);
   });
 
-  it('tracks a permission until its authoritative resolution', () => {
+  it('links a modern permission subject to its full tool snapshot until authoritative resolution', () => {
     const base: AgentEvent[] = [
       userText('run'),
       {
@@ -289,17 +358,32 @@ describe('buildConversation', () => {
           kind: 'execute',
           status: 'pending',
           content: [],
+          rawInput: { command: 'pnpm test', cwd: '/repo' },
         },
       },
       {
         type: 'permission-request',
         requestId: 'p1',
-        toolCall: { toolCallId: 't1', title: 'Run' },
+        title: 'Run tests',
+        description: 'Verify the changes',
+        subject: { type: 'tool-call', toolCallId: 't1' },
         options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
       },
     ];
-    expect(buildConversation(base).pendingPermissionIds).toEqual(['p1']);
-    expect(buildConversation(base).items.some((i) => i.kind === 'approval')).toBe(true);
+    const open = buildConversation(base);
+    expect(open.pendingPermissionIds).toEqual(['p1']);
+    expect(open.items.find((item) => item.kind === 'approval')).toMatchObject({
+      title: 'Run tests',
+      description: 'Verify the changes',
+      subject: { type: 'tool-call', toolCallId: 't1' },
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Run',
+        kind: 'execute',
+        status: 'pending',
+        rawInput: { command: 'pnpm test', cwd: '/repo' },
+      },
+    });
 
     const toolSettled = buildConversation([
       ...base,
@@ -331,6 +415,25 @@ describe('buildConversation', () => {
         outcome: { outcome: 'selected', optionId: 'ok' },
         source: 'user',
       },
+    });
+  });
+
+  it('keeps reading legacy permission requests with an embedded tool call', () => {
+    const conversation = buildConversation([
+      userText('run'),
+      {
+        type: 'permission-request',
+        requestId: 'legacy-p1',
+        toolCall: { toolCallId: 'legacy-t1', title: 'Legacy run', kind: 'execute' },
+        options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+      },
+    ]);
+
+    expect(conversation.pendingPermissionIds).toEqual(['legacy-p1']);
+    expect(conversation.items.find((item) => item.kind === 'approval')).toMatchObject({
+      title: 'Legacy run',
+      subject: { type: 'tool-call', toolCallId: 'legacy-t1' },
+      toolCall: { toolCallId: 'legacy-t1', title: 'Legacy run', kind: 'execute' },
     });
   });
 
@@ -663,7 +766,13 @@ describe('createConversationBuilder', () => {
         content: [],
       },
     },
-    { type: 'plan', plan: { entries: [{ content: 'a', priority: 'high', status: 'pending' }] } },
+    {
+      type: 'plan',
+      plan: {
+        planId: 'plan-1',
+        entries: [{ content: 'a', priority: 'high', status: 'pending' }],
+      },
+    },
     text(' done', 'a1'),
     { type: 'token-usage', usage: { inputTokens: 10, outputTokens: 5 } },
     { type: 'stop', stopReason: 'end_turn' },
@@ -694,6 +803,135 @@ describe('createConversationBuilder', () => {
     builder.snapshot();
     // The earlier snapshot still shows the pending tool call and the streaming message.
     expect(before).toEqual(frozen);
+  });
+
+  it('records the first thought chunk as the start and keeps later chunks as updates', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('first', 'th1'), 100);
+    builder.advance(thought(' second', 'th1'), 160);
+
+    const item = nullthrow(builder.snapshot().items[0]);
+    expect(item.kind).toBe('reasoning');
+    if (item.kind === 'reasoning') {
+      expect(item.startedAt).toBe(100);
+      expect(item.endedAt).toBeUndefined();
+      expect(item.summary).toBeUndefined();
+      expect(item.receivedAt).toBe(160);
+    }
+  });
+
+  it('ends reasoning at the next new semantic item in the same scope only', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('before tool', 'th1', 'task-1'), 100);
+    builder.advance(
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'read-1',
+          parentToolCallId: 'task-1',
+          title: 'Read',
+          kind: 'read',
+          status: 'in_progress',
+          content: [],
+        },
+      },
+      120,
+    );
+    builder.advance(thought('after tool', 'th2', 'task-1'), 140);
+    builder.advance(
+      {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 'read-1',
+          parentToolCallId: 'task-1',
+          title: 'Read',
+          kind: 'read',
+          status: 'completed',
+          content: [],
+        },
+      },
+      160,
+    );
+
+    const before = nullthrow(builder.snapshot().items.find((item) => item.id === 'th1'));
+    const afterUpdate = nullthrow(builder.snapshot().items.find((item) => item.id === 'th2'));
+    expect(before).toMatchObject({ kind: 'reasoning', startedAt: 100, endedAt: 120 });
+    expect(afterUpdate).toMatchObject({ kind: 'reasoning', startedAt: 140 });
+    if (afterUpdate.kind === 'reasoning') expect(afterUpdate.endedAt).toBeUndefined();
+
+    builder.advance(
+      {
+        type: 'agent-message-chunk',
+        messageId: 'message-1' as MessageId,
+        parentToolCallId: 'task-1',
+        content: { type: 'text', text: 'done' },
+      },
+      180,
+    );
+    expect(builder.snapshot().items.find((item) => item.id === 'th2')).toMatchObject({
+      kind: 'reasoning',
+      endedAt: 180,
+    });
+  });
+
+  it('tracks active reasoning independently for parallel parent scopes', () => {
+    const builder = createConversationBuilder();
+    builder.advance({ type: 'status', status: 'running' }, 90);
+    builder.advance(thought('one', 'th1', 'task-1'), 100);
+    builder.advance(thought('two', 'th2', 'task-2'), 110);
+
+    const active = builder.snapshot().items.filter((item) => item.kind === 'reasoning');
+    expect(active.every((item) => item.isStreaming)).toBe(true);
+
+    builder.advance(
+      {
+        type: 'agent-message-chunk',
+        messageId: 'message-1' as MessageId,
+        parentToolCallId: 'task-1',
+        content: { type: 'text', text: 'first done' },
+      },
+      130,
+    );
+
+    const first = nullthrow(builder.snapshot().items.find((item) => item.id === 'th1'));
+    const second = nullthrow(builder.snapshot().items.find((item) => item.id === 'th2'));
+    expect(first).toMatchObject({ kind: 'reasoning', startedAt: 100, endedAt: 130 });
+    expect(second).toMatchObject({ kind: 'reasoning', startedAt: 110, isStreaming: true });
+    if (first.kind === 'reasoning') expect(first.isStreaming).toBe(false);
+    if (second.kind === 'reasoning') expect(second.endedAt).toBeUndefined();
+  });
+
+  it.each([
+    ['stop event', { type: 'stop', stopReason: 'end_turn' } as const],
+    ['idle status', { type: 'status', status: 'idle' } as const],
+    ['stopped status', { type: 'status', status: 'stopped' } as const],
+  ])('ends reasoning in every scope on %s', (_label, settlement) => {
+    const builder = createConversationBuilder();
+    builder.advance({ type: 'status', status: 'running' }, 90);
+    builder.advance(thought('main', 'th-main'), 100);
+    builder.advance(thought('child', 'th-child', 'task-1'), 110);
+    builder.advance(settlement, 150);
+
+    const snapshot = builder.snapshot();
+    const reasoning = snapshot.items.filter((item) => item.kind === 'reasoning');
+    expect(reasoning).toHaveLength(2);
+    expect(reasoning.every((item) => item.endedAt === 150)).toBe(true);
+    expect(reasoning.every((item) => !item.isStreaming)).toBe(true);
+  });
+
+  it('keeps unknown timing absent and does not backfill the start from a later chunk', () => {
+    const builder = createConversationBuilder();
+    builder.advance(thought('unknown start', 'th1'));
+    builder.advance(thought(' later', 'th1'), 120);
+    builder.advance(text('boundary', 'm2'), 150);
+
+    const item = nullthrow(builder.snapshot().items.find((entry) => entry.id === 'th1'));
+    expect(item.kind).toBe('reasoning');
+    if (item.kind === 'reasoning') {
+      expect(item.startedAt).toBeUndefined();
+      expect(item.endedAt).toBe(150);
+      expect(item.receivedAt).toBe(120);
+    }
   });
 });
 

@@ -14,6 +14,8 @@ import {
   withoutAutomationSessions,
 } from '../thread-groups';
 
+const ids = (list: readonly string[]): SessionId[] => list as SessionId[];
+
 describe('groupThreadsByWorkspace', () => {
   it('aligns sessions to workspaces via normalizeCwdKey, ignoring a trailing separator', () => {
     const workspace = createWorkspace('ws-1', '/repo/app', 1);
@@ -99,7 +101,6 @@ describe('extractPinnedGroup', () => {
     createSession('s-2', '/repo/app', 200),
     createSession('s-3', '/repo/other', 100),
   ];
-  const ids = (list: readonly string[]): SessionId[] => list as SessionId[];
 
   it('splits pinned sessions into the synthetic group, ordered by pin recency', () => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions, ids(['s-3', 's-1']));

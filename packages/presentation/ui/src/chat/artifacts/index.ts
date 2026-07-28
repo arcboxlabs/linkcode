@@ -1,16 +1,11 @@
 export { ArtifactHostActionsProvider } from './context';
 export { ArtifactFenceRenderer } from './fence-renderer';
 export { FileArtifactCard } from './file-card';
-export { artifactKindForPath, detectInlineFilePath, fileBasename } from './file-kind';
+export { artifactKindForPath, fileBasename } from './file-kind';
 export type { ArtifactHostActions } from './host-actions';
 export { useArtifactHostActions } from './host-actions';
 export type { ResolvedInlineArtifact } from './registry';
-export {
-  artifactFenceLanguages,
-  getArtifactKind,
-  registerArtifactDetector,
-  registerArtifactKind,
-} from './registry';
+export { getArtifactKind, registerArtifactDetector, registerArtifactKind } from './registry';
 export type {
   ArtifactCapabilities,
   ArtifactKindDefinition,

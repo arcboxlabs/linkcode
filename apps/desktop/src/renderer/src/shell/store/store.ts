@@ -1,5 +1,9 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { PanelSection, PanelWindowType } from '@linkcode/ui/shell/panels';
+import type {
+  OptionalPanelSection,
+  PanelSection,
+  PanelWindowType,
+} from '@linkcode/ui/shell/panels';
 import { clamp } from 'foxts/clamp';
 import { create } from 'zustand';
 import type {
@@ -46,6 +50,10 @@ interface DesktopShellActions {
   setActiveSection: (section: PanelSection) => void;
   /** Opens the right panel (if closed) and switches it to `section` in one step. */
   openRightPanelSection: (section: PanelSection) => void;
+  /** Adds an on-demand section to the strip (via its + menu) and brings it forward. */
+  addRightSection: (section: OptionalPanelSection) => void;
+  /** Removes an on-demand section, falling the active section back to the default. */
+  closeRightSection: (section: OptionalPanelSection) => void;
   addRightTerminalTab: () => void;
   closeRightTerminalTab: (id: string) => void;
   setActiveRightTerminalTab: (id: string) => void;
@@ -226,6 +234,28 @@ export const useDesktopShellStore = create<DesktopShellStore>()(
             ...current,
             rightPanel: revealSectionState(current.rightPanel, section, true),
           }));
+        },
+
+        addRightSection(section) {
+          updateShellState((current) => ({
+            ...current,
+            rightPanel: revealSectionState(current.rightPanel, section, true),
+          }));
+        },
+
+        closeRightSection(section) {
+          updateShellState((current) => {
+            const panel = current.rightPanel;
+            return {
+              ...current,
+              rightPanel: {
+                ...panel,
+                // 'simulator' is the only on-demand section today.
+                simulatorAdded: false,
+                activeSection: panel.activeSection === section ? 'diff' : panel.activeSection,
+              },
+            };
+          });
         },
 
         addRightTerminalTab() {

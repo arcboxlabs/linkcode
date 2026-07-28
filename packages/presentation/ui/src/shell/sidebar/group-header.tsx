@@ -34,6 +34,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
+import { SPRING } from '../../motion';
 import type { BranchStatusComponentType } from './branch-status';
 import { SidebarPreviewCardPopup } from './preview-card';
 import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
@@ -55,14 +56,13 @@ export interface ThreadGroupHeaderProps {
   dragHandleRef?: (element: Element | null) => void;
 }
 
-const FOLDER_ICON_SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const;
 const FOLDER_ICON_SHOWN = { opacity: 1, scale: 1, filter: 'blur(0px)' };
 const FOLDER_ICON_HIDDEN = { opacity: 0, scale: 0.25, filter: 'blur(4px)' };
 
 /** Closed/open folder pair cross-fading with the group's collapse state. */
 function FolderToggleIcon({ open }: { open: boolean }): React.ReactNode {
   const reduceMotion = useReducedMotion();
-  const transition = reduceMotion ? { duration: 0 } : FOLDER_ICON_SPRING;
+  const transition = reduceMotion ? { duration: 0 } : SPRING;
   return (
     <span aria-hidden className="relative size-4 shrink-0">
       <motion.span
