@@ -1,5 +1,6 @@
 import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
+  badge,
   contentShape,
   font,
   foregroundStyle,
@@ -19,14 +20,17 @@ const WHOLE_ROW = contentShape(shapes.rectangle());
 export function NavigationRow({
   title,
   subtitle,
+  badgeText,
   onPress,
 }: {
   title: string;
   subtitle?: string;
+  /** Trailing status text, drawn the way a `List` row badge is — before the chevron. */
+  badgeText?: string;
   onPress: () => void;
 }): React.ReactNode {
   return (
-    <HStack spacing={8} modifiers={[WHOLE_ROW, onTapGesture(onPress)]}>
+    <HStack spacing={8} modifiers={[WHOLE_ROW, onTapGesture(onPress), badge(badgeText)]}>
       <VStack alignment="leading" spacing={2}>
         <Text>{title}</Text>
         {subtitle ? (

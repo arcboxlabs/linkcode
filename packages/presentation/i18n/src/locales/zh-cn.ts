@@ -945,12 +945,10 @@ export const zhCN = {
     },
     terminals: {
       title: '终端',
-      emptyTitle: '暂无终端',
       emptyHint: '可在下方新建终端，或打开 host 上正在运行的终端。',
       error: '无法载入终端：{error}',
       unknownCwd: '未知工作目录',
       controlled: '使用中',
-      uncontrolled: '可接管',
       newTerminal: '新建终端',
       cwdLabel: '工作目录（可选）',
       cwdPlaceholder: '使用 host 默认目录',

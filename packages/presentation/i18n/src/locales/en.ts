@@ -974,12 +974,10 @@ export const en = {
     },
     terminals: {
       title: 'Terminals',
-      emptyTitle: 'No terminals',
       emptyHint: 'Start a terminal below, or open one already running on the host.',
       error: 'Unable to load terminals: {error}',
       unknownCwd: 'Unknown working directory',
       controlled: 'In use',
-      uncontrolled: 'Available',
       newTerminal: 'New terminal',
       cwdLabel: 'Working directory (optional)',
       cwdPlaceholder: 'Host default',
