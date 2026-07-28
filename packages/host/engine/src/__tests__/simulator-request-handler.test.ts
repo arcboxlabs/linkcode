@@ -209,6 +209,25 @@ describe('simulator wire requests', () => {
     await h.engine.stop();
   });
 
+  it('routes a shake request through the wire router to the backend', async () => {
+    const backend = fakeBackend();
+    const h = harness(backend);
+    await h.engine.start();
+    const s1 = await h.startSession('s1');
+
+    // Same guard as rotate: `simulator.shake` carries no coordinates, so a missing entry in the
+    // router's simulator group is invisible except as a reply that never arrives.
+    await h.inject({
+      kind: 'simulator.shake',
+      clientReqId: 'shk',
+      sessionId: s1,
+      udid: 'U-1',
+    });
+    expect(h.reply('shk')).toMatchObject({ kind: 'request.succeeded' });
+    expect(backend.shake).toHaveBeenCalledWith('U-1');
+    await h.engine.stop();
+  });
+
   it('start subscribes frames and fans them out session-scoped; stop unsubscribes', async () => {
     const backend = fakeBackend();
     const h = harness(backend);
