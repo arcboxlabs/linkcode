@@ -543,7 +543,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         limit: limit + 1,
         offset,
       }),
-      readSubagentTranscripts(mod, opts.historyId),
+      readSubagentTranscripts(mod, opts.historyId, (agentId) =>
+        this.readSubagentPatches(opts.historyId, agentId),
+      ),
       // Every page needs the raw transcript: getSessionMessages strips each result row's
       // structured toolUseResult, so the mapper re-attaches envelopes from here. The compaction
       // splice below stays first-page-only (the swapped-in summary is the SDK chain's head row).
@@ -598,6 +600,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Test seam over the raw transcript probe (see `readClaudeTranscriptSupplement`). */
   protected readTranscriptSupplement(sessionId: string): Promise<ClaudeTranscriptSupplement> {
     return readClaudeTranscriptSupplement(sessionId);
+  }
+
+  /** Test seam over the per-subagent transcript probe (see `readSubagentPatches`). */
+  protected readSubagentPatches(
+    sessionId: string,
+    agentId: string,
+  ): Promise<ReadonlyMap<string, ToolCallContent[]>> {
+    return readSubagentPatches(sessionId, agentId);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -1597,25 +1607,48 @@ function harvestToolUseResult(
  * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
  * an empty supplement: history still reads, just without compaction markers or result envelopes.
  */
-async function readClaudeTranscriptSupplement(
-  sessionId: string,
-): Promise<ClaudeTranscriptSupplement> {
-  // The id becomes a filename — refuse anything that could traverse out of the projects dir.
-  if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
+async function readClaudeProjectText(segments: readonly string[]): Promise<string | null> {
   const projectsDir = path.join(homedir(), '.claude', 'projects');
   let dirs: string[];
   try {
     dirs = await readdir(projectsDir);
   } catch {
-    return EMPTY_SUPPLEMENT;
+    return null;
   }
   const texts = await Promise.all(
-    dirs.map((dir) =>
-      readFile(path.join(projectsDir, dir, `${sessionId}.jsonl`), 'utf8').catch(() => null),
-    ),
+    dirs.map((dir) => readFile(path.join(projectsDir, dir, ...segments), 'utf8').catch(() => null)),
   );
-  const text = texts.find((t) => t !== null);
+  return texts.find((t) => t !== null) ?? null;
+}
+
+async function readClaudeTranscriptSupplement(
+  sessionId: string,
+): Promise<ClaudeTranscriptSupplement> {
+  // The id becomes a filename — refuse anything that could traverse out of the projects dir.
+  if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
+  const text = await readClaudeProjectText([`${sessionId}.jsonl`]);
   return text ? buildClaudeTranscriptSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
+}
+
+/**
+ * A subagent's own `subagents/agent-{id}.jsonl`, read for the same reason the parent transcript is:
+ * the SDK's `getSubagentMessages` projection strips `toolUseResult`, so a replayed subagent Edit
+ * would fall back to the announce-time fragment while the live one carries real hunks.
+ *
+ * Caveat worth knowing before trusting this: across the local corpus (117 subagent transcripts) the
+ * CLI writes `toolUseResult` as a bare error string only — never the structured `FileEditOutput` —
+ * and the one real subagent Edit had no `toolUseResult` on its settle row in either transcript. So
+ * this recovers nothing on today's CLI; it removes the asymmetry with the parent path and starts
+ * working the moment the CLI persists the field.
+ */
+async function readSubagentPatches(
+  sessionId: string,
+  agentId: string,
+): Promise<ReadonlyMap<string, ToolCallContent[]>> {
+  // Both ids become path segments.
+  if (!SAFE_SESSION_ID.test(sessionId) || !SAFE_SESSION_ID.test(agentId)) return new Map();
+  const text = await readClaudeProjectText([sessionId, 'subagents', `agent-${agentId}.jsonl`]);
+  return text ? buildClaudeTranscriptSupplement(text.split('\n')).toolUsePatches : new Map();
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
@@ -1643,15 +1676,26 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
 async function readSubagentTranscripts(
   mod: typeof import('@anthropic-ai/claude-agent-sdk'),
   sessionId: string,
+  patchesFor: (agentId: string) => Promise<ReadonlyMap<string, ToolCallContent[]>>,
 ): Promise<Map<string, AgentHistoryEvent[]>> {
   const agentIds = await mod.listSubagents(sessionId);
   const byParent = new Map<string, AgentHistoryEvent[]>();
   await Promise.all(
     agentIds.map(async (agentId) => {
-      const rows = await mod.getSubagentMessages(sessionId, agentId, { limit: 1000 });
+      const [rows, patches] = await Promise.all([
+        mod.getSubagentMessages(sessionId, agentId, { limit: 1000 }),
+        patchesFor(agentId),
+      ]);
       const parent = rows.find((row) => row.parent_tool_use_id !== null)?.parent_tool_use_id;
       if (!parent) return;
-      byParent.set(parent, rows.flatMap(createClaudeHistoryEventMapper(asHistoryId(sessionId))));
+      byParent.set(
+        parent,
+        rows.flatMap(
+          // No compaction records or result envelopes: a subagent transcript has no compaction
+          // boundary, and `rawOutput` recovery there is a separate concern.
+          createClaudeHistoryEventMapper(asHistoryId(sessionId), undefined, undefined, patches),
+        ),
+      );
     }),
   );
   return byParent;

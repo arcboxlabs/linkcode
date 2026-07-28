@@ -104,7 +104,14 @@ export function diffStats(
   newText: string | undefined,
   patch?: string,
 ): DiffStats {
-  const rows = patch === undefined ? diffLines(oldText ?? '', newText ?? '') : patchLines(patch);
+  // A patch that parses to nothing is not authoritative — codex ships hunk text alongside one, and
+  // an empty or malformed patch would otherwise report 0/0 next to a card that renders real rows.
+  // This precedence must track `chatFileDiff`, which falls back to the text on the same condition.
+  const patchRows = patch === undefined ? undefined : patchLines(patch);
+  const rows =
+    patchRows !== undefined && patchRows.length > 0
+      ? patchRows
+      : diffLines(oldText ?? '', newText ?? '');
   return {
     additions: rows.filter((row) => row.type === 'add').length,
     deletions: rows.filter((row) => row.type === 'del').length,

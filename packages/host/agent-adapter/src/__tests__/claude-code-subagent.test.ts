@@ -1,8 +1,9 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, ToolCall } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
-import { ClaudeCodeAdapter } from '../native/claude-code';
+import { ClaudeCodeAdapter, editResultDiffContent } from '../native/claude-code';
 
 /**
  * Subagent (Task tool) routing: every subagent frame carries `parent_tool_use_id`. The adapter
@@ -387,5 +388,72 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       'tool-call',
       'agent-message',
     ]);
+  });
+
+  it('replays a subagent Edit with the recovered patch, matching the live settle', async () => {
+    const EDIT_ID = 'toolu_sub_edit';
+    const input = { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' };
+    const toolUseResult = {
+      filePath: 'src/a.ts',
+      oldString: 'a',
+      newString: 'b',
+      structuredPatch: [
+        { oldStart: 12, oldLines: 3, newStart: 12, newLines: 3, lines: [' ctx', '-a', '+b'] },
+      ],
+    };
+
+    // Live: the subagent's settle frame carries the structured result, so `handleUser` upgrades the
+    // announce fragment in place.
+    const live = harness();
+    live.feed({
+      type: 'assistant',
+      parent_tool_use_id: TASK_ID,
+      message: { content: [{ type: 'tool_use', id: EDIT_ID, name: 'Edit', input }] },
+    });
+    live.feed({
+      type: 'user',
+      parent_tool_use_id: TASK_ID,
+      message: { content: [{ type: 'tool_result', tool_use_id: EDIT_ID, content: 'updated' }] },
+      tool_use_result: toolUseResult,
+    });
+    const liveSettle = live
+      .tools()
+      .filter((t) => t.toolCallId === EDIT_ID)
+      .at(-1);
+
+    // History: `getSubagentMessages` strips `tool_use_result`, so the patch has to come from the
+    // subagent's own raw transcript instead.
+    class SubagentPatchClaude extends HistoryClaude {
+      protected override readSubagentPatches(): Promise<ReadonlyMap<string, ToolCall['content']>> {
+        return Promise.resolve(
+          new Map([[EDIT_ID, nullthrow(editResultDiffContent(toolUseResult))]]),
+        );
+      }
+    }
+    const adapter = new SubagentPatchClaude(
+      fakeSdk({
+        messages: mainMessages,
+        subagents: {
+          agent1: [
+            subRow('assistant', 's0', [{ type: 'tool_use', id: EDIT_ID, name: 'Edit', input }]),
+            subRow('user', 's1', [
+              { type: 'tool_result', tool_use_id: EDIT_ID, content: 'updated' },
+            ]),
+          ],
+        },
+      }),
+    );
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    const replayedSettle = result.events.filter((e) => e.itemId === EDIT_ID).at(-1)?.event;
+
+    expect(replayedSettle?.type).toBe('tool-call');
+    if (replayedSettle?.type !== 'tool-call') return;
+    // The patch supersedes the announce fragment rather than stacking beside it, and the replayed
+    // content matches what the live path emitted.
+    expect(replayedSettle.toolCall.content).toEqual(liveSettle?.content);
+    expect(replayedSettle.toolCall.content[0]).toMatchObject({
+      type: 'diff',
+      patch: { format: 'git_patch', text: '@@ -12,3 +12,3 @@\n ctx\n-a\n+b' },
+    });
   });
 });

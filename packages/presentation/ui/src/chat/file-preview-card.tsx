@@ -46,27 +46,34 @@ export function FilePreviewCard({
   tooltip?: string;
 }): React.ReactNode {
   const tooltipAnchorRef = useRef<HTMLSpanElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const t = useTranslations('workbench.tool');
   // The body starts clamped to a peek rather than hidden: a long diff shouldn't dominate the
   // timeline, but a card showing nothing at all is worse than one showing too much. Height-clamped
   // (not unmounted) so the peek is real content and expanding never re-renders the body.
   const [expanded, setExpanded] = useState(false);
+  // State, not a ref: a tool card announces header-only and grows its body on the settle, so the
+  // panel is absent on the first render. A ref read inside the subscribe would be null then, and
+  // `useSyncExternalStore` only resubscribes when the subscribe identity changes — the card would
+  // stay unmeasured for the rest of its life.
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   // Observed rather than measured once: the diff renderer highlights asynchronously, so a body
-  // that fits on first paint can outgrow the clamp a frame later.
-  const subscribeToPanelSize = useCallback((onChange: () => void): (() => void) => {
-    const element = panelRef.current;
-    if (!element || typeof ResizeObserver === 'undefined') return noop;
-    const observer = new ResizeObserver(onChange);
-    observer.observe(element);
-    for (const child of element.children) observer.observe(child);
-    return () => observer.disconnect();
-  }, []);
+  // that fits on first paint can outgrow the clamp a frame later. Children are observed too — a
+  // body sitting exactly at the clamp grows without moving the panel's own box.
+  const subscribeToPanelSize = useCallback(
+    (onChange: () => void): (() => void) => {
+      if (!panel || typeof ResizeObserver === 'undefined') return noop;
+      const observer = new ResizeObserver(onChange);
+      observer.observe(panel);
+      for (const child of panel.children) observer.observe(child);
+      return () => observer.disconnect();
+    },
+    [panel],
+  );
   // `overflow: clip` still reports the full scroll height, so this holds while clamped.
-  const readPanelOverflow = useCallback((): boolean => {
-    const element = panelRef.current;
-    return element ? element.scrollHeight > element.clientHeight : false;
-  }, []);
+  const readPanelOverflow = useCallback(
+    (): boolean => (panel ? panel.scrollHeight > panel.clientHeight : false),
+    [panel],
+  );
   const panelOverflowing = useSyncExternalStore(subscribeToPanelSize, readPanelOverflow, falseFn);
   const actions = useArtifactHostActions();
   const target = navigation === undefined ? { kind: 'file' as const, path } : navigation;
@@ -122,7 +129,14 @@ export function FilePreviewCard({
               !expanded && 'chat-card-peek',
               !expanded && panelOverflowing && 'chat-card-peek-fade',
             )}
-            ref={panelRef}
+            ref={setPanel}
+            // `overflow: clip` hides the overflow visually but leaves its links and checkboxes in
+            // the tab order, and a clipped box cannot be scrolled to bring them into view. Reveal
+            // the body instead of letting focus land somewhere invisible. Guarded so a body that
+            // fits never sprouts a collapse control just because something in it was focused.
+            onFocus={() => {
+              if (panelOverflowing) setExpanded(true);
+            }}
           >
             {children}
           </ChatCardPanel>

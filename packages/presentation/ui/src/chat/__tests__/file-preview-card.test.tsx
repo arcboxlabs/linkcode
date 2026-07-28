@@ -80,4 +80,54 @@ describe('FilePreviewCard peek', () => {
     expect(container.querySelector('[data-slot="frame-panel"]')).toBeNull();
     expect(container.querySelector('footer')).toBeNull();
   });
+
+  it('measures a body that mounts after the header-only first render', () => {
+    // The live shape for a Read or an Edit: the announce renders a header-only card and the body
+    // only arrives with the settle. The panel element therefore does not exist on the first
+    // render, so the size subscription has to attach when it appears rather than once at mount.
+    stubPanelMetrics(600, 200);
+    const { container, rerender } = render(<FilePreviewCard path="/repo/a.ts" />);
+    expect(container.querySelector('[data-slot="frame-panel"]')).toBeNull();
+
+    rerender(<FilePreviewCard path="/repo/a.ts">body</FilePreviewCard>);
+
+    expect(panelOf(container).className).toContain(PEEK);
+    expect(panelOf(container).className).toContain(FADE);
+    expect(screen.getByRole('button', { name: 'expand' })).toBeDefined();
+  });
+
+  it('reveals the body when focus reaches a control clipped behind the peek', async () => {
+    // `overflow: clip` hides the overflow visually but keeps its links and checkboxes tabbable,
+    // and cannot be scrolled to bring them into view. Expanding on focus is what keeps a
+    // keyboard user from landing on something invisible.
+    stubPanelMetrics(600, 200);
+    const { container } = render(
+      <FilePreviewCard path="/repo/a.ts">
+        <a href="https://example.test">clipped link</a>
+      </FilePreviewCard>,
+    );
+    expect(panelOf(container).className).toContain(PEEK);
+
+    await userEvent.tab();
+    await userEvent.tab();
+
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'clipped link' }));
+    expect(panelOf(container).className).not.toContain(PEEK);
+  });
+
+  it('does not arm focus-expansion on a body that fits', async () => {
+    stubPanelMetrics(120, 120);
+    const { container } = render(
+      <FilePreviewCard path="/repo/a.ts">
+        <a href="https://example.test">visible link</a>
+      </FilePreviewCard>,
+    );
+
+    await userEvent.tab();
+    await userEvent.tab();
+
+    // Nothing was hidden, so focusing inside must not sprout a collapse control.
+    expect(panelOf(container).className).toContain(PEEK);
+    expect(container.querySelector('footer')).toBeNull();
+  });
 });
