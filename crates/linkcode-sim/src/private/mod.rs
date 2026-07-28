@@ -6,6 +6,7 @@
 //! when they don't — so an Xcode without SimulatorKit is view-only, not broken.
 
 pub mod ax;
+mod block;
 pub(crate) mod debug;
 mod device;
 mod framework;

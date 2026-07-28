@@ -173,11 +173,12 @@ mod imp {
 
     /// Drop the cached HID client and any in-flight gesture state for `udid`.
     ///
-    /// A warmed `SimDeviceLegacyHIDClient` is bound to the boot session it was created in. Once the
-    /// device shuts down, that client is dead: sends still report success but nothing reaches the
-    /// guest, so the panel looks fine while every tap, button and key silently does nothing. Boot
-    /// and shutdown are the two moments a new session begins, so both evict — the next use re-warms
-    /// against the live device.
+    /// A warmed `SimDeviceLegacyHIDClient` is bound to the boot session it was created in, and its
+    /// mach port dies with that session. A dead client cannot be revived in place, so eviction is
+    /// the only recovery. Boot and shutdown are the two moments a new session begins, so both evict
+    /// — the next use re-warms against the live device. This is the cheap path, not the safety net:
+    /// an out-of-band reboot sends no op through this process, and `Input`'s own dead-port detection
+    /// is what covers that.
     pub fn forget(udid: &str) {
         let mut reg = registry().lock().expect("interactive registry poisoned");
         reg.inputs.remove(udid);
@@ -203,16 +204,30 @@ mod imp {
     ///
     /// A warmed client is bound to the boot session it was created in, and a device can be shut
     /// down and re-booted behind our back — from Simulator.app, from `simctl`, or by a boot the
-    /// engine short-circuited because the host already had the device up. The stale client then
-    /// builds no messages, so the failure is indistinguishable from "the device is gone" and the
-    /// panel goes dead with every control still looking healthy. Treat the first failure as
-    /// possibly-stale: drop the client, warm a fresh one, and try once more. A failed build
-    /// injected nothing, so the retry cannot double-send.
+    /// engine short-circuited because the host already had the device up. Building messages against
+    /// the stale client keeps working; only the *send* fails, and SimulatorKit reports that per
+    /// message as a dead mach port. `Input` waits for that verdict, which is what makes this retry
+    /// possible at all — while the verdict was being discarded, a stale client reported a clean
+    /// success for every injection and the panel went dead with all its controls looking healthy
+    /// (CODE-442). Treat the first failure as possibly-stale: drop the client, warm a fresh one,
+    /// and try once more. A *refused* send names an unusable port, so nothing was delivered and the
+    /// retry cannot double-send — but a send that was never acknowledged at all proves nothing, so
+    /// that one retires the client without repeating the injection.
     fn with_input(udid: &str, what: &str, op: impl Fn(&Input) -> bool) -> Result<Value, OpError> {
-        if op(input_for(udid)?.as_ref()) {
+        let input = input_for(udid)?;
+        if op(input.as_ref()) {
             return Ok(json!({}));
         }
+        let stalled = input.is_stalled();
+        drop(input);
         forget(udid);
+        if stalled {
+            return Err(OpError::new(
+                ErrorCode::SimctlFailed,
+                format!("{what} was never acknowledged; the HID client has been dropped"),
+            ));
+        }
+        eprintln!("sim input: {what} on {udid} found a dead HID session; re-warming the client");
         if op(input_for(udid)?.as_ref()) {
             return Ok(json!({}));
         }
@@ -459,13 +474,14 @@ mod imp {
         Ok(json!({}))
     }
 
-    /// Reap a stream whose device's boot session has ended out from under it. The worker holds
-    /// framebuffer registrations that keep the dead session's HID routing half-alive, so a warmed
-    /// client "successfully" injects into it and every control goes silently dead (CODE-442) — an
-    /// out-of-band shutdown (Simulator.app, bare `simctl`) sends no op through this process, so
-    /// nothing else evicts. Killing the worker and forgetting the client makes the next attach or
-    /// injection start from the live device. Called from the pusher's own thread: the JoinHandle
-    /// is dropped, never joined — a thread cannot join itself.
+    /// Reap a stream whose device's boot session has ended out from under it. A worker outlives the
+    /// session it was opened against and keeps pushing that session's last frames, so the panel
+    /// shows a live-looking picture of a device that is gone — and an out-of-band shutdown
+    /// (Simulator.app, bare `simctl`) sends no op through this process, so nothing else stops it.
+    /// Injection correctness does not rest here: `Input` detects the dead port itself and re-warms
+    /// (CODE-442). This is about not streaming a corpse, and not leaking the worker process with
+    /// it. Called from the pusher's own thread: the JoinHandle is dropped, never joined — a thread
+    /// cannot join itself.
     fn reap_dead_device(udid: &str, via: &str) {
         let handle = registry()
             .lock()
