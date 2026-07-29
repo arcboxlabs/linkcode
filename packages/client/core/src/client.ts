@@ -18,6 +18,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -39,6 +40,8 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
@@ -87,6 +90,11 @@ type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
+type ResourceEventCb = (
+  event:
+    | { type: 'changed'; resource: SessionResource }
+    | { type: 'removed'; resourceId: SessionResourceId; sessionId: SessionId },
+) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 type TerminalControllerCb = (canControl: boolean) => void;
@@ -186,6 +194,7 @@ export class LinkCodeClient {
   private readonly loopEventSubs = new Set<LoopEventCb>();
   private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
+  private readonly resourceEventSubs = new Set<ResourceEventCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
@@ -462,6 +471,23 @@ export class LinkCodeClient {
         break;
       case 'file.hosted':
         this.pending.resolve('fileHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.listed':
+        this.pending.resolve('resourceList', p.replyTo, p.resources);
+        break;
+      case 'resource.uploaded':
+        this.pending.resolve('resourceUpload', p.replyTo, p.resource);
+        break;
+      case 'resource.hosted':
+        this.pending.resolve('resourceHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.changed':
+        for (const cb of this.resourceEventSubs) cb({ type: 'changed', resource: p.resource });
+        break;
+      case 'resource.removed':
+        for (const cb of this.resourceEventSubs) {
+          cb({ type: 'removed', resourceId: p.resourceId, sessionId: p.sessionId });
+        }
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
@@ -1004,6 +1030,28 @@ export class LinkCodeClient {
   subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
     this.sessionNotificationSubs.add(cb);
     return () => this.sessionNotificationSubs.delete(cb);
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.control.listResources(sessionId);
+  }
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.control.uploadSource(sessionId, name, data, mimeType);
+  }
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.control.removeResource(resourceId);
+  }
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.control.hostResource(resourceId);
+  }
+  subscribeResources(cb: ResourceEventCb): Unsubscribe {
+    this.resourceEventSubs.add(cb);
+    return () => this.resourceEventSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */

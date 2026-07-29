@@ -11,6 +11,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
@@ -20,6 +21,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
   SimulatorAxNode,
   SimulatorConsentState,
   SimulatorDevice,
@@ -85,6 +87,9 @@ export interface PendingValueMap {
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
   fileHost: HostedFile;
+  resourceList: SessionResource[];
+  resourceUpload: SessionResource;
+  resourceHost: HostedSessionResource;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -138,6 +143,9 @@ export class PendingRegistry {
     scriptList: new Map(),
     artifactHost: new Map(),
     fileHost: new Map(),
+    resourceList: new Map(),
+    resourceUpload: new Map(),
+    resourceHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),
