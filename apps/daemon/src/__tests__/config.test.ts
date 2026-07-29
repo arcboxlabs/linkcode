@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -164,6 +165,21 @@ describe('channel-scoped state paths', () => {
   it('keeps a profile named after the channel out of the development directory', () => {
     process.env.LINKCODE_PROFILE = 'development';
     expect(databasePath()).toBe(join(process.env.HOME ?? '', '.linkcode-development', 'daemon.db'));
+  });
+
+  // The `channel` identity field cannot defend against a daemon released before it existed: that
+  // peer's schema strips the unknown field and its profile-only comparison then reads a
+  // development daemon as a double-start of itself. Disjoint ranges are what actually keep an
+  // already-shipped release binary away from a development daemon's port.
+  it('starts each channel in its own port range, with no overlap between them', () => {
+    process.env.LINKCODE_CHANNEL = 'release';
+    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT);
+
+    process.env.LINKCODE_CHANNEL = 'development';
+    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT + DAEMON_PORT_HUNT_SPAN);
+
+    const releaseLastPort = daemonBasePort('release') + DAEMON_PORT_HUNT_SPAN - 1;
+    expect(daemonBasePort('development')).toBeGreaterThan(releaseLastPort);
   });
 
   it('defaults to development when nothing is injected — an unstamped build is a working copy', () => {

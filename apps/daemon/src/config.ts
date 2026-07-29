@@ -6,7 +6,7 @@ import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode
 import {
   AccountSchema,
   AgentKindSchema,
-  DAEMON_DEFAULT_PORT,
+  daemonBasePort,
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
 } from '@linkcode/schema';
@@ -34,7 +34,6 @@ export interface DaemonConfig {
   simulatorConsent: SimulatorConsentState;
 }
 
-const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
 const DEFAULT_HOST = '127.0.0.1';
 
 interface ConfigFile {
@@ -212,7 +211,7 @@ function writeConfigField(
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {
   return {
     type: 'socket.io',
-    port: parsePort(file.port, DEFAULT_PORT),
+    port: parsePort(file.port, daemonBasePort(daemonChannel())),
     host: parseString(file.hostname, DEFAULT_HOST),
   };
 }
@@ -222,7 +221,7 @@ function parseListener(value: unknown): DaemonListenerConfig | null {
   if (value.type !== 'socket.io' && value.type !== 'ws') return null;
   return {
     type: value.type,
-    port: parsePort(value.port, DEFAULT_PORT),
+    port: parsePort(value.port, daemonBasePort(daemonChannel())),
     host: parseString(value.host ?? value.hostname, DEFAULT_HOST),
   };
 }

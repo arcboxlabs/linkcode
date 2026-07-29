@@ -4,6 +4,7 @@ import { isPidAlive, readJsonFileSync } from '@linkcode/common/node';
 import type { DaemonIdentity, DaemonRuntimeInfo } from '@linkcode/schema';
 import {
   DAEMON_IDENTITY_PATH,
+  DAEMON_PORT_HUNT_SPAN,
   DaemonIdentitySchema,
   DaemonRuntimeInfoSchema,
 } from '@linkcode/schema';
@@ -20,7 +21,9 @@ import { runtimeFilePath } from './config';
  * runtime file for local clients. Daemons of other profiles are port neighbors: the hunt skips them.
  */
 
-const PORT_HUNT_ATTEMPTS = 10;
+/** Bounded by the channel's port range so a hunt can never wander into the other channel's
+ * (see `daemonBasePort` — the ranges are disjoint on purpose). */
+const PORT_HUNT_ATTEMPTS = DAEMON_PORT_HUNT_SPAN;
 const PROBE_TIMEOUT_MS = 1000;
 const PROBE_TIMEOUT_RETRIES = 2;
 

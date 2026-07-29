@@ -6,9 +6,33 @@ import { stateDirBasename } from './product';
 export type { ProductChannel } from './product';
 export { parseProductChannel } from './product';
 
-/** Default TCP port of the local daemon: 0x4C43 — ascii "LC". */
+/** Default TCP port of the local daemon: 0x4C43 — ascii "LC". This is the release channel's base;
+ * `daemonBasePort` is what a daemon actually starts hunting from. */
 export const DAEMON_DEFAULT_PORT = 19523;
 export const DAEMON_DEFAULT_URL = `http://127.0.0.1:${DAEMON_DEFAULT_PORT}`;
+
+/** How many ports one channel may hunt through before giving up. */
+export const DAEMON_PORT_HUNT_SPAN = 10;
+
+/**
+ * Where a channel starts hunting. The ranges are disjoint (release 19523–19532, development
+ * 19533–19542) and that is load-bearing, not tidiness: the `channel` field cannot defend against a
+ * daemon released before it existed. Such a peer parses a newer identity through a schema without
+ * the field, zod strips it, and its `occupant.profile === identity.profile` check then reads two
+ * default profiles as equal — so it exits 3 against a development daemon and its supervisor stands
+ * down. Never letting the two channels reach the same port removes that misclassification entirely,
+ * in the only direction we cannot patch: already-shipped binaries.
+ */
+export function daemonBasePort(channel: ProductChannel): number {
+  return channel === 'development'
+    ? DAEMON_DEFAULT_PORT + DAEMON_PORT_HUNT_SPAN
+    : DAEMON_DEFAULT_PORT;
+}
+
+/** The URL a client falls back to when no `runtime.json` names a live daemon of its channel. */
+export function daemonDefaultUrl(channel: ProductChannel): string {
+  return `http://127.0.0.1:${daemonBasePort(channel)}`;
+}
 
 /**
  * Shape of a profile name. A profile is an isolated state universe on one machine (own daemon

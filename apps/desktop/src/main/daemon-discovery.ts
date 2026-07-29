@@ -1,16 +1,18 @@
 import { mkdirSync, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
-import { DAEMON_DEFAULT_URL, DaemonRuntimeInfoSchema } from '@linkcode/schema';
+import { DaemonRuntimeInfoSchema, daemonDefaultUrl } from '@linkcode/schema';
 import { CHANNEL, PROFILE } from './constants';
 import { getSettings } from './settings';
 
 /**
  * Daemon endpoint for the renderer: settings override → the running daemon's runtime.json
- * advertisement → the default port. Synchronous so it can serve the renderer's boot snapshot.
+ * advertisement → this channel's default port. Synchronous so it can serve the renderer's boot
+ * snapshot. The fallback is channel-scoped like the discovery file: dialing the bare default would
+ * point a development shell straight at the release daemon.
  */
 export function resolveDaemonUrl(): string {
-  return getSettings().daemonUrl ?? discoverRuntimeUrl() ?? DAEMON_DEFAULT_URL;
+  return getSettings().daemonUrl ?? discoverRuntimeUrl() ?? daemonDefaultUrl(CHANNEL);
 }
 
 function discoverRuntimeUrl(): string | null {
