@@ -52,7 +52,8 @@ function assertNoApplicationErrors(appErrors: string[]): void {
 async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Promise<void> {
   const editor = page.locator('[data-slot="composer-editor"][contenteditable="true"]');
   await editor.waitFor({ state: 'visible' });
-  await editor.fill(prompt);
+  await editor.click();
+  await editor.pressSequentially(prompt);
   await page.getByRole('button', { name: 'Send' }).click();
   await page.getByText(`You said: ${prompt}`, { exact: false }).waitFor({ timeout: 15000 });
   assertNoApplicationErrors(appErrors);
