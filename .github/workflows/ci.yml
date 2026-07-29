@@ -28,7 +28,9 @@ permissions:
   contents: read
 
 env:
-  NODE_OPTIONS: --max-old-space-size=4096
+  # Typed linting needs one TS program set in a single heap: `lint:ci` runs eslint with
+  # `--concurrency=off`, and a cold cache still walks the whole repo, which does not fit in 4096.
+  NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
   typescript:
@@ -60,8 +62,20 @@ jobs:
       - name: Check formatting and imports
         run: pnpm format:check
 
+      # Keyed by run so every run writes a fresh entry; restore-keys pick the newest prior one.
+      # eslint invalidates each entry itself on a content, config, eslint- or node-version change,
+      # so the key deliberately does not try to encode those.
+      - name: Restore ESLint cache
+        uses: actions/cache@v6
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: eslint-${{ runner.os }}-
+
+      # `lint:ci`, not `lint`: multithread linting duplicates the typescript-eslint program per
+      # worker instead of splitting it, which OOMs a 2-worker runner (CODE-468).
       - name: Lint
-        run: pnpm lint
+        run: pnpm lint:ci
 
       - name: Typecheck
         run: pnpm typecheck
