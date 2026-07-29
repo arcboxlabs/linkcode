@@ -343,7 +343,7 @@ pnpm lint
 pnpm format:check
 ```
 
-`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
+`pnpm lint` pins `--concurrency=off` and an 8 GB heap: this typed-lint workload exceeds the worker and default 4 GB heap limits, while the single main-thread run stays within the runner's memory budget.
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 
