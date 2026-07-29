@@ -21,14 +21,45 @@
  */
 @theme inline {
   --font-mono: var(--font-mono);
+
+  /* Label tiers below muted-foreground: tertiary = timestamps/weak hints, quaternary =
+     placeholders/pending edges. Inline so the mix resolves against each theme's value. */
+  --color-label-tertiary: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  --color-label-quaternary: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+@theme {
+  /* Bottom of the type scale (badges, chrome labels); no ad-hoc pixel sizes below xs. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(0.875 / 0.6875);
 }
 
 :root {
+  /* Motion scale: micro-interactions / panels & overlays / page-level emphasis.
+     Consume as `duration-(--motion-*)`; new animation picks a tier, never a bare number. */
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-emphasis: 350ms;
+
+  /* List density (data-density on the root, synced from the appearance store): long-list rows
+     read these instead of fixed paddings; skeletons must track the same vars. */
+  --density-row-py: 0.5rem;
+  /* Thread rows sit on coss-ui's fixed-height SidebarMenuButton (h-8), so density drives the
+     height directly there — padding alone cannot shrink a border-box fixed-height row. */
+  --density-thread-row-h: 2rem;
+  --density-history-skeleton-h: 3.25rem;
+
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
   --font-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
+}
+
+:root[data-density="compact"] {
+  --density-row-py: 0.25rem;
+  --density-thread-row-h: 1.75rem;
+  --density-history-skeleton-h: 2.75rem;
 }
 
 /* Reduce-motion preference (appearance setting, not the OS query — it can differ from the system
@@ -71,6 +102,59 @@
   pre {
     font-family: var(--font-mono);
   }
+
+  /* Apple-style continuous corners (UICornerCurve model): only faces with radius ≥ 12px
+     (xl/2xl/3xl and their coss-ui-derived inner faces / inset rings) get the continuous
+     curve; smaller controls and pills stay circular. superellipse(1.1), not the squircle
+     keyword: iOS's continuous corner (figma smoothing 0.6) is shape-wise almost a circle —
+     squircle (= superellipse(2)) halves the apex cut-in, reading as a much smaller radius.
+     1.1 keeps ~94% of the perceived radius with a hint of the smoothed transition.
+     Class-substring opt-in — vendored coss-ui can't carry the property itself. Substring
+     matching ignores variant conditions: a variant-gated xl class applies the curve even
+     while inactive, which is inert without a radius and imperceptible below the 12px
+     threshold (the only such live face is the 10px popover). clip-path `inset(… round …)`
+     corners (command palette, grouped cards) do not follow corner-shape and keep a
+     circular curve. */
+  @supports (corner-shape: superellipse(1.1)) {
+    :where(
+        [class*="rounded-xl"],
+        [class*="rounded-2xl"],
+        [class*="rounded-3xl"],
+        [class*="rounded-t-xl"],
+        [class*="rounded-t-2xl"],
+        [class*="rounded-b-xl"],
+        [class*="rounded-b-2xl"],
+        [class*="rounded-t-[calc(var(--radius-xl)"],
+        [class*="rounded-t-[calc(var(--radius-2xl)"],
+        [class*="rounded-b-[calc(var(--radius-xl)"],
+        [class*="rounded-b-[calc(var(--radius-2xl)"]
+      ),
+    :where(
+        [class*="rounded-xl"],
+        [class*="rounded-2xl"],
+        [class*="rounded-3xl"],
+        [class*="rounded-t-xl"],
+        [class*="rounded-t-2xl"]
+      )::before {
+      corner-shape: superellipse(1.1);
+    }
+
+    /* Card-variant tables round their corner cells through logical-corner utilities
+       (`…:rounded-ss-xl` etc.) generated on the table body's class list, so the cells
+       themselves carry no matchable class — bind the curve to them via the carrier. */
+    :where([class*="rounded-ss-xl"]) td {
+      corner-shape: superellipse(1.1);
+    }
+  }
+}
+
+/* Matched-geometry session switch (thread row title → conversation header): pace the paired
+   element and the root crossfade on the motion scale. Reduce-motion never starts a transition
+   (gated where the switch is applied), so no override is needed here. */
+::view-transition-group(thread-title),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-normal);
 }
 
 @layer components {
@@ -270,5 +354,45 @@
 
   .chat-terminal-output .ansi-hidden {
     visibility: hidden;
+  }
+
+  /* Collapsed file-card body: about ten rows at the chat mono scale (20px each, matching the diff
+     renderer's line height), so a long diff or file read previews instead of taking over the
+     timeline. The footer toggle lifts the clamp. */
+  /* `clip`, not `hidden`: a hidden box is still programmatically scrollable, so a focus move or
+     `scrollIntoView` inside the body could strand the peek mid-content. */
+  .chat-card-peek {
+    max-height: 12.5rem;
+    overflow: clip;
+  }
+
+  /* Separate from the clamp because the gradient is relative to the element's OWN height: applied
+     unconditionally it fades the last line of a short body that is not clipped at all, costing
+     legibility with nothing to reveal. Paint-only, so adding it cannot disturb the overflow
+     measurement that gates it. */
+  .chat-card-peek-fade {
+    mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent);
+  }
+
+  /* `@pierre/diffs` renders the inline chat diff into a shadow root, so Tailwind utilities cannot
+     reach its rows — only inherited custom properties can. Match the card's mono/xs type scale,
+     and drop the library's 8px block padding: it frames a standalone viewer, but here the panel
+     already provides the card's inset and the rows should meet its edges. */
+  .chat-diff-surface {
+    --diffs-font-family: var(--font-mono);
+    --diffs-font-size: var(--text-xs);
+    --diffs-gap-block: 0;
+  }
+
+  /* The palette is all `light-dark()`, which reads `color-scheme` — and pierre hard-declares
+     `color-scheme: light dark` on its own `:host`, so an inherited value loses and the diff would
+     follow the OS instead of the app's `.dark` class. Outer-document rules matching the host
+     element outrank `:host`, so target the custom element itself. */
+  .chat-diff-surface diffs-container {
+    color-scheme: light;
+  }
+
+  .dark .chat-diff-surface diffs-container {
+    color-scheme: dark;
   }
 }

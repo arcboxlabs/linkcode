@@ -1,6 +1,9 @@
 import type {
+  BrowserDownloadDone,
+  BrowserShortcutAction,
   DesktopSettings,
   DesktopSettingsPatch,
+  DetectedEditor,
   PickFileOptions,
   SystemNotification,
   UpdaterStatus,
@@ -22,6 +25,14 @@ export interface SystemBridge {
     /** Resolves to every picked path, or `null` if the dialog was cancelled — a single pick is a
      * one-element array. */
     pickFile(opts?: PickFileOptions): Promise<string[] | null>;
+  };
+  shell: {
+    /** Reveal a path in the OS file manager (Finder / Explorer / …). */
+    revealPath(path: string): Promise<void>;
+    /** External editors detected on this machine, in display order; empty when none is installed. */
+    listEditors(): Promise<DetectedEditor[]>;
+    /** Launch a detected editor (its opaque `id` from `listEditors`) on `path`. */
+    openInEditor(editorId: string, path: string): Promise<void>;
   };
   app: {
     version(): Promise<string>;
@@ -59,5 +70,14 @@ export interface SystemBridge {
     notify(notification: SystemNotification): Promise<void>;
     /** Subscribe to notification clicks; main focuses the window, then pushes the `clickToken`. */
     onClick(cb: (clickToken: string) => void): () => void;
+  };
+  browser: {
+    /** Subscribe to Browser-pane guest popups (window.open / target=_blank) redirected by main;
+     * the renderer opens the URL in a new in-app browser tab. */
+    onOpenTab(cb: (url: string) => void): () => void;
+    /** Subscribe to finished Browser-pane downloads (main default download flow). */
+    onDownloadDone(cb: (result: BrowserDownloadDone) => void): () => void;
+    /** Subscribe to app-owned shortcuts captured while a guest webview owns keyboard focus. */
+    onShortcut(cb: (action: BrowserShortcutAction) => void): () => void;
   };
 }

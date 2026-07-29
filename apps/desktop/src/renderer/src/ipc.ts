@@ -29,6 +29,13 @@ export const systemBridge: SystemBridge = {
   fs: {
     pickFile: (opts) => traceRendererIpc('fs.pick-file', () => source.fs.pickFile(opts)),
   },
+  shell: {
+    revealPath: (path) =>
+      traceRendererIpc('shell.reveal-path', () => source.shell.revealPath(path)),
+    listEditors: () => traceRendererIpc('shell.list-editors', () => source.shell.listEditors()),
+    openInEditor: (editorId, path) =>
+      traceRendererIpc('shell.open-in-editor', () => source.shell.openInEditor(editorId, path)),
+  },
   app: {
     version: () => traceRendererIpc('app.version', () => source.app.version()),
     platform: source.app.platform,
@@ -56,5 +63,13 @@ export const systemBridge: SystemBridge = {
       traceRendererIpc('notifications.notify', () => source.notifications.notify(notification)),
     onClick: (callback) =>
       traceRendererIpc('notifications.on-click', () => source.notifications.onClick(callback)),
+  },
+  browser: {
+    onOpenTab: (callback) =>
+      traceRendererIpc('browser.on-open-tab', () => source.browser.onOpenTab(callback)),
+    onDownloadDone: (callback) =>
+      traceRendererIpc('browser.on-download-done', () => source.browser.onDownloadDone(callback)),
+    onShortcut: (callback) =>
+      traceRendererIpc('browser.on-shortcut', () => source.browser.onShortcut(callback)),
   },
 };

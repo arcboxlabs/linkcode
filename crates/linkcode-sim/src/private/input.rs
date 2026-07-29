@@ -21,7 +21,8 @@
 
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ use objc2::msg_send;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
 
+use super::block::{self, BlockDescriptor, CaptureBlock};
 use super::device::SimDevice;
 use super::framework;
 
@@ -81,7 +83,23 @@ unsafe extern "C" {
     fn CFRelease(cf: *const c_void);
     fn malloc_size(ptr: *const c_void) -> usize;
     fn mach_absolute_time() -> u64;
+    fn dispatch_queue_create(label: *const i8, attr: *const c_void) -> *mut c_void;
+    fn dispatch_group_create() -> *mut c_void;
+    fn dispatch_group_enter(group: *mut c_void);
+    fn dispatch_group_leave(group: *mut c_void);
+    fn dispatch_group_wait(group: *mut c_void, timeout: u64) -> isize;
+    fn dispatch_time(when: u64, delta: i64) -> u64;
 }
+
+/// `DISPATCH_TIME_NOW`.
+const DISPATCH_TIME_NOW: u64 = 0;
+
+/// How long a send waits for SimulatorKit's acknowledgement before giving up on the client.
+/// Measured on a real device the answer lands in ~0.1ms, success or dead-port error alike, so this
+/// is four orders of magnitude of headroom. It is kept this tight because the wait is synchronous
+/// and touch/pinch/key ops run inline on the sidecar's read loop (see `main.rs`) — a generous
+/// timeout would let one unanswered send stall every other request behind it.
+const SEND_ACK_TIMEOUT: Duration = Duration::from_secs(1);
 
 const TRANSDUCER_FINGER: u32 = 2;
 const TOUCH_TARGET: u32 = 0x32;
@@ -91,11 +109,21 @@ const HOME_ARG0: u32 = 0x0;
 const LOCK_ARG0: u32 = 0x1;
 const LEGACY_BUTTON_TARGET: u32 = 0x33;
 
+/// HID consumer page, where the volume keys live. Unlike home/lock, the volume rockers are not on
+/// the legacy `IndigoHIDMessageForButton` path at all — they are ordinary HID usages routed through
+/// `IndigoHIDMessageForHIDArbitrary`, the same call the keyboard uses with page 7.
+const CONSUMER_USAGE_PAGE: u32 = 12;
+/// Consumer-page Volume Increment / Decrement (HID Usage Tables 1.12, §15).
+const VOLUME_UP_USAGE: u32 = 233;
+const VOLUME_DOWN_USAGE: u32 = 234;
+
 /// Which hardware button to press.
 #[derive(Clone, Copy)]
 pub enum Button {
     Home,
     Lock,
+    VolumeUp,
+    VolumeDown,
 }
 
 /// Touch phase for a streamed gesture.
@@ -138,14 +166,24 @@ const KEYBOARD_USAGE_PAGE: u32 = 7;
 
 /// A warmed HID client bound to one device, plus the resolved private symbols. Created lazily; a
 /// resolution failure means this host cannot inject input (the caller degrades to view-only).
+///
+/// Bound to **one boot session**: the client's mach port dies with the session, and every method
+/// here reports `false` once it does (see [`Input::send_message`]). There is no way to revive one —
+/// `-resetHIDSession` tears a *live* session down rather than re-establishing a dead one — so the
+/// only recovery is to drop the client and warm a new one against the live device.
 pub struct Input {
     client: Retained<AnyObject>,
     symbols: Symbols,
     touch_counter: AtomicU32,
+    gate: *mut SendGate,
+    completion: *mut CaptureBlock,
+    /// Held across each send and its acknowledgement, so the one gate is never in two sends at
+    /// once. Discrete ops (tap, button, swipe) run on their own request threads.
+    send_lock: Mutex<()>,
 }
 
-// SAFETY: the sidecar serializes input per device; the HID client and C fn pointers are only touched
-// under that serialization.
+// SAFETY: the HID client and C fn pointers are only touched under `send_lock`; the gate is reached
+// only through atomics and outlives every reader, and the block is never written after it is built.
 unsafe impl Send for Input {}
 unsafe impl Sync for Input {}
 
@@ -155,13 +193,25 @@ impl Input {
     pub fn warm(device: &SimDevice) -> Option<Input> {
         let symbols = resolve_symbols()?;
         let client = make_hid_client(device)?;
+        let gate = SendGate::create()?;
         let input = Input {
             client,
             symbols,
             touch_counter: AtomicU32::new(0),
+            gate,
+            completion: Box::into_raw(Box::new(completion_block(gate))),
+            send_lock: Mutex::new(()),
         };
         input.warm_services();
         Some(input)
+    }
+
+    /// Whether a send on this client went unanswered. Such a client is finished — its acknowledgement
+    /// bookkeeping is unbalanced — and, unlike a refused send, an unanswered one is no proof that
+    /// nothing was delivered, so the caller must not repeat the operation on a fresh client.
+    pub fn is_stalled(&self) -> bool {
+        // SAFETY: the gate outlives this `Input` (see `SendGate`).
+        unsafe { &*self.gate }.stalled.load(Ordering::Acquire)
     }
 
     /// Allocate the shared identifier for one caller-driven touch stream (down → moves → up).
@@ -224,8 +274,7 @@ impl Input {
             if message.is_null() {
                 return false;
             }
-            self.send_message(message);
-            true
+            self.send_message(message)
         };
         for modifier in modifiers {
             if !send_op(*modifier, 1) {
@@ -243,11 +292,34 @@ impl Input {
         ok
     }
 
-    /// Press a hardware button (home/lock) for `hold`.
+    /// Press and release one consumer-page (page 12) HID usage — the volume rockers.
+    fn consumer_key(&self, usage: u32, hold: Duration) -> bool {
+        let Some(hid) = self.symbols.hid_arbitrary else {
+            return false;
+        };
+        let send_op = |operation: u32| -> bool {
+            // SAFETY: symbol resolved above; returns a malloc'd message consumed by send.
+            let message = unsafe { hid(TOUCH_TARGET, CONSUMER_USAGE_PAGE, usage, operation) };
+            if message.is_null() {
+                return false;
+            }
+            self.send_message(message)
+        };
+        if !send_op(1) {
+            return false;
+        }
+        sleep(hold.max(Duration::from_millis(20)));
+        send_op(2)
+    }
+
+    /// Press a hardware button for `hold`. Home and lock ride the legacy button message; the volume
+    /// rockers are consumer-page HID usages and take the arbitrary-HID path instead.
     pub fn button(&self, button: Button, hold: Duration) -> bool {
         let arg0 = match button {
             Button::Home => HOME_ARG0,
             Button::Lock => LOCK_ARG0,
+            Button::VolumeUp => return self.consumer_key(VOLUME_UP_USAGE, hold),
+            Button::VolumeDown => return self.consumer_key(VOLUME_DOWN_USAGE, hold),
         };
         // SAFETY: button fn resolved in `resolve_symbols`; direction 1=down, 2=up (0 crashes
         // backboardd). Each returns a freshly malloc'd message consumed by send (freeWhenDone).
@@ -255,14 +327,15 @@ impl Input {
         if down.is_null() {
             return false;
         }
-        self.send_message(down);
+        if !self.send_message(down) {
+            return false;
+        }
         sleep(hold.max(Duration::from_millis(20)));
         let up = unsafe { (self.symbols.button)(arg0, 2, LEGACY_BUTTON_TARGET) };
         if up.is_null() {
             return false;
         }
-        self.send_message(up);
-        true
+        self.send_message(up)
     }
 
     fn next_identifier(&self) -> u32 {
@@ -353,8 +426,7 @@ impl Input {
             return false;
         }
         patch_message(message);
-        self.send_message(message);
-        true
+        self.send_message(message)
     }
 
     fn warm_services(&self) {
@@ -368,27 +440,121 @@ impl Input {
             // SAFETY: service creators take no args and return a malloc'd message consumed by send.
             let message = unsafe { create() };
             if !message.is_null() {
+                // Priming only: a client warmed against a session that is already gone reports the
+                // dead port on the caller's first real injection, which is where the retry lives.
                 self.send_message(message);
                 sleep(Duration::from_millis(20));
             }
         }
     }
 
-    /// Dispatch a malloc'd Indigo message; `freeWhenDone: true` hands ownership to the client.
-    fn send_message(&self, message: *mut c_void) {
-        let null_obj: *mut AnyObject = ptr::null_mut();
+    /// Dispatch a malloc'd Indigo message and wait for SimulatorKit's verdict on it;
+    /// `freeWhenDone: true` hands ownership of the buffer to the client.
+    ///
+    /// `false` means the message reached nobody. The send itself is asynchronous and returns void,
+    /// so the completion handler is the *only* signal that distinguishes a delivered message from
+    /// one dropped on the floor — and dropping it on the floor is exactly what a client whose boot
+    /// session ended does. Discarding the completion (as this did until CODE-442) turns that into a
+    /// silent success: the panel stays lit, every control reports fine, and nothing reaches the
+    /// guest. Both of `HIDError`'s cases (`machPortInvalid`, `machPortNotConnected`) mean the mach
+    /// port is unusable, so a *refused* send is proof that nothing was delivered — which is what
+    /// lets the caller re-warm and retry without risking a double-send. A send that is never
+    /// answered at all carries no such proof: it retires the client instead ([`Input::is_stalled`]).
+    fn send_message(&self, message: *mut c_void) -> bool {
+        let _serialized = self.send_lock.lock().expect("hid send lock poisoned");
+        // SAFETY: the gate outlives this `Input` (see `SendGate`).
+        let gate = unsafe { &*self.gate };
+        if gate.stalled.load(Ordering::Acquire) {
+            // SAFETY: `message` is the malloc'd buffer the client would have freed for us.
+            unsafe { libc::free(message) };
+            return false;
+        }
+        gate.failed.store(false, Ordering::Relaxed);
+        // SAFETY: balanced by the `dispatch_group_leave` in `completion_invoke`.
+        unsafe { dispatch_group_enter(gate.group) };
         // SAFETY: the client implements sendWithMessage:freeWhenDone:completionQueue:completion:;
-        // message is a live malloc'd buffer the client frees.
+        // message is a live malloc'd buffer the client frees, and the block outlives every caller.
         unsafe {
             let _: () = msg_send![
                 &*self.client,
                 sendWithMessage: message,
                 freeWhenDone: true,
-                completionQueue: null_obj,
-                completion: null_obj,
+                completionQueue: gate.queue,
+                completion: self.completion.cast::<c_void>(),
             ];
         }
+        // SAFETY: DISPATCH_TIME_NOW plus a delta yields an absolute deadline for the wait.
+        let deadline =
+            unsafe { dispatch_time(DISPATCH_TIME_NOW, SEND_ACK_TIMEOUT.as_nanos() as i64) };
+        // SAFETY: the group is live and entered exactly once above.
+        if unsafe { dispatch_group_wait(gate.group, deadline) } != 0 {
+            // The acknowledgement is still outstanding, so the group's count stays unbalanced and
+            // no later wait on it would mean anything. Retire the whole client rather than try to
+            // repair it; `is_stalled` also tells the caller this failure is not safe to retry.
+            gate.stalled.store(true, Ordering::Release);
+            return false;
+        }
+        !gate.failed.load(Ordering::Acquire)
     }
+}
+
+/// The completion side of one client's sends: the queue they are acknowledged on, the group the
+/// sender parks on, and where the handler leaves its verdict.
+///
+/// Allocated once per warmed client and **never freed**, nor is the block built over it. A global
+/// block's `Block_copy` hands back the same pointer, so the callee releases *this* allocation — and
+/// that release can run after the handler has already woken the sender, which would put it on dead
+/// memory. Two small allocations per warmed client is a cheaper price than proving the last release
+/// has happened, and clients are warmed once per device outside the re-warm path.
+struct SendGate {
+    queue: *mut c_void,
+    group: *mut c_void,
+    /// Set by the handler when SimulatorKit hands back a `HIDError`.
+    failed: AtomicBool,
+    /// Set when an acknowledgement never arrived; the client is finished at that point.
+    stalled: AtomicBool,
+}
+
+impl SendGate {
+    /// `None` if libdispatch refuses the queue or group, which leaves the client unusable.
+    fn create() -> Option<*mut SendGate> {
+        // SAFETY: both creators return owned dispatch objects; they are never released (see above).
+        let queue = unsafe { dispatch_queue_create(c"linkcode.sim.hid".as_ptr(), ptr::null()) };
+        let group = unsafe { dispatch_group_create() };
+        if queue.is_null() || group.is_null() {
+            return None;
+        }
+        Some(Box::into_raw(Box::new(SendGate {
+            queue,
+            group,
+            failed: AtomicBool::new(false),
+            stalled: AtomicBool::new(false),
+        })))
+    }
+}
+
+/// `void (^)(NSError *)` — `send`'s completion handler, from the Swift signature
+/// `completion: ((Error?) -> ())?`.
+const COMPLETION_SIGNATURE: &[u8] = b"v16@?0@8\0";
+
+static COMPLETION_DESCRIPTOR: BlockDescriptor = block::descriptor(COMPLETION_SIGNATURE);
+
+/// Record whether the send errored, then release the waiter. Ordering matters: the verdict must be
+/// visible before the sender can wake.
+unsafe extern "C" fn completion_invoke(block: *mut CaptureBlock, error: *mut AnyObject) {
+    // SAFETY: `context` is the `SendGate` this block was built with, which outlives every send.
+    let gate = unsafe { &*(*block).context.cast::<SendGate>() };
+    gate.failed.store(!error.is_null(), Ordering::Release);
+    // SAFETY: balances the `dispatch_group_enter` in `send_message`.
+    unsafe { dispatch_group_leave(gate.group) };
+}
+
+fn completion_block(gate: *mut SendGate) -> CaptureBlock {
+    block::capture_block(
+        completion_invoke as *const c_void,
+        &raw const COMPLETION_DESCRIPTOR,
+        gate.cast::<c_void>(),
+    )
 }
 
 /// Patch the two byte slots the trackpad wrapper leaves uninitialised: the touch-target routing tag

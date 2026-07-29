@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -11,19 +12,23 @@ import {
   runtimeFilePath,
 } from '../config';
 import { logger } from '../logger';
-import { telemetryConfigCachePath } from '../paths';
+import { daemonChannel, telemetryConfigCachePath } from '../paths';
 
 let savedHome: string | undefined;
 
-// loadConfig() reads ~/.linkcode/config.json; point HOME at a fresh temp dir per test.
+// loadConfig() reads the channel's config.json; point HOME at a fresh temp dir per test. The
+// channel is pinned to release so these cases keep asserting plain `~/.linkcode` — running the TS
+// source would otherwise resolve as development. The channel axis itself is covered further down.
 beforeEach(() => {
   savedHome = process.env.HOME;
   process.env.HOME = mkdtempSync(join(tmpdir(), 'linkcode-config-'));
+  process.env.LINKCODE_CHANNEL = 'release';
 });
 
 afterEach(() => {
   process.env.HOME = savedHome;
   delete process.env.LINKCODE_PROFILE;
+  delete process.env.LINKCODE_CHANNEL;
   vi.restoreAllMocks();
 });
 
@@ -131,6 +136,73 @@ describe('profile-scoped state paths', () => {
     process.env.LINKCODE_PROFILE = '../evil';
     expect(() => runtimeFilePath()).toThrow(TypeError);
     expect(() => databasePath()).toThrow(TypeError);
+  });
+});
+
+// CODE-460: a local build must never land in the installed release's universe — that shared
+// `~/.linkcode` is what let a dev daemon hold 19523 and serve a release client frames it drops.
+describe('channel-scoped state paths', () => {
+  it('forks the development channel into its own state directory', () => {
+    process.env.LINKCODE_CHANNEL = 'development';
+    const root = join(process.env.HOME ?? '', '.linkcode.development');
+    expect(daemonChannel()).toBe('development');
+    expect(databasePath()).toBe(join(root, 'daemon.db'));
+    expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
+    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
+  });
+
+  it('composes the channel with a profile, dot before hyphen', () => {
+    process.env.LINKCODE_CHANNEL = 'development';
+    process.env.LINKCODE_PROFILE = 'alpha';
+    expect(databasePath()).toBe(
+      join(process.env.HOME ?? '', '.linkcode.development-alpha', 'daemon.db'),
+    );
+  });
+
+  // The dot separator is what makes this impossible to express as a profile name, so a release
+  // build can never be talked into the development directory by `--profile=development`.
+  it('keeps a profile named after the channel out of the development directory', () => {
+    process.env.LINKCODE_PROFILE = 'development';
+    expect(databasePath()).toBe(join(process.env.HOME ?? '', '.linkcode-development', 'daemon.db'));
+  });
+
+  // The `channel` identity field cannot defend against a daemon released before it existed: that
+  // peer's schema strips the unknown field and its profile-only comparison then reads a
+  // development daemon as a double-start of itself. Disjoint ranges are what actually keep an
+  // already-shipped release binary away from a development daemon's port.
+  it('starts each channel in its own port range, with no overlap between them', () => {
+    process.env.LINKCODE_CHANNEL = 'release';
+    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT);
+
+    process.env.LINKCODE_CHANNEL = 'development';
+    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT + DAEMON_PORT_HUNT_SPAN);
+
+    const releaseLastPort = daemonBasePort('release') + DAEMON_PORT_HUNT_SPAN - 1;
+    expect(daemonBasePort('development')).toBeGreaterThan(releaseLastPort);
+  });
+
+  it('defaults to development when nothing is injected — an unstamped build is a working copy', () => {
+    delete process.env.LINKCODE_CHANNEL;
+    expect(daemonChannel()).toBe('development');
+    expect(databasePath()).toBe(join(process.env.HOME ?? '', '.linkcode.development', 'daemon.db'));
+  });
+
+  it('aborts on an invalid channel instead of silently picking a universe', () => {
+    process.env.LINKCODE_CHANNEL = 'prod';
+    expect(() => daemonChannel()).toThrow(TypeError);
+    expect(() => databasePath()).toThrow(TypeError);
+  });
+
+  it('lets an injected channel outrank the build stamp', () => {
+    // The devshell pack ships a bundle stamped `release` inside a development shell.
+    process.env.LINKCODE_BUILD_CHANNEL = 'release';
+    process.env.LINKCODE_CHANNEL = 'development';
+    try {
+      expect(daemonChannel()).toBe('development');
+    } finally {
+      delete process.env.LINKCODE_BUILD_CHANNEL;
+    }
   });
 });
 

@@ -40,7 +40,41 @@ impl SimDevice {
     pub fn object_ptr(&self) -> *mut AnyObject {
         Retained::as_ptr(&self.object).cast_mut()
     }
+
+    /// Post a Darwin notification into the guest.
+    ///
+    /// This is how Simulator.app's own Device menu drives the gestures that have no HID
+    /// representation — its `simulateShake` posts `com.apple.UIKit.SimulatorShake` and UIKit inside
+    /// the guest turns it into a shake. Far simpler than the Indigo motion path, which would need a
+    /// hand-reversed CoreMotion payload to say the same thing.
+    pub fn post_darwin_notification(&self, name: &str) -> bool {
+        let name = NSString::from_str(name);
+        let mut error: *mut AnyObject = ptr::null_mut();
+        // SAFETY: the selector takes an NSString and an `(NSError**)` out-param, returning BOOL.
+        unsafe { msg_send![&*self.object, postDarwinNotification: &*name, error: &mut error] }
+    }
+
+    /// The raw `SimDeviceState`, or `None` if the KVC read fails.
+    pub fn state_raw(&self) -> Option<u64> {
+        let key = NSString::from_str("state");
+        // SAFETY: KVC read returning an NSNumber (or nil).
+        let number: *mut AnyObject = unsafe { msg_send![&*self.object, valueForKey: &*key] };
+        if number.is_null() {
+            return None;
+        }
+        // SAFETY: number is an NSNumber*; unsignedLongLongValue is its standard accessor.
+        Some(unsafe { msg_send![number, unsignedLongLongValue] })
+    }
+
+    /// Whether the device is in a live boot session. Anything but Booted means the session is
+    /// over or not yet begun.
+    pub fn is_booted(&self) -> bool {
+        self.state_raw() == Some(STATE_BOOTED)
+    }
 }
+
+/// CoreSimulator's `SimDeviceState` for Booted (0 Creating, 1 Shutdown, 2 Booting, 4 ShuttingDown).
+pub const STATE_BOOTED: u64 = 3;
 
 fn default_device_set() -> Option<Retained<AnyObject>> {
     let ctx = shared_service_context()?;

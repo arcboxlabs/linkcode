@@ -362,13 +362,16 @@ describe('ToolCallBody', () => {
       content: [{ type: 'diff', change: 'delete', path: '/repo/logo.bin', isBinary: true }],
     };
 
-    const { rerender } = render(<ToolCallBody toolCall={moved} />);
+    const { container, rerender } = render(<ToolCallBody toolCall={moved} />);
     expect(screen.getByText('/repo/old.ts → /repo/new.ts')).toBeDefined();
-    expect(screen.getByText('old')).toBeDefined();
-    expect(screen.getByText('new')).toBeDefined();
+    // The rows themselves live in @pierre/diffs' shadow root, which queries do not descend into;
+    // their content is covered by the chatFileDiff tests. Here, only that a diff mounted at all.
+    expect(container.querySelector('diffs-container')).not.toBeNull();
 
     rerender(<ToolCallBody toolCall={deleted} />);
     expect(screen.getByText('logo.bin')).toBeDefined();
+    // Binary deletes have nothing to render — the card stays header-only.
+    expect(container.querySelector('diffs-container')).toBeNull();
   });
 
   it('keeps a failed mutation explanation visible without presenting it as file content', () => {
@@ -402,24 +405,27 @@ describe('ToolCallBody', () => {
       undefined,
     ],
     ['Pi raw output', [], { content: [{ type: 'text' as const, text: 'Updated hello.py' }] }],
-  ])('keeps a %s mutation receipt outside the file navigation card', (_label, content, rawOutput) => {
-    const toolCall: ToolCall = {
-      toolCallId: 'mutation-receipt',
-      title: 'Edit',
-      kind: 'edit',
-      status: 'completed',
-      locations: [{ path: '/repo/hello.py' }],
-      content,
-      rawOutput,
-    };
+  ])(
+    'keeps a %s mutation receipt outside the file navigation card',
+    (_label, content, rawOutput) => {
+      const toolCall: ToolCall = {
+        toolCallId: 'mutation-receipt',
+        title: 'Edit',
+        kind: 'edit',
+        status: 'completed',
+        locations: [{ path: '/repo/hello.py' }],
+        content,
+        rawOutput,
+      };
 
-    render(<ToolCallBody toolCall={toolCall} />);
+      render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
-    const receiptNode = screen.getByText('Updated hello.py');
-    expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
-    expect(fileCard?.contains(receiptNode)).toBe(false);
-  });
+      const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
+      const receiptNode = screen.getByText('Updated hello.py');
+      expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
+      expect(fileCard?.contains(receiptNode)).toBe(false);
+    },
+  );
 
   it('surfaces an execute failure message without its raw result envelope', () => {
     const toolCall: ToolCall = {

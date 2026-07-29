@@ -9,7 +9,11 @@
   packages = [
     pkgs.git
     pkgs.prek
-  ];
+  ]
+  # Mobile UI e2e drives the iOS simulator, which only exists on macOS; Linux CI would pull the
+  # JVM closure for nothing. Pinned here rather than installed per-machine so the driver version
+  # is part of the toolchain like every other tool.
+  ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.maestro ];
 
   languages.rust = {
     enable = true;
@@ -72,8 +76,11 @@
     fi
   '';
 
-  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && LINKCODE_PROFILE=dev pnpm run --filter @linkcode/daemon dev";
-  scripts.desktop.exec = "LINKCODE_PROFILE=dev pnpm run --filter @linkcode/desktop dev";
+  # No LINKCODE_PROFILE here: the development channel now owns its own state dir, workspaces, and
+  # asset store (CODE-460), so a local run can never contend with an installed release. Pass
+  # --profile / LINKCODE_PROFILE yourself only to fork a second universe within this channel.
+  scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm run --filter @linkcode/daemon dev";
+  scripts.desktop.exec = "pnpm run --filter @linkcode/desktop dev";
   scripts.mobile.exec = "pnpm run --filter @linkcode/mobile ios";
-  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && LINKCODE_PROFILE=dev pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
+  scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }

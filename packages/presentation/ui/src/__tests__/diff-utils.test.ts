@@ -34,6 +34,15 @@ describe('diffStats', () => {
     ]);
     expect(diffStats(undefined, undefined, patch)).toEqual({ additions: 1, deletions: 1 });
   });
+
+  it('falls back to the text when a patch parses to no rows', () => {
+    // `chatFileDiff` renders the text in this case, so counting the empty patch instead would show
+    // a visible diff with no +/- badge. Both must pick the same source.
+    expect(diffStats('a\n', 'b\n', '')).toEqual({ additions: 1, deletions: 1 });
+    expect(diffStats('a\n', 'b\n', 'not a patch at all')).toEqual({ additions: 1, deletions: 1 });
+    // Nothing to fall back to stays zero rather than inventing rows.
+    expect(diffStats(undefined, undefined, '')).toEqual({ additions: 0, deletions: 0 });
+  });
 });
 
 describe('toolCallDiffStats', () => {

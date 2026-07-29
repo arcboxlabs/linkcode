@@ -436,6 +436,51 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         ],
       },
       {
+        // The gutter/context case: a real multi-hunk patch, so the card shows absolute line
+        // numbers, surrounding rows, and a `@@` separator between hunks. Every other diff fixture
+        // here is a 1-3 line oldText/newText pair, which exercises none of that.
+        toolCallId: 'mock-tool-edit-multi-hunk',
+        title: 'Rewire the conversation pipeline',
+        kind: 'edit',
+        status: 'completed',
+        content: [
+          {
+            type: 'diff',
+            change: 'modify',
+            path: 'packages/client/core/src/conversation.ts',
+            patch: {
+              format: 'git_patch',
+              text: [
+                '@@ -12,7 +12,8 @@',
+                ' ',
+                ' const MAX_ITEMS = 500;',
+                ' ',
+                '-export function foldTurn(items: ConversationItem[]): Turn {',
+                '+/** Folds one turn, dropping items past the cap. */',
+                '+export function foldTurn(items: readonly ConversationItem[]): Turn {',
+                '   const turn = createTurn();',
+                '   for (const item of items) {',
+                '     turn.push(item);',
+                '@@ -84,9 +85,11 @@',
+                '   return turn;',
+                ' }',
+                ' ',
+                '-function createTurn(): Turn {',
+                '-  return { items: [], tokens: 0 };',
+                '+function createTurn(seed?: Partial<Turn>): Turn {',
+                '+  return { items: [], tokens: 0, ...seed };',
+                ' }',
+                ' ',
+                ' export function isBoundary(item: ConversationItem): boolean {',
+                '-  return item.kind === "user";',
+                '+  return item.kind === "user" || item.kind === "compaction";',
+                ' }',
+              ].join('\n'),
+            },
+          },
+        ],
+      },
+      {
         toolCallId: 'mock-tool-write-plan',
         title: 'Write PLAN.md',
         kind: 'edit',

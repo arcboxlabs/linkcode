@@ -103,7 +103,7 @@ function SubagentRailRow({
   return (
     <button
       className={cn(
-        'flex w-full flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted',
+        'flex w-full flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted active:bg-muted',
         selected && 'bg-muted',
       )}
       onClick={() => onSelect(toolCall.toolCallId)}

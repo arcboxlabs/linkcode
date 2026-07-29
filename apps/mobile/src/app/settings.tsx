@@ -1,20 +1,9 @@
-import {
-  Button,
-  Form,
-  Host,
-  HStack,
-  Image,
-  Link,
-  Section,
-  Spacer,
-  Text,
-  Toggle,
-  VStack,
-} from '@expo/ui/swift-ui';
-import { buttonStyle, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
+import { Form, Host, Link, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslations } from 'use-intl';
+import { NavigationRow } from '../components/form-row';
 import { useCloudAccount } from '../runtime/cloud/account';
 import { setMobileProductAnalyticsEnabled } from '../runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '../stores/analytics-store';
@@ -24,35 +13,6 @@ const TERMS_OF_SERVICE_URL = 'https://linkcode.ai/terms';
 const SUPPORT_URL = 'https://linkcode.ai/support';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const TERTIARY = foregroundStyle({ type: 'hierarchical', style: 'tertiary' });
-
-/** A form row that pushes a route. SwiftUI draws the disclosure chevron from
- *  `NavigationLink`, which `@expo/ui` does not expose, so the row draws its own. */
-function NavigationRow({
-  title,
-  subtitle,
-  onPress,
-}: {
-  title: string;
-  subtitle?: string;
-  onPress: () => void;
-}) {
-  return (
-    // `plain` keeps the row in the label colour; a Form's default button style tints it accent.
-    <Button onPress={onPress} modifiers={[buttonStyle('plain')]}>
-      <HStack spacing={8}>
-        <VStack alignment="leading" spacing={2}>
-          <Text>{title}</Text>
-          {subtitle ? (
-            <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>{subtitle}</Text>
-          ) : null}
-        </VStack>
-        <Spacer />
-        <Image systemName="chevron.right" size={13} modifiers={[TERTIARY]} />
-      </HStack>
-    </Button>
-  );
-}
 
 /** App settings: account + host management entries plus the About/contract summary. */
 export default function SettingsScreen(): React.ReactNode {

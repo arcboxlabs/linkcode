@@ -6,10 +6,18 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 
 ## State surfaces — all under the profile's state dir
 
-- Default state dir is `~/.linkcode/`; `LINKCODE_PROFILE=<name>` (`[a-z0-9-]`, ≤32 chars, invalid
-  aborts boot) forks the whole universe to the sibling `~/.linkcode-<name>/` — including `hq.json` /
-  `device-key.pem`, so each profile registers as its own HQ device (deliberate: the relay allows one
-  uplink per device id). `~/LinkCode` workspaces and the managed asset store stay shared.
+- The state dir is picked by **channel × profile** (CODE-460). Channel comes from
+  `daemonChannel()` (`src/paths.ts`): injected `LINKCODE_CHANNEL` → tsup's build-time
+  `LINKCODE_BUILD_CHANNEL` stamp (`release`) → `development`. So `~/.linkcode/` is the released
+  app's alone and running the source lands in `~/.linkcode.development/`; the suffix is
+  dot-separated because profile names forbid dots, making collision with `--profile=development`
+  impossible. `LINKCODE_PROFILE=<name>` (`[a-z0-9-]`, ≤32 chars, invalid aborts boot) then forks
+  the sibling `~/.linkcode[.development]-<name>/` — including `hq.json` / `device-key.pem`, so each
+  universe registers as its own HQ device (deliberate: the relay allows one uplink per device id).
+  Workspaces (`~/LinkCode` vs `~/LinkCode Development`) and the managed asset store fork by channel
+  but are shared across a channel's profiles. **Resolve the channel per call, never at module
+  load** — `instrument.ts` derives a state path in its module body, and `--import` runs it before
+  `index.ts` (the CODE-166 bug class).
 - **Paths are owned by `src/config.ts`** (`configPath` / `databasePath` / `runtimeFilePath`) — never
   scatter `homedir()` joins elsewhere. `os.homedir()` is read at call time, so a fake `$HOME` fully
   redirects config/db/runtime (this is what isolates an E2E daemon).
@@ -25,18 +33,27 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 
 ## Ports & one-per-profile
 
-- Default listener is `socket.io` on `127.0.0.1:19523` (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`
-  in `packages/foundation/schema`). `LINKCODE_PORT` / `LINKCODE_HOST` override every listener. On `EADDRINUSE` a
-  listener hunts **upward** up to 10 ports (19523–19532); clients must read `runtime.json`, never
-  assume 19523.
-- **One daemon per profile**, enforced by the daemon (not the desktop supervisor): `main()` calls
+- Default listener is `socket.io` on `127.0.0.1:daemonBasePort(channel)` — release **19523**
+  (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`), development **19533**. `LINKCODE_PORT` /
+  `LINKCODE_HOST` override every listener. On `EADDRINUSE` a listener hunts **upward** through its
+  own channel's span only (release 19523–19532, development 19533–19542); clients must read
+  `runtime.json`, never assume a port.
+- **The ranges are disjoint for a reason that outlives the `channel` field.** That field cannot
+  protect against a daemon shipped before it existed: such a peer parses a newer identity through a
+  schema lacking the key, zod strips it, and its profile-only comparison then reads two default
+  profiles as equal — so an installed old release exits 3 against a development daemon holding its
+  port, and its supervisor stands down. Keeping the channels off each other's ports is the only fix
+  that reaches already-shipped binaries. Never widen a span into the neighbouring range.
+- **One daemon per universe (channel × profile)**, enforced by the daemon (not the desktop supervisor): `main()` calls
   `findRunningDaemon()` — parse the profile's `runtime.json` → pid alive? → `GET /linkcode` identity
   pid matches? A live one makes the new process log `already running (pid N)` and `process.exit(3)`
   (`DAEMON_EXIT_ALREADY_RUNNING`) — an **explicit** exit because Electron's `utilityProcess` keeps the
-  parent IPC channel and the event loop alive forever. The identity (and `runtime.json`) carries an
-  optional `profile` field (absent = default profile): the port hunt treats a live daemon of
-  **another** profile as a port neighbor and hunts past it, so profiles coexist on adjacent ports.
-  Health: `curl http://127.0.0.1:19523/linkcode`.
+  parent IPC channel and the event loop alive forever. The identity (and `runtime.json`) carries
+  optional `profile` and `channel` fields (absent = default profile / release, which is what every
+  pre-split daemon is): the port hunt treats a live daemon of **another** universe as a port
+  neighbor and hunts past it. Across channels the disjoint ranges already keep them apart, so this
+  comparison mainly covers profiles and a `LINKCODE_PORT` that forces two channels onto one port.
+  Health: `curl http://127.0.0.1:19523/linkcode` (release), `:19533` (development).
 
 ## Packaging: spawn, binaries & bundle
 
@@ -64,8 +81,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   kicks off —
   it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
-  agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH
-  (CODE-76); pi runs in-process and spawns nothing — its SDK is a managed npm-closure download
+  agent install completes (CODE-112). opencode spawns `opencode serve` from the probe-resolved
+  binary (managed `agent:opencode` asset → detected user install, CODE-76; bare-name PATH
+  fallback for unprobed hosts); pi runs in-process and spawns nothing — its SDK is a managed npm-closure download
   (CODE-219): packaged apps exclude the closure from node_modules and the adapter imports the
   store's installed entry (`agentRuntimeProber.resolveEntry`), same consent/refresh rules.
 - **PTY sidecar** is a Rust binary (`linkcode-pty`, `pnpm -F @linkcode/daemon run build:rust`);

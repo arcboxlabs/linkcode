@@ -1,4 +1,4 @@
-import type { AdapterFactory } from '@linkcode/agent-adapter';
+import type { AdapterFactory, PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
 import type { AgentRuntimes } from '@linkcode/schema';
 import type { LoginBinaryResolver } from './agent/login-service';
 import type { ProviderConfigStore } from './agent/provider-config';
@@ -8,6 +8,7 @@ import type { LoopStore, ScheduleStore } from './automation';
 import type { GitService } from './git/git-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { SessionStore } from './session/session-store';
+import type { SimulatorConsentService } from './simulator/consent';
 import type { SimulatorMcpProvider } from './simulator/mcp';
 import type { SimulatorService } from './simulator/service';
 import type { PtyBackend } from './terminal/pty-backend';
@@ -17,6 +18,8 @@ import type { WorkspaceStore } from './workspace/workspace-store';
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
   factory?: AdapterFactory;
+  /** Read-only native plugin providers aggregated by the Engine plugin service. */
+  pluginFactory?: PluginProviderAdapterFactory;
   sessionStore?: SessionStore;
   ptyBackend?: PtyBackend;
   /** iOS Simulator policy service, daemon-constructed around the sidecar client so the daemon's
@@ -26,6 +29,10 @@ export interface EngineDeps {
   /** Mints the per-session simulator MCP endpoint injected into MCP-capable agents' start
    * options; absent hosts inject nothing. */
   simulatorMcp?: SimulatorMcpProvider;
+  /** Per-device agent-consent gate, daemon-constructed for the same reason as `simulators`: the
+   * MCP endpoint consults it before every tool call, and the engine answers the wire about it.
+   * The default is volatile and never asks anyone, so an embedding without one is not gated. */
+  simulatorConsent?: SimulatorConsentService;
   providerStore?: ProviderConfigStore;
   git?: GitService;
   fileSuggest?: FileSuggestService;
@@ -52,4 +59,6 @@ export interface EngineDeps {
   scheduleStore?: ScheduleStore;
   /** Durable store for loops; the in-memory default keeps bare engines and tests dependency-free. */
   loopStore?: LoopStore;
+  /** Enable agent browser code-mode tools. Default-off until the desktop host registers. */
+  browserToolsEnabled?: boolean;
 }

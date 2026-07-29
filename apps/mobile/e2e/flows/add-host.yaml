@@ -1,0 +1,69 @@
+# Adding a host by URL, end to end through the registry — still daemon-free: the point is that
+# the *typed* URL reaches the store, and an address with nothing listening proves that just as
+# well as a live one, because the host screen names the URL it failed to reach.
+appId: com.arcboxlabs.linkcode.mobile
+---
+# `launchApp` alone reuses a running process, so a flow that ran before this one leaves its
+# navigation stack in place and the deep link pushes a *second* connect screen over it; taps then
+# land on the covered copy and the typing goes nowhere. Stopping first makes the flow independent
+# of run order without `clearState`, which would wipe the dev client's Metro URL.
+- stopApp
+- launchApp
+# A cold start redirects to the last active host once the persisted registry finishes hydrating,
+# and that redirect can land *after* the deep link and replace the screen it opened — asserting
+# right away can even pass in the gap before it does. Retrying re-issues the link; by the second
+# attempt hydration is long done and the link is the last word.
+- retry:
+    maxRetries: 3
+    commands:
+      - openLink: linkcode://connect
+      - waitForAnimationToEnd
+      - assertVisible: 'Connect to a host'
+      - assertVisible: 'Add a host by URL'
+
+# The manual form is a DisclosureGroup; signed out it starts expanded, but a previous run in this
+# simulator may have collapsed it, so open it whenever the fields are not already on screen.
+- runFlow:
+    when:
+      notVisible: 'Host URL'
+    commands:
+      - tapOn: 'Add a host by URL'
+
+- tapOn:
+    id: 'host-name-input'
+- inputText: 'Probe'
+# Typing goes to whatever holds focus, so a tap that missed the field would silently type into
+# nothing; assert the field took it rather than discovering it three steps later.
+- assertVisible: 'Probe'
+# SwiftUI scrolls the *focused* field clear of the keyboard, which leaves the next one under it;
+# tapping a covered element lands on the keyboard, so bring the form up before reaching for it.
+- scroll
+- tapOn:
+    id: 'host-url-input'
+- inputText: 'http://127.0.0.1:19599'
+# Submitting from the keyboard rather than the "Add host" button: the button sits under the
+# keyboard, a tap on a covered element lands on the keyboard instead, and `hideKeyboard` has no
+# effect on a SwiftUI form. This is the return key the field advertises with `submitLabel('go')`.
+- pressKey: Enter
+
+# Naming the URL back is the assertion that matters: it can only come from text that made it
+# out of the field, into the store, and back onto a screen.
+- assertVisible: 'Unable to reach the host at http://127.0.0.1:19599.'
+
+# Best-effort tidy-up, deliberately `optional`. Removal is a list swipe action, and revealing one
+# needs a drag longer than Maestro's element-relative swipe produces — an element swipe either does
+# nothing or lands as a tap that opens the host. Only a screen-percentage drag is long enough, and
+# that makes the row's position an assumption rather than a selector, so it must not be able to
+# fail the flow. Deep-linked rather than `back` because the host screen hides its header.
+# Consequence: a run whose cleanup misses leaves a saved host behind. `first-run` and `settings`
+# are written to be indifferent to leftover hosts; keep any new flow that way too.
+- openLink: linkcode://connect
+- assertVisible: 'Saved hosts'
+- swipe:
+    start: '85%, 50%'
+    end: '15%, 50%'
+    duration: 600
+    optional: true
+- tapOn:
+    text: 'Remove'
+    optional: true

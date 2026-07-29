@@ -65,27 +65,27 @@ catalog:
 
   # Client data layer
   swr: ^2.4.2
-  use-intl: ^4.13.1
+  use-intl: ^4.13.3
   zustand: ^5.0.14
-  lucide-react: ^1.23.0
+  lucide-react: ^1.25.0
 
   # Web build
-  vite: ^8.1.4
-  "@vitejs/plugin-react": ^6.0.3
+  vite: ^8.1.5
+  "@vitejs/plugin-react": ^6.0.4
   "@rolldown/plugin-babel": ^0.2.3
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
-  tailwindcss: ^4.3.2
+  tailwindcss: ^4.3.3
   "@tailwindcss/postcss": ^4.3.2
-  "@tailwindcss/vite": ^4.3.2
+  "@tailwindcss/vite": ^4.3.3
 
   # Desktop / Electron
-  electron: ^42.4.1
+  electron: ^43.2.0
   electron-builder: ^26.15.3
 
   # Server / communication
-  ws: ^8.21.0
+  ws: ^8.21.1
   "@types/ws": ^8.18.1
   socket.io: ^4.8.3
   socket.io-client: ^4.8.3
@@ -118,7 +118,6 @@ minimumReleaseAgeExclude:
   - "expo-apple-authentication@57.0.1"
   - "expo-crypto@57.0.1"
   - "@earendil-works/pi-tui@0.80.6"
-  - electron@42.4.1
   - react-router@7.18.0
   - "@shikijs/core@4.3.0"
   - "@shikijs/engine-javascript@4.3.0"
@@ -132,7 +131,7 @@ minimumReleaseAgeExclude:
   - "@expo/ui@56.0.19"
   - expo-constants@56.0.19
   - expo-router@56.2.12
-  - foxts@5.6.0
+  - foxts
   - uniwind@1.10.0
   - "@expo/cli@56.1.17"
   - "@expo/config-plugins@56.0.10"
@@ -180,6 +179,7 @@ minimumReleaseAgeExclude:
   - typescript@7.0.2
   - "@eslint-sukka/*"
   - "eslint-*-sukka"
+  - "eslint-plugin-vibe-proof"
   - "@next/eslint-plugin-next@16.2.11"
   # Upstream fixes for our terminal font reports, adopted same-day: restty#24/#25 + text-shaper#3
   # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).

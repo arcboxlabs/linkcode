@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -20,7 +20,10 @@
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
     "e2e:simulator": "node e2e/simulator-panel.e2e.mts",
+    "e2e:thread-menu": "node e2e/thread-menu.e2e.mts",
     "e2e:window-bounds": "node e2e/window-bounds.e2e.mts",
+    "e2e:browser-tabs": "node e2e/browser-tabs.e2e.mts",
+    "e2e:browser-broker": "node e2e/browser-broker.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
@@ -39,7 +42,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@electron/asar": "^4.2.0",
+    "@electron/asar": "^4.2.1",
     "@hookform/resolvers": "^5.4.0",
     "@iconify-json/material-icon-theme": "catalog:",
     "@linkcode/ui": "workspace:*",
@@ -66,7 +69,7 @@
     "playwright-core": "^1.61.1",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-hook-form": "^7.81.0",
+    "react-hook-form": "^7.82.0",
     "swr": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",

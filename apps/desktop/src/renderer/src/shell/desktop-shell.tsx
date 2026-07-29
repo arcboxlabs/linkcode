@@ -1,5 +1,5 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
-import type { ComposerAttachment } from '@linkcode/ui';
+import type { ComposerAttachment, FileManagerKind, SessionTitleMenuEditor } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
@@ -8,6 +8,7 @@ import {
   HostFooter,
   NewSessionSurface,
   SessionSidebar,
+  SessionTitleMenu,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import {
@@ -20,11 +21,15 @@ import {
   AttachedTerminalPanel,
   isAbsoluteFilePath,
   locateFileArtifact,
+  SimulatorAutoReveal,
+  suppressSimulatorAutoReveal,
   TerminalPanel,
+  useBrowserHostRegistration,
   useCloudHosts,
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
+import { toastManager } from 'coss-ui/components/toast';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -34,6 +39,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
 import { useCloudAccount } from '../cloud-auth/use-cloud-account';
+import { BrowserCommandExecutor } from './browser/browser-command-executor';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -141,6 +147,9 @@ export function DesktopShell({
       closeRightFileTab: state.closeRightFileTab,
       setActiveRightFileTab: state.setActiveRightFileTab,
       openBrowserUrl: state.openBrowserUrl,
+      addRightBrowserTab: state.addRightBrowserTab,
+      closeRightBrowserTab: state.closeRightBrowserTab,
+      setActiveRightBrowserTab: state.setActiveRightBrowserTab,
       openRightTerminalAttachTab: state.openRightTerminalAttachTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
@@ -164,6 +173,7 @@ export function DesktopShell({
   );
   const desktopPlatform = systemBridge.app.platform;
   const [appVersion, setAppVersion] = useState('');
+  const [editors, setEditors] = useState<SessionTitleMenuEditor[]>([]);
   const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
   const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
   const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
@@ -237,7 +247,43 @@ export function DesktopShell({
     [systemBridge],
   );
 
+  // Probed once per window: main caches the detection for its whole process lifetime anyway.
+  useEffect(
+    (signal) => {
+      void systemBridge.shell.listEditors().then((value) => {
+        if (!signal.aborted) setEditors(value);
+      });
+    },
+    [systemBridge],
+  );
+
+  const openBrowserTab = useDesktopShellStore((state) => state.openBrowserTab);
+  useEffect(() => systemBridge.browser.onOpenTab(openBrowserTab), [systemBridge, openBrowserTab]);
+
+  // Broker commands drive the same resident webviews the user sees. The connection gate remounts
+  // this shell for each client generation, so registration follows every reconnect.
+  const { current: browserExecutor } = useSingleton(() => {
+    const executor = new BrowserCommandExecutor();
+    return executor.execute.bind(executor);
+  });
+  useBrowserHostRegistration(browserExecutor);
+
+  const tBrowser = useTranslations('workbench.preview.browser');
+  useEffect(
+    () =>
+      systemBridge.browser.onDownloadDone(({ filename, state }) => {
+        // 'cancelled' is the user dismissing the save dialog — nothing to report.
+        if (state === 'completed') {
+          toastManager.add({ title: tBrowser('downloadCompleted', { filename }) });
+        } else if (state === 'interrupted') {
+          toastManager.add({ title: tBrowser('downloadFailed', { filename }), type: 'error' });
+        }
+      }),
+    [systemBridge, tBrowser],
+  );
+
   const active = activeSession;
+  const activeSessionId = active?.sessionId ?? null;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -262,6 +308,9 @@ export function DesktopShell({
     closeRightFileTab,
     setActiveRightFileTab,
     openBrowserUrl,
+    addRightBrowserTab,
+    closeRightBrowserTab,
+    setActiveRightBrowserTab,
     openRightTerminalAttachTab,
     resetSidebarSize,
     resetRightPanelSize,
@@ -410,7 +459,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
-        activeSessionId={active?.sessionId ?? null}
+        activeSessionId={activeSessionId}
         themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
@@ -419,13 +468,23 @@ export function DesktopShell({
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
         onAddSection={addRightSection}
-        onCloseSection={closeRightSection}
+        onCloseSection={(section) => {
+          // Closing the simulator section is an explicit "not now" — stop auto-revealing it for
+          // this thread, however busy the agent gets on the device afterwards.
+          if (section === 'simulator' && activeSessionId !== null) {
+            suppressSimulatorAutoReveal(activeSessionId);
+          }
+          closeRightSection(section);
+        }}
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}
         onSelectFileTab={setActiveRightFileTab}
         onCloseFileTab={closeRightFileTab}
         onOpenFileTab={openRightFileTab}
+        onSelectBrowserTab={setActiveRightBrowserTab}
+        onCloseBrowserTab={closeRightBrowserTab}
+        onAddBrowserTab={addRightBrowserTab}
         onToggleMax={() => toggleMaxPanel('right')}
       />
     );
@@ -476,13 +535,16 @@ export function DesktopShell({
         />
       ),
     }));
-    // The browser webview lives here permanently: unmounting or DOM-moving a webview
-    // reloads it, so section switches only toggle its visibility.
-    items.push({
-      id: 'browser-resident',
-      active: rightPanel.activeSection === 'browser',
-      node: <BrowserWebviewPane />,
-    });
+    // Browser webviews live here permanently: unmounting or DOM-moving a webview
+    // reloads it, so section and tab switches only toggle visibility.
+    const activeIsBrowser = rightPanel.activeSection === 'browser';
+    for (const tab of rightPanel.browser.tabs) {
+      items.push({
+        id: tab.id,
+        active: activeIsBrowser && tab.id === rightPanel.browser.activeTabId,
+        node: <BrowserWebviewPane systemBridge={systemBridge} tabId={tab.id} url={tab.url} />,
+      });
+    }
     return createPortal(<PanelTabContentStack items={items} />, host);
   }
 
@@ -545,6 +607,12 @@ export function DesktopShell({
       data-shell-vertical-animating={verticalAnimating ? '' : undefined}
       data-shell-seam={sidebarTransition.paneVisible ? '' : undefined}
     >
+      {/* Headless: an agent reaching for a simulator brings the section forward once, so the user
+          sees the device it is working on without having to remember to add the section. */}
+      <SimulatorAutoReveal
+        sessionId={activeSessionId}
+        onReveal={() => openRightPanelSection('simulator')}
+      />
       <DesktopChrome
         header={header}
         navigation={navigation}
@@ -596,6 +664,27 @@ export function DesktopShell({
               className="pointer-events-auto [-webkit-app-region:no-drag]"
             />
           </>
+        }
+        titleMenu={
+          titledSession ? (
+            <SessionTitleMenu
+              // The header title is what the chrome actually renders — copy what is on screen.
+              title={header.title}
+              pinned={pinnedSessionIds.includes(titledSession.sessionId)}
+              fileManager={fileManagerKind(desktopPlatform)}
+              editors={editors}
+              onTogglePin={() => onToggleSessionPinned(titledSession.sessionId)}
+              // Both reject on a real failure (a missing path, a launch that never spawned);
+              // nothing here can recover, so the rejection surfaces through error reporting.
+              onReveal={() => {
+                void systemBridge.shell.revealPath(titledSession.cwd);
+              }}
+              onOpenInEditor={(editorId) => {
+                void systemBridge.shell.openInEditor(editorId, titledSession.cwd);
+              }}
+              onClose={() => onCloseSession(titledSession.sessionId)}
+            />
+          ) : undefined
         }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}
@@ -673,6 +762,12 @@ export function DesktopShell({
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
   );
+}
+
+/** The system plane's platform, narrowed to the file manager the reveal item should name. */
+function fileManagerKind(platform: NodeJS.Platform): FileManagerKind {
+  if (platform === 'darwin' || platform === 'win32') return platform;
+  return 'other';
 }
 
 function createPanelContentHost(): HTMLDivElement {

@@ -5,6 +5,7 @@ import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
 import type { AutomationRequestHandler } from '../automation/request-handler';
+import type { BrowserRequestHandler } from '../browser/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import { observeRequest } from '../observability';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
@@ -29,6 +30,7 @@ interface RequestHandlers {
   readonly automation: AutomationRequestHandler;
   readonly terminal: TerminalRequestHandler;
   readonly simulator: SimulatorRequestHandler;
+  readonly browser: BrowserRequestHandler;
 }
 
 export class WireRequestRouter {
@@ -147,6 +149,9 @@ export class WireRequestRouter {
       case 'simulator.swipe':
       case 'simulator.button':
       case 'simulator.rotate':
+      case 'simulator.shake':
+      case 'simulator.describe-ui':
+      case 'simulator.install-runtime':
       case 'simulator.stream.start':
       case 'simulator.stream.stop': {
         return this.handlers.simulator.handle(p);
@@ -155,6 +160,12 @@ export class WireRequestRouter {
       case 'agent-login.submit-code':
       case 'agent-login.cancel': {
         return this.handlers.agent.handle(p);
+      }
+      case 'browser.host.register':
+      case 'browser.host.detached':
+      case 'browser.command.result':
+      case 'browser.execute': {
+        return this.handlers.browser.handle(p);
       }
       case 'ping': {
         return Effect.sync(() => this.transport.send(createWireMessage({ kind: 'pong' })));

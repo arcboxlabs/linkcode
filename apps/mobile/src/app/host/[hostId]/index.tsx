@@ -1,25 +1,26 @@
-import type { BottomSheetModal } from '@gorhom/bottom-sheet';
+import {
+  Form,
+  Host,
+  ProgressView,
+  Section,
+  Button as UIButton,
+  Text as UIText,
+} from '@expo/ui/swift-ui';
+import { foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useSessions } from '@linkcode/client-core';
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
 import {
   AGENT_LABELS,
-  EmptyState,
   groupThreadsByWorkspace,
   repositoryLabel,
-  ScreenScroll,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, SearchField, Spinner, useThemeColor } from 'heroui-native';
-import {
-  MessagesSquareIcon,
-  SettingsIcon,
-  SquarePenIcon,
-  SquareTerminalIcon,
-} from 'lucide-react-native';
-import { useRef, useState } from 'react';
-import { Pressable, RefreshControl, Text, View } from 'react-native';
+import { SearchField, useThemeColor } from 'heroui-native';
+import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
+import { useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import { HeaderIconButton } from '../../../components/navigation';
@@ -28,6 +29,8 @@ import { ThreadList } from '../../../components/thread-list';
 import { captureMobileProductEvent } from '../../../runtime/product-analytics';
 import { useWorkspaces } from '../../../runtime/use-workspaces';
 import { useHostRegistryStore } from '../../../stores/host-store';
+
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 /** The title a thread is listed and searched under — the same fallback the row renders. */
 function threadTitle(session: SessionInfo): string {
@@ -44,11 +47,10 @@ export default function ThreadsScreen(): React.ReactNode {
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
   const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
-  const [muted, background, foreground] = useThemeColor(['muted', 'background', 'foreground']);
+  const [background, foreground] = useThemeColor(['background', 'foreground']);
   const insets = useSafeAreaInsets();
-  const sheetRef = useRef<BottomSheetModal>(null);
 
-  const [refreshing, setRefreshing] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -71,12 +73,7 @@ export default function ThreadsScreen(): React.ReactNode {
   };
 
   const onRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([refresh(), refreshWorkspaces()]);
-    } finally {
-      setRefreshing(false);
-    }
+    await Promise.all([refresh(), refreshWorkspaces()]);
   };
 
   const onCreate = async (kind: AgentKind, cwd: string) => {
@@ -99,7 +96,7 @@ export default function ThreadsScreen(): React.ReactNode {
         throw error;
       }
       await refreshWorkspaces();
-      sheetRef.current?.dismiss();
+      setSheetOpen(false);
       router.push(`/host/${hostId}/session/${sessionId}`);
     } finally {
       setCreating(false);
@@ -137,32 +134,39 @@ export default function ThreadsScreen(): React.ReactNode {
           {host?.name ?? ''}
         </Text>
       </View>
-      <ScreenScroll
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+      {/* The list needs the viewport as its proposed size, otherwise SwiftUI collapses it. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         {loading ? (
-          <View className="items-center py-8">
-            <Spinner />
-          </View>
+          <Form>
+            <Section>
+              <ProgressView />
+            </Section>
+          </Form>
         ) : groups.length === 0 ? (
-          <EmptyState
-            icon={<MessagesSquareIcon size={36} color={muted} strokeWidth={1.5} />}
-            title={t('emptyTitle')}
-            hint={t('emptyHint')}
-            action={
-              <Button size="sm" onPress={() => sheetRef.current?.present()}>
-                <Button.Label>{t('newThread')}</Button.Label>
-              </Button>
-            }
-          />
+          // A query that matched nothing is not an empty inbox: saying "no threads yet" there
+          // reads as though the existing threads were lost, and offering to start one is no
+          // remedy for a bad search.
+          <Form>
+            {needle === '' ? (
+              <Section footer={<UIText>{t('emptyHint')}</UIText>}>
+                <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
+                <UIButton label={t('newThread')} onPress={() => setSheetOpen(true)} />
+              </Section>
+            ) : (
+              <Section>
+                <UIText modifiers={[SECONDARY]}>{t('searchEmpty')}</UIText>
+              </Section>
+            )}
+          </Form>
         ) : (
           <ThreadList
             groups={groups}
             labelFor={groupLabel}
             onOpenThread={(sessionId) => router.push(`/host/${hostId}/session/${sessionId}`)}
+            onRefresh={onRefresh}
           />
         )}
-      </ScreenScroll>
+      </Host>
       <View
         className="flex-row items-center gap-2 px-5 pt-2"
         style={{ paddingBottom: Math.max(insets.bottom, 12) }}
@@ -179,7 +183,7 @@ export default function ThreadsScreen(): React.ReactNode {
         <Pressable
           accessibilityRole="button"
           className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5"
-          onPress={() => sheetRef.current?.present()}
+          onPress={() => setSheetOpen(true)}
           style={({ pressed }) => ({ backgroundColor: foreground, opacity: pressed ? 0.7 : 1 })}
         >
           <SquarePenIcon size={15} color={background} />
@@ -189,7 +193,8 @@ export default function ThreadsScreen(): React.ReactNode {
         </Pressable>
       </View>
       <NewThreadSheet
-        ref={sheetRef}
+        isPresented={sheetOpen}
+        onIsPresentedChange={setSheetOpen}
         workspaces={workspaces}
         creating={creating}
         onCreate={onCreate}

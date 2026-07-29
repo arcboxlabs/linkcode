@@ -2,19 +2,20 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig } from '@linkcode/schema';
+import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
-  DAEMON_DEFAULT_PORT,
+  daemonBasePort,
   ProviderConfigSchema,
+  SimulatorConsentStateSchema,
 } from '@linkcode/schema';
-import { WORKSPACES_DIRNAME } from '@linkcode/schema/product';
+import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
-import { daemonProfile, daemonStateDir } from './paths';
+import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 
-export { daemonProfile } from './paths';
+export { daemonChannel, daemonProfile } from './paths';
 
 /**
  * Daemon configuration: `config.json` in the profile's state dir (optional) with env overrides.
@@ -29,9 +30,10 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
+  simulatorConsent: SimulatorConsentState;
 }
 
-const DEFAULT_PORT = DAEMON_DEFAULT_PORT;
 const DEFAULT_HOST = '127.0.0.1';
 
 interface ConfigFile {
@@ -40,6 +42,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  simulatorConsent?: unknown;
 }
 
 function configPath(): string {
@@ -53,7 +56,7 @@ export function databasePath(): string {
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
 export function runtimeFilePath(): string {
-  return daemonRuntimeFilePath(daemonProfile());
+  return daemonRuntimeFilePath(daemonChannel(), daemonProfile());
 }
 
 /** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
@@ -77,7 +80,7 @@ export function deviceKeysDir(): string {
  * independently — a system-plane invariant enforced regardless of which client is connected.
  */
 export function chatWorkspaceRoot(): string {
-  return join(homedir(), WORKSPACES_DIRNAME);
+  return join(homedir(), workspacesDirName(daemonChannel()));
 }
 
 export function loadConfig(): DaemonConfig {
@@ -101,7 +104,28 @@ export function loadConfig(): DaemonConfig {
     ),
     providers: parseProviders(file.providers),
     accounts: parseAccounts(file.accounts),
+    simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
+}
+
+/**
+ * A malformed blob falls back to "nothing decided yet", which re-asks rather than silently
+ * granting: consent is the one field where losing state must fail closed.
+ */
+function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
+  const empty: SimulatorConsentState = { entries: [], agentToolsEnabled: true };
+  if (raw === undefined) return empty;
+  const parsed = SimulatorConsentStateSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn({ operation: 'config.load' }, 'Dropping invalid simulator consent config');
+    return empty;
+  }
+  return parsed.data;
+}
+
+/** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
+export function saveSimulatorConsent(state: SimulatorConsentState): void {
+  writeConfigField('simulatorConsent', state);
 }
 
 /**
@@ -167,7 +191,10 @@ export function saveAccounts(accounts: Accounts): void {
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
+function writeConfigField(
+  key: 'providers' | 'accounts' | 'simulatorConsent',
+  value: unknown,
+): void {
   const path = configPath();
   let file: Record<string, unknown> = {};
   try {
@@ -184,7 +211,7 @@ function writeConfigField(key: 'providers' | 'accounts', value: unknown): void {
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {
   return {
     type: 'socket.io',
-    port: parsePort(file.port, DEFAULT_PORT),
+    port: parsePort(file.port, daemonBasePort(daemonChannel())),
     host: parseString(file.hostname, DEFAULT_HOST),
   };
 }
@@ -194,7 +221,7 @@ function parseListener(value: unknown): DaemonListenerConfig | null {
   if (value.type !== 'socket.io' && value.type !== 'ws') return null;
   return {
     type: value.type,
-    port: parsePort(value.port, DEFAULT_PORT),
+    port: parsePort(value.port, daemonBasePort(daemonChannel())),
     host: parseString(value.host ?? value.hostname, DEFAULT_HOST),
   };
 }

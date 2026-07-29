@@ -21,7 +21,7 @@ copyright: Copyright © 2026 ArcBox, Inc. All rights reserved.
 
 # electron-builder needs an exact Electron version (it downloads per-platform binaries) and
 # cannot read pnpm's `catalog:` protocol. Keep in sync with the `electron` catalog entry.
-electronVersion: 42.4.1
+electronVersion: 43.2.0
 
 # Keep only the Chromium locales for languages the app ships (packages/presentation/i18n/src/index.ts —
 # extend this list when a locale is added there). Drops ~48 MB of framework .lproj/.pak data.

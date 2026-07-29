@@ -114,7 +114,7 @@ export function ApprovalPolicyMenu({
       >
         <ShieldIcon />
         <span className="@max-[480px]/composer:sr-only">{active.name}</span>
-        <ChevronDownIcon className="size-3 text-muted-foreground/72 @max-[480px]/composer:hidden" />
+        <ChevronDownIcon className="size-3 text-label-tertiary @max-[480px]/composer:hidden" />
       </MenuTrigger>
       <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
         <MenuGroup>
@@ -284,7 +284,7 @@ export function ModelSelectorMenu({
             </span>
           </span>
         ) : null}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
         {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}

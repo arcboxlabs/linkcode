@@ -344,3 +344,162 @@ describe('Hub terminal routing', () => {
     ]);
   });
 });
+
+describe('Hub browser host routing', () => {
+  function register(clientReqId: string, hostId: string): ValidatedWireMessage {
+    return createWireMessage({
+      kind: 'browser.host.register',
+      clientReqId,
+      hostId,
+      hostSecret: 's'.repeat(32),
+    });
+  }
+
+  function succeeded(replyTo: string): ValidatedWireMessage {
+    return createWireMessage({ kind: 'request.succeeded', replyTo });
+  }
+
+  function command(commandId: string): ValidatedWireMessage {
+    return createWireMessage({ kind: 'browser.command', commandId, op: 'tabs.list', args: {} });
+  }
+
+  it('targets browser.command only at the registered host connection', () => {
+    const hub = new Hub();
+    const host = new FakeConn();
+    const other = new FakeConn();
+    hub.addConnection(host);
+    hub.addConnection(other);
+
+    host.emit(register('r1', 'host-1'));
+    hub.send(succeeded('r1'));
+    hub.send(command('c1'));
+
+    expect(host.sent.map((m) => m.payload.kind)).toEqual(['request.succeeded', 'browser.command']);
+    expect(other.sent).toHaveLength(0);
+  });
+
+  it('settles browser.command with host-unavailable when no host is registered', () => {
+    const hub = new Hub();
+    const conn = new FakeConn();
+    const forwarded: ValidatedWireMessage[] = [];
+    hub.addConnection(conn);
+    hub.onMessage((msg) => forwarded.push(msg));
+
+    hub.send(command('c1'));
+
+    expect(conn.sent).toHaveLength(0);
+    expect(forwarded.map((message) => message.payload)).toEqual([
+      {
+        kind: 'browser.command.result',
+        commandId: 'c1',
+        result: {
+          ok: false,
+          error: {
+            code: 'host-unavailable',
+            message: 'no desktop client is registered as the browser host',
+            retryable: true,
+          },
+        },
+      },
+    ]);
+  });
+
+  it('ignores client-originated detach and results from non-owner connections', () => {
+    const hub = new Hub();
+    const host = new FakeConn();
+    const other = new FakeConn();
+    const forwarded: ValidatedWireMessage[] = [];
+    hub.addConnection(host);
+    hub.addConnection(other);
+    hub.onMessage((msg) => forwarded.push(msg));
+    host.emit(register('r1', 'host-1'));
+    hub.send(succeeded('r1'));
+    forwarded.length = 0;
+
+    other.emit(createWireMessage({ kind: 'browser.host.detached', hostId: 'host-1' }));
+    other.emit(
+      createWireMessage({
+        kind: 'browser.command.result',
+        commandId: 'foreign',
+        result: { ok: true, data: null },
+      }),
+    );
+    host.emit(
+      createWireMessage({
+        kind: 'browser.command.result',
+        commandId: 'owned',
+        result: { ok: true, data: null },
+      }),
+    );
+    hub.send(command('still-owned'));
+
+    expect(forwarded.map((message) => message.payload.kind)).toEqual(['browser.command.result']);
+    expect(host.sent.map((message) => message.payload.kind)).toEqual([
+      'request.succeeded',
+      'browser.command',
+    ]);
+  });
+
+  it('lets the last successful registration win', () => {
+    const hub = new Hub();
+    const first = new FakeConn();
+    const second = new FakeConn();
+    hub.addConnection(first);
+    hub.addConnection(second);
+
+    first.emit(register('r1', 'host-1'));
+    hub.send(succeeded('r1'));
+    second.emit(register('r2', 'host-2'));
+    hub.send(succeeded('r2'));
+    hub.send(command('c1'));
+
+    expect(first.sent.map((m) => m.payload.kind)).toEqual(['request.succeeded']);
+    expect(second.sent.map((m) => m.payload.kind)).toEqual([
+      'request.succeeded',
+      'browser.command',
+    ]);
+  });
+
+  it('synthesizes browser.host.detached when the host connection drops', () => {
+    const hub = new Hub();
+    const host = new FakeConn();
+    hub.addConnection(host);
+    const forwarded: ValidatedWireMessage[] = [];
+    hub.onMessage((msg) => forwarded.push(msg));
+
+    host.emit(register('r1', 'host-1'));
+    hub.send(succeeded('r1'));
+    hub.removeConnection(host);
+    hub.send(command('c1'));
+
+    expect(forwarded.map((m) => m.payload.kind)).toEqual([
+      'browser.host.register',
+      'browser.host.detached',
+      'browser.command.result',
+    ]);
+    expect(host.sent.map((m) => m.payload.kind)).toEqual(['request.succeeded']);
+  });
+
+  it('does not detach a newer host when a superseded connection drops', () => {
+    const hub = new Hub();
+    const first = new FakeConn();
+    const second = new FakeConn();
+    hub.addConnection(first);
+    hub.addConnection(second);
+    const forwarded: ValidatedWireMessage[] = [];
+    hub.onMessage((msg) => forwarded.push(msg));
+
+    first.emit(register('r1', 'host-1'));
+    hub.send(succeeded('r1'));
+    second.emit(register('r2', 'host-2'));
+    hub.send(succeeded('r2'));
+    hub.removeConnection(first);
+    hub.send(command('c1'));
+
+    expect(forwarded.some((m) => m.payload.kind === 'browser.host.detached')).toBe(false);
+    expect(second.sent.map((m) => m.payload.kind)).toEqual([
+      'request.succeeded',
+      'browser.command',
+    ]);
+  });
+});

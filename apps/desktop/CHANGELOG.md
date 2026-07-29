@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.8.0](https://github.com/arcboxlabs/linkcode/compare/v0.7.0...v0.8.0) (2026-07-29)
+
+
+### Features
+
+* **agent-adapter:** complete opencode and Pi slash commands ([#242](https://github.com/arcboxlabs/linkcode/issues/242)) ([176360d](https://github.com/arcboxlabs/linkcode/commit/176360dcdef610cc5bbf9476ab72ec59bfbc75a9))
+* **agent-adapter:** probe and spawn opencode from the resolved binary (CODE-76) ([#244](https://github.com/arcboxlabs/linkcode/issues/244)) ([fda7e09](https://github.com/arcboxlabs/linkcode/commit/fda7e09072fe28be7c9c4f1777797aa64a19a59b))
+* **daemon:** agent input tools — tap, swipe, text, and named keys ([2f681a0](https://github.com/arcboxlabs/linkcode/commit/2f681a08dd8e6951bc18a39cc91e8fb8a5761170))
+* **desktop,ui:** multi-tab Browser panel — tabbed webviews, popup capture, find/zoom/devtools (CODE-266) ([#181](https://github.com/arcboxlabs/linkcode/issues/181)) ([a7c21be](https://github.com/arcboxlabs/linkcode/commit/a7c21be2c3d0e444c91715f9e44b0949b373f2a7))
+* **schema,daemon,ui:** show where an agent is touching the device ([ebe8ead](https://github.com/arcboxlabs/linkcode/commit/ebe8eadda49a9e3399cd59458b8c26f9b64410ca))
+* **schema,engine,daemon:** describe_ui — the guest UI tree as an agent tool ([6bf4297](https://github.com/arcboxlabs/linkcode/commit/6bf429709aa935a4b31cf5c434937244e4dcdc15))
+* **sim,engine,daemon:** shake a device without reversing the motion payload ([699c4e4](https://github.com/arcboxlabs/linkcode/commit/699c4e41e3fe07b94c6c2c8085f1e4ec91e994b9))
+* **sim,engine,workbench:** guide setup instead of reporting simulators unavailable ([e7a6791](https://github.com/arcboxlabs/linkcode/commit/e7a679129f95263621d0e90503fd9449d48fdccc))
+* **sim:** event-driven dead-session reap via an isolated state watcher ([b33886e](https://github.com/arcboxlabs/linkcode/commit/b33886e4ad6decab67a8f40e6d68c781c5fab135))
+* **sim:** reach the guest accessibility service through AXPTranslator ([138345b](https://github.com/arcboxlabs/linkcode/commit/138345bad236b21108a3afb81eb45010dc77ec09))
+* **sim:** walk the guest accessibility tree into tappable nodes ([0fc095e](https://github.com/arcboxlabs/linkcode/commit/0fc095e7573f270c9da2dafca0e73298822676b8))
+* **ui,workbench:** comfortable/compact list density preference ([6529181](https://github.com/arcboxlabs/linkcode/commit/652918118061bc3df4926cc913513fe734f750c4))
+* **ui:** 2xs type token, semantic label tiers, tabular numerals ([bf0945a](https://github.com/arcboxlabs/linkcode/commit/bf0945a231104c72852bd569110a0f68e18aa23c))
+* **ui:** motion duration tokens and the shared spring ([0a98ed4](https://github.com/arcboxlabs/linkcode/commit/0a98ed49ad40f8963d95c6b75cc2c75534654ad5))
+* **ui:** press feedback on custom tabs, close buttons, and chat rows ([4fd9a4d](https://github.com/arcboxlabs/linkcode/commit/4fd9a4db37b64940deecfe0ab8a992bbb8498f68))
+* **ui:** squircle corner-shape on xl+ radius faces ([40e0bd8](https://github.com/arcboxlabs/linkcode/commit/40e0bd8e150add50f495518b70e4efc798e5a443))
+
+
+### Bug Fixes
+
+* **agent:** align effort schema with provider-specific capabilities ([#234](https://github.com/arcboxlabs/linkcode/issues/234)) ([a2cf3de](https://github.com/arcboxlabs/linkcode/commit/a2cf3de462ee32f394c0916e9cff58254c49d80a))
+* **desktop,workbench:** share the e2e wire pin and bind the capture chords ([a86b941](https://github.com/arcboxlabs/linkcode/commit/a86b941ce21a8de227d3d951f66559cc1255b69d))
+* **desktop:** don't persist ephemeral preview-proxy URLs (CODE-373) ([#241](https://github.com/arcboxlabs/linkcode/issues/241)) ([ae0117e](https://github.com/arcboxlabs/linkcode/commit/ae0117edc6702b398ad04caeb779654f067417a7))
+* **e2e:** deterministic maximize checks in the window-bounds suite ([#283](https://github.com/arcboxlabs/linkcode/issues/283)) ([3725a94](https://github.com/arcboxlabs/linkcode/commit/3725a945cada7db01c9a3b0733a3003297bbe149))
+* **sim:** honor the HID send verdict instead of assuming every injection landed ([78401de](https://github.com/arcboxlabs/linkcode/commit/78401de258946f996e6f172ee16ef49b4b3e7d07))
+* **sim:** keep the send acknowledgement's block alive and stop retrying unanswered sends ([1d4467a](https://github.com/arcboxlabs/linkcode/commit/1d4467a24317e3eb85dad0d4629933f7e843f1a9))
+* **sim:** re-warm the HID client for streamed touch and pinch too ([ce39cfc](https://github.com/arcboxlabs/linkcode/commit/ce39cfc62890bfb0bb60acd3ca135f1805d2a9f9))
+* **sim:** re-warm the HID client when a device reboots out from under it ([d66b742](https://github.com/arcboxlabs/linkcode/commit/d66b742c8c7b61bf7f6d4c55d12cab167085945d))
+* **sim:** reap a stream and its HID client when the device leaves Booted ([7ecdbe3](https://github.com/arcboxlabs/linkcode/commit/7ecdbe3304616ee47c839180e7097f3a2e04c141))
+* **ui,agent-adapter:** show nearby rows and line numbers in the inline diff card (CODE-399) ([#304](https://github.com/arcboxlabs/linkcode/issues/304)) ([b5e0150](https://github.com/arcboxlabs/linkcode/commit/b5e015035bec2d26979d3ab5242e1bfd1a2cdf4d))
+* **ui:** drive thread-row height from the density var, not padding ([b9c6be8](https://github.com/arcboxlabs/linkcode/commit/b9c6be8b4d328f39075b223f1d6e444d3980b356))
+* **ui:** squircle the logical-corner cells of card-variant tables ([8baf4c0](https://github.com/arcboxlabs/linkcode/commit/8baf4c07fc1995e9a9bee31630bc0ef123e698fe))
+
 ## [0.7.0](https://github.com/arcboxlabs/linkcode/compare/v0.6.3...v0.7.0) (2026-07-25)
 
 

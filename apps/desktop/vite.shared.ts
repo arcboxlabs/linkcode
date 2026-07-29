@@ -7,20 +7,22 @@ import { dependencies } from './package.json';
 // Electron's bundled Node and Chrome versions. Keep in sync with the hardcoded `electronVersion`
 // in electron-builder.yml (sync rule in docs/RELEASE.md); read them from the pinned binary with
 // `ELECTRON_RUN_AS_NODE=1 electron -p "process.versions"`.
-export const NODE_TARGET = 'node24.16';
-export const CHROME_TARGET = 'chrome148';
+export const NODE_TARGET = 'node24.18';
+export const CHROME_TARGET = 'chrome150';
 
 // Workspace packages export raw TS, so they must be bundled into main/preload: a require left in
 // the bundle resolves to .ts under app.asar/node_modules and crashes on launch
 // (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Derived from package.json so a new workspace
 // import can never be missed; everything else in `dependencies` stays external.
+const ELECTRON_SUBPATH_RE = /^electron\/.+/;
+
 export function nodeExternals(alsoBundle: readonly string[] = []): Array<string | RegExp> {
   const external = Object.entries(dependencies).flatMap(([name, version]) =>
     version.startsWith('workspace:') || alsoBundle.includes(name) ? [] : [name],
   );
   return [
     'electron',
-    /^electron\/.+/,
+    ELECTRON_SUBPATH_RE,
     ...builtinModules.flatMap((m) => [m, `node:${m}`]),
     ...external,
     new RegExp(`^(${external.join('|')})/`),

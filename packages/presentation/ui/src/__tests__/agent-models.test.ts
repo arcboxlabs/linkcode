@@ -62,6 +62,24 @@ describe('groupModelsByProvider', () => {
 });
 
 describe('effortOptionsForModel', () => {
+  it('uses per-model Codex capabilities instead of the conservative agent fallback', () => {
+    expect(effortOptionsForModel('codex', codex?.[0])?.map((option) => option.id)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+      'ultra',
+    ]);
+    expect(effortOptionsForModel('codex', codex?.[2])?.map((option) => option.id)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+  });
+
   it('limits Pi effort choices to the selected dynamic model', () => {
     expect(
       effortOptionsForModel('pi', {

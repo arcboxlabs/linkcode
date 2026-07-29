@@ -37,62 +37,65 @@ const RE_OPUS_4_8 = /Opus 4.8/;
 const RE_MEDIUM_EFFORT = /Medium/;
 const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
+const RE_PI_SONNET = /Pi Sonnet/;
+const RE_GPT_56_SOL = /GPT-5.6-Sol/;
+const RE_APPROVAL_DEFAULT = /Default/;
+const RE_ACCEPT_EDITS = /Accept edits/;
 
 describe('NewSessionSurface', () => {
-  it.each([
-    'claude-code',
-    'codex',
-    'opencode',
-  ] as const)('submits a leading slash command for %s', async (provider) => {
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
-    render(
-      <NewSessionSurface
-        chatWorkspace={CHAT_WORKSPACE}
-        draft={{
-          initialProvider: provider,
-          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
-        }}
-        mentionItems={[]}
-        onMentionQueryChange={vi.fn()}
-        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
-        onSubmit={onSubmit}
-        workspaces={[]}
-      />,
-    );
+  it.each(['claude-code', 'codex', 'opencode', 'pi'] as const)(
+    'submits a leading slash command for %s',
+    async (provider) => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      render(
+        <NewSessionSurface
+          chatWorkspace={CHAT_WORKSPACE}
+          draft={{
+            initialProvider: provider,
+            initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+          }}
+          mentionItems={[]}
+          onMentionQueryChange={vi.fn()}
+          onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+          onSubmit={onSubmit}
+          workspaces={[]}
+        />,
+      );
 
-    typeInComposer('/compact');
-    await pressInComposer('Enter');
+      typeInComposer('/compact');
+      await pressInComposer('Enter');
 
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
-        kind: provider,
-        cwd: '/chat',
-        workspaceId: CHAT_WORKSPACE.workspaceId,
-        model: undefined,
-        modeId: undefined,
-        input: { type: 'command', name: 'compact' },
-      }),
-    );
-  });
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+          kind: provider,
+          cwd: '/chat',
+          workspaceId: CHAT_WORKSPACE.workspaceId,
+          model: undefined,
+          modeId: undefined,
+          input: { type: 'command', name: 'compact' },
+        }),
+      );
+    },
+  );
 
-  it.each([
-    'opencode',
-    'pi',
-  ] as const)('keeps the default model label visible for dynamic provider %s', (provider) => {
-    render(
-      <NewSessionSurface
-        chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
-        mentionItems={[]}
-        onMentionQueryChange={vi.fn()}
-        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
-        onSubmit={vi.fn().mockResolvedValue(undefined)}
-        workspaces={[]}
-      />,
-    );
+  it.each(['opencode', 'pi'] as const)(
+    'keeps the default model label visible for dynamic provider %s',
+    (provider) => {
+      render(
+        <NewSessionSurface
+          chatWorkspace={CHAT_WORKSPACE}
+          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          mentionItems={[]}
+          onMentionQueryChange={vi.fn()}
+          onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+          onSubmit={vi.fn().mockResolvedValue(undefined)}
+          workspaces={[]}
+        />,
+      );
 
-    expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
-  });
+      expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
+    },
+  );
 
   it('names the model selector with its agent, model, and reasoning effort', () => {
     render(
@@ -114,32 +117,32 @@ describe('NewSessionSurface', () => {
     ).toBeTruthy();
   });
 
-  it.each([
-    'codex',
-    'opencode',
-  ] as const)('submits a leading shell command for %s', async (provider) => {
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
-    render(
-      <NewSessionSurface
-        chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
-        mentionItems={[]}
-        onMentionQueryChange={vi.fn()}
-        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
-        onSubmit={onSubmit}
-        workspaces={[]}
-      />,
-    );
+  it.each(['codex', 'opencode'] as const)(
+    'submits a leading shell command for %s',
+    async (provider) => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      render(
+        <NewSessionSurface
+          chatWorkspace={CHAT_WORKSPACE}
+          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          mentionItems={[]}
+          onMentionQueryChange={vi.fn()}
+          onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+          onSubmit={onSubmit}
+          workspaces={[]}
+        />,
+      );
 
-    typeInComposer('$ pwd');
-    await pressInComposer('Enter');
+      typeInComposer('$ pwd');
+      await pressInComposer('Enter');
 
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ input: { type: 'shell-command', command: 'pwd' } }),
-      ),
-    );
-  });
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ input: { type: 'shell-command', command: 'pwd' } }),
+        ),
+      );
+    },
+  );
 
   it.each([
     {
@@ -194,68 +197,71 @@ describe('NewSessionSurface', () => {
     { draft: 'keep this prompt', inputType: 'prompt', label: 'prompt', withAttachment: true },
     { draft: '/compact ', inputType: 'command', label: 'slash command', withAttachment: false },
     { draft: '$ pwd', inputType: 'shell-command', label: 'shell command', withAttachment: false },
-  ] as const)('retains a rejected first-turn $label and guards duplicate submission', async ({
-    draft,
-    inputType,
-    withAttachment,
-  }) => {
-    let rejectSubmission!: (reason?: unknown) => void;
-    const pendingSubmission = new Promise<void>((_resolve, reject) => {
-      rejectSubmission = reject;
-    });
-    const onSubmit = vi.fn().mockReturnValue(pendingSubmission);
-    render(
-      <NewSessionSurface
-        attachmentSupport={{ codex: true }}
-        chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
-        mentionItems={[]}
-        onMentionQueryChange={vi.fn()}
-        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
-        onSubmit={onSubmit}
-        workspaces={[]}
-      />,
-    );
-
-    if (withAttachment) {
-      fireEvent.paste(screen.getByRole('combobox'), {
-        clipboardData: {
-          files: [
-            new File([Uint8Array.from([137, 80, 78, 71])], 'retained.png', {
-              type: 'image/png',
-            }),
-          ],
-        },
+  ] as const)(
+    'retains a rejected first-turn $label and guards duplicate submission',
+    async ({ draft, inputType, withAttachment }) => {
+      let rejectSubmission!: (reason?: unknown) => void;
+      const pendingSubmission = new Promise<void>((_resolve, reject) => {
+        rejectSubmission = reject;
       });
-      await screen.findByRole('img', { name: 'retained.png' });
-    }
+      const onSubmit = vi.fn().mockReturnValue(pendingSubmission);
+      render(
+        <NewSessionSurface
+          attachmentSupport={{ codex: true }}
+          chatWorkspace={CHAT_WORKSPACE}
+          draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          mentionItems={[]}
+          onMentionQueryChange={vi.fn()}
+          onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+          onSubmit={onSubmit}
+          workspaces={[]}
+        />,
+      );
 
-    typeInComposer(draft);
-    await pressInComposer('Enter');
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ input: expect.objectContaining({ type: inputType }) }),
-    );
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
+      if (withAttachment) {
+        fireEvent.paste(screen.getByRole('combobox'), {
+          clipboardData: {
+            files: [
+              new File([Uint8Array.from([137, 80, 78, 71])], 'retained.png', {
+                type: 'image/png',
+              }),
+            ],
+          },
+        });
+        await screen.findByRole('img', { name: 'retained.png' });
+      }
 
-    await pressInComposer('Enter');
-    expect(onSubmit).toHaveBeenCalledOnce();
+      typeInComposer(draft);
+      await pressInComposer('Enter');
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ input: expect.objectContaining({ type: inputType }) }),
+      );
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(true);
 
-    act(() => rejectSubmission(new Error('session creation failed')));
-    await waitFor(() =>
-      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false),
-    );
-    expect(composerText().trim()).toBe(draft.trim());
-    if (withAttachment) {
-      expect(screen.getByRole('img', { name: 'retained.png' })).toBeDefined();
-    }
+      await pressInComposer('Enter');
+      expect(onSubmit).toHaveBeenCalledOnce();
 
-    await pressInComposer('Enter');
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false),
-    );
-  });
+      act(() => rejectSubmission(new Error('session creation failed')));
+      await waitFor(() =>
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(
+          false,
+        ),
+      );
+      expect(composerText().trim()).toBe(draft.trim());
+      if (withAttachment) {
+        expect(screen.getByRole('img', { name: 'retained.png' })).toBeDefined();
+      }
+
+      await pressInComposer('Enter');
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(
+          false,
+        ),
+      );
+    },
+  );
 
   it('clears a first prompt and its submitted attachments only after acceptance', async () => {
     let acceptSubmission!: () => void;
@@ -298,15 +304,12 @@ describe('NewSessionSurface', () => {
     expect(screen.queryByRole('img', { name: 'accepted.png' })).toBeNull();
   });
 
-  it.each([
-    'pi',
-    'grok-build',
-  ] as const)('blocks unsupported slash commands for %s', async (provider) => {
+  it('blocks unsupported slash commands for grok-build', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialProvider: 'grok-build', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -323,29 +326,28 @@ describe('NewSessionSurface', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it.each([
-    'claude-code',
-    'pi',
-    'grok-build',
-  ] as const)('blocks unsupported shell commands for %s', async (provider) => {
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
-    render(
-      <NewSessionSurface
-        chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
-        mentionItems={[]}
-        onMentionQueryChange={vi.fn()}
-        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
-        onSubmit={onSubmit}
-        workspaces={[]}
-      />,
-    );
+  it.each(['claude-code', 'pi', 'grok-build'] as const)(
+    'blocks unsupported shell commands for %s',
+    async (provider) => {
+      const onSubmit = vi.fn().mockResolvedValue(undefined);
+      render(
+        <NewSessionSurface
+          chatWorkspace={CHAT_WORKSPACE}
+          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          mentionItems={[]}
+          onMentionQueryChange={vi.fn()}
+          onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+          onSubmit={onSubmit}
+          workspaces={[]}
+        />,
+      );
 
-    typeInComposer('$ pwd');
-    expect(screen.getByRole('button', { name: '$' }).getAttribute('aria-invalid')).toBe('true');
-    await pressInComposer('Enter');
-    expect(onSubmit).not.toHaveBeenCalled();
-  });
+      typeInComposer('$ pwd');
+      expect(screen.getByRole('button', { name: '$' }).getAttribute('aria-invalid')).toBe('true');
+      await pressInComposer('Enter');
+      expect(onSubmit).not.toHaveBeenCalled();
+    },
+  );
 
   it('shows the default model and carries a selected effort into session start', async () => {
     const user = userEvent.setup();
@@ -494,6 +496,34 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('drops remembered Codex ultra when the fallback model switches to Luna', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        preferredEfforts={{ codex: 'ultra' }}
+        preferredModels={{ codex: 'gpt-5.6-sol' }}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_GPT_56_SOL }));
+    await user.click(await screen.findByRole('menuitem', { name: 'GPT-5.6-Sol' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'GPT-5.6-Luna' }));
+    typeInComposer('use Luna');
+    await pressInComposer('Enter');
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ model: 'gpt-5.6-luna' }));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
+  });
+
   it('submits a remembered dynamic-provider model even without a draft catalog', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
@@ -585,6 +615,41 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('shows the catalog default without submitting it as an explicit approval-policy pick', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        agentCatalogs={{
+          pi: {
+            models: [],
+            policies: [
+              { policyId: 'default', name: 'Default' },
+              { policyId: 'accept-edits', name: 'Accept edits' },
+            ],
+            defaultPolicyId: 'accept-edits',
+          },
+        }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    // The default is displayed as the active tier…
+    expect(screen.getByRole('button', { name: RE_ACCEPT_EDITS })).toBeTruthy();
+
+    typeInComposer('untouched picker');
+    await pressInComposer('Enter');
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    // …but an untouched picker is not a choice: sending it would override the agent's own startup
+    // resolution (claude's settings defaultMode, codex's configured sandbox).
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('approvalPolicyId');
+  });
+
   it('submits compatible Pi catalog choices and suppresses stale effort for models without it', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
@@ -616,10 +681,10 @@ describe('NewSessionSurface', () => {
     await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByText('High'));
-    await user.click(screen.getByRole('button', { name: /Default/ }));
-    await user.click(await screen.findByRole('menuitemradio', { name: /Accept edits/ }));
+    await user.click(screen.getByRole('button', { name: RE_APPROVAL_DEFAULT }));
+    await user.click(await screen.findByRole('menuitemradio', { name: RE_ACCEPT_EDITS }));
     typeInComposer('catalog choices');
     await pressInComposer('Enter');
     await waitFor(() =>
@@ -633,7 +698,7 @@ describe('NewSessionSurface', () => {
     );
 
     onSubmit.mockClear();
-    await user.click(screen.getByRole('button', { name: /Pi Sonnet/ }));
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pi Sonnet' }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
     typeInComposer('no stale effort');

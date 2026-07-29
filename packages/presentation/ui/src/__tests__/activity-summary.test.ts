@@ -112,17 +112,17 @@ describe('settledActivityRunDescriptor', () => {
 });
 
 describe('activityRunCurrentDescriptor', () => {
-  it.each([
-    'pending',
-    'in_progress',
-  ] as const)('treats a non-thinking %s tool as active when no thinking item is active', (status) => {
-    expect(
-      activityRunCurrentDescriptor([
-        reasoning('Earlier'),
-        tool('execute', { status, rawInput: { command: 'pnpm test' } }),
-      ]),
-    ).toEqual({ category: 'command', kind: 'execute' });
-  });
+  it.each(['pending', 'in_progress'] as const)(
+    'treats a non-thinking %s tool as active when no thinking item is active',
+    (status) => {
+      expect(
+        activityRunCurrentDescriptor([
+          reasoning('Earlier'),
+          tool('execute', { status, rawInput: { command: 'pnpm test' } }),
+        ]),
+      ).toEqual({ category: 'command', kind: 'execute' });
+    },
+  );
 
   it('prefers the newest active reasoning or think tool over other active tools', () => {
     expect(

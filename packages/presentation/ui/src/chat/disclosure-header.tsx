@@ -10,8 +10,7 @@ export const CHAT_DISCLOSURE_TEXT_CLASS_NAME =
 export const CHAT_DISCLOSURE_TITLE_CLASS_NAME =
   'max-w-full shrink-0 truncate font-medium opacity-80';
 
-export const CHAT_DISCLOSURE_SUMMARY_CLASS_NAME =
-  'min-w-0 shrink truncate text-muted-foreground/70';
+export const CHAT_DISCLOSURE_SUMMARY_CLASS_NAME = 'min-w-0 shrink truncate text-label-tertiary';
 
 export type ChatDisclosureIconSlotProps = React.ComponentProps<'span'>;
 

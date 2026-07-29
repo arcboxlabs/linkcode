@@ -224,49 +224,50 @@ describe('Composer directive chips', () => {
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 
-  it.each(
-    CHIP_CASES,
-  )('selects the %s chip as an arrow stop and exits on the next arrow', async (_kind, createChip) => {
-    render(composer());
-    const editor = composerLexicalEditor();
+  it.each(CHIP_CASES)(
+    'selects the %s chip as an arrow stop and exits on the next arrow',
+    async (_kind, createChip) => {
+      render(composer());
+      const editor = composerLexicalEditor();
 
-    let chipKey: NodeKey = '';
-    let leftKey: NodeKey = '';
-    let rightKey: NodeKey = '';
-    act(() => {
-      editor.update(
-        () => {
-          const left = $createTextNode('a');
-          const chip = createChip();
-          const right = $createTextNode('b');
-          chipKey = chip.getKey();
-          leftKey = left.getKey();
-          rightKey = right.getKey();
-          $getRoot()
-            .clear()
-            .append($createParagraphNode().append(left, chip, right));
-          left.selectEnd();
-        },
-        { discrete: true, tag: HISTORIC_TAG },
-      );
-    });
-    const chip = editor.getElementByKey(chipKey)?.firstElementChild;
-    if (!(chip instanceof HTMLElement)) throw new Error('expected rendered chip');
+      let chipKey: NodeKey = '';
+      let leftKey: NodeKey = '';
+      let rightKey: NodeKey = '';
+      act(() => {
+        editor.update(
+          () => {
+            const left = $createTextNode('a');
+            const chip = createChip();
+            const right = $createTextNode('b');
+            chipKey = chip.getKey();
+            leftKey = left.getKey();
+            rightKey = right.getKey();
+            $getRoot()
+              .clear()
+              .append($createParagraphNode().append(left, chip, right));
+            left.selectEnd();
+          },
+          { discrete: true, tag: HISTORIC_TAG },
+        );
+      });
+      const chip = editor.getElementByKey(chipKey)?.firstElementChild;
+      if (!(chip instanceof HTMLElement)) throw new Error('expected rendered chip');
 
-    await pressInComposer('ArrowRight');
-    expect(hasNodeSelection(editor, chipKey)).toBe(true);
-    await waitFor(() => expect(chip.dataset.selected).toBe('true'));
+      await pressInComposer('ArrowRight');
+      expect(hasNodeSelection(editor, chipKey)).toBe(true);
+      await waitFor(() => expect(chip.dataset.selected).toBe('true'));
 
-    await pressInComposer('ArrowRight');
-    expectCaret(editor, rightKey, 0);
-    await waitFor(() => expect(chip.dataset.selected).toBeUndefined());
+      await pressInComposer('ArrowRight');
+      expectCaret(editor, rightKey, 0);
+      await waitFor(() => expect(chip.dataset.selected).toBeUndefined());
 
-    await pressInComposer('ArrowLeft');
-    expect(hasNodeSelection(editor, chipKey)).toBe(true);
+      await pressInComposer('ArrowLeft');
+      expect(hasNodeSelection(editor, chipKey)).toBe(true);
 
-    await pressInComposer('ArrowLeft');
-    expectCaret(editor, leftKey, 1);
-  });
+      await pressInComposer('ArrowLeft');
+      expectCaret(editor, leftKey, 1);
+    },
+  );
 
   it('leaves modified horizontal arrows to native selection handling', async () => {
     render(composer());
@@ -299,39 +300,40 @@ describe('Composer directive chips', () => {
     }
   });
 
-  it.each(
-    CHIP_DELETION_CASES,
-  )('deletes the selected %s chip with %s and preserves the caret', async (_kind, key, createChip) => {
-    render(composer());
-    const editor = composerLexicalEditor();
+  it.each(CHIP_DELETION_CASES)(
+    'deletes the selected %s chip with %s and preserves the caret',
+    async (_kind, key, createChip) => {
+      render(composer());
+      const editor = composerLexicalEditor();
 
-    let chipKey: NodeKey = '';
-    let leftKey: NodeKey = '';
-    act(() => {
-      editor.update(
-        () => {
-          const left = $createTextNode('a');
-          const chip = createChip();
-          const right = $createTextNode('b');
-          chipKey = chip.getKey();
-          leftKey = left.getKey();
-          $getRoot()
-            .clear()
-            .append($createParagraphNode().append(left, chip, right));
-          left.selectEnd();
-        },
-        { discrete: true, tag: HISTORIC_TAG },
-      );
-    });
+      let chipKey: NodeKey = '';
+      let leftKey: NodeKey = '';
+      act(() => {
+        editor.update(
+          () => {
+            const left = $createTextNode('a');
+            const chip = createChip();
+            const right = $createTextNode('b');
+            chipKey = chip.getKey();
+            leftKey = left.getKey();
+            $getRoot()
+              .clear()
+              .append($createParagraphNode().append(left, chip, right));
+            left.selectEnd();
+          },
+          { discrete: true, tag: HISTORIC_TAG },
+        );
+      });
 
-    await pressInComposer('ArrowRight');
-    expect(hasNodeSelection(editor, chipKey)).toBe(true);
-    await pressInComposer(key);
+      await pressInComposer('ArrowRight');
+      expect(hasNodeSelection(editor, chipKey)).toBe(true);
+      await pressInComposer(key);
 
-    expect(editor.getElementByKey(chipKey)).toBeNull();
-    expect(composerText()).toBe('ab');
-    expectCaret(editor, leftKey, 1);
-  });
+      expect(editor.getElementByKey(chipKey)).toBeNull();
+      expect(composerText()).toBe('ab');
+      expectCaret(editor, leftKey, 1);
+    },
+  );
 
   it('offers recovery for a command explicitly selected at a mid-line trigger', async () => {
     const user = userEvent.setup();

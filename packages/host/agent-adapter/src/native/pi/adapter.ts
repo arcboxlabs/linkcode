@@ -5,11 +5,13 @@ import type {
   CreateAgentSessionOptions,
   ExtensionAPI,
   PromptOptions,
+  ResourceLoader,
   SessionManager,
   ToolCallEvent,
   ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
+  AgentCommand,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -22,8 +24,11 @@ import type {
   ToolKind,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { Type } from '@sinclair/typebox';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { invariant } from 'foxts/guard';
-import type { AgentStartCatalogOptions } from '../../adapter';
+import type { AgentStartCatalogOptions, BrowserToolsetFactory } from '../../adapter';
+import { renderBrowserToolResult } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
 import { asHistoryId } from '../../history-util';
@@ -95,6 +100,34 @@ function modelOptions(models: PiModel[]) {
   }));
 }
 
+/** Commands Pi's prompt expansion accepts. Extension commands are excluded because they require
+ * ExtensionCommandContext execution rather than a prompt containing `/name`. */
+function piCommandCatalog(
+  loader: Pick<ResourceLoader, 'getPrompts' | 'getSkills'>,
+): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getPrompts().prompts.map((prompt) => ({
+        name: prompt.name,
+        description: prompt.description || undefined,
+        argumentHint: prompt.argumentHint,
+      })),
+    );
+  } catch {}
+  try {
+    appendArrayInPlace(
+      commands,
+      loader.getSkills().skills.map((skill) => ({
+        name: `skill:${skill.name}`,
+        description: skill.description || undefined,
+      })),
+    );
+  } catch {}
+  return commands;
+}
+
 function createConfiguredRegistry(
   pi: PiSdk,
   opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
@@ -157,6 +190,11 @@ export class PiAdapter extends BaseAgentAdapter {
   };
   /** Invalidates SDK and extension callbacks captured by a stopped Pi session. */
   private lifecycle = 0;
+  private browserTools: BrowserToolsetFactory | undefined;
+
+  attachBrowserTools(createToolset: BrowserToolsetFactory): void {
+    this.browserTools = createToolset;
+  }
 
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const pi = await this.importSdk();
@@ -235,7 +273,12 @@ export class PiAdapter extends BaseAgentAdapter {
     const resourceLoader = new pi.DefaultResourceLoader({
       cwd,
       agentDir: piAgentDir(),
-      extensionFactories: [(extension) => this.registerGate(extension, generation)],
+      extensionFactories: [
+        (extension) => {
+          this.registerGate(extension, generation);
+          this.registerBrowserTool(extension);
+        },
+      ],
     });
     await resourceLoader.reload();
 
@@ -287,11 +330,12 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       },
     });
+    // Pi has no resource change event in headless mode, so this is a full snapshot. Each resource
+    // category is optional session metadata: discovery failure hides only that category.
+    this.emitCommands(piCommandCatalog(resourceLoader));
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
-    invariant(this.session, 'pi: session not started');
-    const text = contentToText(content);
     const images = imageBlocksFrom(content);
     const imageOptions: Pick<PromptOptions, 'images'> | undefined =
       images.length === 0
@@ -303,6 +347,17 @@ export class PiAdapter extends BaseAgentAdapter {
               mimeType: image.mimeType,
             })),
           };
+    await this.runPrompt(contentToText(content), imageOptions);
+  }
+
+  /** Pi expands `/skill:name` and prompt-template commands inside `session.prompt`, so command
+   * dispatch shares the normal turn lifecycle and must not re-emit the user's invocation. */
+  protected override async onCommand(name: string, args?: string): Promise<void> {
+    await this.runPrompt(`/${name}${args ? ` ${args}` : ''}`);
+  }
+
+  private async runPrompt(text: string, options?: Pick<PromptOptions, 'images'>): Promise<void> {
+    invariant(this.session, 'pi: session not started');
     this.turnActive = true;
     this.promptInFlight = true;
     this.settlementPending = false;
@@ -310,8 +365,8 @@ export class PiAdapter extends BaseAgentAdapter {
     this.emitStatus('running');
     try {
       if (this.session.isStreaming) {
-        await this.session.prompt(text, { ...imageOptions, streamingBehavior: 'followUp' });
-      } else await this.session.prompt(text, imageOptions);
+        await this.session.prompt(text, { ...options, streamingBehavior: 'followUp' });
+      } else await this.session.prompt(text, options);
       this.promptInFlight = false;
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the subscribe handler flips `settlementPending` while prompt() is awaited
       if (this.settlementPending) this.settleTurn();
@@ -405,6 +460,39 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private registerGate(extension: ExtensionAPI, generation: number): void {
     extension.on('tool_call', (event) => this.gateTool(event, generation));
+  }
+
+  private registerBrowserTool(extension: ExtensionAPI): void {
+    const factory = this.browserTools;
+    if (!factory) return;
+    const toolset = factory();
+    extension.registerTool({
+      name: 'browser_execute',
+      label: 'Browser',
+      description: toolset.documentation,
+      parameters: Type.Object({
+        code: Type.String({ description: 'JavaScript for the persistent browser REPL' }),
+      }),
+      async execute(_toolCallId, { code }) {
+        invariant(code, 'pi: browser_execute code is required');
+        const rendered = renderBrowserToolResult(await toolset.execute(code));
+        return {
+          content: [
+            { type: 'text', text: rendered.text },
+            ...(rendered.image
+              ? [
+                  {
+                    type: 'image' as const,
+                    data: rendered.image.base64,
+                    mimeType: rendered.image.mimeType,
+                  },
+                ]
+              : []),
+          ],
+          details: undefined,
+        };
+      },
+    });
   }
 
   private async gateTool(

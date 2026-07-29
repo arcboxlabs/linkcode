@@ -7,6 +7,10 @@ const PROVIDER_BY_HOST: Record<string, GitRemoteIdentity['provider']> = {
   'ssh.github.com': 'github',
 };
 
+const LEADING_SLASHES_RE = /^\/+/;
+const TRAILING_SLASHES_RE = /\/+$/;
+const GIT_SUFFIX_RE = /\.git$/;
+
 /** Parse a git remote URL (scp-like, `ssh://`, `git://`, or `http(s)://`) into a provider identity;
  * null when the host is not a supported provider or the path is not exactly `owner/repo`. */
 export function parseRemoteIdentity(url: string): GitRemoteIdentity | null {
@@ -16,9 +20,9 @@ export function parseRemoteIdentity(url: string): GitRemoteIdentity | null {
   if (!provider) return null;
 
   const path = location.path
-    .replace(/^\/+/, '')
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '');
+    .replace(LEADING_SLASHES_RE, '')
+    .replace(TRAILING_SLASHES_RE, '')
+    .replace(GIT_SUFFIX_RE, '');
   const segments = path.split('/');
   if (segments.length !== 2 || segments.some((segment) => segment.length === 0)) return null;
 

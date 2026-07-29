@@ -3,6 +3,7 @@ import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
 import NetInfo from '@react-native-community/netinfo';
 import { randomUUID } from 'expo-crypto';
 import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import type { HostProfile } from '../stores/host-store';
@@ -16,6 +17,10 @@ interface HostClientBase {
   readonly attempt: number;
   /** Abandon any pending backoff and dial again now. */
   readonly retry: () => void;
+  /** Why the last attempt failed, when the controller knows. Kept because "unable to reach" alone
+   * tells neither the user nor a triager whether the host is down, unreachable, or speaking a
+   * different wire version — the causes need entirely different responses. */
+  readonly failure?: string;
 }
 
 interface HostClientReady extends HostClientBase {
@@ -90,6 +95,7 @@ export function useHostClient(host: HostProfile): HostClientState {
     : {
         attempt: snapshot.attempt,
         client: null,
+        failure: extractErrorMessage(snapshot.error, false) ?? undefined,
         retry,
         status: snapshot.status === 'error' ? 'error' : 'connecting',
       };

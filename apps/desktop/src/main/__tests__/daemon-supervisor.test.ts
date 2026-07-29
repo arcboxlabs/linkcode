@@ -23,8 +23,7 @@ const mocks = vi.hoisted(() => ({
   existsSync: vi.fn((path: unknown) => {
     const s = String(path);
     if (s.endsWith('instrument.mjs')) return mocks.instrumentPresent;
-    // Sidecar absence is fine in these tests (supervisor only warns).
-    if (s.includes('linkcode-pty')) return false;
+    // Everything else, the PTY sidecar included, reads as absent — fine here (supervisor only warns).
     return false;
   }),
 }));
@@ -217,5 +216,19 @@ describe('daemon supervisor recovery', () => {
 
     const forkArgs = mocks.fork.mock.calls[0] as [string, string[], { execArgv?: string[] }];
     expect(forkArgs[2].execArgv).toEqual([]);
+  });
+
+  // The child cannot infer this: the devshell pack bundles a daemon stamped `release` at build
+  // time, so only the shell knows it is a development build (CODE-460). Without the injection
+  // that daemon would serve the installed release's state directory and port.
+  it("injects the shell's channel into the daemon it spawns", async () => {
+    await startSupervisor();
+
+    const forkArgs = mocks.fork.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined> },
+    ];
+    expect(forkArgs[2].env?.LINKCODE_CHANNEL).toBe('development');
   });
 });

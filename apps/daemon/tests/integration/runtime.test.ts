@@ -163,6 +163,40 @@ describe('listenWithPortHunt', () => {
       ),
     ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
   });
+
+  // CODE-460: this is what lets a dev daemon start while an installed release holds 19523.
+  // Both default profiles are `undefined`, so without the channel comparison the dev daemon
+  // reads the release one as a double-start and exits 3.
+  it('hunts past a live daemon of another channel', async () => {
+    const port = await serveIdentity(identity(4242));
+    const { server, url } = await listenWithPortHunt(
+      { type: 'ws', port, host: '127.0.0.1' },
+      { ...identity(process.pid), channel: 'development' },
+    );
+    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    await server.close();
+  });
+
+  it('refuses to hunt past a live daemon of the same channel', async () => {
+    const port = await serveIdentity({ ...identity(4242), channel: 'development' });
+    await expect(
+      listenWithPortHunt(
+        { type: 'ws', port, host: '127.0.0.1' },
+        { ...identity(process.pid), channel: 'development' },
+      ),
+    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  // An absent channel is release's, so a pre-CODE-460 daemon still reads as a double-start.
+  it('treats an occupant with no channel field as release', async () => {
+    const port = await serveIdentity(identity(4242));
+    await expect(
+      listenWithPortHunt(
+        { type: 'ws', port, host: '127.0.0.1' },
+        { ...identity(process.pid), channel: 'release' },
+      ),
+    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
 });
 
 describe('findRunningDaemon', () => {

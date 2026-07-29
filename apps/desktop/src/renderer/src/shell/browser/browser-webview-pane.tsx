@@ -1,10 +1,20 @@
+import type { SystemBridge } from '@linkcode/ipc';
+import { isKeyboardShortcutLocalTarget, useKeyboardShortcut } from '@linkcode/ui';
+import type { BrowserFindState } from '@linkcode/ui/shell/browser';
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
-import { useEffect } from 'foxact/use-abortable-effect';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
+import { useSingleton } from 'foxact/use-singleton';
 import { noop } from 'foxts/noop';
-import { useState } from 'react';
+import { useEffectEvent, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopShellStore } from '../store/store';
+import {
+  advanceBrowserWebviewGeneration,
+  markBrowserWebviewReady,
+  markBrowserWebviewUnready,
+  registerBrowserWebview,
+} from './webview-registry';
 
 /** All in-app pages share one persisted session (cookies/storage survive restarts). */
 const BROWSER_PARTITION = 'persist:linkcode-browser';
@@ -14,6 +24,7 @@ interface WebviewNavState {
   canGoBack: boolean;
   canGoForward: boolean;
   failure: string | null;
+  guestReady: boolean;
 }
 
 const IDLE_NAV: WebviewNavState = {
@@ -21,118 +32,321 @@ const IDLE_NAV: WebviewNavState = {
   canGoBack: false,
   canGoForward: false,
   failure: null,
+  guestReady: false,
 };
 
+function whenNotLocal(event: KeyboardEvent): boolean {
+  return !isKeyboardShortcutLocalTarget(event.target);
+}
+
+/** Chromium's supported zoom-level range (each level is a 1.2× factor step). */
+const MIN_ZOOM_LEVEL = -8;
+const MAX_ZOOM_LEVEL = 9;
+
+function applyZoom(
+  webview: WebviewTag | null,
+  ready: boolean,
+  action: 'in' | 'out' | 'reset',
+): void {
+  if (webview === null || !ready) return;
+  const level = webview.getZoomLevel();
+  if (action === 'in') webview.setZoomLevel(Math.min(level + 1, MAX_ZOOM_LEVEL));
+  else if (action === 'out') webview.setZoomLevel(Math.max(level - 1, MIN_ZOOM_LEVEL));
+  else webview.setZoomLevel(0);
+}
+
+function pauseWebviewMedia(webview: WebviewTag): void {
+  // Guest may detach after the readiness check, in which case there is nothing to pause.
+  void Promise.resolve()
+    .then(() =>
+      webview.executeJavaScript(
+        'document.querySelectorAll("video,audio").forEach((m) => m.pause())',
+      ),
+    )
+    .catch(noop);
+}
+
 /**
- * The Browser section's Electron `<webview>`, mounted once inside the shell's resident
+ * One browser tab's Electron `<webview>`, mounted once inside the shell's resident
  * panel-content stack (moving a webview in the DOM reloads it) and shown/hidden via visibility.
  */
-export function BrowserWebviewPane(): React.ReactNode {
+export function BrowserWebviewPane({
+  systemBridge,
+  tabId,
+  url,
+}: {
+  systemBridge: SystemBridge;
+  tabId: string;
+  url: string | null;
+}): React.ReactNode {
   const t = useTranslations('workbench.preview.browser');
-  const url = useDesktopShellStore((state) => state.rightPanel.browser.url);
-  const setBrowserUrl = useDesktopShellStore((state) => state.setBrowserUrl);
-  // The webview is a permanent resident (unmounting/DOM-moving it reloads), so collapsing the
-  // panel or switching section only hides it — media would keep playing audio in the background.
+  const setBrowserTabUrl = useDesktopShellStore((state) => state.setBrowserTabUrl);
+  const setBrowserTabTitle = useDesktopShellStore((state) => state.setBrowserTabTitle);
+  // Every tab is a permanent resident (unmounting/DOM-moving it reloads), so inactive tabs and
+  // a hidden browser section must pause media that would otherwise keep playing out of sight.
   const visible = useDesktopShellStore(
-    (state) => state.rightPanel.open && state.rightPanel.activeSection === 'browser',
+    (state) =>
+      state.rightPanel.open &&
+      state.rightPanel.activeSection === 'browser' &&
+      state.rightPanel.browser.activeTabId === tabId,
   );
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [webview, setWebview] = useState<WebviewTag | null>(null);
-  // The guest that reached `dom-ready`, held by identity rather than as a boolean: a replacement
-  // element is then simply not the ready one, with no reset to keep in sync.
-  const [readyGuest, setReadyGuest] = useState<WebviewTag | null>(null);
-  const guestReady = webview !== null && readyGuest === webview;
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
+  const guestReady = webview !== null && nav.guestReady;
+  const [find, setFind] = useState<BrowserFindState | null>(null);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
-  const captureWebview = (element: HTMLWebViewElement | null): void => {
-    // React 19 rejects a boolean value for this custom content attribute. Electron only
-    // cares about its presence, so set it directly before the guest navigation begins.
-    element?.toggleAttribute('allowpopups', true);
+  const { current: captureWebview } = useSingleton(() => (element: HTMLWebViewElement | null) => {
     setWebview(element as WebviewTag | null);
-  };
+    setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
+  });
 
-  useEffect(
-    (signal) => {
-      if (webview === null) return;
-      const sync = (): void => {
-        if (signal.aborted) return;
-        setNav((prev) => ({
-          ...prev,
-          isLoading: webview.isLoading(),
-          canGoBack: webview.canGoBack(),
-          canGoForward: webview.canGoForward(),
-        }));
-      };
-      const onNavigate = (event: Electron.DidNavigateEvent): void => {
-        if (!signal.aborted) setBrowserUrl(event.url);
-        setNav((prev) => ({ ...prev, failure: null }));
-        sync();
-      };
-      const onFail = (event: Electron.DidFailLoadEvent): void => {
-        // -3 = ERR_ABORTED: fired for cancelled loads (e.g. quick re-navigation), not real failures.
-        if (event.errorCode === -3 || !event.isMainFrame || signal.aborted) return;
-        setNav((prev) => ({
-          ...prev,
-          failure: t('loadFailed', { error: event.errorDescription }),
-        }));
-      };
-      const onReady = (): void => {
-        if (!signal.aborted) setReadyGuest(webview);
-      };
-      webview.addEventListener('dom-ready', onReady);
-      webview.addEventListener('did-start-loading', sync);
-      webview.addEventListener('did-stop-loading', sync);
-      webview.addEventListener('did-navigate', onNavigate);
-      webview.addEventListener('did-navigate-in-page', onNavigate);
-      webview.addEventListener('did-fail-load', onFail);
-      return () => {
-        webview.removeEventListener('dom-ready', onReady);
-        webview.removeEventListener('did-start-loading', sync);
-        webview.removeEventListener('did-stop-loading', sync);
-        webview.removeEventListener('did-navigate', onNavigate);
-        webview.removeEventListener('did-navigate-in-page', onNavigate);
-        webview.removeEventListener('did-fail-load', onFail);
-      };
-    },
-    [webview, setBrowserUrl, t],
-  );
+  useLayoutEffect(() => {
+    if (webview === null) return;
+    registerBrowserWebview(tabId, webview);
+    return () => registerBrowserWebview(tabId, null);
+  }, [tabId, webview]);
+
+  const syncDocumentState = useEffectEvent((currentUrl: string, currentTitle: string) => {
+    if (currentUrl.length > 0) setBrowserTabUrl(tabId, currentUrl);
+    if (currentTitle.length > 0) setBrowserTabTitle(tabId, currentTitle);
+  });
+
+  useLayoutEffect(() => {
+    if (webview === null) return;
+    let ready = false;
+    const sync = (): void => {
+      if (!ready) return;
+      setNav((prev) => ({
+        ...prev,
+        isLoading: webview.isLoading(),
+        canGoBack: webview.canGoBack(),
+        canGoForward: webview.canGoForward(),
+      }));
+    };
+    const syncDocument = (): void => {
+      ready = true;
+      markBrowserWebviewReady(tabId);
+      setNav((prev) => ({
+        ...prev,
+        isLoading: webview.isLoading(),
+        canGoBack: webview.canGoBack(),
+        canGoForward: webview.canGoForward(),
+        guestReady: true,
+      }));
+      syncDocumentState(webview.getURL(), webview.getTitle());
+    };
+    const onNavigate = (event: Electron.DidNavigateEvent): void => {
+      advanceBrowserWebviewGeneration(tabId);
+      syncDocumentState(event.url, '');
+      setNav((prev) => ({ ...prev, failure: null }));
+      sync();
+    };
+    const onStartNavigation = (event: Electron.DidStartNavigationEvent): void => {
+      if (!event.isMainFrame || event.isInPlace) return;
+      ready = false;
+      markBrowserWebviewUnready(tabId);
+      setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
+    };
+    const onTitleUpdated = (event: Electron.PageTitleUpdatedEvent): void => {
+      syncDocumentState('', event.title);
+    };
+    const onFail = (event: Electron.DidFailLoadEvent): void => {
+      // -3 = ERR_ABORTED: fired for cancelled loads (e.g. quick re-navigation), not real failures.
+      if (event.errorCode === -3 || !event.isMainFrame) return;
+      setNav((prev) => ({
+        ...prev,
+        failure: t('loadFailed', { error: event.errorDescription }),
+      }));
+    };
+    const onFoundInPage = (event: Electron.FoundInPageEvent): void => {
+      setFind((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              matches: { active: event.result.activeMatchOrdinal, total: event.result.matches },
+            },
+      );
+    };
+    webview.addEventListener('did-start-loading', sync);
+    // `dom-ready` can fire before React's layout effects subscribe on very fast pages. The later
+    // `did-stop-loading` is an equivalent safe point for guest methods and closes that race.
+    webview.addEventListener('did-stop-loading', syncDocument);
+    webview.addEventListener('dom-ready', syncDocument);
+    webview.addEventListener('did-start-navigation', onStartNavigation);
+    webview.addEventListener('did-navigate', onNavigate);
+    webview.addEventListener('did-navigate-in-page', onNavigate);
+    webview.addEventListener('page-title-updated', onTitleUpdated);
+    webview.addEventListener('did-fail-load', onFail);
+    webview.addEventListener('found-in-page', onFoundInPage);
+    // A cached page can finish before either readiness listener is attached. Probe only after all
+    // listeners are installed; an attaching guest may still throw, in which case an event wins.
+    try {
+      if (!webview.isLoading() && webview.getURL().length > 0) syncDocument();
+    } catch {
+      noop();
+    }
+    return () => {
+      webview.removeEventListener('did-start-loading', sync);
+      webview.removeEventListener('did-stop-loading', syncDocument);
+      webview.removeEventListener('dom-ready', syncDocument);
+      webview.removeEventListener('did-start-navigation', onStartNavigation);
+      webview.removeEventListener('did-navigate', onNavigate);
+      webview.removeEventListener('did-navigate-in-page', onNavigate);
+      webview.removeEventListener('page-title-updated', onTitleUpdated);
+      webview.removeEventListener('did-fail-load', onFail);
+      webview.removeEventListener('found-in-page', onFoundInPage);
+    };
+  }, [webview, t, tabId]);
 
   // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
   // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
   // restarts it on their next visit.
-  //
-  // Gated on `dom-ready`: the resident webview normally mounts hidden, and `executeJavaScript`
-  // THROWS SYNCHRONOUSLY on a guest that isn't attached yet (no rejected promise, so `.catch`
-  // can't see it) — the escaping error used to unmount the whole renderer (CODE-380). A guest
-  // that never became ready has nothing playing anyway.
-  useEffect(() => {
-    if (webview === null || visible || !guestReady) return;
-    // Still fallible once ready: the guest may be mid-navigation or already gone.
-    webview
-      .executeJavaScript('document.querySelectorAll("video,audio").forEach((m) => m.pause())')
-      .catch(noop);
-  }, [webview, visible, guestReady]);
+  // Gated on `dom-ready`: the resident webview normally mounts hidden, and calling guest methods
+  // before attachment can throw synchronously. A guest that never became ready has nothing playing.
+  useLayoutEffect(() => {
+    if (webview === null || !guestReady) return;
+    const isVisible = (): boolean => {
+      const panel = useDesktopShellStore.getState().rightPanel;
+      return panel.open && panel.activeSection === 'browser' && panel.browser.activeTabId === tabId;
+    };
+    let wasVisible = isVisible();
+    if (!wasVisible) pauseWebviewMedia(webview);
+    return useDesktopShellStore.subscribe(() => {
+      const nextVisible = isVisible();
+      if (wasVisible && !nextVisible) pauseWebviewMedia(webview);
+      wasVisible = nextVisible;
+    });
+  }, [webview, guestReady, tabId]);
+
+  const openFind = (): void => {
+    setFind((prev) => prev ?? { query: '', matches: null });
+  };
+  const closeFind = (): void => {
+    if (guestReady) webview?.stopFindInPage('clearSelection');
+    setFind(null);
+  };
+  const changeFindQuery = (query: string): void => {
+    setFind({ query, matches: null });
+    if (!guestReady) return;
+    if (query.length > 0) webview?.findInPage(query);
+    else webview?.stopFindInPage('clearSelection');
+  };
+  const stepFind = (forward: boolean): void => {
+    if (guestReady && find !== null && find.query.length > 0) {
+      webview?.findInPage(find.query, { forward, findNext: true });
+    }
+  };
+  const zoom = (action: 'in' | 'out' | 'reset'): void => {
+    applyZoom(webview, guestReady, action);
+  };
+
+  // Owner-scoped chords: the registry only fires these while this tab's pane is the
+  // visible (non-inert) item of the resident stack.
+  useKeyboardShortcut({
+    actionId: 'browser.find',
+    shortcut: { code: 'KeyF', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      openFind();
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-in',
+    shortcut: { code: 'Equal', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('in');
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-out',
+    shortcut: { code: 'Minus', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('out');
+      return true;
+    },
+  });
+  useKeyboardShortcut({
+    actionId: 'browser.zoom-reset',
+    shortcut: { code: 'Digit0', modifiers: ['primary'] },
+    owner: rootRef,
+    when: whenNotLocal,
+    handler() {
+      zoom('reset');
+      return true;
+    },
+  });
+
+  useLayoutEffect(() => {
+    if (!visible) return;
+    return systemBridge.browser.onShortcut((action) => {
+      const panel = useDesktopShellStore.getState().rightPanel;
+      if (!panel.open || panel.activeSection !== 'browser' || panel.browser.activeTabId !== tabId) {
+        return;
+      }
+      switch (action) {
+        case 'find':
+          setFind((prev) => prev ?? { query: '', matches: null });
+          break;
+        case 'zoom-in':
+          applyZoom(webview, guestReady, 'in');
+          break;
+        case 'zoom-out':
+          applyZoom(webview, guestReady, 'out');
+          break;
+        case 'zoom-reset':
+          applyZoom(webview, guestReady, 'reset');
+          break;
+        default:
+          break;
+      }
+    });
+  }, [systemBridge, tabId, visible, webview, guestReady]);
 
   return (
-    <BrowserPane
-      url={url}
-      isLoading={nav.isLoading}
-      canGoBack={nav.canGoBack}
-      canGoForward={nav.canGoForward}
-      failure={nav.failure}
-      onNavigate={(next) => setBrowserUrl(next)}
-      onBack={() => webview?.goBack()}
-      onForward={() => webview?.goForward()}
-      onReload={() => webview?.reload()}
-    >
-      {url !== null && (
-        <webview
-          ref={captureWebview}
-          src={url}
-          partition={BROWSER_PARTITION}
-          className="h-full w-full"
-        />
-      )}
-    </BrowserPane>
+    <div ref={rootRef} className="h-full min-h-0">
+      <BrowserPane
+        url={url}
+        isLoading={nav.isLoading}
+        canGoBack={nav.canGoBack}
+        canGoForward={nav.canGoForward}
+        failure={nav.failure}
+        find={find}
+        onNavigate={(next) => setBrowserTabUrl(tabId, next)}
+        onBack={() => guestReady && webview?.goBack()}
+        onForward={() => guestReady && webview?.goForward()}
+        onReload={() => guestReady && webview?.reload()}
+        onFindQueryChange={changeFindQuery}
+        onFindStep={stepFind}
+        onFindClose={closeFind}
+        onOpenFind={openFind}
+        onZoom={zoom}
+        onOpenDevTools={() => guestReady && webview?.openDevTools()}
+      >
+        {url !== null && (
+          <webview
+            ref={captureWebview}
+            src={url}
+            partition={BROWSER_PARTITION}
+            // Must be present BEFORE the element attaches — Electron snapshots webview params at
+            // attach time, and a post-mount toggle leaves popups silently blocked (the guest
+            // window-open handler is then never consulted; verified via main-process probe).
+            // @ts-expect-error -- React types this boolean, but React 19 only forwards the
+            // string form; the empty string is the boolean-attribute-present form.
+            allowpopups=""
+            className="h-full w-full"
+          />
+        )}
+      </BrowserPane>
+    </div>
   );
 }

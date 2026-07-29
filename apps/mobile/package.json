@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "smoke:export": "node scripts/smoke-native-entry-export.cjs",
+    "e2e:ui": "MAESTRO_CLI_NO_ANALYTICS=1 maestro test e2e/flows",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
@@ -54,8 +55,8 @@
     "expo-web-browser": "~57.0.0",
     "foxact": "^0.3.8",
     "foxts": "^5.8.0",
-    "heroui-native": "1.0.5",
-    "lucide-react-native": "^1.24.0",
+    "heroui-native": "1.0.6",
+    "lucide-react-native": "^1.25.0",
     "posthog-react-native": "^4.58.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -79,7 +80,7 @@
   "devDependencies": {
     "@bacons/apple-targets": "4.0.7",
     "@types/react": "catalog:",
-    "tailwindcss": "^4.3.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "catalog:"
   }
 }

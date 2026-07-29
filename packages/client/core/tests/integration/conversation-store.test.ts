@@ -1,5 +1,6 @@
 import type { AgentEvent, MessageId, SessionId } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
+import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createConversationStore } from '../../src/conversation-store';
 import { createConnectedLocalClient } from '../support/local-client';
@@ -15,9 +16,7 @@ function userText(text: string, messageId = `user:${text}`): AgentEvent {
 }
 
 function tick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 10);
-  });
+  return wait(10);
 }
 
 async function harness() {

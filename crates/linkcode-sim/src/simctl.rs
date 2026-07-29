@@ -28,6 +28,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 /// environment it was launched from. `/usr/bin/xcrun` ships with macOS itself, not Xcode.
 const XCRUN: &str = "/usr/bin/xcrun";
 const XCODE_SELECT: &str = "/usr/bin/xcode-select";
+const XCODEBUILD: &str = "/usr/bin/xcodebuild";
 
 /// One available simulator device, flattened from `simctl list -j`.
 #[derive(Serialize)]
@@ -64,7 +65,67 @@ pub fn probe() -> Result<Value, OpError> {
         // inject touches. Report it so clients gate the live panel instead of mounting a stream that
         // only ever fails. The private layer resolves exactly when interactive drive is possible.
         "interactive": interactive_supported(),
+        // What is still missing, so a client can guide the user step by step instead of saying
+        // "unavailable". `null` once devices exist.
+        "blocker": setup_blocker(),
     }))
+}
+
+/// The next thing standing between this host and a usable simulator, or `None` when nothing is.
+///
+/// Only reachable once `xcrun --find simctl` has succeeded, so "no Xcode" is already ruled out by
+/// the caller — the remaining gap is a missing runtime, or a runtime with no device created
+/// against it. Both are recoverable by the user without reinstalling anything.
+fn setup_blocker() -> Option<&'static str> {
+    let runtimes = run_ok(simctl(["list", "-j", "runtimes"]), DEFAULT_TIMEOUT).ok();
+    let devices = run_ok(
+        simctl(["list", "-j", "devices", "available"]),
+        DEFAULT_TIMEOUT,
+    )
+    .ok();
+    classify_setup(runtimes.as_deref(), devices.as_deref())
+}
+
+/// Pure classification over the two `simctl list` payloads, so the branches this host cannot reach
+/// (no runtime, no devices) are still covered by tests.
+fn classify_setup(runtimes_json: Option<&str>, devices_json: Option<&str>) -> Option<&'static str> {
+    if !has_ios_runtime(runtimes_json) {
+        return Some("runtime");
+    }
+    if !has_any_device(devices_json) {
+        return Some("devices");
+    }
+    None
+}
+
+/// Whether any *usable* iOS runtime is installed. A bare Xcode ships without one, and an
+/// interrupted download leaves an entry whose `isAvailable` is false — listed, but unable to boot.
+fn has_ios_runtime(raw: Option<&str>) -> bool {
+    let Some(parsed) = raw.and_then(|raw| serde_json::from_str::<Value>(raw).ok()) else {
+        return false;
+    };
+    parsed["runtimes"].as_array().is_some_and(|runtimes| {
+        runtimes.iter().any(|runtime| {
+            runtime["identifier"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("SimRuntime.iOS")
+                && runtime["isAvailable"].as_bool().unwrap_or(false)
+        })
+    })
+}
+
+/// Whether at least one device exists to boot. A runtime install creates the standard set, but a
+/// user who deleted them all lands here with a runtime and nothing to run on it.
+fn has_any_device(raw: Option<&str>) -> bool {
+    let Some(parsed) = raw.and_then(|raw| serde_json::from_str::<Value>(raw).ok()) else {
+        return false;
+    };
+    parsed["devices"].as_object().is_some_and(|by_runtime| {
+        by_runtime
+            .values()
+            .any(|list| list.as_array().is_some_and(|entries| !entries.is_empty()))
+    })
 }
 
 /// Whether this host can drive simulators interactively (framebuffer stream + HID), which requires
@@ -77,6 +138,26 @@ fn interactive_supported() -> bool {
 #[cfg(not(target_os = "macos"))]
 fn interactive_supported() -> bool {
     false
+}
+
+/// Start `xcodebuild -downloadPlatform iOS` and return as soon as it is running.
+///
+/// Deliberately fire-and-forget: the download is tens of minutes and many gigabytes, so holding a
+/// request open for it would blow every deadline in the stack and give the caller nothing to show
+/// meanwhile. Callers observe progress by re-probing until the runtime appears — the same signal
+/// that tells them the user finished the step by hand in Xcode instead.
+pub fn install_runtime() -> Result<Value, OpError> {
+    let mut command = apple_tool(XCODEBUILD);
+    command.args(["-downloadPlatform", "iOS"]);
+    // Detached from this request: nothing reads its output, and the child must outlive the reply.
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let child = command
+        .spawn()
+        .map_err(|err| OpError::new(ErrorCode::XcodeMissing, format!("xcodebuild: {err}")))?;
+    Ok(json!({ "started": true, "pid": child.id() }))
 }
 
 /// List available devices with their runtime names.
@@ -411,6 +492,50 @@ fn parse_device_list(devices_json: &str, runtimes_json: &str) -> Result<Vec<Devi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RUNTIMES_OK: &str = r#"{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","isAvailable":true}]}"#;
+    const DEVICES_OK: &str =
+        r#"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"udid":"U-1"}]}}"#;
+
+    #[test]
+    fn a_provisioned_host_has_no_blocker() {
+        assert_eq!(classify_setup(Some(RUNTIMES_OK), Some(DEVICES_OK)), None);
+    }
+
+    #[test]
+    fn a_bare_xcode_reports_the_missing_runtime() {
+        let empty = r#"{"runtimes":[]}"#;
+        assert_eq!(
+            classify_setup(Some(empty), Some(DEVICES_OK)),
+            Some("runtime")
+        );
+    }
+
+    #[test]
+    fn an_interrupted_runtime_download_still_reports_runtime() {
+        // Listed but unusable: `isAvailable` false means it cannot boot anything, so treating it as
+        // installed would strand the user on a checklist that says everything is done.
+        let broken = r#"{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","isAvailable":false}]}"#;
+        assert_eq!(
+            classify_setup(Some(broken), Some(DEVICES_OK)),
+            Some("runtime")
+        );
+    }
+
+    #[test]
+    fn a_runtime_without_devices_reports_devices() {
+        let none = r#"{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[]}}"#;
+        assert_eq!(
+            classify_setup(Some(RUNTIMES_OK), Some(none)),
+            Some("devices")
+        );
+    }
+
+    #[test]
+    fn unreadable_output_is_treated_as_missing_rather_than_ready() {
+        assert_eq!(classify_setup(None, None), Some("runtime"));
+        assert_eq!(classify_setup(Some("not json"), None), Some("runtime"));
+    }
 
     const DEVICES: &str = r#"{
         "devices": {

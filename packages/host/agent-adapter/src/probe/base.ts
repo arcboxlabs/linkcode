@@ -15,8 +15,8 @@ export interface DetectedAgentRuntime {
   version: string;
 }
 
-/** The agent kinds that spawn an external CLI (pi is in-process; opencode is PATH-based until CODE-76). */
-export type ProbeableKind = 'claude-code' | 'codex' | 'grok-build';
+/** The agent kinds that spawn an external CLI (pi is in-process). */
+export type ProbeableKind = 'claude-code' | 'codex' | 'grok-build' | 'opencode';
 
 /**
  * One agent's CLI probe: where its user-installed binary may live and how to verify a candidate is
@@ -88,7 +88,7 @@ export abstract class AgentCliProbe {
     try {
       // 10s: Windows Defender's first-touch scan can stall a binary's first exec past 5s.
       const { stdout } = await execFileAsync(file, ['--version'], {
-        timeout: 10_000,
+        timeout: 10000,
         windowsHide: true,
       });
       const version = this.parseVersion(stdout);

@@ -1,9 +1,12 @@
 import type { SessionId } from '@linkcode/schema';
+import { MAX_SIMULATORS_PER_SESSION } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import { RequestError } from '../failure';
 import type {
+  SimulatorAxLimits,
+  SimulatorAxNode,
   SimulatorBackend,
   SimulatorButton,
   SimulatorDeviceInfo,
@@ -25,10 +28,12 @@ export interface SimulatorHostStatus {
    * only when available. Clients gate the live panel on it. */
   interactive?: boolean;
   reason?: string;
+  /** The next step the user must take before a device can run; absent once one exists. */
+  blocker?: 'xcode' | 'runtime' | 'devices';
 }
 
-/** Mirrors the reference session model: at most four simulator panes per session. */
-const MAX_DEVICES_PER_SESSION = 4;
+/** At most four simulator panes per session; the panel reads the same constant for its tab cap. */
+const MAX_DEVICES_PER_SESSION = MAX_SIMULATORS_PER_SESSION;
 /** How long a released device we booted stays reserved before it is shut down and freed. */
 const IDLE_RECLAIM_MS = 10 * 60000;
 
@@ -50,10 +55,11 @@ interface DeviceClaim {
  * reaching around this layer would bypass ownership and consent.
  *
  * Ownership model (mirrors the reference implementation): a device belongs to the session that
- * first drives it, and concurrent sessions never share one. When the owning session stops, a
- * device this service booted idles for {@link IDLE_RECLAIM_MS} — resuming work re-claims it in
- * place — then is shut down and freed. Devices the user booted are released immediately and
- * never shut down by the engine.
+ * first drives it, and concurrent sessions never share one. When the owning session stops — or the
+ * panel detaches, leaving nobody watching — a device this service booted idles for
+ * {@link IDLE_RECLAIM_MS}, then is shut down and freed; resuming work re-claims it in place.
+ * Devices the user booted are released immediately and never shut down by the engine, so a
+ * simulator started from Simulator.app or Xcode outlives us untouched.
  */
 export class SimulatorService {
   private readonly claims = new Map<string, DeviceClaim>();
@@ -88,12 +94,32 @@ export class SimulatorService {
   async status(): Promise<SimulatorHostStatus> {
     if (this.probedStatus) return this.probedStatus;
     try {
-      const probe = await this.backend.probe();
-      this.probedStatus = { available: true, ...probe };
-      return this.probedStatus;
+      // `blocker` is nullable off the sidecar (JSON `null` = nothing missing) but optional on the
+      // wire, so it is normalized here rather than teaching every consumer both spellings.
+      const { blocker, ...probe } = await this.backend.probe();
+      const status: SimulatorHostStatus = {
+        available: true,
+        ...probe,
+        ...(blocker && { blocker }),
+      };
+      // Only a fully-provisioned host is cached. A probe can succeed while the setup is still
+      // incomplete (Xcode without an iOS runtime), and caching that would freeze the client's
+      // checklist on a step the user is in the middle of finishing.
+      if (!blocker) this.probedStatus = status;
+      return status;
     } catch (error) {
-      return { available: false, reason: extractErrorMessage(error) ?? 'probe failed' };
+      return {
+        available: false,
+        reason: extractErrorMessage(error) ?? 'probe failed',
+        blocker: 'xcode',
+      };
     }
+  }
+
+  /** Start the iOS runtime download. Resolves once it is running: the download is tens of minutes
+   * and many gigabytes, so callers watch {@link status} for the runtime to appear instead. */
+  installRuntime(): Promise<void> {
+    return this.backend.installRuntime();
   }
 
   /** Read-only; claims are not required to look. */
@@ -230,9 +256,22 @@ export class SimulatorService {
     return this.backend.rotate(udid, orientation);
   }
 
+  async shake(sessionId: SessionId, udid: string): Promise<void> {
+    this.claim(sessionId, udid);
+    return this.backend.shake(udid);
+  }
+
   async key(sessionId: SessionId, udid: string, usage: number, modifiers: number[]): Promise<void> {
     this.claim(sessionId, udid);
     return this.backend.key(udid, usage, modifiers);
+  }
+
+  async describeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: SimulatorAxLimits,
+  ): Promise<SimulatorAxNode> {
+    return this.withClaim(sessionId, udid, () => this.backend.describeUi(udid, limits));
   }
 
   /** Start streaming a device's framebuffer for a session, claiming it. */
@@ -252,8 +291,14 @@ export class SimulatorService {
    * device stays stuck until the daemon restarts. Only the current owner stops the stream; for a
    * stale session it is a no-op that never touches another session's claim. */
   async streamStop(sessionId: SessionId, udid: string): Promise<void> {
-    if (this.claims.get(udid)?.sessionId !== sessionId) return;
-    return this.backend.streamStop(udid);
+    const claim = this.claims.get(udid);
+    if (claim?.sessionId !== sessionId) return;
+    await this.backend.streamStop(udid);
+    // Detaching (CODE-416) leaves the device booted and still owned — the session lives on and an
+    // agent may keep driving it. But nothing is watching any more, so start the idle clock: a
+    // device we booted should not linger unattended. Any later operation on it disarms this again,
+    // so a device an agent is still working never expires out from under it.
+    if (claim.bootedByService) this.armIdleReclaim(udid, claim);
   }
 
   /**
@@ -349,7 +394,19 @@ export class SimulatorService {
       this.drop(udid);
       return;
     }
-    if (claim.idleTimer) clearTimeout(claim.idleTimer);
+    this.armIdleReclaim(udid, claim);
+  }
+
+  /**
+   * Start the clock after which a device we booted is shut down and freed. Only ever called for
+   * service-booted devices — a device the user booted is never ours to end.
+   *
+   * A clock already counting down is left alone rather than restarted: the triggers overlap (a
+   * session stop and the deferred stream stop that follows it), and each one restarting the window
+   * would keep pushing the reclaim out.
+   */
+  private armIdleReclaim(udid: string, claim: DeviceClaim): void {
+    if (claim.idleTimer) return;
     claim.idleTimer = setTimeout(() => {
       // Shut the device down before releasing its claim: dropping first opens a window where
       // another session claims and boots the same udid while this shutdown is still in flight,

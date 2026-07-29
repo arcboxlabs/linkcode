@@ -4,14 +4,33 @@ import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenCodeAdapter } from '../native/opencode';
 
-const sdkMock = vi.hoisted(() => ({
-  createOpencode: null as ((opts: unknown) => unknown) | null,
-}));
+const sdkMock = vi.hoisted(
+  (): {
+    createOpencode: ((opts: unknown) => unknown) | null;
+    liveClient: unknown;
+  } => ({ createOpencode: null, liveClient: null }),
+);
 
 vi.mock('@opencode-ai/sdk/v2', () => ({
-  createOpencode(opts: unknown) {
+  createOpencodeClient() {
+    if (sdkMock.liveClient === null) throw new Error('no live server was started');
+    return sdkMock.liveClient;
+  },
+}));
+
+// The adapter spawns its per-session server through the owned serve helper (CODE-76), then builds
+// the client separately — bridge that spawn back onto the `createOpencode`-shaped mock the cases
+// install, so each case keeps stubbing one function that yields both client and server.
+vi.mock('../native/opencode/serve', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  async startOpencodeServe(opts: unknown) {
     if (!sdkMock.createOpencode) throw new Error('createOpencode mock not installed');
-    return sdkMock.createOpencode(opts);
+    const started = (await sdkMock.createOpencode(opts)) as {
+      client: unknown;
+      server: { url?: string; close(): void };
+    };
+    sdkMock.liveClient = started.client;
+    return { url: started.server.url ?? 'http://fake', close: () => started.server.close() };
   },
 }));
 
@@ -1112,7 +1131,7 @@ describe('OpenCodeAdapter command catalog', () => {
       client.command.list.mockReturnValueOnce({
         data: [
           { name: 'review', description: 'Review code', template: 't', hints: ['<file>'] },
-          { name: 'noop', template: 't', hints: [] },
+          { name: 'karpathy-guidelines', source: 'skill', template: 'skill body', hints: [] },
         ],
       });
       return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
@@ -1126,7 +1145,7 @@ describe('OpenCodeAdapter command catalog', () => {
     expect(catalog).toHaveLength(1);
     expect(catalog[0].commands).toEqual([
       { name: 'review', description: 'Review code', argumentHint: '<file>' },
-      { name: 'noop', description: undefined, argumentHint: undefined },
+      { name: 'karpathy-guidelines', description: undefined, argumentHint: undefined },
     ]);
   });
 
@@ -1418,6 +1437,31 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     expect(client.session.promptAsync).toHaveBeenCalledWith(
       expect.objectContaining({ agent: 'build' }),
     );
+  });
+
+  it('starts under a new-session policy pick, which rides the first prompt', async () => {
+    seedAgents();
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', approvalPolicyId: 'plan' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('plan');
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'plan' }),
+    );
+  });
+
+  it('degrades an unselectable new-session pick to the catalog default with an error', async () => {
+    seedAgents();
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', approvalPolicyId: 'reviewer' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('build');
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
   });
 
   it('keeps the axis hidden when discovery returns nothing selectable', async () => {

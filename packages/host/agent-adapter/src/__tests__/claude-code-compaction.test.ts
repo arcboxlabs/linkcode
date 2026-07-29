@@ -235,8 +235,56 @@ describe('buildClaudeTranscriptSupplement', () => {
       // Error results carry a plain string — nothing to project.
       resultRow('r3', ['toolu_4'], 'String to replace not found'),
     ]);
-    expect([...supplement.toolUseResults.entries()]).toEqual([
-      ['toolu_1', { code: 200, codeText: 'OK' }],
+    expect([...supplement.toolUseResults]).toEqual([['toolu_1', { code: 200, codeText: 'OK' }]]);
+
+    // An Edit result keys both projections off the one raw field: the envelope keeps the small
+    // scalars (dropping the bulk `originalFile`), and the patch survives the same filter, which
+    // would otherwise drop `structuredPatch` for being an array.
+    const edits = buildClaudeTranscriptSupplement([
+      resultRow('r1', ['toolu_1'], {
+        filePath: 'src/a.ts',
+        oldString: 'a',
+        newString: 'b',
+        originalFile: 'x'.repeat(400),
+        userModified: false,
+        replaceAll: true,
+        structuredPatch: [
+          { oldStart: 12, oldLines: 3, newStart: 12, newLines: 3, lines: [' ctx', '-a', '+b'] },
+        ],
+      }),
+      resultRow('r2', ['toolu_2', 'toolu_3'], {
+        filePath: 'src/b.ts',
+        oldString: 'a',
+        newString: 'b',
+        structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a'] }],
+      }),
+    ]);
+    expect([...edits.toolUseResults]).toEqual([
+      [
+        'toolu_1',
+        {
+          filePath: 'src/a.ts',
+          oldString: 'a',
+          newString: 'b',
+          userModified: false,
+          replaceAll: true,
+        },
+      ],
+    ]);
+    expect([...edits.toolUsePatches]).toEqual([
+      [
+        'toolu_1',
+        [
+          {
+            type: 'diff',
+            change: 'modify',
+            path: 'src/a.ts',
+            oldText: 'a',
+            newText: 'b',
+            patch: { format: 'git_patch', text: '@@ -12,3 +12,3 @@\n ctx\n-a\n+b' },
+          },
+        ],
+      ],
     ]);
   });
 });
@@ -256,7 +304,13 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
   }
 
   function supplementOf(partial: Partial<ClaudeTranscriptSupplement>): ClaudeTranscriptSupplement {
-    return { records: new Map(), droppedRows: [], toolUseResults: new Map(), ...partial };
+    return {
+      records: new Map(),
+      droppedRows: [],
+      toolUseResults: new Map(),
+      toolUsePatches: new Map(),
+      ...partial,
+    };
   }
 
   class HistoryClaude extends ClaudeCodeAdapter {
@@ -373,6 +427,41 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     if (settle?.type === 'tool-call') {
       expect(settle.toolCall.status).toBe('completed');
       expect(settle.toolCall.rawOutput).toEqual(envelope);
+    }
+  });
+
+  it('replays an Edit settle with the recovered patch instead of the announce fragment', async () => {
+    const patch = {
+      type: 'diff' as const,
+      change: 'modify' as const,
+      path: 'src/a.ts',
+      oldText: 'a',
+      newText: 'b',
+      patch: { format: 'git_patch' as const, text: '@@ -12,3 +12,3 @@\n ctx\n-a\n+b' },
+    };
+    const adapter = new HistoryClaude(
+      [
+        row('assistant', 'a0', [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'Edit',
+            input: { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' },
+          },
+        ]),
+        row('user', 'u0', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'updated' }]),
+      ],
+      supplementOf({ toolUsePatches: new Map([['toolu_1', [patch]]]) }),
+    );
+    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
+    const settle = result.events.at(-1)?.event;
+    expect(settle?.type).toBe('tool-call');
+    if (settle?.type === 'tool-call') {
+      // Superseded, not stacked — one diff, matching what the live settle emits.
+      expect(settle.toolCall.content).toEqual([
+        patch,
+        { type: 'content', content: { type: 'text', text: 'updated' } },
+      ]);
     }
   });
 

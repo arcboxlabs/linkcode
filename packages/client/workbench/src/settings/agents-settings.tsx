@@ -10,6 +10,7 @@ import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { useData, useMutation } from '../runtime/tayori';
 import { bindingAvailability } from './providers/capability';
 import { AGENT_KINDS, withEnabled } from './providers/view';
+import { SimulatorAgentAccessCard } from './simulator-access';
 
 /**
  * The collapsed Agents tab: per-agent runtime concerns only — account bindings and models are
@@ -103,6 +104,7 @@ export function AgentsSettingsPanel({
           );
         })}
       </SettingsCard>
+      <SimulatorAgentAccessCard />
     </div>
   );
 }

@@ -1,113 +1,70 @@
 // @vitest-environment jsdom
-
-import type { LinkCodeClient } from '@linkcode/client-core';
-import { LinkCodeProvider } from '@linkcode/client-core';
 import type { SessionId } from '@linkcode/schema';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { useSessionActions } from '../use-session-actions';
-import { stubClient } from './stub-client';
+import { clientWrapper, connectClient } from './client-test-helpers';
 
-type Ack = Awaited<ReturnType<LinkCodeClient['promptText']>>;
+const SESSION = 'session-1' as SessionId;
 
-const SESSION_ID = 'session-1' as SessionId;
-
-const promptText = vi.fn<LinkCodeClient['promptText']>();
-const cancel = vi.fn<LinkCodeClient['cancel']>();
-const respondPermission = vi.fn<LinkCodeClient['respondPermission']>();
-const respondQuestion = vi.fn<LinkCodeClient['respondQuestion']>();
-
-const client = stubClient({ promptText, cancel, respondPermission, respondQuestion });
-
-function render(sessionId: SessionId | null = SESSION_ID) {
-  return renderHook(() => useSessionActions(sessionId, 'idle'), {
-    wrapper: ({ children }) => createElement(LinkCodeProvider, { client }, children),
+/** Connected client + the provider wrapper the hook reads its client from. */
+async function mountActions(sessionId: SessionId | null, status: 'idle' | 'running' | 'stopped') {
+  const { transport, client } = await connectClient();
+  const view = renderHook(() => useSessionActions(sessionId, status), {
+    wrapper: clientWrapper(client),
   });
+  return { transport, client, view };
 }
 
-/** An ack the test settles by hand, so in-flight state stays observable. */
-const pending = () => Promise.withResolvers<Ack>();
+it('sends the draft as a text prompt for the session', async () => {
+  const { transport, client, view } = await mountActions(SESSION, 'idle');
 
-beforeEach(() => {
-  vi.resetAllMocks();
+  act(() => view.result.current.send('Create a calculator'));
+
+  await waitFor(() =>
+    expect(transport.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.input',
+        sessionId: SESSION,
+        input: { type: 'prompt', content: [{ type: 'text', text: 'Create a calculator' }] },
+      }),
+    ),
+  );
+  client.dispose();
 });
 
-describe('useSessionActions', () => {
-  it('makes every action a no-op without a session', () => {
-    const { result } = render(null);
+it('cancels the running turn', async () => {
+  const { transport, client, view } = await mountActions(SESSION, 'running');
 
-    act(() => {
-      result.current.send('hi');
-      result.current.stop();
-      result.current.respondPermission('req-1', { outcome: 'cancelled' });
-      result.current.respondQuestion('req-1', { outcome: 'cancelled' });
-    });
+  expect(view.result.current.isRunning).toBe(true);
+  act(() => view.result.current.stop());
 
-    expect(promptText).not.toHaveBeenCalled();
-    expect(cancel).not.toHaveBeenCalled();
-    expect(respondPermission).not.toHaveBeenCalled();
-    expect(respondQuestion).not.toHaveBeenCalled();
-    expect(result.current.canCompose).toBe(false);
-    expect(result.current.respondingIds.size).toBe(0);
-  });
+  await waitFor(() =>
+    expect(transport.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.input',
+        sessionId: SESSION,
+        input: { type: 'cancel' },
+      }),
+    ),
+  );
+  client.dispose();
+});
 
-  it('tracks a response as in flight until it settles', async () => {
-    const ack = pending();
-    respondPermission.mockReturnValue(ack.promise);
-    const { result } = render();
+it('is not composable without a live session, and sends nothing', async () => {
+  const { transport, client, view } = await mountActions(null, 'idle');
 
-    act(() => {
-      result.current.respondPermission('req-1', { outcome: 'selected', optionId: 'allow' });
-    });
-    expect(result.current.respondingIds.has('req-1')).toBe(true);
+  expect(view.result.current.canCompose).toBe(false);
+  act(() => view.result.current.send('ignored'));
 
-    ack.resolve({ ok: true });
-    await waitFor(() => {
-      expect(result.current.respondingIds.has('req-1')).toBe(false);
-    });
-    expect(result.current.failedResponseIds.has('req-1')).toBe(false);
-  });
+  expect(transport.sent).toHaveLength(0);
+  client.dispose();
+});
 
-  it('records a failed response and clears it when the same ask is retried', async () => {
-    const failed = pending();
-    respondQuestion.mockReturnValueOnce(failed.promise);
-    const { result } = render();
+it('treats a stopped thread as not composable', async () => {
+  const { client, view } = await mountActions(SESSION, 'stopped');
 
-    act(() => {
-      result.current.respondQuestion('req-1', { outcome: 'cancelled' });
-    });
-    failed.reject(new Error('nope'));
-    await waitFor(() => {
-      expect(result.current.failedResponseIds.has('req-1')).toBe(true);
-    });
-    expect(result.current.respondingIds.has('req-1')).toBe(false);
-
-    respondQuestion.mockReturnValueOnce(pending().promise);
-    act(() => {
-      result.current.respondQuestion('req-1', { outcome: 'cancelled' });
-    });
-    expect(result.current.failedResponseIds.has('req-1')).toBe(false);
-    expect(result.current.respondingIds.has('req-1')).toBe(true);
-  });
-
-  it('surfaces which action failed, and a later send clears the stale failure', async () => {
-    const stopAck = pending();
-    cancel.mockReturnValue(stopAck.promise);
-    const { result } = render();
-
-    act(() => {
-      result.current.stop();
-    });
-    stopAck.reject(new Error('nope'));
-    await waitFor(() => {
-      expect(result.current.failure).toBe('stop');
-    });
-
-    promptText.mockReturnValue(pending().promise);
-    act(() => {
-      result.current.send('hi');
-    });
-    expect(result.current.failure).toBeNull();
-  });
+  expect(view.result.current.canCompose).toBe(false);
+  expect(view.result.current.isRunning).toBe(false);
+  client.dispose();
 });

@@ -36,6 +36,10 @@ import type {
   SessionInfo,
   SessionRecord,
   SessionSubscriptionMode,
+  SimulatorAxNode,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -680,12 +684,74 @@ export class ControlChannel {
     }));
   }
 
+  /** Shake the device — the gesture apps use for "undo typing" and, in React Native, the dev menu. */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shake',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  /** Start the iOS runtime download. Resolves once it is running, not once it finishes — poll
+   * {@link simulatorStatus} until the blocker clears to follow progress. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install-runtime',
+      clientReqId,
+    }));
+  }
+
+  /** Resolves with the frontmost app's accessibility tree. Node centres are normalized 0..1, the
+   * same scale {@link simulatorTap} takes, so a caller can act on a node it found by label. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.sendCorrelated('simulatorDescribeUi', (clientReqId) => ({
+      kind: 'simulator.describe-ui',
+      clientReqId,
+      sessionId,
+      udid,
+      maxDepth: limits?.maxDepth,
+      maxNodes: limits?.maxNodes,
+    }));
+  }
+
   /** Resolves with the device's screen-outline mask as base64 PNG (no session claim). */
   simulatorScreenMask(udid: string): Promise<string> {
     return this.sendCorrelated('simulatorScreenMask', (clientReqId) => ({
       kind: 'simulator.screen-mask',
       clientReqId,
       udid,
+    }));
+  }
+
+  /** Current per-device agent consent plus the global agent-tools switch (CODE-420). */
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.sendCorrelated('simulatorConsentGet', (clientReqId) => ({
+      kind: 'simulator.consent.get',
+      clientReqId,
+    }));
+  }
+
+  /** Record a decision for a device; `undefined` clears it, so the next agent call asks again. */
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set',
+      clientReqId,
+      udid,
+      decision,
+    }));
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set-agent-tools',
+      clientReqId,
+      enabled,
     }));
   }
 
@@ -820,7 +886,7 @@ export class ControlChannel {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.button',

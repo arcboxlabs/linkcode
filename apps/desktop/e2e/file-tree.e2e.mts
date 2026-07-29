@@ -196,6 +196,7 @@ async function run(win: Page): Promise<void> {
       if (!shadow?.textContent?.includes('tree-fixture-config')) continue;
       const html = shadow.innerHTML;
       return {
+        // eslint-disable-next-line sukka/no-regex-in-function -- runs in the page: a hoisted module-scope regex is out of scope for the serialized closure
         tokens: /color:\s*#|--shiki/.test(html),
         sample: html.slice(html.indexOf('tree-fixture-config') - 200, 300),
       };
@@ -241,7 +242,14 @@ async function main(): Promise<void> {
   try {
     daemon = spawn(process.execPath, ['dist/index.js'], {
       cwd: daemonDir,
-      env: { ...process.env, HOME: home, LINKCODE_PORT: String(PORT) },
+      // The dist bundle is stamped `release`, the dev Electron shell resolves as `development` —
+      // without this they pick different state dirs and the shell never finds runtime.json.
+      env: {
+        ...process.env,
+        HOME: home,
+        LINKCODE_PORT: String(PORT),
+        LINKCODE_CHANNEL: 'development',
+      },
       stdio: 'ignore',
     });
     await waitForDaemon();

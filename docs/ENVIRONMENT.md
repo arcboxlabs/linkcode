@@ -15,7 +15,9 @@ Read by the daemon, desktop, webview, or mobile at run time.
 
 | Variable | Read at | Effect |
 | --- | --- | --- |
-| `LINKCODE_PROFILE` | `apps/daemon/src/config.ts` | Isolated state universe: forks the daemon state dir to `~/.linkcode-<name>`, plus DB, `runtime.json`, and HQ device identity. `[a-z0-9-]`, ≤32 chars; invalid aborts boot. Desktop reads it too, where `--profile=<name>` outranks it, and re-injects the resolved value into the supervised daemon. Unset = the shared `~/.linkcode`. |
+| `LINKCODE_CHANNEL` | `apps/daemon/src/paths.ts` | Picks the daemon's on-disk universe: `release` → `~/.linkcode` + `~/LinkCode` + `…/LinkCode/assets`; `development` → the `LinkCode Development` / `.linkcode.development` set (CODE-460). Outranks the build-time stamp, which is why the desktop supervisor always injects its own `CHANNEL` — the devshell pack's bundled daemon is stamped `release`. Any other value aborts boot. |
+| `LINKCODE_BUILD_CHANNEL` | `apps/daemon/tsup.config.ts` (`define`) | **Build-time stamp, not a runtime knob.** tsup replaces the literal with `release`, so a built daemon defaults to release and the TS source defaults to development. Setting it by hand in a shell works but is not the supported override — use `LINKCODE_CHANNEL`. |
+| `LINKCODE_PROFILE` | `apps/daemon/src/config.ts` | Isolated state universe *within a channel*: forks the state dir to the `-<name>` sibling (`~/.linkcode.development-alpha`), plus DB, `runtime.json`, and HQ device identity. `[a-z0-9-]`, ≤32 chars; invalid aborts boot. Workspaces and the asset store do not fork by profile. Desktop reads it too, where `--profile=<name>` outranks it, and re-injects the resolved value into the supervised daemon. Unset = the channel's default universe. |
 | `LINKCODE_PORT` | `apps/daemon/src/config.ts` | Overrides every configured listener's port. Must parse as an integer in `1..65535`, otherwise the config value stands. |
 | `LINKCODE_HOST` | `apps/daemon/src/config.ts` | Overrides every listener's bind host. |
 | `LINKCODE_PTY_SIDECAR_PATH` | `apps/daemon/src/pty/sidecar.ts` | Absolute path to the `linkcode-pty` binary; always wins. Dev falls back to `target/release/linkcode-pty`; a bundled `dist/` daemon has no fallback and disables terminals. The packaged desktop supervisor sets it to `<resourcesPath>/sidecar/<arch>`. |
@@ -81,8 +83,11 @@ client configuration or new build.
 | `LINKCODE_REQUIRE_PTY_SIDECAR` | `apps/daemon/tests/integration/pty-sidecar.test.ts`, `terminal-flood.test.ts` | `1` turns a missing `linkcode-pty` binary from a silent skip into a hard failure. CI sets it; set it locally too when you mean to exercise the real wire protocol. |
 | `LINKCODE_PTY_SIDECAR_PATH` | `apps/daemon/e2e/startup.e2e.ts` | Points the spawned daemon at the compiled sidecar (CI uses `target/debug/linkcode-pty`). |
 | `LINKCODE_HOST`, `LINKCODE_PORT` | daemon/webview/desktop E2E harnesses | Pin the harness daemon to `127.0.0.1` on an ephemeral port. |
-| `LINKCODE_PROFILE` | desktop E2E | Isolates a run's state universe. Must be identical on both sides — the desktop app and its daemon — or they follow different `runtime.json` files. |
-| `HOME` | every E2E harness | Redirected to a fresh temp dir so runs never touch the real `~/.linkcode`. Use a *fresh* one per run. |
+| `LINKCODE_PROFILE` | desktop E2E | Isolates a run's state universe. Must be identical on both sides — the desktop app and its daemon — or they follow different `runtime.json` files. The same applies to `LINKCODE_CHANNEL` when a harness sets it. |
+| `HOME` | every E2E harness | Redirected to a fresh temp dir so runs never touch the real state dirs. Use a *fresh* one per run. |
+| `LINKCODE_E2E_KEEP_OPEN` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` hands the app over at the pause and waits for you to close the window instead of running a timer. The two section-close checks after the pause are given up in exchange — the alternative is yanking the window away from whoever is driving it. |
+| `LINKCODE_E2E_HOLD_MS` | `apps/desktop/e2e/simulator-panel.e2e.mts` | Widens the pause that leaves the window live to be driven by hand (default `30000`). For demoing the simulator panel rather than checking it. |
+| `LINKCODE_E2E_SKIP_RECLAIM` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` drops the closing CODE-419 reclaim check, whose last act is to SIGTERM the daemon — correct in a test, looks like a crash in a demo. The run then proves everything *except* reclaim-on-shutdown. |
 | `XDG_CONFIG_HOME` | `apps/desktop/e2e/packaged-smoke.e2e.mts` | Redirects Electron/Chromium config for the packaged run. |
 | `NODE_ENV` | `apps/webview/e2e/browser-smoke.e2e.mts` | Forced to `development` — the mock transport is guarded by `import.meta.env.DEV`. |
 | `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` | `packages/host/engine/tests/integration/git-status.test.ts` | Point git at fixture config so the machine's gitconfig (notably commit signing) can't leak into assertions. |

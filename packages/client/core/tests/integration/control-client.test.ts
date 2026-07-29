@@ -8,6 +8,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
+import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import type { SequencedAgentEvent } from '../../src/client';
 import { createConnectedLocalClient } from '../support/local-client';
@@ -131,6 +132,40 @@ describe('LinkCodeClient control API', () => {
   });
 });
 
+describe('LinkCodeClient event delivery scope', () => {
+  it('negotiates the subscription mode and announces which sessions it observes', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient({
+      randomUUID: () => 'scope',
+    });
+    const seen: WirePayload[] = [];
+
+    serverTransport.onMessage((msg) => {
+      seen.push(msg.payload);
+      if (msg.payload.kind !== 'subscription.set') return;
+      serverTransport.send(
+        createWireMessage({ kind: 'request.succeeded', replyTo: msg.payload.clientReqId }),
+      );
+    });
+
+    await expect(client.setSubscriptionMode('attached')).resolves.toEqual({ ok: true });
+    expect(seen).toContainEqual({
+      kind: 'subscription.set',
+      clientReqId: 'creq-scope',
+      mode: 'attached',
+    });
+
+    // Fire-and-forget, so the assertion is on the frame rather than on a reply.
+    client.attachSession(sessionId);
+    client.detachSession(sessionId);
+    await wait(10);
+    expect(seen).toContainEqual({ kind: 'session.attach', sessionId });
+    expect(seen).toContainEqual({ kind: 'session.detach', sessionId });
+
+    client.dispose();
+    serverTransport.close();
+  });
+});
+
 describe('LinkCodeClient session notifications', () => {
   it('fans session.notification broadcasts out to subscribers until unsubscribed', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
@@ -145,16 +180,12 @@ describe('LinkCodeClient session notifications', () => {
       reason: { type: 'turn-completed', stopReason: 'end_turn' },
     };
     serverTransport.send(createWireMessage({ kind: 'session.notification', notification }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
     expect(seen).toEqual([notification]);
 
     unsubscribe();
     serverTransport.send(createWireMessage({ kind: 'session.notification', notification }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
     expect(seen).toHaveLength(1);
 
     client.dispose();
@@ -174,9 +205,7 @@ describe('LinkCodeClient event buffer', () => {
     const second: AgentEvent = { type: 'status', status: 'running' };
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event: first }));
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event: second }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
 
     expect(client.eventSeq(sessionId)).toBe(2);
 
@@ -200,9 +229,7 @@ describe('LinkCodeClient event buffer', () => {
 
     const event: AgentEvent = { type: 'status', status: 'running' };
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
 
     const snapshot = client.eventsSnapshot(sessionId);
     expect(snapshot).toEqual([{ event, seq: 1, receivedAt: expect.any(Number) as number }]);
@@ -210,9 +237,7 @@ describe('LinkCodeClient event buffer', () => {
     expect(client.eventsSnapshot(sessionId)).toBe(snapshot);
 
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
     expect(client.eventsSnapshot(sessionId)).not.toBe(snapshot);
     expect(client.eventsSnapshot(sessionId)).toHaveLength(2);
 
@@ -230,15 +255,11 @@ describe('LinkCodeClient event buffer', () => {
 
     const event: AgentEvent = { type: 'status', status: 'running' };
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
     await client.stopSession(sessionId);
 
     serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    await new Promise((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await wait(10);
     // Were the counter reset with the buffer, a pre-stop uptoSeq would swallow this event.
     expect(client.eventSeq(sessionId)).toBe(2);
     const seen: Array<Pick<SequencedAgentEvent, 'event' | 'seq'>> = [];
