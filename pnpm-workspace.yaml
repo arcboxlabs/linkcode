@@ -81,7 +81,7 @@ catalog:
   "@tailwindcss/vite": ^4.3.2
 
   # Desktop / Electron
-  electron: ^42.4.1
+  electron: ^43.2.0
   electron-builder: ^26.15.3
 
   # Server / communication
