@@ -1439,6 +1439,31 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     );
   });
 
+  it('starts under a new-session policy pick, which rides the first prompt', async () => {
+    seedAgents();
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', approvalPolicyId: 'plan' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('plan');
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'plan' }),
+    );
+  });
+
+  it('degrades an unselectable new-session pick to the catalog default with an error', async () => {
+    seedAgents();
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'opencode', cwd: '/tmp/repo', approvalPolicyId: 'reviewer' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('build');
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+  });
+
   it('keeps the axis hidden when discovery returns nothing selectable', async () => {
     const { adapter, events } = await makeAdapter();
 

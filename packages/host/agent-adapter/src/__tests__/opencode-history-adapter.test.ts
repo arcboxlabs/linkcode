@@ -96,6 +96,55 @@ describe('OpenCodeAdapter.listHistory', () => {
   });
 });
 
+describe('OpenCodeAdapter.startCatalog', () => {
+  it('advertises selectable agents as policies and reachable models, scoped to the cwd', async () => {
+    const list = vi.fn(() =>
+      Promise.resolve({
+        data: {
+          connected: ['anthropic'],
+          all: [
+            { id: 'anthropic', name: 'Anthropic', models: { 'claude-opus-5': { name: 'Opus 5' } } },
+            { id: 'offline', name: 'Offline', source: 'env', models: { 'some-model': {} } },
+          ],
+        },
+      }),
+    );
+    const agents = vi.fn(() =>
+      Promise.resolve({
+        data: [
+          { name: 'plan', mode: 'primary', description: 'Read-only' },
+          { name: 'build', mode: 'primary' },
+          { name: 'title', mode: 'primary', hidden: true },
+          { name: 'reviewer', mode: 'subagent' },
+        ],
+      }),
+    );
+    sdkMock.createOpencodeClient = () => ({ provider: { list }, app: { agents } });
+
+    const catalog = await new HistoryTestAdapter().startCatalog({ cwd: '/tmp/repo' });
+    expect(list).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+    expect(agents).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+    expect(catalog.models).toEqual([
+      { id: 'anthropic/claude-opus-5', label: 'Opus 5', description: 'Anthropic' },
+    ]);
+    // Hidden primaries and subagents are not personas a user runs a turn under.
+    expect(catalog.policies.map((p) => p.policyId)).toEqual(['plan', 'build']);
+    expect(catalog.defaultPolicyId).toBe('plan');
+  });
+
+  it('leaves each axis empty when its read fails, rather than blocking the new-session surface', async () => {
+    sdkMock.createOpencodeClient = () => ({
+      provider: { list: vi.fn(() => Promise.resolve({ error: { message: 'boom' } })) },
+      app: { agents: vi.fn(() => Promise.resolve({ error: { message: 'boom' } })) },
+    });
+
+    await expect(new HistoryTestAdapter().startCatalog({ cwd: '/tmp/repo' })).resolves.toEqual({
+      models: [],
+      policies: [],
+    });
+  });
+});
+
 describe('OpenCodeAdapter.readHistory', () => {
   it('rejects clearly when the session does not exist', async () => {
     sdkMock.createOpencodeClient = () => ({
