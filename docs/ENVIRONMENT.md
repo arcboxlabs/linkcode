@@ -26,12 +26,17 @@ Read by the daemon, desktop, webview, or mobile at run time.
 | `LINKCODE_ASSETS_DIR` | `packages/host/assets/src/paths.ts` | Redirects the managed-asset store root (default: `~/Library/Application Support/LinkCode/assets`, `%LOCALAPPDATA%/LinkCode/assets`, `$XDG_DATA_HOME/linkcode/assets`). Resolved per call, so tests can stub it. |
 | `ELECTRON_RENDERER_URL` | `apps/desktop/src/main/window.ts` | Dev-server URL the main process loads instead of the packaged renderer. Written by `apps/desktop/scripts/dev.mts`. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and lowercase forms) | `packages/host/assets/src/system-proxy/index.ts` | If any proxy variable is non-empty, OS proxy autodetection is skipped and the fetch layer's own env handling takes over. `NO_PROXY` is merged back in when an OS-detected proxy is passed explicitly. |
-| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). macOS starts a login shell on purpose: a Finder-launched app inherits launchd's bare `PATH`. |
+| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts`; `packages/host/agent-adapter/src/process-environment.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). On macOS, terminals and Codex/Claude agent processes load the user's login shell because a Finder-launched app inherits launchd's bare `PATH`. |
 | `CODEX_HOME`, `PI_CODING_AGENT_DIR` | `packages/host/agent-adapter/src/native/{codex,pi}/history.ts` | Agent CLI home directories the adapters read history and auth from (`~/.codex`, `~/.pi/agent`). |
 
 ### Written into child processes
 
 Not configuration you set — the daemon produces these for the processes it spawns.
+
+On macOS, Codex and Claude start with the environment returned by the user's login shell in the
+project directory. If `direnv` is available after shell startup, the project environment is applied
+too. The resolved environment is cached for the session, and account `extraEnv` is merged last.
+Other platforms retain the daemon environment.
 
 | Variable | Written by | Meaning |
 | --- | --- | --- |

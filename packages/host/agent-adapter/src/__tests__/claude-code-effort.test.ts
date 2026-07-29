@@ -142,6 +142,27 @@ describe('ClaudeCodeAdapter effort switching', () => {
     expect(queries).toHaveLength(0);
   });
 
+  it('loads the project environment and lets account variables override it', async () => {
+    const inherited = new ClaudeCodeAdapter();
+    await inherited.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+    expect(queries[0].options.env).toEqual({
+      PATH: '/project/bin',
+      PROJECT_ENV: 'loaded',
+    });
+
+    const overridden = new ClaudeCodeAdapter();
+    await overridden.start({
+      kind: 'claude-code',
+      cwd: '/tmp/repo',
+      config: { extraEnv: { PATH: '/account/bin', ACCOUNT_ENV: 'set' } },
+    });
+    expect(queries[1].options.env).toEqual({
+      PATH: '/account/bin',
+      PROJECT_ENV: 'loaded',
+      ACCOUNT_ENV: 'set',
+    });
+  });
+
   it('applies initial effort while constructing the first Query', async () => {
     const { events } = await makeAdapter('high');
     const q0 = queries[0];

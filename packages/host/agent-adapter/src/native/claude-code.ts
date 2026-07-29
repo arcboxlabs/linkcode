@@ -1,7 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
@@ -81,6 +80,7 @@ import {
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
+import { resolveAgentProcessEnvironment } from '../process-environment';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
@@ -421,6 +421,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
+  private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
@@ -500,6 +501,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.stopped = false;
+    this.processEnvironment = await resolveAgentProcessEnvironment(opts.cwd);
     const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
@@ -745,9 +747,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // One-time use: the persistent Query carries the conversation itself from here on, so a later
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
-    // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
-    // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
-    const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
+    const processEnvironment = nullthrow(
+      this.processEnvironment,
+      'claude-code: project environment not loaded',
+    );
+    const credentialEnv =
+      claudeCodeEnv(processEnvironment, readAgentCredential(opts.config)) ?? processEnvironment;
     const configuredMcpServers = claudeMcpServers(opts.mcpServers);
     if (this.browserTools && configuredMcpServers?.linkcode_browser) {
       throw new Error(
@@ -800,7 +805,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         resume,
         additionalDirectories: opts.additionalDirectories,
         ...(mcpServers && { mcpServers }),
-        ...(credentialEnv && { env: credentialEnv }),
+        env: credentialEnv,
       },
     });
     this.resumeFrom = undefined;

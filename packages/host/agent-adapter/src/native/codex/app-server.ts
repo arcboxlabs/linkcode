@@ -95,8 +95,8 @@ export interface CodexAppServerOptions {
   binaryPath: string;
   /** Abort the spawned process, including while the initialize handshake is still pending. */
   signal?: AbortSignal;
-  /** Extra environment for the subprocess (e.g. CODEX_API_KEY); merged over the inherited env. */
-  env?: Record<string, string>;
+  /** Environment for the subprocess; merged over the inherited env. */
+  env?: NodeJS.ProcessEnv;
   onNotification: (method: string, params: unknown) => void;
   /** Called once when the subprocess exits, with null code on signal kills and the tail of the
    * process's stderr as diagnostic detail. */

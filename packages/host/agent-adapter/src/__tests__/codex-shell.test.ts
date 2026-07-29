@@ -25,7 +25,7 @@ class FakeCodexServer {
     model: 'gpt-5.6-sol',
     reasoningEffort: null,
   };
-  constructor(private readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
+  constructor(readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
   request(method: string, params: unknown): Promise<unknown> {
     this.requests.push({ method, params: params as Record<string, unknown> });
     if (method === this.rejectMethod) {
@@ -195,6 +195,26 @@ describe('CodexAdapter shell-command passthrough', () => {
       defaultPolicyId: 'acceptEdits',
     });
     expect(adapter.fakeServers[0].closed).toBe(true);
+  });
+
+  it('loads the project environment and lets account variables override it', async () => {
+    const inherited = new TestCodex();
+    await inherited.start(start);
+    expect(inherited.fakeServers[0].opts.env).toEqual({
+      PATH: '/project/bin',
+      PROJECT_ENV: 'loaded',
+    });
+
+    const overridden = new TestCodex();
+    await overridden.start({
+      ...start,
+      config: { extraEnv: { PATH: '/account/bin', ACCOUNT_ENV: 'set' } },
+    });
+    expect(overridden.fakeServers[0].opts.env).toEqual({
+      PATH: '/account/bin',
+      PROJECT_ENV: 'loaded',
+      ACCOUNT_ENV: 'set',
+    });
   });
 
   it('announces the gated command and requests permission by subject reference', async () => {

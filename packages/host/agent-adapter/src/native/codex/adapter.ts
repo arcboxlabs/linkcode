@@ -42,6 +42,7 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
+import { resolveAgentProcessEnvironment } from '../../process-environment';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
@@ -298,6 +299,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   };
 
   private server: CodexServerHandle | null = null;
+  private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** Bumped when a server retires/crashes and when a new one spawns: a dead child's buffered
    * stdout (and late exit alarm) carries the old generation and is dropped at the callback gate. */
   private serverGeneration = 0;
@@ -378,6 +380,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         );
       }
     }
+    this.processEnvironment = await resolveAgentProcessEnvironment(opts.cwd);
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
@@ -685,14 +688,17 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
-    // Merged over the inherited env by the app-server: CODEX_API_KEY + optional OPENAI_BASE_URL.
+    const processEnvironment = nullthrow(
+      this.processEnvironment,
+      'codex: project environment not loaded',
+    );
     const credentialEnv = codexEnv(readAgentCredential(opts.config));
     this.configuredSandbox = await this.readConfiguredSandbox();
     let server: CodexServerHandle;
     const generation = ++this.serverGeneration;
     try {
       server = await this.startAppServer({
-        env: credentialEnv,
+        env: credentialEnv ? { ...processEnvironment, ...credentialEnv } : processEnvironment,
         onNotification: (method, params) => {
           if (generation === this.serverGeneration) this.handleNotification(method, params);
         },

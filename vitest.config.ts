@@ -38,7 +38,10 @@ export default defineConfig({
           environment: 'node',
           // Belongs to this project rather than the root: projects do not inherit root `test`
           // options, and what it patches (jsdom gaps `@pierre/diffs` hits) is web-renderer only.
-          setupFiles: ['./vitest.setup.ts'],
+          setupFiles: [
+            './vitest.setup.ts',
+            './packages/host/agent-adapter/src/__tests__/vitest.setup.ts',
+          ],
         },
       },
       './apps/mobile/vitest.config.ts',
