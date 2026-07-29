@@ -5,11 +5,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from 'coss-ui/
 import { PreviewCard, PreviewCardTrigger } from 'coss-ui/components/preview-card';
 import { SidebarMenuButton, SidebarMenuItem } from 'coss-ui/components/sidebar';
 import { ClockIcon, EllipsisIcon, FolderIcon, GitBranchIcon, PinIcon, XIcon } from 'lucide-react';
+import { ViewTransition } from 'react';
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../../repository-label';
-import { ViewTransition } from '../../view-transition';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 import type { BranchStatusComponentType } from './branch-status';
 import { SidebarPreviewCardPopup } from './preview-card';
@@ -95,13 +95,18 @@ export function ThreadRow({
               )}
             />
           </span>
+          {/* data-thread-title is the browser-smoke E2E's row selector, not product styling. */}
           {active ? (
             // No boundary on the active row: pairing is mount/unmount-based, so this boundary
             // unmounting (plain span taking over) is what lets the entering header adopt it.
-            <span className="min-w-0 flex-1 truncate">{title}</span>
+            <span className="min-w-0 flex-1 truncate" data-thread-title={session.sessionId}>
+              {title}
+            </span>
           ) : (
             <ViewTransition enter="none" exit="none" name={`thread-title-${session.sessionId}`}>
-              <span className="min-w-0 flex-1 truncate">{title}</span>
+              <span className="min-w-0 flex-1 truncate" data-thread-title={session.sessionId}>
+                {title}
+              </span>
             </ViewTransition>
           )}
         </PreviewCardTrigger>

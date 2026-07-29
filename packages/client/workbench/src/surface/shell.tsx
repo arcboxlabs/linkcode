@@ -1,6 +1,7 @@
 import type { SessionId, TokenUsage } from '@linkcode/schema';
 import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
-import { ErrorBadge, ShellFrame, TitleStrip, ViewTransition } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, TitleStrip } from '@linkcode/ui';
+import { ViewTransition } from 'react';
 
 export interface WorkbenchShellHeader {
   title: string;

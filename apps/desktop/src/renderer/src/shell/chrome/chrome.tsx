@@ -1,4 +1,4 @@
-import { cn, ShellIconButton, ViewTransition } from '@linkcode/ui';
+import { cn, ShellIconButton } from '@linkcode/ui';
 import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
 import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -10,7 +10,7 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
 } from 'lucide-react';
-import { createContext, use, useCallback, useRef, useState } from 'react';
+import { createContext, use, useCallback, useRef, useState, ViewTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';

@@ -10,4 +10,3 @@ export * from './motion';
 export * from './render-prefs';
 export * from './shell';
 export * from './thread-groups';
-export * from './view-transition';
