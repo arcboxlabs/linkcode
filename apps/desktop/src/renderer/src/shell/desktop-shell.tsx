@@ -67,6 +67,8 @@ export function DesktopShell({
   chatWorkspace,
   activeSession,
   draft,
+  newSessionWorkspaceId,
+  onNewSessionWorkspaceChange,
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
@@ -392,6 +394,8 @@ export function DesktopShell({
           draft={draft}
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
+          workspaceId={newSessionWorkspaceId}
+          onWorkspaceChange={onNewSessionWorkspaceChange}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}

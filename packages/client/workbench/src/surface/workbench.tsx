@@ -209,7 +209,6 @@ function WorkbenchSessionSurface({
   const active = sessions.active;
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
-  const agentCatalogs = useAgentStartCatalogs();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -484,7 +483,10 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const workspaceIds = new Set(allWorkspaces.map((workspace) => workspace.workspaceId));
+  const workspacesById = new Map(
+    allWorkspaces.map((workspace) => [workspace.workspaceId, workspace] as const),
+  );
+  const workspaceIds = new Set(workspacesById.keys());
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
   for (const workspace of allWorkspaces) {
@@ -511,6 +513,24 @@ function WorkbenchSessionSurface({
         initialProvider: lastProvider ?? 'claude-code',
       }
     : null;
+
+  // The new-session page's workspace lives here rather than in the surface because the catalogs
+  // below are scoped by its cwd — two copies would let the picker advertise a default the session
+  // would not start in. A pick belongs to the draft it was made in: reopening the page against a
+  // different resolved workspace starts from that one instead of inheriting the stale pick.
+  const [workspacePick, setWorkspacePick] = useState<{
+    forInitial: WorkspaceId | null;
+    picked: WorkspaceId;
+  } | null>(null);
+  const newSessionWorkspaceId =
+    workspacePick?.forInitial === initialWorkspaceId ? workspacePick.picked : initialWorkspaceId;
+  const agentCatalogs = useAgentStartCatalogs(
+    newSessionWorkspaceId === null ? undefined : workspacesById.get(newSessionWorkspaceId)?.cwd,
+  );
+
+  function handleNewSessionWorkspaceChange(workspaceId: WorkspaceId): void {
+    setWorkspacePick({ forInitial: initialWorkspaceId, picked: workspaceId });
+  }
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId || respondingRequestIds.has(requestId)) return;
@@ -569,6 +589,8 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      newSessionWorkspaceId={newSessionWorkspaceId}
+      onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
