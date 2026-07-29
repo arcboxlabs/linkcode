@@ -97,7 +97,7 @@ Product code must branch on `historyCapabilities` — never assume an op is supp
 | agent | list/read/resume | set-model | set-effort | set-approval-policy | `/` commands | `$` shell | packaged binary (CODE-114) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | claude-code | ✓ | ✓ (live) | ✓ (live) | ✓ | ✓ | ✗ | detected user install / managed dir |
-| codex | ✓ | ✓ (next turn) | ✓ (next turn, low–xhigh) | ✓ (3 tiers) | ✓ | ✓ | detected user install / managed dir |
+| codex | ✓ | ✓ (next turn) | ✓ (next turn, low–max; Sol/Terra ultra) | ✓ (3 tiers) | ✓ | ✓ | detected user install / managed dir |
 | opencode | ✓ | ✓ (next turn, same provider) | ✗ | ✓ (agent axis: build/plan/custom; hidden if discovery fails) | ✓ | ✓ | detected user install / managed dir (CODE-76; PATH-name fallback for unprobed hosts) |
 | pi | ✗ | ✗ | ✗ | fixed bypass | ✗ | ✗ | in-process JS: managed npm-closure import (CODE-219) / dev node_modules |
 | grok-build | ✗ | ✓ (next turn) | ✓ (next turn, low–high) | fixed bypass | ✗ | ✗ | detected user install |

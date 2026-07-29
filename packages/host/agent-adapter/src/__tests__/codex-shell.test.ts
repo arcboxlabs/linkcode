@@ -1,6 +1,7 @@
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import { asHistoryId } from '../history-util';
 import { CodexAdapter } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
@@ -491,6 +492,29 @@ describe('CodexAdapter shell-command passthrough', () => {
       threadSettings: { model: 'gpt-5.6-luna', effort: 'medium' },
     });
     expect(events).toContainEqual({ type: 'model-update', model: 'gpt-5.6-luna' });
+  });
+
+  it('reflects corrections after thread/resume confirms a pending effort', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'high',
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.resumeHistory(
+      { historyId: asHistoryId('thread-1') },
+      { ...start, model: undefined, effort: 'high' },
+    );
+    events.length = 0;
+
+    adapter.fakeServers[0].notify('thread/settings/updated', {
+      threadId: 'thread-1',
+      threadSettings: { model: 'gpt-5.6-sol', effort: 'medium' },
+    });
+    expect(events).toContainEqual({ type: 'effort-update', effort: 'medium' });
   });
 
   it('rejects Claude-only effort levels before starting app-server', async () => {

@@ -787,13 +787,19 @@ export class CodexAdapter extends BaseAgentAdapter {
     if (this.effort !== undefined) {
       this.assertEffortSupported(this.effort, this.model ?? model, !this.modelCatalogAvailable);
     }
-    if (this.pendingEffort !== undefined) return;
     const effort = EffortLevelSchema.safeParse(response.reasoningEffort);
     const effective = effort.success
       ? effort.data
       : model
         ? this.modelOptions.get(model)?.defaultEffort
         : null;
+    if (this.pendingEffort !== undefined) {
+      if (effective === this.pendingEffort) {
+        this.emitEffort(effective);
+        this.pendingEffort = undefined;
+      }
+      return;
+    }
     if (effective && effective !== 'ultracode') this.emitEffort(effective);
   }
 
