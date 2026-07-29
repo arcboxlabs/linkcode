@@ -19,6 +19,7 @@ export * from './providers/account-detail';
 export * from './providers/account-master-list';
 export * from './service-icon';
 export * from './session-sidebar';
+export * from './session-title-menu';
 export * from './settings-page';
 export * from './settings-sidebar-nav';
 export * from './shell-control';

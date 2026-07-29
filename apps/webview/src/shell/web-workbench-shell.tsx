@@ -39,7 +39,9 @@ export function WebWorkbenchShell({
             <ChevronRightIcon className="size-4" />
           </ShellIconButton>
           <div className="min-w-0">
-            <div className="truncate font-medium text-sm">{header.title}</div>
+            <div className="truncate font-medium text-sm" data-conversation-title="">
+              {header.title}
+            </div>
             {header.subtitle && (
               <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
             )}

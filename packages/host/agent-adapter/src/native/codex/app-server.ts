@@ -93,6 +93,8 @@ export interface CodexAppServerOptions {
   /** Absolute path of the `codex` binary to spawn — resolved by the caller (runtime prober
    * first, node_modules fallback) so this client stays free of resolution policy. */
   binaryPath: string;
+  /** Abort the spawned process, including while the initialize handshake is still pending. */
+  signal?: AbortSignal;
   /** Extra environment for the subprocess (e.g. CODEX_API_KEY); merged over the inherited env. */
   env?: Record<string, string>;
   onNotification: (method: string, params: unknown) => void;
@@ -138,6 +140,7 @@ export class CodexAppServer {
     const child = spawn(opts.binaryPath, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...processEnv, ...opts.env },
+      signal: opts.signal,
       windowsHide: true,
     });
     return CodexAppServer.attach(child, opts);

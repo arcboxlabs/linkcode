@@ -1,5 +1,6 @@
-import { createAdapter } from '@linkcode/agent-adapter';
-import type { WorkspaceRecord } from '@linkcode/schema';
+import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
+import { createAdapter, createPluginProviderAdapter } from '@linkcode/agent-adapter';
+import type { Plugin, WorkspaceRecord } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
@@ -24,6 +25,7 @@ import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
+import { PluginService } from './plugin/service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { FileHostService } from './preview/file-host-service';
 import { ArtifactRequestHandler } from './preview/request-handler';
@@ -59,6 +61,7 @@ import { InMemoryWorkspaceStore } from './workspace/workspace-store';
 export interface EngineRuntime {
   readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
   readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
+  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<Plugin[]>;
   readonly stop: Effect.Effect<void>;
 }
 
@@ -75,6 +78,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
   const history = new HistoryService(factory);
+  const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const runtimes = yield* AgentRuntimeService.make(
     {
       initial: deps.agentRuntimes,
@@ -285,6 +289,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         () => workspaces.ensureChatWorkspace(cwd),
       );
     }),
+    listPlugins: (opts?: PluginDiscoveryOptions) => plugins.list(opts),
     stop: Effect.gen(function* () {
       // Close request admission before yielding so a transport callback already in flight cannot
       // launch work after the teardown sweep starts. Each step logs and continues so one broken

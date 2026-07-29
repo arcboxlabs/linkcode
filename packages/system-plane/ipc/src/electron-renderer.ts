@@ -54,6 +54,11 @@ export function createElectronSystemBridge(
     fs: {
       pickFile: (opts) => invoke.fsPickFile(opts),
     },
+    shell: {
+      revealPath: (path) => invoke.shellRevealPath(path),
+      listEditors: () => invoke.shellListEditors(),
+      openInEditor: (editorId, path) => invoke.shellOpenInEditor({ editorId, path }),
+    },
     app: {
       version: () => invoke.appVersion(),
       platform,
