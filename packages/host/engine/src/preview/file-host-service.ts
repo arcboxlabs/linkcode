@@ -41,6 +41,11 @@ export class FileHostService {
   constructor(private readonly routes: PreviewRouteRegistry) {}
 
   async host(cwd: string, requestPath: string): Promise<HostedFile> {
+    return this.hostAbsolute(path.resolve(cwd, toHostPath(requestPath)));
+  }
+
+  /** Host a path already authorized by an owning service; never exposed directly on file.host. */
+  async hostAbsolute(resolved: string): Promise<HostedFile> {
     if (this.closed) {
       throw new RequestError({ code: 'cancelled', message: 'File hosting is shutting down' });
     }
@@ -49,16 +54,15 @@ export class FileHostService {
       'File hosting is not ready (no bound listener)',
     );
 
-    const resolved = path.resolve(cwd, toHostPath(requestPath));
     const info = await stat(resolved).catch((error: NodeJS.ErrnoException) => {
       throw error.code === 'ENOENT'
-        ? new RequestError({ code: 'not_found', message: `File not found: ${requestPath}` })
+        ? new RequestError({ code: 'not_found', message: 'File not found' })
         : error;
     });
     if (!info.isFile()) {
       throw new RequestError({
         code: 'invalid_request',
-        message: `Not a regular file: ${requestPath}`,
+        message: 'Not a regular file',
       });
     }
 
