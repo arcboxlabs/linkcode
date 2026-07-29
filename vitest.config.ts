@@ -22,6 +22,7 @@ export default defineConfig({
       '.github/scripts/**/*.test.mjs',
     ],
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
   },
   resolve: {
     // Mirror apps/desktop's `@renderer` path alias (apps/desktop/tsconfig.json + electron.vite.config.ts)

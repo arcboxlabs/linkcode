@@ -38,6 +38,7 @@ const RE_MEDIUM_EFFORT = /Medium/;
 const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
 const RE_PI_SONNET = /Pi Sonnet/;
+const RE_GPT_56_SOL = /GPT-5.6-Sol/;
 const RE_APPROVAL_DEFAULT = /Default/;
 const RE_ACCEPT_EDITS = /Accept edits/;
 
@@ -493,6 +494,34 @@ describe('NewSessionSurface', () => {
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
     );
+  });
+
+  it('drops remembered Codex ultra when the fallback model switches to Luna', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        preferredEfforts={{ codex: 'ultra' }}
+        preferredModels={{ codex: 'gpt-5.6-sol' }}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_GPT_56_SOL }));
+    await user.click(await screen.findByRole('menuitem', { name: 'GPT-5.6-Sol' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'GPT-5.6-Luna' }));
+    typeInComposer('use Luna');
+    await pressInComposer('Enter');
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ model: 'gpt-5.6-luna' }));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
   });
 
   it('submits a remembered dynamic-provider model even without a draft catalog', async () => {

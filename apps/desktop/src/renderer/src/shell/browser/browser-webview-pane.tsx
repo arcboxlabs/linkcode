@@ -3,7 +3,6 @@ import { isKeyboardShortcutLocalTarget, useKeyboardShortcut } from '@linkcode/ui
 import type { BrowserFindState } from '@linkcode/ui/shell/browser';
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
-import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { noop } from 'foxts/noop';
@@ -25,6 +24,7 @@ interface WebviewNavState {
   canGoBack: boolean;
   canGoForward: boolean;
   failure: string | null;
+  guestReady: boolean;
 }
 
 const IDLE_NAV: WebviewNavState = {
@@ -32,6 +32,7 @@ const IDLE_NAV: WebviewNavState = {
   canGoBack: false,
   canGoForward: false,
   failure: null,
+  guestReady: false,
 };
 
 function whenNotLocal(event: KeyboardEvent): boolean {
@@ -52,6 +53,17 @@ function applyZoom(
   if (action === 'in') webview.setZoomLevel(Math.min(level + 1, MAX_ZOOM_LEVEL));
   else if (action === 'out') webview.setZoomLevel(Math.max(level - 1, MIN_ZOOM_LEVEL));
   else webview.setZoomLevel(0);
+}
+
+function pauseWebviewMedia(webview: WebviewTag): void {
+  // Guest may detach after the readiness check, in which case there is nothing to pause.
+  void Promise.resolve()
+    .then(() =>
+      webview.executeJavaScript(
+        'document.querySelectorAll("video,audio").forEach((m) => m.pause())',
+      ),
+    )
+    .catch(noop);
 }
 
 /**
@@ -80,17 +92,15 @@ export function BrowserWebviewPane({
   );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [webview, setWebview] = useState<WebviewTag | null>(null);
-  // The guest that reached `dom-ready`, held by identity rather than as a boolean: a replacement
-  // element is then simply not the ready one, with no reset to keep in sync.
-  const [readyGuest, setReadyGuest] = useState<WebviewTag | null>(null);
-  const guestReady = webview !== null && readyGuest === webview;
   const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
+  const guestReady = webview !== null && nav.guestReady;
   const [find, setFind] = useState<BrowserFindState | null>(null);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
-  const { current: captureWebview } = useSingleton(
-    () => (element: HTMLWebViewElement | null) => setWebview(element as WebviewTag | null),
-  );
+  const { current: captureWebview } = useSingleton(() => (element: HTMLWebViewElement | null) => {
+    setWebview(element as WebviewTag | null);
+    setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
+  });
 
   useLayoutEffect(() => {
     if (webview === null) return;
@@ -118,8 +128,13 @@ export function BrowserWebviewPane({
     const syncDocument = (): void => {
       ready = true;
       markBrowserWebviewReady(tabId);
-      setReadyGuest(webview);
-      sync();
+      setNav((prev) => ({
+        ...prev,
+        isLoading: webview.isLoading(),
+        canGoBack: webview.canGoBack(),
+        canGoForward: webview.canGoForward(),
+        guestReady: true,
+      }));
       syncDocumentState(webview.getURL(), webview.getTitle());
     };
     const onNavigate = (event: Electron.DidNavigateEvent): void => {
@@ -132,6 +147,7 @@ export function BrowserWebviewPane({
       if (!event.isMainFrame || event.isInPlace) return;
       ready = false;
       markBrowserWebviewUnready(tabId);
+      setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
     };
     const onTitleUpdated = (event: Electron.PageTitleUpdatedEvent): void => {
       syncDocumentState('', event.title);
@@ -190,17 +206,20 @@ export function BrowserWebviewPane({
   // restarts it on their next visit.
   // Gated on `dom-ready`: the resident webview normally mounts hidden, and calling guest methods
   // before attachment can throw synchronously. A guest that never became ready has nothing playing.
-  useEffect(() => {
-    if (webview === null || !guestReady || visible) return;
-    // Guest may detach after the readiness check, in which case there is nothing to pause.
-    void Promise.resolve()
-      .then(() =>
-        webview.executeJavaScript(
-          'document.querySelectorAll("video,audio").forEach((m) => m.pause())',
-        ),
-      )
-      .catch(noop);
-  }, [webview, guestReady, visible]);
+  useLayoutEffect(() => {
+    if (webview === null || !guestReady) return;
+    const isVisible = (): boolean => {
+      const panel = useDesktopShellStore.getState().rightPanel;
+      return panel.open && panel.activeSection === 'browser' && panel.browser.activeTabId === tabId;
+    };
+    let wasVisible = isVisible();
+    if (!wasVisible) pauseWebviewMedia(webview);
+    return useDesktopShellStore.subscribe(() => {
+      const nextVisible = isVisible();
+      if (wasVisible && !nextVisible) pauseWebviewMedia(webview);
+      wasVisible = nextVisible;
+    });
+  }, [webview, guestReady, tabId]);
 
   const openFind = (): void => {
     setFind((prev) => prev ?? { query: '', matches: null });
