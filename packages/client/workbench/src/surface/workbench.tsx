@@ -104,6 +104,13 @@ export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
 }
 
+/** A new-session workspace choice, tagged with the resolved workspace it was made against so a
+ * draft opened from another entry point cannot inherit it. */
+interface NewSessionWorkspacePick {
+  forInitial: WorkspaceId | null;
+  picked: WorkspaceId;
+}
+
 /**
  * The workbench feature surface: session inbox + conversation stream + composer. Assumes the data
  * plane is already mounted above it — wrap in `WorkbenchProviders` and mount as a feature page.
@@ -113,33 +120,41 @@ export function Workbench({
 }: WorkbenchProps): React.ReactNode {
   const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [workspacePick, setWorkspacePick] = useState<NewSessionWorkspacePick | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err));
   }
 
-  const rawSessions = useWorkbenchSessions(handleError);
   // Leaving the current surface drops its error state: a stale failure must not follow the user
   // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
+  // The new-session workspace pick goes with it: the shells remount the draft page per entry
+  // point, which resets its other picks, so an abandoned workspace must not outlive it either.
+  function leaveSurface(): void {
+    setErrorMessage(null);
+    setWorkspacePick(null);
+  }
+
+  const rawSessions = useWorkbenchSessions(handleError);
   const sessions: WorkbenchSessions = {
     ...rawSessions,
     select(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.select(id);
     },
     startDraft(workspaceId) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.startDraft(workspaceId);
     },
     goBack() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goBack();
     },
     goForward() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goForward();
     },
     close(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.close(id);
     },
   };
@@ -158,6 +173,8 @@ export function Workbench({
         conversation={conversation}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
+        workspacePick={workspacePick}
+        onWorkspacePick={setWorkspacePick}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
       />
@@ -171,6 +188,8 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
+  workspacePick: NewSessionWorkspacePick | null;
+  onWorkspacePick: (pick: NewSessionWorkspacePick) => void;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -180,6 +199,8 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
+  workspacePick,
+  onWorkspacePick,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
@@ -514,14 +535,10 @@ function WorkbenchSessionSurface({
       }
     : null;
 
-  // The new-session page's workspace lives here rather than in the surface because the catalogs
-  // below are scoped by its cwd — two copies would let the picker advertise a default the session
-  // would not start in. A pick belongs to the draft it was made in: reopening the page against a
-  // different resolved workspace starts from that one instead of inheriting the stale pick.
-  const [workspacePick, setWorkspacePick] = useState<{
-    forInitial: WorkspaceId | null;
-    picked: WorkspaceId;
-  } | null>(null);
+  // The new-session page's workspace is owned above rather than by the surface because the
+  // catalogs below are scoped by its cwd — two copies would let them drift and advertise a default
+  // the session would not start in. The pick is tagged with the workspace it was resolved against,
+  // and leaving the surface clears it (see `leaveSurface`), so a later draft never inherits it.
   const newSessionWorkspaceId =
     workspacePick?.forInitial === initialWorkspaceId ? workspacePick.picked : initialWorkspaceId;
   const agentCatalogs = useAgentStartCatalogs(
@@ -529,7 +546,7 @@ function WorkbenchSessionSurface({
   );
 
   function handleNewSessionWorkspaceChange(workspaceId: WorkspaceId): void {
-    setWorkspacePick({ forInitial: initialWorkspaceId, picked: workspaceId });
+    onWorkspacePick({ forInitial: initialWorkspaceId, picked: workspaceId });
   }
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
