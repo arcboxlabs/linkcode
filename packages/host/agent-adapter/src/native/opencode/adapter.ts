@@ -10,6 +10,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentModelOption,
+  AgentStartCatalog,
   ApprovalPolicy,
   ContentBlock,
   PermissionOption,
@@ -29,6 +30,7 @@ import { invariant } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
+import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -145,6 +147,58 @@ function parseModelRef(model: string): { providerID: string; modelID: string } |
 
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
+type OpencodeProviderList = NonNullable<
+  Awaited<ReturnType<OpencodeClient['provider']['list']>>['data']
+>;
+type OpencodeAgentSummary = { name: string; mode: string; hidden?: boolean; description?: string };
+
+/** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to the
+ * credential-injected provider when one is in play. Pre-session reads pass null — the injection is
+ * spawn-time-only, so no credential context exists before a session starts. */
+function opencodeModelOptions(
+  listed: OpencodeProviderList,
+  credentialProviderId: string | null,
+): AgentModelOption[] {
+  const connected = new Set(listed.connected);
+  const models: AgentModelOption[] = [];
+  for (const provider of listed.all) {
+    if (credentialProviderId) {
+      if (provider.id !== credentialProviderId) continue;
+    } else if (!connected.has(provider.id) && provider.source !== 'api') {
+      continue;
+    }
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      models.push({
+        id: `${provider.id}/${modelId}`,
+        label: model.name || modelId,
+        description: provider.name,
+      });
+    }
+  }
+  return models;
+}
+
+/** Selectable agents (`primary`/`all`, non-hidden — subagents are spawn targets, not personas a
+ * user runs a turn under) as the approval-policy axis, defaulting the way the upstream TUI does:
+ * the first primary, else the first selectable. Null when nothing is selectable, so the axis stays
+ * hidden rather than advertising an empty list. */
+function opencodeAgentPolicies(
+  agents: ReadonlyArray<OpencodeAgentSummary>,
+): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
+  const selectable = agents.filter(
+    (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
+  );
+  const fallback = selectable.find((agent) => agent.mode === 'primary') ?? selectable.at(0);
+  if (!fallback) return null;
+  return {
+    policies: selectable.map((agent) => ({
+      policyId: agent.name,
+      name: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+      ...(agent.description && { description: agent.description }),
+    })),
+    defaultPolicyId: fallback.name,
+  };
+}
 
 /**
  * OpenCode adapter — the server/client model: `createOpencode()` spawns a local OpenCode server
@@ -303,11 +357,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start. They are independent reads of the same local server, so
     // they run concurrently.
+    // An explicit new-session policy pick (the agent axis) outranks a resumed session's recorded
+    // agent; an unselectable pick degrades to the catalog's own default with an error event.
     const [availableModels] = await Promise.all([
       this.fetchModelCatalog(),
       this.fetchCommandCatalog(),
-      this.fetchAgentCatalog(resumedAgent),
+      this.fetchAgentCatalog(opts.approvalPolicyId ?? resumedAgent),
     ]);
+    if (opts.approvalPolicyId && this.currentAgent && this.currentAgent !== opts.approvalPolicyId) {
+      this.emitError(
+        `opencode: agent '${opts.approvalPolicyId}' is not available — using '${this.currentAgent}'`,
+      );
+    }
     // A resumed session record confirms its current model. A fresh override is confirmed only when
     // the running server advertises that exact ref; a request or failed catalog is not acceptance.
     if (opts.model && (opts.model === resumedModel || availableModels?.has(opts.model))) {
@@ -349,22 +410,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       const listed = await this.client.provider.list({ directory: this.directory });
       if (listed.error !== undefined) return;
-      const connected = new Set(listed.data.connected);
-      const models: AgentModelOption[] = [];
-      for (const provider of listed.data.all) {
-        if (this.credentialProviderId) {
-          if (provider.id !== this.credentialProviderId) continue;
-        } else if (!connected.has(provider.id) && provider.source !== 'api') {
-          continue;
-        }
-        for (const [modelId, model] of Object.entries(provider.models)) {
-          models.push({
-            id: `${provider.id}/${modelId}`,
-            label: model.name || modelId,
-            description: provider.name,
-          });
-        }
-      }
+      const models = opencodeModelOptions(listed.data, this.credentialProviderId);
       if (models.length > 0) this.emitModels(models);
       return new Set(models.map((model) => model.id));
     } catch {
@@ -373,12 +419,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Best-effort agent catalog fetch — swallows every failure (see `onStart`). */
-  private async fetchAgentCatalog(resumedAgent: string | null): Promise<void> {
+  /** Best-effort agent catalog fetch — swallows every failure (see `onStart`). `preferredAgent` is
+   * the new-session pick or a resumed session's recorded agent; it wins while still selectable. */
+  private async fetchAgentCatalog(preferredAgent: string | null): Promise<void> {
     if (!this.client) return;
     try {
       const agents = await this.client.app.agents({ directory: this.directory });
-      if (agents.error === undefined) this.adoptAgentCatalog(agents.data, resumedAgent);
+      if (agents.error === undefined) this.adoptAgentCatalog(agents.data, preferredAgent);
     } catch {
       // Non-fatal — see onStart.
     }
@@ -628,6 +675,27 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     };
   }
 
+  /** Pre-session catalog: the same shared-server route the history reads use, since this runs on a
+   * never-started instance. Both lists are directory-scoped — providers by connected auth, agents
+   * by the workspace's own config — and a failed read degrades to an empty axis rather than
+   * blocking session creation, matching the live best-effort fetches. */
+  override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
+    const directory = opts.cwd;
+    const scope = directory === undefined ? {} : { directory };
+    return this.withHistoryClient(async (client) => {
+      const [providers, agents] = await Promise.all([
+        client.provider.list(scope),
+        client.app.agents(scope),
+      ]);
+      const catalog = agents.error === undefined ? opencodeAgentPolicies(agents.data) : null;
+      return {
+        models: providers.error === undefined ? opencodeModelOptions(providers.data, null) : [],
+        policies: catalog?.policies ?? [],
+        ...(catalog && { defaultPolicyId: catalog.defaultPolicyId }),
+      };
+    });
+  }
+
   /** Test seam — the real thing is the process-wide shared history server (CODE-171). */
   protected historyServer(): OpencodeHistoryServerLike {
     return sharedOpencodeHistoryServer();
@@ -694,24 +762,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
   private adoptAgentCatalog(
-    agents: ReadonlyArray<{ name: string; mode: string; hidden?: boolean; description?: string }>,
-    resumedAgent: string | null,
+    agents: ReadonlyArray<OpencodeAgentSummary>,
+    preferredAgent: string | null,
   ): void {
-    const selectable = agents.filter(
-      (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
-    );
-    const fallback = selectable.find((agent) => agent.mode === 'primary') ?? selectable.at(0);
-    if (!fallback) return;
+    const catalog = opencodeAgentPolicies(agents);
+    if (!catalog) return;
     const current =
-      resumedAgent && selectable.some((agent) => agent.name === resumedAgent)
-        ? resumedAgent
-        : fallback.name;
+      preferredAgent && catalog.policies.some((policy) => policy.policyId === preferredAgent)
+        ? preferredAgent
+        : catalog.defaultPolicyId;
     this.currentAgent = current;
-    this.agentPolicies = selectable.map((agent) => ({
-      policyId: agent.name,
-      name: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-      ...(agent.description && { description: agent.description }),
-    }));
+    this.agentPolicies = catalog.policies;
     this.emitApprovalPolicy({ availablePolicies: this.agentPolicies, currentPolicyId: current });
   }
 

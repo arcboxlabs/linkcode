@@ -1269,13 +1269,6 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/openai',
   },
   {
-    name: 'ws',
-    version: '8.21.0',
-    integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
-    path: 'node_modules/openai/node_modules/ws',
-  },
-  {
     name: 'p-retry',
     version: '4.6.2',
     integrity:

@@ -783,6 +783,31 @@ describe('CodexAdapter sandbox deferral to config.toml', () => {
     expect(adapter.turnStarts()[1].sandboxPolicy).toMatchObject({ type: 'workspaceWrite' });
   });
 
+  it('treats a new-session pick as explicit, overriding a configured sandbox from the first turn', async () => {
+    const adapter = new TestCodex();
+    adapter.configured = 'read-only';
+    await adapter.start({ ...start, approvalPolicyId: 'bypassPermissions' });
+    const threadStart = adapter.fakeServers[0].requests.find((r) => r.method === 'thread/start');
+    expect(threadStart?.params.sandbox).toBe('danger-full-access');
+    expect(threadStart?.params.approvalPolicy).toBe('never');
+
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0].sandboxPolicy).toMatchObject({ type: 'dangerFullAccess' });
+  });
+
+  it('degrades an unknown new-session pick to the initial tier with an error', async () => {
+    const adapter = new TestCodex();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    adapter.configured = 'read-only';
+    await adapter.start({ ...start, approvalPolicyId: 'plan' });
+
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+    // Never an explicit pick, so the sandbox the user configured still wins.
+    await adapter.send(prompt);
+    expect(adapter.turnStarts()[0]).not.toHaveProperty('sandboxPolicy');
+  });
+
   it('injects the preset sandbox when config.toml leaves it unset', async () => {
     const adapter = new TestCodex();
     adapter.configured = undefined;

@@ -365,6 +365,19 @@ export class CodexAdapter extends BaseAgentAdapter {
   protected async onStart(opts: StartOptions): Promise<void> {
     this.model = opts.model ?? undefined;
     if (this.resumeFrom !== undefined) this.pendingModel = this.model;
+    // A new-session pick counts as an explicit tier choice, so it may override a configured
+    // sandbox exactly like a live switch; an unknown id degrades with an error event instead of
+    // failing session creation.
+    if (opts.approvalPolicyId) {
+      if (isCodexPolicyId(opts.approvalPolicyId)) {
+        this.policyId = opts.approvalPolicyId;
+        this.policyExplicit = true;
+      } else {
+        this.emitError(
+          `codex: unknown approval policy '${opts.approvalPolicyId}' — using '${INITIAL_POLICY_ID}'`,
+        );
+      }
+    }
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
@@ -378,7 +391,11 @@ export class CodexAdapter extends BaseAgentAdapter {
     });
     try {
       const catalog = codexModelCatalog(await server.request('model/list', {}));
-      return { models: catalog.models, policies: [] };
+      return {
+        models: catalog.models,
+        policies: [...APPROVAL_POLICIES],
+        defaultPolicyId: INITIAL_POLICY_ID,
+      };
     } finally {
       server.close();
     }

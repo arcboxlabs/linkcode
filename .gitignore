@@ -13,6 +13,9 @@ expo-export/
 # turbo
 .turbo/
 
+# eslint (`lint:ci` only — see .github/workflows/ci.yml)
+.eslintcache
+
 # expo / react-native
 .expo/
 .expo-shared/

@@ -182,8 +182,12 @@ export function NewSessionSurface({
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
+  // Only a real pick travels to the adapter. The catalog default is a display value: submitting it
+  // would read as an explicit choice and override the agent's own startup resolution — claude's
+  // `permissions.defaultMode`, codex's configured `config.toml` sandbox.
+  const pickedPolicyId = selectedPolicies[provider];
   const currentPolicyId =
-    selectedPolicies[provider] ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
+    pickedPolicyId ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
     currentPolicyId && catalog && catalog.policies.length > 0
       ? { availablePolicies: catalog.policies, currentPolicyId }
@@ -201,7 +205,7 @@ export function NewSessionSurface({
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),
-        ...(currentPolicyId && { approvalPolicyId: currentPolicyId }),
+        ...(pickedPolicyId && { approvalPolicyId: pickedPolicyId }),
         modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
         input,
       });

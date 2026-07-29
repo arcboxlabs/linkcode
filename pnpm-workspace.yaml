@@ -68,23 +68,23 @@ catalog:
 
   # Client data layer
   swr: ^2.4.2
-  use-intl: ^4.13.1
+  use-intl: ^4.13.3
   zustand: ^5.0.14
-  lucide-react: ^1.23.0
+  lucide-react: ^1.25.0
 
   # Web build
-  vite: ^8.1.4
-  "@vitejs/plugin-react": ^6.0.3
+  vite: ^8.1.5
+  "@vitejs/plugin-react": ^6.0.4
   "@rolldown/plugin-babel": ^0.2.3
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
-  tailwindcss: ^4.3.2
+  tailwindcss: ^4.3.3
   "@tailwindcss/postcss": ^4.3.2
-  "@tailwindcss/vite": ^4.3.2
+  "@tailwindcss/vite": ^4.3.3
 
   # Desktop / Electron
-  electron: ^42.4.1
+  electron: ^43.2.0
   electron-builder: ^26.15.3
 
   # Server / communication
@@ -124,7 +124,6 @@ minimumReleaseAgeExclude:
   - "expo-apple-authentication@57.0.1"
   - "expo-crypto@57.0.1"
   - "@earendil-works/pi-tui@0.80.6"
-  - electron@42.4.1
   - react-router@7.18.0
   - "@shikijs/core@4.3.0"
   - "@shikijs/engine-javascript@4.3.0"

@@ -27,17 +27,16 @@ function fileFixture(path: string, mimeType: string): WorkspaceFile {
 }
 
 describe('FileViewer', () => {
-  it.each([
-    'invalid.txt',
-    'invalid.md',
-    'invalid.json',
-  ])('does not render a base64 payload through the %s text viewer', (path) => {
-    const file = fileFixture(path, 'text/plain');
-    render(<FileViewer path={path} file={file} isLoading={false} />);
+  it.each(['invalid.txt', 'invalid.md', 'invalid.json'])(
+    'does not render a base64 payload through the %s text viewer',
+    (path) => {
+      const file = fileFixture(path, 'text/plain');
+      render(<FileViewer path={path} file={file} isLoading={false} />);
 
-    expect(screen.getByText('unsupported')).toBeTruthy();
-    expect(screen.queryByText(file.content)).toBeNull();
-  });
+      expect(screen.getByText('unsupported')).toBeTruthy();
+      expect(screen.queryByText(file.content)).toBeNull();
+    },
+  );
 
   it('continues to render base64 images', () => {
     const file = fileFixture('image.png', 'image/png');
