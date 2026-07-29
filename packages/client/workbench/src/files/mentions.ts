@@ -60,16 +60,13 @@ export function useFileMentionSource(): FileMentionSource {
     });
   };
 
+  // A suggestion belongs to its request cwd — never opt this into keepPreviousData: after a
+  // draft/session switch it would offer the previous workspace's paths for insertion.
   const { data } = useData(
     suggestWorkspaceFiles,
     effectiveQuery === null || live.cwd === undefined
       ? null
       : { cwd: live.cwd, query: effectiveQuery, limit: MENTION_SUGGEST_LIMIT },
-    {
-      // A suggestion belongs to its request cwd. Global keepPreviousData would briefly expose the
-      // previous workspace's paths after a draft/session switch, where they could be inserted.
-      keepPreviousData: false,
-    },
   );
 
   const mentionItems = useMemo<MentionItem[]>(

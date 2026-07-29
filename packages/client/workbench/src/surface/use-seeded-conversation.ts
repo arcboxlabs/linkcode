@@ -58,9 +58,8 @@ export function useSeededConversation(
       fallbackData: active?.historyId
         ? loadPersistedSeed(active.kind, active.historyId)
         : undefined,
-      // Opt out of keepPreviousData: a conversation must never bleed across sessions, and on a
-      // switch it would serve the previous transcript — forever, when there's no historyId yet.
-      keepPreviousData: false,
+      // Never opt this into keepPreviousData: a conversation must not bleed across sessions, and
+      // on a switch it would serve the previous transcript — forever, with no historyId yet.
     },
   );
   return useConversation(active?.sessionId ?? null, seed);
