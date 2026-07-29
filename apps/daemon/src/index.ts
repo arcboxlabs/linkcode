@@ -38,6 +38,7 @@ import {
   saveSimulatorConsent,
   worktreeRoot,
 } from './config';
+import { adoptLegacyDeviceKeyFile } from './hq/device-key';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
@@ -135,6 +136,9 @@ async function main(): Promise<void> {
     Shared,
     Effect.gen(function* () {
       const config = loadConfig();
+      // Sweep credentials an older daemon left in the clear. loadConfig has already moved
+      // config.json's; the device key has no reader at boot, so it is swept explicitly (CODE-371).
+      adoptLegacyDeviceKeyFile();
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
