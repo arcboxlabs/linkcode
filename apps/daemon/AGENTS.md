@@ -33,10 +33,17 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 
 ## Ports & one-per-profile
 
-- Default listener is `socket.io` on `127.0.0.1:19523` (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`
-  in `packages/foundation/schema`). `LINKCODE_PORT` / `LINKCODE_HOST` override every listener. On `EADDRINUSE` a
-  listener hunts **upward** up to 10 ports (19523–19532); clients must read `runtime.json`, never
-  assume 19523.
+- Default listener is `socket.io` on `127.0.0.1:daemonBasePort(channel)` — release **19523**
+  (`0x4C43` = ascii `'LC'`, `DAEMON_DEFAULT_PORT`), development **19533**. `LINKCODE_PORT` /
+  `LINKCODE_HOST` override every listener. On `EADDRINUSE` a listener hunts **upward** through its
+  own channel's span only (release 19523–19532, development 19533–19542); clients must read
+  `runtime.json`, never assume a port.
+- **The ranges are disjoint for a reason that outlives the `channel` field.** That field cannot
+  protect against a daemon shipped before it existed: such a peer parses a newer identity through a
+  schema lacking the key, zod strips it, and its profile-only comparison then reads two default
+  profiles as equal — so an installed old release exits 3 against a development daemon holding its
+  port, and its supervisor stands down. Keeping the channels off each other's ports is the only fix
+  that reaches already-shipped binaries. Never widen a span into the neighbouring range.
 - **One daemon per universe (channel × profile)**, enforced by the daemon (not the desktop supervisor): `main()` calls
   `findRunningDaemon()` — parse the profile's `runtime.json` → pid alive? → `GET /linkcode` identity
   pid matches? A live one makes the new process log `already running (pid N)` and `process.exit(3)`
@@ -44,8 +51,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   parent IPC channel and the event loop alive forever. The identity (and `runtime.json`) carries
   optional `profile` and `channel` fields (absent = default profile / release, which is what every
   pre-split daemon is): the port hunt treats a live daemon of **another** universe as a port
-  neighbor and hunts past it, so a dev daemon starts fine on 19524 while a release holds 19523.
-  Health: `curl http://127.0.0.1:19523/linkcode`.
+  neighbor and hunts past it. Across channels the disjoint ranges already keep them apart, so this
+  comparison mainly covers profiles and a `LINKCODE_PORT` that forces two channels onto one port.
+  Health: `curl http://127.0.0.1:19523/linkcode` (release), `:19533` (development).
 
 ## Packaging: spawn, binaries & bundle
 

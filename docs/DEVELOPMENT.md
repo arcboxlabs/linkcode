@@ -251,7 +251,7 @@ pnpm -F @linkcode/mobile smoke:export
 
 ### Daemon will not start
 
-1. `curl http://127.0.0.1:19523/linkcode` — a JSON identity means it **is** up (possibly on a hunted port; the actual bound endpoint is in `~/.linkcode/runtime.json`).
+1. `curl http://127.0.0.1:19523/linkcode` — a JSON identity means it **is** up (possibly on a hunted port; the actual bound endpoint is in `~/.linkcode/runtime.json`). A development daemon answers on **19533** instead, and advertises in `~/.linkcode.development/runtime.json`.
 2. Logs: packaged `~/Library/Logs/LinkCode/main.log`; dev — the terminal (turbo TUI).
 3. Exit code `3` = another daemon already serves this machine (one-per-machine, not a crash). Kill the pid from `runtime.json`.
 4. The packaged supervisor gives up after 5 fast (<30s) exits ("giving up" in the log).
@@ -348,7 +348,9 @@ A profile appends `-<name>` to the **state** directory only (`~/.linkcode.develo
 
 Two things stay shared across channels by design: the agent CLIs' own homes (`~/.claude`, `~/.codex` — separating them would force a second agent login and cut you off from the CLI you use in a terminal), and the `linkcode://` scheme's OS-global nature, which is why the dev shell claims `linkcode-dev://` instead (CODE-182).
 
-Before CODE-460 the daemon state and workspaces were shared, and a dev daemon on the default profile contended for `~/.linkcode`/`19523` with an installed release: whichever bound first won, the loser's client dialed a peer on a different `WIRE_PROTOCOL_VERSION`, every frame was silently dropped, and it surfaced only as "Unable to connect to the daemon". Both daemons now coexist — the port hunt reads the occupant's `channel` off `GET /linkcode` and treats another channel as a neighbor, so the second one lands on 19524. `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
+Ports fork with the state: **release hunts 19523–19532, development 19533–19542**. The ranges are disjoint deliberately. The identity's `channel` field is the precise signal, but it cannot defend against a daemon shipped *before* that field existed — an old peer parses the newer identity through a schema without the key, zod strips it, and its profile-only comparison reads two default profiles as equal. Such a release would exit 3 against a development daemon sitting on 19523 and its supervisor would stand down, leaving the release shell to fall back to that same port and dial the wrong daemon. Never letting the channels reach one another's ports is the only fix that reaches binaries already in the wild.
+
+Before CODE-460 the daemon state and workspaces were shared, and a dev daemon on the default profile contended for `~/.linkcode`/`19523` with an installed release: whichever bound first won, the loser's client dialed a peer on a different `WIRE_PROTOCOL_VERSION`, every frame was silently dropped, and it surfaced only as "Unable to connect to the daemon". `package:devshell` uses `electron-builder.devshell.yml`; release packaging is CI-only (the old `dist` script was removed).
 
 ## Formatting and linting
 

@@ -23,8 +23,10 @@ export function parseProductChannel(raw: string | undefined): ProductChannel | u
   return raw;
 }
 
+const PRODUCT_CHANNEL_SET: ReadonlySet<string> = new Set(PRODUCT_CHANNELS);
+
 function isProductChannel(raw: string): raw is ProductChannel {
-  return (PRODUCT_CHANNELS as readonly string[]).includes(raw);
+  return PRODUCT_CHANNEL_SET.has(raw);
 }
 
 /**
