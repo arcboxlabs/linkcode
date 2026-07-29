@@ -122,7 +122,7 @@ export function useCloudImBindings(
   return useSWR<CloudImBinding[]>(
     accountKey && source ? [IM_BINDINGS_KEY, accountKey] : null,
     source ? source.bindings : null,
-    { revalidateOnFocus: true, refreshInterval: 30000, keepPreviousData: false },
+    { revalidateOnFocus: true, refreshInterval: 30000 },
   );
 }
 
