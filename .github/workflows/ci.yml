@@ -56,22 +56,28 @@ jobs:
         with:
           rustflags: '' # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
 
-      # eslint validates a cached entry against that file's own content only, so cross-file *type*
-      # drift is the hazard for typed rules: a change in package B can alter the typed-lint result
-      # of an unchanged file in A when B's sources are part of A's program. The second hash below
-      # therefore fingerprints every workspace library source (`exports` all point into `src/`, so
-      # `packages/*/*/src/**` is the complete cross-project type surface); any library edit rolls
-      # the key and the run is cold, which is the correct answer. Deliberately no restore-keys — a
-      # prefix match would reintroduce the drift hole. Residual, accepted: within one app program,
-      # editing app file B can change typed findings on unchanged sibling A, which stays cached
-      # until the key next rolls; the full `tsc` step still gates type errors.
-      # package.json / pnpm-workspace.yaml are keyed because the pnpm lint rules read them
-      # cross-file. All globs are fixed-depth so they cannot descend into node_modules.
+      # eslint self-validates a cached entry on exactly two inputs: the file's own content hash
+      # and the per-file resolved-config hash (eslint+node version, rule options, plugin
+      # meta versions). Config/suppressions/node changes therefore need no key — eslint
+      # invalidates affected entries itself, per file. What eslint is structurally blind to is
+      # the TypeScript *program*: sibling sources, tsconfigs, dependency types, and the
+      # `typescript` package version (the parser's meta only moves on typescript-eslint bumps).
+      # The key pins exactly that blind spot: the lockfile, the cross-file inputs of the pnpm rules
+      # (package.json / pnpm-workspace.yaml), the tsconfigs, and a fingerprint of every workspace
+      # library source (`exports` all point into `src/`, so `packages/*/*/src/**` is the complete
+      # cross-project type surface). restore-keys deliberately pin the FULL prefix including that
+      # fingerprint — they only widen reuse across commits with an identical type surface, so each
+      # run can save its refreshed cache; a looser prefix would reintroduce the type-drift hole.
+      # Residual, accepted: within one app program, editing app file B can change typed findings
+      # on unchanged sibling A, which stays cached until the key rolls; full `tsc` still gates
+      # type errors. All globs are fixed-depth so they cannot descend into node_modules.
       - name: Restore ESLint cache
         uses: actions/cache@v6
         with:
           path: .eslintcache
-          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.cjs', 'eslint-suppressions.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.nvmrc', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-${{ github.sha }}
+          restore-keys: |
+            eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
