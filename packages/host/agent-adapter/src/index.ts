@@ -14,6 +14,7 @@ export { CodexAdapter } from './native/codex';
 export { GrokBuildAdapter } from './native/grok-build';
 export { OpenCodeAdapter } from './native/opencode';
 export { PiAdapter } from './native/pi';
+export * from './plugins';
 export * from './probe';
 export * from './registry';
 export * from './util';
