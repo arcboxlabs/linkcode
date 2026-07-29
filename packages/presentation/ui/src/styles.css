@@ -144,13 +144,19 @@
   }
 }
 
-/* Matched-geometry session switch (thread row title → conversation header): pace the paired
-   element and the root crossfade on the motion scale. Reduce-motion never starts a transition
-   (gated where the switch is applied), so no override is needed here. */
-::view-transition-group(thread-title),
+/* View transitions (React `<ViewTransition>`, CODE-457): pace every group on the motion scale. */
+::view-transition-group(*),
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: var(--motion-normal);
+}
+
+/* The app-level reduce-motion preference must silence snapshot animations too — the global
+   `.reduce-motion *` reset cannot reach these root-attached pseudo-elements. */
+.reduce-motion::view-transition-group(*),
+.reduce-motion::view-transition-old(*),
+.reduce-motion::view-transition-new(*) {
+  animation-duration: 0.01ms !important;
 }
 
 @layer components {

@@ -9,6 +9,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
 import { repositoryLabel } from '../../repository-label';
+import { ViewTransition } from '../../view-transition';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 import type { BranchStatusComponentType } from './branch-status';
 import { SidebarPreviewCardPopup } from './preview-card';
@@ -94,9 +95,15 @@ export function ThreadRow({
               )}
             />
           </span>
-          <span className="min-w-0 flex-1 truncate" data-thread-title={session.sessionId}>
-            {title}
-          </span>
+          {active ? (
+            // No boundary on the active row: pairing is mount/unmount-based, so this boundary
+            // unmounting (plain span taking over) is what lets the entering header adopt it.
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+          ) : (
+            <ViewTransition enter="none" exit="none" name={`thread-title-${session.sessionId}`}>
+              <span className="min-w-0 flex-1 truncate">{title}</span>
+            </ViewTransition>
+          )}
         </PreviewCardTrigger>
         <SidebarPreviewCardPopup>
           <div className="flex min-w-0 flex-1 flex-col gap-2">

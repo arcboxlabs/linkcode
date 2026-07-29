@@ -1,4 +1,4 @@
-import { cn, ShellIconButton } from '@linkcode/ui';
+import { cn, ShellIconButton, ViewTransition } from '@linkcode/ui';
 import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
 import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -529,9 +529,18 @@ function MainChromeTitle({
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      <span className="min-w-0 flex-1 truncate font-semibold text-sm" data-conversation-title="">
-        {header.title}
-      </span>
+      {header.sessionId ? (
+        <ViewTransition
+          key={header.sessionId}
+          enter="none"
+          exit="none"
+          name={`thread-title-${header.sessionId}`}
+        >
+          <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+        </ViewTransition>
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+      )}
       {chip}
       {menu}
     </div>
