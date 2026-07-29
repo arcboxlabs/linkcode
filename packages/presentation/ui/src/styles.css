@@ -144,6 +144,15 @@
   }
 }
 
+/* Matched-geometry session switch (thread row title → conversation header): pace the paired
+   element and the root crossfade on the motion scale. Reduce-motion never starts a transition
+   (gated where the switch is applied), so no override is needed here. */
+::view-transition-group(thread-title),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-normal);
+}
+
 @layer components {
   /* Read-only chat terminals mirror LiveTerminal's auto pair: GitHub Light Default / Dark+.
      Scope the palette so ANSI class names from other libraries cannot inherit it accidentally. */

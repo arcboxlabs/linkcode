@@ -529,7 +529,9 @@ function MainChromeTitle({
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+      <span className="min-w-0 flex-1 truncate font-semibold text-sm" data-conversation-title="">
+        {header.title}
+      </span>
       {chip}
       {menu}
     </div>
