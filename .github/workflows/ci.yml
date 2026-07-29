@@ -28,7 +28,9 @@ permissions:
   contents: read
 
 env:
-  NODE_OPTIONS: --max-old-space-size=4096
+  # Typed linting needs one TS program set in a single heap: `lint:ci` runs eslint with
+  # `--concurrency=off`, and a cold cache still walks the whole repo, which does not fit in 4096.
+  NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
   typescript:
@@ -54,14 +56,31 @@ jobs:
         with:
           rustflags: '' # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
 
+      # Before `pnpm install`, so the hashFiles globs below cannot reach into node_modules.
+      #
+      # eslint validates a cached entry against that file's own content only, so a cross-file type
+      # change would leave an unchanged file's cached result in place — a type-aware rule such as
+      # no-floating-promises can start applying to a caller nobody edited, and `tsc` does not
+      # reject that code either. The key therefore covers every lint-visible input at once and
+      # there are deliberately no restore-keys: a prefix match would reintroduce exactly that hole.
+      # The cost is that this only hits on commits touching no lintable source (docs, Rust,
+      # workflows); a run that changes any of them re-lints from cold, which is the correct answer.
+      - name: Restore ESLint cache
+        uses: actions/cache@v6
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts', '**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs', '**/tsconfig*.json', 'eslint.config.cjs', 'pnpm-lock.yaml') }}
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting and imports
         run: pnpm format:check
 
+      # `lint:ci`, not `lint`: multithread linting duplicates the typescript-eslint program per
+      # worker instead of splitting it, which OOMs a 2-worker runner (CODE-468).
       - name: Lint
-        run: pnpm lint
+        run: pnpm lint:ci
 
       - name: Typecheck
         run: pnpm typecheck

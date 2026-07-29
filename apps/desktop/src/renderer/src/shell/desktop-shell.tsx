@@ -1,5 +1,5 @@
 import type { SystemBridge, ThemePreference } from '@linkcode/ipc';
-import type { ComposerAttachment } from '@linkcode/ui';
+import type { ComposerAttachment, FileManagerKind, SessionTitleMenuEditor } from '@linkcode/ui';
 import {
   AgentIcon,
   ConversationSurface,
@@ -8,6 +8,7 @@ import {
   HostFooter,
   NewSessionSurface,
   SessionSidebar,
+  SessionTitleMenu,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import {
@@ -172,6 +173,7 @@ export function DesktopShell({
   );
   const desktopPlatform = systemBridge.app.platform;
   const [appVersion, setAppVersion] = useState('');
+  const [editors, setEditors] = useState<SessionTitleMenuEditor[]>([]);
   const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
   const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
   const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
@@ -240,6 +242,16 @@ export function DesktopShell({
     (signal) => {
       void systemBridge.app.version().then((value) => {
         if (!signal.aborted) setAppVersion(`v${value}`);
+      });
+    },
+    [systemBridge],
+  );
+
+  // Probed once per window: main caches the detection for its whole process lifetime anyway.
+  useEffect(
+    (signal) => {
+      void systemBridge.shell.listEditors().then((value) => {
+        if (!signal.aborted) setEditors(value);
       });
     },
     [systemBridge],
@@ -653,6 +665,27 @@ export function DesktopShell({
             />
           </>
         }
+        titleMenu={
+          titledSession ? (
+            <SessionTitleMenu
+              // The header title is what the chrome actually renders — copy what is on screen.
+              title={header.title}
+              pinned={pinnedSessionIds.includes(titledSession.sessionId)}
+              fileManager={fileManagerKind(desktopPlatform)}
+              editors={editors}
+              onTogglePin={() => onToggleSessionPinned(titledSession.sessionId)}
+              // Both reject on a real failure (a missing path, a launch that never spawned);
+              // nothing here can recover, so the rejection surfaces through error reporting.
+              onReveal={() => {
+                void systemBridge.shell.revealPath(titledSession.cwd);
+              }}
+              onOpenInEditor={(editorId) => {
+                void systemBridge.shell.openInEditor(editorId, titledSession.cwd);
+              }}
+              onClose={() => onCloseSession(titledSession.sessionId)}
+            />
+          ) : undefined
+        }
         onShowSidebar={() => updateSidebarOpen(true)}
         onHideSidebar={() => updateSidebarOpen(false)}
         onToggleRight={() => togglePanel('right')}
@@ -729,6 +762,12 @@ export function DesktopShell({
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
   );
+}
+
+/** The system plane's platform, narrowed to the file manager the reveal item should name. */
+function fileManagerKind(platform: NodeJS.Platform): FileManagerKind {
+  if (platform === 'darwin' || platform === 'win32') return platform;
+  return 'other';
 }
 
 function createPanelContentHost(): HTMLDivElement {

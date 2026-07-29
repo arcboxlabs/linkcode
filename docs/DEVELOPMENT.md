@@ -343,7 +343,12 @@ pnpm lint
 pnpm format:check
 ```
 
-`pnpm lint` pins `--concurrency=2`: ESLint's `auto` spawns a worker per core, which measures 1.5–2× slower wall-clock than two workers for this typed-lint workload (and CI runners have 2 vCPUs).
+Lint runs one way locally and another in CI, and the difference is memory. `pnpm lint` uses
+`--concurrency=auto`; CI uses `pnpm lint:ci`, which is `--concurrency=off` plus a content-keyed
+cache, under `NODE_OPTIONS=--max-old-space-size=6144`. Concurrency splits the type-aware program
+across workers, so **fewer workers means a larger heap each** — narrowing it to `2` is what produced
+the `ERR_WORKER_OUT_OF_MEMORY` that broke every branch in 2026-07 (#312). If lint feels slow, raise
+the heap; narrowing concurrency is the move that breaks it.
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 
