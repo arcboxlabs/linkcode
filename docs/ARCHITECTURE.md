@@ -97,12 +97,18 @@ connects to. The `Engine` is the host proper — it owns session lifecycle and a
 orchestration. Clients are thin: they render the normalized conversation and send
 normalized input back.
 
-Listeners bind at the configured port (default `19523`, ascii `LC`) and hunt upward
-past foreign occupants. Every listener answers `GET /linkcode` with the daemon's
-identity, which enforces one daemon per machine: a second instance detects the first
-and exits. The actually-bound endpoints are advertised in `~/.linkcode/runtime.json`
-(removed on shutdown) so local clients — desktop main in particular — can discover
-the endpoint instead of hard-coding it.
+Listeners bind at the configured port and hunt upward past foreign occupants, within
+their channel's own range (release `19523`–`19532`, ascii `LC`; development
+`19533`–`19542`). Every listener answers `GET /linkcode` with the daemon's identity,
+which enforces one daemon per **state universe** — a channel × profile pair, each with
+its own state directory and `daemon.db` — so a second instance of the same universe
+detects the first and exits, while a daemon of another universe is merely a port
+neighbour. The actually-bound endpoints are advertised in that universe's
+`runtime.json` (`~/.linkcode/` for release, `~/.linkcode.development/` for a local
+build; removed on shutdown) so local clients — desktop main in particular — can
+discover the endpoint instead of hard-coding it. CODE-460 introduced the split; the
+port ranges are disjoint because the identity's `channel` field cannot be read by
+daemons released before it existed.
 
 ## Data plane vs system plane
 

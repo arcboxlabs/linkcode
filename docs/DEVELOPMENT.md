@@ -253,7 +253,7 @@ pnpm -F @linkcode/mobile smoke:export
 
 1. `curl http://127.0.0.1:19523/linkcode` — a JSON identity means it **is** up (possibly on a hunted port; the actual bound endpoint is in `~/.linkcode/runtime.json`). A development daemon answers on **19533** instead, and advertises in `~/.linkcode.development/runtime.json`.
 2. Logs: packaged `~/Library/Logs/LinkCode/main.log`; dev — the terminal (turbo TUI).
-3. Exit code `3` = another daemon already serves this machine (one-per-machine, not a crash). Kill the pid from `runtime.json`.
+3. Exit code `3` = another daemon already serves **this universe** (one per channel × profile, not a crash). Kill the pid from that universe's `runtime.json`. A daemon of another channel or profile is not the cause — those coexist by design.
 4. The packaged supervisor gives up after 5 fast (<30s) exits ("giving up" in the log).
 5. Crash-on-boot is usually a bundle issue (missing native module / "Dynamic require not supported") — check tsup externals and that `apps/daemon/dist` built before the desktop bundle.
 
