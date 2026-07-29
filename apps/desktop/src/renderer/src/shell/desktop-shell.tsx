@@ -85,6 +85,7 @@ export function DesktopShell({
   conversation,
   respondingRequestIds,
   responseErrors,
+  resourcesPanel,
   errorMessage,
   pinnedSessionIds,
   collapsedSections,
@@ -472,6 +473,7 @@ export function DesktopShell({
         cwd={active?.cwd}
         activeSessionId={activeSessionId}
         themeType={themeType}
+        resourcesPanel={resourcesPanel}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
