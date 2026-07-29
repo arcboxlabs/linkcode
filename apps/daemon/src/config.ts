@@ -14,6 +14,13 @@ import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
+import {
+  detachAccountSecrets,
+  detachProviderSecrets,
+  hasInlineSecrets,
+  withAccountSecret,
+  withProviderSecret,
+} from './secrets/provider-credentials';
 
 export { daemonChannel, daemonProfile } from './paths';
 
@@ -103,12 +110,26 @@ export function loadConfig(): DaemonConfig {
       })
     : [];
 
+  const providers = parseProviders(file.providers);
+  const accounts = parseAccounts(file.accounts);
+
+  // Parsing already moved every inline secret into the vault; rewriting is what takes the exposed
+  // copies off disk. Done here, at the read that found them, so an upgrade needs no user action.
+  if (hasInlineSecrets(file.providers, file.accounts)) {
+    logger.warn(
+      { operation: 'config.load' },
+      'Moving credentials out of config.json into the secret vault',
+    );
+    saveProviders(providers);
+    saveAccounts(accounts);
+  }
+
   return {
     listeners: applyEnvOverrides(
       configuredListeners.length > 0 ? configuredListeners : [fallbackListener],
     ),
-    providers: parseProviders(file.providers),
-    accounts: parseAccounts(file.accounts),
+    providers,
+    accounts,
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
 }
@@ -145,7 +166,9 @@ function parseAccounts(raw: unknown): Accounts {
   }
   const accounts: Accounts = [];
   for (const value of raw) {
-    const account = AccountSchema.safeParse(value);
+    // The credential secret lives in the vault (CODE-371); merge it back before validating, so a
+    // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
+    const account = AccountSchema.safeParse(withAccountSecret(value));
     if (!account.success) {
       logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
@@ -175,7 +198,7 @@ function parseProviders(raw: unknown): ProvidersConfig {
       );
       continue;
     }
-    const config = ProviderConfigSchema.safeParse(value);
+    const config = ProviderConfigSchema.safeParse(withProviderSecret(kind.data, value));
     if (!config.success) {
       logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;
@@ -185,14 +208,14 @@ function parseProviders(raw: unknown): ProvidersConfig {
   return providers;
 }
 
-/** Persist providers to config.json, preserving its other fields; `0600` (may hold API keys). */
+/** Persist providers to config.json, preserving its other fields; api keys go to the vault instead. */
 export function saveProviders(providers: ProvidersConfig): void {
-  writeConfigField('providers', providers);
+  writeConfigField('providers', detachProviderSecrets(providers));
 }
 
-/** Persist the account pool to config.json, preserving its other fields; `0600` (holds API keys / tokens). */
+/** Persist the account pool to config.json; credential secrets go to the vault instead. */
 export function saveAccounts(accounts: Accounts): void {
-  writeConfigField('accounts', accounts);
+  writeConfigField('accounts', detachAccountSecrets(accounts));
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
