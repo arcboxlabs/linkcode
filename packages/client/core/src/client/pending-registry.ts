@@ -19,6 +19,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SimulatorAxNode,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
@@ -99,7 +101,9 @@ export interface PendingValueMap {
   simulatorList: SimulatorDevice[];
   simulatorLaunch: number | null;
   simulatorScreenshot: { format: SimulatorImageFormat; data: string };
+  simulatorDescribeUi: SimulatorAxNode;
   simulatorScreenMask: string;
+  simulatorConsentGet: SimulatorConsentState;
   simulatorStreamStart: { fps: number; scale: number; codec: SimulatorStreamCodec };
 }
 
@@ -149,7 +153,9 @@ export class PendingRegistry {
     simulatorList: new Map(),
     simulatorLaunch: new Map(),
     simulatorScreenshot: new Map(),
+    simulatorDescribeUi: new Map(),
     simulatorScreenMask: new Map(),
+    simulatorConsentGet: new Map(),
     simulatorStreamStart: new Map(),
   };
 

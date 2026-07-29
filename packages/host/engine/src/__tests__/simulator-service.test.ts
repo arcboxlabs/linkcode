@@ -40,6 +40,15 @@ function fakeBackend(devices: SimulatorDeviceInfo[]) {
     swipe: vi.fn(asyncNoop),
     button: vi.fn(asyncNoop),
     rotate: vi.fn(asyncNoop),
+    shake: vi.fn(asyncNoop),
+    installRuntime: vi.fn(asyncNoop),
+    describeUi: vi.fn(() =>
+      Promise.resolve({
+        role: 'AXApplication',
+        frame: [0, 0, 400, 800] as [number, number, number, number],
+        enabled: true,
+      }),
+    ),
     streamStart: vi.fn(() =>
       Promise.resolve<Awaited<ReturnType<SimulatorBackend['streamStart']>>>({
         streaming: true,
@@ -146,6 +155,63 @@ describe('SimulatorService', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
     expect(service.ownerOf('A')).toBeUndefined();
+  });
+
+  it('does not push out a running reclaim window when a deferred stop arrives', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    service.releaseSession(S1);
+    await vi.advanceTimersByTimeAsync(600);
+    // The panel's stop lands after the session already stopped. Restarting the clock here would
+    // defer the reclaim every time a late stop trickles in, so the window must keep running.
+    await service.streamStop(S1, 'A');
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+  });
+
+  it('reclaims a service-booted device left detached, while its session stays alive', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    await service.streamStart(S1, 'A');
+    // Detach: the panel stops watching, but the session lives on and keeps the device.
+    await service.streamStop(S1, 'A');
+    expect(service.ownerOf('A')).toBe(S1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(backend.shutdownDevice).toHaveBeenCalledWith('A');
+    expect(service.ownerOf('A')).toBeUndefined();
+  });
+
+  it('does not expire a detached device an agent is still driving', async () => {
+    const backend = fakeBackend([device('A', 'Shutdown')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    await service.streamStop(S1, 'A');
+    // An agent tool call mid-window is exactly the case the idle clock must yield to.
+    await vi.advanceTimersByTimeAsync(600);
+    await service.screenshot(S1, 'A');
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(backend.shutdownDevice).not.toHaveBeenCalled();
+    expect(service.ownerOf('A')).toBe(S1);
+  });
+
+  it('never arms an idle reclaim for a detached device the user booted', async () => {
+    const backend = fakeBackend([device('A', 'Booted')]);
+    const service = new SimulatorService(backend, { idleReclaimMs: 1000 });
+
+    await service.boot(S1, 'A');
+    await service.streamStop(S1, 'A');
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(backend.shutdownDevice).not.toHaveBeenCalled();
+    expect(service.ownerOf('A')).toBe(S1);
   });
 
   it('never shuts down a device the user booted', async () => {

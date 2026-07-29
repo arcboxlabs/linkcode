@@ -64,8 +64,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   kicks off —
   it subscribes to the AssetManager and forwards install progress to clients
   (`asset.progress`/`asset.settled`), re-probing and pushing `agent-runtime.changed` when an
-  agent install completes (CODE-112). opencode self-spawns the `opencode` command via PATH
-  (CODE-76); pi runs in-process and spawns nothing — its SDK is a managed npm-closure download
+  agent install completes (CODE-112). opencode spawns `opencode serve` from the probe-resolved
+  binary (managed `agent:opencode` asset → detected user install, CODE-76; bare-name PATH
+  fallback for unprobed hosts); pi runs in-process and spawns nothing — its SDK is a managed npm-closure download
   (CODE-219): packaged apps exclude the closure from node_modules and the adapter imports the
   store's installed entry (`agentRuntimeProber.resolveEntry`), same consent/refresh rules.
 - **PTY sidecar** is a Rust binary (`linkcode-pty`, `pnpm -F @linkcode/daemon run build:rust`);

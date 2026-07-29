@@ -1,4 +1,5 @@
 import { PassThrough } from 'node:stream';
+import { wait } from 'foxts/wait';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT, encodeDataFrame, OPENED, OUTPUT } from '../codec';
 
@@ -11,9 +12,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 async function tick(): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  await wait(0);
 }
 
 function frame(type: number, body: Buffer): Buffer {

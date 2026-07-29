@@ -35,6 +35,11 @@ export interface PanelSectionTab {
   id: string;
 }
 
+/** One browser sub-tab; a null title falls back to an index-derived label. */
+export interface BrowserPanelSectionTab extends PanelSectionTab {
+  title: string | null;
+}
+
 export interface PanelControl {
   id: string;
   label: string;
@@ -56,4 +61,4 @@ export const PANEL_WINDOW_ICONS: Record<PanelWindowType | OptionalPanelSection, 
 export const PANEL_TAB_ACTIVE_CLASSNAME =
   'border-transparent bg-accent font-semibold text-foreground';
 export const PANEL_TAB_INACTIVE_CLASSNAME =
-  'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground';
+  'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent active:text-foreground';

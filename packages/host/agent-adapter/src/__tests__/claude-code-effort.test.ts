@@ -127,6 +127,14 @@ async function waitIdle(events: AgentEvent[]): Promise<void> {
 }
 
 describe('ClaudeCodeAdapter effort switching', () => {
+  it('rejects Codex ultra instead of treating it as a Claude flag setting', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    await expect(
+      adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', effort: 'ultra' }),
+    ).rejects.toThrow("claude-code: effort 'ultra' is not supported");
+    expect(queries).toHaveLength(0);
+  });
+
   it('applies initial effort while constructing the first Query', async () => {
     const { events } = await makeAdapter('high');
     const q0 = queries[0];

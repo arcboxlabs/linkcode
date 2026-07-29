@@ -62,6 +62,8 @@ export const AGENT_DEFAULT_MODELS: Readonly<Partial<Record<AgentKind, string>>> 
   'grok-build': 'grok-4.5',
 };
 
+const CODEX_BASE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] satisfies EffortLevel[];
+
 /**
  * Curated model choices, keyed by adapter — only adapters with a *verified* live model switch get
  * an entry, and every id was confirmed by reading the served model back off a live stream (source
@@ -86,12 +88,24 @@ export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
     { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
   ],
   codex: [
-    { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
-    { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' },
-    { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
-    { id: 'gpt-5.5', label: 'GPT-5.5' },
-    { id: 'gpt-5.4', label: 'GPT-5.4' },
-    { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
+    {
+      id: 'gpt-5.6-sol',
+      label: 'GPT-5.6-Sol',
+      effortLevels: [...CODEX_BASE_EFFORTS, 'max', 'ultra'],
+    },
+    {
+      id: 'gpt-5.6-terra',
+      label: 'GPT-5.6-Terra',
+      effortLevels: [...CODEX_BASE_EFFORTS, 'max', 'ultra'],
+    },
+    {
+      id: 'gpt-5.6-luna',
+      label: 'GPT-5.6-Luna',
+      effortLevels: [...CODEX_BASE_EFFORTS, 'max'],
+    },
+    { id: 'gpt-5.5', label: 'GPT-5.5', effortLevels: [...CODEX_BASE_EFFORTS] },
+    { id: 'gpt-5.4', label: 'GPT-5.4', effortLevels: [...CODEX_BASE_EFFORTS] },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini', effortLevels: [...CODEX_BASE_EFFORTS] },
   ],
   // Grok Build headless: model is a spawn-time `-m` flag (verified 0.2.102: grok-4.5).
   'grok-build': [{ id: 'grok-4.5', label: 'Grok 4.5' }],

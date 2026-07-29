@@ -26,7 +26,6 @@ const PersistedSeedSchema = z.object({
 const memoByStorage = new WeakMap<SeedCacheStorage, Map<string, ConversationSeed | null>>();
 
 function defaultStorage(): SeedCacheStorage | null {
-  // eslint-disable-next-line sukka/react-prefer-foxact-persistent -- imperative fetch-time cache, not render state; foxact's localStorage hooks don't apply
   return typeof localStorage === 'undefined' ? null : localStorage;
 }
 

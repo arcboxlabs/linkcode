@@ -1,7 +1,7 @@
 import { useEffect } from 'foxact/use-abortable-effect';
 import { clamp } from 'foxts/clamp';
 import { noop } from 'foxts/noop';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import type { DecodedFrame } from './device-compositor';
 import { frameHeight, frameWidth, paintChassis, paintScreen } from './device-compositor';
@@ -62,9 +62,45 @@ export interface SimulatorScreenProps {
    * stream to the exact screen shape, and its grown outline keeps the chassis band even. Absent → a
    * generic rounding. Base64, not a `data:` URL — the desktop CSP blocks `fetch`-ing data URLs. */
   maskPng?: string | null;
+  /** Receives the canvas the framebuffer paints into as it mounts (and `null` as it unmounts) — the
+   * surface a recorder captures. Pass a **stable** callback (a `useState` setter or `useCallback`):
+   * a fresh identity each render would detach and re-attach the ref. */
+  onScreenCanvas?: (canvas: HTMLCanvasElement | null) => void;
+  /** Where an agent last acted, in the same normalized [0,1] space {@link onTouch} reports — drawn
+   * as a pointer so a co-driving user can see *where* the agent is working. `null` draws nothing. */
+  agentPointer?: SimulatorScreenPoint | null;
   /** Shown centered until the first frame arrives. */
   placeholder?: React.ReactNode;
   className?: string;
+}
+
+/** The agent's touch point: a large arrow that reads as deliberately not the user's own cursor —
+ * white fill with a brand-orange edge, matching the "agent is driving" badge's dot, over a pulse
+ * that draws the eye to a spot that may be off-screen-of-attention. */
+function AgentPointer({ point }: { point: SimulatorScreenPoint }): React.ReactNode {
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+    >
+      <span className="-translate-x-1/2 -translate-y-1/2 absolute block size-10 animate-ping rounded-full bg-orange-500/30" />
+      {/* The tip sits exactly on the point; the body hangs down-right the way a cursor does. */}
+      <svg
+        viewBox="0 0 24 24"
+        className="absolute size-7 drop-shadow-lg"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          d="M3 2 L3 20 L8 15.5 L11 22 L14.5 20.5 L11.5 14 L18 13.5 Z"
+          fill="#FFFFFF"
+          stroke="#F97316"
+          strokeWidth="1.75"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
 }
 
 /**
@@ -82,11 +118,22 @@ export function SimulatorScreen({
   onKey,
   onText,
   maskPng,
+  onScreenCanvas,
+  agentPointer = null,
   placeholder,
   className,
 }: SimulatorScreenProps): React.ReactNode {
   const chassisRef = useRef<HTMLCanvasElement | null>(null);
   const screenRef = useRef<HTMLCanvasElement | null>(null);
+  // The screen canvas is tracked by a ref *and* published to the caller, so a recorder can capture
+  // the same surface the framebuffer paints into.
+  const setScreenCanvas = useCallback(
+    (node: HTMLCanvasElement | null) => {
+      screenRef.current = node;
+      onScreenCanvas?.(node);
+    },
+    [onScreenCanvas],
+  );
   const inputRef = useRef<HTMLInputElement | null>(null);
   /** Latest decoded frame, retained so a late mask (or the next rAF) can recomposite it. */
   const frameRef = useRef<DecodedFrame | null>(null);
@@ -328,7 +375,7 @@ export function SimulatorScreen({
       >
         <canvas ref={chassisRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         <canvas
-          ref={screenRef}
+          ref={setScreenCanvas}
           className="absolute touch-none"
           style={
             layout === null
@@ -346,6 +393,21 @@ export function SimulatorScreen({
           onPointerCancel={handlePointerCancel}
           onWheel={handleWheel}
         />
+        {agentPointer !== null && layout !== null && (
+          // Shares the screen canvas's inset box, so the same normalized coordinates the input
+          // path produces land on the same pixels here — no second mapping to keep in sync.
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: `${layout.inset.left * 100}%`,
+              top: `${layout.inset.top * 100}%`,
+              width: `${layout.inset.width * 100}%`,
+              height: `${layout.inset.height * 100}%`,
+            }}
+          >
+            <AgentPointer point={agentPointer} />
+          </div>
+        )}
       </div>
       {/* Off-screen editable that owns keyboard focus: ASCII keydowns become HID key presses,
           IME/non-ASCII commits become pasteboard text. A tap on the canvas focuses it. App-level

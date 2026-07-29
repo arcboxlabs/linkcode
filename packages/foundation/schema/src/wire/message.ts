@@ -23,7 +23,10 @@ import { WirePayloadSchema } from './payload';
 // 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
 // 52 adds the simulator device-rotation wire (CODE-408).
 // 53 migrates managed-asset IDs from public strings to discriminated objects.
-export const WIRE_PROTOCOL_VERSION = 53 as const;
+// 54 adds the simulator agent-consent variants (CODE-420).
+// 55 adds the simulator volume buttons (CODE-414).
+// 60 adds provider/model-specific reasoning-effort metadata and Codex's distinct `ultra` level.
+export const WIRE_PROTOCOL_VERSION = 60 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

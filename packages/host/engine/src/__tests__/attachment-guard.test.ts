@@ -4,6 +4,10 @@ import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
 import { assertAttachmentContentAllowed } from '../session/attachment-guard';
 
+const OVER_PER_ATTACHMENT_CAP_RE = /maximum allowed size/;
+const OVER_AGGREGATE_CAP_RE = /maximum allowed total size/;
+const UNSUPPORTED_IMAGE_TYPE_RE = /Unsupported image attachment type/;
+
 function imageOfBytes(bytes: number, mimeType = 'image/png'): ContentBlock {
   return { type: 'image', data: Buffer.alloc(bytes).toString('base64'), mimeType };
 }
@@ -22,13 +26,13 @@ describe('assertAttachmentContentAllowed', () => {
 
   it('rejects a block one byte over the per-attachment cap', () => {
     expect(() => assertAttachmentContentAllowed([imageOfBytes(MAX_ATTACHMENT_BYTES + 1)])).toThrow(
-      /maximum allowed size/,
+      OVER_PER_ATTACHMENT_CAP_RE,
     );
   });
 
   it('rejects an unsupported image mime type', () => {
     expect(() => assertAttachmentContentAllowed([imageOfBytes(16, 'image/svg+xml')])).toThrow(
-      /Unsupported image attachment type/,
+      UNSUPPORTED_IMAGE_TYPE_RE,
     );
   });
 
@@ -43,7 +47,7 @@ describe('assertAttachmentContentAllowed', () => {
     const half = MAX_ATTACHMENT_TOTAL_BYTES / 2;
     expect(() =>
       assertAttachmentContentAllowed([imageOfBytes(half), imageOfBytes(half + 3)]),
-    ).toThrow(/maximum allowed total size/);
+    ).toThrow(OVER_AGGREGATE_CAP_RE);
   });
 
   it('counts audio and embedded-resource blobs toward the caps', () => {
@@ -52,7 +56,7 @@ describe('assertAttachmentContentAllowed', () => {
       data: Buffer.alloc(MAX_ATTACHMENT_BYTES + 1).toString('base64'),
       mimeType: 'audio/mpeg',
     };
-    expect(() => assertAttachmentContentAllowed([audio])).toThrow(/maximum allowed size/);
+    expect(() => assertAttachmentContentAllowed([audio])).toThrow(OVER_PER_ATTACHMENT_CAP_RE);
 
     const resource: ContentBlock = {
       type: 'resource',
@@ -61,7 +65,7 @@ describe('assertAttachmentContentAllowed', () => {
         blob: Buffer.alloc(MAX_ATTACHMENT_BYTES + 1).toString('base64'),
       },
     };
-    expect(() => assertAttachmentContentAllowed([resource])).toThrow(/maximum allowed size/);
+    expect(() => assertAttachmentContentAllowed([resource])).toThrow(OVER_PER_ATTACHMENT_CAP_RE);
   });
 
   it('never lets malformed base64 erode the aggregate accounting', () => {
@@ -74,6 +78,6 @@ describe('assertAttachmentContentAllowed', () => {
     const half = MAX_ATTACHMENT_TOTAL_BYTES / 2;
     expect(() =>
       assertAttachmentContentAllowed([...garbage, imageOfBytes(half), imageOfBytes(half + 3)]),
-    ).toThrow(/maximum allowed total size/);
+    ).toThrow(OVER_AGGREGATE_CAP_RE);
   });
 });

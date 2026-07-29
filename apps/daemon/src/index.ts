@@ -8,6 +8,7 @@ import {
   EngineService,
   makeEngineInfrastructureLayer,
   PreviewRouteRegistry,
+  SimulatorConsentService,
   SimulatorService,
 } from '@linkcode/engine';
 import type { DaemonIdentity, DaemonListenerInfo, DaemonRuntimeInfo } from '@linkcode/schema';
@@ -27,7 +28,13 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import type { DaemonConfig } from './config';
-import { chatWorkspaceRoot, daemonProfile, databasePath, loadConfig } from './config';
+import {
+  chatWorkspaceRoot,
+  daemonProfile,
+  databasePath,
+  loadConfig,
+  saveSimulatorConsent,
+} from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
@@ -225,9 +232,29 @@ async function main(): Promise<void> {
       const simulators = simSidecarPath
         ? new SimulatorService(new SimSidecarClient(simSidecarPath))
         : undefined;
+      // Decisions persist in config.json, so a grant outlives the session that earned it. The ask
+      // hook reports whether anyone is attached: with no client there is nobody to answer, and
+      // suspending the agent for two minutes would just look like a hang.
+      const simulatorConsent = new SimulatorConsentService({
+        load: () => Promise.resolve(config.simulatorConsent),
+        save: (state) => Promise.resolve(saveSimulatorConsent(state)),
+      });
+      yield* Effect.promise(() => simulatorConsent.init());
+      simulatorConsent.setHooks({
+        ask(sessionId, udid, tool) {
+          if (hub.size === 0) return false;
+          hub.send(
+            createWireMessage({ kind: 'simulator.consent.required', sessionId, udid, tool }),
+          );
+          return true;
+        },
+        publish(state) {
+          hub.send(createWireMessage({ kind: 'simulator.consent.changed', state }));
+        },
+      });
       const simulatorMcp = simulators
         ? yield* Effect.promise(() =>
-            SimulatorMcpEndpoint.create(simulators, {
+            SimulatorMcpEndpoint.create(simulators, simulatorConsent, {
               activity(activity) {
                 hub.send(createWireMessage({ kind: 'simulator.activity', ...activity }));
               },
@@ -245,6 +272,7 @@ async function main(): Promise<void> {
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         simulators,
         simulatorMcp,
+        simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),

@@ -1,10 +1,12 @@
 import type { SDKMessage, SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, AgentInput, StartOptions } from '@linkcode/schema';
+import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
 import {
   ClaudeCodeAdapter,
   createClaudeHistoryEventMapper,
+  editResultDiffContent,
   mapClaudeStop,
   toolUseResultEnvelope,
 } from '../native/claude-code';
@@ -392,7 +394,121 @@ describe('toolUseResultEnvelope', () => {
   });
 });
 
+describe('editResultDiffContent', () => {
+  const structuredPatch = [
+    { oldStart: 26, oldLines: 7, newStart: 26, newLines: 7, lines: [' ctx', '-a', '+b', ' tail'] },
+  ];
+
+  it('lifts structuredPatch into a git patch beside the legacy text', () => {
+    expect(
+      editResultDiffContent({
+        filePath: 'src/a.ts',
+        oldString: 'a',
+        newString: 'b',
+        originalFile: null,
+        structuredPatch,
+        userModified: false,
+        replaceAll: false,
+      }),
+    ).toEqual([
+      {
+        type: 'diff',
+        change: 'modify',
+        path: 'src/a.ts',
+        oldText: 'a',
+        newText: 'b',
+        patch: { format: 'git_patch', text: '@@ -26,7 +26,7 @@\n ctx\n-a\n+b\n tail' },
+      },
+    ]);
+  });
+
+  it('ignores a Write result, whose create case carries no hunks', () => {
+    expect(
+      editResultDiffContent({
+        type: 'create',
+        filePath: 'src/new.ts',
+        content: 'export const a = 1;\n',
+        structuredPatch: [],
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for an error string, a hunkless edit, and malformed hunks', () => {
+    expect(editResultDiffContent('String to replace not found')).toBeUndefined();
+    expect(
+      editResultDiffContent({
+        filePath: 'a.ts',
+        oldString: 'a',
+        newString: 'b',
+        structuredPatch: [],
+      }),
+    ).toBeUndefined();
+    expect(
+      editResultDiffContent({
+        filePath: 'a.ts',
+        oldString: 'a',
+        newString: 'b',
+        structuredPatch: [{ oldStart: 'nope', oldLines: 1, newStart: 1, newLines: 1, lines: [] }],
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe('ClaudeCodeAdapter Edit diff normalization', () => {
+  it('upgrades the announce fragment to the settle patch without stacking a second diff', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((e) => seen.push(e));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'Edit',
+            input: { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' },
+          },
+        ],
+      },
+    });
+    adapter.feed({
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'updated' }] },
+      tool_use_result: {
+        filePath: 'src/a.ts',
+        oldString: 'a',
+        newString: 'b',
+        structuredPatch: [
+          { oldStart: 26, oldLines: 3, newStart: 26, newLines: 3, lines: [' ctx', '-a', '+b'] },
+        ],
+      },
+    });
+
+    const patchedDiff = {
+      type: 'diff',
+      change: 'modify',
+      path: 'src/a.ts',
+      oldText: 'a',
+      newText: 'b',
+      patch: { format: 'git_patch', text: '@@ -26,3 +26,3 @@\n ctx\n-a\n+b' },
+    };
+    const tools = toolSnapshots(seen);
+    // announce (fragment) → content replace (patch) → settle (completed).
+    expect(tools).toHaveLength(3);
+    expect(tools[0].toolCall.content).toEqual([
+      { type: 'diff', change: 'modify', path: 'src/a.ts', oldText: 'a', newText: 'b' },
+    ]);
+    expect(tools[1].toolCall.status).toBe('in_progress');
+    expect(tools[1].toolCall.content).toEqual([patchedDiff]);
+    expect(tools[2].toolCall.status).toBe('completed');
+    expect(tools[2].toolCall.content).toEqual([
+      patchedDiff,
+      { type: 'content', content: { type: 'text', text: 'updated' } },
+    ]);
+  });
+
   it('announces the Edit diff and keeps it through the settle', () => {
     const adapter = new TestClaude();
     const seen: AgentEvent[] = [];
@@ -792,10 +908,7 @@ describe('CodexAdapter message snapshots', () => {
 describe('CodexAdapter turn queueing', () => {
   const start: StartOptions = { kind: 'codex', cwd: '/repo' };
   const prompt: AgentInput = { type: 'prompt', content: [{ type: 'text', text: 'hi' }] };
-  const settle = () =>
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
+  const settle = () => wait(0);
 
   it("keeps queueing while a drained prompt's turn/start is still in flight", async () => {
     const adapter = new TestCodex();

@@ -21,11 +21,14 @@ import {
   AttachedTerminalPanel,
   isAbsoluteFilePath,
   locateFileArtifact,
+  SimulatorAutoReveal,
+  suppressSimulatorAutoReveal,
   TerminalPanel,
   useCloudHosts,
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
+import { toastManager } from 'coss-ui/components/toast';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -142,6 +145,9 @@ export function DesktopShell({
       closeRightFileTab: state.closeRightFileTab,
       setActiveRightFileTab: state.setActiveRightFileTab,
       openBrowserUrl: state.openBrowserUrl,
+      addRightBrowserTab: state.addRightBrowserTab,
+      closeRightBrowserTab: state.closeRightBrowserTab,
+      setActiveRightBrowserTab: state.setActiveRightBrowserTab,
       openRightTerminalAttachTab: state.openRightTerminalAttachTab,
       resetSidebarSize: state.resetSidebarSize,
       resetRightPanelSize: state.resetRightPanelSize,
@@ -249,7 +255,25 @@ export function DesktopShell({
     [systemBridge],
   );
 
+  const openBrowserTab = useDesktopShellStore((state) => state.openBrowserTab);
+  useEffect(() => systemBridge.browser.onOpenTab(openBrowserTab), [systemBridge, openBrowserTab]);
+
+  const tBrowser = useTranslations('workbench.preview.browser');
+  useEffect(
+    () =>
+      systemBridge.browser.onDownloadDone(({ filename, state }) => {
+        // 'cancelled' is the user dismissing the save dialog — nothing to report.
+        if (state === 'completed') {
+          toastManager.add({ title: tBrowser('downloadCompleted', { filename }) });
+        } else if (state === 'interrupted') {
+          toastManager.add({ title: tBrowser('downloadFailed', { filename }), type: 'error' });
+        }
+      }),
+    [systemBridge, tBrowser],
+  );
+
   const active = activeSession;
+  const activeSessionId = active?.sessionId ?? null;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -274,6 +298,9 @@ export function DesktopShell({
     closeRightFileTab,
     setActiveRightFileTab,
     openBrowserUrl,
+    addRightBrowserTab,
+    closeRightBrowserTab,
+    setActiveRightBrowserTab,
     openRightTerminalAttachTab,
     resetSidebarSize,
     resetRightPanelSize,
@@ -422,7 +449,7 @@ export function DesktopShell({
       <DesktopRightPanelRegion
         panel={rightPanel}
         cwd={active?.cwd}
-        activeSessionId={active?.sessionId ?? null}
+        activeSessionId={activeSessionId}
         themeType={themeType}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
@@ -431,13 +458,23 @@ export function DesktopShell({
         terminalContentTargetRef={setRightContentTarget}
         onSelectSection={setActiveSection}
         onAddSection={addRightSection}
-        onCloseSection={closeRightSection}
+        onCloseSection={(section) => {
+          // Closing the simulator section is an explicit "not now" — stop auto-revealing it for
+          // this thread, however busy the agent gets on the device afterwards.
+          if (section === 'simulator' && activeSessionId !== null) {
+            suppressSimulatorAutoReveal(activeSessionId);
+          }
+          closeRightSection(section);
+        }}
         onSelectTerminalTab={setActiveRightTerminalTab}
         onCloseTerminalTab={closeRightTerminalTab}
         onAddTerminalTab={addRightTerminalTab}
         onSelectFileTab={setActiveRightFileTab}
         onCloseFileTab={closeRightFileTab}
         onOpenFileTab={openRightFileTab}
+        onSelectBrowserTab={setActiveRightBrowserTab}
+        onCloseBrowserTab={closeRightBrowserTab}
+        onAddBrowserTab={addRightBrowserTab}
         onToggleMax={() => toggleMaxPanel('right')}
       />
     );
@@ -488,13 +525,16 @@ export function DesktopShell({
         />
       ),
     }));
-    // The browser webview lives here permanently: unmounting or DOM-moving a webview
-    // reloads it, so section switches only toggle its visibility.
-    items.push({
-      id: 'browser-resident',
-      active: rightPanel.activeSection === 'browser',
-      node: <BrowserWebviewPane />,
-    });
+    // Browser webviews live here permanently: unmounting or DOM-moving a webview
+    // reloads it, so section and tab switches only toggle visibility.
+    const activeIsBrowser = rightPanel.activeSection === 'browser';
+    for (const tab of rightPanel.browser.tabs) {
+      items.push({
+        id: tab.id,
+        active: activeIsBrowser && tab.id === rightPanel.browser.activeTabId,
+        node: <BrowserWebviewPane systemBridge={systemBridge} tabId={tab.id} url={tab.url} />,
+      });
+    }
     return createPortal(<PanelTabContentStack items={items} />, host);
   }
 
@@ -557,6 +597,12 @@ export function DesktopShell({
       data-shell-vertical-animating={verticalAnimating ? '' : undefined}
       data-shell-seam={sidebarTransition.paneVisible ? '' : undefined}
     >
+      {/* Headless: an agent reaching for a simulator brings the section forward once, so the user
+          sees the device it is working on without having to remember to add the section. */}
+      <SimulatorAutoReveal
+        sessionId={activeSessionId}
+        onReveal={() => openRightPanelSection('simulator')}
+      />
       <DesktopChrome
         header={header}
         navigation={navigation}

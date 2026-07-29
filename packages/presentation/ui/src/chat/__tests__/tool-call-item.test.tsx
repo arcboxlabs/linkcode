@@ -362,13 +362,16 @@ describe('ToolCallBody', () => {
       content: [{ type: 'diff', change: 'delete', path: '/repo/logo.bin', isBinary: true }],
     };
 
-    const { rerender } = render(<ToolCallBody toolCall={moved} />);
+    const { container, rerender } = render(<ToolCallBody toolCall={moved} />);
     expect(screen.getByText('/repo/old.ts → /repo/new.ts')).toBeDefined();
-    expect(screen.getByText('old')).toBeDefined();
-    expect(screen.getByText('new')).toBeDefined();
+    // The rows themselves live in @pierre/diffs' shadow root, which queries do not descend into;
+    // their content is covered by the chatFileDiff tests. Here, only that a diff mounted at all.
+    expect(container.querySelector('diffs-container')).not.toBeNull();
 
     rerender(<ToolCallBody toolCall={deleted} />);
     expect(screen.getByText('logo.bin')).toBeDefined();
+    // Binary deletes have nothing to render — the card stays header-only.
+    expect(container.querySelector('diffs-container')).toBeNull();
   });
 
   it('keeps a failed mutation explanation visible without presenting it as file content', () => {

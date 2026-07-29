@@ -64,7 +64,7 @@ export type ArtifactTitleProps = React.ComponentProps<'div'>;
 
 export function ArtifactTitle({ className, ...props }: ArtifactTitleProps): React.ReactNode {
   return (
-    <div className={cn('truncate font-medium text-[13px] text-foreground', className)} {...props} />
+    <div className={cn('truncate font-medium text-xs text-foreground', className)} {...props} />
   );
 }
 
@@ -74,7 +74,7 @@ export function ArtifactDescription({
   className,
   ...props
 }: ArtifactDescriptionProps): React.ReactNode {
-  return <div className={cn('truncate text-[12px] text-muted-foreground', className)} {...props} />;
+  return <div className={cn('truncate text-xs text-muted-foreground', className)} {...props} />;
 }
 
 export type ArtifactActionsProps = React.ComponentProps<'div'>;

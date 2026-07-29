@@ -16,6 +16,9 @@ import { TerminalService } from '../terminal/service';
 
 const roots: string[] = [];
 const RE_TERMINAL_ID = /^term-/;
+const RE_SCRIPT_HOSTNAME = /^web-app--my-project-[0-9a-f]{6}\.localhost$/;
+const RE_SERVICE_URL = /^http:\/\/web--app-[0-9a-f]{6}\.localhost:19523$/;
+const RE_PORT = /^\d+$/;
 
 function makeWorkspace(config?: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), 'linkcode-script-test-'));
@@ -180,7 +183,7 @@ describe('readWorkspaceScripts', () => {
 describe('scriptHostname', () => {
   it('builds the namespaced label with a stable cwd hash', () => {
     const a = scriptHostname('Web App', 'My Project', '/tmp/a');
-    expect(a).toMatch(/^web-app--my-project-[0-9a-f]{6}\.localhost$/);
+    expect(a).toMatch(RE_SCRIPT_HOSTNAME);
     expect(scriptHostname('Web App', 'My Project', '/tmp/a')).toBe(a);
     expect(scriptHostname('Web App', 'My Project', '/tmp/b')).not.toBe(a);
   });
@@ -203,9 +206,9 @@ describe('ScriptService', () => {
     expect(opts.args).toEqual(['-c', 'pnpm dev']);
     expect(opts.cwd).toBe(cwd);
     expect(opts.env?.LINKCODE_PORT).toBe('4321');
-    expect(opts.env?.LINKCODE_URL).toMatch(/^http:\/\/web--app-[0-9a-f]{6}\.localhost:19523$/);
+    expect(opts.env?.LINKCODE_URL).toMatch(RE_SERVICE_URL);
     // Sibling service got a planned port without being started.
-    expect(opts.env?.LINKCODE_SERVICE_API_PORT).toMatch(/^\d+$/);
+    expect(opts.env?.LINKCODE_SERVICE_API_PORT).toMatch(RE_PORT);
     expect(opts.env?.LINKCODE_SERVICE_API_URL).toContain('api--app-');
 
     const hostname = new URL(opts.env!.LINKCODE_URL).hostname;

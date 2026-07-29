@@ -6,19 +6,40 @@ import { OpenCodeAdapter } from '../native/opencode';
 import type { OpencodeHistoryServerLike } from '../native/opencode/history-server';
 import { FakeEventStream } from './fake-event-stream';
 
-const sdkMock = vi.hoisted(() => ({
-  createOpencode: null as ((opts: unknown) => unknown) | null,
-  createOpencodeClient: null as ((opts: unknown) => unknown) | null,
-}));
+const sdkMock = vi.hoisted(
+  (): {
+    createOpencode: ((opts: unknown) => unknown) | null;
+    createOpencodeClient: ((opts: unknown) => unknown) | null;
+    liveClient: unknown;
+  } => ({ createOpencode: null, createOpencodeClient: null, liveClient: null }),
+);
 
 vi.mock('@opencode-ai/sdk/v2', () => ({
-  createOpencode(opts: unknown) {
-    if (!sdkMock.createOpencode) throw new Error('createOpencode mock not installed');
-    return sdkMock.createOpencode(opts);
+  // History reads pass the stub server's url; the live session client is whatever the last
+  // bridged serve spawn produced (see the serve mock below).
+  createOpencodeClient(opts: { baseUrl?: string }) {
+    if (opts.baseUrl === 'http://stub') {
+      if (!sdkMock.createOpencodeClient) throw new Error('createOpencodeClient mock not installed');
+      return sdkMock.createOpencodeClient(opts);
+    }
+    if (sdkMock.liveClient === null) throw new Error('no live server was started');
+    return sdkMock.liveClient;
   },
-  createOpencodeClient(opts: unknown) {
-    if (!sdkMock.createOpencodeClient) throw new Error('createOpencodeClient mock not installed');
-    return sdkMock.createOpencodeClient(opts);
+}));
+
+// The adapter spawns its per-session server through the owned serve helper (CODE-76), then builds
+// the client separately — bridge that spawn back onto the `createOpencode`-shaped mock the cases
+// install, so each case keeps stubbing one function that yields both client and server.
+vi.mock('../native/opencode/serve', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  async startOpencodeServe(opts: unknown) {
+    if (!sdkMock.createOpencode) throw new Error('createOpencode mock not installed');
+    const started = (await sdkMock.createOpencode(opts)) as {
+      client: unknown;
+      server: { url?: string; close(): void };
+    };
+    sdkMock.liveClient = started.client;
+    return { url: started.server.url ?? 'http://fake', close: () => started.server.close() };
   },
 }));
 
