@@ -1,18 +1,20 @@
 import { Buffer } from 'node:buffer';
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname } from 'node:path';
 import process from 'node:process';
-import { deviceKeyPath, deviceKeysDir } from '../config';
+import { deviceKeysDir, legacyDeviceKeyPath } from '../config';
 import { logger } from '../logger';
+import { DEVICE_SOFTWARE_KEY_REF, secretVault } from '../secrets';
 
 /**
  * The device key is the machine's identity: it keeps the device id (= tunnel host id) stable
  * across re-logins and account switches, and signing with it proves possession (registration
  * `keyProof`, tunnel handshake). Custody: hardware P-256 via `@arcboxlabs/deviceid` where
- * available, else a software Ed25519 keypair at `~/.linkcode/device-key.pem` (0600), honestly
- * reported via `protection`; the server verifies both algorithms.
+ * available, else a software Ed25519 keypair in the secret vault (CODE-371) — OS-protected wherever
+ * a keyring exists, which notably includes the hosts that reach the fallback *because* they have no
+ * TPM. `protection` reports `software` for it either way: the server must not treat a
+ * keyring-wrapped key as hardware-bound.
  */
 export interface DeviceKey {
   /** SPKI PEM, sent on device registration. */
@@ -64,17 +66,9 @@ export function ensureDeviceKey(): DeviceKey {
   }
 }
 
-function ensureSoftwareDeviceKey(): DeviceKey {
-  const path = deviceKeyPath();
-  let privatePem: string;
-  try {
-    privatePem = readFileSync(path, 'utf8');
-  } catch {
-    const { privateKey } = generateKeyPairSync('ed25519');
-    privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, privatePem, { mode: 0o600 });
-  }
+/** The fallback custody path, reachable on its own: no hardware backend, key held by the vault. */
+export function ensureSoftwareDeviceKey(): DeviceKey {
+  const privatePem = loadSoftwarePrivateKey() ?? createSoftwarePrivateKey();
   const privateKey = createPrivateKey(privatePem);
   const publicKeyPem = createPublicKey(privatePem).export({ type: 'spki', format: 'pem' });
   return {
@@ -82,4 +76,46 @@ function ensureSoftwareDeviceKey(): DeviceKey {
     protection: 'software',
     sign: (payload) => sign(null, Buffer.from(payload), privateKey).toString('base64url'),
   };
+}
+
+/**
+ * The stored software key, or `null` when this machine has none yet. A key left as a bare PEM by an
+ * older daemon is adopted rather than replaced: the device id is the fingerprint of this key, so
+ * regenerating would silently orphan the HQ registration and the tunnel host id with it.
+ */
+function loadSoftwarePrivateKey(): string | null {
+  const stored = secretVault().get(DEVICE_SOFTWARE_KEY_REF);
+  if (stored !== null) return stored;
+
+  const path = legacyDeviceKeyPath();
+  let legacyPem: string;
+  try {
+    legacyPem = readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+  logger.warn(
+    { operation: 'device-key.migrate' },
+    'Moving the software device key off disk into the secret vault',
+  );
+  secretVault().set(DEVICE_SOFTWARE_KEY_REF, legacyPem);
+  rmSync(path, { force: true });
+  return legacyPem;
+}
+
+/**
+ * Mint a fresh software key. Reached on a new machine, and on one whose keyring lost the vault's
+ * master key — in which case the device id changes and HQ sees a new device. That is the defined
+ * reset: the same vault loss also takes the session token, so the daemon is already signed out and
+ * the next sign-in registers this key. Nothing is silently left half-valid.
+ */
+function createSoftwarePrivateKey(): string {
+  const { privateKey } = generateKeyPairSync('ed25519');
+  const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  secretVault().set(DEVICE_SOFTWARE_KEY_REF, privatePem);
+  logger.warn(
+    { operation: 'device-key.create', protection: secretVault().protection },
+    'Generated a new software device key; this machine registers with HQ under a new device id',
+  );
+  return privatePem;
 }
