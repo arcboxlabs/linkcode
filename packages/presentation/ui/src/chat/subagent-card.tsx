@@ -6,6 +6,7 @@ import { BotIcon, Maximize2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { toolCallFailureMessage } from '../tool-utils';
 import { ContentBlockView } from './content-block-view';
 import { contentDerivedEntries } from './content-derived-keys';
 import type { QuestionConversationItem } from './conversation-prompts';
@@ -24,7 +25,6 @@ import { subagentTaskInput } from './subagent-task-input';
 import { ThoughtBlock } from './thought-block';
 import { ToolCallBody, ToolCallItem } from './tool-call-item';
 import { toolCallDisplayText } from './tool-result-content';
-import { toolCallFailureMessage } from './tool-utils';
 import type { ConversationItem } from './types';
 
 interface SubagentTranscriptProps {

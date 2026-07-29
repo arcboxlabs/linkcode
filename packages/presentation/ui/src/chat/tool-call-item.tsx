@@ -1,18 +1,18 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
 import { useTranslations } from 'use-intl';
-import { toolCallDiffStats } from './diff-utils';
-import { Tool, ToolContent, ToolHeader } from './tool';
-import { toolCallDisplayText } from './tool-result-content';
-import { ToolResultPreview } from './tool-result-preview';
-import type { ToolMetadata } from './tool-utils';
+import { toolCallDiffStats } from '../diff-utils';
+import type { ToolMetadata } from '../tool-utils';
 import {
   hasToolBody,
   mcpToolName,
   toolCallContextSummary,
   toolCallFailureMessage,
   toolCallMetadata,
-} from './tool-utils';
+} from '../tool-utils';
+import { Tool, ToolContent, ToolHeader } from './tool';
+import { toolCallDisplayText } from './tool-result-content';
+import { ToolResultPreview } from './tool-result-preview';
 
 function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.ReactNode {
   const t = useTranslations('workbench.tool');

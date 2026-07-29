@@ -4,13 +4,13 @@ import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { hasToolBody } from '../../tool-utils';
 import { ArtifactHostActionsProvider } from '../artifacts/context';
 import { FileArtifactCard } from '../artifacts/file-card';
 import type { QuestionConversationItem } from '../conversation-prompts';
 import { QuestionCallItem } from '../question-call-item';
 import { SubagentCard, SubagentTranscript } from '../subagent-card';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
-import { hasToolBody } from '../tool-utils';
 
 function translateKey(key: string): string {
   return key;

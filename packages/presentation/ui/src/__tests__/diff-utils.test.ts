@@ -1,6 +1,6 @@
 import type { ToolCall } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { diffStats, patchLines, toolCallDiffStats } from '../chat/diff-utils';
+import { diffStats, patchLines, toolCallDiffStats } from '../diff-utils';
 
 describe('diffStats', () => {
   it('does not count a file content trailing newline as an extra line', () => {
