@@ -21,9 +21,14 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 - `app/` — the composition layer apps mount: the `WorkbenchApp` root, global UI providers
   (toast + i18n), the data-plane providers + connection gate, and the default connection-state
   fallback.
-- `runtime/` — the centralized connection controller (endpoint resolution, transport/SDK
-  generations, close recovery and retry), `WorkbenchRuntimeProvider` and its hooks, the typed
-  tayori instance, and the debug toggles. SWR retains cached data across generations of the same
+- `runtime/` — the connection layer, `WorkbenchRuntimeProvider` and its hooks, the typed
+  tayori instance, and the debug toggles. The controller mechanics (endpoint resolution,
+  client generations, close recovery, retry) live in `@linkcode/client-core`'s
+  `ConnectionController`, which is generic over any client exposing
+  `connect`/`onClose`/`dispose` so `apps/mobile` shares them; `connection-controller.ts` here is
+  the workbench **binding** — it pins the generic to `LinkCodeSdkClient`, promotes each
+  generation into the ambient default tayori reads (`setDefaultClient`), and reports outcomes to
+  product analytics. Behavior changes belong in client-core; only SDK/analytics wiring belongs here. SWR retains cached data across generations of the same
   endpoint, starts a fresh cache after endpoint migration, and revalidates once after a generation
   becomes protocol-ready; it does not own connection state.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`

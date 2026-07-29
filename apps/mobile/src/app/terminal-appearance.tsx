@@ -1,14 +1,59 @@
-import { ScreenScroll, SectionLabel } from '@linkcode/ui/native';
-import { Stack } from 'expo-router';
-import { Button, ListGroup } from 'heroui-native';
-import { Text, View } from 'react-native';
-import { useTranslations } from 'use-intl';
-import { TERMINAL_THEMES } from '../constants/terminal-themes.generated';
 import {
+  Circle,
+  Form,
+  Host,
+  HStack,
+  Picker,
+  Section,
+  Text,
+  VStack,
+  ZStack,
+} from '@expo/ui/swift-ui';
+import {
+  font,
+  foregroundStyle,
+  frame,
+  pickerStyle,
+  strokeBorder,
+  tag,
+} from '@expo/ui/swift-ui/modifiers';
+import { Stack } from 'expo-router';
+import { useTranslations } from 'use-intl';
+import {
+  resolveTerminalTheme,
   TERMINAL_COLOR_SCHEMES,
   TERMINAL_FONT_SIZES,
   useTerminalPrefsStore,
 } from '../stores/terminal-prefs-store';
+
+const SWATCH = 24;
+
+const HIERARCHICAL_SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+
+/** Renders a theme's own colours so the row previews what it selects. `auto` has no theme
+ *  of its own — it defers to ghostty's defaults — so it shows a neutral placeholder. */
+function ThemeSwatch({ theme }: { theme?: { background?: string; foreground?: string } }) {
+  return (
+    <ZStack
+      modifiers={[
+        frame({ width: SWATCH, height: SWATCH }),
+        // Light themes are nearly the row's own colour; the ring keeps them visible.
+        strokeBorder({ color: 'secondary', shape: 'circle' }),
+      ]}
+    >
+      <Circle
+        modifiers={[theme?.background ? foregroundStyle(theme.background) : HIERARCHICAL_SECONDARY]}
+      />
+      {theme?.foreground ? (
+        <Text
+          modifiers={[font({ size: 12, weight: 'semibold' }), foregroundStyle(theme.foreground)]}
+        >
+          a
+        </Text>
+      ) : null}
+    </ZStack>
+  );
+}
 
 /** Client-side terminal appearance: font size and color scheme. */
 export default function TerminalAppearanceScreen(): React.ReactNode {
@@ -21,67 +66,52 @@ export default function TerminalAppearanceScreen(): React.ReactNode {
   return (
     <>
       <Stack.Screen options={{ headerShown: true, title: t('title') }} />
-      <ScreenScroll>
-        <View className="gap-2">
-          <SectionLabel>{t('fontSize')}</SectionLabel>
-          <View className="flex-row flex-wrap gap-2">
-            {TERMINAL_FONT_SIZES.map((size) => (
-              <Button
-                key={size}
-                size="sm"
-                variant={size === fontSize ? 'primary' : 'secondary'}
-                onPress={() => setFontSize(size)}
-              >
-                <Button.Label>{String(size)}</Button.Label>
-              </Button>
-            ))}
-          </View>
-        </View>
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <Form>
+          <Section title={t('fontSize')}>
+            <Picker
+              selection={fontSize}
+              onSelectionChange={setFontSize}
+              modifiers={[pickerStyle('segmented')]}
+            >
+              {TERMINAL_FONT_SIZES.map((size) => (
+                <Text key={size} modifiers={[tag(size)]}>
+                  {String(size)}
+                </Text>
+              ))}
+            </Picker>
+          </Section>
 
-        <View className="gap-2">
-          <SectionLabel>{t('colorScheme')}</SectionLabel>
-          <ListGroup>
-            {TERMINAL_COLOR_SCHEMES.map((scheme) => {
-              const theme = scheme === 'auto' ? undefined : TERMINAL_THEMES[scheme];
-              return (
-                <ListGroup.Item key={scheme} onPress={() => setColorScheme(scheme)}>
-                  <ListGroup.ItemContent>
-                    <ListGroup.ItemTitle>
-                      {scheme === 'auto' ? t('colorSchemeAuto') : scheme}
-                    </ListGroup.ItemTitle>
+          {/* An inline picker draws the selection checkmarks itself, so the rows only
+              have to carry the swatch and the label. */}
+          <Section title={t('colorScheme')}>
+            <Picker
+              selection={colorScheme}
+              onSelectionChange={setColorScheme}
+              modifiers={[pickerStyle('inline')]}
+            >
+              {TERMINAL_COLOR_SCHEMES.map((scheme) => {
+                const theme = resolveTerminalTheme(scheme);
+                return (
+                  <HStack key={scheme} spacing={10} modifiers={[tag(scheme)]}>
+                    <ThemeSwatch theme={theme} />
                     {scheme === 'auto' ? (
-                      <ListGroup.ItemDescription>
-                        {t('colorSchemeAutoHint')}
-                      </ListGroup.ItemDescription>
-                    ) : null}
-                  </ListGroup.ItemContent>
-                  <ListGroup.ItemSuffix>
-                    <View className="flex-row items-center gap-2">
-                      {theme ? (
-                        <ThemeSwatch background={theme.background} foreground={theme.foreground} />
-                      ) : null}
-                      {scheme === colorScheme ? (
-                        <Text className="font-semibold text-accent text-base">✓</Text>
-                      ) : null}
-                    </View>
-                  </ListGroup.ItemSuffix>
-                </ListGroup.Item>
-              );
-            })}
-          </ListGroup>
-        </View>
-      </ScreenScroll>
+                      <VStack alignment="leading" spacing={2}>
+                        <Text>{t('colorSchemeAuto')}</Text>
+                        <Text modifiers={[font({ textStyle: 'footnote' }), HIERARCHICAL_SECONDARY]}>
+                          {t('colorSchemeAutoHint')}
+                        </Text>
+                      </VStack>
+                    ) : (
+                      <Text>{scheme}</Text>
+                    )}
+                  </HStack>
+                );
+              })}
+            </Picker>
+          </Section>
+        </Form>
+      </Host>
     </>
-  );
-}
-
-function ThemeSwatch({ background, foreground }: { background?: string; foreground?: string }) {
-  return (
-    <View
-      className="h-6 w-6 items-center justify-center rounded-full border border-default"
-      style={{ backgroundColor: background }}
-    >
-      <Text style={{ color: foreground, fontSize: 11, fontWeight: '600' }}>a</Text>
-    </View>
   );
 }

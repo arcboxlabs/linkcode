@@ -1,6 +1,8 @@
-import { Button, Spinner } from 'heroui-native';
-import { Text, View } from 'react-native';
+import { Button, Host, ProgressView, Text, VStack } from '@expo/ui/swift-ui';
+import { foregroundStyle, multilineTextAlignment } from '@expo/ui/swift-ui/modifiers';
 import { useTranslations } from 'use-intl';
+
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 export interface HostConnectionStateProps {
   status: 'connecting' | 'error';
@@ -17,20 +19,20 @@ export function HostConnectionState({
   const t = useTranslations('mobile.connection');
 
   return (
-    <View className="flex-1 items-center justify-center gap-4 bg-background p-8">
-      {status === 'connecting' ? (
-        <>
-          <Spinner />
-          <Text className="text-body text-muted">{t('connecting')}</Text>
-        </>
-      ) : (
-        <>
-          <Text className="text-center text-body text-foreground">{t('error', { url })}</Text>
-          <Button onPress={onRetry}>
-            <Button.Label>{t('retry')}</Button.Label>
-          </Button>
-        </>
-      )}
-    </View>
+    <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+      <VStack spacing={16}>
+        {status === 'connecting' ? (
+          <>
+            <ProgressView />
+            <Text modifiers={[SECONDARY]}>{t('connecting')}</Text>
+          </>
+        ) : (
+          <>
+            <Text modifiers={[multilineTextAlignment('center')]}>{t('error', { url })}</Text>
+            <Button label={t('retry')} onPress={onRetry} />
+          </>
+        )}
+      </VStack>
+    </Host>
   );
 }

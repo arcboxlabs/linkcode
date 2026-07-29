@@ -9,10 +9,12 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "smoke:export": "node scripts/smoke-native-entry-export.cjs",
+    "e2e:ui": "MAESTRO_CLI_NO_ANALYTICS=1 maestro test e2e/flows",
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
     "@better-auth/expo": "1.7.0-rc.1",
+    "@expo/ui": "57.0.7",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/common": "workspace:*",

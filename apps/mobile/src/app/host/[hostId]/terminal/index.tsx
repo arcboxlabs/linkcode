@@ -1,26 +1,33 @@
+import {
+  Button,
+  Form,
+  Host,
+  HStack,
+  ProgressView,
+  Section,
+  Text,
+  TextField,
+  useNativeState,
+} from '@expo/ui/swift-ui';
+import {
+  autocorrectionDisabled,
+  disabled,
+  foregroundStyle,
+  refreshable,
+  textInputAutocapitalization,
+} from '@expo/ui/swift-ui/modifiers';
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
-import { EmptyState, ScreenScroll } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import {
-  Button,
-  Card,
-  Chip,
-  Input,
-  Label,
-  ListGroup,
-  Spinner,
-  TextField,
-  useThemeColor,
-} from 'heroui-native';
-import { SquareTerminalIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { RefreshControl, Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
+import { NavigationRow } from '../../../../components/form-row';
 
 const INITIAL_TERMINAL_SIZE = { cols: 80, rows: 24 };
+
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 /** Host terminal inbox: attach to a running PTY or start a new one on the host. */
 export default function TerminalsScreen(): React.ReactNode {
@@ -28,12 +35,11 @@ export default function TerminalsScreen(): React.ReactNode {
   const router = useRouter();
   const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const client = useLinkCodeClient();
-  const muted = useThemeColor('muted');
   const [terminals, setTerminals] = useState<TerminalMetadata[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cwd, setCwd] = useState('');
+  // Native-backed so the value read on create is the field's own, not a mirrored copy.
+  const cwd = useNativeState('');
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => client.listTerminals(), [client]);
@@ -56,15 +62,13 @@ export default function TerminalsScreen(): React.ReactNode {
     [load],
   );
 
+  // Drives SwiftUI's own pull-to-refresh, which keeps its spinner until this resolves.
   const onRefresh = async () => {
-    setRefreshing(true);
     setError(null);
     try {
       setTerminals(await load());
     } catch (error_) {
       setError(extractErrorMessage(error_, false) ?? 'Unknown error');
-    } finally {
-      setRefreshing(false);
     }
   };
 
@@ -78,13 +82,13 @@ export default function TerminalsScreen(): React.ReactNode {
     setCreating(true);
     setError(null);
     try {
-      const trimmedCwd = cwd.trim();
+      const trimmedCwd = cwd.get().trim();
       const terminalId = await client.openTerminal({
         ...INITIAL_TERMINAL_SIZE,
         cwd: trimmedCwd || undefined,
       });
       client.detachTerminal(terminalId);
-      setCwd('');
+      cwd.set('');
       openTerminal(terminalId, true);
     } catch (error_) {
       setError(extractErrorMessage(error_, false) ?? 'Unknown error');
@@ -94,74 +98,53 @@ export default function TerminalsScreen(): React.ReactNode {
   };
 
   return (
-    <ScreenScroll
-      keyboardAware
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
+    <>
       <Stack.Screen options={{ headerShown: true, title: t('title') }} />
-      {error ? <Text className="text-danger text-subhead">{t('error', { error })}</Text> : null}
+      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <Form modifiers={[refreshable(onRefresh)]}>
+          {error ? (
+            <Section>
+              <Text modifiers={[foregroundStyle('red')]}>{t('error', { error })}</Text>
+            </Section>
+          ) : null}
 
-      {loading ? (
-        <View className="items-center py-8">
-          <Spinner />
-        </View>
-      ) : terminals.length === 0 ? (
-        <EmptyState
-          icon={<SquareTerminalIcon size={36} color={muted} strokeWidth={1.5} />}
-          title={t('emptyTitle')}
-          hint={t('emptyHint')}
-        />
-      ) : (
-        <ListGroup>
-          {terminals.map((terminal) => (
-            <ListGroup.Item
-              key={terminal.terminalId}
-              onPress={() => openTerminal(terminal.terminalId)}
-            >
-              <ListGroup.ItemContent>
-                <ListGroup.ItemTitle>
-                  {terminal.shell ?? terminal.terminalId.slice(0, 8)}
-                </ListGroup.ItemTitle>
-                <ListGroup.ItemDescription numberOfLines={1}>
-                  {terminal.cwd ?? t('unknownCwd')} · {terminal.cols}×{terminal.rows}
-                </ListGroup.ItemDescription>
-              </ListGroup.ItemContent>
-              <ListGroup.ItemSuffix>
-                <Chip
-                  variant="soft"
-                  size="sm"
-                  color={terminal.controllerAttachmentId ? 'accent' : 'default'}
-                >
-                  <Chip.Label>
-                    {terminal.controllerAttachmentId ? t('controlled') : t('uncontrolled')}
-                  </Chip.Label>
-                </Chip>
-              </ListGroup.ItemSuffix>
-            </ListGroup.Item>
-          ))}
-        </ListGroup>
-      )}
+          <Section>
+            {loading ? (
+              <ProgressView />
+            ) : terminals.length === 0 ? (
+              <Text modifiers={[SECONDARY]}>{t('emptyHint')}</Text>
+            ) : (
+              terminals.map((terminal) => (
+                <NavigationRow
+                  key={terminal.terminalId}
+                  title={terminal.shell ?? terminal.terminalId.slice(0, 8)}
+                  subtitle={`${terminal.cwd ?? t('unknownCwd')} · ${terminal.cols}×${terminal.rows}`}
+                  badgeText={terminal.controllerAttachmentId ? t('controlled') : undefined}
+                  onPress={() => openTerminal(terminal.terminalId)}
+                />
+              ))
+            )}
+          </Section>
 
-      <Card>
-        <Card.Header>
-          <Card.Title>{t('newTerminal')}</Card.Title>
-        </Card.Header>
-        <Card.Body className="gap-4">
-          <TextField>
-            <Label>{t('cwdLabel')}</Label>
-            <Input
-              value={cwd}
-              onChangeText={setCwd}
-              placeholder={t('cwdPlaceholder')}
-              autoCapitalize="none"
-              autoCorrect={false}
+          <Section title={t('newTerminal')}>
+            <HStack spacing={12}>
+              <Text>{t('cwdLabel')}</Text>
+              <TextField
+                testID="terminal-cwd-input"
+                text={cwd}
+                placeholder={t('cwdPlaceholder')}
+                modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled()]}
+              />
+            </HStack>
+            <Button
+              label={creating ? t('creating') : t('create')}
+              onPress={onCreate}
+              modifiers={[disabled(creating)]}
             />
-          </TextField>
-          <Button onPress={onCreate} isDisabled={creating}>
-            <Button.Label>{creating ? t('creating') : t('create')}</Button.Label>
-          </Button>
-        </Card.Body>
-      </Card>
-    </ScreenScroll>
+          </Section>
+        </Form>
+      </Host>
+    </>
   );
 }

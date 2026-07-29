@@ -1,0 +1,31 @@
+# First run with no saved host: the sign-in gate, and the manual route past it.
+# Needs no daemon — this path is entirely client-side, which is also why it is the one flow
+# that stays meaningful while the rest of the UI is being reworked.
+appId: com.arcboxlabs.linkcode.mobile
+---
+# Stopped first so the flow does not inherit whatever screen an earlier flow left on the stack
+# (see add-host for the failure that causes). `clearState` is not an option — it wipes the dev
+# client's Metro URL.
+- stopApp
+- launchApp
+# Deep-linked rather than relying on startup routing: with a host saved from an earlier session,
+# startup goes to that host instead, and this flow would be asserting against whatever state the
+# simulator happens to carry. Retried because that startup redirect fires when the persisted
+# registry hydrates, which can be after the link has already opened its screen.
+- retry:
+    maxRetries: 3
+    commands:
+      - openLink: linkcode://sign-in
+      - waitForAnimationToEnd
+      - assertVisible: 'Sign in with Apple'
+
+- assertVisible: 'Your agents, wherever you are. Sign in to reach the machines running LinkCode from this phone.'
+- assertVisible: 'More sign-in options'
+
+# Skipping sign-in must reach host setup rather than dead-ending: a LAN/direct user never signs in.
+- tapOn: 'Skip — connect manually'
+- assertVisible: 'Connect to a host'
+# Assert what the screen always offers, not its empty state or the collapsed/expanded shape of the
+# manual form: a simulator that has been used before carries saved hosts and remembers whether the
+# form was open, and either would make this flow depend on leftover state.
+- assertVisible: 'Sign in to reach your machines from anywhere through LinkCode Cloud.'
