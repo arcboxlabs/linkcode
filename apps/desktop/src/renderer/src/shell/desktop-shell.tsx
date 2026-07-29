@@ -322,6 +322,8 @@ export function DesktopShell({
   useDesktopShellShortcuts({
     navigation,
     owner: shellRootRef,
+    closeBottomTerminalTab: closeTab,
+    closeRightTerminalTab,
     togglePanel,
     updateSidebarOpen,
   });
@@ -526,17 +528,23 @@ export function DesktopShell({
     const items = rightPanel.terminal.tabs.map((tab) => ({
       id: tab.id,
       active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
-      node: tab.id.startsWith('attach:') ? (
-        <AttachedTerminalPanel
-          terminalId={tab.id.slice('attach:'.length)}
-          suspended={rightTransition.phase !== 'open' || shellAnimating}
-        />
-      ) : (
-        <TerminalPanel
-          sessionKey={tab.id}
-          cwd={active?.cwd}
-          suspended={rightTransition.phase !== 'open' || shellAnimating}
-        />
+      node: (
+        <div className="h-full" data-terminal-panel="right" data-terminal-tab={tab.id}>
+          {tab.id.startsWith('attach:') ? (
+            <AttachedTerminalPanel
+              terminalId={tab.id.slice('attach:'.length)}
+              suspended={rightTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeRightTerminalTab(tab.id)}
+            />
+          ) : (
+            <TerminalPanel
+              sessionKey={tab.id}
+              cwd={active?.cwd}
+              suspended={rightTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeRightTerminalTab(tab.id)}
+            />
+          )}
+        </div>
       ),
     }));
     // Browser webviews live here permanently: unmounting or DOM-moving a webview
@@ -559,11 +567,14 @@ export function DesktopShell({
       active: tab.id === bottomPanel.activeTabId,
       node:
         tab.type === 'terminal' ? (
-          <TerminalPanel
-            sessionKey={tab.id}
-            cwd={active?.cwd}
-            suspended={bottomTransition.phase !== 'open' || shellAnimating}
-          />
+          <div className="h-full" data-terminal-panel="bottom" data-terminal-tab={tab.id}>
+            <TerminalPanel
+              sessionKey={tab.id}
+              cwd={active?.cwd}
+              suspended={bottomTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeTab(tab.id)}
+            />
+          </div>
         ) : (
           <PanelStubContent type={tab.type} />
         ),

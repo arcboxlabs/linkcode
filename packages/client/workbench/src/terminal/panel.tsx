@@ -20,12 +20,15 @@ export function TerminalPanel({
   sessionKey,
   cwd,
   suspended,
+  onExit,
 }: {
   sessionKey: string;
   /** Working directory for the shell, captured when the terminal first opens (host home if omitted). */
   cwd?: string;
   /** Freeze the terminal's box while the host panel animates shut/open — see {@link LiveTerminal}. */
   suspended?: boolean;
+  /** Called once when the shell process exits. */
+  onExit?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
@@ -37,7 +40,12 @@ export function TerminalPanel({
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
-      const lease = acquireTerminalSession(client, sessionKey, { ...TERMINAL_INITIAL_SIZE, cwd });
+      const lease = acquireTerminalSession(
+        client,
+        sessionKey,
+        { ...TERMINAL_INITIAL_SIZE, cwd },
+        onExit,
+      );
       leaseRef.current = lease;
       const unsubscribe = lease.subscribe(onStoreChange);
       return () => {
@@ -46,7 +54,7 @@ export function TerminalPanel({
         if (leaseRef.current === lease) leaseRef.current = null;
       };
     },
-    [client, sessionKey, cwd],
+    [client, sessionKey, cwd, onExit],
   );
   const snapshot = useSyncExternalStore(subscribe, () => peekTerminalSnapshot(client, sessionKey));
 

@@ -3,7 +3,7 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import { LiveTerminal } from '@linkcode/ui/shell/terminal';
 import { Button } from 'coss-ui/components/button';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffectEvent, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useTerminalPrefsStore } from '../settings/terminal-prefs-store';
 import { createTransportTerminalSession } from './transport-session';
@@ -16,9 +16,12 @@ import { createTransportTerminalSession } from './transport-session';
 export function AttachedTerminalPanel({
   terminalId,
   suspended,
+  onExit,
 }: {
   terminalId: string;
   suspended?: boolean;
+  /** Called when the attached shell process exits. */
+  onExit?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
@@ -55,6 +58,7 @@ export function AttachedTerminalPanel({
   const fontFamily = useTerminalPrefsStore((state) => state.fontFamily);
   const fontSize = useTerminalPrefsStore((state) => state.fontSize);
   const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
+  const handleExit = useEffectEvent(() => onExit?.());
 
   useEffect(
     (signal) => {
@@ -73,6 +77,14 @@ export function AttachedTerminalPanel({
         if (attached) client.detachTerminal(terminalId);
       };
     },
+    [client, terminalId],
+  );
+
+  useEffect(
+    (signal) =>
+      client.subscribeTerminalExit(terminalId, () => {
+        if (!signal.aborted) handleExit();
+      }),
     [client, terminalId],
   );
 
