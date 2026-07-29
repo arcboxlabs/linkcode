@@ -183,7 +183,16 @@ describe('CodexAdapter shell-command passthrough', () => {
           defaultEffort: 'medium',
         },
       ],
-      policies: [],
+      policies: [
+        { policyId: 'default', name: expect.any(String), description: expect.any(String) },
+        { policyId: 'acceptEdits', name: expect.any(String), description: expect.any(String) },
+        {
+          policyId: 'bypassPermissions',
+          name: expect.any(String),
+          description: expect.any(String),
+        },
+      ],
+      defaultPolicyId: 'acceptEdits',
     });
     expect(adapter.fakeServers[0].closed).toBe(true);
   });

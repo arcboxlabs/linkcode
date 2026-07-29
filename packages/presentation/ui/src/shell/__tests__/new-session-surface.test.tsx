@@ -615,6 +615,41 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('shows the catalog default without submitting it as an explicit approval-policy pick', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        agentCatalogs={{
+          pi: {
+            models: [],
+            policies: [
+              { policyId: 'default', name: 'Default' },
+              { policyId: 'accept-edits', name: 'Accept edits' },
+            ],
+            defaultPolicyId: 'accept-edits',
+          },
+        }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    // The default is displayed as the active tier…
+    expect(screen.getByRole('button', { name: RE_ACCEPT_EDITS })).toBeTruthy();
+
+    typeInComposer('untouched picker');
+    await pressInComposer('Enter');
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    // …but an untouched picker is not a choice: sending it would override the agent's own startup
+    // resolution (claude's settings defaultMode, codex's configured sandbox).
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('approvalPolicyId');
+  });
+
   it('submits compatible Pi catalog choices and suppresses stale effort for models without it', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);

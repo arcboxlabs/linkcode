@@ -247,6 +247,19 @@ describe('GrokBuildAdapter', () => {
     await expect(
       adapter.send({ type: 'set-approval-policy', policyId: 'default' }),
     ).rejects.toThrow('grok-build: changing the approval policy is not supported');
+
+    // The new-session surface shows the same fixed posture the session will run under.
+    await expect(adapter.startCatalog()).resolves.toEqual({
+      models: [],
+      policies: [
+        {
+          policyId: 'bypassPermissions',
+          name: 'Bypass permissions',
+          description: 'All tools run without approval prompts; this adapter cannot change it.',
+        },
+      ],
+      defaultPolicyId: 'bypassPermissions',
+    });
   });
 
   it('streams thought/text and settles with session-ref + usage', async () => {

@@ -149,6 +149,55 @@ describe('ClaudeCodeAdapter approval policy', () => {
     expect(queries[0].options.permissionMode).toBe('acceptEdits');
   });
 
+  it('advertises the tiers and the resolved settings default before any session exists', async () => {
+    fsMock.files.set(
+      '/work/proj/.claude/settings.json',
+      JSON.stringify({ permissions: { defaultMode: 'plan' } }),
+    );
+    const catalog = await new ClaudeCodeAdapter().startCatalog({ cwd: '/work/proj' });
+    expect(catalog.policies.map((p) => p.policyId)).toEqual([
+      'default',
+      'acceptEdits',
+      'plan',
+      'auto',
+      'bypassPermissions',
+    ]);
+    expect(catalog.defaultPolicyId).toBe('plan');
+    // No settings scope names a mode — the catalog still has to name the tier a session would run.
+    expect((await new ClaudeCodeAdapter().startCatalog({ cwd: '/bare' })).defaultPolicyId).toBe(
+      'default',
+    );
+  });
+
+  it('starts under a new-session pick, outranking the settings default', async () => {
+    fsMock.files.set(
+      '/work/proj/.claude/settings.json',
+      JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }),
+    );
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'claude-code', cwd: '/work/proj', approvalPolicyId: 'plan' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('plan');
+    await prompt(adapter);
+    expect(queries[0].options.permissionMode).toBe('plan');
+  });
+
+  it('degrades an unknown new-session pick to the settings default with an error', async () => {
+    fsMock.files.set(
+      '/work/proj/.claude/settings.json',
+      JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }),
+    );
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({ kind: 'claude-code', cwd: '/work/proj', approvalPolicyId: 'dontAsk' });
+
+    expect(policyUpdates(events).at(-1)?.state.currentPolicyId).toBe('acceptEdits');
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1);
+  });
+
   it('switches the live Query before the first prompt', async () => {
     const { adapter, events } = await makeAdapter();
     await setPolicy(adapter, 'auto');
