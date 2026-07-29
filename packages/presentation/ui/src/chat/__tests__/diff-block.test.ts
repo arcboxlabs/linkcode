@@ -139,8 +139,11 @@ describe('hasAuthoritativeLineNumbers', () => {
       diff({ change: 'move', oldPath: 'old.ts', path: 'new.ts', oldText: 'a\n', newText: 'b\n' }),
     ],
     ['a delete with region text', diff({ change: 'delete', path: 'gone.ts', oldText: 'x\n' })],
-  ])('hides the gutter for %s — its hunk starts at 1 regardless of true position', (_label, content) => {
-    expect(nullthrow(chatFileDiff(content)).isPartial).toBe(false);
-    expect(verdictFor(content)).toBe(false);
-  });
+  ])(
+    'hides the gutter for %s — its hunk starts at 1 regardless of true position',
+    (_label, content) => {
+      expect(nullthrow(chatFileDiff(content)).isPartial).toBe(false);
+      expect(verdictFor(content)).toBe(false);
+    },
+  );
 });

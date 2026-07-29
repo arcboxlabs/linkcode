@@ -32,7 +32,7 @@
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-hook-form": "^7.81.0",
+    "react-hook-form": "^7.82.0",
     "react-router": "catalog:",
     "use-intl": "catalog:",
     "zod": "catalog:",
