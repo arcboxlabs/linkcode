@@ -42,7 +42,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@electron/asar": "^4.2.0",
+    "@electron/asar": "^4.2.1",
     "@hookform/resolvers": "^5.4.0",
     "@iconify-json/material-icon-theme": "catalog:",
     "@linkcode/ui": "workspace:*",
@@ -69,7 +69,7 @@
     "playwright-core": "^1.61.1",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-hook-form": "^7.81.0",
+    "react-hook-form": "^7.82.0",
     "swr": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
