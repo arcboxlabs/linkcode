@@ -8,8 +8,6 @@ import { cn } from '../lib/cn';
 import type { FileIconComponent } from '../lib/file-icon';
 import { fileIconFor } from '../lib/file-icon';
 
-// TODO(linkcode-schema): Provisional UI-only attachment model, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when uploads/context files are supported by the data plane.
 export interface ChatAttachment {
   id: string;
   name: string;
@@ -21,7 +19,6 @@ export interface ChatAttachment {
   errorMessage?: string;
 }
 
-// TODO(linkcode-schema): Promote the prepared non-image kinds when the data plane supports them.
 export type ChatAttachmentKind =
   | 'audio'
   | 'directory'

@@ -39,6 +39,12 @@ When asked to plan, the plan must be fully resolved before implementation begins
 - Only change what is explicitly requested. Do not "improve", restructure, replace, or simplify adjacent code you weren't asked to touch. Reducing your edit to a reasonable scope helps you stay focused.
   - **NEVER re-create a file from scratch. NEVER use `sed`/`awk` to edit a file. Always use targeted, localized edits.** This avoids introducing unrequested changes or silently dropping things that were already there.
 - Commit messages: `type(scope): summary` (e.g. `fix(transport): drop stale ack on reconnect`). **No `Co-Authored-By` lines.** Keep them simple. If you feel the need to explain something in a commit message, **don't** — put the explanation in a code comment instead.
+- **Comments: constraint or trap only, 1–2 lines max.** A comment earns its place by stating a non-obvious constraint, a verified trap, or a "why" the code alone cannot convey. Delete everything else:
+  - No `CODE-xxx` issue references — traceability belongs in commits and PR descriptions.
+  - No version changelogs above constants — git log is the history.
+  - No narration of what the code does — well-named identifiers already say it.
+  - No cookie-cutter TODOs — one tracked issue replaces N scattered copies.
+  - Design rationale longer than two lines belongs in the owning `AGENTS.md`, not inline.
 - Keep each commit atomic — compilable and runnable. Target ~200 lines changed (excluding generated files); hard limit 400. Don't make commits too small either — group related changes into one coherent commit. Commit along the way, not all at the end.
 - **Formatter, linter, type checker, and tests must pass before commit** — `pnpm check:ci` (= `format:check` + `lint` + `typecheck`) **and** `pnpm test` (Invariant 4: they remain separate commands). Pre-commit hooks don't cover everything.
 - Use the package manager for dependency changes (`pnpm add`), not manual manifest edits. Cut releases via the repo's release flow (Invariant 5); never hand-tag or hand-edit workspace versions.

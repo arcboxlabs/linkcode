@@ -3,8 +3,6 @@ import { cn } from '../lib/cn';
 import type { CopyIconButtonProps } from './copy-icon-button';
 import { CopyIconButton } from './copy-icon-button';
 
-// TODO(linkcode-schema): Provisional UI-only snippet model, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when tool outputs expose reusable command/code snippets.
 export interface ChatSnippet {
   id: string;
   code: string;

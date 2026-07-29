@@ -592,10 +592,6 @@ export class ControlChannel {
     }));
   }
 
-  // iOS Simulator (CODE-394). Commands are session-scoped: the engine claims the device for
-  // `sessionId` (ownership/cap rules) before touching it. Gate the whole surface on
-  // `simulatorStatus().available`.
-
   simulatorStatus(): Promise<SimulatorStatus> {
     return this.sendCorrelated('simulatorStatus', (clientReqId) => ({
       kind: 'simulator.status',
