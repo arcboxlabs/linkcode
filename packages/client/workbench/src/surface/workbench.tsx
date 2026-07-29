@@ -585,6 +585,7 @@ function WorkbenchSessionSurface({
       header={{
         title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
+        sessionId: active?.sessionId ?? null,
         usage: conversation.usage,
       }}
       navigation={{

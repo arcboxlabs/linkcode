@@ -44,7 +44,8 @@ allowBuilds:
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
-# apps/mobile's React version also comes from the catalog; react-native remains pinned by the Expo SDK.
+# apps/mobile pins its own React directly (React Native requires an exact match); the catalog
+# react below serves only the web/desktop renderers.
 catalog:
   # Language / types
   # typescript-eslint needs the TypeScript ≤6 compiler API, so the `typescript` package resolves to
@@ -56,9 +57,11 @@ catalog:
   # Data contracts
   zod: ^4.4.3
 
-  # React for web / desktop renderers
-  react: 19.2.7
-  react-dom: 19.2.7
+  # React for web / desktop renderers. Canary pin (Next-production channel) for the stable-track
+  # `ViewTransition` component (CODE-457); drop back to latest once 19.3 reaches stable. The
+  # export is untyped by @types/react — see the local module augmentation in workbench.
+  react: 19.3.0-canary-96fcba90-20260728
+  react-dom: 19.3.0-canary-96fcba90-20260728
   react-router: ^8.2.0
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
@@ -103,6 +106,9 @@ catalog:
   "@iconify-json/material-icon-theme": ^1.2.69
 
 minimumReleaseAgeExclude:
+  # React canary snapshots publish daily; the renderers pin one exact snapshot (CODE-457).
+  - react@19.3.0-canary-96fcba90-20260728
+  - react-dom@19.3.0-canary-96fcba90-20260728
   # Effect v4 betas ship every 1-2 days; the daemon pins an exact beta (CODE-244).
   - effect@4.0.0-beta.98
   - "@effect/platform-node@4.0.0-beta.98"
@@ -185,6 +191,7 @@ minimumReleaseAgeExclude:
   # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
   - restty@0.2.3 || 0.2.5
   - text-shaper@0.1.26 || 0.1.27
+  - scheduler@0.28.0-canary-96fcba90-20260728
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x

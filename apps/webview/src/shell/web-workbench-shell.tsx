@@ -3,6 +3,7 @@ import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
 import { ChevronLeftIcon, ChevronRightIcon, SettingsIcon } from 'lucide-react';
+import { ViewTransition } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
@@ -39,9 +40,23 @@ export function WebWorkbenchShell({
             <ChevronRightIcon className="size-4" />
           </ShellIconButton>
           <div className="min-w-0">
-            <div className="truncate font-medium text-sm" data-conversation-title="">
-              {header.title}
-            </div>
+            {/* data-conversation-title is the browser-smoke E2E's header selector. */}
+            {header.sessionId ? (
+              <ViewTransition
+                key={header.sessionId}
+                enter="none"
+                exit="none"
+                name={`thread-title-${header.sessionId}`}
+              >
+                <div className="truncate font-medium text-sm" data-conversation-title="">
+                  {header.title}
+                </div>
+              </ViewTransition>
+            ) : (
+              <div className="truncate font-medium text-sm" data-conversation-title="">
+                {header.title}
+              </div>
+            )}
             {header.subtitle && (
               <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
             )}

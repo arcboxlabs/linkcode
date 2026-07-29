@@ -3,7 +3,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "rootDir": "src",
-    "types": ["react"]
+    "types": ["react", "react/canary"]
   },
   "include": ["src"]
 }
