@@ -1,12 +1,15 @@
 import { Button, Host, ProgressView, Text, VStack } from '@expo/ui/swift-ui';
-import { foregroundStyle, multilineTextAlignment } from '@expo/ui/swift-ui/modifiers';
+import { font, foregroundStyle, multilineTextAlignment } from '@expo/ui/swift-ui/modifiers';
 import { useTranslations } from 'use-intl';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+const FOOTNOTE = font({ textStyle: 'footnote' });
 
 export interface HostConnectionStateProps {
   status: 'connecting' | 'error';
   url: string;
+  /** The underlying failure, when the controller reported one. */
+  failure?: string;
   onRetry: () => void;
 }
 
@@ -14,6 +17,7 @@ export interface HostConnectionStateProps {
 export function HostConnectionState({
   status,
   url,
+  failure,
   onRetry,
 }: HostConnectionStateProps): React.ReactNode {
   const t = useTranslations('mobile.connection');
@@ -29,6 +33,11 @@ export function HostConnectionState({
         ) : (
           <>
             <Text modifiers={[multilineTextAlignment('center')]}>{t('error', { url })}</Text>
+            {failure ? (
+              <Text modifiers={[FOOTNOTE, SECONDARY, multilineTextAlignment('center')]}>
+                {failure}
+              </Text>
+            ) : null}
             <Button label={t('retry')} onPress={onRetry} />
           </>
         )}
