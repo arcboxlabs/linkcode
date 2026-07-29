@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.0](https://github.com/arcboxlabs/linkcode/compare/v0.8.0...v0.9.0) (2026-07-29)
+
+
+### Features
+
+* **agent-adapter:** advertise approval tiers before session start ([#305](https://github.com/arcboxlabs/linkcode/issues/305)) ([d9b74b0](https://github.com/arcboxlabs/linkcode/commit/d9b74b0c917688a902cc1301df345a3a315dffbd))
+* **desktop,ipc,ui:** chrome title overflow menu — thread actions, reveal, open in editor ([#265](https://github.com/arcboxlabs/linkcode/issues/265)) ([a551149](https://github.com/arcboxlabs/linkcode/commit/a55114902d8a1a713f951d34eeaab5003012f021))
+* **mobile:** redesign the app on @expo/ui ([#306](https://github.com/arcboxlabs/linkcode/issues/306)) ([04d3207](https://github.com/arcboxlabs/linkcode/commit/04d32077db4abd92921969f76ee3d22b356c4e7d))
+* **plugins:** discover and aggregate provider plugins ([#272](https://github.com/arcboxlabs/linkcode/issues/272)) ([c9f5f68](https://github.com/arcboxlabs/linkcode/commit/c9f5f68b59a512714006a49f9168485f82b2227d))
+* **schema,daemon,desktop:** fork on-disk state by channel ([d373756](https://github.com/arcboxlabs/linkcode/commit/d3737564ae40ad5762f71a9ed31318900c0ab5ab))
+* **schema,engine,desktop:** browser broker — wire contract, webview executor, code-mode execute tool for claude/pi (CODE-267) ([#188](https://github.com/arcboxlabs/linkcode/issues/188)) ([3f70dad](https://github.com/arcboxlabs/linkcode/commit/3f70dadfe8b8514b20c25338fa5f078b6facfcb1))
+* **workbench,ui:** matched-geometry view transition on session switch ([#299](https://github.com/arcboxlabs/linkcode/issues/299)) ([f763ea6](https://github.com/arcboxlabs/linkcode/commit/f763ea65300ccf74ab4e47bc17299c421774be4c))
+
+
+### Bug Fixes
+
+* **assets:** regenerate the pi closure after the ws bump ([f7892d1](https://github.com/arcboxlabs/linkcode/commit/f7892d182e628513a596eccecb3691fdd2d31dd4))
+* **daemon:** give each channel a disjoint port range ([b4631fb](https://github.com/arcboxlabs/linkcode/commit/b4631fbcc6c68880e0ccef965bfcbafe85ab53dd))
+* **ui:** soften continuous corners to superellipse(1.1) ([#319](https://github.com/arcboxlabs/linkcode/issues/319)) ([c8ea47c](https://github.com/arcboxlabs/linkcode/commit/c8ea47c9b7fec0e12ed858a706dd10c475c50b2e))
+
 ## [0.8.0](https://github.com/arcboxlabs/linkcode/compare/v0.7.0...v0.8.0) (2026-07-29)
 
 
