@@ -26,7 +26,7 @@ Read by the daemon, desktop, webview, or mobile at run time.
 | `LINKCODE_ASSETS_DIR` | `packages/host/assets/src/paths.ts` | Redirects the managed-asset store root (default: `~/Library/Application Support/LinkCode/assets`, `%LOCALAPPDATA%/LinkCode/assets`, `$XDG_DATA_HOME/linkcode/assets`). Resolved per call, so tests can stub it. |
 | `ELECTRON_RENDERER_URL` | `apps/desktop/src/main/window.ts` | Dev-server URL the main process loads instead of the packaged renderer. Written by `apps/desktop/scripts/dev.mts`. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and lowercase forms) | `packages/host/assets/src/system-proxy/index.ts` | If any proxy variable is non-empty, OS proxy autodetection is skipped and the fetch layer's own env handling takes over. `NO_PROXY` is merged back in when an OS-detected proxy is passed explicitly. |
-| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts`; `packages/host/agent-adapter/src/process-environment.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). On macOS, terminals and Codex/Claude agent processes load the user's login shell because a Finder-launched app inherits launchd's bare `PATH`. |
+| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts`; `packages/host/agent-adapter/src/shell-env.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). On macOS, terminals and Codex/Claude agent processes load the user's login shell because a Finder-launched app inherits launchd's bare `PATH`. |
 | `CODEX_HOME`, `PI_CODING_AGENT_DIR` | `packages/host/agent-adapter/src/native/{codex,pi}/history.ts` | Agent CLI home directories the adapters read history and auth from (`~/.codex`, `~/.pi/agent`). |
 
 ### Written into child processes
@@ -44,6 +44,7 @@ Other platforms retain the daemon environment.
 | `LINKCODE_SERVICE_<NAME>_PORT`, `LINKCODE_SERVICE_<NAME>_URL` | same | Sibling-service discovery; `<NAME>` is the service name upper-cased with non-word characters replaced by `_`. |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CODEX_API_KEY`, `OPENAI_BASE_URL`, `XAI_API_KEY` | `packages/host/agent-adapter/src/credential.ts` | Account credentials handed to the agent subprocess. With token auth, `ANTHROPIC_API_KEY` is explicitly blanked so an inherited key can't defeat the bearer token. |
 | account `extraEnv` | `packages/foundation/schema/src/model/account.ts` | A user-defined `Record<string, string>` merged last into every agent subprocess. Open-ended by design — this is the supported escape hatch for agent-specific variables the adapters don't model. |
+| `ELECTRON_RUN_AS_NODE`, `ELECTRON_NO_ATTACH_CONSOLE`, `LINKCODE_RESOLVING_ENVIRONMENT` | `packages/host/agent-adapter/src/shell-env.ts` | Temporary flags used only while the login shell reports its environment. They make the packaged Electron runtime execute the JSON probe as Node, suppress console attachment, and let shell startup skip interactive-only work. Original values are restored before the agent starts. |
 | `TERM` | `crates/linkcode-pty/src/pty.rs` | Hard-set to `xterm-256color` on every PTY child, then overlaid with the caller's env. The sidecar itself reads no environment. |
 
 ## Cloud overrides

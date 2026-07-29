@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
-vi.mock('../process-environment', async (importOriginal) => ({
+vi.mock('../shell-env', async (importOriginal) => ({
   ...(await importOriginal()),
-  resolveAgentProcessEnvironment: () =>
+  resolveAgentShellEnvironment: () =>
     Promise.resolve({ PATH: '/project/bin', PROJECT_ENV: 'loaded' }),
 }));

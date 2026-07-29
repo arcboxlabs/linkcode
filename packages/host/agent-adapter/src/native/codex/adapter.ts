@@ -42,7 +42,7 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
-import { resolveAgentProcessEnvironment } from '../../process-environment';
+import { resolveAgentShellEnvironment } from '../../shell-env';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
@@ -380,7 +380,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         );
       }
     }
-    this.processEnvironment = await resolveAgentProcessEnvironment(opts.cwd);
+    this.processEnvironment = await resolveAgentShellEnvironment(opts.cwd);
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();

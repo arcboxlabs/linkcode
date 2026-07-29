@@ -80,7 +80,7 @@ import {
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
-import { resolveAgentProcessEnvironment } from '../process-environment';
+import { resolveAgentShellEnvironment } from '../shell-env';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
@@ -501,7 +501,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.stopped = false;
-    this.processEnvironment = await resolveAgentProcessEnvironment(opts.cwd);
+    this.processEnvironment = await resolveAgentShellEnvironment(opts.cwd);
     const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
