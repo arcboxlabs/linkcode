@@ -3,8 +3,10 @@
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { NewSessionSurface } from '../new-session-surface';
+import type { NewSessionSurfaceProps } from '../new-session-surface';
+import { NewSessionSurface as ControlledNewSessionSurface } from '../new-session-surface';
 import {
   composerText,
   pressInComposer,
@@ -41,6 +43,27 @@ const RE_PI_SONNET = /Pi Sonnet/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
 const RE_APPROVAL_DEFAULT = /Default/;
 const RE_ACCEPT_EDITS = /Accept edits/;
+const RE_PROJECT_WORKSPACE = /app/;
+
+type StandaloneProps = Omit<NewSessionSurfaceProps, 'workspaceId' | 'onWorkspaceChange'> &
+  Partial<Pick<NewSessionSurfaceProps, 'onWorkspaceChange'>>;
+
+/** The surface takes its workspace as a controlled prop so the workbench can scope the agent
+ * catalogs to the same cwd. These cases exercise the surface standalone, so this stands in for the
+ * workbench and holds the selection; `onWorkspaceChange` still reaches a case that passes one. */
+function NewSessionSurface({ onWorkspaceChange, ...props }: StandaloneProps): React.ReactNode {
+  const [workspaceId, setWorkspaceId] = useState(props.draft.initialWorkspaceId);
+  return (
+    <ControlledNewSessionSurface
+      {...props}
+      workspaceId={workspaceId}
+      onWorkspaceChange={(next) => {
+        setWorkspaceId(next);
+        onWorkspaceChange?.(next);
+      }}
+    />
+  );
+}
 
 describe('NewSessionSurface', () => {
   it.each(['claude-code', 'codex', 'opencode', 'pi'] as const)(
@@ -612,6 +635,40 @@ describe('NewSessionSurface', () => {
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
+    );
+  });
+
+  it('reports a workspace switch upward instead of holding the selection itself', async () => {
+    const user = userEvent.setup();
+    const onWorkspaceChange = vi.fn();
+    const project = {
+      workspaceId: WorkspaceIdSchema.parse('workspace-2'),
+      cwd: '/repo/app',
+      kind: 'project' as const,
+      createdAt: 2,
+      lastUsedAt: 2,
+    };
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onWorkspaceChange={onWorkspaceChange}
+        workspaces={[project]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'chooseWorkspace' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: RE_PROJECT_WORKSPACE }));
+
+    // The workbench needs the pick because it scopes the agent-catalog request by the same cwd.
+    expect(onWorkspaceChange).toHaveBeenCalledWith(project.workspaceId);
+    // And the surface renders whatever workspace it is handed back, not a private copy.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'chooseWorkspace' }).textContent).toContain('app'),
     );
   });
 

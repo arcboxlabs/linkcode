@@ -71,6 +71,11 @@ export interface NewSessionSurfaceProps {
   /** Project workspaces offered by the picker; the chat workspace arrives separately. */
   workspaces: WorkspaceRecord[];
   chatWorkspace: WorkspaceRecord | null;
+  /** The selected workspace. Controlled by the workbench, which needs that same cwd to scope the
+   * agent catalogs it feeds back in through `agentCatalogs` — a second copy of this state here
+   * would let the two drift and show a default the session would not start in. */
+  workspaceId: WorkspaceId | null;
+  onWorkspaceChange: (workspaceId: WorkspaceId) => void;
   className?: string;
   topContent?: React.ReactNode;
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
@@ -130,6 +135,8 @@ export function NewSessionSurface({
   draft,
   workspaces,
   chatWorkspace,
+  workspaceId,
+  onWorkspaceChange,
   className,
   topContent,
   runtimeCues,
@@ -152,7 +159,6 @@ export function NewSessionSurface({
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
-  const [workspaceId, setWorkspaceId] = useState(draft.initialWorkspaceId);
   const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
@@ -276,7 +282,7 @@ export function NewSessionSurface({
 
   function handleWorkspaceChange(nextWorkspaceId: WorkspaceId): void {
     onMentionQueryChange(undefined, null);
-    setWorkspaceId(nextWorkspaceId);
+    onWorkspaceChange(nextWorkspaceId);
   }
 
   return (
