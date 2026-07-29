@@ -4,7 +4,13 @@ import { flushSync } from 'react-dom';
 import { useAppearancePrefsStore } from '../settings/appearance-store';
 
 /** The matched-geometry pair for a session switch: the clicked thread row's title
- * (`data-thread-title`) travels to the conversation header title (`data-conversation-title`). */
+ * (`data-thread-title`) travels to the conversation header title (`data-conversation-title`).
+ *
+ * TODO(react-view-transition): the imperative naming/generation dance below is the stable-React
+ * substitute for React's experimental `<ViewTransition>` component (absent from react 19.2 —
+ * verified against the installed build). When it reaches stable, replace this module with two
+ * `<ViewTransition name>` wrappers. Router-driven alternatives don't apply: desktop is
+ * deliberately router-free and webview's threads are not routes. */
 const PAIR_NAME = 'thread-title';
 
 /** Monotonic switch generation: a call supersedes every earlier one, whose queued update
