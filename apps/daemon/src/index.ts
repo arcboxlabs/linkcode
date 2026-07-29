@@ -28,6 +28,9 @@ import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
+import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
+import { runLoginCommand, runLogoutCommand } from './cloud/login';
+import { startCloudUplink } from './cloud/uplink';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
@@ -38,9 +41,6 @@ import {
   saveSimulatorConsent,
   worktreeRoot,
 } from './config';
-import { adoptLegacyDeviceKeyFile } from './hq/device-key';
-import { runLoginCommand, runLogoutCommand } from './hq/login';
-import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
@@ -353,7 +353,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  // Advertise local discovery only after every listener is bound, then bring up the HQ uplink.
+  // Advertise local discovery only after every listener is bound, then bring up the cloud uplink.
   // LIFO teardown stops the uplink first and removes runtime.json before listeners close, so
   // clients stop discovering a daemon that is draining.
   const LifecycleLive = Layer.effectDiscard(
@@ -368,7 +368,7 @@ async function main(): Promise<void> {
         () => finalize(removeRuntimeFile),
       );
       yield* Effect.acquireRelease(
-        Effect.sync(() => startHqUplink(hub)),
+        Effect.sync(() => startCloudUplink(hub)),
         (stop) => finalize(stop),
       );
     }),

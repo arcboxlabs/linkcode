@@ -85,7 +85,7 @@ export function legacyHqCredentialsPath(): string {
 /**
  * Where the software device key used to sit as a bare PKCS#8 PEM. It lives in the secret vault now
  * (CODE-371); this path is read once to migrate the existing key — which keeps the device id, and
- * therefore the HQ registration, stable — and then removed.
+ * therefore the cloud registration, stable — and then removed.
  */
 export function legacyDeviceKeyPath(): string {
   return join(daemonStateDir(), 'device-key.pem');

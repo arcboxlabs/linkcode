@@ -85,7 +85,7 @@ function loadSoftwarePrivateKey(): string | null {
 
 /**
  * Take a key left as a bare PEM by an older daemon into the vault. Adopted rather than replaced: the
- * device id is the fingerprint of this key, so minting a new one would silently orphan the HQ
+ * device id is the fingerprint of this key, so minting a new one would silently orphan the cloud
  * registration and the tunnel host id with it. A vault entry already present wins — it is the same
  * key, or a newer one this machine has since moved to.
  *
@@ -114,7 +114,7 @@ export function adoptLegacyDeviceKeyFile(): void {
 
 /**
  * Mint a fresh software key. Reached on a new machine, and on one whose keyring lost the vault's
- * master key — in which case the device id changes and HQ sees a new device. That is the defined
+ * master key — in which case the device id changes and the cloud sees a new device. That is the defined
  * reset: the same vault loss also takes the session token, so the daemon is already signed out and
  * the next sign-in registers this key. Nothing is silently left half-valid.
  */
@@ -124,7 +124,7 @@ function createSoftwarePrivateKey(): string {
   secretVault().set(DEVICE_SOFTWARE_KEY_REF, privatePem);
   logger.warn(
     { operation: 'device-key.create', protection: secretVault().protection },
-    'Generated a new software device key; this machine registers with HQ under a new device id',
+    'Generated a new software device key; this machine registers with the cloud under a new device id',
   );
   return privatePem;
 }

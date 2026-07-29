@@ -2,8 +2,8 @@ import { hostname } from 'node:os';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
 import {
-  DEFAULT_HQ_URL,
-  HqApiError,
+  CloudApiError,
+  DEFAULT_CLOUD_URL,
   pollDeviceToken,
   registerDevice,
   requestDeviceCode,
@@ -21,7 +21,7 @@ const log = (message: string): void => console.log(`[linkcode/daemon] ${message}
  * resolves to the same device id; only a lost key mints a new identity.
  */
 export async function runLoginCommand(): Promise<void> {
-  const baseUrl = process.env.LINKCODE_HQ_URL || DEFAULT_HQ_URL;
+  const baseUrl = process.env.LINKCODE_CLOUD_URL || DEFAULT_CLOUD_URL;
   const grant = await requestDeviceCode(baseUrl);
 
   log(`to sign this machine in, open ${grant.verificationUriComplete}`);
@@ -41,12 +41,12 @@ export async function runLoginCommand(): Promise<void> {
     }
     if (poll.status === 'slow-down') intervalMs += 5000;
     else if (poll.status === 'rejected') {
-      throw new HqApiError(
+      throw new CloudApiError(
         `sign-in was ${poll.reason === 'access_denied' ? 'denied' : `rejected: ${poll.reason}`}`,
       );
     }
   }
-  if (!sessionToken) throw new HqApiError('sign-in timed out — run login again');
+  if (!sessionToken) throw new CloudApiError('sign-in timed out — run login again');
 
   const key = ensureDeviceKey();
   const { deviceId } = await registerDevice(baseUrl, sessionToken, {
@@ -63,7 +63,7 @@ export async function runLoginCommand(): Promise<void> {
   log('restart the daemon to bring the remote-access uplink online');
 }
 
-/** `linkcode-daemon logout` — revoke the HQ session and clear local state. */
+/** `linkcode-daemon logout` — revoke the cloud session and clear local state. */
 export async function runLogoutCommand(): Promise<void> {
   const credentials = loadCloudCredentials();
   if (!credentials) {
