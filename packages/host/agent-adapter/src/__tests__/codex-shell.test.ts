@@ -104,6 +104,7 @@ class FakeCodexServer {
 
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
+  configuredSandboxEnvironment: NodeJS.ProcessEnv | undefined;
   emptyModelList = false;
   rejectMethod: string | undefined;
   threadResponse: unknown;
@@ -117,7 +118,8 @@ class TestCodex extends CodexAdapter {
     this.fakeServers.push(server);
     return Promise.resolve(server);
   }
-  protected override readConfiguredSandbox() {
+  protected override readConfiguredSandbox(environment: NodeJS.ProcessEnv) {
+    this.configuredSandboxEnvironment = environment;
     return Promise.resolve(undefined);
   }
 }
@@ -202,19 +204,29 @@ describe('CodexAdapter shell-command passthrough', () => {
     await inherited.start(start);
     expect(inherited.fakeServers[0].opts.env).toEqual({
       PATH: '/project/bin',
+      CODEX_HOME: '/project/codex',
       PROJECT_ENV: 'loaded',
     });
+    expect(inherited.configuredSandboxEnvironment).toEqual(inherited.fakeServers[0].opts.env);
 
     const overridden = new TestCodex();
     await overridden.start({
       ...start,
-      config: { extraEnv: { PATH: '/account/bin', ACCOUNT_ENV: 'set' } },
+      config: {
+        extraEnv: {
+          PATH: '/account/bin',
+          CODEX_HOME: '/account/codex',
+          ACCOUNT_ENV: 'set',
+        },
+      },
     });
     expect(overridden.fakeServers[0].opts.env).toEqual({
       PATH: '/account/bin',
+      CODEX_HOME: '/account/codex',
       PROJECT_ENV: 'loaded',
       ACCOUNT_ENV: 'set',
     });
+    expect(overridden.configuredSandboxEnvironment).toEqual(overridden.fakeServers[0].opts.env);
   });
 
   it('announces the gated command and requests permission by subject reference', async () => {

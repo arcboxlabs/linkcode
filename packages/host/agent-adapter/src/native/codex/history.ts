@@ -221,12 +221,12 @@ interface DirectoryEntry {
   isFile(): boolean;
 }
 
-export function codexHome(): string {
-  return env.CODEX_HOME ?? join(homedir(), '.codex');
+export function codexHome(environment: NodeJS.ProcessEnv = env): string {
+  return environment.CODEX_HOME ?? join(homedir(), '.codex');
 }
 
-export async function readCodexIndex(): Promise<Map<string, CodexIndexEntry>> {
-  const rows = await readJsonlFile(join(codexHome(), 'session_index.jsonl'));
+export async function readCodexIndex(home = codexHome()): Promise<Map<string, CodexIndexEntry>> {
+  const rows = await readJsonlFile(join(home, 'session_index.jsonl'));
   const index = new Map<string, CodexIndexEntry>();
   for (const row of rows) {
     const id = stringField(row, 'id');
@@ -242,8 +242,9 @@ export async function readCodexIndex(): Promise<Map<string, CodexIndexEntry>> {
 
 export async function readCodexTranscriptSummaries(
   index: Map<string, CodexIndexEntry>,
+  home = codexHome(),
 ): Promise<CodexTranscriptSummary[]> {
-  const roots = [join(codexHome(), 'sessions'), join(codexHome(), 'archived_sessions')];
+  const roots = [join(home, 'sessions'), join(home, 'archived_sessions')];
   const fileSets = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
   const files = fileSets.flat();
   const summaries = await Promise.all(files.map((file) => readCodexTranscriptSummary(file, index)));
@@ -252,9 +253,10 @@ export async function readCodexTranscriptSummaries(
 
 export async function findCodexTranscript(
   historyId: AgentHistoryId,
+  home = codexHome(),
 ): Promise<CodexTranscriptSummary | undefined> {
-  const index = await readCodexIndex();
-  const summaries = await readCodexTranscriptSummaries(index);
+  const index = await readCodexIndex(home);
+  const summaries = await readCodexTranscriptSummaries(index, home);
   const id = historyId;
   return summaries.find((summary) => summary.id === id || summary.path === id);
 }
