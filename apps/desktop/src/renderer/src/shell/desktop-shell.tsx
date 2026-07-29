@@ -23,6 +23,7 @@ import {
   SimulatorAutoReveal,
   suppressSimulatorAutoReveal,
   TerminalPanel,
+  useBrowserHostRegistration,
   useCloudHosts,
   useSelectedHostStore,
   WorkspaceServicesMenu,
@@ -37,6 +38,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
 import { useCloudAccount } from '../cloud-auth/use-cloud-account';
+import { BrowserCommandExecutor } from './browser/browser-command-executor';
 import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
@@ -245,6 +247,14 @@ export function DesktopShell({
 
   const openBrowserTab = useDesktopShellStore((state) => state.openBrowserTab);
   useEffect(() => systemBridge.browser.onOpenTab(openBrowserTab), [systemBridge, openBrowserTab]);
+
+  // Broker commands drive the same resident webviews the user sees. The connection gate remounts
+  // this shell for each client generation, so registration follows every reconnect.
+  const { current: browserExecutor } = useSingleton(() => {
+    const executor = new BrowserCommandExecutor();
+    return executor.execute.bind(executor);
+  });
+  useBrowserHostRegistration(browserExecutor);
 
   const tBrowser = useTranslations('workbench.preview.browser');
   useEffect(

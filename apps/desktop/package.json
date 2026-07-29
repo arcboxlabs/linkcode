@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -22,6 +22,7 @@
     "e2e:simulator": "node e2e/simulator-panel.e2e.mts",
     "e2e:window-bounds": "node e2e/window-bounds.e2e.mts",
     "e2e:browser-tabs": "node e2e/browser-tabs.e2e.mts",
+    "e2e:browser-broker": "node e2e/browser-broker.e2e.mts",
     "lint": "pnpm --dir ../.. exec eslint --format=sukka apps/desktop"
   },
   "author": "ArcBox Labs <team@arcbox.dev>",

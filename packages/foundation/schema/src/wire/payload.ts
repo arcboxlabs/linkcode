@@ -4,6 +4,7 @@ import { agentCatalogWireVariants } from './agent-catalog';
 import { agentLoginWireVariants } from './agent-login';
 import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
+import { browserWireVariants } from './browser';
 import { configWireVariants } from './config';
 import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
@@ -36,6 +37,7 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...scheduleWireVariants,
   ...loopWireVariants,
   ...artifactWireVariants,
+  ...browserWireVariants,
   ...agentWireVariants,
   ...terminalWireVariants,
   ...simulatorWireVariants,

@@ -13,6 +13,7 @@ export * from './automations/loop/items';
 export * from './automations/schedule/hooks';
 export * from './automations/schedule/items';
 export * from './automations/store';
+export * from './browser/use-browser-host';
 export * from './cloud';
 export * from './files/hooks';
 export * from './files/locate';

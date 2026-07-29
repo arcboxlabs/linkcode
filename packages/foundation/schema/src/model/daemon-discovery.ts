@@ -29,6 +29,11 @@ export const DaemonIdentitySchema = z.object({
   startedAt: TimestampSchema,
   /** The daemon's profile; absent means the default profile (pre-profile daemons included). */
   profile: z.string().regex(PROFILE_NAME_PATTERN).optional(),
+  /** The `WIRE_PROTOCOL_VERSION` this daemon speaks, so a client can diagnose a lockstep mismatch
+   * before dialing instead of reading it as "daemon unavailable". Optional for the same reason
+   * `profile` is: a daemon predating this field must still parse, or the singleton probe would
+   * mistake it for absent and start a second daemon. */
+  wireProtocolVersion: z.number().int().positive().optional(),
 });
 export type DaemonIdentity = z.infer<typeof DaemonIdentitySchema>;
 

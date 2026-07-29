@@ -57,4 +57,6 @@ export interface EngineDeps {
   scheduleStore?: ScheduleStore;
   /** Durable store for loops; the in-memory default keeps bare engines and tests dependency-free. */
   loopStore?: LoopStore;
+  /** Enable agent browser code-mode tools. Default-off until the desktop host registers. */
+  browserToolsEnabled?: boolean;
 }

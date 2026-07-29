@@ -5,5 +5,5 @@
     "tsBuildInfoFile": "${configDir}/node_modules/.cache/tsconfig.tsbuildinfo",
     "strict": true
   },
-  "include": ["src"]
+  "include": ["src", "vitest.config.ts"]
 }

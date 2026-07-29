@@ -44,6 +44,32 @@ describe('WorkbenchConnectionController retry and disposal', () => {
     controller.dispose();
   });
 
+  it('gives up once a capped retry budget is exhausted', async () => {
+    vi.useFakeTimers();
+    const first = new TestTransport(() => Promise.reject(new Error('down')));
+    const second = new TestTransport(() => Promise.reject(new Error('still down')));
+    const nextTransport = transportSequence(first, second);
+    const resolve = vi.fn(() => ({ transport: nextTransport() }));
+    const controller = testController({ resolve }, { minTimeout: 1000, retries: 1 });
+
+    controller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getSnapshot().status).toBe('retrying');
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(controller.getSnapshot().status).toBe('error');
+
+    // An explicit retry still starts a fresh budget, so giving up is not terminal.
+    const third = new TestTransport(asyncNoop);
+    resolve.mockReturnValue({ transport: third });
+    controller.retry();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getSnapshot().status).toBe('ready');
+    controller.dispose();
+  });
+
   it('deduplicates an explicit-retry hook across source invalidation', async () => {
     vi.useFakeTimers();
     const hookPending = deferred();

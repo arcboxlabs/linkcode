@@ -2,6 +2,7 @@ export * from './account';
 export * from './agent';
 export * from './agent-runtime';
 export * from './artifact';
+export * from './browser';
 export * from './content';
 export * from './daemon-discovery';
 export * from './file';

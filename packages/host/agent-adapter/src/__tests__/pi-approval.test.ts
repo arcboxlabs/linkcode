@@ -8,10 +8,19 @@ type Gate = (event: {
   toolCallId: string;
   input: unknown;
 }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+interface RegisteredTool {
+  name: string;
+  description: string;
+  execute(
+    toolCallId: string,
+    params: { code: string },
+  ): Promise<{ content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> }>;
+}
 
 const sdk = vi.hoisted(() => ({
   abort: vi.fn<() => Promise<void>>(),
   gate: null as Gate | null,
+  tool: null as RegisteredTool | null,
 }));
 vi.mock('@earendil-works/pi-coding-agent', async () => {
   const { asyncNoop, noop } = await import('foxts/noop');
@@ -33,6 +42,9 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
           factory({
             on(_name: string, handler: Gate) {
               sdk.gate = handler;
+            },
+            registerTool(tool: RegisteredTool) {
+              sdk.tool = tool;
             },
           });
         }
@@ -86,9 +98,44 @@ async function respond(adapter: PiAdapter, events: AgentEvent[], optionId?: stri
 beforeEach(() => {
   sdk.abort.mockReset().mockResolvedValue();
   sdk.gate = null;
+  sdk.tool = null;
 });
 
 describe('Pi approval gate', () => {
+  it('registers one browser toolset per session through the approval-gated extension API', async () => {
+    const adapter = new PiAdapter();
+    const createToolset = vi.fn(() => ({
+      documentation: 'Browser docs',
+      execute: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          value: { mimeType: 'image/png', base64: 'aW1hZ2U=' },
+          logs: ['captured'],
+        }),
+      ),
+    }));
+    adapter.attachBrowserTools(createToolset);
+
+    await adapter.start({ kind: 'pi', cwd: '/tmp/pi' });
+
+    expect(createToolset).toHaveBeenCalledOnce();
+    expect(sdk.tool).toMatchObject({ name: 'browser_execute', description: 'Browser docs' });
+    if (!sdk.tool || !sdk.gate) throw new Error('browser extension not registered');
+    await expect(sdk.tool.execute('browser-call', { code: 'snapshot()' })).resolves.toEqual({
+      content: [
+        { type: 'text', text: '[screenshot attached]\nconsole:\ncaptured' },
+        { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' },
+      ],
+      details: undefined,
+    });
+
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    const gated = sdk.gate(call('browser-call', 'browser_execute'));
+    await respond(adapter, events, 'allow');
+    await expect(gated).resolves.toBeUndefined();
+  });
+
   it('auto-allows safe tools and supports allow once and option id always', async () => {
     const { adapter, events, gate } = await setup();
     await expect(gate(call('safe', 'read'))).resolves.toBeUndefined();

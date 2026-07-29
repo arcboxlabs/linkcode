@@ -24,9 +24,11 @@ import type {
   ToolKind,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { Type } from '@sinclair/typebox';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { invariant } from 'foxts/guard';
-import type { AgentStartCatalogOptions } from '../../adapter';
+import type { AgentStartCatalogOptions, BrowserToolsetFactory } from '../../adapter';
+import { renderBrowserToolResult } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
 import { asHistoryId } from '../../history-util';
@@ -188,6 +190,11 @@ export class PiAdapter extends BaseAgentAdapter {
   };
   /** Invalidates SDK and extension callbacks captured by a stopped Pi session. */
   private lifecycle = 0;
+  private browserTools: BrowserToolsetFactory | undefined;
+
+  attachBrowserTools(createToolset: BrowserToolsetFactory): void {
+    this.browserTools = createToolset;
+  }
 
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const pi = await this.importSdk();
@@ -266,7 +273,12 @@ export class PiAdapter extends BaseAgentAdapter {
     const resourceLoader = new pi.DefaultResourceLoader({
       cwd,
       agentDir: piAgentDir(),
-      extensionFactories: [(extension) => this.registerGate(extension, generation)],
+      extensionFactories: [
+        (extension) => {
+          this.registerGate(extension, generation);
+          this.registerBrowserTool(extension);
+        },
+      ],
     });
     await resourceLoader.reload();
 
@@ -448,6 +460,39 @@ export class PiAdapter extends BaseAgentAdapter {
 
   private registerGate(extension: ExtensionAPI, generation: number): void {
     extension.on('tool_call', (event) => this.gateTool(event, generation));
+  }
+
+  private registerBrowserTool(extension: ExtensionAPI): void {
+    const factory = this.browserTools;
+    if (!factory) return;
+    const toolset = factory();
+    extension.registerTool({
+      name: 'browser_execute',
+      label: 'Browser',
+      description: toolset.documentation,
+      parameters: Type.Object({
+        code: Type.String({ description: 'JavaScript for the persistent browser REPL' }),
+      }),
+      async execute(_toolCallId, { code }) {
+        invariant(code, 'pi: browser_execute code is required');
+        const rendered = renderBrowserToolResult(await toolset.execute(code));
+        return {
+          content: [
+            { type: 'text', text: rendered.text },
+            ...(rendered.image
+              ? [
+                  {
+                    type: 'image' as const,
+                    data: rendered.image.base64,
+                    mimeType: rendered.image.mimeType,
+                  },
+                ]
+              : []),
+          ],
+          details: undefined,
+        };
+      },
+    });
   }
 
   private async gateTool(

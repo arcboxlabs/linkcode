@@ -58,7 +58,7 @@ export function transportSequence(...transports: TestTransport[]): () => TestTra
 
 export function testController(
   source: WorkbenchConnectionSource,
-  retry: { minTimeout?: number; maxTimeout?: number; factor?: number } = {},
+  retry: { minTimeout?: number; maxTimeout?: number; factor?: number; retries?: number } = {},
 ): WorkbenchConnectionController {
   return new WorkbenchConnectionController(source, {
     createClient(transport) {

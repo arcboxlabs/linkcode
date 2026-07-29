@@ -1,193 +1,49 @@
-import { useLinkCodeClient } from '@linkcode/client-core';
-import type { TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
 import { TerminalIdSchema } from '@linkcode/schema';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect } from 'foxact/use-abortable-effect';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { Button, Chip, Spinner } from 'heroui-native';
-import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 import TerminalRenderer from '../../../../components/terminal-renderer';
-import type { TerminalRendererRef } from '../../../../components/terminal-renderer.types';
+import { useTerminalSession } from '../../../../runtime/use-terminal-session';
 import {
   resolveTerminalTheme,
   useTerminalPrefsStore,
 } from '../../../../stores/terminal-prefs-store';
 
-type AttachStatus = 'attaching' | 'ready' | 'error';
-
-/** Interactive mobile view of one host-owned PTY. */
+/** Interactive mobile view of one host-owned PTY. Attachment and all network I/O live in
+ * {@link useTerminalSession}; this route only renders and navigates. */
 export default function TerminalScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminal');
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const client = useLinkCodeClient();
   const params = useLocalSearchParams<{ terminalId: string; takeover?: string }>();
   const parsed = TerminalIdSchema.safeParse(params.terminalId);
   const terminalId = parsed.success ? parsed.data : null;
-  const autoTakeControl = params.takeover === '1';
   const fontSize = useTerminalPrefsStore((state) => state.fontSize);
   const theme = resolveTerminalTheme(useTerminalPrefsStore((state) => state.colorScheme));
-  const rendererRef = useRef<TerminalRendererRef>(null);
-  const [attempt, setAttempt] = useState(0);
-  const [status, setStatus] = useState<AttachStatus>(terminalId ? 'attaching' : 'error');
-  const [terminal, setTerminal] = useState<TerminalMetadata | null>(null);
-  const [canControl, setCanControl] = useState(false);
-  const [takingControl, setTakingControl] = useState(false);
-  const [truncated, setTruncated] = useState(false);
-  const [rendererGeneration, setRendererGeneration] = useState(0);
-  const [error, setError] = useState<string | null>(() => (terminalId ? null : t('invalidId')));
-  const [exit, setExit] = useState<{ code: number | null } | null>(null);
+  const {
+    setRenderer,
+    status,
+    terminal,
+    canControl,
+    takingControl,
+    truncated,
+    error: attachError,
+    exit,
+    onInput,
+    onResize,
+    onRendererReady,
+    onRendererError,
+    takeControl,
+    close,
+    retry,
+  } = useTerminalSession(terminalId, params.takeover === '1');
 
-  useEffect(
-    (signal) => {
-      if (!terminalId) return;
-      const offController = client.subscribeTerminalController(terminalId, (controlled) => {
-        if (!signal.aborted) setCanControl(controlled);
-      });
-      const offExit = client.subscribeTerminalExit(terminalId, (code) => {
-        if (signal.aborted) return;
-        setExit({ code });
-        setCanControl(false);
-      });
-      const offError = client.subscribeTerminalError(terminalId, (cause) => {
-        if (!signal.aborted) setError(cause.message);
-      });
-      const offReplayTruncated = client.subscribeTerminalReplayTruncated(
-        terminalId,
-        (wasTruncated) => {
-          if (!signal.aborted) setTruncated(wasTruncated);
-        },
-      );
-
-      void (async () => {
-        try {
-          const result = await client.attachTerminal(terminalId);
-          if (signal.aborted) return;
-          setTerminal(result.terminal);
-          setTruncated(result.truncated);
-          setCanControl(client.terminalCanControl(terminalId));
-          setStatus('ready');
-
-          if (autoTakeControl && !result.terminal.managed) {
-            setTakingControl(true);
-            try {
-              const controlled = await client.takeTerminalControl(terminalId);
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- AbortSignal may change while the request is pending.
-              if (signal.aborted) return;
-              setTruncated((current) => current || controlled.truncated);
-              setCanControl(client.terminalCanControl(terminalId));
-            } catch (error_) {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- AbortSignal may change while the request is pending.
-              if (!signal.aborted) {
-                setError(extractErrorMessage(error_, false) ?? 'Unknown error');
-              }
-            } finally {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- AbortSignal may change while the request is pending.
-              if (!signal.aborted) setTakingControl(false);
-            }
-          }
-        } catch (error_) {
-          if (signal.aborted) return;
-          setError(extractErrorMessage(error_, false) ?? 'Unknown error');
-          setStatus('error');
-        }
-      })();
-
-      return () => {
-        offController();
-        offExit();
-        offError();
-        offReplayTruncated();
-        client.detachTerminal(terminalId);
-      };
-    },
-    [attempt, autoTakeControl, client, terminalId],
-  );
-
-  useEffect(() => {
-    if (rendererGeneration === 0 || status !== 'ready' || !terminalId) return;
-
-    const deliver = (events: readonly TerminalReplayEvent[]) => {
-      rendererRef.current?.events(events);
-    };
-    let replaying = true;
-    const replay: TerminalReplayEvent[] = [];
-    const unsubscribe = client.subscribeTerminalEvents(terminalId, (event) => {
-      if (replaying) {
-        replay.push(event);
-        return;
-      }
-      deliver([event]);
-    });
-    replaying = false;
-    deliver(replay);
-    return unsubscribe;
-  }, [client, rendererGeneration, status, terminalId]);
-
-  useEffect(() => {
-    if (rendererGeneration === 0 || !exit) return;
-    rendererRef.current?.exit(exit.code);
-  }, [exit, rendererGeneration]);
-
-  const onInput = useCallback(
-    (data: string) => {
-      if (terminalId) client.terminalInput(terminalId, data);
-    },
-    [client, terminalId],
-  );
-  const onResize = useCallback(
-    (cols: number, rows: number) => {
-      if (terminalId) client.resizeTerminal(terminalId, cols, rows);
-    },
-    [client, terminalId],
-  );
-  const onRendererReady = useCallback(() => {
-    setRendererGeneration((current) => current + 1);
-  }, []);
-  const onRendererError = useCallback((message: string) => {
-    setError(message);
-  }, []);
-
-  const takeControl = async () => {
-    if (!terminalId || takingControl) return;
-    setTakingControl(true);
-    setError(null);
-    try {
-      const result = await client.takeTerminalControl(terminalId);
-      setTruncated((current) => current || result.truncated);
-      setCanControl(client.terminalCanControl(terminalId));
-    } catch (error_) {
-      setError(extractErrorMessage(error_, false) ?? 'Unknown error');
-    } finally {
-      setTakingControl(false);
-    }
-  };
-
+  // Only this route knows the id came from an unparseable route param.
+  const error = attachError ?? (terminalId === null ? t('invalidId') : null);
   const detach = () => {
     router.back();
-  };
-
-  const close = () => {
-    if (terminalId) client.closeTerminal(terminalId);
-  };
-
-  const retry = () => {
-    if (!terminalId) {
-      detach();
-      return;
-    }
-    setStatus('attaching');
-    setError(null);
-    setExit(null);
-    setTerminal(null);
-    setCanControl(false);
-    setTakingControl(false);
-    setTruncated(false);
-    setRendererGeneration(0);
-    setAttempt((current) => current + 1);
   };
 
   return (
@@ -232,13 +88,13 @@ export default function TerminalScreen(): React.ReactNode {
         </View>
       ) : status === 'error' ? (
         <View className="flex-1 items-center justify-center">
-          <Button onPress={retry}>
+          <Button onPress={terminalId ? retry : detach}>
             <Button.Label>{terminalId ? t('retry') : t('detach')}</Button.Label>
           </Button>
         </View>
       ) : (
         <TerminalRenderer
-          ref={rendererRef}
+          ref={setRenderer}
           canControl={canControl && exit === null}
           fontSize={fontSize}
           theme={theme}
