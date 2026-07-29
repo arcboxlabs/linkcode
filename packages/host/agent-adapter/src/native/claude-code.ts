@@ -32,6 +32,7 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
+  AgentStartCatalog,
   ApprovalPolicy,
   ApprovalPolicyState,
   ContentBlock,
@@ -59,6 +60,7 @@ import {
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { z } from 'zod';
+import type { AgentStartCatalogOptions } from '../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
@@ -461,6 +463,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.settingsUltracode = effective.ultracode === true;
       this.emitEffort(this.settingsUltracode ? 'ultracode' : (effective.effortLevel ?? 'high'));
     }
+    // A new-session pick outranks the settings default; an unknown tier degrades to that default
+    // with an error event rather than failing session creation.
+    if (opts.approvalPolicyId) {
+      const picked = APPROVAL_POLICIES.find((p) => p.policyId === opts.approvalPolicyId);
+      if (picked) this.approvalPolicy = picked.policyId;
+      else {
+        this.emitError(
+          `claude-code: unknown approval policy '${opts.approvalPolicyId}' — using the settings default`,
+        );
+      }
+    }
     this.approvalPolicy ??= await settingsDefaultMode(opts.cwd);
     this.emitApprovalPolicy(this.approvalPolicyState());
     // Query init is the only authoritative slash-command catalog source: start the persistent
@@ -503,6 +516,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
     return Promise.resolve({ continue: true });
   };
+
+  /** Pre-session catalog: the approval tiers plus the settings default the session would adopt, so
+   * the new-session surface can pick one before any Query exists. Models stay on the static
+   * AGENT_MODEL_OPTIONS table — Claude's model list is a fixed vendor set. */
+  override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
+    return {
+      models: [],
+      policies: [...APPROVAL_POLICIES],
+      defaultPolicyId:
+        (opts.cwd === undefined ? undefined : await settingsDefaultMode(opts.cwd)) ?? 'default',
+    };
+  }
 
   override async resumeHistory(
     opts: AgentHistoryResumeOptions,
