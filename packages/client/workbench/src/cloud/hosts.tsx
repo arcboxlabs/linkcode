@@ -35,7 +35,6 @@ export function useCloudHosts(accountKey: string | null | undefined): SWRRespons
     {
       revalidateOnFocus: true,
       refreshInterval: 30000,
-      keepPreviousData: false,
     },
   );
 }

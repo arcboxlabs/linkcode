@@ -109,7 +109,7 @@ export function useCloudImOverview(
   return useSWR<CloudImOverview>(
     accountKey && source ? [IM_OVERVIEW_KEY, accountKey] : null,
     source ? source.overview : null,
-    { revalidateOnFocus: true, keepPreviousData: false },
+    { revalidateOnFocus: true },
   );
 }
 
@@ -134,7 +134,7 @@ export function useCloudImPreferences(
   return useSWR<CloudImPreferences>(
     accountKey && source ? [IM_PREFERENCES_KEY, accountKey] : null,
     source ? source.preferences : null,
-    { revalidateOnFocus: true, keepPreviousData: false },
+    { revalidateOnFocus: true },
   );
 }
 

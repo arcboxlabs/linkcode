@@ -51,8 +51,9 @@ beforeEach(() => {
       if (!('agentKind' in request)) return { mutate: vi.fn() };
       const response = responses.get(request.agentKind) ?? {};
       const changedProvider = previousKind !== undefined && previousKind !== request.agentKind;
+      // Mirrors the provider: keepPreviousData is off unless a call site opts in.
       const data =
-        changedProvider && response.data === undefined && options?.keepPreviousData !== false
+        changedProvider && response.data === undefined && options?.keepPreviousData === true
           ? previousData
           : response.data;
 
@@ -97,11 +98,10 @@ describe('useProviderHistory', () => {
 
     expect(result.current.entries).toEqual([]);
     expect(result.current.loadError).toBe(unavailable);
-    expect(useDataMock).toHaveBeenCalledWith(
-      expect.anything(),
-      { agentKind: 'pi', opts: { limit: 200 } },
-      { keepPreviousData: false },
-    );
+    expect(useDataMock).toHaveBeenCalledWith(expect.anything(), {
+      agentKind: 'pi',
+      opts: { limit: 200 },
+    });
   });
 
   it('keeps late results scoped to their provider during rapid switches and restores its cache', () => {
