@@ -16,6 +16,9 @@ import {
   ScheduleService,
 } from './automation';
 import { AutomationRequestHandler } from './automation/request-handler';
+import { BrowserBrokerService } from './browser/broker';
+import { BrowserReplHost } from './browser/repl-host';
+import { BrowserRequestHandler } from './browser/request-handler';
 import type { EngineDeps } from './deps';
 import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
@@ -88,6 +91,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   // it here; the engine owns the session registry, so it hands the service a session-existence
   // predicate that gates claims on a live session.
   const simulators = deps.simulators;
+  const browserBroker = new BrowserBrokerService(transport);
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -100,6 +104,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       simulators?.releaseSession(sessionId);
       deps.simulatorMcp?.release(sessionId);
     },
+    deps.browserToolsEnabled
+      ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
+      : undefined,
   );
   simulators?.setSessionValidator((id) => sessions.has(id));
   terminals = deps.ptyBackend
@@ -190,6 +197,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     responder,
     factory,
   );
+  const browserRequests = new BrowserRequestHandler(transport, browserBroker);
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
@@ -203,6 +211,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     automation: automationRequests,
     terminal: terminalRequests,
     simulator: simulatorRequests,
+    browser: browserRequests,
   });
   let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;
@@ -303,6 +312,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());
+      yield* finalize('browser.shutdown', () => browserBroker.shutdown());
       // Session teardown can enqueue best-effort record persistence into the root set. All
       // producers are closed now, so a final clear leaves no Engine-owned fibers behind.
       yield* FiberSet.clear(taskSet);

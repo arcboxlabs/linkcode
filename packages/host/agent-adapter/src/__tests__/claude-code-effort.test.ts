@@ -16,6 +16,13 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     if (!sdkMock.query) throw new Error('query mock not installed');
     return sdkMock.query(opts);
   },
+  createSdkMcpServer: (config: unknown) => config,
+  tool: (name: string, description: string, schema: unknown, handler: unknown) => ({
+    name,
+    description,
+    schema,
+    handler,
+  }),
   resolveSettings: () => Promise.resolve({ effective: sdkMock.settings }),
 }));
 
@@ -291,6 +298,23 @@ describe('ClaudeCodeAdapter effort switching', () => {
     expect(q2.options.effort).toBeUndefined();
     expect(q2.options.resume).toBe('sess-1');
     expect(q2.applyFlagSettings).toHaveBeenCalledWith({ ultracode: null, effortLevel: 'high' });
+  });
+
+  it('keeps one browser REPL toolset across effort-driven Query rebuilds', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const execute = vi.fn(() => Promise.resolve({ ok: true, value: null, logs: [] }));
+    const createToolset = vi.fn(() => ({ documentation: 'browser docs', execute }));
+    adapter.attachBrowserTools(createToolset);
+
+    await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+    const firstServer = (queries[0].options.mcpServers as Record<string, unknown>).linkcode_browser;
+    await setEffort(adapter, 'max');
+    await prompt(adapter);
+    const secondServer = (queries[1].options.mcpServers as Record<string, unknown>)
+      .linkcode_browser;
+
+    expect(createToolset).toHaveBeenCalledTimes(1);
+    expect(secondServer).not.toBe(firstServer);
   });
 
   it('does not let a detached Query unwind settle its replacement', async () => {

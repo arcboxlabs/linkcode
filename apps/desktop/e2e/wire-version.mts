@@ -11,4 +11,4 @@
  * A stale value does not fail loudly: the socket still completes, then every frame is silently
  * discarded at the transport, so a driving script looks connected while the device never moves.
  */
-export const WIRE_VERSION = 60;
+export const WIRE_VERSION = 61;

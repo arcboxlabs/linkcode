@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
+  McpSdkServerConfigWithInstance,
   McpServerConfig,
   PermissionMode,
   PermissionResult,
@@ -59,7 +60,8 @@ import {
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { z } from 'zod';
-import { AUTH_FAILED_ERROR_CODE } from '../adapter';
+import type { BrowserToolset, BrowserToolsetFactory } from '../adapter';
+import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
 import {
@@ -447,6 +449,53 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** The last published slash-command catalog — the alias authority for command interception
    * (`/cost` resolves to `/usage` via the provider's own aliases, not a hardcoded list). */
   private commandCatalog: AgentCommand[] = [];
+  private browserTools: BrowserToolsetFactory | undefined;
+  /** One persistent REPL toolset per LinkCode session. SDK MCP wrappers remain Query-scoped. */
+  private browserToolset: BrowserToolset | undefined;
+
+  attachBrowserTools(createToolset: BrowserToolsetFactory): void {
+    this.browserTools = createToolset;
+    this.browserToolset = undefined;
+  }
+
+  private async buildBrowserMcpServer(): Promise<Record<string, McpSdkServerConfigWithInstance>> {
+    const factory = nullthrow(this.browserTools, 'claude-code: browser tools not attached');
+    const { createSdkMcpServer, tool } = await import('@anthropic-ai/claude-agent-sdk');
+    let toolset = this.browserToolset;
+    if (!toolset) {
+      toolset = factory();
+      this.browserToolset = toolset;
+    }
+    return {
+      linkcode_browser: createSdkMcpServer({
+        name: 'linkcode_browser',
+        tools: [
+          tool(
+            'execute',
+            toolset.documentation,
+            { code: z.string().describe('JavaScript for the persistent browser REPL') },
+            async ({ code }) => {
+              const rendered = renderBrowserToolResult(await toolset.execute(code));
+              return {
+                content: [
+                  { type: 'text' as const, text: rendered.text },
+                  ...(rendered.image
+                    ? [
+                        {
+                          type: 'image' as const,
+                          data: rendered.image.base64,
+                          mimeType: rendered.image.mimeType,
+                        },
+                      ]
+                    : []),
+                ],
+              };
+            },
+          ),
+        ],
+      }),
+    };
+  }
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.stopped = false;
@@ -675,7 +724,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
     // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
     const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
-    const mcpServers = claudeMcpServers(opts.mcpServers);
+    const configuredMcpServers = claudeMcpServers(opts.mcpServers);
+    if (this.browserTools && configuredMcpServers?.linkcode_browser) {
+      throw new Error(
+        "claude-code: MCP server name 'linkcode_browser' is reserved for browser tools",
+      );
+    }
+    const browserMcpServer = this.browserTools ? await this.buildBrowserMcpServer() : undefined;
+    const mcpServers =
+      configuredMcpServers || browserMcpServer
+        ? { ...configuredMcpServers, ...browserMcpServer }
+        : undefined;
     let q: Query | null = null;
     const reflectCurrentQueryEffort: HookCallback = (input, toolUseID, hookOptions) => {
       if (q === null || this.q !== q) return Promise.resolve({ continue: true });

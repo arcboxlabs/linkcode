@@ -1,4 +1,4 @@
-import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory, AgentAdapter, BrowserToolsetFactory } from '@linkcode/agent-adapter';
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentInput,
@@ -34,6 +34,7 @@ export class SessionOrchestrator {
     private readonly scope: Scope.Scope,
     reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
+    private readonly browserTools?: BrowserToolsetFactory,
   ) {
     this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure);
     this.inputs = new SessionInputDispatcher(records, this.events);
@@ -162,12 +163,14 @@ export class SessionOrchestrator {
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
   ): Effect.Effect<void, EngineFailure> {
     const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
+    const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
         const adapter = factory(record.kind);
+        if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
         const session = new LiveSession(adapter, sessionId, scope, closed);

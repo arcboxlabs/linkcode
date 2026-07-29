@@ -279,6 +279,7 @@ async function main(): Promise<void> {
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
         previewRoutes,
+        browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',
         agentRuntimesReady,
         assets,
         // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
