@@ -1,17 +1,19 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { env } from 'node:process';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { asHistoryId } from '../../src/history-util';
 import { CodexAdapter } from '../../src/native/codex';
+import { resolveAgentShellEnvironment } from '../../src/shell-env';
 
 describe('CodexAdapter history', () => {
   it('lists and reads local Codex JSONL transcripts', async () => {
-    const previousCodexHome = env.CODEX_HOME;
     const codexHome = await mkdtemp(join(tmpdir(), 'linkcode-codex-history-'));
     try {
-      env.CODEX_HOME = codexHome;
+      vi.mocked(resolveAgentShellEnvironment).mockResolvedValue({
+        PATH: '/project/bin',
+        CODEX_HOME: codexHome,
+      });
       const sessionDir = join(codexHome, 'sessions', '2026', '06', '17');
       await mkdir(sessionDir, { recursive: true });
       await writeFile(
@@ -106,7 +108,11 @@ describe('CodexAdapter history', () => {
         messageCount: 2,
       });
 
-      const read = await adapter.readHistory({ historyId: session.historyId, limit: 10 });
+      const read = await adapter.readHistory({
+        historyId: session.historyId,
+        cwd: '/repo',
+        limit: 10,
+      });
       expect(read.events.map((event) => event.event.type)).toEqual([
         'user-message',
         'agent-message',
@@ -122,17 +128,17 @@ describe('CodexAdapter history', () => {
         content: [{ type: 'text', text: 'world' }],
       });
     } finally {
-      if (previousCodexHome === undefined) env.CODEX_HOME = undefined;
-      else env.CODEX_HOME = previousCodexHome;
       await rm(codexHome, { recursive: true, force: true });
     }
   });
 
   it('pages an image-heavy transcript by aggregate attachment payload across cursor reads', async () => {
-    const previousCodexHome = env.CODEX_HOME;
     const codexHome = await mkdtemp(join(tmpdir(), 'linkcode-codex-history-'));
     try {
-      env.CODEX_HOME = codexHome;
+      vi.mocked(resolveAgentShellEnvironment).mockResolvedValue({
+        PATH: '/project/bin',
+        CODEX_HOME: codexHome,
+      });
       const sessionDir = join(codexHome, 'sessions', '2026', '07', '20');
       await mkdir(sessionDir, { recursive: true });
       // Two prompts whose images together exceed one page's attachment budget
@@ -168,7 +174,7 @@ describe('CodexAdapter history', () => {
 
       const adapter = new CodexAdapter();
       const historyId = asHistoryId('thread-img');
-      const first = await adapter.readHistory({ historyId, limit: 10 });
+      const first = await adapter.readHistory({ historyId, cwd: '/repo', limit: 10 });
       expect(first.events.map((event) => event.itemId)).toEqual(['user-1', 'assistant-1']);
       expect(first.cursor).toBe('2');
       expect(first.events[0]?.event).toMatchObject({
@@ -179,12 +185,15 @@ describe('CodexAdapter history', () => {
         ],
       });
 
-      const rest = await adapter.readHistory({ historyId, cursor: first.cursor, limit: 10 });
+      const rest = await adapter.readHistory({
+        historyId,
+        cwd: '/repo',
+        cursor: first.cursor,
+        limit: 10,
+      });
       expect(rest.events.map((event) => event.itemId)).toEqual(['user-2', 'assistant-2']);
       expect(rest.cursor).toBeUndefined();
     } finally {
-      if (previousCodexHome === undefined) env.CODEX_HOME = undefined;
-      else env.CODEX_HOME = previousCodexHome;
       await rm(codexHome, { recursive: true, force: true });
     }
   });

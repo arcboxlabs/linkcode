@@ -19,6 +19,7 @@ export function useSeededConversation(session: SessionInfo | null): Conversation
   const [seeded, setSeeded] = useState<{ for: SessionId; seed: ConversationSeed } | null>(null);
 
   const agentKind = session?.kind;
+  const cwd = session?.cwd;
   const historyId = session?.historyId;
   const sessionId = session?.sessionId ?? null;
 
@@ -32,6 +33,7 @@ export function useSeededConversation(session: SessionInfo | null): Conversation
           // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
           const result = await client.readHistory(agentKind, {
             historyId,
+            cwd,
             cursor,
             forceRefresh: page === 0,
           });
@@ -46,7 +48,7 @@ export function useSeededConversation(session: SessionInfo | null): Conversation
         });
       })().catch(noop);
     },
-    [agentKind, client, historyId, sessionId],
+    [agentKind, client, cwd, historyId, sessionId],
   );
 
   return useConversation(sessionId, seeded?.for === sessionId ? seeded.seed : undefined);

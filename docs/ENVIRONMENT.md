@@ -35,8 +35,8 @@ Not configuration you set — the daemon produces these for the processes it spa
 
 On macOS, Codex and Claude start with the environment returned by the user's login shell in the
 project directory. If `direnv` is available after shell startup, the project environment is applied
-too. The resolved environment is cached for the session, and account `extraEnv` is merged last.
-Other platforms retain the daemon environment.
+too. The resolved environment is cached for the session, account `extraEnv` is merged last, and
+Codex config/history paths use the same environment. Other platforms retain the daemon environment.
 
 | Variable | Written by | Meaning |
 | --- | --- | --- |

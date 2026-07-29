@@ -147,6 +147,7 @@ describe('ClaudeCodeAdapter effort switching', () => {
     await inherited.start({ kind: 'claude-code', cwd: '/tmp/repo' });
     expect(queries[0].options.env).toEqual({
       PATH: '/project/bin',
+      CODEX_HOME: '/project/codex',
       PROJECT_ENV: 'loaded',
     });
 
@@ -158,6 +159,7 @@ describe('ClaudeCodeAdapter effort switching', () => {
     });
     expect(queries[1].options.env).toEqual({
       PATH: '/account/bin',
+      CODEX_HOME: '/project/codex',
       PROJECT_ENV: 'loaded',
       ACCOUNT_ENV: 'set',
     });

@@ -15,7 +15,12 @@ const MAX_SEED_PAGES = 20;
  * live receive counter sampled at resolve) marks the cut: live events ≤ it are in the snapshot.
  */
 async function readConversationSeed(
-  options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; sessionId: SessionId }>,
+  options: Options<{
+    agentKind: AgentKind;
+    cwd: string;
+    historyId: AgentHistoryId;
+    sessionId: SessionId;
+  }>,
 ): RequestResult<ConversationSeed> {
   const client = resolveClient(options);
   const events: ConversationSeedEvent[] = [];
@@ -24,6 +29,7 @@ async function readConversationSeed(
     // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
     const { data } = await client.readHistory(options.agentKind, {
       historyId: options.historyId,
+      cwd: options.cwd,
       cursor,
       forceRefresh: page === 0,
     });
@@ -51,7 +57,12 @@ export function useSeededConversation(
   const { data: seed } = useData(
     readConversationSeed,
     active?.historyId
-      ? { agentKind: active.kind, historyId: active.historyId, sessionId: active.sessionId }
+      ? {
+          agentKind: active.kind,
+          cwd: active.cwd,
+          historyId: active.historyId,
+          sessionId: active.sessionId,
+        }
       : null,
     {
       onError,

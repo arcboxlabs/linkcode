@@ -27,7 +27,8 @@ import { WirePayloadSchema } from './payload';
 // 55 adds the simulator volume buttons (CODE-414).
 // 60 adds provider/model-specific reasoning-effort metadata and Codex's distinct `ultra` level.
 // 61 adds the browser broker variants (CODE-267).
-export const WIRE_PROTOCOL_VERSION = 61 as const;
+// 62 carries project cwd on history reads so provider-local environment resolution stays coherent.
+export const WIRE_PROTOCOL_VERSION = 62 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

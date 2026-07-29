@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { env } from 'node:process';
 import { parse as parseToml } from 'smol-toml';
 import { isRecord } from '../../history-util';
 import { codexHome } from './history';
@@ -17,15 +18,18 @@ function asSandboxMode(value: unknown): CodexSandboxMode | undefined {
 }
 
 /**
- * The sandbox configured in `~/.codex/config.toml`: the active profile's `sandbox_mode` if set,
- * else the top-level one; undefined when unset or the file is absent/malformed. Read only to
- * decide whether a sandbox override may be sent at all (codex resolves the config itself when
- * none is sent) — a stricter configured choice like read-only must never be silently loosened.
+ * The sandbox configured in `$CODEX_HOME/config.toml` (`~/.codex` by default): the active profile's
+ * `sandbox_mode` if set, else the top-level one; undefined when unset or the file is
+ * absent/malformed. Read only to decide whether a sandbox override may be sent at all (codex
+ * resolves the config itself when none is sent) — a stricter configured choice like read-only must
+ * never be silently loosened.
  */
-export async function codexConfiguredSandbox(): Promise<CodexSandboxMode | undefined> {
+export async function codexConfiguredSandbox(
+  environment: NodeJS.ProcessEnv = env,
+): Promise<CodexSandboxMode | undefined> {
   let config: unknown;
   try {
-    config = parseToml(await readFile(join(codexHome(), 'config.toml'), 'utf8'));
+    config = parseToml(await readFile(join(codexHome(environment), 'config.toml'), 'utf8'));
   } catch {
     return undefined; // No config, unreadable, or invalid TOML — treat as unconfigured.
   }
