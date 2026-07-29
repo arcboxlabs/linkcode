@@ -35,12 +35,58 @@ export type SimDevice = z.infer<typeof SimDeviceSchema>;
 
 export const SimListResultSchema = z.object({ devices: z.array(SimDeviceSchema) });
 
+/** One node of the guest's accessibility tree.
+ *
+ * `frame` is in device points, faithful to what the guest reports; `center` is the same point
+ * normalized 0..1 against the screen, which is the scale every pointer command takes — so a caller
+ * can act on a node without knowing the device's size. The recursion is typed by hand because zod
+ * cannot infer a self-referential shape. */
+export interface SimAxNode {
+  role: string;
+  subrole?: string;
+  label?: string;
+  value?: string;
+  identifier?: string;
+  title?: string;
+  frame: [number, number, number, number];
+  center?: [number, number];
+  enabled: boolean;
+  focused?: boolean;
+  children?: SimAxNode[];
+}
+
+export const SimAxNodeSchema: z.ZodType<SimAxNode> = z.lazy(() =>
+  z.object({
+    role: z.string(),
+    subrole: z.string().optional(),
+    label: z.string().optional(),
+    value: z.string().optional(),
+    identifier: z.string().optional(),
+    title: z.string().optional(),
+    frame: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+    center: z.tuple([z.number(), z.number()]).optional(),
+    enabled: z.boolean(),
+    focused: z.boolean().optional(),
+    children: z.array(SimAxNodeSchema).optional(),
+  }),
+);
+
+export const SimDescribeUiResultSchema = z.object({ tree: SimAxNodeSchema });
+
+/** Caps on a tree read. Omitted fields fall back to the sidecar's own defaults. */
+export interface SimAxLimits {
+  maxDepth?: number;
+  maxNodes?: number;
+}
+
 export const SimProbeSchema = z.object({
   simctlPath: z.string(),
   developerDir: z.string(),
   /** Whether the private SimulatorKit layer (framebuffer stream + HID) is reachable; simctl alone
    * is not enough to co-drive a device. Defaulted so an older sidecar reads as non-interactive. */
   interactive: z.boolean().default(false),
+  /** What still stands between this host and a runnable device; absent once one exists. */
+  blocker: z.enum(['runtime', 'devices']).nullish(),
 });
 export type SimProbe = z.infer<typeof SimProbeSchema>;
 

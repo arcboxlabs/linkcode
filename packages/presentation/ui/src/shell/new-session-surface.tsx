@@ -35,7 +35,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_DEFAULT_MODELS } from './agent-models';
+import { AGENT_DEFAULT_MODELS, AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -178,8 +178,7 @@ export function NewSessionSurface({
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const catalog = agentCatalogs?.[provider];
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOptionById = new Map(dynamicModels?.map((option) => [option.id, option] as const));
-  const modelOption = displayedModel === null ? undefined : modelOptionById.get(displayedModel);
+  const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
@@ -404,7 +403,7 @@ function NewSessionContextBar({
         >
           {isChatSelected ? <MessagesSquareIcon /> : <FolderIcon />}
           <span className="max-w-48 truncate">{chipLabel}</span>
-          <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+          <ChevronDownIcon className="size-3 text-label-tertiary" />
         </MenuTrigger>
         <MenuPopup align="start" className="w-72" side="top" sideOffset={8}>
           <MenuRadioGroup
@@ -459,13 +458,13 @@ function NewSessionContextBar({
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <LaptopMinimalIcon />
         {t('workLocally')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {/* TODO(backend): branch/worktree selection for the new session — stub until the daemon exposes it. */}
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <GitBranchIcon />
         {t('branch')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {registerError != null && (
         <span className="min-w-0 truncate text-destructive text-xs">

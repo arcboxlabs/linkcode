@@ -2,6 +2,7 @@ import type { SessionId, WireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PtyBackend, PtyOpenOptions, PtyProcess } from '../terminal/pty-backend';
 import { TerminalService } from '../terminal/service';
@@ -143,9 +144,7 @@ function recordingTransport(): { transport: Transport; sent: WirePayload[] } {
 
 /** Let the microtask-scheduled output flush run. */
 function tick(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  return wait(0);
 }
 
 function openedId(sent: WirePayload[], replyTo: string): string {

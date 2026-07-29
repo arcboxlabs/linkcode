@@ -57,4 +57,12 @@ export const systemBridge: SystemBridge = {
     onClick: (callback) =>
       traceRendererIpc('notifications.on-click', () => source.notifications.onClick(callback)),
   },
+  browser: {
+    onOpenTab: (callback) =>
+      traceRendererIpc('browser.on-open-tab', () => source.browser.onOpenTab(callback)),
+    onDownloadDone: (callback) =>
+      traceRendererIpc('browser.on-download-done', () => source.browser.onDownloadDone(callback)),
+    onShortcut: (callback) =>
+      traceRendererIpc('browser.on-shortcut', () => source.browser.onShortcut(callback)),
+  },
 };

@@ -147,7 +147,7 @@ export function HistoryBrowserList({
     return (
       <div className="flex flex-col gap-1">
         {createFixedArray(5).map((index) => (
-          <Skeleton key={index} className="h-13 w-full rounded-md" />
+          <Skeleton key={index} className="h-(--density-history-skeleton-h) w-full rounded-md" />
         ))}
       </div>
     );
@@ -284,7 +284,7 @@ function HistoryBrowserRow({
   ].filter(Boolean);
 
   return (
-    <li className="-mx-3 flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent/50">
+    <li className="-mx-3 flex items-center gap-3 rounded-md px-3 py-(--density-row-py) hover:bg-accent/50">
       <div className="min-w-0 flex-1">
         {/* No font-medium: the CJK fallback font renders it artificially bold. */}
         <div className="truncate text-sm">{entry.title}</div>

@@ -149,7 +149,7 @@ describe('TerminalFlow', () => {
 
     const resumed = writes(delivered).slice(1);
     expect(resumed).toHaveLength(1);
-    expect(resumed[0]).toBe(`\u001B[2J\u001B[3J\u001B[H${'c'.repeat(95)}`);
+    expect(resumed[0]).toBe(`\u{1B}[2J\u{1B}[3J\u{1B}[H${'c'.repeat(95)}`);
     expect(flow.drained).toBe(true);
   });
 });

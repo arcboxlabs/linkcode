@@ -36,6 +36,9 @@ export default defineConfig({
           ],
           exclude: [...configDefaults.exclude, 'apps/mobile/**'],
           environment: 'node',
+          // Belongs to this project rather than the root: projects do not inherit root `test`
+          // options, and what it patches (jsdom gaps `@pierre/diffs` hits) is web-renderer only.
+          setupFiles: ['./vitest.setup.ts'],
         },
       },
       './apps/mobile/vitest.config.ts',

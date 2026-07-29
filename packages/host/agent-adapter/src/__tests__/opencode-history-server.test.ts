@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpencodeHistoryServer } from '../native/opencode/history-server';
 
+const STARTUP_EXIT_RE = /exited during startup \(code 1\)[\s\S]*bad config/;
+const STARTUP_TIMEOUT_RE = /startup timed out after 5000ms/;
+
 class FakeStdio extends EventEmitter {
   destroy = vi.fn();
 }
@@ -152,9 +155,7 @@ describe('OpencodeHistoryServer', () => {
     const { manager, spawned } = makeManager();
     const failing = manager.withServer((url) => Promise.resolve(url));
     await vi.waitFor(() => expect(spawned).toHaveLength(1));
-    const rejection = expect(failing).rejects.toThrow(
-      /exited during startup \(code 1\)[\s\S]*bad config/,
-    );
+    const rejection = expect(failing).rejects.toThrow(STARTUP_EXIT_RE);
     spawned[0].emitExit(1);
     await vi.waitFor(() => expect(spawned).toHaveLength(2));
     spawned[1].stderr.emit('data', Buffer.from('bad config\n'));
@@ -189,7 +190,7 @@ describe('OpencodeHistoryServer', () => {
     await vi.waitFor(() => expect(spawned).toHaveLength(1));
     // Attached before the clock advances: the rejection fires mid-advance, and an
     // unhandled-at-that-instant rejection fails the whole test file.
-    const rejection = expect(call).rejects.toThrow(/startup timed out after 5000ms/);
+    const rejection = expect(call).rejects.toThrow(STARTUP_TIMEOUT_RE);
     await vi.advanceTimersByTimeAsync(5000);
     await rejection;
     expect(spawned[0].signals).toContain('SIGKILL');

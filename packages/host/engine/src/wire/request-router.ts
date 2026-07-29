@@ -147,6 +147,9 @@ export class WireRequestRouter {
       case 'simulator.swipe':
       case 'simulator.button':
       case 'simulator.rotate':
+      case 'simulator.shake':
+      case 'simulator.describe-ui':
+      case 'simulator.install-runtime':
       case 'simulator.stream.start':
       case 'simulator.stream.stop': {
         return this.handlers.simulator.handle(p);

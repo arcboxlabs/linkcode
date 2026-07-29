@@ -185,8 +185,8 @@ export class MentionNode extends DecoratorNode<React.ReactNode> {
   }
 
   override getTextContent(): string {
-    const label = fileBasename(this.__path).replace(LABEL_ESCAPE_RE, '\\$1');
-    const destination = this.__path.replace(
+    const label = fileBasename(this.__path).replaceAll(LABEL_ESCAPE_RE, String.raw`\$1`);
+    const destination = this.__path.replaceAll(
       DESTINATION_UNSAFE_RE,
       (char) => DESTINATION_ESCAPES[char] ?? char,
     );

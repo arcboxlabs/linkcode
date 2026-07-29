@@ -19,6 +19,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestEngine } from './fixtures/test-engine';
 
@@ -114,9 +115,7 @@ function harness() {
   }
   async function settle(): Promise<void> {
     for (let i = 0; i < 40; i += 1) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
+      await wait(0);
     }
   }
   return { engine, sent, inject, settle };

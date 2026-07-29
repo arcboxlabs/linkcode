@@ -267,7 +267,9 @@ function firstUser(entries: SessionEntry[]): string | undefined {
   }
   return undefined;
 }
+const WHITESPACE_RUN_RE = /\s+/g;
+
 function preview(text: string): string | undefined {
-  const value = text.trim().replaceAll(/\s+/g, ' ');
+  const value = text.trim().replaceAll(WHITESPACE_RUN_RE, ' ');
   return value ? value.slice(0, 160) : undefined;
 }

@@ -36,7 +36,7 @@ const SDK_USAGE_RESPONSE: SDKControlGetUsageResponse = {
   session: {
     total_cost_usd: 1.23,
     total_api_duration_ms: 4000,
-    total_duration_ms: 60_000,
+    total_duration_ms: 60000,
     total_lines_added: 10,
     total_lines_removed: 2,
     model_usage: {
@@ -47,8 +47,8 @@ const SDK_USAGE_RESPONSE: SDKControlGetUsageResponse = {
         cacheCreationInputTokens: 5,
         webSearchRequests: 0,
         costUSD: 1.23,
-        contextWindow: 200_000,
-        maxOutputTokens: 32_000,
+        contextWindow: 200000,
+        maxOutputTokens: 32000,
       },
     },
   },
@@ -88,7 +88,7 @@ const EXPECTED_USAGE_REPORT: UsageReport = {
   session: {
     totalCostUsd: 1.23,
     totalApiDurationMs: 4000,
-    totalDurationMs: 60_000,
+    totalDurationMs: 60000,
     totalLinesAdded: 10,
     totalLinesRemoved: 2,
     modelUsage: {
@@ -107,8 +107,8 @@ const EXPECTED_USAGE_REPORT: UsageReport = {
     // per-model 'Fable' bucket flattens into the same table (weekly, labelled, no id).
     windows: [
       { id: 'five_hour', utilization: 6, resetsAt: '2026-07-16T07:49:00Z', durationMins: 300 },
-      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10_080 },
-      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10_080 },
+      { id: 'seven_day', utilization: 74, resetsAt: '2026-07-18T17:00:00Z', durationMins: 10080 },
+      { label: 'Fable', utilization: 100, resetsAt: '2026-07-18T16:59:00Z', durationMins: 10080 },
     ],
     extraUsage: { isEnabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
   },

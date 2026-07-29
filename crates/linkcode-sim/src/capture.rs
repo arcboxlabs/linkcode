@@ -14,8 +14,8 @@
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -112,6 +112,11 @@ mod mach_time {
 
 /// Largest accepted worker frame (a JPEG at simulator resolution is well under this).
 const MAX_WORKER_FRAME: usize = 32 * 1024 * 1024;
+/// Worker-frame flag bits. Bit 0 marks an H.264 keyframe; bit 1 marks the codec (set = H.264, clear
+/// = JPEG) so the parent routes each frame without tracking the live codec. A JPEG frame is always
+/// `KEY` (independently decodable), so its byte stays `0x1` — unchanged from the pre-reconfig format.
+const FRAME_FLAG_KEY: u8 = 0x1;
+const FRAME_FLAG_H264: u8 = 0x2;
 /// Backoff between worker respawns after a crash.
 const RESPAWN_BACKOFF: Duration = Duration::from_millis(500);
 /// A worker that lived at least this long resets the crash-loop counter.
@@ -120,15 +125,111 @@ const HEALTHY_AFTER: Duration = Duration::from_secs(5);
 const MAX_FAST_CRASHES: u32 = 6;
 
 /// Encoder/pacing parameters for a capture stream, threaded from `streamStart` down to the worker
-/// (and across the process boundary as CLI args). Clamping happens at the boundary, not here.
+/// (as initial CLI args, then as live reconfigure records on the worker's stdin). Clamping happens
+/// at the boundary, not here.
 #[derive(Clone, Copy)]
 pub struct StreamParams {
     pub fps: u32,
     pub quality: f64,
-    /// Downscale factor applied before JPEG encode (0..1; 1.0 = native resolution). H.264 always
-    /// encodes at native resolution — bitrate, not resolution, carries its bandwidth budget.
+    /// Downscale factor applied before encode (0..1; 1.0 = native resolution). JPEG resamples into a
+    /// smaller bitmap; H.264 sizes its compression session down and lets VideoToolbox scale into it.
     pub scale: f64,
     pub codec: StreamCodec,
+}
+
+/// Fixed reconfigure record written to the worker's stdin: `[u32 fps][f64 quality][f64 scale][u8
+/// codec]`, all little-endian.
+const RECONFIG_RECORD_LEN: usize = 21;
+
+impl StreamParams {
+    fn to_record(self) -> [u8; RECONFIG_RECORD_LEN] {
+        let mut buf = [0u8; RECONFIG_RECORD_LEN];
+        buf[0..4].copy_from_slice(&self.fps.to_le_bytes());
+        buf[4..12].copy_from_slice(&self.quality.to_le_bytes());
+        buf[12..20].copy_from_slice(&self.scale.to_le_bytes());
+        buf[20] = codec_to_u8(self.codec);
+        buf
+    }
+
+    fn from_record(buf: &[u8; RECONFIG_RECORD_LEN]) -> StreamParams {
+        let mut fps = [0u8; 4];
+        fps.copy_from_slice(&buf[0..4]);
+        let mut quality = [0u8; 8];
+        quality.copy_from_slice(&buf[4..12]);
+        let mut scale = [0u8; 8];
+        scale.copy_from_slice(&buf[12..20]);
+        StreamParams {
+            fps: u32::from_le_bytes(fps),
+            quality: f64::from_le_bytes(quality),
+            scale: f64::from_le_bytes(scale),
+            codec: codec_from_u8(buf[20]),
+        }
+    }
+}
+
+fn codec_to_u8(codec: StreamCodec) -> u8 {
+    match codec {
+        StreamCodec::Jpeg => 0,
+        StreamCodec::H264 => 1,
+    }
+}
+
+fn codec_from_u8(byte: u8) -> StreamCodec {
+    if byte == 1 {
+        StreamCodec::H264
+    } else {
+        StreamCodec::Jpeg
+    }
+}
+
+/// Live stream parameters, shared (behind atomics) between the reconfigure path and a running
+/// stream's readers — the worker respawn (which reads them for fresh CLI args) and the pusher (which
+/// reads `codec`/`fps` each frame). Fields are independent atomics: a torn read across them is
+/// harmless, the next frame re-coheres. The worker process keeps its own copy, updated over stdin.
+pub struct StreamConfig {
+    fps: AtomicU32,
+    quality: AtomicU64,
+    scale: AtomicU64,
+    codec: AtomicU8,
+}
+
+impl StreamConfig {
+    fn new(params: StreamParams) -> StreamConfig {
+        let config = StreamConfig {
+            fps: AtomicU32::new(0),
+            quality: AtomicU64::new(0),
+            scale: AtomicU64::new(0),
+            codec: AtomicU8::new(0),
+        };
+        config.set(params);
+        config
+    }
+
+    fn set(&self, params: StreamParams) {
+        self.fps.store(params.fps, Ordering::Relaxed);
+        self.quality
+            .store(params.quality.to_bits(), Ordering::Relaxed);
+        self.scale.store(params.scale.to_bits(), Ordering::Relaxed);
+        self.codec
+            .store(codec_to_u8(params.codec), Ordering::Relaxed);
+    }
+
+    fn params(&self) -> StreamParams {
+        StreamParams {
+            fps: self.fps(),
+            quality: f64::from_bits(self.quality.load(Ordering::Relaxed)),
+            scale: f64::from_bits(self.scale.load(Ordering::Relaxed)),
+            codec: self.codec(),
+        }
+    }
+
+    pub fn fps(&self) -> u32 {
+        self.fps.load(Ordering::Relaxed)
+    }
+
+    pub fn codec(&self) -> StreamCodec {
+        codec_from_u8(self.codec.load(Ordering::Relaxed))
+    }
 }
 
 /// Bounded H.264 delivery queue. On overflow (a stalled consumer) the whole queue is dropped and
@@ -201,6 +302,12 @@ pub struct CaptureStream {
     /// The live worker child's pid (0 = none). Non-zero only while the manager holds the un-reaped
     /// `Child`, so the pid can't be reused — making a kill-on-drop safe to target it.
     worker_pid: Arc<AtomicU32>,
+    /// Live parameters. `reconfigure` writes here; the pusher reads `codec`/`fps` each frame and the
+    /// supervisor reads all of them for the next worker's CLI args.
+    config: Arc<StreamConfig>,
+    /// The current worker's stdin, if one is running. `reconfigure` writes a record here to retune
+    /// the live worker; the supervisor swaps it on each (re)spawn and clears it when the worker dies.
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
     manager: Option<thread::JoinHandle<()>>,
 }
 
@@ -212,21 +319,26 @@ impl CaptureStream {
         let stopped = Arc::new(AtomicBool::new(false));
         let dead = Arc::new(AtomicBool::new(false));
         let worker_pid = Arc::new(AtomicU32::new(0));
+        let config = Arc::new(StreamConfig::new(params));
+        let stdin = Arc::new(Mutex::new(None));
         let manager = thread::spawn({
             let latest = Arc::clone(&latest);
             let encoded = Arc::clone(&encoded);
             let stopped = Arc::clone(&stopped);
             let dead = Arc::clone(&dead);
             let worker_pid = Arc::clone(&worker_pid);
+            let config = Arc::clone(&config);
+            let stdin = Arc::clone(&stdin);
             move || {
                 supervise(
                     &udid,
-                    params,
+                    &config,
                     &latest,
                     &encoded,
                     &stopped,
                     &dead,
                     &worker_pid,
+                    &stdin,
                 )
             }
         });
@@ -236,8 +348,32 @@ impl CaptureStream {
             stopped,
             dead,
             worker_pid,
+            config,
+            stdin,
             manager: Some(manager),
         }
+    }
+
+    /// Retune the running stream in place — no worker respawn, no XPC re-warm. Updates the shared
+    /// config (the pusher and the next respawn read it) and pushes a record to the live worker's
+    /// stdin; a write failure means the worker is mid-respawn, which then adopts the config via CLI
+    /// args, so it self-heals.
+    pub fn reconfigure(&self, params: StreamParams) {
+        self.config.set(params);
+        if let Some(stdin) = self
+            .stdin
+            .lock()
+            .expect("capture stream stdin mutex poisoned")
+            .as_mut()
+        {
+            let _ = stdin.write_all(&params.to_record());
+            let _ = stdin.flush();
+        }
+    }
+
+    /// The live stream parameters (the pusher reads `codec`/`fps` from here each frame).
+    pub fn config(&self) -> &StreamConfig {
+        &self.config
     }
 
     /// The most recently delivered JPEG frame, or `None` before the first frame (or once dead).
@@ -256,6 +392,12 @@ impl CaptureStream {
     /// Whether the worker crash-looped and the stream gave up.
     pub fn is_dead(&self) -> bool {
         self.dead.load(Ordering::Relaxed)
+    }
+
+    /// The live worker's pid (0 = none running). Used by diagnostics to prove a reconfigure retunes
+    /// in place rather than respawning the worker.
+    pub fn worker_pid(&self) -> u32 {
+        self.worker_pid.load(Ordering::Relaxed)
     }
 }
 
@@ -280,23 +422,32 @@ impl Drop for CaptureStream {
 
 /// Manager loop: (re)spawn the worker, pump its frames, back off and retry on crash, give up after
 /// too many fast crashes.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "supervisor threads the stream's shared state by ref"
+)]
 fn supervise(
     udid: &str,
-    params: StreamParams,
+    config: &Arc<StreamConfig>,
     latest: &Arc<Mutex<Option<Frame>>>,
     encoded: &Arc<EncodedQueue>,
     stopped: &Arc<AtomicBool>,
     dead: &Arc<AtomicBool>,
     worker_pid: &Arc<AtomicU32>,
+    stdin: &Arc<Mutex<Option<ChildStdin>>>,
 ) {
     let mut fast_crashes = 0u32;
     while !stopped.load(Ordering::Relaxed) {
         let started = Instant::now();
-        match spawn_worker(udid, params) {
+        // Read the current params for CLI args: a fresh (or respawned) worker starts with the latest
+        // config even if a reconfigure record was missed during the crash gap.
+        match spawn_worker(udid, config.params()) {
             Ok(mut child) => {
                 // Publish the pid before reading so a concurrent drop can kill a stuck worker; clear
                 // it only after `wait()` reaps it, keeping the pid unreusable while it is set.
                 worker_pid.store(child.id(), Ordering::Relaxed);
+                // Hand the worker's stdin to the reconfigure path so it can retune this worker live.
+                *stdin.lock().expect("capture stream stdin mutex poisoned") = child.stdin.take();
                 // A drop that set `stopped` between the spawn and the store above may have read pid 0
                 // and not killed us; kill the child ourselves so the pump/wait below can't block on
                 // a worker that never writes.
@@ -304,7 +455,10 @@ fn supervise(
                     // SAFETY: our own just-spawned, un-reaped child pid.
                     unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
                 }
-                pump_worker(&mut child, params.codec, latest, encoded, stopped);
+                pump_worker(&mut child, latest, encoded, stopped);
+                // Drop this dead worker's stdin before reaping so a concurrent reconfigure can't
+                // write to a stale pipe; the next spawn installs the new one.
+                *stdin.lock().expect("capture stream stdin mutex poisoned") = None;
                 let _ = child.wait();
                 worker_pid.store(0, Ordering::Relaxed);
             }
@@ -339,17 +493,20 @@ fn spawn_worker(udid: &str, params: StreamParams) -> io::Result<Child> {
         .arg(format!("{}", params.fps))
         .arg(format!("{}", params.scale))
         .arg(params.codec.cli_name())
-        .stdin(Stdio::null())
+        // Piped so `reconfigure` can push retune records to this worker; the worker reads them on a
+        // side thread and updates its live params without restarting.
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
 }
 
 /// Read `[u32 LE len][u8 flags][payload]` frames from the worker until EOF (worker exit/crash) or
-/// stop. JPEG payloads replace the latest slot; H.264 payloads append to the ordered queue.
+/// stop. Each frame self-describes its codec (flags bit 1), so a live codec switch routes correctly
+/// without the parent tracking it: JPEG payloads replace the latest slot, H.264 payloads append to
+/// the ordered queue (flags bit 0 = keyframe).
 fn pump_worker(
     child: &mut Child,
-    codec: StreamCodec,
     latest: &Arc<Mutex<Option<Frame>>>,
     encoded: &Arc<EncodedQueue>,
     stopped: &Arc<AtomicBool>,
@@ -373,11 +530,10 @@ fn pump_worker(
         }
         let flags = frame[0];
         frame.drain(..1);
-        match codec {
-            StreamCodec::Jpeg => {
-                *latest.lock().expect("capture stream mutex poisoned") = Some(Arc::new(frame));
-            }
-            StreamCodec::H264 => encoded.push(frame, flags & 1 != 0),
+        if flags & FRAME_FLAG_H264 != 0 {
+            encoded.push(frame, flags & FRAME_FLAG_KEY != 0);
+        } else {
+            *latest.lock().expect("capture stream mutex poisoned") = Some(Arc::new(frame));
         }
     }
 }
@@ -422,28 +578,63 @@ pub fn run_worker() -> ! {
         std::process::exit(3);
     };
 
-    let mut clock = FrameClock::new(fps);
-    let mut stdout = io::stdout().lock();
-    match codec {
-        StreamCodec::Jpeg => loop {
-            if let Some(jpeg) = screen.capture_jpeg(quality, scale)
-                && !write_worker_frame(&mut stdout, 1, &jpeg)
-            {
-                break; // parent closed the pipe
+    // Live params start from the CLI args, then track reconfigure records the parent writes to
+    // stdin. A side thread applies them so the capture loop never blocks on the pipe; on EOF (parent
+    // gone) it just exits and the loop keeps the last params until the process is torn down.
+    let config = Arc::new(StreamConfig::new(StreamParams {
+        fps,
+        quality,
+        scale,
+        codec,
+    }));
+    thread::spawn({
+        let config = Arc::clone(&config);
+        move || {
+            let mut stdin = io::stdin().lock();
+            let mut record = [0u8; RECONFIG_RECORD_LEN];
+            while stdin.read_exact(&mut record).is_ok() {
+                config.set(StreamParams::from_record(&record));
             }
-            clock.tick();
-        },
-        StreamCodec::H264 => {
-            // Lazy per-dimension encoder: a rotation changes the surface size mid-stream.
-            let mut encoder: Option<(VtEncoder, usize, usize)> = None;
-            'stream: loop {
+        }
+    });
+
+    let mut clock = FrameClock::new(config.fps());
+    let mut last_fps = config.fps();
+    let mut stdout = io::stdout().lock();
+    // Lazy per-dimension H.264 encoder: a rotation changes the surface size mid-stream, and a switch
+    // to JPEG drops it (freeing the VideoToolbox session) — switching back rebuilds it, which also
+    // yields a fresh keyframe for the decoder to resync on.
+    let mut encoder: Option<(VtEncoder, usize, usize)> = None;
+    'run: loop {
+        let params = config.params();
+        if params.fps != last_fps {
+            // Re-pace only; the VT session's ExpectedFrameRate is advisory, so leave the encoder be
+            // (rebuilding it would drop a keyframe for a rate change that does not need one).
+            clock = FrameClock::new(params.fps);
+            last_fps = params.fps;
+        }
+        match params.codec {
+            StreamCodec::Jpeg => {
+                encoder = None;
+                if let Some(jpeg) = screen.capture_jpeg(params.quality, params.scale)
+                    && !write_worker_frame(&mut stdout, FRAME_FLAG_KEY, &jpeg)
+                {
+                    break 'run; // parent closed the pipe
+                }
+            }
+            StreamCodec::H264 => {
                 if let Some(surface) = screen.capture_surface() {
-                    let (width, height) = (surface.width(), surface.height());
+                    // `scale` is honored by sizing the session, not by touching the surface: the
+                    // encoder's dimensions are its *output*, and VideoToolbox scales the incoming
+                    // frame into them, so the zero-copy IOSurface path is preserved.
+                    let (width, height) =
+                        encoded_size(surface.width(), surface.height(), params.scale);
                     if encoder
                         .as_ref()
                         .is_none_or(|(_, w, h)| *w != width || *h != height)
                     {
-                        encoder = VtEncoder::new(width, height, fps).map(|e| (e, width, height));
+                        encoder =
+                            VtEncoder::new(width, height, params.fps).map(|e| (e, width, height));
                         if encoder.is_none() {
                             eprintln!("sim capture-worker: VideoToolbox session failed");
                             std::process::exit(4);
@@ -451,17 +642,28 @@ pub fn run_worker() -> ! {
                     }
                     if let Some((vt, _, _)) = encoder.as_mut() {
                         for unit in vt.encode(&surface) {
-                            if !write_worker_frame(&mut stdout, u8::from(unit.key), &unit.data) {
-                                break 'stream; // parent closed the pipe
+                            let flags = FRAME_FLAG_H264 | if unit.key { FRAME_FLAG_KEY } else { 0 };
+                            if !write_worker_frame(&mut stdout, flags, &unit.data) {
+                                break 'run; // parent closed the pipe
                             }
                         }
                     }
                 }
-                clock.tick();
             }
         }
+        clock.tick();
     }
     std::process::exit(0);
+}
+
+/// The H.264 session size for a `scale` factor. Sides are rounded down to even numbers because
+/// 4:2:0 chroma subsampling halves both axes; native size (`scale >= 1`) passes through untouched.
+fn encoded_size(width: usize, height: usize, scale: f64) -> (usize, usize) {
+    if scale >= 1.0 {
+        return (width, height);
+    }
+    let scaled = |side: usize| ((side as f64 * scale).round() as usize).max(2) & !1;
+    (scaled(width), scaled(height))
 }
 
 /// Write one `[u32 LE len][u8 flags][payload]` worker frame; false once the parent is gone.
@@ -475,4 +677,60 @@ fn write_worker_frame(stdout: &mut impl Write, flags: u8, payload: &[u8]) -> boo
         && stdout.write_all(&[flags]).is_ok()
         && stdout.write_all(payload).is_ok()
         && stdout.flush().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconfigure_record_roundtrips() {
+        let params = StreamParams {
+            fps: 30,
+            quality: 0.42,
+            scale: 0.5,
+            codec: StreamCodec::H264,
+        };
+        let decoded = StreamParams::from_record(&params.to_record());
+        assert_eq!(decoded.fps, 30);
+        assert_eq!(decoded.quality, 0.42);
+        assert_eq!(decoded.scale, 0.5);
+        assert_eq!(decoded.codec, StreamCodec::H264);
+    }
+
+    #[test]
+    fn encoded_size_scales_to_even_sides() {
+        // Native passes through untouched, even when a side is odd.
+        assert_eq!(encoded_size(1206, 2622, 1.0), (1206, 2622));
+        assert_eq!(encoded_size(1207, 2622, 1.0), (1207, 2622));
+        // Scaled sides round to even (603 → 602) so 4:2:0 chroma stays whole.
+        assert_eq!(encoded_size(1206, 2622, 0.5), (602, 1310));
+        assert_eq!(encoded_size(1206, 2622, 0.25), (302, 656));
+        // A tiny scale never collapses a side below the 2px minimum.
+        assert_eq!(encoded_size(10, 10, 0.1), (2, 2));
+    }
+
+    #[test]
+    fn config_applies_reconfigured_params() {
+        let config = StreamConfig::new(StreamParams {
+            fps: 60,
+            quality: 0.6,
+            scale: 1.0,
+            codec: StreamCodec::Jpeg,
+        });
+        assert_eq!(config.fps(), 60);
+        assert_eq!(config.codec(), StreamCodec::Jpeg);
+
+        config.set(StreamParams {
+            fps: 15,
+            quality: 0.3,
+            scale: 0.25,
+            codec: StreamCodec::H264,
+        });
+        assert_eq!(config.fps(), 15);
+        assert_eq!(config.codec(), StreamCodec::H264);
+        let params = config.params();
+        assert_eq!(params.quality, 0.3);
+        assert_eq!(params.scale, 0.25);
+    }
 }
