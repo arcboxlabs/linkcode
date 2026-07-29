@@ -104,14 +104,18 @@
   }
 
   /* Apple-style continuous corners (UICornerCurve model): only faces with radius ≥ 12px
-     (xl/2xl/3xl and their coss-ui-derived inner faces / inset rings) go squircle; smaller
-     controls and pills stay circular. Class-substring opt-in — vendored coss-ui can't carry
-     the property itself. Substring matching ignores variant conditions: a variant-gated
-     xl class applies squircle even while inactive, which is inert without a radius and
-     imperceptible below the 12px threshold (the only such live face is the 10px popover).
-     clip-path `inset(… round …)` corners (command palette, grouped cards) do not follow
-     corner-shape and keep a circular curve. */
-  @supports (corner-shape: squircle) {
+     (xl/2xl/3xl and their coss-ui-derived inner faces / inset rings) get the continuous
+     curve; smaller controls and pills stay circular. superellipse(1.1), not the squircle
+     keyword: iOS's continuous corner (figma smoothing 0.6) is shape-wise almost a circle —
+     squircle (= superellipse(2)) halves the apex cut-in, reading as a much smaller radius.
+     1.1 keeps ~94% of the perceived radius with a hint of the smoothed transition.
+     Class-substring opt-in — vendored coss-ui can't carry the property itself. Substring
+     matching ignores variant conditions: a variant-gated xl class applies the curve even
+     while inactive, which is inert without a radius and imperceptible below the 12px
+     threshold (the only such live face is the 10px popover). clip-path `inset(… round …)`
+     corners (command palette, grouped cards) do not follow corner-shape and keep a
+     circular curve. */
+  @supports (corner-shape: superellipse(1.1)) {
     :where(
         [class*="rounded-xl"],
         [class*="rounded-2xl"],
@@ -132,14 +136,14 @@
         [class*="rounded-t-xl"],
         [class*="rounded-t-2xl"]
       )::before {
-      corner-shape: squircle;
+      corner-shape: superellipse(1.1);
     }
 
     /* Card-variant tables round their corner cells through logical-corner utilities
        (`…:rounded-ss-xl` etc.) generated on the table body's class list, so the cells
        themselves carry no matchable class — bind the curve to them via the carrier. */
     :where([class*="rounded-ss-xl"]) td {
-      corner-shape: squircle;
+      corner-shape: superellipse(1.1);
     }
   }
 }
