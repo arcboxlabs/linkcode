@@ -35,6 +35,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
@@ -203,9 +204,27 @@ export class ControlChannel {
   }
 
   /** Fire-and-forget: announce this client now observes the session, so the daemon re-broadcasts
-   * the buffered per-session state a late attacher missed (the approval-policy advertisement). */
+   * the buffered per-session state a late attacher missed (the approval-policy advertisement).
+   * Also what `attached` delivery scopes to — see {@link setSubscriptionMode}. */
   attachSession(sessionId: SessionId): void {
     this.transport.send(createWireMessage({ kind: 'session.attach', sessionId }));
+  }
+
+  /** Fire-and-forget: stop observing the session. Under `attached` scope its `agent.event`s stop
+   * arriving, so a client that may reopen the session needs a seed read to catch up. */
+  detachSession(sessionId: SessionId): void {
+    this.transport.send(createWireMessage({ kind: 'session.detach', sessionId }));
+  }
+
+  /** Scope this connection's `agent.event` delivery. Answered by the Hub, not the Engine, and
+   * scoped to this connection only. `attached` is for clients paying per byte — every session the
+   * caller still wants must already be, or later be, announced via {@link attachSession}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'subscription.set',
+      clientReqId,
+      mode,
+    }));
   }
 
   /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */

@@ -1,60 +1,17 @@
 // @vitest-environment jsdom
-import { LinkCodeClient, LinkCodeProvider } from '@linkcode/client-core';
-import type { SessionId, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
-import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import type { SessionId } from '@linkcode/schema';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { useSessionActions } from '../use-session-actions';
-
-/** Drives a real `LinkCodeClient` so the assertions are on wire payloads, not on a faked client. */
-class ControlledTransport implements Transport {
-  readonly sent: WirePayload[] = [];
-  private readonly messages = new Set<(message: ValidatedWireMessage) => void>();
-  private readonly closes = new Set<() => void>();
-
-  connect(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  send(message: ValidatedWireMessage): void {
-    this.sent.push(message.payload);
-  }
-
-  onMessage(cb: (message: ValidatedWireMessage) => void): Unsubscribe {
-    this.messages.add(cb);
-    return () => this.messages.delete(cb);
-  }
-
-  onClose(cb: () => void): Unsubscribe {
-    this.closes.add(cb);
-    return () => this.closes.delete(cb);
-  }
-
-  close(): void {
-    for (const cb of this.closes) cb();
-  }
-
-  receive(payload: WirePayload): void {
-    const message = createWireMessage(payload);
-    for (const cb of this.messages) cb(message);
-  }
-}
+import { clientWrapper, connectClient } from './client-test-helpers';
 
 const SESSION = 'session-1' as SessionId;
 
 /** Connected client + the provider wrapper the hook reads its client from. */
 async function mountActions(sessionId: SessionId | null, status: 'idle' | 'running' | 'stopped') {
-  const transport = new ControlledTransport();
-  const client = new LinkCodeClient(transport);
-  const connecting = client.connect();
-  await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-  transport.receive({ kind: 'pong' });
-  await connecting;
-  transport.sent.length = 0;
-
+  const { transport, client } = await connectClient();
   const view = renderHook(() => useSessionActions(sessionId, status), {
-    wrapper: ({ children }) => <LinkCodeProvider client={client}>{children}</LinkCodeProvider>,
+    wrapper: clientWrapper(client),
   });
   return { transport, client, view };
 }

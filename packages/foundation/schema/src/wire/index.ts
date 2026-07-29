@@ -12,3 +12,7 @@ export {
   WireMessageSchema,
 } from './message';
 export { type WirePayload, WirePayloadSchema } from './payload';
+export {
+  type SessionSubscriptionMode,
+  SessionSubscriptionModeSchema,
+} from './session';

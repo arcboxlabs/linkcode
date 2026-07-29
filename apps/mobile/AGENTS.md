@@ -23,9 +23,11 @@ other client.
   to the **hoisted** pair so both agree — safe because the pin exists for Metro's bundle and vitest
   never builds it. Consequence: **only RN-free modules belong here.** A test that reaches a `react-native`
   or `expo-*` import needs a different harness, not a wider alias. `renderHook` needs a DOM, so such
-  tests carry `// @vitest-environment jsdom` (`src/runtime/__tests__/use-session-actions.test.tsx`).
+  tests carry `// @vitest-environment jsdom` (`src/runtime/__tests__/use-session-actions.test.ts`).
   Prefer driving a real `LinkCodeClient` over a fake one: a controlled `Transport` lets the assertions
   land on wire payloads, which is where silent breakage actually lives (root `AGENTS.md`, Invariant 1).
+  `__tests__/client-test-helpers.tsx` supplies that transport plus a connected client, so a test
+  never re-answers the handshake by hand.
 - **Terminal canvas:** `runtime/use-terminal-session.ts` owns `LinkCodeClient`, attachment/controller
   state, and all network I/O; the route only renders and navigates. Rendering is the native ghostty
   surface from

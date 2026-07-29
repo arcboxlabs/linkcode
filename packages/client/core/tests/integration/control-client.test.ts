@@ -132,6 +132,58 @@ describe('LinkCodeClient control API', () => {
   });
 });
 
+describe('LinkCodeClient event delivery scope', () => {
+  it('negotiates the subscription mode and announces which sessions it observes', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient({
+      randomUUID: () => 'scope',
+    });
+    const seen: WirePayload[] = [];
+
+    serverTransport.onMessage((msg) => {
+      seen.push(msg.payload);
+      if (msg.payload.kind !== 'subscription.set') return;
+      serverTransport.send(
+        createWireMessage({ kind: 'request.succeeded', replyTo: msg.payload.clientReqId }),
+      );
+    });
+
+    await expect(client.setSubscriptionMode('attached')).resolves.toEqual({ ok: true });
+    expect(seen).toContainEqual({
+      kind: 'subscription.set',
+      clientReqId: 'creq-scope',
+      mode: 'attached',
+    });
+
+    // Fire-and-forget, so the assertion is on the frame rather than on a reply.
+    client.attachSession(sessionId);
+    client.detachSession(sessionId);
+    await wait(10);
+    expect(seen).toContainEqual({ kind: 'session.attach', sessionId });
+    expect(seen).toContainEqual({ kind: 'session.detach', sessionId });
+
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('drops announcements once the connection is gone', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const seen: WirePayload[] = [];
+    serverTransport.onMessage((msg) => seen.push(msg.payload));
+
+    // A surface unmounts only after `ConnectionController` has disposed the generation, so its
+    // teardown detach arrives on a dead client. The Hub has already discarded the connection's
+    // whole subscription, and every socket transport throws on send with no socket open.
+    client.dispose();
+
+    expect(() => client.detachSession(sessionId)).not.toThrow();
+    expect(() => client.attachSession(sessionId)).not.toThrow();
+    await wait(10);
+    expect(seen).toEqual([]);
+
+    serverTransport.close();
+  });
+});
+
 describe('LinkCodeClient session notifications', () => {
   it('fans session.notification broadcasts out to subscribers until unsubscribed', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();

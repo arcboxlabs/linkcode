@@ -23,7 +23,7 @@ export default function SessionScreen(): React.ReactNode {
   const { sessions } = useSessions();
 
   const session = sessions.find((entry) => entry.sessionId === sessionId);
-  const conversation = useSeededConversation(parsed.success ? (session ?? null) : null);
+  const conversation = useSeededConversation(parsed.success ? parsed.data : null, session ?? null);
   const { send, stop, isRunning, canCompose, failure } = useSessionActions(
     parsed.success ? parsed.data : null,
     conversation.status,

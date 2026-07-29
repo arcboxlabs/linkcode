@@ -14,14 +14,28 @@ const MAX_SEED_PAGES = 20;
  * `history.read` (same read walk as workbench's useSeededConversation, without the SWR cache).
  * A failed read degrades to live-only; the seed is keyed by session so it never bleeds across.
  */
-export function useSeededConversation(session: SessionInfo | null): Conversation {
+export function useSeededConversation(
+  sessionId: SessionId | null,
+  session: SessionInfo | null,
+): Conversation {
   const client = useLinkCodeClient();
   const [seeded, setSeeded] = useState<{ for: SessionId; seed: ConversationSeed } | null>(null);
 
   const agentKind = session?.kind;
   const cwd = session?.cwd;
   const historyId = session?.historyId;
-  const sessionId = session?.sessionId ?? null;
+
+  // Announce on the route's id, not on the resolved `SessionInfo`: the session list arrives a
+  // round-trip later, and under `attached` delivery everything emitted in that window is dropped.
+  // The attach replay would not recover it — it carries control state only, and an in-flight
+  // reply's chunks are not in `history.read` yet either, so the turn would render truncated.
+  // Announcing before the seed read is also what keeps a re-broadcast ask: it lands inside the
+  // seed's `uptoSeq` cut, which only drops what the transcript verifiably covers (CODE-35).
+  useEffect(() => {
+    if (!sessionId) return;
+    client.attachSession(sessionId);
+    return () => client.detachSession(sessionId);
+  }, [client, sessionId]);
 
   useEffect(
     (signal) => {
