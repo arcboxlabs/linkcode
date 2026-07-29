@@ -332,6 +332,12 @@ Clean a polluted machine (also after the `LinkCode Dev` → `LinkCode Developmen
 security delete-generic-password -s "LinkCode Safe Storage"
 security delete-generic-password -s "LinkCode Dev Safe Storage"   # pre-rename leftover
 rm -rf "$HOME/Library/Application Support/LinkCode Dev"           # pre-rename leftover
+# The daemon's own secret-vault master key (CODE-371) — a separate service per channel × profile.
+# Deleting it makes that universe's secrets.json undecryptable: the daemon reads as signed out and
+# its stored provider/account credentials are gone for good, so delete the file with it.
+security delete-generic-password -s "LinkCode" -a secret-vault-key
+security delete-generic-password -s "LinkCode Development" -a secret-vault-key
+rm -f "$HOME/.linkcode/secrets.json" "$HOME/.linkcode.development/secrets.json"
 ```
 
 ### What each channel owns on disk
@@ -340,9 +346,12 @@ Names come from `packages/foundation/schema/src/product.ts` — the one file a f
 
 | | release | development |
 | --- | --- | --- |
-| daemon state (`config.json`, `daemon.db`, `runtime.json`, `cloud.json`, `secrets.json`, `device-key.pem`) | `~/.linkcode` | `~/.linkcode.development` |
+| daemon state (`config.json`, `daemon.db`, `runtime.json`, `cloud.json`, `secrets.json`, `keys/`) | `~/.linkcode` | `~/.linkcode.development` |
 | workspaces + daemon chat root | `~/LinkCode` | `~/LinkCode Development` |
 | managed asset store | `…/Application Support/LinkCode/assets` | `…/Application Support/LinkCode Development/assets` |
+| daemon secret-vault master key (OS keyring service) | `LinkCode` | `LinkCode Development` |
+
+The daemon holds no credential in those files: `secrets.json` is AES-256-GCM ciphertext under the master key above, and `config.json` / `cloud.json` keep structure only (CODE-371 — full custody, migration, and reset semantics in [`apps/daemon/AGENTS.md`](../apps/daemon/AGENTS.md)). Two consequences bite in development: a fake `$HOME` has no macOS login keychain, so an isolated daemon always logs the plaintext-fallback warning and writes `protection: "plaintext"`; and copying a state dir between machines or users carries no secrets, only the shape of them.
 
 A profile appends `-<name>` to the **state** directory only (`~/.linkcode.development-alpha`); workspaces and the asset store fork by channel alone. The development suffix is dot-separated on purpose: profile names forbid dots, so `--profile=development` can never reach the development channel's directory.
 
