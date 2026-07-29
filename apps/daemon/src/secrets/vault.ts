@@ -6,7 +6,7 @@ import { logger } from '../logger';
 
 /**
  * Where the daemon's long-lived secrets — HQ session token, provider/account credentials, the
- * software device key — actually live. They are kept out of `config.json` / `hq.json` entirely and
+ * software device key — actually live. They are kept out of `config.json` / `cloud.json` entirely and
  * addressed by a stable ref (`account:<id>`, `hq:session`, …), so those files hold structure only.
  *
  * Custody is a master key in the OS keyring plus AES-256-GCM ciphertext in `secrets.json` — one

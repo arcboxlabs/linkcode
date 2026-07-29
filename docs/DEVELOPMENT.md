@@ -340,7 +340,7 @@ Names come from `packages/foundation/schema/src/product.ts` — the one file a f
 
 | | release | development |
 | --- | --- | --- |
-| daemon state (`config.json`, `daemon.db`, `runtime.json`, `hq.json`, `device-key.pem`) | `~/.linkcode` | `~/.linkcode.development` |
+| daemon state (`config.json`, `daemon.db`, `runtime.json`, `cloud.json`, `secrets.json`, `device-key.pem`) | `~/.linkcode` | `~/.linkcode.development` |
 | workspaces + daemon chat root | `~/LinkCode` | `~/LinkCode Development` |
 | managed asset store | `…/Application Support/LinkCode/assets` | `…/Application Support/LinkCode Development/assets` |
 

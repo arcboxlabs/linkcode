@@ -9,7 +9,7 @@ import {
   requestDeviceCode,
   signOut,
 } from './api';
-import { clearHqCredentials, loadHqCredentials, saveHqCredentials } from './credentials';
+import { clearCloudCredentials, loadCloudCredentials, saveCloudCredentials } from './credentials';
 import { ensureDeviceKey } from './device-key';
 
 const log = (message: string): void => console.log(`[linkcode/daemon] ${message}`);
@@ -59,13 +59,13 @@ export async function runLoginCommand(): Promise<void> {
     keyProtection: key.protection,
   });
   log(`signed in to ${baseUrl}; device ${deviceId} (${key.protection} key)`);
-  saveHqCredentials({ baseUrl, sessionToken, deviceId });
+  saveCloudCredentials({ baseUrl, sessionToken, deviceId });
   log('restart the daemon to bring the remote-access uplink online');
 }
 
 /** `linkcode-daemon logout` — revoke the HQ session and clear local state. */
 export async function runLogoutCommand(): Promise<void> {
-  const credentials = loadHqCredentials();
+  const credentials = loadCloudCredentials();
   if (!credentials) {
     log('not signed in');
     return;
@@ -77,6 +77,6 @@ export async function runLogoutCommand(): Promise<void> {
     // expires on its own schedule.
     log(`sign-out request failed (${extractErrorMessage(err)}); clearing local credentials anyway`);
   }
-  clearHqCredentials();
+  clearCloudCredentials();
   log('signed out');
 }

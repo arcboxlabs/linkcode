@@ -4,7 +4,7 @@ import type { Hub } from '@linkcode/transport/server';
 import { noop } from 'foxts/noop';
 import { logger } from '../logger';
 import { fetchTunnelToken } from './api';
-import { loadHqCredentials } from './credentials';
+import { loadCloudCredentials } from './credentials';
 import { ensureDeviceKey } from './device-key';
 
 /** How long to wait before redialing when HQ is unreachable at boot. */
@@ -18,7 +18,7 @@ const CONNECT_RETRY_MS = 30000;
  * uplink for good; sign in again and restart to recover. Returns a stop function for shutdown.
  */
 export function startHqUplink(hub: Hub): () => void {
-  const credentials = loadHqCredentials();
+  const credentials = loadCloudCredentials();
   if (!credentials) {
     logger.info({ operation: 'uplink.connect' }, 'Cloud uplink disabled');
     return noop;
