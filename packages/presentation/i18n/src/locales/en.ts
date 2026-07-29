@@ -1109,6 +1109,10 @@ export const en = {
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
+      appearance: 'Appearance',
+      appearanceSystem: 'System',
+      appearanceLight: 'Light',
+      appearanceDark: 'Dark',
       privacy: 'Privacy',
       analytics: 'Share usage analytics',
       analyticsHint:

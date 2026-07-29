@@ -8,7 +8,6 @@ import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import * as Sentry from '@sentry/react-native';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useNavigationContainerRef } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { useSingleton } from 'foxact/use-singleton';
 import { useEffect, useMemo } from 'react';
@@ -21,6 +20,7 @@ import {
 } from '../components/app-providers';
 import { RootNavigator } from '../components/navigation';
 import { MobileProductAnalyticsProvider } from '../components/product-analytics-provider';
+import { ThemeController } from '../components/theme-controller';
 import '../global.css';
 
 // The DSN is a publishable identifier (not a secret); Expo inlines EXPO_PUBLIC_* env vars at build time.
@@ -77,7 +77,7 @@ function RootLayout() {
           <MobileProductAnalyticsProvider key="product-analytics" />,
         ]}
       >
-        <StatusBar style="auto" />
+        <ThemeController />
         <RootNavigator />
       </ComposeContextProvider>
     </GestureHandlerRootView>
