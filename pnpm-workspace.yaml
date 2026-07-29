@@ -81,7 +81,7 @@ catalog:
   "@tailwindcss/vite": ^4.3.2
 
   # Desktop / Electron
-  electron: ^42.4.1
+  electron: ^43.2.0
   electron-builder: ^26.15.3
 
   # Server / communication
@@ -118,7 +118,6 @@ minimumReleaseAgeExclude:
   - "expo-apple-authentication@57.0.1"
   - "expo-crypto@57.0.1"
   - "@earendil-works/pi-tui@0.80.6"
-  - electron@42.4.1
   - react-router@7.18.0
   - "@shikijs/core@4.3.0"
   - "@shikijs/engine-javascript@4.3.0"
