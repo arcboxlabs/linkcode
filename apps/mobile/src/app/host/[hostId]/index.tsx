@@ -30,6 +30,8 @@ import { captureMobileProductEvent } from '../../../runtime/product-analytics';
 import { useWorkspaces } from '../../../runtime/use-workspaces';
 import { useHostRegistryStore } from '../../../stores/host-store';
 
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+
 /** The title a thread is listed and searched under — the same fallback the row renders. */
 function threadTitle(session: SessionInfo): string {
   return session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
@@ -141,13 +143,20 @@ export default function ThreadsScreen(): React.ReactNode {
             </Section>
           </Form>
         ) : groups.length === 0 ? (
+          // A query that matched nothing is not an empty inbox: saying "no threads yet" there
+          // reads as though the existing threads were lost, and offering to start one is no
+          // remedy for a bad search.
           <Form>
-            <Section footer={<UIText>{t('emptyHint')}</UIText>}>
-              <UIText modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>
-                {t('emptyTitle')}
-              </UIText>
-              <UIButton label={t('newThread')} onPress={() => setSheetOpen(true)} />
-            </Section>
+            {needle === '' ? (
+              <Section footer={<UIText>{t('emptyHint')}</UIText>}>
+                <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
+                <UIButton label={t('newThread')} onPress={() => setSheetOpen(true)} />
+              </Section>
+            ) : (
+              <Section>
+                <UIText modifiers={[SECONDARY]}>{t('searchEmpty')}</UIText>
+              </Section>
+            )}
           </Form>
         ) : (
           <ThreadList
