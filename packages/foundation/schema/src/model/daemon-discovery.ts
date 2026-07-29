@@ -15,6 +15,7 @@ export {
   daemonBasePort,
   daemonDefaultUrl,
   daemonRuntimeFileSegments,
+  keyringServiceName,
   linkcodeStateDirName,
   PROFILE_NAME_PATTERN,
   type ProductChannel,

@@ -84,6 +84,27 @@ const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3
   '/',
   sep,
 );
+/**
+ * napi-rs platform-package triple for the target this artifact was packed for. napi-rs ships one
+ * optional dependency per triple and installs only the host's, so a cross-packed build carries no
+ * binding at all — see {@link keyringBinding}.
+ */
+const NAPI_TRIPLE: Partial<Record<string, (arch: string) => string>> = {
+  mac: (arch) => `darwin-${arch}`,
+  win: (arch) => `win32-${arch}-msvc`,
+  linux: (arch) => `linux-${arch}-gnu`,
+};
+/**
+ * `@napi-rs/keyring`'s binding, which the daemon's secret vault needs to reach the OS keyring
+ * (CODE-371). Unlike a missing SQLite binding this fails *quietly*: the daemon logs the packaging
+ * defect and stores every credential — HQ session token, provider keys, the software device key —
+ * as plaintext instead. Nothing downstream breaks, so only this gate catches it.
+ */
+function keyringBinding(platform: string, arch: string): string | null {
+  const triple = NAPI_TRIPLE[platform]?.(arch);
+  if (triple === undefined) return null;
+  return `node_modules/@napi-rs/keyring-${triple}/keyring.${triple}.node`.replaceAll('/', sep);
+}
 /** Paths inside app.asar that the daemon supervisor and its migrator depend on at runtime. */
 const ASAR_HOST_RUNTIME = ['out/daemon/index.mjs', 'out/drizzle/meta/_journal.json'];
 /**
@@ -156,24 +177,30 @@ function readBinaryArch(file: string): 'x64' | 'arm64' | null {
 }
 
 /**
- * Existence guards the collector dropping the SQLite binding; the arch match guards a wrong-target
- * @electron/rebuild. (Right-arch/wrong-ABI — Node vs Electron — is header-invisible; the boot E2E
- * covers that.)
+ * Existence guards the collector dropping a binding; the arch match guards a wrong-target
+ * @electron/rebuild or a cross-packed napi-rs optional dependency. (Right-arch/wrong-ABI — Node vs
+ * Electron — is header-invisible; the boot E2E covers that.)
  */
-function verifyNativeBinding(resourceDir: string, problems: string[]): void {
+function verifyNativeBindings(platform: string, resourceDir: string, problems: string[]): void {
   const expectedArch = resourceDir.includes('arm64') ? 'arm64' : 'x64';
-  const binding = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', NATIVE_BINDING);
-  if (!existsSync(binding)) {
-    problems.push(`${resourceDir}: missing native binding ${NATIVE_BINDING} (better-sqlite3)`);
-    return;
-  }
-  const arch = readBinaryArch(binding);
-  if (arch === null) {
-    problems.push(`${resourceDir}: unrecognized native binding header for ${NATIVE_BINDING}`);
-  } else if (arch !== expectedArch) {
-    problems.push(
-      `${resourceDir}: native binding is ${arch}, expected ${expectedArch} — @electron/rebuild did not rebuild for the target arch`,
-    );
+  const keyring = keyringBinding(platform, expectedArch);
+  const bindings: [label: string, path: string][] = [['better-sqlite3', NATIVE_BINDING]];
+  if (keyring !== null) bindings.push(['@napi-rs/keyring', keyring]);
+
+  for (const [label, relative] of bindings) {
+    const binding = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', relative);
+    if (!existsSync(binding)) {
+      problems.push(`${resourceDir}: missing native binding ${relative} (${label})`);
+      continue;
+    }
+    const arch = readBinaryArch(binding);
+    if (arch === null) {
+      problems.push(`${resourceDir}: unrecognized native binding header for ${relative}`);
+    } else if (arch !== expectedArch) {
+      problems.push(
+        `${resourceDir}: ${label} binding is ${arch}, expected ${expectedArch} — packed for the wrong target arch`,
+      );
+    }
   }
 }
 
@@ -338,7 +365,7 @@ async function main(): Promise<number> {
   );
   for (const resourceDir of expected.resourceDirs) {
     verifyHostRuntime(resourceDir, problems);
-    verifyNativeBinding(resourceDir, problems);
+    verifyNativeBindings(platform, resourceDir, problems);
   }
 
   if (problems.length > 0) {
