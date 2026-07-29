@@ -142,9 +142,13 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }
 
   function select(id: SessionId): void {
-    recordNavigation(currentLocation, { surface: 'thread', sessionId: id });
-    // Matched geometry: the clicked row's title travels to the conversation header.
-    applySessionSwitchTransition(id, () => applySelection(id));
+    // Matched geometry: the clicked row's title travels to the conversation header. The history
+    // record rides inside the applied callback so a switch superseded before it commits (two
+    // selections within one frame) records nothing — last-wins for state and history alike.
+    applySessionSwitchTransition(id, () => {
+      recordNavigation(currentLocation, { surface: 'thread', sessionId: id });
+      applySelection(id);
+    });
   }
 
   function startDraft(workspaceId?: WorkspaceId): void {

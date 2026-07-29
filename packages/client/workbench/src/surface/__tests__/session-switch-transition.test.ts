@@ -82,6 +82,55 @@ describe('applySessionSwitchTransition', () => {
     expect(header.style.getPropertyValue('view-transition-name')).toBe('');
   });
 
+  it('abandons a superseded switch wholesale on a same-frame double fire', async () => {
+    const { row: rowA, header } = mountPair();
+    const rowB = document.createElement('span');
+    rowB.dataset.threadTitle = 'session-2';
+    document.body.append(rowB);
+
+    // Defer callbacks like the real API (they run at the next rendering opportunity).
+    const queued: (() => void)[] = [];
+    installVt((update) => {
+      queued.push(update);
+      return { finished: Promise.resolve() };
+    });
+
+    const applyA = vi.fn();
+    const applyB = vi.fn();
+    applySessionSwitchTransition(SESSION, applyA);
+    applySessionSwitchTransition('session-2' as SessionId, applyB);
+    // Entering B strips A's source name so B's old snapshot has a single named element.
+    expect(rowA.style.getPropertyValue('view-transition-name')).toBe('');
+    expect(rowB.style.getPropertyValue('view-transition-name')).toBe('thread-title');
+
+    for (const update of queued) update();
+    expect(applyA).not.toHaveBeenCalled();
+    expect(applyB).toHaveBeenCalledOnce();
+    expect(header.style.getPropertyValue('view-transition-name')).toBe('thread-title');
+
+    await wait(0);
+    expect(header.style.getPropertyValue('view-transition-name')).toBe('');
+  });
+
+  it('lets a plain fallback supersede a pending transition', () => {
+    mountPair();
+    const queued: (() => void)[] = [];
+    installVt((update) => {
+      queued.push(update);
+      return { finished: Promise.resolve() };
+    });
+    const applyA = vi.fn();
+    applySessionSwitchTransition(SESSION, applyA);
+
+    prefs.reduceMotion = true;
+    const applyB = vi.fn();
+    applySessionSwitchTransition('session-2' as SessionId, applyB);
+    expect(applyB).toHaveBeenCalledOnce();
+
+    for (const update of queued) update();
+    expect(applyA).not.toHaveBeenCalled();
+  });
+
   it('clears a stale header name even when the transition is interrupted', async () => {
     const { header } = mountPair();
     installVt((update) => {
