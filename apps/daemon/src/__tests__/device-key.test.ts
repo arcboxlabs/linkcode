@@ -25,7 +25,7 @@ vi.mock('../secrets', () => ({
 }));
 
 import { legacyDeviceKeyPath } from '../config';
-import { ensureSoftwareDeviceKey } from '../hq/device-key';
+import { adoptLegacyDeviceKeyFile, ensureSoftwareDeviceKey } from '../hq/device-key';
 import { logger } from '../logger';
 
 let savedHome: string | undefined;
@@ -45,12 +45,15 @@ afterEach(() => {
 });
 
 /** A `device-key.pem` as every daemon before CODE-371 wrote it: bare PKCS#8, 0600 at best. */
-function seedLegacyKeyFile(): string {
+function seedLegacyKeyFile(): { privatePem: string; publicKeyPem: string } {
   const { privateKey } = generateKeyPairSync('ed25519');
-  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   mkdirSync(join(process.env.HOME ?? '', '.linkcode'), { recursive: true });
-  writeFileSync(legacyDeviceKeyPath(), pem);
-  return createPublicKey(pem).export({ type: 'spki', format: 'pem' });
+  writeFileSync(legacyDeviceKeyPath(), privatePem);
+  return {
+    privatePem,
+    publicKeyPem: createPublicKey(privatePem).export({ type: 'spki', format: 'pem' }),
+  };
 }
 
 describe('software device key', () => {
@@ -77,16 +80,13 @@ describe('software device key', () => {
     expect(ensureSoftwareDeviceKey().publicKeyPem).toBe(first.publicKeyPem);
   });
 
-  it('adopts a legacy PEM without changing the device id, and takes it off disk', () => {
-    const publicKeyPem = seedLegacyKeyFile();
+  it('uses the stored key as-is, keeping the device id it was registered under', () => {
+    const { privatePem, publicKeyPem } = seedLegacyKeyFile();
+    vault.set('device:software-key', privatePem);
 
-    const device = ensureSoftwareDeviceKey();
-
-    // The device id is this key's fingerprint, so replacing the key would orphan the machine's HQ
-    // registration and its tunnel host id. Migration has to keep the very same key.
-    expect(device.publicKeyPem).toBe(publicKeyPem);
-    expect(existsSync(legacyDeviceKeyPath())).toBe(false);
-    expect(vault.get('device:software-key')).toContain('PRIVATE KEY');
+    // The device id is this key's fingerprint, so substituting a key would orphan the machine's HQ
+    // registration and its tunnel host id.
+    expect(ensureSoftwareDeviceKey().publicKeyPem).toBe(publicKeyPem);
   });
 
   it('mints a fresh identity when the vault lost the key', () => {
@@ -96,5 +96,35 @@ describe('software device key', () => {
     // The defined reset: the same vault loss also drops the session token, so the daemon is signed
     // out and the next sign-in registers this new key rather than half-using the old identity.
     expect(ensureSoftwareDeviceKey().publicKeyPem).not.toBe(first.publicKeyPem);
+  });
+});
+
+// Runs at boot, independent of custody: the hosts that most need the sweep — signed out, or since
+// moved to hardware custody — never reach the software fallback at all, and would otherwise keep a
+// registered device's private key in the clear forever.
+describe('legacy device-key.pem sweep', () => {
+  it('takes the bare PEM into the vault and off disk', () => {
+    const { privatePem } = seedLegacyKeyFile();
+
+    adoptLegacyDeviceKeyFile();
+
+    expect(existsSync(legacyDeviceKeyPath())).toBe(false);
+    expect(vault.get('device:software-key')).toBe(privatePem);
+  });
+
+  it('keeps a key the vault already holds rather than reverting to the file', () => {
+    seedLegacyKeyFile();
+    vault.set('device:software-key', 'current-key-pem');
+
+    adoptLegacyDeviceKeyFile();
+
+    expect(vault.get('device:software-key')).toBe('current-key-pem');
+    expect(existsSync(legacyDeviceKeyPath())).toBe(false);
+  });
+
+  it('does nothing when there is no legacy file', () => {
+    adoptLegacyDeviceKeyFile();
+
+    expect(vault.size).toBe(0);
   });
 });

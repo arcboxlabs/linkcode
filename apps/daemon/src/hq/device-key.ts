@@ -78,29 +78,38 @@ export function ensureSoftwareDeviceKey(): DeviceKey {
   };
 }
 
-/**
- * The stored software key, or `null` when this machine has none yet. A key left as a bare PEM by an
- * older daemon is adopted rather than replaced: the device id is the fingerprint of this key, so
- * regenerating would silently orphan the HQ registration and the tunnel host id with it.
- */
+/** The stored software key, or `null` when this machine has none yet. */
 function loadSoftwarePrivateKey(): string | null {
-  const stored = secretVault().get(DEVICE_SOFTWARE_KEY_REF);
-  if (stored !== null) return stored;
+  return secretVault().get(DEVICE_SOFTWARE_KEY_REF);
+}
 
+/**
+ * Take a key left as a bare PEM by an older daemon into the vault. Adopted rather than replaced: the
+ * device id is the fingerprint of this key, so minting a new one would silently orphan the HQ
+ * registration and the tunnel host id with it. A vault entry already present wins — it is the same
+ * key, or a newer one this machine has since moved to.
+ *
+ * Called at boot rather than from {@link ensureDeviceKey}, because the two hosts that most need the
+ * sweep never reach that function: one signed out (no uplink to start) and one that has since gained
+ * hardware custody (fallback never taken). Both would otherwise keep a registered device's private
+ * key in the clear indefinitely.
+ */
+export function adoptLegacyDeviceKeyFile(): void {
   const path = legacyDeviceKeyPath();
   let legacyPem: string;
   try {
     legacyPem = readFileSync(path, 'utf8');
   } catch {
-    return null;
+    return;
   }
+  if (secretVault().get(DEVICE_SOFTWARE_KEY_REF) === null) {
+    secretVault().set(DEVICE_SOFTWARE_KEY_REF, legacyPem);
+  }
+  rmSync(path, { force: true });
   logger.warn(
     { operation: 'device-key.migrate' },
-    'Moving the software device key off disk into the secret vault',
+    'Moved the software device key off disk into the secret vault',
   );
-  secretVault().set(DEVICE_SOFTWARE_KEY_REF, legacyPem);
-  rmSync(path, { force: true });
-  return legacyPem;
 }
 
 /**
