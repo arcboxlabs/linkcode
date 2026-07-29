@@ -44,6 +44,7 @@ import type {
   ToolCall,
   ToolCallContent,
   ToolCallLocation,
+  UnifiedDiffHunk,
   UsageRateLimitWindow,
   UsageReport,
 } from '@linkcode/schema';
@@ -53,6 +54,7 @@ import {
   isSupportedAttachmentImageMimeType,
   textBlock,
   UsageReportSchema,
+  unifiedPatchText,
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
@@ -396,6 +398,7 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   records: new Map(),
   droppedRows: [],
   toolUseResults: new Map(),
+  toolUsePatches: new Map(),
 };
 
 /**
@@ -540,7 +543,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         limit: limit + 1,
         offset,
       }),
-      readSubagentTranscripts(mod, opts.historyId),
+      readSubagentTranscripts(mod, opts.historyId, (agentId) =>
+        this.readSubagentPatches(opts.historyId, agentId),
+      ),
       // Every page needs the raw transcript: getSessionMessages strips each result row's
       // structured toolUseResult, so the mapper re-attaches envelopes from here. The compaction
       // splice below stays first-page-only (the swapped-in summary is the SDK chain's head row).
@@ -551,6 +556,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       historyId,
       supplement.records,
       supplement.toolUseResults,
+      supplement.toolUsePatches,
     );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript right after its spawn announce so children land inside the
@@ -594,6 +600,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Test seam over the raw transcript probe (see `readClaudeTranscriptSupplement`). */
   protected readTranscriptSupplement(sessionId: string): Promise<ClaudeTranscriptSupplement> {
     return readClaudeTranscriptSupplement(sessionId);
+  }
+
+  /** Test seam over the per-subagent transcript probe (see `readSubagentPatches`). */
+  protected readSubagentPatches(
+    sessionId: string,
+    agentId: string,
+  ): Promise<ReadonlyMap<string, ToolCallContent[]>> {
+    return readSubagentPatches(sessionId, agentId);
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -1244,8 +1258,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // tool_use_result is message-level; only an unambiguous single-result frame can claim it.
     const results = content.filter((block) => block.type === 'tool_result');
     const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
+    const patched = results.length === 1 ? editResultDiffContent(msg.tool_use_result) : undefined;
     for (const block of content) {
       if (block.type !== 'tool_result') continue;
+      // Replace (not append) so the patch-bearing diff supersedes the announce-time fragment
+      // instead of stacking a second card, and do it before the settle below: a completed tool is
+      // terminal, so any content emitted after it is silently dropped.
+      if (patched) this.emitTool({ toolCallId: block.tool_use_id, content: patched });
       for (const result of toolResultContent(block.content)) {
         this.appendToolContent(block.tool_use_id, result);
       }
@@ -1332,6 +1351,53 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
     return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
+}
+
+function isUnifiedDiffHunk(value: unknown): value is UnifiedDiffHunk {
+  return (
+    isRecord(value) &&
+    typeof value.oldStart === 'number' &&
+    typeof value.oldLines === 'number' &&
+    typeof value.newStart === 'number' &&
+    typeof value.newLines === 'number' &&
+    Array.isArray(value.lines) &&
+    value.lines.every((line) => typeof line === 'string')
+  );
+}
+
+/**
+ * Upgrade an Edit's announce-time diff with the patch the settle frame carries. `editDiffContent`
+ * only sees the tool INPUT — `old_string`/`new_string`, the replaced region with no line numbers and
+ * no surrounding rows — while `tool_use_result.structuredPatch` carries real hunk offsets and three
+ * context lines a side, which is what the UI needs to place an edit in its file (CODE-399).
+ *
+ * `structuredPatch` is the only usable source: over real transcripts `gitDiff` is never populated
+ * and `originalFile` is frequently null. Write is excluded deliberately — its dominant `create` case
+ * ships an EMPTY `structuredPatch`, and whole-file `newText` already beats an all-`+` patch.
+ *
+ * Duck-typed throughout: `tool_use_result` is `unknown` on the SDK's user frame, so `FileEditOutput`
+ * is documentation rather than a runtime guarantee. The `oldString`/`newString` pair is also what
+ * distinguishes an Edit result from a Write one, since the settle frame carries no tool name.
+ */
+export function editResultDiffContent(value: unknown): ToolCallContent[] | undefined {
+  if (!isRecord(value)) return undefined;
+  const { filePath, oldString: oldText, newString: newText, structuredPatch } = value;
+  if (typeof filePath !== 'string' || typeof oldText !== 'string' || typeof newText !== 'string') {
+    return undefined;
+  }
+  if (!Array.isArray(structuredPatch)) return undefined;
+  const hunks = structuredPatch.filter(isUnifiedDiffHunk);
+  if (hunks.length === 0) return undefined;
+  return [
+    {
+      type: 'diff',
+      change: 'modify',
+      path: toHostPath(filePath),
+      oldText,
+      newText,
+      patch: { format: 'git_patch', text: unifiedPatchText(hunks) },
+    },
+  ];
 }
 
 const TOOL_USE_RESULT_SCALAR_MAX = 256;
@@ -1425,6 +1491,10 @@ export interface ClaudeTranscriptSupplement {
   /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
    * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
   toolUseResults: Map<string, Record<string, unknown>>;
+  /** tool_use_id → the Edit diff recovered from the same raw `toolUseResult`. Separate from
+   * `toolUseResults` because the envelope keeps scalars only, so its filter drops `structuredPatch`
+   * (an array) by construction. Keyed on the same single-result rows. */
+  toolUsePatches: Map<string, ToolCallContent[]>;
 }
 
 /**
@@ -1442,6 +1512,7 @@ export function buildClaudeTranscriptSupplement(
 ): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
   const toolUseResults = new Map<string, Record<string, unknown>>();
+  const toolUsePatches = new Map<string, ToolCallContent[]>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
   const rows: Array<{ row: TimestampedSessionMessage; boundariesBefore: number }> = [];
   let boundaries = 0;
@@ -1476,7 +1547,7 @@ export function buildClaudeTranscriptSupplement(
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
     // Harvested before the exclusions: tool_use ids are globally unique, so keying a row the
     // timeline itself skips is harmless.
-    if (row.type === 'user') harvestToolUseResult(toolUseResults, row);
+    if (row.type === 'user') harvestToolUseResult(toolUseResults, toolUsePatches, row);
     // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
     if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
     rows.push({
@@ -1501,17 +1572,21 @@ export function buildClaudeTranscriptSupplement(
       return dropped;
     }, []),
     toolUseResults,
+    toolUsePatches,
   };
 }
 
-/** Key a raw result row's `toolUseResult` envelope by its tool_use id. The field is row-level, so
- * only a row with exactly one tool_result block pairs unambiguously. */
+/** Key a raw result row's `toolUseResult` projections by its tool_use id. The field is row-level, so
+ * only a row with exactly one tool_result block pairs unambiguously. The envelope and the Edit patch
+ * are independent projections of that one field — either can be absent. */
 function harvestToolUseResult(
-  map: Map<string, Record<string, unknown>>,
+  envelopes: Map<string, Record<string, unknown>>,
+  patches: Map<string, ToolCallContent[]>,
   row: Record<string, unknown>,
 ): void {
   const envelope = toolUseResultEnvelope(row.toolUseResult);
-  if (!envelope) return;
+  const patch = editResultDiffContent(row.toolUseResult);
+  if (!envelope && !patch) return;
   const message = isRecord(row.message) ? row.message : undefined;
   const content = message?.content;
   if (!Array.isArray(content)) return;
@@ -1521,7 +1596,9 @@ function harvestToolUseResult(
     }
     return ids;
   }, []);
-  if (ids.length === 1) map.set(ids[0], envelope);
+  if (ids.length !== 1) return;
+  if (envelope) envelopes.set(ids[0], envelope);
+  if (patch) patches.set(ids[0], patch);
 }
 
 /**
@@ -1530,25 +1607,48 @@ function harvestToolUseResult(
  * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
  * an empty supplement: history still reads, just without compaction markers or result envelopes.
  */
-async function readClaudeTranscriptSupplement(
-  sessionId: string,
-): Promise<ClaudeTranscriptSupplement> {
-  // The id becomes a filename — refuse anything that could traverse out of the projects dir.
-  if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
+async function readClaudeProjectText(segments: readonly string[]): Promise<string | null> {
   const projectsDir = path.join(homedir(), '.claude', 'projects');
   let dirs: string[];
   try {
     dirs = await readdir(projectsDir);
   } catch {
-    return EMPTY_SUPPLEMENT;
+    return null;
   }
   const texts = await Promise.all(
-    dirs.map((dir) =>
-      readFile(path.join(projectsDir, dir, `${sessionId}.jsonl`), 'utf8').catch(() => null),
-    ),
+    dirs.map((dir) => readFile(path.join(projectsDir, dir, ...segments), 'utf8').catch(() => null)),
   );
-  const text = texts.find((t) => t !== null);
+  return texts.find((t) => t !== null) ?? null;
+}
+
+async function readClaudeTranscriptSupplement(
+  sessionId: string,
+): Promise<ClaudeTranscriptSupplement> {
+  // The id becomes a filename — refuse anything that could traverse out of the projects dir.
+  if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
+  const text = await readClaudeProjectText([`${sessionId}.jsonl`]);
   return text ? buildClaudeTranscriptSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
+}
+
+/**
+ * A subagent's own `subagents/agent-{id}.jsonl`, read for the same reason the parent transcript is:
+ * the SDK's `getSubagentMessages` projection strips `toolUseResult`, so a replayed subagent Edit
+ * would fall back to the announce-time fragment while the live one carries real hunks.
+ *
+ * Caveat worth knowing before trusting this: across the local corpus (117 subagent transcripts) the
+ * CLI writes `toolUseResult` as a bare error string only — never the structured `FileEditOutput` —
+ * and the one real subagent Edit had no `toolUseResult` on its settle row in either transcript. So
+ * this recovers nothing on today's CLI; it removes the asymmetry with the parent path and starts
+ * working the moment the CLI persists the field.
+ */
+async function readSubagentPatches(
+  sessionId: string,
+  agentId: string,
+): Promise<ReadonlyMap<string, ToolCallContent[]>> {
+  // Both ids become path segments.
+  if (!SAFE_SESSION_ID.test(sessionId) || !SAFE_SESSION_ID.test(agentId)) return new Map();
+  const text = await readClaudeProjectText([sessionId, 'subagents', `agent-${agentId}.jsonl`]);
+  return text ? buildClaudeTranscriptSupplement(text.split('\n')).toolUsePatches : new Map();
 }
 
 function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
@@ -1576,15 +1676,26 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
 async function readSubagentTranscripts(
   mod: typeof import('@anthropic-ai/claude-agent-sdk'),
   sessionId: string,
+  patchesFor: (agentId: string) => Promise<ReadonlyMap<string, ToolCallContent[]>>,
 ): Promise<Map<string, AgentHistoryEvent[]>> {
   const agentIds = await mod.listSubagents(sessionId);
   const byParent = new Map<string, AgentHistoryEvent[]>();
   await Promise.all(
     agentIds.map(async (agentId) => {
-      const rows = await mod.getSubagentMessages(sessionId, agentId, { limit: 1000 });
+      const [rows, patches] = await Promise.all([
+        mod.getSubagentMessages(sessionId, agentId, { limit: 1000 }),
+        patchesFor(agentId),
+      ]);
       const parent = rows.find((row) => row.parent_tool_use_id !== null)?.parent_tool_use_id;
       if (!parent) return;
-      byParent.set(parent, rows.flatMap(createClaudeHistoryEventMapper(asHistoryId(sessionId))));
+      byParent.set(
+        parent,
+        rows.flatMap(
+          // No compaction records or result envelopes: a subagent transcript has no compaction
+          // boundary, and `rawOutput` recovery there is a separate concern.
+          createClaudeHistoryEventMapper(asHistoryId(sessionId), undefined, undefined, patches),
+        ),
+      );
     }),
   );
   return byParent;
@@ -1605,6 +1716,9 @@ export function createClaudeHistoryEventMapper(
   /** Result envelopes recovered from the raw transcript (`ClaudeTranscriptSupplement`) —
    * getSessionMessages strips them, so replayed settles read theirs from here. */
   toolUseResults?: ReadonlyMap<string, Record<string, unknown>>,
+  /** Edit diffs recovered from the same raw results, so a replayed settle carries the patch the
+   * live path emits rather than the announce-time fragment. */
+  toolUsePatches?: ReadonlyMap<string, ToolCallContent[]>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
   /** Last model announced to the timeline; assistant rows re-announce only on change. */
@@ -1696,8 +1810,13 @@ export function createClaudeHistoryEventMapper(
           title: existing?.title ?? block.tool_use_id,
           kind: existing?.kind ?? 'other',
           status: block.is_error === true ? 'failed' : 'completed',
-          // Announce-time content is the Edit diff (or empty); keep it ahead of the result text.
-          content: [...(existing?.content ?? []), ...toolResultContent(block.content)],
+          // A recovered patch supersedes the announce-time input fragment (the live path replaces
+          // it too); otherwise the announce content — the Edit diff, or empty — leads the result
+          // text.
+          content: [
+            ...(toolUsePatches?.get(block.tool_use_id) ?? existing?.content ?? []),
+            ...toolResultContent(block.content),
+          ],
           rawInput: existing?.rawInput,
           rawOutput: toolUseResults?.get(block.tool_use_id) ?? block.content,
         }),

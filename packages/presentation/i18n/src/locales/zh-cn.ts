@@ -142,6 +142,8 @@ export const zhCN = {
       duration: '耗时',
       size: '大小',
       failed: '失败',
+      expand: '展开',
+      collapse: '收起',
     },
     subagent: {
       label: '子代理',
