@@ -52,11 +52,11 @@ catalogs:
       specifier: ^1.23.0
       version: 1.24.0
     react:
-      specifier: 19.2.7
-      version: 19.2.7
+      specifier: 19.3.0-canary-96fcba90-20260728
+      version: 19.3.0-canary-96fcba90-20260728
     react-dom:
-      specifier: 19.2.7
-      version: 19.2.7
+      specifier: 19.3.0-canary-96fcba90-20260728
+      version: 19.3.0-canary-96fcba90-20260728
     react-router:
       specifier: ^8.2.0
       version: 8.2.0
@@ -137,7 +137,7 @@ importers:
         version: 8.1.0(@svgr/core@8.1.0(@typescript/typescript6@6.0.2))
       '@testing-library/react':
         specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@testing-library/user-event':
         specifier: ^14.6.1
         version: 14.6.1(@testing-library/dom@10.4.1)
@@ -158,10 +158,10 @@ importers:
         version: 29.1.1(@noble/hashes@2.2.0)
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.7(react@19.2.7)
+        version: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       turbo:
         specifier: ^2.10.4
         version: 2.10.5
@@ -270,7 +270,7 @@ importers:
     dependencies:
       '@better-auth/electron':
         specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@42.4.1)
+        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@42.4.1)
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/foundation/common
@@ -291,7 +291,7 @@ importers:
         version: 7.15.0
       better-auth:
         specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       electron-log:
         specifier: ^5.4.4
         version: 5.4.4
@@ -310,7 +310,7 @@ importers:
         version: 4.2.0
       '@hookform/resolvers':
         specifier: ^5.4.0
-        version: 5.4.0(react-hook-form@7.81.0(react@19.2.7))
+        version: 5.4.0(react-hook-form@7.81.0(react@19.3.0-canary-96fcba90-20260728))
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
@@ -328,7 +328,7 @@ importers:
         version: 0.2.3(@babel/core@7.29.7)(@babel/plugin-transform-runtime@7.29.7(@babel/core@7.29.7))(@babel/runtime@7.29.7)(rolldown@1.1.5)(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))
       '@sentry/react':
         specifier: 10.62.0
-        version: 10.62.0(react@19.2.7)
+        version: 10.62.0(react@19.3.0-canary-96fcba90-20260728)
       '@svgr/core':
         specifier: 'catalog:'
         version: 8.1.0(@typescript/typescript6@6.0.2)
@@ -370,28 +370,28 @@ importers:
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       lucide-react:
         specifier: 'catalog:'
-        version: 1.24.0(react@19.2.7)
+        version: 1.24.0(react@19.3.0-canary-96fcba90-20260728)
       motion:
         specifier: ^12.42.2
-        version: 12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       playwright-core:
         specifier: ^1.61.1
         version: 1.61.1
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.7(react@19.2.7)
+        version: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       react-hook-form:
         specifier: ^7.81.0
-        version: 7.81.0(react@19.2.7)
+        version: 7.81.0(react@19.3.0-canary-96fcba90-20260728)
       swr:
         specifier: 'catalog:'
-        version: 2.4.2(react@19.2.7)
+        version: 2.4.2(react@19.3.0-canary-96fcba90-20260728)
       tailwindcss:
         specifier: 'catalog:'
         version: 4.3.2
@@ -406,7 +406,7 @@ importers:
         version: 8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)
       zustand:
         specifier: 'catalog:'
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+        version: 5.0.14(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)(use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728))
 
   apps/mobile:
     dependencies:
@@ -617,7 +617,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^5.4.0
-        version: 5.4.0(react-hook-form@7.81.0(react@19.2.7))
+        version: 5.4.0(react-hook-form@7.81.0(react@19.3.0-canary-96fcba90-20260728))
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/foundation/common
@@ -638,43 +638,43 @@ importers:
         version: link:../../packages/client/workbench
       '@sentry/react':
         specifier: 10.62.0
-        version: 10.62.0(react@19.2.7)
+        version: 10.62.0(react@19.3.0-canary-96fcba90-20260728)
       better-auth:
         specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       coss-ui:
         specifier: workspace:*
         version: link:../../packages/vendor/coss-ui
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       foxts:
         specifier: ^5.8.0
         version: 5.8.1
       lucide-react:
         specifier: 'catalog:'
-        version: 1.24.0(react@19.2.7)
+        version: 1.24.0(react@19.3.0-canary-96fcba90-20260728)
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.7(react@19.2.7)
+        version: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       react-hook-form:
         specifier: ^7.81.0
-        version: 7.81.0(react@19.2.7)
+        version: 7.81.0(react@19.3.0-canary-96fcba90-20260728)
       react-router:
         specifier: 'catalog:'
-        version: 8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 8.2.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       use-intl:
         specifier: 'catalog:'
-        version: 4.13.2(react@19.2.7)
+        version: 4.13.2(react@19.3.0-canary-96fcba90-20260728)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
       zustand:
         specifier: 'catalog:'
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+        version: 5.0.14(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)(use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728))
     devDependencies:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
@@ -735,7 +735,7 @@ importers:
         version: link:../../foundation/transport
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.2.7(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       foxts:
         specifier: ^5.8.0
         version: 5.8.1
@@ -745,7 +745,7 @@ importers:
         version: 19.2.17
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
@@ -773,7 +773,7 @@ importers:
     dependencies:
       '@hookform/resolvers':
         specifier: ^5.4.0
-        version: 5.4.0(react-hook-form@7.81.0(react@19.2.7))
+        version: 5.4.0(react-hook-form@7.81.0(react@19.3.0-canary-96fcba90-20260728))
       '@linkcode/client-core':
         specifier: workspace:*
         version: link:../core
@@ -800,16 +800,16 @@ importers:
         version: link:../../vendor/coss-ui
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       foxts:
         specifier: ^5.8.0
         version: 5.8.1
       lucide-react:
         specifier: 'catalog:'
-        version: 1.24.0(react@19.2.7)
+        version: 1.24.0(react@19.3.0-canary-96fcba90-20260728)
       motion:
         specifier: ^12.42.2
-        version: 12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       pathe:
         specifier: ^2.0.3
         version: 2.0.3
@@ -818,16 +818,16 @@ importers:
         version: 1.405.3(preact-render-to-string@6.6.5(preact@11.0.0-beta.0))
       react-hook-form:
         specifier: ^7.81.0
-        version: 7.81.0(react@19.2.7)
+        version: 7.81.0(react@19.3.0-canary-96fcba90-20260728)
       swr:
         specifier: 'catalog:'
-        version: 2.4.2(react@19.2.7)
+        version: 2.4.2(react@19.3.0-canary-96fcba90-20260728)
       tayori:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(swr@2.4.2(react@19.2.7))
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(swr@2.4.2(react@19.3.0-canary-96fcba90-20260728))
       use-intl:
         specifier: 'catalog:'
-        version: 4.13.2(react@19.2.7)
+        version: 4.13.2(react@19.3.0-canary-96fcba90-20260728)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -836,7 +836,7 @@ importers:
         version: 5.0.0(zod@4.4.3)
       zustand:
         specifier: 'catalog:'
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+        version: 5.0.14(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)(use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728))
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
@@ -846,10 +846,10 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.7(react@19.2.7)
+        version: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
@@ -1097,7 +1097,7 @@ importers:
     dependencies:
       '@base-ui/react':
         specifier: ^1.6.0
-        version: 1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@dnd-kit/dom':
         specifier: ^0.5.0
         version: 0.5.0
@@ -1106,7 +1106,7 @@ importers:
         version: 0.5.0
       '@dnd-kit/react':
         specifier: ^0.5.0
-        version: 0.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.5.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@fontsource-variable/ibm-plex-sans':
         specifier: ^5.2.8
         version: 5.2.8
@@ -1118,7 +1118,7 @@ importers:
         version: 5.2.11
       '@lexical/react':
         specifier: ^0.47.0
-        version: 0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)
+        version: 0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(yjs@13.6.31)
       '@lexical/selection':
         specifier: ^0.47.0
         version: 0.47.0(@typescript/typescript6@6.0.2)
@@ -1130,10 +1130,10 @@ importers:
         version: link:../../foundation/schema
       '@pierre/diffs':
         specifier: ^1.2.12
-        version: 1.2.12(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.2.12(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@pierre/trees':
         specifier: 1.0.0-beta.5
-        version: 1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(shiki@4.3.0)
+        version: 1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
       '@shikijs/core':
         specifier: ^4.3.1
         version: 4.3.1
@@ -1148,13 +1148,13 @@ importers:
         version: 4.3.1
       '@streamdown/cjk':
         specifier: ^1.0.3
-        version: 1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.2.7)(unified@11.0.5)
+        version: 1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.3.0-canary-96fcba90-20260728)(unified@11.0.5)
       '@streamdown/code':
         specifier: ^1.1.1
-        version: 1.1.1(react@19.2.7)
+        version: 1.1.1(react@19.3.0-canary-96fcba90-20260728)
       ansi-to-react:
         specifier: ^6.2.6
-        version: 6.2.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 6.2.6(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1169,7 +1169,7 @@ importers:
         version: 3.4.12
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       foxts:
         specifier: ^5.8.0
         version: 5.8.1
@@ -1178,13 +1178,13 @@ importers:
         version: 0.47.0(@typescript/typescript6@6.0.2)
       lucide-react:
         specifier: ^1.23.0
-        version: 1.24.0(react@19.2.7)
+        version: 1.24.0(react@19.3.0-canary-96fcba90-20260728)
       mermaid:
         specifier: ^11.16.0
         version: 11.16.0
       motion:
         specifier: ^12.42.2
-        version: 12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       pretty-bytes:
         specifier: ^7.1.1
         version: 7.1.1
@@ -1193,10 +1193,10 @@ importers:
         version: 9.3.0
       react-native:
         specifier: '>=0.80'
-        version: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+        version: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
       react-native-safe-area-context:
         specifier: '>=5.0.0'
-        version: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+        version: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       rehype-slug:
         specifier: ^6.0.0
         version: 6.0.0
@@ -1214,7 +1214,7 @@ importers:
         version: 0.2.5
       streamdown:
         specifier: ^2.5.0
-        version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 2.5.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -1226,16 +1226,16 @@ importers:
         version: 5.1.0
       use-intl:
         specifier: 'catalog:'
-        version: 4.13.2(react@19.2.7)
+        version: 4.13.2(react@19.3.0-canary-96fcba90-20260728)
       use-stick-to-bottom:
         specifier: ^1.1.6
-        version: 1.1.6(react@19.2.7)
+        version: 1.1.6(react@19.3.0-canary-96fcba90-20260728)
       virtua:
         specifier: ^0.49.3
-        version: 0.49.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.49.3(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       zustand:
         specifier: 'catalog:'
-        version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+        version: 5.0.14(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)(use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728))
     devDependencies:
       '@lexical/headless':
         specifier: ^0.47.0
@@ -1254,16 +1254,16 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       heroui-native:
         specifier: ^1.0.5
-        version: 1.0.5(d95b25bd1f7a2419e42a1cc996b41748)
+        version: 1.0.5(78c566fb4d62acea4306583eac0a41ff)
       react:
         specifier: 'catalog:'
-        version: 19.2.7
+        version: 19.3.0-canary-96fcba90-20260728
       react-dom:
         specifier: 'catalog:'
-        version: 19.2.7(react@19.2.7)
+        version: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       react-native-svg:
         specifier: ^15.15.4
-        version: 15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+        version: 15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
@@ -1294,7 +1294,7 @@ importers:
     dependencies:
       '@base-ui/react':
         specifier: ^1.6.0
-        version: 1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1303,16 +1303,16 @@ importers:
         version: 2.1.1
       foxact:
         specifier: ^0.3.8
-        version: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       input-otp:
         specifier: ^1.4.2
-        version: 1.4.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.4.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       lucide-react:
         specifier: 'catalog:'
-        version: 1.24.0(react@19.2.7)
+        version: 1.24.0(react@19.3.0-canary-96fcba90-20260728)
       react-day-picker:
         specifier: ^9.14.0
-        version: 9.14.0(react@19.2.7)
+        version: 9.14.0(react@19.3.0-canary-96fcba90-20260728)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -9765,6 +9765,11 @@ packages:
     peerDependencies:
       react: ^19.2.7
 
+  react-dom@19.3.0-canary-96fcba90-20260728:
+    resolution: {integrity: sha512-+T0E6Uw6VfylJAQ9pBRcfn+pdsY96ASMP8sruLJBl2DGN1wi13YrwJID0LLs4zUfG0Ls+n0e6GbM78qHXNRRjA==}
+    peerDependencies:
+      react: 19.3.0-canary-96fcba90-20260728
+
   react-fast-compare@3.2.2:
     resolution: {integrity: sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ==}
 
@@ -9928,6 +9933,10 @@ packages:
 
   react@19.2.7:
     resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
+    engines: {node: '>=0.10.0'}
+
+  react@19.3.0-canary-96fcba90-20260728:
+    resolution: {integrity: sha512-c+uM1FmBEGKPZi9SqyUdH5jYonraRXV3dngqJfJzGUOwpoLIzKu9asV/vc9GqBUVWzguIdYIuMXNkqzszTwrFg==}
     engines: {node: '>=0.10.0'}
 
   read-binary-file-arch@1.0.6:
@@ -10180,6 +10189,9 @@ packages:
 
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
+
+  scheduler@0.28.0-canary-96fcba90-20260728:
+    resolution: {integrity: sha512-nDIuSPlc0TfUGPjapUQc846jk5atUm+mu777wuIt4/WTJxoVBqQEJ+J+UqCpfH9uWQzPiB6K9qw66P6D6lAlfA==}
 
   scslre@0.3.0:
     resolution: {integrity: sha512-3A6sD0WYP7+QrjbfNA2FN3FsOaGGFoekCVgTyypy53gPxhbkCIjtO6YWgdrfM+n/8sI8JeXZOIxsHjMTNxQ4nQ==}
@@ -12238,28 +12250,28 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@base-ui/react@1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@base-ui/react@1.6.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@base-ui/utils': 0.3.1(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@floating-ui/react-dom': 2.1.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@base-ui/utils': 0.3.1(@types/react@19.2.17)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@floating-ui/utils': 0.2.12
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      use-sync-external-store: 1.6.0(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
+      use-sync-external-store: 1.6.0(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       '@date-fns/tz': 1.5.0
       '@types/react': 19.2.17
       date-fns: 4.4.0
 
-  '@base-ui/utils@0.3.1(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@base-ui/utils@0.3.1(@types/react@19.2.17)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@floating-ui/utils': 0.2.12
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       reselect: 5.2.0
-      use-sync-external-store: 1.6.0(react@19.2.7)
+      use-sync-external-store: 1.6.0(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       '@types/react': 19.2.17
 
@@ -12284,12 +12296,12 @@ snapshots:
     optionalDependencies:
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
 
-  '@better-auth/electron@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@42.4.1)':
+  '@better-auth/electron@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@42.4.1)':
     dependencies:
       '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
-      better-auth: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+      better-auth: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       better-call: 1.3.7(zod@4.4.3)
       zod: 4.4.3
     optionalDependencies:
@@ -12443,13 +12455,13 @@ snapshots:
       '@dnd-kit/abstract': 0.5.0
       tslib: 2.8.1
 
-  '@dnd-kit/react@0.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@dnd-kit/react@0.5.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@dnd-kit/abstract': 0.5.0
       '@dnd-kit/dom': 0.5.0
       '@dnd-kit/state': 0.5.0
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       tslib: 2.8.1
 
   '@dnd-kit/state@0.5.0':
@@ -13463,18 +13475,18 @@ snapshots:
       '@floating-ui/core': 1.8.0
       '@floating-ui/utils': 0.2.12
 
-  '@floating-ui/react-dom@2.1.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@floating-ui/react-dom@2.1.9(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@floating-ui/dom': 1.8.0
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
-  '@floating-ui/react@0.27.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@floating-ui/react@0.27.20(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
-      '@floating-ui/react-dom': 2.1.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@floating-ui/utils': 0.2.12
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       tabbable: 6.5.0
 
   '@floating-ui/utils@0.2.12': {}
@@ -13519,14 +13531,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  '@gorhom/bottom-sheet@5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)':
+  '@gorhom/bottom-sheet@5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
-      '@gorhom/portal': 1.0.14(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      '@gorhom/portal': 1.0.14(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       invariant: 2.2.4
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
-      react-native-gesture-handler: 2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-reanimated: 4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
+      react-native-gesture-handler: 2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-reanimated: 4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       '@types/react': 19.2.17
     optional: true
@@ -13537,21 +13549,21 @@ snapshots:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
-  '@gorhom/portal@1.0.14(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)':
+  '@gorhom/portal@1.0.14(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       nanoid: 3.3.15
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
     optional: true
 
   '@hono/node-server@1.19.14(hono@4.12.27)':
     dependencies:
       hono: 4.12.27
 
-  '@hookform/resolvers@5.4.0(react-hook-form@7.81.0(react@19.2.7))':
+  '@hookform/resolvers@5.4.0(react-hook-form@7.81.0(react@19.3.0-canary-96fcba90-20260728))':
     dependencies:
       '@standard-schema/utils': 0.3.0
-      react-hook-form: 7.81.0(react@19.2.7)
+      react-hook-form: 7.81.0(react@19.3.0-canary-96fcba90-20260728)
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -13666,7 +13678,7 @@ snapshots:
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
 
-  '@lexical/devtools-core@0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@lexical/devtools-core@0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@lexical/html': 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/link': 0.47.0(@typescript/typescript6@6.0.2)
@@ -13674,8 +13686,8 @@ snapshots:
       '@lexical/table': 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/utils': 0.47.0(@typescript/typescript6@6.0.2)
       lexical: 0.47.0(@typescript/typescript6@6.0.2)
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
 
@@ -13794,11 +13806,11 @@ snapshots:
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
 
-  '@lexical/react@0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)':
+  '@lexical/react@0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(yjs@13.6.31)':
     dependencies:
-      '@floating-ui/react': 0.27.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@floating-ui/react': 0.27.20(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@lexical/a11y': 0.47.0(@typescript/typescript6@6.0.2)
-      '@lexical/devtools-core': 0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@lexical/devtools-core': 0.47.0(@typescript/typescript6@6.0.2)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@lexical/dragon': 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/extension': 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/hashtag': 0.47.0(@typescript/typescript6@6.0.2)
@@ -13816,8 +13828,8 @@ snapshots:
       '@lexical/utils': 0.47.0(@typescript/typescript6@6.0.2)
       '@lexical/yjs': 0.47.0(@typescript/typescript6@6.0.2)(yjs@13.6.31)
       lexical: 0.47.0(@typescript/typescript6@6.0.2)
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
       yjs: 13.6.31
@@ -14186,37 +14198,37 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.2.12(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@pierre/diffs@1.2.12(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@pierre/theme': 1.1.0
-      '@pierre/theming': 0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(shiki@4.3.0)
+      '@pierre/theming': 0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
       '@shikijs/transformers': 4.3.0
       diff: 9.0.0
       hast-util-to-html: 9.0.5
       lru_map: 0.4.1
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       shiki: 4.3.0
     transitivePeerDependencies:
       - '@shikijs/themes'
 
   '@pierre/theme@1.1.0': {}
 
-  '@pierre/theming@0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(shiki@4.3.0)':
+  '@pierre/theming@0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)':
     optionalDependencies:
       '@pierre/theme': 1.1.0
       '@shikijs/themes': 4.3.1
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       shiki: 4.3.0
 
-  '@pierre/trees@1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(shiki@4.3.0)':
+  '@pierre/trees@1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)':
     dependencies:
-      '@pierre/theming': 0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(shiki@4.3.0)
+      '@pierre/theming': 0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
       preact: 11.0.0-beta.0
       preact-render-to-string: 6.6.5(preact@11.0.0-beta.0)
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
     transitivePeerDependencies:
       - '@pierre/theme'
       - '@shikijs/themes'
@@ -14607,12 +14619,12 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  '@react-native/virtualized-lists@0.86.0(@types/react@19.2.17)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)':
+  '@react-native/virtualized-lists@0.86.0(@types/react@19.2.17)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       invariant: 2.2.4
       nullthrows: 1.1.1
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       '@types/react': 19.2.17
 
@@ -14931,11 +14943,11 @@ snapshots:
       '@sentry/core': 10.37.0
       react: 19.2.3
 
-  '@sentry/react@10.62.0(react@19.2.7)':
+  '@sentry/react@10.62.0(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@sentry/browser': 10.62.0
       '@sentry/core': 10.62.0
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   '@sentry/replay-canvas@10.62.0':
     dependencies:
@@ -15108,9 +15120,9 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@streamdown/cjk@1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.2.7)(unified@11.0.5)':
+  '@streamdown/cjk@1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.3.0-canary-96fcba90-20260728)(unified@11.0.5)':
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
       remark-cjk-friendly: 2.3.1(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(unified@11.0.5)
       remark-cjk-friendly-gfm-strikethrough: 2.3.1(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(unified@11.0.5)
       unist-util-visit: 5.1.0
@@ -15121,9 +15133,9 @@ snapshots:
       - supports-color
       - unified
 
-  '@streamdown/code@1.1.1(react@19.2.7)':
+  '@streamdown/code@1.1.1(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
       shiki: 4.3.0
 
   '@stylexjs/eslint-plugin@0.19.0':
@@ -15360,12 +15372,12 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
 
-  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@testing-library/dom': 10.4.1
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
     optionalDependencies:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
@@ -16022,13 +16034,13 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
-  ansi-to-react@6.2.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  ansi-to-react@6.2.6(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       anser: 2.3.5
       escape-carriage: 1.3.1
       linkify-it: 5.0.1
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   any-promise@1.3.0: {}
 
@@ -16270,7 +16282,7 @@ snapshots:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
 
-  better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
+  better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
     dependencies:
       '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
       '@better-auth/drizzle-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))
@@ -16293,8 +16305,8 @@ snapshots:
       better-sqlite3: 12.11.1
       drizzle-kit: 0.31.10
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -18258,28 +18270,37 @@ snapshots:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
 
-  foxact@0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  foxact@0.3.8(react-dom@19.2.7(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       client-only: 0.0.1
       event-target-bus: 1.0.0
       server-only: 0.0.1
     optionalDependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.2.7(react@19.3.0-canary-96fcba90-20260728)
+
+  foxact@0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
+    dependencies:
+      client-only: 0.0.1
+      event-target-bus: 1.0.0
+      server-only: 0.0.1
+    optionalDependencies:
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   foxts@5.8.1:
     dependencies:
       fast-fnv1a: 1.0.0
       fnv1a52: 1.0.0
 
-  framer-motion@12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  framer-motion@12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       motion-dom: 12.42.2
       motion-utils: 12.39.0
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   fresh@0.5.2: {}
 
@@ -18650,20 +18671,20 @@ snapshots:
       '@gorhom/bottom-sheet': 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react-native-screens: 4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
 
-  heroui-native@1.0.5(d95b25bd1f7a2419e42a1cc996b41748):
+  heroui-native@1.0.5(78c566fb4d62acea4306583eac0a41ff):
     dependencies:
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
-      react-native-gesture-handler: 2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-reanimated: 4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-safe-area-context: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-svg: 15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-worklets: 0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
+      react-native-gesture-handler: 2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-reanimated: 4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-safe-area-context: 5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-svg: 15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-worklets: 0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       tailwind-merge: 3.6.0
       tailwind-variants: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.2)
     optionalDependencies:
-      '@gorhom/bottom-sheet': 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-screens: 4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      '@gorhom/bottom-sheet': 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-screens: 4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
 
   highlight.js@10.7.3: {}
 
@@ -18808,10 +18829,10 @@ snapshots:
     dependencies:
       css-in-js-utils: 3.1.0
 
-  input-otp@1.4.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  input-otp@1.4.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   internmap@1.0.1: {}
 
@@ -19251,9 +19272,9 @@ snapshots:
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
       react-native-svg: 15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
 
-  lucide-react@1.24.0(react@19.2.7):
+  lucide-react@1.24.0(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   lz-string@1.5.0: {}
 
@@ -20022,13 +20043,13 @@ snapshots:
 
   motion-utils@12.39.0: {}
 
-  motion@12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  motion@12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      framer-motion: 12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      framer-motion: 12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   ms@2.0.0: {}
 
@@ -20600,13 +20621,13 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-day-picker@9.14.0(react@19.2.7):
+  react-day-picker@9.14.0(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       '@date-fns/tz': 1.5.0
       '@tabby_ai/hijri-converter': 1.0.5
       date-fns: 4.4.0
       date-fns-jalali: 4.1.0-0
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   react-devtools-core@6.1.5:
     dependencies:
@@ -20621,10 +20642,16 @@ snapshots:
       react: 19.2.3
       scheduler: 0.27.0
 
-  react-dom@19.2.7(react@19.2.7):
+  react-dom@19.2.7(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
       scheduler: 0.27.0
+    optional: true
+
+  react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728):
+    dependencies:
+      react: 19.3.0-canary-96fcba90-20260728
+      scheduler: 0.28.0-canary-96fcba90-20260728
 
   react-fast-compare@3.2.2: {}
 
@@ -20632,14 +20659,14 @@ snapshots:
     dependencies:
       react: 19.2.3
 
-  react-freeze@1.0.4(react@19.2.7):
+  react-freeze@1.0.4(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
     optional: true
 
-  react-hook-form@7.81.0(react@19.2.7):
+  react-hook-form@7.81.0(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   react-is@16.13.1: {}
 
@@ -20667,24 +20694,24 @@ snapshots:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
-  react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-gesture-handler@2.32.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       '@egjs/hammerjs': 2.0.17
       '@types/react-test-renderer': 19.1.0
       hoist-non-react-statics: 3.3.2
       invariant: 2.2.4
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
 
   react-native-is-edge-to-edge@1.3.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
-  react-native-is-edge-to-edge@1.3.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-is-edge-to-edge@1.3.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
 
   react-native-keyboard-controller@1.21.9(react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
@@ -20701,12 +20728,12 @@ snapshots:
       react-native-worklets: 0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       semver: 7.8.5
 
-  react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-reanimated@4.5.0(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
-      react-native-is-edge-to-edge: 1.3.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
-      react-native-worklets: 0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
+      react-native-is-edge-to-edge: 1.3.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react-native-worklets: 0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       semver: 7.8.5
 
   react-native-safe-area-context@5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
@@ -20714,10 +20741,10 @@ snapshots:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
-  react-native-safe-area-context@5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-safe-area-context@5.7.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
 
   react-native-screens@4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
@@ -20726,11 +20753,11 @@ snapshots:
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
       warn-once: 0.1.1
 
-  react-native-screens@4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-screens@4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
-      react-freeze: 1.0.4(react@19.2.7)
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-freeze: 1.0.4(react@19.3.0-canary-96fcba90-20260728)
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
       warn-once: 0.1.1
     optional: true
 
@@ -20742,12 +20769,12 @@ snapshots:
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
       warn-once: 0.1.1
 
-  react-native-svg@15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-svg@15.15.4(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       css-select: 5.2.2
       css-tree: 1.1.3
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
       warn-once: 0.1.1
 
   react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
@@ -20793,7 +20820,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-arrow-functions': 7.29.7(@babel/core@7.29.7)
@@ -20808,8 +20835,8 @@ snapshots:
       '@babel/types': 7.29.7
       '@react-native/metro-config': 0.86.0(@babel/core@7.29.7)
       convert-source-map: 2.0.0
-      react: 19.2.7
-      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)
       semver: 7.8.5
     transitivePeerDependencies:
       - supports-color
@@ -20859,7 +20886,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7):
+  react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       '@react-native/assets-registry': 0.86.0
       '@react-native/codegen': 0.86.0(@babel/core@7.29.7)
@@ -20867,7 +20894,7 @@ snapshots:
       '@react-native/gradle-plugin': 0.86.0
       '@react-native/js-polyfills': 0.86.0
       '@react-native/normalize-colors': 0.86.0
-      '@react-native/virtualized-lists': 0.86.0(@types/react@19.2.17)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      '@react-native/virtualized-lists': 0.86.0(@types/react@19.2.17)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1
@@ -20883,7 +20910,7 @@ snapshots:
       nullthrows: 1.1.1
       pretty-format: 29.7.0
       promise: 8.3.0
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
       react-devtools-core: 6.1.5
       react-refresh: 0.14.2
       regenerator-runtime: 0.13.11
@@ -20925,12 +20952,12 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  react-router@8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  react-router@8.2.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       cookie-es: 3.1.1
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
     optionalDependencies:
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   react-style-singleton@2.2.3(@types/react@19.2.17)(react@19.2.3):
     dependencies:
@@ -20942,7 +20969,10 @@ snapshots:
 
   react@19.2.3: {}
 
-  react@19.2.7: {}
+  react@19.2.7:
+    optional: true
+
+  react@19.3.0-canary-96fcba90-20260728: {}
 
   read-binary-file-arch@1.0.6:
     dependencies:
@@ -21276,6 +21306,8 @@ snapshots:
 
   scheduler@0.27.0: {}
 
+  scheduler@0.28.0-canary-96fcba90-20260728: {}
+
   scslre@0.3.0:
     dependencies:
       '@eslint-community/regexpp': 4.12.2
@@ -21571,15 +21603,15 @@ snapshots:
 
   stream-buffers@2.2.0: {}
 
-  streamdown@2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  streamdown@2.5.0(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       clsx: 2.1.1
       hast-util-to-jsx-runtime: 2.3.6
       html-url-attributes: 3.0.1
       marked: 17.0.6
       mermaid: 11.16.0
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       rehype-harden: 1.1.8
       rehype-raw: 7.0.0
       rehype-sanitize: 6.0.0
@@ -21690,11 +21722,11 @@ snapshots:
 
   svg-parser@2.0.4: {}
 
-  swr@2.4.2(react@19.2.7):
+  swr@2.4.2(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       dequal: 2.0.3
-      react: 19.2.7
-      use-sync-external-store: 1.6.0(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      use-sync-external-store: 1.6.0(react@19.3.0-canary-96fcba90-20260728)
 
   symbol-tree@3.2.4: {}
 
@@ -21743,12 +21775,12 @@ snapshots:
       minizlib: 3.1.0
       yallist: 5.0.0
 
-  tayori@0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(swr@2.4.2(react@19.2.7)):
+  tayori@0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(swr@2.4.2(react@19.3.0-canary-96fcba90-20260728)):
     dependencies:
-      foxact: 0.3.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      react: 19.2.7
+      foxact: 0.3.8(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
+      react: 19.3.0-canary-96fcba90-20260728
       stable-hash: 0.0.6
-      swr: 2.4.2(react@19.2.7)
+      swr: 2.4.2(react@19.3.0-canary-96fcba90-20260728)
     transitivePeerDependencies:
       - react-dom
 
@@ -22139,13 +22171,13 @@ snapshots:
       intl-messageformat: 11.2.7
       react: 19.2.3
 
-  use-intl@4.13.2(react@19.2.7):
+  use-intl@4.13.2(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
       '@formatjs/fast-memoize': 3.1.5
       '@schummar/icu-type-parser': 1.21.5
       icu-minify: 4.13.2
       intl-messageformat: 11.2.7
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   use-latest-callback@0.2.6(react@19.2.3):
     dependencies:
@@ -22159,9 +22191,9 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  use-stick-to-bottom@1.1.6(react@19.2.7):
+  use-stick-to-bottom@1.1.6(react@19.3.0-canary-96fcba90-20260728):
     dependencies:
-      react: 19.2.7
+      react: 19.3.0-canary-96fcba90-20260728
 
   use-sync-external-store@1.6.0(react@19.2.3):
     dependencies:
@@ -22171,6 +22203,11 @@ snapshots:
   use-sync-external-store@1.6.0(react@19.2.7):
     dependencies:
       react: 19.2.7
+    optional: true
+
+  use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728):
+    dependencies:
+      react: 19.3.0-canary-96fcba90-20260728
 
   utf8-byte-length@1.0.5: {}
 
@@ -22210,10 +22247,10 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  virtua@0.49.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  virtua@0.49.3(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728):
     optionalDependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
 
   vite@8.1.4(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0):
     dependencies:
@@ -22436,6 +22473,12 @@ snapshots:
       '@types/react': 19.2.17
       react: 19.2.7
       use-sync-external-store: 1.6.0(react@19.2.7)
+
+  zustand@5.0.14(@types/react@19.2.17)(react@19.3.0-canary-96fcba90-20260728)(use-sync-external-store@1.6.0(react@19.3.0-canary-96fcba90-20260728)):
+    optionalDependencies:
+      '@types/react': 19.2.17
+      react: 19.3.0-canary-96fcba90-20260728
+      use-sync-external-store: 1.6.0(react@19.3.0-canary-96fcba90-20260728)
 
   zwitch@2.0.4: {}
 
