@@ -1,6 +1,7 @@
 import {
   BottomSheet,
   Group,
+  Host,
   HStack,
   Image,
   ScrollView,
@@ -122,94 +123,103 @@ export function ToolDetailSheet({
     toolCall && typeof toolCall.rawOutput === 'string' ? stripAnsi(toolCall.rawOutput) : undefined;
 
   return (
-    <BottomSheet
-      isPresented={toolCall !== null}
-      onIsPresentedChange={(presented) => {
-        if (!presented) onDismiss();
-      }}
-    >
-      <Group
-        modifiers={[presentationDetents(['medium', 'large']), presentationDragIndicator('visible')]}
+    // The sheet presents its own window, but the anchor itself must live in a SwiftUI Host.
+    <Host matchContents>
+      <BottomSheet
+        isPresented={toolCall !== null}
+        onIsPresentedChange={(presented) => {
+          if (!presented) onDismiss();
+        }}
       >
-        {toolCall ? (
-          <ScrollView modifiers={[padding({ all: 16 })]}>
-            <VStack alignment="leading" spacing={12}>
-              <HStack spacing={8}>
-                <Image
-                  systemName={KIND_SYMBOL[toolCall.kind]}
-                  size={15}
-                  modifiers={
-                    toolCall.status === 'failed' ? [foregroundStyle('#D73A49')] : [SECONDARY]
+        <Group
+          modifiers={[
+            presentationDetents(['medium', 'large']),
+            presentationDragIndicator('visible'),
+          ]}
+        >
+          {toolCall ? (
+            <ScrollView modifiers={[padding({ all: 16 })]}>
+              <VStack alignment="leading" spacing={12}>
+                <HStack spacing={8}>
+                  <Image
+                    systemName={KIND_SYMBOL[toolCall.kind]}
+                    size={15}
+                    modifiers={
+                      toolCall.status === 'failed' ? [foregroundStyle('#D73A49')] : [SECONDARY]
+                    }
+                  />
+                  <Text
+                    modifiers={[
+                      font({ textStyle: 'subheadline', weight: 'semibold' }),
+                      lineLimit(1),
+                    ]}
+                  >
+                    {toolCall.title}
+                  </Text>
+                  <Spacer />
+                </HStack>
+                {metadata.length > 0 ? (
+                  <VStack alignment="leading" spacing={2}>
+                    {metadata.map((entry) => (
+                      <Text
+                        key={`${entry.key}:${entry.label ?? ''}:${entry.value}`}
+                        modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(2)]}
+                      >
+                        {[entry.label ?? entry.key, entry.value].join(' ')}
+                      </Text>
+                    ))}
+                  </VStack>
+                ) : null}
+                {contents.map((content, index) => {
+                  if (content.type === 'diff') {
+                    return (
+                      <DiffBlock
+                        // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content carries no id; snapshots replace wholesale
+                        key={index}
+                        path={content.path}
+                        oldText={content.oldText}
+                        newText={content.newText}
+                        patch={content.patch?.text}
+                      />
+                    );
                   }
-                />
-                <Text
-                  modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), lineLimit(1)]}
-                >
-                  {toolCall.title}
-                </Text>
-                <Spacer />
-              </HStack>
-              {metadata.length > 0 ? (
-                <VStack alignment="leading" spacing={2}>
-                  {metadata.map((entry) => (
-                    <Text
-                      key={`${entry.key}:${entry.label ?? ''}:${entry.value}`}
-                      modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(2)]}
-                    >
-                      {[entry.label ?? entry.key, entry.value].join(' ')}
-                    </Text>
-                  ))}
-                </VStack>
-              ) : null}
-              {contents.map((content, index) => {
-                if (content.type === 'diff') {
-                  return (
-                    <DiffBlock
-                      // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content carries no id; snapshots replace wholesale
-                      key={index}
-                      path={content.path}
-                      oldText={content.oldText}
-                      newText={content.newText}
-                      patch={content.patch?.text}
-                    />
-                  );
-                }
-                if (content.type === 'content' && content.content.type === 'text') {
-                  return (
-                    <Text
-                      // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content carries no id; snapshots replace wholesale
-                      key={index}
-                      modifiers={[font({ textStyle: 'footnote' })]}
-                    >
-                      {content.content.text}
-                    </Text>
-                  );
-                }
-                return null;
-              })}
-              {command || rawOutput ? (
-                <VStack alignment="leading" spacing={4}>
-                  {command ? (
-                    <Text modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(2)]}>{command}</Text>
-                  ) : null}
-                  {rawOutput ? (
-                    <ScrollView axes="horizontal">
-                      <Text modifiers={[MONO_FOOTNOTE]}>{rawOutput}</Text>
-                    </ScrollView>
-                  ) : null}
-                </VStack>
-              ) : null}
-              {failure ? (
-                <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#D73A49')]}>
-                  {t('failed')}: {failure}
-                </Text>
-              ) : null}
-            </VStack>
-          </ScrollView>
-        ) : (
-          <Text> </Text>
-        )}
-      </Group>
-    </BottomSheet>
+                  if (content.type === 'content' && content.content.type === 'text') {
+                    return (
+                      <Text
+                        // eslint-disable-next-line @eslint-react/no-array-index-key -- tool content carries no id; snapshots replace wholesale
+                        key={index}
+                        modifiers={[font({ textStyle: 'footnote' })]}
+                      >
+                        {content.content.text}
+                      </Text>
+                    );
+                  }
+                  return null;
+                })}
+                {command || rawOutput ? (
+                  <VStack alignment="leading" spacing={4}>
+                    {command ? (
+                      <Text modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(2)]}>{command}</Text>
+                    ) : null}
+                    {rawOutput ? (
+                      <ScrollView axes="horizontal">
+                        <Text modifiers={[MONO_FOOTNOTE]}>{rawOutput}</Text>
+                      </ScrollView>
+                    ) : null}
+                  </VStack>
+                ) : null}
+                {failure ? (
+                  <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle('#D73A49')]}>
+                    {t('failed')}: {failure}
+                  </Text>
+                ) : null}
+              </VStack>
+            </ScrollView>
+          ) : (
+            <Text> </Text>
+          )}
+        </Group>
+      </BottomSheet>
+    </Host>
   );
 }
