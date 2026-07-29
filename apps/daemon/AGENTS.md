@@ -37,6 +37,17 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   failing closed** — a deliberate trade so headless machines survive a restart — recording
   `protection: "plaintext"` in the file and warning at boot; it re-encrypts itself as soon as a
   keyring appears. Consequences to expect:
+  - **A keyring that does not retain the key counts as no keyring.** `@napi-rs/keyring` silently uses
+    the kernel keyring (keyutils) on a Linux host with no D-Bus Secret Service, and those keys die
+    with the boot — so the store would read as encrypted while losing every credential on each
+    restart. The binding cannot be asked which backend it chose (no equivalent of Chromium's
+    `getSelectedStorageBackend`), so the vault infers it from the one observable symptom: a
+    **freshly minted master key sitting beside existing ciphertext**. That sets `keyringDistrusted`
+    in the file, which is sticky, skips the keyring entirely on later boots, and suppresses the
+    plaintext→encrypted upgrade so the two cannot fight each other. `rm secrets.json` re-arms it.
+    Linux-only by design: on macOS/Windows the same symptom means someone deleted the entry, which is
+    no reason to stop encrypting. Cost is one loss before the demotion sticks — still strictly better
+    than losing everything on every reboot, which is what the undetected case does.
   - **Losing the keyring entry loses exactly the secrets**, never the surrounding config: the daemon
     reads as signed out, vault-backed accounts drop from the pool, and the software device key is
     reminted under a new device id. That is coherent because one vault holds all of them — the

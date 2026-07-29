@@ -14,13 +14,23 @@ const MASTER_KEY_BYTES = 32;
 
 const require = createRequire(import.meta.url);
 
+export interface MasterKey {
+  secret: Buffer;
+  /**
+   * Whether this key was just minted rather than read back. The vault needs the distinction: a fresh
+   * key sitting beside ciphertext someone else's key wrote means the keyring did not retain what we
+   * put in it — see `keyringDistrusted` in `vault.ts`.
+   */
+  fresh: boolean;
+}
+
 /**
  * The master key protecting `secrets.json`, or `null` when this host has no usable OS keyring.
  *
  * Loading the native module is kept separate from calling it, because the two failures mean
  * different things and only one is our defect — the same split `device-key.ts` makes.
  */
-export function loadMasterKey(): Buffer | null {
+export function loadMasterKey(): MasterKey | null {
   const keyring = loadKeyring();
   if (keyring === null) return null;
 
@@ -30,11 +40,14 @@ export function loadMasterKey(): Buffer | null {
     const existing = entry.getPassword();
     // `null` is a definitive "no such entry" — a backend failure throws instead, so generating
     // here cannot overwrite a key the keyring merely failed to hand us.
-    if (existing !== null) return decodeMasterKey(existing);
-    const created = randomBytes(MASTER_KEY_BYTES);
-    entry.setPassword(created.toString('base64'));
+    if (existing !== null) {
+      const secret = decodeMasterKey(existing);
+      if (secret !== null) return { secret, fresh: false };
+    }
+    const secret = randomBytes(MASTER_KEY_BYTES);
+    entry.setPassword(secret.toString('base64'));
     logger.info({ operation: 'secrets.keyring', service }, 'Created the OS-keyring master key');
-    return created;
+    return { secret, fresh: true };
   } catch (err) {
     logger.warn(
       { operation: 'secrets.keyring', err, service, platform: process.platform },

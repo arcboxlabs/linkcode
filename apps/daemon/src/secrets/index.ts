@@ -25,7 +25,7 @@ export function secretVault(): SecretVault {
   const file = secretsFilePath();
   const existing = vaults.get(file);
   if (existing !== undefined) return existing;
-  const vault = createSecretVault(file, loadMasterKey());
+  const vault = createSecretVault(file, loadMasterKey);
   vaults.set(file, vault);
   return vault;
 }

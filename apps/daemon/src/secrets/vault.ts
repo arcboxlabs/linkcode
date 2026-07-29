@@ -2,7 +2,9 @@ import { Buffer } from 'node:buffer';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import process from 'node:process';
 import { logger } from '../logger';
+import type { MasterKey } from './keyring';
 
 /**
  * Where the daemon's long-lived secrets — cloud session token, provider/account credentials, the
@@ -35,19 +37,35 @@ const TAG_BYTES = 16;
 
 interface VaultFile {
   protection: SecretProtection;
+  /**
+   * Set once this host's keyring has been observed failing to retain the master key — the signature
+   * of a non-durable backend (see {@link isNonDurableKeyring}). Sticky, and it suppresses the
+   * plaintext→encrypted upgrade, so the two do not fight each other every boot. Delete the file to
+   * re-arm the keyring.
+   */
+  keyringDistrusted?: boolean;
   /** Base64 `iv || tag || ciphertext` under `os-keyring`; the bare ref→secret map under `plaintext`. */
   data: unknown;
 }
 
-/** `key` is the OS-keyring master key, or `null` on a host with no usable keyring. */
-export function createSecretVault(file: string, key: Buffer | null): SecretVault {
-  const protection: SecretProtection = key === null ? 'plaintext' : 'os-keyring';
+/**
+ * `loadKey` is consulted lazily: a store this host has already marked `keyringDistrusted` must not
+ * even reach the keyring, both to skip a pointless round-trip and to keep the demotion observable.
+ */
+export function createSecretVault(file: string, loadKey: () => MasterKey | null): SecretVault {
   const stored = readFile(file);
-  const secrets = decodeSecrets(stored, key, file);
+  const master = stored?.keyringDistrusted === true ? null : loadKey();
+  const key = master?.secret ?? null;
+
+  // A fresh key beside ciphertext someone else's key wrote means the keyring did not keep what we
+  // gave it. Demote before decoding, so the loss is reported as a backend verdict, not corruption.
+  const distrusted = stored?.keyringDistrusted === true || isNonDurableKeyring(stored, master);
+  const protection: SecretProtection = key === null || distrusted ? 'plaintext' : 'os-keyring';
+  const secrets = decodeSecrets(stored, protection === 'os-keyring' ? key : null, file);
 
   if (protection === 'plaintext') {
     logger.warn(
-      { operation: 'secrets.vault', file },
+      { operation: 'secrets.vault', file, keyringDistrusted: distrusted },
       'Daemon secrets are stored unencrypted; anyone who can read this file has the credentials',
     );
   }
@@ -55,16 +73,27 @@ export function createSecretVault(file: string, key: Buffer | null): SecretVault
   const persist = (): void => {
     mkdirSync(dirname(file), { recursive: true });
     const map = Object.fromEntries(secrets);
-    const data = key === null ? map : encrypt(key, JSON.stringify(map));
-    writeFileSync(file, `${JSON.stringify({ v: 1, protection, data })}\n`, { mode: 0o600 });
+    const encrypted = protection === 'os-keyring' && key !== null;
+    const document: VaultFile = {
+      protection,
+      data: encrypted ? encrypt(key, JSON.stringify(map)) : map,
+      ...(distrusted && { keyringDistrusted: true }),
+    };
+    writeFileSync(file, `${JSON.stringify({ v: 1, ...document })}\n`, { mode: 0o600 });
   };
 
-  // An upgrade (plaintext file, keyring now present) must land without waiting for a write from the
-  // caller, or the exposed copy lingers on disk until the next credential edit.
-  if (protection === 'os-keyring' && stored?.protection === 'plaintext' && secrets.size > 0) {
+  // Either transition must land without waiting for a write from the caller: an upgrade (plaintext
+  // file, keyring now present) leaves the exposed copy on disk until the next credential edit, and a
+  // demotion leaves undecryptable ciphertext plus an unrecorded verdict.
+  const needsRewrite =
+    (protection === 'os-keyring' && stored?.protection === 'plaintext' && secrets.size > 0) ||
+    (distrusted && stored?.keyringDistrusted !== true);
+  if (needsRewrite) {
     logger.warn(
-      { operation: 'secrets.vault', file },
-      'Re-encrypting daemon secrets that were stored unencrypted',
+      { operation: 'secrets.vault', file, protection },
+      distrusted
+        ? "This host's OS keyring does not retain the master key; storing daemon secrets unencrypted from now on"
+        : 'Re-encrypting daemon secrets that were stored unencrypted',
     );
     persist();
   }
@@ -82,6 +111,25 @@ export function createSecretVault(file: string, key: Buffer | null): SecretVault
     },
     list: (prefix) => [...secrets.keys()].filter((ref) => ref.startsWith(prefix)),
   };
+}
+
+/**
+ * Whether this host's keyring has just been caught not retaining the master key: we wrote ciphertext
+ * under a key, and the keyring has since handed back nothing, so a fresh one was minted.
+ *
+ * That is the signature of `@napi-rs/keyring`'s Linux fallback. With no D-Bus Secret Service it
+ * silently uses the kernel keyring (keyutils) instead, whose keys do not survive a reboot — so the
+ * store looks encrypted while actually losing every credential on each restart. The binding exposes
+ * no way to ask which backend it chose (unlike Chromium's `getSelectedStorageBackend`), so the
+ * behaviour is the only available signal.
+ *
+ * Linux-only on purpose. macOS and Windows keyrings are durable, so the same observation there means
+ * the entry was deliberately deleted or the profile is new — not a reason to stop using the keyring.
+ */
+function isNonDurableKeyring(stored: VaultFile | null, master: MasterKey | null): boolean {
+  if (process.platform !== 'linux') return false;
+  if (master?.fresh !== true) return false;
+  return stored?.protection === 'os-keyring' && stored.data !== undefined;
 }
 
 /**
@@ -131,9 +179,9 @@ function readFile(file: string): VaultFile | null {
     return null;
   }
   if (typeof raw !== 'object' || raw === null) return null;
-  const { protection, data } = raw as Partial<VaultFile>;
+  const { protection, data, keyringDistrusted } = raw as Partial<VaultFile>;
   if (protection !== 'os-keyring' && protection !== 'plaintext') return null;
-  return { protection, data };
+  return { protection, data, ...(keyringDistrusted === true && { keyringDistrusted: true }) };
 }
 
 /** Drop anything that is not a string secret rather than failing the whole store over one entry. */
