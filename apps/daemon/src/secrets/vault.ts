@@ -22,6 +22,8 @@ export interface SecretVault {
   get: (ref: string) => string | null;
   set: (ref: string, secret: string) => void;
   delete: (ref: string) => void;
+  /** Stored refs under `prefix` — what a caller prunes against when its owning records are rewritten. */
+  list: (prefix: string) => string[];
 }
 
 export type SecretProtection = 'os-keyring' | 'plaintext';
@@ -78,6 +80,7 @@ export function createSecretVault(file: string, key: Buffer | null): SecretVault
       if (!secrets.delete(ref)) return;
       persist();
     },
+    list: (prefix) => [...secrets.keys()].filter((ref) => ref.startsWith(prefix)),
   };
 }
 

@@ -1,15 +1,38 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Account } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Credential secrets live in the vault (CODE-371), which reaches the OS keyring. These cases are
+// about config.json's structure, so stand in an in-memory vault; the real one is covered separately.
+const vault = vi.hoisted(() => new Map<string, string>());
+
+vi.mock('../secrets', () => ({
+  accountSecretRef: (id: string) => `account:${id}`,
+  providerApiKeyRef: (kind: string) => `provider:${kind}`,
+  secretVault: () => ({
+    protection: 'os-keyring',
+    get: (ref: string) => vault.get(ref) ?? null,
+    set(ref: string, secret: string) {
+      vault.set(ref, secret);
+    },
+    delete(ref: string) {
+      vault.delete(ref);
+    },
+    list: (prefix: string) => [...vault.keys()].filter((ref) => ref.startsWith(prefix)),
+  }),
+}));
+
 import {
   daemonProfile,
   databasePath,
   hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  saveAccounts,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
@@ -23,6 +46,7 @@ beforeEach(() => {
   savedHome = process.env.HOME;
   process.env.HOME = mkdtempSync(join(tmpdir(), 'linkcode-config-'));
   process.env.LINKCODE_CHANNEL = 'release';
+  vault.clear();
 });
 
 afterEach(() => {
@@ -44,7 +68,12 @@ function writeAccountsConfig(accounts: unknown): void {
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ accounts }));
 }
 
-const validAccount = {
+function readConfigFile(): Record<string, unknown> {
+  const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
+  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+}
+
+const validAccount: Account = {
   id: 'acc_1',
   label: 'Personal key',
   credential: { type: 'api-key', key: 'sk-test' },
@@ -211,13 +240,25 @@ describe('loadConfig accounts', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig([
       validAccount,
-      // Missing the api-key `key` — fails the credential union.
-      { id: 'acc_2', label: 'Bad', credential: { type: 'api-key' }, createdAt: 0 },
+      // `credential` is not even a record — nothing the vault could complete.
+      { id: 'acc_2', label: 'Bad', credential: 'nope', createdAt: 0 },
     ]);
 
     const config = loadConfig();
 
     expect(config.accounts).toEqual([validAccount]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('drops an account whose stored secret is gone, rather than half-loading it', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    // The post-migration on-disk shape: an api-key credential with no key. With an empty vault the
+    // secret is unrecoverable, so the account cannot be used and must not reach the pool.
+    writeAccountsConfig([
+      { id: 'acc_1', label: 'Orphan', credential: { type: 'api-key' }, createdAt: 0 },
+    ]);
+
+    expect(loadConfig().accounts).toEqual([]);
     expect(errorSpy).toHaveBeenCalled();
   });
 
@@ -239,5 +280,66 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+// CODE-371: config.json used to hold provider api keys and account credentials in the clear. The
+// vault owns them now, and an upgrade has to move them without the user re-entering anything.
+describe('credential storage', () => {
+  it('moves inline credentials into the vault on the read that finds them', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(noop);
+    mkdirSync(join(process.env.HOME ?? '', '.linkcode'), { recursive: true });
+    writeFileSync(
+      join(process.env.HOME ?? '', '.linkcode', 'config.json'),
+      JSON.stringify({
+        providers: { 'claude-code': { enabled: true, apiKey: 'sk-legacy' } },
+        accounts: [validAccount],
+      }),
+    );
+
+    // The load still returns usable credentials — an upgrade must not sign anyone out.
+    const config = loadConfig();
+    expect(config.providers?.['claude-code']?.apiKey).toBe('sk-legacy');
+    expect(config.accounts).toEqual([validAccount]);
+
+    expect(vault.get('provider:claude-code')).toBe('sk-legacy');
+    expect(vault.get('account:acc_1')).toBe('sk-test');
+
+    // …and the exposed copies are off disk by the time that load returns.
+    const raw = readFileSync(join(process.env.HOME ?? '', '.linkcode', 'config.json'), 'utf8');
+    expect(raw).not.toContain('sk-legacy');
+    expect(raw).not.toContain('sk-test');
+  });
+
+  it('round-trips an account through the vault without ever writing the secret', () => {
+    saveAccounts([validAccount]);
+
+    const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
+    expect(stored[0].credential).toEqual({ type: 'api-key' });
+    expect(vault.get('account:acc_1')).toBe('sk-test');
+    expect(loadConfig().accounts).toEqual([validAccount]);
+  });
+
+  it('drops the stored secret when its account is removed', () => {
+    saveAccounts([validAccount]);
+    saveAccounts([]);
+
+    // Otherwise a deleted account leaves a live credential behind in the OS keyring forever.
+    expect(vault.get('account:acc_1')).toBeUndefined();
+  });
+
+  it('leaves an oauth account alone — the agent CLI owns that login, not us', () => {
+    const oauth: Account = {
+      id: 'acc_oauth',
+      label: 'Subscription',
+      credential: { type: 'oauth', agent: 'claude-code' },
+      createdAt: 0,
+    };
+    saveAccounts([oauth]);
+
+    const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
+    expect(stored[0].credential).toEqual({ type: 'oauth', agent: 'claude-code' });
+    expect([...vault.keys()]).toEqual([]);
+    expect(loadConfig().accounts).toEqual([oauth]);
   });
 });
