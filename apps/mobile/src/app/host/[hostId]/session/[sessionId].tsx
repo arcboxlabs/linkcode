@@ -1,9 +1,15 @@
 import { useLinkCodeClient, useSessions } from '@linkcode/client-core';
 import type { SessionId, ToolCall } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
-import { AGENT_LABELS, EmptyState, repositoryLabel } from '@linkcode/ui/native';
+import {
+  AGENT_LABELS,
+  EmptyState,
+  repositoryLabel,
+  selectCurrentPlan,
+  selectPendingPromptItems,
+} from '@linkcode/ui/native';
 import * as Clipboard from 'expo-clipboard';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useThemeColor } from 'heroui-native';
 import { EllipsisIcon } from 'lucide-react-native';
@@ -29,7 +35,12 @@ export default function SessionScreen(): React.ReactNode {
   const insets = useSafeAreaInsets();
   const client = useLinkCodeClient();
   const muted = useThemeColor('muted');
-  const { sessionId: rawSessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const router = useRouter();
+  const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
+    sessionId: string;
+    autoResume?: string;
+  }>();
+  const autoResumeSuppressed = autoResume === 'false';
   const parsed = SessionIdSchema.safeParse(rawSessionId);
   const sessionId: SessionId | null = parsed.success ? parsed.data : null;
   const { sessions } = useSessions();
@@ -38,38 +49,73 @@ export default function SessionScreen(): React.ReactNode {
   const conversation = useSeededConversation(sessionId ? (session ?? null) : null);
   const actions = useSessionActions(sessionId, conversation.status);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
-  const resumedRef = useRef(false);
+  const observedSessionRef = useRef<SessionId | null>(null);
+  const resumeInFlightRef = useRef<SessionId | null>(null);
+  const resumePromiseRef = useRef<Promise<unknown> | null>(null);
+  const resumeFailedRef = useRef<SessionId | null>(null);
+
+  const resume = useCallback(
+    (id: SessionId) => {
+      if (autoResumeSuppressed || resumeInFlightRef.current === id) return;
+      resumeInFlightRef.current = id;
+      resumeFailedRef.current = null;
+      const promise = client
+        .resumeSession(id)
+        .catch(() => {
+          resumeFailedRef.current = id;
+        })
+        .finally(() => {
+          if (resumeInFlightRef.current === id) resumeInFlightRef.current = null;
+          if (resumePromiseRef.current === promise) resumePromiseRef.current = null;
+        });
+      resumePromiseRef.current = promise;
+    },
+    [autoResumeSuppressed, client],
+  );
+
+  const stop = useCallback(
+    (id: SessionId) => {
+      void client.stopSession(id).catch(noop);
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    if (autoResumeSuppressed) resumeFailedRef.current = null;
+  }, [autoResumeSuppressed]);
 
   // The daemon re-broadcasts open asks to attachers — a reopened app regains pending approvals.
+  // A failed cold resume retries when the screen next focuses or the client generation changes.
   useFocusEffect(
     useCallback(() => {
       if (sessionId) client.attachSession(sessionId);
-    }, [client, sessionId]),
+      if (
+        sessionId &&
+        !autoResumeSuppressed &&
+        session?.status === 'stopped' &&
+        resumeFailedRef.current === sessionId
+      ) {
+        resume(sessionId);
+      }
+    }, [autoResumeSuppressed, client, resume, sessionId, session?.status]),
   );
 
   // Desktop parity (`applySelection`): opening a stopped session resumes it silently, once.
-  // This is also what re-enables the composer, whose `canCompose` excludes stopped sessions.
+  // Mark every opened session as observed, including running ones, so an explicit later Stop does
+  // not immediately wake it again. This also re-enables a cold session's disabled composer.
   useEffect(() => {
-    if (!sessionId || session?.status !== 'stopped' || resumedRef.current) return;
-    resumedRef.current = true;
-    client.resumeSession(sessionId).catch(noop);
-  }, [client, sessionId, session?.status]);
+    if (!sessionId || !session || observedSessionRef.current === sessionId) return;
+    observedSessionRef.current = sessionId;
+    resumeFailedRef.current = null;
+    if (!autoResumeSuppressed && session.status === 'stopped') resume(sessionId);
+  }, [autoResumeSuppressed, resume, session, sessionId]);
 
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
     : '';
 
-  const approvals = conversation.items.flatMap((item) =>
-    item.kind === 'approval' && conversation.pendingPermissionIds.includes(item.requestId)
-      ? [{ requestId: item.requestId, toolCall: item.toolCall, options: item.options }]
-      : [],
-  );
-  const questions = conversation.items.flatMap((item) =>
-    item.kind === 'question' && conversation.pendingQuestionIds.includes(item.requestId)
-      ? [{ requestId: item.requestId, questions: item.questions }]
-      : [],
-  );
-  const plan = conversation.items.findLast((item) => item.kind === 'plan')?.plan ?? null;
+  const prompts = selectPendingPromptItems(conversation);
+  const plan = selectCurrentPlan(conversation);
   const openToolCall: ToolCall | null =
     conversation.items.findLast(
       (item): item is typeof item & { kind: 'tool' } =>
@@ -83,7 +129,11 @@ export default function SessionScreen(): React.ReactNode {
         text: tChat('stopThread'),
         style: 'destructive',
         onPress() {
-          void client.stopSession(sessionId).catch(noop);
+          resumeFailedRef.current = null;
+          router.setParams({ autoResume: 'false' });
+          stop(sessionId);
+          const pendingResume = resumePromiseRef.current;
+          if (pendingResume) void pendingResume.finally(() => stop(sessionId));
         },
       },
       {
@@ -143,8 +193,7 @@ export default function SessionScreen(): React.ReactNode {
           the composer only has to ride the keyboard instead of resizing the whole screen. */}
       <KeyboardStickyView>
         <PromptDock
-          approvals={approvals}
-          questions={questions}
+          prompts={prompts}
           plan={plan}
           respondingIds={actions.respondingIds}
           onRespondPermission={actions.respondPermission}

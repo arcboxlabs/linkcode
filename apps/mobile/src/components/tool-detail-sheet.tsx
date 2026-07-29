@@ -120,7 +120,9 @@ export function ToolDetailSheet({
   const failure = toolCall ? toolCallFailureMessage(toolCall) : undefined;
   const command = toolCall?.kind === 'execute' ? toolCallCommand(toolCall) : undefined;
   const rawOutput =
-    toolCall && typeof toolCall.rawOutput === 'string' ? stripAnsi(toolCall.rawOutput) : undefined;
+    toolCall && contents.length === 0 && typeof toolCall.rawOutput === 'string'
+      ? stripAnsi(toolCall.rawOutput)
+      : undefined;
 
   return (
     // The sheet presents its own window, but the anchor itself must live in a SwiftUI Host.

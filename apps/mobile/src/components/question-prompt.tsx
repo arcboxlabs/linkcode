@@ -46,11 +46,8 @@ export function QuestionPrompt({
   responding: boolean;
   onRespond: (outcome: QuestionOutcome) => void;
 }): React.ReactNode {
-  const t = useTranslations('mobile.chat');
   const [index, setIndex] = useState(0);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  // SwiftUI TextField binds to shared native state; read back on submit.
-  const customText = useNativeState('');
 
   const question = questions[Math.min(index, questions.length - 1)];
   const draft = drafts[question.questionId] ?? { selected: [], customText: '' };
@@ -78,25 +75,68 @@ export function QuestionPrompt({
     if (isLast) {
       onRespond({ outcome: 'answered', answers: buildAnswers(finalDraft) });
     } else {
-      customText.set('');
+      setDraft(finalDraft);
       setIndex((current) => current + 1);
     }
   };
 
-  const withCustomText = (): Draft => ({ ...draft, customText: customText.get().trim() });
+  return (
+    <QuestionPage
+      key={`${question.questionId}:${draft.selected.join(',')}`}
+      question={question}
+      draft={draft}
+      current={index + 1}
+      total={questions.length}
+      isLast={isLast}
+      responding={responding}
+      onDraftChange={setDraft}
+      onAdvance={advanceOrSubmit}
+      onCancel={() => onRespond({ outcome: 'cancelled' })}
+    />
+  );
+}
+
+function QuestionPage({
+  question,
+  draft,
+  current,
+  total,
+  isLast,
+  responding,
+  onDraftChange,
+  onAdvance,
+  onCancel,
+}: {
+  question: Question;
+  draft: Draft;
+  current: number;
+  total: number;
+  isLast: boolean;
+  responding: boolean;
+  onDraftChange: (draft: Draft) => void;
+  onAdvance: (draft: Draft) => void;
+  onCancel: () => void;
+}): React.ReactNode {
+  const t = useTranslations('mobile.chat');
+  // Each page owns a distinct native state. Remounting after a structured selection guarantees
+  // that an asynchronous native write from the previous question/answer mode cannot leak here.
+  const customText = useNativeState(draft.customText);
 
   const toggleOption = (optionId: string): void => {
     if (responding) return;
-    if (question.multiSelect) {
-      const selected = draft.selected.includes(optionId)
+    const selected = question.multiSelect
+      ? draft.selected.includes(optionId)
         ? draft.selected.filter((id) => id !== optionId)
-        : [...draft.selected, optionId];
-      setDraft({ ...draft, selected });
-      return;
-    }
-    const next = { ...withCustomText(), selected: [optionId] };
-    setDraft(next);
-    advanceOrSubmit(next);
+        : [...draft.selected, optionId]
+      : [optionId];
+    const next = { selected, customText: '' };
+    onDraftChange(next);
+    if (!question.multiSelect) onAdvance(next);
+  };
+
+  const advance = (): void => {
+    const text = customText.get().trim();
+    onAdvance(text ? { selected: [], customText: text } : { ...draft, customText: '' });
   };
 
   return (
@@ -113,9 +153,9 @@ export function QuestionPrompt({
               {question.prompt}
             </Text>
             <Spacer />
-            {questions.length > 1 ? (
+            {total > 1 ? (
               <Text modifiers={[font({ textStyle: 'caption' }), SECONDARY]}>
-                {t('questionProgress', { current: index + 1, total: questions.length })}
+                {t('questionProgress', { current, total })}
               </Text>
             ) : null}
             <Image
@@ -125,7 +165,7 @@ export function QuestionPrompt({
                 TERTIARY,
                 WHOLE_ROW,
                 onTapGesture(() => {
-                  if (!responding) onRespond({ outcome: 'cancelled' });
+                  if (!responding) onCancel();
                 }),
               ]}
             />
@@ -157,10 +197,18 @@ export function QuestionPrompt({
               );
             })}
           </VStack>
-          <TextField text={customText} placeholder={t('customAnswerPlaceholder')} />
+          <TextField
+            text={customText}
+            placeholder={t('customAnswerPlaceholder')}
+            onTextChange={(text) => {
+              if (text.trim() && draft.selected.length > 0) {
+                onDraftChange({ selected: [], customText: text });
+              }
+            }}
+          />
           <Button
             label={isLast ? t('submitAnswers') : t('next')}
-            onPress={() => advanceOrSubmit(withCustomText())}
+            onPress={advance}
             modifiers={[buttonStyle('borderedProminent'), disabled(responding)]}
           />
         </VStack>
