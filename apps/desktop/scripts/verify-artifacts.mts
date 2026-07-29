@@ -184,7 +184,7 @@ function readBinaryArch(file: string): 'x64' | 'arm64' | null {
 function verifyNativeBindings(platform: string, resourceDir: string, problems: string[]): void {
   const expectedArch = resourceDir.includes('arm64') ? 'arm64' : 'x64';
   const keyring = keyringBinding(platform, expectedArch);
-  const bindings: [label: string, path: string][] = [['better-sqlite3', NATIVE_BINDING]];
+  const bindings: Array<[label: string, path: string]> = [['better-sqlite3', NATIVE_BINDING]];
   if (keyring !== null) bindings.push(['@napi-rs/keyring', keyring]);
 
   for (const [label, relative] of bindings) {
