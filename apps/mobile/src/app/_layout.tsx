@@ -1,3 +1,5 @@
+import '../runtime/polyfills';
+
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { sanitizeSentryTransaction } from '@linkcode/common/sentry';
 import type { TelemetryConfig } from '@linkcode/common/telemetry-config';
