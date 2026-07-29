@@ -2,6 +2,7 @@ import {
   CompassIcon,
   FileDiffIcon,
   FolderCodeIcon,
+  PackageOpenIcon,
   SmartphoneIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
@@ -12,8 +13,8 @@ export const PANEL_WINDOW_TYPES = ['diff', 'terminal', 'browser', 'files'] as co
 
 export type PanelWindowType = (typeof PANEL_WINDOW_TYPES)[number];
 
-/** The right panel's fixed sections — a subset of {@link PanelWindowType}. */
-export const PANEL_SECTIONS = ['diff', 'terminal', 'browser', 'files'] as const;
+/** The right panel's fixed sections. These are independent from bottom-panel window types. */
+export const PANEL_SECTIONS = ['diff', 'terminal', 'browser', 'files', 'resources'] as const;
 
 /** On-demand right-panel sections, added (and removed) via the section strip's + menu. */
 export const OPTIONAL_PANEL_SECTIONS = ['simulator'] as const;
@@ -49,11 +50,12 @@ export interface PanelControl {
 }
 
 /** Window labels are translated at the render site (`workbench.panel.window.*`); only icons live here. */
-export const PANEL_WINDOW_ICONS: Record<PanelWindowType | OptionalPanelSection, React.ReactNode> = {
+export const PANEL_WINDOW_ICONS: Record<PanelSection, React.ReactNode> = {
   diff: <FileDiffIcon />,
   terminal: <SquareTerminalIcon />,
   browser: <CompassIcon />,
   files: <FolderCodeIcon />,
+  resources: <PackageOpenIcon />,
   simulator: <SmartphoneIcon />,
 };
 
