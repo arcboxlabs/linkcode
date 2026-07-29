@@ -1,29 +1,29 @@
 import { extractErrorMessage } from 'foxts/extract-error-message';
 
 /**
- * The daemon's REST surface of LinkCode HQ (the linkcodehq backend): RFC 8628 device flow, device
+ * The daemon's REST surface of LinkCode Cloud (the `linkcodehq` backend): RFC 8628 device flow, device
  * registry, tunnel-JWT exchange. Responses are validated at this boundary; callers trust the shapes.
  */
 
-/** Default HQ origin; `LINKCODE_HQ_URL` overrides it at login time. */
-export const DEFAULT_HQ_URL = 'https://api.linkcode.ai';
+/** Default cloud origin; `LINKCODE_CLOUD_URL` overrides it at login time. */
+export const DEFAULT_CLOUD_URL = 'https://api.linkcode.ai';
 
-/** The client_id HQ whitelists for the daemon's device flow (validateClient). */
+/** The client_id the cloud API whitelists for the daemon's device flow (validateClient). */
 export const DEVICE_FLOW_CLIENT_ID = 'linkcode-daemon';
 
-export class HqApiError extends Error {
-  override name = 'HqApiError';
+export class CloudApiError extends Error {
+  override name = 'CloudApiError';
 }
 
-function hqError(message: string, status: number): HqApiError {
-  return new HqApiError(`${message} (HTTP ${status})`);
+function cloudError(message: string, status: number): CloudApiError {
+  return new CloudApiError(`${message} (HTTP ${status})`);
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function hqJson(
+async function cloudJson(
   baseUrl: string,
   path: string,
   init: { method?: string; body?: unknown; sessionToken?: string } = {},
@@ -39,7 +39,9 @@ async function hqJson(
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch (err) {
-    throw new HqApiError(`HQ unreachable at ${baseUrl}: ${extractErrorMessage(err)}`);
+    throw new CloudApiError(
+      `LinkCode Cloud unreachable at ${baseUrl}: ${extractErrorMessage(err)}`,
+    );
   }
   let body: unknown = null;
   try {
@@ -64,7 +66,7 @@ export interface DeviceCodeGrant {
 }
 
 export async function requestDeviceCode(baseUrl: string): Promise<DeviceCodeGrant> {
-  const { status, body } = await hqJson(baseUrl, '/auth/device/code', {
+  const { status, body } = await cloudJson(baseUrl, '/auth/device/code', {
     body: { client_id: DEVICE_FLOW_CLIENT_ID },
   });
   if (
@@ -75,7 +77,7 @@ export async function requestDeviceCode(baseUrl: string): Promise<DeviceCodeGran
     typeof body.verification_uri !== 'string' ||
     typeof body.verification_uri_complete !== 'string'
   ) {
-    throw hqError('device sign-in could not start', status);
+    throw cloudError('device sign-in could not start', status);
   }
   return {
     deviceCode: body.device_code,
@@ -99,7 +101,7 @@ export async function pollDeviceToken(
   baseUrl: string,
   deviceCode: string,
 ): Promise<DeviceTokenPoll> {
-  const { status, body } = await hqJson(baseUrl, '/auth/device/token', {
+  const { status, body } = await cloudJson(baseUrl, '/auth/device/token', {
     body: {
       grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       device_code: deviceCode,
@@ -117,14 +119,14 @@ export async function pollDeviceToken(
 
 /** Exchange the stored session for a short-lived tunnel JWT (`GET /auth/token`). */
 export async function fetchTunnelToken(baseUrl: string, sessionToken: string): Promise<string> {
-  const { status, body } = await hqJson(baseUrl, '/auth/token', { sessionToken });
+  const { status, body } = await cloudJson(baseUrl, '/auth/token', { sessionToken });
   if (status === 200 && isRecord(body) && typeof body.token === 'string') return body.token;
-  throw hqError('tunnel token refresh failed — signed out or device revoked?', status);
+  throw cloudError('tunnel token refresh failed — signed out or device revoked?', status);
 }
 
 /**
  * Enroll this installation as a device — enroll-or-rebind on the device key: the same key always
- * resolves to the same device id (kept across re-logins and account switches), and HQ stamps that
+ * resolves to the same device id (kept across re-logins and account switches), and the cloud stamps that
  * `device_id` claim into subsequent tunnel JWTs. The returned id is the daemon's tunnel host id.
  */
 export async function registerDevice(
@@ -141,14 +143,14 @@ export async function registerDevice(
     keyProtection?: 'hardware' | 'software';
   },
 ): Promise<{ deviceId: string }> {
-  const { status, body } = await hqJson(baseUrl, '/devices', { body: device, sessionToken });
+  const { status, body } = await cloudJson(baseUrl, '/devices', { body: device, sessionToken });
   if (status === 200 && isRecord(body) && typeof body.id === 'string') {
     return { deviceId: body.id };
   }
-  throw hqError('device registration failed', status);
+  throw cloudError('device registration failed', status);
 }
 
 export async function signOut(baseUrl: string, sessionToken: string): Promise<void> {
-  const { status } = await hqJson(baseUrl, '/auth/sign-out', { body: {}, sessionToken });
-  if (status !== 200) throw hqError('sign-out failed', status);
+  const { status } = await cloudJson(baseUrl, '/auth/sign-out', { body: {}, sessionToken });
+  if (status !== 200) throw cloudError('sign-out failed', status);
 }

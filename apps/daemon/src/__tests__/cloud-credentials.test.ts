@@ -22,12 +22,12 @@ vi.mock('../secrets', () => ({
   }),
 }));
 
-import { cloudCredentialsPath, legacyHqCredentialsPath } from '../config';
 import {
   clearCloudCredentials,
   loadCloudCredentials,
   saveCloudCredentials,
-} from '../hq/credentials';
+} from '../cloud/credentials';
+import { cloudCredentialsPath, legacyHqCredentialsPath } from '../config';
 import { logger } from '../logger';
 
 const TOKEN = 'eyJhbGciOi-session-token';

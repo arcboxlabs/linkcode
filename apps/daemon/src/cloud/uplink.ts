@@ -7,7 +7,7 @@ import { fetchTunnelToken } from './api';
 import { loadCloudCredentials } from './credentials';
 import { ensureDeviceKey } from './device-key';
 
-/** How long to wait before redialing when HQ is unreachable at boot. */
+/** How long to wait before redialing when the cloud is unreachable at boot. */
 const CONNECT_RETRY_MS = 30000;
 
 /**
@@ -17,7 +17,7 @@ const CONNECT_RETRY_MS = 30000;
  * *permanent* close (replaced under the same device id, credential revoked, signed out) stops the
  * uplink for good; sign in again and restart to recover. Returns a stop function for shutdown.
  */
-export function startHqUplink(hub: Hub): () => void {
+export function startCloudUplink(hub: Hub): () => void {
   const credentials = loadCloudCredentials();
   if (!credentials) {
     logger.info({ operation: 'uplink.connect' }, 'Cloud uplink disabled');

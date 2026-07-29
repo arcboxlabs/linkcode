@@ -24,8 +24,8 @@ vi.mock('../secrets', () => ({
   }),
 }));
 
+import { adoptLegacyDeviceKeyFile, ensureSoftwareDeviceKey } from '../cloud/device-key';
 import { legacyDeviceKeyPath } from '../config';
-import { adoptLegacyDeviceKeyFile, ensureSoftwareDeviceKey } from '../hq/device-key';
 import { logger } from '../logger';
 
 let savedHome: string | undefined;
@@ -84,7 +84,7 @@ describe('software device key', () => {
     const { privatePem, publicKeyPem } = seedLegacyKeyFile();
     vault.set('device:software-key', privatePem);
 
-    // The device id is this key's fingerprint, so substituting a key would orphan the machine's HQ
+    // The device id is this key's fingerprint, so substituting a key would orphan the machine's cloud
     // registration and its tunnel host id.
     expect(ensureSoftwareDeviceKey().publicKeyPem).toBe(publicKeyPem);
   });
