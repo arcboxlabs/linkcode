@@ -405,24 +405,27 @@ describe('ToolCallBody', () => {
       undefined,
     ],
     ['Pi raw output', [], { content: [{ type: 'text' as const, text: 'Updated hello.py' }] }],
-  ])('keeps a %s mutation receipt outside the file navigation card', (_label, content, rawOutput) => {
-    const toolCall: ToolCall = {
-      toolCallId: 'mutation-receipt',
-      title: 'Edit',
-      kind: 'edit',
-      status: 'completed',
-      locations: [{ path: '/repo/hello.py' }],
-      content,
-      rawOutput,
-    };
+  ])(
+    'keeps a %s mutation receipt outside the file navigation card',
+    (_label, content, rawOutput) => {
+      const toolCall: ToolCall = {
+        toolCallId: 'mutation-receipt',
+        title: 'Edit',
+        kind: 'edit',
+        status: 'completed',
+        locations: [{ path: '/repo/hello.py' }],
+        content,
+        rawOutput,
+      };
 
-    render(<ToolCallBody toolCall={toolCall} />);
+      render(<ToolCallBody toolCall={toolCall} />);
 
-    const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
-    const receiptNode = screen.getByText('Updated hello.py');
-    expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
-    expect(fileCard?.contains(receiptNode)).toBe(false);
-  });
+      const fileCard = screen.getByText('hello.py').closest('[data-slot="frame"]');
+      const receiptNode = screen.getByText('Updated hello.py');
+      expect(fileCard?.querySelector('[data-slot="frame-panel"]')).toBeNull();
+      expect(fileCard?.contains(receiptNode)).toBe(false);
+    },
+  );
 
   it('surfaces an execute failure message without its raw result envelope', () => {
     const toolCall: ToolCall = {

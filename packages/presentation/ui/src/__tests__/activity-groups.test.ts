@@ -150,23 +150,20 @@ describe('groupTimeline', () => {
     ]);
   });
 
-  it.each([
-    'plan',
-    'approval',
-    'question',
-    'error',
-    'compaction',
-  ] as const)('flushes runs on %s items', (kind) => {
-    const before = [reasoning(), tool('read')];
-    const interrupt = boundary(kind);
-    const after = [tool('execute'), tool('edit')];
+  it.each(['plan', 'approval', 'question', 'error', 'compaction'] as const)(
+    'flushes runs on %s items',
+    (kind) => {
+      const before = [reasoning(), tool('read')];
+      const interrupt = boundary(kind);
+      const after = [tool('execute'), tool('edit')];
 
-    expect(groupTimeline([...before, interrupt, ...after])).toEqual([
-      { type: 'run', id: `run-${before[0].id}`, items: before },
-      { type: 'item', item: interrupt },
-      { type: 'run', id: `run-${after[0].id}`, items: after },
-    ]);
-  });
+      expect(groupTimeline([...before, interrupt, ...after])).toEqual([
+        { type: 'run', id: `run-${before[0].id}`, items: before },
+        { type: 'item', item: interrupt },
+        { type: 'run', id: `run-${after[0].id}`, items: after },
+      ]);
+    },
+  );
 
   it('groups approval-gated tools by default until the approval event itself interrupts', () => {
     const guarded = tool('edit');

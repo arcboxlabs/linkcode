@@ -15,25 +15,23 @@ describe('parseTelemetryConfig', () => {
     expect(parseTelemetryConfig(DEFAULT_TELEMETRY_CONFIG)).toEqual(DEFAULT_TELEMETRY_CONFIG);
   });
 
-  it.each([
-    -0.01,
-    1.01,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])('rejects an invalid sample rate: %s', (desktopMain) => {
-    expect(
-      parseTelemetryConfig({
-        ...DEFAULT_TELEMETRY_CONFIG,
-        sentry: {
-          ...DEFAULT_TELEMETRY_CONFIG.sentry,
-          tracesSampleRate: {
-            ...DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate,
-            desktopMain,
+  it.each([-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects an invalid sample rate: %s',
+    (desktopMain) => {
+      expect(
+        parseTelemetryConfig({
+          ...DEFAULT_TELEMETRY_CONFIG,
+          sentry: {
+            ...DEFAULT_TELEMETRY_CONFIG.sentry,
+            tracesSampleRate: {
+              ...DEFAULT_TELEMETRY_CONFIG.sentry.tracesSampleRate,
+              desktopMain,
+            },
           },
-        },
-      }),
-    ).toBeNull();
-  });
+        }),
+      ).toBeNull();
+    },
+  );
 
   it('rejects unknown schema versions', () => {
     expect(parseTelemetryConfig({ ...DEFAULT_TELEMETRY_CONFIG, schemaVersion: 2 })).toBeNull();

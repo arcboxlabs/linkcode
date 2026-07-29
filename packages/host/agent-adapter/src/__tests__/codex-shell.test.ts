@@ -333,47 +333,51 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
   });
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('accepts Sol effort %s and sends it on the first turn', async (effort) => {
-    const adapter = new TestCodex();
-    await adapter.start({ ...start, effort });
-    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+  it.each(['max', 'ultra'] as const)(
+    'accepts Sol effort %s and sends it on the first turn',
+    async (effort) => {
+      const adapter = new TestCodex();
+      await adapter.start({ ...start, effort });
+      await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
 
-    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
-    expect(turn?.params).toMatchObject({ effort });
-  });
+      const turn = adapter.fakeServers[0].requests.find(
+        (request) => request.method === 'turn/start',
+      );
+      expect(turn?.params).toMatchObject({ effort });
+    },
+  );
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('defers effort %s validation when optional model discovery is unavailable', async (effort) => {
-    const adapter = new TestCodex();
-    adapter.rejectMethod = 'model/list';
+  it.each(['max', 'ultra'] as const)(
+    'defers effort %s validation when optional model discovery is unavailable',
+    async (effort) => {
+      const adapter = new TestCodex();
+      adapter.rejectMethod = 'model/list';
 
-    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
-    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+      await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+      await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
 
-    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
-      'thread/start',
-    );
-    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
-    expect(turn?.params).toMatchObject({ effort });
-  });
+      expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+        'thread/start',
+      );
+      const turn = adapter.fakeServers[0].requests.find(
+        (request) => request.method === 'turn/start',
+      );
+      expect(turn?.params).toMatchObject({ effort });
+    },
+  );
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('defers effort %s validation when model discovery has no usable entries', async (effort) => {
-    const adapter = new TestCodex();
-    adapter.emptyModelList = true;
+  it.each(['max', 'ultra'] as const)(
+    'defers effort %s validation when model discovery has no usable entries',
+    async (effort) => {
+      const adapter = new TestCodex();
+      adapter.emptyModelList = true;
 
-    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
-    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
-      'thread/start',
-    );
-  });
+      await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+      expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+        'thread/start',
+      );
+    },
+  );
 
   it('accepts Luna max but rejects Luna ultra from provider metadata', async () => {
     const accepted = new TestCodex();
