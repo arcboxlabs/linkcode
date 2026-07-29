@@ -624,12 +624,24 @@ export class LinkCodeClient {
 
   /** See {@link ControlChannel.attachSession}. */
   attachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
     this.control.attachSession(sessionId);
   }
 
   /** See {@link ControlChannel.detachSession}. */
   detachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
     this.control.detachSession(sessionId);
+  }
+
+  /**
+   * Whether a subscription announcement is still worth sending. Once the connection is gone the
+   * Hub has already discarded this connection's whole subscription, so the frame would be a no-op
+   * — and the socket transports throw on `send` with no socket open. React teardown runs after
+   * `ConnectionController` disposes the generation, so an unmount-time detach lands here.
+   */
+  private canAnnounce(): boolean {
+    return this.state !== 'closed' && this.state !== 'disposed';
   }
 
   /** See {@link ControlChannel.setSubscriptionMode}. */
