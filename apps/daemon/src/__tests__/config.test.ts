@@ -27,9 +27,9 @@ vi.mock('../secrets', () => ({
 }));
 
 import {
+  cloudCredentialsPath,
   daemonProfile,
   databasePath,
-  hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
   saveAccounts,
@@ -145,7 +145,7 @@ describe('profile-scoped state paths', () => {
     expect(daemonProfile()).toBe('alpha');
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
-    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(cloudCredentialsPath()).toBe(join(root, 'cloud.json'));
     expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 
@@ -177,7 +177,7 @@ describe('channel-scoped state paths', () => {
     expect(daemonChannel()).toBe('development');
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
-    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(cloudCredentialsPath()).toBe(join(root, 'cloud.json'));
     expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 

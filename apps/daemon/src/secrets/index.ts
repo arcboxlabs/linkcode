@@ -9,7 +9,7 @@ export type { SecretProtection, SecretVault } from './vault';
  * Stable vault refs. Derivable from what the caller already holds — an account id, an agent kind —
  * so no file needs to store a pointer alongside the structure it describes.
  */
-export const HQ_SESSION_REF = 'hq:session';
+export const CLOUD_SESSION_REF = 'cloud:session';
 export const DEVICE_SOFTWARE_KEY_REF = 'device:software-key';
 export const accountSecretRef = (accountId: string): string => `account:${accountId}`;
 export const providerApiKeyRef = (agentKind: string): string => `provider:${agentKind}`;

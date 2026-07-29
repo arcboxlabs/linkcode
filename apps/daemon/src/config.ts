@@ -71,8 +71,14 @@ export function runtimeFilePath(): string {
   return daemonRuntimeFilePath(daemonChannel(), daemonProfile());
 }
 
-/** HQ sign-in state (session token + registered device id), next to config.json; written 0600. */
-export function hqCredentialsPath(): string {
+/** LinkCode Cloud sign-in state (origin + registered device id), next to config.json; written 0600.
+ * The session token is not in it — that lives in the secret vault (CODE-371). */
+export function cloudCredentialsPath(): string {
+  return join(daemonStateDir(), 'cloud.json');
+}
+
+/** Pre-rename name of {@link cloudCredentialsPath}, read once to migrate and then removed. */
+export function legacyHqCredentialsPath(): string {
   return join(daemonStateDir(), 'hq.json');
 }
 

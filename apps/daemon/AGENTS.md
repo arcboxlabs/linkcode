@@ -12,7 +12,7 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   app's alone and running the source lands in `~/.linkcode.development/`; the suffix is
   dot-separated because profile names forbid dots, making collision with `--profile=development`
   impossible. `LINKCODE_PROFILE=<name>` (`[a-z0-9-]`, ≤32 chars, invalid aborts boot) then forks
-  the sibling `~/.linkcode[.development]-<name>/` — including `hq.json` / `device-key.pem`, so each
+  the sibling `~/.linkcode[.development]-<name>/` — including `cloud.json` / `device-key.pem`, so each
   universe registers as its own HQ device (deliberate: the relay allows one uplink per device id).
   Workspaces (`~/LinkCode` vs `~/LinkCode Development`) and the managed asset store fork by channel
   but are shared across a channel's profiles. **Resolve the channel per call, never at module
