@@ -1,4 +1,4 @@
-import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip, ViewTransition } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
@@ -39,9 +39,18 @@ export function WebWorkbenchShell({
             <ChevronRightIcon className="size-4" />
           </ShellIconButton>
           <div className="min-w-0">
-            <div className="truncate font-medium text-sm" data-conversation-title="">
-              {header.title}
-            </div>
+            {header.sessionId ? (
+              <ViewTransition
+                key={header.sessionId}
+                enter="none"
+                exit="none"
+                name={`thread-title-${header.sessionId}`}
+              >
+                <div className="truncate font-medium text-sm">{header.title}</div>
+              </ViewTransition>
+            ) : (
+              <div className="truncate font-medium text-sm">{header.title}</div>
+            )}
             {header.subtitle && (
               <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
             )}
