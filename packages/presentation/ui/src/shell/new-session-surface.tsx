@@ -325,6 +325,7 @@ export function NewSessionSurface({
             currentEffort={constrainedEffort}
             agentModels={dynamicModels}
             approvalPolicy={approvalPolicy}
+            approvalPolicyPlaceholder={t('permissionMode')}
             selectableProviders={SELECTABLE_PROVIDERS}
             onSend={handleSend}
             onStop={noop}
