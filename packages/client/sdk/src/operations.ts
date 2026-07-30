@@ -17,6 +17,7 @@ import type {
   CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -277,6 +278,11 @@ export function ensureAsset(
 /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
 export function getGitStatus(options: Options<{ cwd: string }>): RequestResult<GitStatus> {
   return resolveClient(options).getGitStatus(options.cwd);
+}
+
+/** Local branches for a directory, ordered current-first then by descending commit date. */
+export function listGitBranches(options: Options<{ cwd: string }>): RequestResult<GitBranchList> {
+  return resolveClient(options).listGitBranches(options.cwd);
 }
 
 /** Hosting-provider PR state for a directory's current branch. */

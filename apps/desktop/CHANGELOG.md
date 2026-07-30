@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.12.0](https://github.com/arcboxlabs/linkcode/compare/v0.11.0...v0.12.0) (2026-07-30)
+
+
+### Features
+
+* **git,session:** add branch-selected worktree sessions ([#331](https://github.com/arcboxlabs/linkcode/issues/331)) ([1c00df3](https://github.com/arcboxlabs/linkcode/commit/1c00df3bacce970c13a48338e3daa7857ae89f45))
+
+
+### Bug Fixes
+
+* **daemon:** squash worktree migrations ([e894890](https://github.com/arcboxlabs/linkcode/commit/e894890aa51807a47810af263e1da4172d2f6bfa))
+
+## [0.11.0](https://github.com/arcboxlabs/linkcode/compare/v0.10.1...v0.11.0) (2026-07-30)
+
+
+### Features
+
+* **pty:** close terminal tabs on process exit ([#338](https://github.com/arcboxlabs/linkcode/issues/338)) ([1e77c38](https://github.com/arcboxlabs/linkcode/commit/1e77c38f6204d1cbf011cc950fdceab12b9cc87e))
+
+
+### Bug Fixes
+
+* **assets:** version Pi closures by content ([2fdab62](https://github.com/arcboxlabs/linkcode/commit/2fdab62651c1df11c62a454b24ad4279f384b34c))
+* **release:** repair Linux desktop cross-architecture builds ([#343](https://github.com/arcboxlabs/linkcode/issues/343)) ([995dcc2](https://github.com/arcboxlabs/linkcode/commit/995dcc2b90e869dd3c864afc5efea1bb466f83e2))
+
 ## [0.10.1](https://github.com/arcboxlabs/linkcode/compare/v0.10.0...v0.10.1) (2026-07-30)
 
 

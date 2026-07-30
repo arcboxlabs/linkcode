@@ -36,6 +36,7 @@ import {
   databasePath,
   loadConfig,
   saveSimulatorConsent,
+  worktreeRoot,
 } from './config';
 import { runLoginCommand, runLogoutCommand } from './hq/login';
 import { startHqUplink } from './hq/uplink';
@@ -56,6 +57,7 @@ import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
 import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
+import { createWorktreeStore } from './worktree-store';
 
 // State is untrustworthy after an uncaught exception — die rather than serve from unknown state.
 process.on('uncaughtException', (err) => {
@@ -244,6 +246,8 @@ async function main(): Promise<void> {
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
+        worktreeStore: createWorktreeStore(databasePath()),
+        worktreeRoot: worktreeRoot(),
         previewRoutes,
         browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',
         agentRuntimesReady,

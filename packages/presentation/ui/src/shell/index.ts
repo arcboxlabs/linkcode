@@ -13,6 +13,7 @@ export * from './history/history-browser';
 export * from './history/sort';
 export * from './history/sort-select';
 export * from './im-channel-settings-panel';
+export * from './new-session-branch-picker';
 export * from './new-session-surface';
 export * from './notifications-settings-panel';
 export * from './plugins';

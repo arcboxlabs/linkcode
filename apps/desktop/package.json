@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.10.1",
+  "version": "0.12.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -19,6 +19,7 @@
     "e2e:packaged": "pnpm run package:devshell && pnpm run e2e:packaged:smoke",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
+    "e2e:new-session-branch": "node e2e/new-session-branch.e2e.mts",
     "e2e:new-session-policy": "node e2e/new-session-policy.e2e.mts",
     "e2e:simulator": "node e2e/simulator-panel.e2e.mts",
     "e2e:thread-menu": "node e2e/thread-menu.e2e.mts",

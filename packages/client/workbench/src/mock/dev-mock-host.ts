@@ -478,6 +478,14 @@ export class DevMockHost {
           status: gitFixtureFor(p.cwd).status,
         });
         break;
+      case 'git.branch.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'git.branch.list.result',
+          replyTo: p.clientReqId,
+          branchList: gitFixtureFor(p.cwd).branchList,
+        });
+        break;
       case 'git.pr_status.get':
         await wait(CONTROL_LATENCY_MS);
         this.send({

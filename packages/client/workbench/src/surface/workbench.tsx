@@ -49,6 +49,7 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { captureProductEvent } from '../analytics/product-analytics';
 import { useFileMentionSource } from '../files/mentions';
+import { RuntimeNewSessionBranchPicker } from '../git/new-session-branch-picker';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -265,6 +266,9 @@ function WorkbenchSessionSurface({
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
   const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
+  const newSessionPreferredBranches = useNewSessionDefaultsStore(
+    (state) => state.branchesByWorkspace,
+  );
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
@@ -309,9 +313,8 @@ function WorkbenchSessionSurface({
   );
 
   function submitActiveInput(input: AgentInput): Promise<void> {
-    const sessionId = sessions.activeId;
-    if (sessionId) onClearError();
-    return submitActiveSessionInput(sessionId, input, turnInputMutation.trigger);
+    onClearError();
+    return submitActiveSessionInput(input, turnInputMutation.trigger);
   }
 
   function handleSend(content: ContentBlock[]): Promise<void> {
@@ -351,12 +354,18 @@ function WorkbenchSessionSurface({
       effort: submission.effort ?? undefined,
       approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
+      branch: submission.branch,
     });
     const startupSelection = reflectedStartupSelection(
       submission,
       sdkClient.raw.eventsSnapshot(sessionId),
     );
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
+    rememberNewSessionDefaults(
+      submission.kind,
+      submission.workspaceId,
+      startupSelection,
+      submission.branch?.name,
+    );
     // The first input rides behind the started session, like any conversation send.
     void turnInputMutation
       .trigger({ sessionId, input: submission.input })
@@ -508,16 +517,17 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const workspacesById = new Map(
-    allWorkspaces.map((workspace) => [workspace.workspaceId, workspace] as const),
-  );
-  const workspaceIds = new Set(workspacesById.keys());
+  const workspacesById = new Map<WorkspaceId, WorkspaceRecord>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
   for (const workspace of allWorkspaces) {
-    if (workspaceKind(workspace) === 'chat') chatWorkspace ??= workspace;
+    const kind = workspaceKind(workspace);
+    if (kind === 'worktree') continue;
+    workspacesById.set(workspace.workspaceId, workspace);
+    if (kind === 'chat') chatWorkspace ??= workspace;
     else projectWorkspaces.push(workspace);
   }
+  const workspaceIds = new Set(workspacesById.keys());
 
   // Resolve the draft's initial picks: an explicit preselection (group "+", Chats "+") wins, then
   // the persisted last-used workspace (if it still exists), then chat, then the first project.
@@ -616,6 +626,8 @@ function WorkbenchSessionSurface({
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
+      newSessionPreferredBranches={newSessionPreferredBranches}
+      NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}

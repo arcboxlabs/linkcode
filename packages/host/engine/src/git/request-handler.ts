@@ -7,7 +7,7 @@ import type { GitService } from './git-service';
 
 type GitRequest = Extract<
   WirePayload,
-  { kind: 'git.status.get' | 'git.pr_status.get' | 'git.diff.get' }
+  { kind: 'git.status.get' | 'git.branch.list' | 'git.pr_status.get' | 'git.diff.get' }
 >;
 
 /** Translates inbound git requests into cached local and provider reads. */
@@ -31,6 +31,23 @@ export class GitRequestHandler {
                     kind: 'git.status.get.result',
                     replyTo: payload.clientReqId,
                     status,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+      case 'git.branch.list':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.git.listBranches(payload.cwd).pipe(
+            Effect.flatMap((branchList) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'git.branch.list.result',
+                    replyTo: payload.clientReqId,
+                    branchList,
                   }),
                 ),
               ),

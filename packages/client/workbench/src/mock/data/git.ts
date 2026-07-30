@@ -1,8 +1,9 @@
-import type { GitDiff, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
+import type { GitBranchList, GitDiff, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
 import { normalizeCwdKey } from '@linkcode/schema';
 
 export interface GitFixture {
   status: GitStatus;
+  branchList: GitBranchList;
   prStatus: GitPullRequestStatus;
   diff: GitDiff;
 }
@@ -46,6 +47,13 @@ const FIXTURES = new Map<string, GitFixture>(
         behind: 2,
         remote: MOCK_REMOTE,
       },
+      branchList: {
+        isRepo: true,
+        branches: [
+          { name: 'mock-host', isCurrent: true, lastCommitAt: 1_720_000_000_000 },
+          { name: 'main', isCurrent: false, lastCommitAt: 1_710_000_000_000 },
+        ],
+      },
       prStatus: {
         status: 'ok',
         pullRequest: {
@@ -73,11 +81,16 @@ const FIXTURES = new Map<string, GitFixture>(
         behind: 0,
         remote: MOCK_REMOTE,
       },
+      branchList: {
+        isRepo: true,
+        branches: [{ name: 'main', isCurrent: true, lastCommitAt: 1_720_000_000_000 }],
+      },
       prStatus: { status: 'ok', pullRequest: null },
       diff: EMPTY_DIFF,
     },
     '/mock/scratch': {
       status: { isRepo: false },
+      branchList: { isRepo: false },
       prStatus: { status: 'unavailable', reason: 'not_git_repo' },
       diff: EMPTY_DIFF,
     },
@@ -96,6 +109,10 @@ export function gitFixtureFor(cwd: string): GitFixture {
         ahead: 1,
         behind: 0,
         remote: MOCK_REMOTE,
+      },
+      branchList: {
+        isRepo: true,
+        branches: [{ name: 'mock-host', isCurrent: true, lastCommitAt: 1_720_000_000_000 }],
       },
       prStatus: { status: 'ok', pullRequest: null },
       diff: RICH_DIFF,

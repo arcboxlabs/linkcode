@@ -2,23 +2,41 @@ import { z } from 'zod';
 import { TimestampSchema, WorkspaceIdSchema } from './primitives';
 
 /** `project`: a directory the user explicitly registered. `chat`: the single daemon-owned chat
- * root (`~/LinkCode`) backing the sidebar's "Chats" section — a fixed system entry the user
- * doesn't manage. */
-export const WorkspaceKindSchema = z.enum(['project', 'chat']);
+ * root (`~/LinkCode`) backing the sidebar's "Chats" section. `worktree`: a daemon-managed
+ * worktree belonging to a project workspace. */
+export const WorkspaceKindSchema = z.enum(['project', 'chat', 'worktree']);
 export type WorkspaceKind = z.infer<typeof WorkspaceKindSchema>;
 
 /** A workspace is a registered directory: the persisted identity behind "recent directories",
  * independent of any session — a session's `cwd` remains the source of truth for where it runs. */
-export const WorkspaceRecordSchema = z.object({
-  workspaceId: WorkspaceIdSchema,
-  cwd: z.string().min(1),
-  /** Derived from the path's last segment when not set explicitly. */
-  name: z.string().min(1).optional(),
-  /** Absent on records from before this field existed, or from an older client — read via {@link workspaceKind}. */
-  kind: WorkspaceKindSchema.optional(),
-  createdAt: TimestampSchema,
-  lastUsedAt: TimestampSchema,
-});
+export const WorkspaceRecordSchema = z
+  .object({
+    workspaceId: WorkspaceIdSchema,
+    cwd: z.string().min(1),
+    /** Derived from the path's last segment when not set explicitly. */
+    name: z.string().min(1).optional(),
+    /** Absent on records from before this field existed, or from an older client — read via {@link workspaceKind}. */
+    kind: WorkspaceKindSchema.optional(),
+    /** Owning project; present only for daemon-managed worktrees. */
+    parentWorkspaceId: WorkspaceIdSchema.optional(),
+    createdAt: TimestampSchema,
+    lastUsedAt: TimestampSchema,
+  })
+  .superRefine((record, context) => {
+    if (record.kind === 'worktree' && record.parentWorkspaceId === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parentWorkspaceId'],
+        message: 'Worktree workspaces require a parent workspace',
+      });
+    } else if (record.kind !== 'worktree' && record.parentWorkspaceId !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parentWorkspaceId'],
+        message: 'Only worktree workspaces may have a parent workspace',
+      });
+    }
+  });
 export type WorkspaceRecord = z.infer<typeof WorkspaceRecordSchema>;
 
 /** `record.kind`, defaulting to `'project'` when absent (see {@link WorkspaceRecordSchema.kind}). */

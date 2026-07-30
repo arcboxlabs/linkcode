@@ -20,6 +20,7 @@ import type {
   CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -315,6 +316,11 @@ export class LinkCodeSdkClient {
   /** Local git facts for a directory (directory-backed: keyed by cwd, not by session). */
   getGitStatus(cwd: string): RequestResult<GitStatus> {
     return toResult(this.raw.getGitStatus(cwd));
+  }
+
+  /** Local branches for a directory, ordered current-first then by descending commit date. */
+  listGitBranches(cwd: string): RequestResult<GitBranchList> {
+    return toResult(this.raw.listGitBranches(cwd));
   }
 
   /** Hosting-provider PR state for a directory's current branch. */
