@@ -1,4 +1,8 @@
-import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
+import type {
+  HistoryListClientOptions,
+  HistoryReadClientOptions,
+  PluginList,
+} from '@linkcode/client-core';
 import type {
   Accounts,
   AgentHistoryId,
@@ -8,6 +12,8 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -23,6 +29,9 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  Plugin,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -181,6 +190,37 @@ export function getAccounts(options?: Options): RequestResult<Accounts> {
 
 export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
   return resolveClient(options).setAccounts(options.accounts);
+}
+
+/** Masked custom MCP servers — env/header keys only, never a secret value. */
+export function getCustomMcpServers(options?: Options): RequestResult<CustomMcpServerPublic[]> {
+  return resolveClient(options).getCustomMcpServers();
+}
+
+export function setCustomMcpServers(
+  options: Options<{ patches: CustomMcpServerPatchOp[] }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setCustomMcpServers(options.patches);
+}
+
+/** Discover provider plugins + standalone skills. Slow (a CLI shell-out on the daemon) —
+ * consumers refresh manually, never on focus. */
+export function getPlugins(options?: Options<{ cwd?: string }>): RequestResult<PluginList> {
+  return resolveClient(options).listPlugins(options?.cwd);
+}
+
+/** Toggle a plugin; resolves with the re-listed plugin so callers patch one cache entry. */
+export function setPluginEnabled(
+  options: Options<{
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }>,
+): RequestResult<Plugin> {
+  const { provider, id, enabled, scope, cwd } = options;
+  return resolveClient(options).setPluginEnabled({ provider, id, enabled, scope, cwd });
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

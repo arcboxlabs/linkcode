@@ -10,6 +10,8 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   ContentBlock,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -25,6 +27,9 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  Plugin,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -56,7 +61,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import type { PendingRegistry, PendingValueMap, RequestAck } from './pending-registry';
+import type { PendingRegistry, PendingValueMap, PluginList, RequestAck } from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
 export type HistoryListClientOptions = AgentHistoryListOptions & {
@@ -365,6 +370,47 @@ export class ControlChannel {
     return this.sendCorrelated('accountsGet', (clientReqId) => ({
       kind: 'config.get',
       clientReqId,
+    }));
+  }
+
+  /** Read the daemon-owned custom MCP servers (masked projection — never carries a secret). */
+  getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
+    return this.sendCorrelated('customMcpGet', (clientReqId) => ({
+      kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
+  /** Apply custom-MCP patch ops (add / per-key secret update / remove). Preserves other config. */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'config.set',
+      clientReqId,
+      customMcpServers: patches,
+    }));
+  }
+
+  /** Discover provider plugins and standalone skills (a real CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): Promise<PluginList> {
+    return this.sendCorrelated('pluginList', (clientReqId) => ({
+      kind: 'plugin.list.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Toggle a plugin through its provider; resolves with the re-listed, updated plugin. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): Promise<Plugin> {
+    return this.sendCorrelated('pluginSetEnabled', (clientReqId) => ({
+      kind: 'plugin.set-enabled',
+      clientReqId,
+      ...params,
     }));
   }
 

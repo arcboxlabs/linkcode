@@ -3,6 +3,7 @@ import type {
   AssetSettledEvent,
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  PluginList,
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
@@ -14,6 +15,8 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -29,6 +32,9 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  Plugin,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -216,6 +222,32 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned global account pool (data plane). */
   setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
     return toResult(this.raw.setAccounts(accounts));
+  }
+
+  /** Masked custom MCP servers (data plane) — env/header keys only, never a secret value. */
+  getCustomMcpServers(): RequestResult<CustomMcpServerPublic[]> {
+    return toResult(this.raw.getCustomMcpServers());
+  }
+
+  /** Apply custom-MCP patch ops (add / per-key secret update / remove). */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setCustomMcpServers(patches));
+  }
+
+  /** Discover provider plugins + standalone skills (slow: a CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): RequestResult<PluginList> {
+    return toResult(this.raw.listPlugins(cwd));
+  }
+
+  /** Toggle a plugin; resolves with the re-listed plugin for single-entry cache patching. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): RequestResult<Plugin> {
+    return toResult(this.raw.setPluginEnabled(params));
   }
 
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

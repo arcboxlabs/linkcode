@@ -9,6 +9,8 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   ContentBlock,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitDiff,
@@ -27,6 +29,9 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  Plugin,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -72,7 +77,7 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { RandomUUID, RequestAck } from './client/pending-registry';
+import type { PluginList, RandomUUID, RequestAck } from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
@@ -80,6 +85,7 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
+export type { PluginList } from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
@@ -339,9 +345,20 @@ export class LinkCodeClient {
         this.pending.resolve('historyRead', p.replyTo, p.result);
         break;
       case 'config.get.result':
-        // One result carries both; each resolve is a no-op unless a request awaits that reply id.
+        // One result carries all three; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
         this.pending.resolve('accountsGet', p.replyTo, p.accounts);
+        this.pending.resolve('customMcpGet', p.replyTo, p.customMcpServers);
+        break;
+      case 'plugin.list.result':
+        this.pending.resolve('pluginList', p.replyTo, {
+          plugins: p.plugins,
+          standaloneSkills: p.standaloneSkills,
+          providerStatus: p.providerStatus,
+        });
+        break;
+      case 'plugin.updated':
+        this.pending.resolve('pluginSetEnabled', p.replyTo, p.plugin);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -695,6 +712,32 @@ export class LinkCodeClient {
 
   getAccounts(): Promise<Accounts> {
     return this.control.getAccounts();
+  }
+
+  /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
+  getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
+    return this.control.getCustomMcpServers();
+  }
+
+  /** Apply custom-MCP patch ops; the masked read model makes whole-array writes unsound. */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): Promise<RequestAck> {
+    return this.control.setCustomMcpServers(patches);
+  }
+
+  /** Discover provider plugins + standalone skills (slow: a CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): Promise<PluginList> {
+    return this.control.listPlugins(cwd);
+  }
+
+  /** Toggle a plugin; resolves with the re-listed plugin for single-entry cache patching. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): Promise<Plugin> {
+    return this.control.setPluginEnabled(params);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {

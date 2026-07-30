@@ -4,6 +4,7 @@ import type {
   AgentHistoryReadResult,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPublic,
   FileSuggestion,
   GitDiff,
   GitPullRequestStatus,
@@ -13,6 +14,8 @@ import type {
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
+  Plugin,
+  PluginProviderStatus,
   ProvidersConfig,
   Schedule,
   ScheduleRun,
@@ -25,6 +28,7 @@ import type {
   SimulatorImageFormat,
   SimulatorStatus,
   SimulatorStreamCodec,
+  StandaloneSkill,
   TerminalMetadata,
   WirePayload,
   WorkspaceFile,
@@ -43,6 +47,14 @@ interface Pending<T> {
 
 export interface RequestAck {
   ok: true;
+}
+
+/** The `plugin.list.result` payload as one value: catalogs, standalone skills, and per-provider
+ * discovery outcomes travel together so the UI can tell "empty" from "provider CLI failed". */
+export interface PluginList {
+  plugins: Plugin[];
+  standaloneSkills: StandaloneSkill[];
+  providerStatus: PluginProviderStatus[];
 }
 
 export type RandomUUID = () => string;
@@ -70,6 +82,9 @@ export interface PendingValueMap {
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
   accountsGet: Accounts;
+  customMcpGet: CustomMcpServerPublic[];
+  pluginList: PluginList;
+  pluginSetEnabled: Plugin;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
@@ -122,6 +137,9 @@ export class PendingRegistry {
     historyRead: new Map(),
     configGet: new Map(),
     accountsGet: new Map(),
+    customMcpGet: new Map(),
+    pluginList: new Map(),
+    pluginSetEnabled: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),
     assetList: new Map(),

@@ -7,12 +7,16 @@ import type {
   AgentKind,
   AgentRuntimes,
   ContentBlock,
+  CustomMcpServer,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   ManagedAssetId,
   ManagedAssetKey,
   ManagedAssetStatus,
   MessageId,
   PermissionOutcome,
+  Plugin,
   ProvidersConfig,
   QuestionOutcome,
   SessionId,
@@ -44,6 +48,7 @@ import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
 import { SEED_MODEL_CATALOGS } from './data/models';
+import { SEED_PLUGIN_PROVIDER_STATUS, SEED_PLUGINS, SEED_STANDALONE_SKILLS } from './data/plugins';
 import {
   CHUNK_LATENCY_MS,
   CONTROL_LATENCY_MS,
@@ -174,6 +179,9 @@ export class DevMockHost {
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  /** Stored with full secrets like the daemon; config.get serves the masked projection. */
+  private customMcpServers: CustomMcpServer[] = [];
+  private readonly plugins: Plugin[] = structuredClone(SEED_PLUGINS);
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -335,7 +343,7 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
-          customMcpServers: [],
+          customMcpServers: this.customMcpServers.map((entry) => maskCustomMcpServer(entry)),
         });
         break;
       case 'agent-runtime.list':
@@ -361,8 +369,38 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
+        if (p.customMcpServers !== undefined) {
+          this.customMcpServers = applyCustomMcpPatches(this.customMcpServers, p.customMcpServers);
+        }
         this.sendSuccess(p.clientReqId);
         break;
+      case 'plugin.list.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin.list.result',
+          replyTo: p.clientReqId,
+          plugins: this.plugins,
+          standaloneSkills: SEED_STANDALONE_SKILLS,
+          providerStatus: SEED_PLUGIN_PROVIDER_STATUS,
+        });
+        break;
+      case 'plugin.set-enabled': {
+        await wait(CONTROL_LATENCY_MS);
+        const plugin = this.plugins.find(
+          (entry) => entry.provider === p.provider && entry.id === p.id,
+        );
+        if (!plugin?.managementCapabilities.enable) {
+          this.sendFailure(p.clientReqId, 'plugin management is not supported');
+          break;
+        }
+        for (const installation of plugin.installations) {
+          if (p.scope === undefined || installation.scope === p.scope) {
+            installation.enabled = p.enabled;
+          }
+        }
+        this.send({ kind: 'plugin.updated', replyTo: p.clientReqId, plugin });
+        break;
+      }
       case 'workspace.list':
         await wait(CONTROL_LATENCY_MS);
         this.send({
@@ -1432,4 +1470,80 @@ const PATH_SEPARATORS_RE = /[/\\]+/;
 
 function lastPathSegment(cwd: string): string {
   return cwd.split(PATH_SEPARATORS_RE).findLast((part) => part.length > 0) ?? cwd;
+}
+
+/** Mirror of the daemon's masked projection: env/header values never reach the client. */
+function maskCustomMcpServer(entry: CustomMcpServer): CustomMcpServerPublic {
+  const { server } = entry;
+  return {
+    id: entry.id,
+    enabled: entry.enabled,
+    createdAt: entry.createdAt,
+    server:
+      server.type === 'stdio'
+        ? {
+            type: 'stdio',
+            name: server.name,
+            command: server.command,
+            args: server.args,
+            envKeys: Object.keys(server.env ?? {}),
+          }
+        : {
+            type: 'http',
+            name: server.name,
+            url: server.url,
+            headerKeys: Object.keys(server.headers ?? {}),
+          },
+  };
+}
+
+/** Mirror of the daemon's patch semantics: add / enabled flip / per-key secret set-remove /
+ * remove. Validation (name uniqueness etc.) is deliberately not replicated in the mock. */
+function applyCustomMcpPatches(
+  current: CustomMcpServer[],
+  ops: readonly CustomMcpServerPatchOp[],
+): CustomMcpServer[] {
+  let next = structuredClone(current);
+  for (const op of ops) {
+    switch (op.op) {
+      case 'add':
+        next.push(structuredClone(op.server));
+        break;
+      case 'update': {
+        const entry = next.find((candidate) => candidate.id === op.id);
+        if (!entry) break;
+        if (op.enabled !== undefined) entry.enabled = op.enabled;
+        if (op.server?.type !== entry.server.type) break;
+        entry.server.name = op.server.name;
+        if (entry.server.type === 'stdio' && op.server.type === 'stdio') {
+          entry.server.command = op.server.command;
+          entry.server.args = op.server.args;
+          entry.server.env = applyMockSecretPatch(entry.server.env, op.server.env);
+        } else if (entry.server.type === 'http' && op.server.type === 'http') {
+          entry.server.url = op.server.url;
+          entry.server.headers = applyMockSecretPatch(entry.server.headers, op.server.headers);
+        }
+        break;
+      }
+      case 'remove':
+        next = next.filter((candidate) => candidate.id !== op.id);
+        break;
+      default:
+        break;
+    }
+  }
+  return next;
+}
+
+function applyMockSecretPatch(
+  current: Record<string, string> | undefined,
+  patch: { set?: Record<string, string>; remove?: string[] } | undefined,
+): Record<string, string> | undefined {
+  if (!patch) return current;
+  const removed = new Set(patch.remove);
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ ...current, ...patch.set })) {
+    if (!removed.has(key)) next[key] = value;
+  }
+  return next;
 }
