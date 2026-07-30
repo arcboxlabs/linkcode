@@ -1,13 +1,12 @@
 import type { SessionId, TokenUsage } from '@linkcode/schema';
 import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
 import { ErrorBadge, ShellFrame, TitleStrip } from '@linkcode/ui';
-import { ViewTransition } from 'react';
 
 export interface WorkbenchShellHeader {
   title: string;
   subtitle?: string;
   usage?: TokenUsage | null;
-  /** The open conversation, when one is; keys the title's matched-geometry boundary. */
+  /** The open conversation, when one is; keys the header title so a switch replays its animation. */
   sessionId?: SessionId | null;
 }
 
@@ -71,18 +70,14 @@ function DefaultTitleStrip({
   return (
     <TitleStrip className="border-border border-b">
       <div className="min-w-0">
-        {header.sessionId ? (
-          <ViewTransition
-            key={header.sessionId}
-            enter="none"
-            exit="none"
-            name={`thread-title-${header.sessionId}`}
-          >
-            <div className="truncate font-medium text-sm">{header.title}</div>
-          </ViewTransition>
-        ) : (
-          <div className="truncate font-medium text-sm">{header.title}</div>
-        )}
+        {/* Keyed so a switch remounts the title and replays its enter animation; a rename inside
+            the open thread keeps the key and stays put. */}
+        <div
+          key={header.sessionId ?? 'none'}
+          className="animate-title-enter truncate font-medium text-sm"
+        >
+          {header.title}
+        </div>
         {header.subtitle && (
           <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
         )}

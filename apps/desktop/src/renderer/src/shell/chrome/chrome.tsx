@@ -10,7 +10,7 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
 } from 'lucide-react';
-import { createContext, use, useCallback, useRef, useState, ViewTransition } from 'react';
+import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
@@ -529,18 +529,13 @@ function MainChromeTitle({
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      {header.sessionId ? (
-        <ViewTransition
-          key={header.sessionId}
-          enter="none"
-          exit="none"
-          name={`thread-title-${header.sessionId}`}
-        >
-          <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
-        </ViewTransition>
-      ) : (
-        <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
-      )}
+      {/* Keyed so a switch remounts the title and replays its enter animation. */}
+      <span
+        key={header.sessionId ?? 'none'}
+        className="animate-title-enter min-w-0 flex-1 truncate font-semibold text-sm"
+      >
+        {header.title}
+      </span>
       {chip}
       {menu}
     </div>

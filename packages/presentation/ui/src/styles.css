@@ -32,6 +32,17 @@
   /* Bottom of the type scale (badges, chrome labels); no ad-hoc pixel sizes below xs. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: calc(0.875 / 0.6875);
+
+  /* The incoming header thread title on a switch — deliberately NOT a matched-geometry morph
+     with the sidebar row: a shared name pairs both directions at once and reads as a swap. */
+  --animate-title-enter: title-enter var(--motion-fast) ease-out;
+
+  @keyframes title-enter {
+    from {
+      opacity: 0;
+      transform: translateY(0.25rem);
+    }
+  }
 }
 
 :root {
@@ -146,21 +157,6 @@
       corner-shape: superellipse(1.1);
     }
   }
-}
-
-/* View transitions (React `<ViewTransition>`, CODE-457): pace every group on the motion scale. */
-::view-transition-group(*),
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: var(--motion-normal);
-}
-
-/* The app-level reduce-motion preference must silence snapshot animations too — the global
-   `.reduce-motion *` reset cannot reach these root-attached pseudo-elements. */
-.reduce-motion::view-transition-group(*),
-.reduce-motion::view-transition-old(*),
-.reduce-motion::view-transition-new(*) {
-  animation-duration: 0.01ms !important;
 }
 
 @layer components {
