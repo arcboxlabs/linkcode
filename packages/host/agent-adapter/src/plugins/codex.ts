@@ -13,9 +13,11 @@ import { CodexAppServer, resolveCodexBinaryPath } from '../native/codex/app-serv
 import { agentRuntimeProber } from '../probe';
 import type { PluginDiscoveryOptions, PluginProviderAdapter, SkillToggleTarget } from './adapter';
 
-const OptionalStringSchema = z.string().min(1).nullable();
-const OptionalUrlSchema = z.url().nullable().catch(null);
-const OptionalHttpUrlSchema = z.httpUrl().nullable().catch(null);
+// `.nullish()`, not `.nullable()`: codex 0.144.1 omits keys entirely (e.g. a marketplace
+// plugin with no `version`), and a required-but-null shape fails the whole catalog parse.
+const OptionalStringSchema = z.string().min(1).nullish();
+const OptionalUrlSchema = z.url().nullish().catch(null);
+const OptionalHttpUrlSchema = z.httpUrl().nullish().catch(null);
 const DISCOVERY_TIMEOUT_MS = 30000;
 
 const CodexPluginSourceSchema = z.discriminatedUnion('type', [
@@ -38,11 +40,11 @@ const CodexPluginSourceSchema = z.discriminatedUnion('type', [
 
 const CodexPluginInterfaceSchema = z.object({
   displayName: OptionalStringSchema,
-  shortDescription: z.string().nullable(),
-  longDescription: z.string().nullable(),
+  shortDescription: z.string().nullish(),
+  longDescription: z.string().nullish(),
   developerName: OptionalStringSchema,
   category: OptionalStringSchema,
-  capabilities: z.array(z.string()),
+  capabilities: z.array(z.string()).default([]),
   websiteUrl: OptionalUrlSchema,
   privacyPolicyUrl: OptionalUrlSchema,
   termsOfServiceUrl: OptionalUrlSchema,
@@ -58,14 +60,14 @@ const CodexPluginSummarySchema = z.object({
   installed: z.boolean(),
   enabled: z.boolean(),
   availability: z.enum(['AVAILABLE', 'DISABLED_BY_ADMIN']),
-  interface: CodexPluginInterfaceSchema.nullable(),
+  interface: CodexPluginInterfaceSchema.nullish(),
   keywords: z.array(z.string().min(1)),
 });
 
 const CodexMarketplaceSchema = z.object({
   name: z.string().min(1),
   path: OptionalStringSchema,
-  interface: z.object({ displayName: OptionalStringSchema }).nullable(),
+  interface: z.object({ displayName: OptionalStringSchema }).nullish(),
   plugins: z.array(CodexPluginSummarySchema),
 });
 
@@ -74,7 +76,7 @@ const CodexPluginListSchema = z.object({
 });
 
 const CodexPluginDetailSchema = z.object({
-  description: z.string().nullable(),
+  description: z.string().nullish(),
   skills: z.array(
     z.object({
       name: z.string().min(1),
@@ -92,14 +94,14 @@ const CodexPluginDetailSchema = z.object({
     z.object({
       id: z.string().min(1),
       name: z.string().min(1),
-      description: z.string().nullable(),
+      description: z.string().nullish(),
     }),
   ),
   appTemplates: z.array(
     z.object({
       templateId: z.string().min(1),
       name: z.string().min(1),
-      description: z.string().nullable(),
+      description: z.string().nullish(),
     }),
   ),
   mcpServers: z.array(z.string().min(1)),

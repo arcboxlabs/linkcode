@@ -33,13 +33,32 @@ const ClaudeInstalledPluginSchema = z.object({
   installPath: z.string().min(1).optional(),
 });
 
+/**
+ * `available[].source` is a union on 2.1.220: a bare path string (`"./external_plugins/asana"`)
+ * or an object carrying its own `source` discriminator. Verified live across 275 entries:
+ * `git-subdir` (url+path+ref+sha), `url` (url+sha), `github` (repo+sha). A stricter shape empties
+ * the whole catalog, since one bad entry fails the array parse.
+ */
+const ClaudeSourceSchema = z.union([
+  z.string().min(1),
+  z.object({
+    source: z.string().min(1),
+    url: z.string().min(1).nullish(),
+    repo: z.string().min(1).nullish(),
+    path: z.string().min(1).nullish(),
+    ref: z.string().min(1).nullish(),
+    sha: z.string().min(1).nullish(),
+  }),
+]);
+
 const ClaudeAvailablePluginSchema = z.object({
   pluginId: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
   marketplaceName: z.string().min(1),
-  version: z.string().min(1).optional(),
-  source: z.string().min(1),
+  // Null for 262 of 275 entries on 2.1.220 — marketplace listings usually carry no version.
+  version: z.string().min(1).nullish(),
+  source: ClaudeSourceSchema,
 });
 
 const ClaudePluginListSchema = z.object({
@@ -66,6 +85,7 @@ type ClaudeMarketplace = z.infer<typeof ClaudeMarketplaceSchema>;
 type ClaudeInstalledPlugin = z.infer<typeof ClaudeInstalledPluginSchema>;
 type ClaudeAvailablePlugin = z.infer<typeof ClaudeAvailablePluginSchema>;
 type ClaudePluginManifest = z.infer<typeof ClaudePluginManifestSchema>;
+type ClaudeSource = z.infer<typeof ClaudeSourceSchema>;
 
 export type ClaudePluginCommand = (
   args: string[],
@@ -369,7 +389,7 @@ async function normalizeClaudePlugin(
     provider: 'claude-code',
     id: record.id,
     name: record.available?.name ?? manifest?.name ?? identity.name,
-    version: record.available?.version ?? manifest?.version,
+    version: record.available?.version ?? manifest?.version ?? undefined,
     description: record.available?.description ?? manifest?.description,
     author: authorName ? { name: authorName } : undefined,
     category: manifest?.category,
@@ -401,9 +421,11 @@ function claudePluginIdentity(id: string): { name: string; marketplaceName?: str
 }
 
 function claudePackagePath(
-  source: string,
+  source: ClaudeSource | undefined,
   marketplace: ClaudeMarketplace | undefined,
 ): string | undefined {
+  // Only a path-shaped string resolves to a local package root; object sources are remote.
+  if (typeof source !== 'string') return undefined;
   if (isAbsolute(source)) return source;
   const marketplacePath = marketplace?.installLocation ?? marketplace?.path;
   if (marketplacePath && (source.startsWith('./') || source.startsWith('../'))) {
@@ -418,6 +440,19 @@ function claudePluginSource(
   packagePath: string | undefined,
 ): PluginSource | undefined {
   const source = record.available?.source;
+  if (source !== undefined && typeof source !== 'string') {
+    const url = source.url ?? (source.repo ? `https://github.com/${source.repo}.git` : undefined);
+    if (url) {
+      return {
+        type: 'git',
+        url,
+        path: source.path ?? undefined,
+        ref: source.ref ?? undefined,
+        commit: source.sha ?? undefined,
+      };
+    }
+    return { type: 'remote' };
+  }
   const availablePath = source ? claudePackagePath(source, marketplace) : undefined;
   if (availablePath) return { type: 'local', path: availablePath };
   if (source && GIT_SOURCE_RE.test(source)) return { type: 'git', url: source };

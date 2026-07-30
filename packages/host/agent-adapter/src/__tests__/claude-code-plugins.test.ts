@@ -129,6 +129,70 @@ describe('ClaudeCodePluginAdapter', () => {
     });
   });
 
+  it('accepts every observed available-plugin source shape and a null version', async () => {
+    // Shapes verified live against CLI 2.1.220 across 275 marketplace entries (CODE-505); a
+    // stricter schema fails the whole array, which empties the page instead of one entry.
+    const command: ClaudePluginCommand = (args) =>
+      Promise.resolve(
+        args[1] === 'marketplace'
+          ? [{ name: 'm', source: 'github', repo: 'owner/repo', installLocation: '/mk' }]
+          : {
+              installed: [],
+              available: [
+                {
+                  pluginId: 'sub@m',
+                  name: 'sub',
+                  marketplaceName: 'm',
+                  version: null,
+                  source: {
+                    source: 'git-subdir',
+                    url: 'https://github.com/owner/repo.git',
+                    path: 'plugins/sub',
+                    ref: 'v1.5.5',
+                    sha: 'deadbeef',
+                  },
+                },
+                {
+                  pluginId: 'url@m',
+                  name: 'url',
+                  marketplaceName: 'm',
+                  source: { source: 'url', url: 'https://github.com/o/r.git', sha: 'cafe' },
+                },
+                {
+                  pluginId: 'gh@m',
+                  name: 'gh',
+                  marketplaceName: 'm',
+                  source: { source: 'github', repo: 'owner/skills', sha: 'f00d' },
+                },
+                { pluginId: 'rel@m', name: 'rel', marketplaceName: 'm', source: './plugins/rel' },
+              ],
+            },
+      );
+
+    const plugins = await new ClaudeCodePluginAdapter(command).list();
+
+    expect(plugins.map((plugin) => [plugin.id, plugin.source, plugin.version])).toEqual([
+      [
+        'gh@m',
+        { type: 'git', url: 'https://github.com/owner/skills.git', commit: 'f00d' },
+        undefined,
+      ],
+      ['rel@m', { type: 'local', path: '/mk/plugins/rel' }, undefined],
+      [
+        'sub@m',
+        {
+          type: 'git',
+          url: 'https://github.com/owner/repo.git',
+          path: 'plugins/sub',
+          ref: 'v1.5.5',
+          commit: 'deadbeef',
+        },
+        undefined,
+      ],
+      ['url@m', { type: 'git', url: 'https://github.com/o/r.git', commit: 'cafe' }, undefined],
+    ]);
+  });
+
   it('rejects malformed provider output at the boundary', async () => {
     const command: ClaudePluginCommand = (args) =>
       Promise.resolve(args[1] === 'marketplace' ? [] : { installed: 'invalid', available: [] });

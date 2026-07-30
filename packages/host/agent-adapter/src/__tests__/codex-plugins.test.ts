@@ -164,6 +164,36 @@ describe('CodexPluginAdapter', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('accepts a marketplace plugin whose optional keys are absent', async () => {
+    // codex 0.144.1 omits `version` entirely rather than sending null (CODE-505).
+    const request = vi.fn(() =>
+      Promise.resolve({
+        marketplaces: [
+          {
+            name: 'openai-bundled',
+            plugins: [
+              {
+                id: 'search@openai-bundled',
+                name: 'search',
+                source: { type: 'remote' },
+                installed: true,
+                enabled: true,
+                availability: 'AVAILABLE',
+                keywords: [],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const server: CodexPluginServer = { request, close: vi.fn() };
+
+    const plugins = await new CodexPluginAdapter(() => Promise.resolve(server)).list();
+
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0]).toMatchObject({ id: 'search@openai-bundled', version: undefined });
+  });
+
   it('closes the app-server when provider output is malformed', async () => {
     const close = vi.fn();
     const server: CodexPluginServer = {
