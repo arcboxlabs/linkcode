@@ -95,15 +95,15 @@ jobs:
             exit 1
           fi
 
-      # pnpm MUST be set up before setup-node so `cache: pnpm` can find the binary.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6 # reads version from package.json "packageManager"
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -39,17 +39,17 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -119,17 +119,17 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -174,14 +174,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -211,14 +212,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
