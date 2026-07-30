@@ -3,6 +3,7 @@ import type { PanelSide } from '@linkcode/ui/shell/panels';
 import type { WorkbenchShellNavigation } from '@linkcode/workbench';
 
 const TOGGLE_SIDEBAR_SHORTCUT = { code: 'KeyB', modifiers: ['primary'] } as const;
+const CLOSE_TERMINAL_TAB_SHORTCUT = { code: 'KeyW', modifiers: ['primary'] } as const;
 const TOGGLE_BOTTOM_PANEL_SHORTCUT = { code: 'KeyJ', modifiers: ['primary'] } as const;
 const TOGGLE_RIGHT_PANEL_SHORTCUT = {
   code: 'KeyB',
@@ -20,6 +21,9 @@ const GO_FORWARD_SHORTCUT = {
 interface UseDesktopShellShortcutsOptions {
   navigation: WorkbenchShellNavigation;
   owner: React.RefObject<Element | null>;
+  closeBottomTerminalTab: (id: string) => void;
+  closeRightTerminalTab: (id: string) => void;
+  closeWindow: () => unknown;
   togglePanel: (side: PanelSide) => void;
   updateSidebarOpen: (updater: boolean | ((current: boolean) => boolean)) => void;
 }
@@ -27,9 +31,34 @@ interface UseDesktopShellShortcutsOptions {
 export function useDesktopShellShortcuts({
   navigation,
   owner,
+  closeBottomTerminalTab,
+  closeRightTerminalTab,
+  closeWindow,
   togglePanel,
   updateSidebarOpen,
 }: UseDesktopShellShortcutsOptions): void {
+  useKeyboardShortcut({
+    actionId: 'desktop.close-terminal-tab',
+    shortcut: CLOSE_TERMINAL_TAB_SHORTCUT,
+    owner,
+    handler(event) {
+      const terminal =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>('[data-terminal-panel][data-terminal-tab]')
+          : null;
+      if (terminal) {
+        const id = terminal.dataset.terminalTab;
+        if (id !== undefined) {
+          if (terminal.dataset.terminalPanel === 'right') closeRightTerminalTab(id);
+          else closeBottomTerminalTab(id);
+        }
+      } else {
+        closeWindow();
+      }
+      return true;
+    },
+  });
+
   useKeyboardShortcut({
     actionId: 'desktop.toggle-sidebar',
     shortcut: TOGGLE_SIDEBAR_SHORTCUT,
