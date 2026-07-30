@@ -169,11 +169,21 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         cwds: opts.cwd ? [opts.cwd] : undefined,
       });
       const catalog = CodexPluginListSchema.parse(value);
-      const entries = catalog.marketplaces.flatMap((marketplace) =>
-        marketplace.plugins.map((summary) => ({ marketplace, summary })),
-      );
+      // The remote curated catalog can list one id twice (observed live: `metabase` among 2321
+      // entries). Ids are the model's identity, so collapse to the installed copy, else the first.
+      const entries = new Map<
+        string,
+        { marketplace: CodexMarketplace; summary: CodexPluginSummary }
+      >();
+      for (const marketplace of catalog.marketplaces) {
+        for (const summary of marketplace.plugins) {
+          const seen = entries.get(summary.id);
+          if (seen && !summary.installed) continue;
+          entries.set(summary.id, { marketplace, summary });
+        }
+      }
       const plugins = await Promise.all(
-        entries.map(async ({ marketplace, summary }) =>
+        [...entries.values()].map(async ({ marketplace, summary }) =>
           normalizeCodexPlugin(
             marketplace,
             summary,

@@ -194,6 +194,38 @@ describe('CodexPluginAdapter', () => {
     expect(plugins[0]).toMatchObject({ id: 'search@openai-bundled', version: undefined });
   });
 
+  it('collapses a duplicated catalog id onto its installed copy', async () => {
+    // The live remote catalog listed `metabase` twice; ids are the model's identity.
+    const entry = (installed: boolean, version: string) => ({
+      id: 'metabase@openai-curated-remote',
+      remotePluginId: 'remote-metabase',
+      name: 'metabase',
+      localVersion: installed ? version : null,
+      source: { type: 'remote' },
+      installed,
+      enabled: installed,
+      availability: 'AVAILABLE',
+      keywords: [],
+    });
+    const request = vi.fn((method: string) =>
+      method === 'plugin/list'
+        ? Promise.resolve({
+            marketplaces: [
+              { name: 'openai-curated-remote', plugins: [entry(false, '1.0.0')] },
+              { name: 'openai-curated-remote', plugins: [entry(true, '2.0.0')] },
+            ],
+          })
+        : Promise.reject(new Error('no detail')),
+    );
+
+    const plugins = await new CodexPluginAdapter(() =>
+      Promise.resolve({ request, close: vi.fn() }),
+    ).list();
+
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].installations).toEqual([{ enabled: true, version: '2.0.0' }]);
+  });
+
   it('closes the app-server when provider output is malformed', async () => {
     const close = vi.fn();
     const server: CodexPluginServer = {
