@@ -708,6 +708,15 @@ export const en = {
         app: 'apps',
         'app-template': 'app templates',
       },
+      skills: {
+        pluginSkillsTitle: 'Plugin skills',
+        standaloneTitle: 'Standalone skills',
+        standaloneHint:
+          'Skills that live directly in a skills directory load automatically; toggling them here is not supported yet.',
+        empty: 'No skills discovered yet.',
+        noSearchResults: 'No matching skills.',
+        groupToggleNote: 'This plugin bundles {count} skills; toggling affects all of them.',
+      },
       mcp: {
         customTitle: 'Custom MCP servers',
         customHint:

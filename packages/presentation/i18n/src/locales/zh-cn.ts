@@ -696,6 +696,14 @@ export const zhCN = {
         app: '应用',
         'app-template': '应用模板',
       },
+      skills: {
+        pluginSkillsTitle: '插件技能',
+        standaloneTitle: '独立技能',
+        standaloneHint: '直接放在技能目录中的技能，随所在目录自动加载，暂不支持在这里启停。',
+        empty: '还没有发现任何技能。',
+        noSearchResults: '没有匹配的技能。',
+        groupToggleNote: '此插件共有 {count} 个技能，启用/禁用时会一起生效。',
+      },
       mcp: {
         customTitle: '自定义 MCP 服务',
         customHint:

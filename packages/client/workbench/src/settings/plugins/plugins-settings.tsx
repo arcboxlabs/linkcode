@@ -1,11 +1,11 @@
 import type { Plugin, PluginScope } from '@linkcode/schema';
-import type { PluginCardView } from '@linkcode/ui';
-import { PluginsShell, PluginsTab } from '@linkcode/ui';
+import type { PluginCardView, SkillRowView } from '@linkcode/ui';
+import { PluginsShell, PluginsTab, SkillsTab } from '@linkcode/ui';
 import { useState } from 'react';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { usePlugins, useSetPluginEnabled } from './hooks';
 import { McpTab } from './mcp-settings';
-import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups } from './view';
+import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows } from './view';
 
 /**
  * The plugins/MCP/skills settings page container. Transport-backed — it must render inside
@@ -30,6 +30,27 @@ export function PluginsSettingsPanel(): React.ReactNode {
           ...group,
           plugins: filterPluginCards(group.plugins, searchQuery),
         }));
+
+  const onToggleSkillPlugin = async (row: SkillRowView, enabled: boolean): Promise<void> => {
+    if (row.pluginKey === undefined) return;
+    const separator = row.pluginKey.indexOf(':');
+    const provider = row.pluginKey.slice(0, separator);
+    if (provider !== 'claude-code' && provider !== 'codex') return;
+    const updated = await toggle.trigger({
+      provider,
+      id: row.pluginKey.slice(separator + 1),
+      enabled,
+    });
+    if (updated === undefined) return;
+    void mutate(
+      (current) =>
+        current && {
+          ...current,
+          plugins: current.plugins.map((plugin) => replaceIfSame(plugin, updated)),
+        },
+      { revalidate: false },
+    );
+  };
 
   const onToggleInstallation = async (
     card: PluginCardView,
@@ -70,7 +91,16 @@ export function PluginsSettingsPanel(): React.ReactNode {
         />
       }
       mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
-      skillsTab={null}
+      skillsTab={
+        <SkillsTab
+          busy={toggle.isMutating}
+          rows={data === undefined ? undefined : skillRows(data)}
+          searchQuery={searchQuery}
+          onTogglePlugin={(row, enabled) => {
+            void onToggleSkillPlugin(row, enabled);
+          }}
+        />
+      }
     />
   );
 }
