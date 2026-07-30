@@ -329,6 +329,7 @@ export const zhCN = {
     newSession: {
       heading: '想构建什么？',
       headingIn: '在 {name} 中构建什么？',
+      permissionMode: '权限模式',
       chooseWorkspace: '选择工作区',
       chat: '聊天',
       noProject: '不使用项目',
