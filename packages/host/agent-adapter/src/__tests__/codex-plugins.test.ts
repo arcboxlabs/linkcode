@@ -135,11 +135,11 @@ describe('CodexPluginAdapter', () => {
           },
         ],
         managementCapabilities: {
-          install: false,
-          uninstall: false,
+          install: true,
+          uninstall: true,
           update: false,
-          enable: false,
-          disable: false,
+          enable: true,
+          disable: true,
         },
       }),
       expect.objectContaining({
@@ -339,11 +339,149 @@ describe('CodexPluginAdapter', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it('honestly reports no plugin toggle support', () => {
-    const adapter: PluginProviderAdapter = new CodexPluginAdapter(() =>
-      Promise.reject(new Error('not used')),
+  it('toggles a plugin through the quoted config key path of its installed entry', async () => {
+    const request = vi.fn((method: string) =>
+      method === 'plugin/installed'
+        ? Promise.resolve({
+            marketplaces: [
+              {
+                name: 'openai-bundled',
+                plugins: [
+                  {
+                    id: 'visualize@openai-bundled',
+                    name: 'visualize',
+                    source: { type: 'remote' },
+                    installed: true,
+                    enabled: true,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          })
+        : Promise.resolve({ status: 'ok' }),
+    );
+    const server: CodexPluginServer = { request, close: vi.fn() };
+
+    await new CodexPluginAdapter(() => Promise.resolve(server)).setPluginEnabled(
+      'visualize@openai-bundled',
+      false,
+      { cwd: '/workspace' },
     );
 
-    expect('setPluginEnabled' in adapter).toBe(false);
+    expect(request).toHaveBeenCalledWith('plugin/installed', { cwds: ['/workspace'] });
+    expect(request).toHaveBeenCalledWith('config/value/write', {
+      keyPath: 'plugins."visualize@openai-bundled".enabled',
+      value: false,
+      mergeStrategy: 'upsert',
+    });
+  });
+
+  it('rejects a toggle for a plugin the host has not installed', async () => {
+    const request = vi.fn(() => Promise.resolve({ marketplaces: [] }));
+    const close = vi.fn();
+
+    await expect(
+      new CodexPluginAdapter(() => Promise.resolve({ request, close })).setPluginEnabled(
+        'ghost@openai-bundled',
+        false,
+      ),
+    ).rejects.toThrow('does not list a plugin ghost@openai-bundled');
+    // No blind config write: nothing is appended to config.toml for an id that isn't installed.
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('installs a remote plugin by marketplace name and reports apps still needing auth', async () => {
+    const request = vi.fn((method: string) =>
+      method === 'plugin/list'
+        ? Promise.resolve({
+            marketplaces: [
+              {
+                name: 'openai-curated-remote',
+                path: null,
+                plugins: [
+                  {
+                    id: 'github@openai-curated-remote',
+                    remotePluginId: 'remote-github-1',
+                    name: 'github',
+                    source: { type: 'remote' },
+                    installed: false,
+                    enabled: false,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          })
+        : Promise.resolve({
+            authPolicy: 'ON_INSTALL',
+            appsNeedingAuth: [{ id: 'connector_768', name: 'GitHub' }],
+          }),
+    );
+    const server: CodexPluginServer = { request, close: vi.fn() };
+
+    const outcome = await new CodexPluginAdapter(() => Promise.resolve(server)).installPlugin(
+      'github@openai-curated-remote',
+    );
+
+    expect(request).toHaveBeenCalledWith('plugin/install', {
+      pluginName: 'remote-github-1',
+      remoteMarketplaceName: 'openai-curated-remote',
+    });
+    expect(outcome).toEqual({ pendingAuthApps: ['GitHub'] });
+  });
+
+  it('installs a local-marketplace plugin by path and local name', async () => {
+    const request = vi.fn((method: string) =>
+      method === 'plugin/list'
+        ? Promise.resolve({
+            marketplaces: [
+              {
+                name: 'openai-bundled',
+                path: '/marketplaces/openai-bundled/marketplace.json',
+                plugins: [
+                  {
+                    id: 'chrome@openai-bundled',
+                    name: 'chrome',
+                    source: { type: 'local', path: '/plugins/chrome' },
+                    installed: false,
+                    enabled: false,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          })
+        : Promise.resolve({ authPolicy: 'ON_USE', appsNeedingAuth: [] }),
+    );
+
+    const outcome = await new CodexPluginAdapter(() =>
+      Promise.resolve({ request, close: vi.fn() }),
+    ).installPlugin('chrome@openai-bundled');
+
+    expect(request).toHaveBeenCalledWith('plugin/install', {
+      pluginName: 'chrome',
+      marketplacePath: '/marketplaces/openai-bundled/marketplace.json',
+    });
+    expect(outcome).toEqual({ pendingAuthApps: [] });
+  });
+
+  it('uninstalls by plugin id without a catalog lookup', async () => {
+    const request = vi.fn(() => Promise.resolve({}));
+    const close = vi.fn();
+    const adapter: PluginProviderAdapter = new CodexPluginAdapter(() =>
+      Promise.resolve({ request, close }),
+    );
+
+    await adapter.uninstallPlugin?.('chrome@openai-bundled');
+
+    expect(request).toHaveBeenCalledExactlyOnceWith('plugin/uninstall', {
+      pluginId: 'chrome@openai-bundled',
+    });
+    expect(close).toHaveBeenCalledOnce();
   });
 });

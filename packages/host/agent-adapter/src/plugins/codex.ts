@@ -11,7 +11,13 @@ import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { CodexAppServer, resolveCodexBinaryPath } from '../native/codex/app-server';
 import { agentRuntimeProber } from '../probe';
-import type { PluginDiscoveryOptions, PluginProviderAdapter, SkillToggleTarget } from './adapter';
+import type {
+  PluginDiscoveryOptions,
+  PluginInstallOutcome,
+  PluginProviderAdapter,
+  PluginToggleOptions,
+  SkillToggleTarget,
+} from './adapter';
 
 // `.nullish()`, not `.nullable()`: codex 0.144.1 omits keys entirely (e.g. a marketplace
 // plugin with no `version`), and a required-but-null shape fails the whole catalog parse.
@@ -135,13 +141,21 @@ type CodexPluginDetail = z.infer<typeof CodexPluginDetailSchema>;
 export type CodexPluginServer = Pick<CodexAppServer, 'request' | 'close'>;
 export type StartCodexPluginServer = (signal: AbortSignal) => Promise<CodexPluginServer>;
 
+/** Verified live on 0.144.1: `plugin/install`, `plugin/uninstall`, and `config/value/write` back
+ * these three. There is no update RPC — a plugin moves version only by re-installing. */
 const CODEX_MANAGEMENT_CAPABILITIES = {
-  install: false,
-  uninstall: false,
+  install: true,
+  uninstall: true,
   update: false,
-  enable: false,
-  disable: false,
+  enable: true,
+  disable: true,
 } as const;
+
+const CodexPluginInstallSchema = z.object({
+  appsNeedingAuth: z
+    .array(z.object({ id: z.string().min(1), name: z.string().min(1) }))
+    .default([]),
+});
 
 /** Codex plugin discovery over its generated experimental app-server protocol (0.144.1). */
 export class CodexPluginAdapter implements PluginProviderAdapter {
@@ -201,6 +215,50 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
     });
   }
 
+  /**
+   * Enablement is not an RPC: it is the config value `plugins."<id>".enabled`, which the app-server
+   * writes into `~/.codex/config.toml` (verified live on 0.144.1). The target is resolved through
+   * `plugin/installed` first — the cheap installed-only listing — so a caller-supplied string never
+   * reaches the TOML key path, and toggling something uninstalled fails here instead of leaving a
+   * stray config entry behind. Loaded threads keep their config; the next session sees the change.
+   */
+  async setPluginEnabled(
+    id: string,
+    enabled: boolean,
+    opts: PluginToggleOptions = {},
+  ): Promise<void> {
+    await this.withDiscoveryServer(async (server) => {
+      const { summary } = await findCodexPlugin(server, 'plugin/installed', id, opts);
+      await server.request('config/value/write', {
+        // JSON quoting doubles as TOML basic-string quoting; ids carry `@` and are never bare keys.
+        keyPath: `plugins.${JSON.stringify(summary.id)}.enabled`,
+        value: enabled,
+        mergeStrategy: 'upsert',
+      });
+    });
+  }
+
+  async installPlugin(
+    id: string,
+    opts: PluginDiscoveryOptions = {},
+  ): Promise<PluginInstallOutcome> {
+    return this.withDiscoveryServer(async (server) => {
+      const { marketplace, summary } = await findCodexPlugin(server, 'plugin/list', id, opts);
+      const address = codexPluginAddress(marketplace, summary);
+      if (!address) throw new Error(`codex: plugin has no installable address: ${id}`);
+      const parsed = CodexPluginInstallSchema.parse(
+        await server.request('plugin/install', address),
+      );
+      return { pendingAuthApps: parsed.appsNeedingAuth.map((app) => app.name) };
+    });
+  }
+
+  async uninstallPlugin(id: string): Promise<void> {
+    await this.withDiscoveryServer(async (server) => {
+      await server.request('plugin/uninstall', { pluginId: id });
+    });
+  }
+
   private async withDiscoveryServer<T>(run: (server: CodexPluginServer) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     let server: CodexPluginServer | undefined;
@@ -225,22 +283,46 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
   }
 }
 
+/** `plugin/read` and `plugin/install` share one addressing rule: a local marketplace is addressed by
+ * file path plus the plugin's local name, a remote one by marketplace name plus its backend id. */
+function codexPluginAddress(
+  marketplace: CodexMarketplace,
+  summary: CodexPluginSummary,
+):
+  | { pluginName: string; marketplacePath: string }
+  | { pluginName: string; remoteMarketplaceName: string }
+  | undefined {
+  if (marketplace.path) return { pluginName: summary.name, marketplacePath: marketplace.path };
+  return summary.remotePluginId
+    ? { pluginName: summary.remotePluginId, remoteMarketplaceName: marketplace.name }
+    : undefined;
+}
+
+async function findCodexPlugin(
+  server: CodexPluginServer,
+  method: 'plugin/list' | 'plugin/installed',
+  id: string,
+  opts: PluginDiscoveryOptions,
+): Promise<{ marketplace: CodexMarketplace; summary: CodexPluginSummary }> {
+  // `plugin/installed` answers the same envelope as `plugin/list`, minus the remote catalog.
+  const value = await server.request(method, { cwds: opts.cwd ? [opts.cwd] : undefined });
+  for (const marketplace of CodexPluginListSchema.parse(value).marketplaces) {
+    const summary = marketplace.plugins.find((plugin) => plugin.id === id);
+    if (summary) return { marketplace, summary };
+  }
+  throw new Error(`codex: ${method} does not list a plugin ${id}`);
+}
+
 async function readCodexPluginDetail(
   server: CodexPluginServer,
   marketplace: CodexMarketplace,
   summary: CodexPluginSummary,
 ): Promise<CodexPluginDetail | undefined> {
-  const pluginName = marketplace.path ? summary.name : summary.remotePluginId;
-  if (!pluginName) return undefined;
+  const address = codexPluginAddress(marketplace, summary);
+  if (!address) return undefined;
 
   try {
-    const detailValue = await server.request('plugin/read', {
-      pluginName,
-      ...(marketplace.path
-        ? { marketplacePath: marketplace.path }
-        : { remoteMarketplaceName: marketplace.name }),
-    });
-    return CodexPluginReadSchema.parse(detailValue).plugin;
+    return CodexPluginReadSchema.parse(await server.request('plugin/read', address)).plugin;
   } catch {
     return undefined;
   }
