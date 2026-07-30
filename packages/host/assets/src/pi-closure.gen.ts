@@ -1622,6 +1622,7 @@ const packages: NpmClosure['packages'] = [
 
 export const PI_CLOSURE: NpmClosure = {
   version: '0.80.6',
+  revision: 'b77bf10e9a04fe3f',
   entry: 'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
   packages,
 };

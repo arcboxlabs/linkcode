@@ -22,6 +22,8 @@ export interface ClosurePackage {
 export interface NpmClosure {
   /** The closure root's exact version — must equal the asset's wanted pin. */
   version: string;
+  /** Content-derived install revision; changes whenever the generated tree changes. */
+  revision: string;
   /** Entry module relative to the version dir, the adapter's in-process import target. */
   entry: string;
   packages: readonly ClosurePackage[];
