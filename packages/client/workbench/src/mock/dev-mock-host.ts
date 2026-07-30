@@ -335,6 +335,7 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
+          customMcpServers: [],
         });
         break;
       case 'agent-runtime.list':

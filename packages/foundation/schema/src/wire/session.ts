@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../model/agent';
+import { McpWarningSchema } from '../model/custom-mcp';
 import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../model/primitives';
 import {
   SessionInfoSchema,
@@ -25,6 +26,9 @@ export const sessionWireVariants = [
     kind: z.literal('session.started'),
     replyTo: WireRequestIdSchema,
     sessionId: SessionIdSchema,
+    /** Custom-MCP injection advisories for this start/resume. Delivered only in this reply (the
+     * one client that acted); deliberately not an agent event and not replayed on attach. */
+    mcpWarnings: z.array(McpWarningSchema).optional(),
   }),
   z.object({
     kind: z.literal('session.stop'),

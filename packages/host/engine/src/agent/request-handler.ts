@@ -98,6 +98,8 @@ export class AgentRequestHandler {
                   replyTo: payload.clientReqId,
                   providers: this.providers.get(),
                   accounts: this.providers.getAccounts(),
+                  // Real masked projection lands with the custom-MCP config plane (CODE-490).
+                  customMcpServers: [],
                 }),
               ),
             catch: (cause) =>
