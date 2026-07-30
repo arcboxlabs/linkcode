@@ -19,20 +19,36 @@ beforeEach(() => storage.clear());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('resources panel visibility', () => {
-  it('selects an inline surface only when right-side space is available', async () => {
+  it('selects a floating card only when normal content and the card both fit', async () => {
     const { getResourcesPanelPresentation } = await import('../resources-panel-store');
 
     expect(
-      getResourcesPanelPresentation({ available: false, wide: true, rightPanelOpen: false }),
+      getResourcesPanelPresentation({
+        available: false,
+        floatingSpaceAvailable: true,
+        rightPanelOpen: false,
+      }),
     ).toBe('hidden');
     expect(
-      getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: false }),
-    ).toBe('inline');
+      getResourcesPanelPresentation({
+        available: true,
+        floatingSpaceAvailable: true,
+        rightPanelOpen: false,
+      }),
+    ).toBe('floating');
     expect(
-      getResourcesPanelPresentation({ available: true, wide: false, rightPanelOpen: false }),
+      getResourcesPanelPresentation({
+        available: true,
+        floatingSpaceAvailable: false,
+        rightPanelOpen: false,
+      }),
     ).toBe('popover');
     expect(
-      getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: true }),
+      getResourcesPanelPresentation({
+        available: true,
+        floatingSpaceAvailable: true,
+        rightPanelOpen: true,
+      }),
     ).toBe('popover');
   });
 

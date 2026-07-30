@@ -11,19 +11,24 @@ export interface ResourcesPanelState {
   toggle: () => void;
 }
 
-export type ResourcesPanelPresentation = 'hidden' | 'inline' | 'popover';
+export const RESOURCES_FLOATING_COLUMN_WIDTH = 312;
+export const RESOURCES_NORMAL_CONTENT_WIDTH = 824;
+export const RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH =
+  RESOURCES_NORMAL_CONTENT_WIDTH + RESOURCES_FLOATING_COLUMN_WIDTH;
+
+export type ResourcesPanelPresentation = 'hidden' | 'floating' | 'popover';
 
 export function getResourcesPanelPresentation({
   available,
-  wide,
+  floatingSpaceAvailable,
   rightPanelOpen = false,
 }: {
   available: boolean;
-  wide: boolean;
+  floatingSpaceAvailable: boolean;
   rightPanelOpen?: boolean;
 }): ResourcesPanelPresentation {
   if (!available) return 'hidden';
-  return wide && !rightPanelOpen ? 'inline' : 'popover';
+  return floatingSpaceAvailable && !rightPanelOpen ? 'floating' : 'popover';
 }
 
 /** Cross-client surface visibility. Resource data and task execution do not live in this store. */

@@ -2,6 +2,8 @@ import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/u
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   getResourcesPanelPresentation,
+  RESOURCES_FLOATING_COLUMN_WIDTH,
+  RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
   useResourcesPanelStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
@@ -14,6 +16,8 @@ import { ViewTransition } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
+const WEB_SIDEBAR_WIDTH = 288;
+
 export function WebWorkbenchShell({
   header,
   navigation,
@@ -25,13 +29,15 @@ export function WebWorkbenchShell({
   const navigate = useNavigate();
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
-  const wide = useMediaQuery('xl');
+  const floatingSpaceAvailable = useMediaQuery({
+    min: WEB_SIDEBAR_WIDTH + RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
+  });
   const resourcesAvailable = props.activeSession !== null && resourcesPanel !== undefined;
   const resourcesPresentation = getResourcesPanelPresentation({
     available: resourcesAvailable,
-    wide,
+    floatingSpaceAvailable,
   });
-  const resourcesInlineOpen = resourcesPresentation === 'inline' && resourcesOpen;
+  const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
   const resourcesButton = (
     <ShellIconButton
       label={tPanel('resources')}
@@ -137,15 +143,14 @@ export function WebWorkbenchShell({
         />
       </div>
       <aside
-        aria-hidden={!resourcesInlineOpen}
-        inert={!resourcesInlineOpen}
-        className={`min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)] ${
-          resourcesInlineOpen ? 'w-[19.5rem]' : 'w-0'
-        }`}
+        aria-hidden={!resourcesFloatingOpen}
+        inert={!resourcesFloatingOpen}
+        className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)]"
+        style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
       >
-        <div className="h-full w-[19.5rem] p-3 pt-12">
+        <div className="h-full p-3 pt-12" style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}>
           <Card aria-label={tPanel('resources')} className="h-full w-72 overflow-hidden shadow-xl">
-            {resourcesPresentation === 'inline' ? resourcesPanel : null}
+            {resourcesPresentation === 'floating' ? resourcesPanel : null}
           </Card>
         </div>
       </aside>

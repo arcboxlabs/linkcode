@@ -22,6 +22,8 @@ import {
   getResourcesPanelPresentation,
   isAbsoluteFilePath,
   locateFileArtifact,
+  RESOURCES_FLOATING_COLUMN_WIDTH,
+  RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
   SimulatorAutoReveal,
   suppressSimulatorAutoReveal,
   TerminalPanel,
@@ -169,7 +171,6 @@ export function DesktopShell({
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
   const toggleResources = useResourcesPanelStore((state) => state.toggle);
-  const wide = useMediaQuery('xl');
   const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
   const { selectedHostId, selectHost } = useSelectedHostStore(
     useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
@@ -219,6 +220,9 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
+  const floatingSpaceAvailable = useMediaQuery({
+    min: RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH + (sidebarOpen ? layout.sidebarW : 0),
+  });
   const sidebarTransition = usePaneTransition({
     open: sidebarOpen,
     size: layout.sidebarW,
@@ -301,10 +305,10 @@ export function DesktopShell({
   const resourcesAvailable = draft === null && active !== null && resourcesPanel !== undefined;
   const resourcesPresentation = getResourcesPanelPresentation({
     available: resourcesAvailable,
-    wide,
+    floatingSpaceAvailable,
     rightPanelOpen: rightPanel.open,
   });
-  const resourcesInlineOpen = resourcesPresentation === 'inline' && resourcesOpen;
+  const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -802,18 +806,20 @@ export function DesktopShell({
             }}
           />
           <aside
-            aria-hidden={!resourcesInlineOpen}
-            inert={!resourcesInlineOpen}
-            className={`min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)] ${
-              resourcesInlineOpen ? 'w-[19.5rem]' : 'w-0'
-            }`}
+            aria-hidden={!resourcesFloatingOpen}
+            inert={!resourcesFloatingOpen}
+            className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)]"
+            style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
           >
-            <div className="h-full w-[19.5rem] p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]">
+            <div
+              className="h-full p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]"
+              style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}
+            >
               <Card
                 aria-label={tPanel('resources')}
                 className="h-full w-72 overflow-hidden shadow-xl"
               >
-                {resourcesPresentation === 'inline' ? resourcesPanel : null}
+                {resourcesPresentation === 'floating' ? resourcesPanel : null}
               </Card>
             </div>
           </aside>
