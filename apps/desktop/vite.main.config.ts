@@ -38,11 +38,6 @@ export default defineConfig({
     assetPlugin(),
     {
       name: 'bundle-daemon-artifact',
-      // The daemon ships inside the desktop app (CODE-86): consume apps/daemon/dist (turbo `^build`
-      // orders it) so bundling stays owned by the daemon; its runtime externals resolve from asar
-      // node_modules through the @linkcode/daemon dependency edge. instrument.js ships too (Sentry
-      // error reporting); it loads `@sentry/profiling-node` only via createRequire so a missing
-      // native profiler under Electron is a soft miss, not a boot crash.
       closeBundle() {
         const dist = resolve(__dirname, '../daemon/dist/index.js');
         if (!existsSync(dist)) {

@@ -19,8 +19,6 @@ import {
   ChatDisclosureIconSlot,
 } from './disclosure-header';
 
-// TODO(linkcode-schema): Provisional UI-only task item, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when agent task progress is part of the event stream.
 export interface ChatTaskItem {
   id: string;
   title: string;

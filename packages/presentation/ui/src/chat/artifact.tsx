@@ -5,8 +5,6 @@ import { cn } from '../lib/cn';
 import type { TooltipIconButtonProps } from './tooltip-icon-button';
 import { TooltipIconButton } from './tooltip-icon-button';
 
-// TODO(linkcode-schema): Provisional UI-only artifact metadata, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when generated artifacts are emitted by the data plane.
 export interface ChatArtifact {
   id: string;
   title: string;

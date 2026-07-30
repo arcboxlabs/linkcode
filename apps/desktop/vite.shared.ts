@@ -10,10 +10,7 @@ import { dependencies } from './package.json';
 export const NODE_TARGET = 'node24.18';
 export const CHROME_TARGET = 'chrome150';
 
-// Workspace packages export raw TS, so they must be bundled into main/preload: a require left in
-// the bundle resolves to .ts under app.asar/node_modules and crashes on launch
-// (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Derived from package.json so a new workspace
-// import can never be missed; everything else in `dependencies` stays external.
+// Workspace TS packages must be bundled; externalizing them crashes on asar .ts require.
 const ELECTRON_SUBPATH_RE = /^electron\/.+/;
 
 export function nodeExternals(alsoBundle: readonly string[] = []): Array<string | RegExp> {

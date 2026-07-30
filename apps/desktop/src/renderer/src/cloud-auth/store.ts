@@ -45,10 +45,6 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => {
     publishUser,
     signIn() {
       set({ authenticating: true });
-      // Re-assert the deep-link scheme before the browser handoff so the OAuth callback routes
-      // back to THIS app; `allSettled` lets a failed re-assert still proceed to sign-in.
-      // requestAuth resolves once the system browser has the sign-in URL — clear the flag on that
-      // handoff, otherwise abandoning the browser leaves no callback and the button stays disabled.
       void Promise.allSettled([cloudDataBridge.claimDeepLink()])
         .then(() => traceRendererIpc('cloud.auth.request', () => window.requestAuth()))
         .finally(() => set({ authenticating: false }));

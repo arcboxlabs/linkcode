@@ -92,8 +92,6 @@ describe('createConversationStore', () => {
     close();
   });
 
-  // CODE-35: a transcript snapshot can never contain ephemeral events (permission asks, status,
-  // stop, errors) — a mid-turn seed read whose uptoSeq passes them must not erase them.
   it('keeps ephemeral live events that fall inside the snapshot cut', async () => {
     const { client, send, close } = await harness();
     const announce: AgentEvent = {
@@ -133,9 +131,6 @@ describe('createConversationStore', () => {
     close();
   });
 
-  // CODE-272: mid-turn, the transcript lags the live stream — the in-flight reply has no
-  // transcript row yet, so a reseed (focus/reconnect revalidation) must keep its live chunks
-  // even though they fall inside the cut, or the rendered answer collapses to a suffix.
   it('keeps live chunks of a streaming message the snapshot has not flushed yet', async () => {
     const { client, send, close } = await harness();
     const chunk = (text: string): AgentEvent => ({
@@ -163,8 +158,6 @@ describe('createConversationStore', () => {
     close();
   });
 
-  // CODE-328: once history flushes a completed block under the same provider id, a reseed must
-  // replace its buffered live chunks rather than render the transcript row beside a second copy.
   it('deduplicates live chunks that the snapshot covers by message id', async () => {
     const { client, send, close } = await harness();
     const chunk = (text: string): AgentEvent => ({

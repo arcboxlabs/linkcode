@@ -209,8 +209,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
       agent_kind: opts.kind,
       duration_ms: Date.now() - startedAt,
     });
-    // The list must contain the new session before selection flips: otherwise `active` falls
-    // back to the previous session for a render and its conversation flashes (CODE-103).
+    // Mutate before selecting to avoid a flash of the previous session.
     await mutate().catch(noop);
     recordNavigation(from, { surface: 'thread', sessionId });
     // setSelectedId atomically exits the draft (see the selection store).
