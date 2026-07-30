@@ -1,9 +1,17 @@
 import type { Plugin, PluginScope } from '@linkcode/schema';
 import type { PluginCardView, SkillRowView } from '@linkcode/ui';
 import { PluginsShell, PluginsTab, SkillsTab } from '@linkcode/ui';
+import { toastManager } from 'coss-ui/components/toast';
 import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
-import { usePlugins, useSetPluginEnabled, useSetSkillEnabled } from './hooks';
+import {
+  useInstallPlugin,
+  usePlugins,
+  useSetPluginEnabled,
+  useSetSkillEnabled,
+  useUninstallPlugin,
+} from './hooks';
 import { McpTab } from './mcp-settings';
 import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows } from './view';
 
@@ -13,11 +21,15 @@ import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows
  * daemon is unreachable. Discovery is a CLI shell-out, so refresh is manual only.
  */
 export function PluginsSettingsPanel(): React.ReactNode {
+  const t = useTranslations('settings.plugins');
   const { data, isLoading, isValidating, mutate } = usePlugins();
   const { data: runtimes } = useAgentRuntimes();
   const toggle = useSetPluginEnabled();
   const toggleSkill = useSetSkillEnabled();
+  const install = useInstallPlugin();
+  const uninstall = useUninstallPlugin();
   const [searchQuery, setSearchQuery] = useState('');
+  const mutating = toggle.isMutating || install.isMutating || uninstall.isMutating;
 
   const missingRuntimes = new Set<string>();
   for (const [kind, runtime] of Object.entries(runtimes ?? {})) {
@@ -33,6 +45,21 @@ export function PluginsSettingsPanel(): React.ReactNode {
         }));
   const installedGroups = groupsFor(true);
   const marketGroups = groupsFor(false);
+
+  // Fold the single re-listed plugin into the cache instead of revalidating: a full mutate() would
+  // re-run the expensive CLI discovery. Install/uninstall need nothing extra — the Plugins/Market
+  // split is derived from `installations`, so the replaced entry moves tabs on its own.
+  const patchPlugin = (updated: Plugin | undefined): void => {
+    if (updated === undefined) return;
+    void mutate(
+      (current) =>
+        current && {
+          ...current,
+          plugins: current.plugins.map((plugin) => replaceIfSame(plugin, updated)),
+        },
+      { revalidate: false },
+    );
+  };
 
   const onToggleSkill = async (row: SkillRowView, enabled: boolean): Promise<void> => {
     if (row.pluginKey === undefined) {
@@ -66,15 +93,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
       id: row.pluginKey.slice(separator + 1),
       enabled,
     });
-    if (updated === undefined) return;
-    void mutate(
-      (current) =>
-        current && {
-          ...current,
-          plugins: current.plugins.map((plugin) => replaceIfSame(plugin, updated)),
-        },
-      { revalidate: false },
-    );
+    patchPlugin(updated?.plugin);
   };
 
   const onToggleInstallation = async (
@@ -83,17 +102,25 @@ export function PluginsSettingsPanel(): React.ReactNode {
     enabled: boolean,
   ): Promise<void> => {
     const updated = await toggle.trigger({ provider: card.provider, id: card.id, enabled, scope });
-    if (updated === undefined) return;
-    // Fold the single re-listed plugin into the cache instead of revalidating: a full mutate()
-    // would re-run the expensive CLI discovery for one switch flip.
-    void mutate(
-      (current) =>
-        current && {
-          ...current,
-          plugins: current.plugins.map((plugin) => replaceIfSame(plugin, updated)),
-        },
-      { revalidate: false },
-    );
+    patchPlugin(updated?.plugin);
+  };
+
+  const onInstall = async (card: PluginCardView): Promise<void> => {
+    const result = await install.trigger({ provider: card.provider, id: card.id });
+    patchPlugin(result?.plugin);
+    // Most codex plugins are `ON_INSTALL`: the install lands but its apps stay unauthorized, and
+    // LinkCode has no OAuth flow — say so rather than let it read as finished.
+    if (result?.pendingAuthApps && result.pendingAuthApps.length > 0) {
+      toastManager.add({
+        title: t('installNeedsAuthTitle', { title: card.title }),
+        description: t('installNeedsAuth', { apps: result.pendingAuthApps.join('、') }),
+      });
+    }
+  };
+
+  const onUninstall = async (card: PluginCardView): Promise<void> => {
+    const result = await uninstall.trigger({ provider: card.provider, id: card.id });
+    patchPlugin(result?.plugin);
   };
 
   return (
@@ -106,7 +133,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
       refreshing={isLoading || isValidating}
       pluginsTab={
         <PluginsTab
-          busy={toggle.isMutating}
+          busy={mutating}
           groups={installedGroups}
           missingRuntimes={missingRuntimes}
           searchQuery={searchQuery}
@@ -114,11 +141,17 @@ export function PluginsSettingsPanel(): React.ReactNode {
           onToggleInstallation={(card, scope, enabled) => {
             void onToggleInstallation(card, scope, enabled);
           }}
+          onInstall={(card) => {
+            void onInstall(card);
+          }}
+          onUninstall={(card) => {
+            void onUninstall(card);
+          }}
         />
       }
       marketTab={
         <PluginsTab
-          busy={toggle.isMutating}
+          busy={mutating}
           groups={marketGroups}
           missingRuntimes={missingRuntimes}
           searchQuery={searchQuery}
@@ -126,12 +159,18 @@ export function PluginsSettingsPanel(): React.ReactNode {
           onToggleInstallation={(card, scope, enabled) => {
             void onToggleInstallation(card, scope, enabled);
           }}
+          onInstall={(card) => {
+            void onInstall(card);
+          }}
+          onUninstall={(card) => {
+            void onUninstall(card);
+          }}
         />
       }
       mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
       skillsTab={
         <SkillsTab
-          busy={toggle.isMutating || toggleSkill.isMutating}
+          busy={mutating || toggleSkill.isMutating}
           rows={data === undefined ? undefined : skillRows(data)}
           searchQuery={searchQuery}
           onToggle={(row, enabled) => {

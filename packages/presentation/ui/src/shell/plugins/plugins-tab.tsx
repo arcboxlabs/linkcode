@@ -28,6 +28,8 @@ export interface PluginsTabProps {
     scope: PluginScope | undefined,
     enabled: boolean,
   ) => void;
+  onInstall: (card: PluginCardView) => void;
+  onUninstall: (card: PluginCardView) => void;
 }
 
 /** Provider-grouped plugin cards with honest empty/failed/missing states. */
@@ -38,6 +40,8 @@ export function PluginsTab({
   searchQuery,
   busy,
   onToggleInstallation,
+  onInstall,
+  onUninstall,
 }: PluginsTabProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
   if (groups === undefined) {
@@ -98,6 +102,8 @@ export function PluginsTab({
                     card={card}
                     showInstallState={!market}
                     onToggleInstallation={onToggleInstallation}
+                    onInstall={onInstall}
+                    onUninstall={onUninstall}
                   />
                 ))}
                 {visible.length < group.plugins.length ? (

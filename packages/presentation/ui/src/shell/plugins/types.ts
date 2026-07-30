@@ -28,6 +28,9 @@ export interface PluginCardView {
   marketplaceLabel: string | undefined;
   availability: PluginAvailability;
   installed: boolean;
+  /** Per-plugin management capabilities; an action renders only when its capability is true. */
+  canInstall: boolean;
+  canUninstall: boolean;
   installations: PluginInstallationRow[];
   componentCounts: Partial<Record<PluginComponentKind, number>>;
   /** Precomputed lowercase haystack for the client-side filter. */

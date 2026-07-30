@@ -2,6 +2,7 @@ import type {
   HistoryListClientOptions,
   HistoryReadClientOptions,
   PluginList,
+  PluginMutation,
 } from '@linkcode/client-core';
 import type {
   Accounts,
@@ -29,7 +30,6 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
-  Plugin,
   PluginProvider,
   PluginScope,
   ProvidersConfig,
@@ -220,9 +220,26 @@ export function setPluginEnabled(
     scope?: PluginScope;
     cwd?: string;
   }>,
-): RequestResult<Plugin> {
+): RequestResult<PluginMutation> {
   const { provider, id, enabled, scope, cwd } = options;
   return resolveClient(options).setPluginEnabled({ provider, id, enabled, scope, cwd });
+}
+
+/** Install a catalog entry. Only providers reporting `managementCapabilities.install` accept it;
+ * the result names any provider apps the install left unauthorized. */
+export function installPlugin(
+  options: Options<{ provider: PluginProvider; id: string; cwd?: string }>,
+): RequestResult<PluginMutation> {
+  const { provider, id, cwd } = options;
+  return resolveClient(options).installPlugin({ provider, id, cwd });
+}
+
+/** Uninstall a plugin; resolves with the marketplace entry that survives, now uninstalled. */
+export function uninstallPlugin(
+  options: Options<{ provider: PluginProvider; id: string; cwd?: string }>,
+): RequestResult<PluginMutation> {
+  const { provider, id, cwd } = options;
+  return resolveClient(options).uninstallPlugin({ provider, id, cwd });
 }
 
 /** Toggle one skill; resolves with the re-read skill so callers patch one cache entry. */

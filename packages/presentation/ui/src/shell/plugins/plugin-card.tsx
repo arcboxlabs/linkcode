@@ -1,7 +1,19 @@
 import type { PluginScope } from '@linkcode/schema';
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from 'coss-ui/components/alert-dialog';
 import { Badge } from 'coss-ui/components/badge';
+import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
 import { Switch } from 'coss-ui/components/switch';
+import { DownloadIcon, Trash2Icon } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../../chat/agent-icon';
 import type { PluginCardView, PluginInstallationRow } from './types';
@@ -16,6 +28,8 @@ export interface PluginCardProps {
     scope: PluginScope | undefined,
     enabled: boolean,
   ) => void;
+  onInstall: (card: PluginCardView) => void;
+  onUninstall: (card: PluginCardView) => void;
 }
 
 /** One provider plugin: identity, capability summary, and per-installation enablement. */
@@ -24,8 +38,11 @@ export function PluginCard({
   busy,
   showInstallState = true,
   onToggleInstallation,
+  onInstall,
+  onUninstall,
 }: PluginCardProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
+  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-4">
@@ -53,6 +70,31 @@ export function PluginCard({
             </div>
           </div>
         </div>
+        {card.installed ? (
+          card.canUninstall ? (
+            <Button
+              aria-label={t('uninstall')}
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0"
+              disabled={busy}
+              onClick={() => setConfirmingUninstall(true)}
+            >
+              <Trash2Icon className="size-4" />
+            </Button>
+          ) : null
+        ) : card.canInstall ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={busy}
+            onClick={() => onInstall(card)}
+          >
+            <DownloadIcon className="size-4" />
+            {t('install')}
+          </Button>
+        ) : null}
       </div>
       {card.installations.length === 0 ? null : (
         <div className="flex flex-col gap-1.5">
@@ -66,6 +108,26 @@ export function PluginCard({
           ))}
         </div>
       )}
+      <AlertDialog open={confirmingUninstall} onOpenChange={setConfirmingUninstall}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('uninstallTitle', { title: card.title })}</AlertDialogTitle>
+            <AlertDialogDescription>{t('uninstallHint')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline">{t('cancel')}</Button>} />
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmingUninstall(false);
+                onUninstall(card);
+              }}
+            >
+              {t('uninstall')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </Card>
   );
 }

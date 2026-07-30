@@ -27,7 +27,6 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
-  Plugin,
   PluginProvider,
   PluginScope,
   ProvidersConfig,
@@ -63,7 +62,13 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import type { PendingRegistry, PendingValueMap, PluginList, RequestAck } from './pending-registry';
+import type {
+  PendingRegistry,
+  PendingValueMap,
+  PluginList,
+  PluginMutation,
+  RequestAck,
+} from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
 export type HistoryListClientOptions = AgentHistoryListOptions & {
@@ -408,9 +413,36 @@ export class ControlChannel {
     enabled: boolean;
     scope?: PluginScope;
     cwd?: string;
-  }): Promise<Plugin> {
-    return this.sendCorrelated('pluginSetEnabled', (clientReqId) => ({
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
       kind: 'plugin.set-enabled',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Install a catalog entry. `pendingAuthApps` names provider apps the install left unauthorized —
+   * codex reports them for most of its catalog and LinkCode cannot complete those flows. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
+      kind: 'plugin.install',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Drop an installed plugin's local state; the marketplace entry itself survives. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
+      kind: 'plugin.uninstall',
       clientReqId,
       ...params,
     }));

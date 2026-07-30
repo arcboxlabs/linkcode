@@ -675,6 +675,13 @@ export const zhCN = {
       marketTruncated: '显示前 {shown} 个，共 {total} 个 · 用搜索缩小范围',
       noSearchResults: '没有匹配的插件。',
       notInstalled: '未安装',
+      cancel: '取消',
+      install: '安装',
+      uninstall: '卸载',
+      uninstallTitle: '卸载「{title}」？',
+      uninstallHint: '将删除本机上的插件文件与配置；条目会回到「市场」，重新安装即可。',
+      installNeedsAuthTitle: '「{title}」已安装，但还需授权',
+      installNeedsAuth: '{apps} 需要在 Codex 里完成授权后才能使用。',
       availability: {
         blocked: '已被限制',
         unknown: '状态未知',

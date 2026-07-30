@@ -57,6 +57,14 @@ export interface PluginList {
   providerStatus: PluginProviderStatus[];
 }
 
+/** The `plugin.updated` payload: every plugin mutation (toggle, install, uninstall) answers with
+ * the re-listed plugin, so they share one pending tag. */
+export interface PluginMutation {
+  plugin: Plugin;
+  /** Install only: provider apps the install left unauthorized. */
+  pendingAuthApps?: string[];
+}
+
 export type RandomUUID = () => string;
 
 export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
@@ -84,7 +92,7 @@ export interface PendingValueMap {
   accountsGet: Accounts;
   customMcpGet: CustomMcpServerPublic[];
   pluginList: PluginList;
-  pluginSetEnabled: Plugin;
+  pluginMutation: PluginMutation;
   skillSetEnabled: StandaloneSkill;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
@@ -140,7 +148,7 @@ export class PendingRegistry {
     accountsGet: new Map(),
     customMcpGet: new Map(),
     pluginList: new Map(),
-    pluginSetEnabled: new Map(),
+    pluginMutation: new Map(),
     skillSetEnabled: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),

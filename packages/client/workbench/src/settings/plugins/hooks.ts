@@ -1,9 +1,11 @@
 import {
   getCustomMcpServers,
   getPlugins,
+  installPlugin,
   setCustomMcpServers,
   setPluginEnabled,
   setSkillEnabled,
+  uninstallPlugin,
 } from '@linkcode/sdk';
 import { useData, useMutation } from '../../runtime/tayori';
 
@@ -26,6 +28,16 @@ export function useSetPluginEnabled() {
 
 export function useSetSkillEnabled() {
   return useMutation(setSkillEnabled);
+}
+
+/** Install/uninstall run through the provider (codex: `plugin/install`, a real network + disk
+ * operation), so they are explicit user actions with no optimistic UI. */
+export function useInstallPlugin() {
+  return useMutation(installPlugin);
+}
+
+export function useUninstallPlugin() {
+  return useMutation(uninstallPlugin);
 }
 
 /** Masked custom MCP servers; cheap config read, normal trigger-then-revalidate rhythm. */

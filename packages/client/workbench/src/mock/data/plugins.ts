@@ -1,8 +1,17 @@
 import type { Plugin, PluginProviderStatus, StandaloneSkill } from '@linkcode/schema';
 
+/** Mirrors `CodexPluginAdapter`: everything but `update` is backed by a real RPC. */
+const CODEX_MANAGEMENT = {
+  install: true,
+  uninstall: true,
+  update: false,
+  enable: true,
+  disable: true,
+} as const;
+
 /** Canned plugin discovery covering the shapes the settings page must render: an installed and
- * enabled claude plugin with skills + an MCP server, a blocked codex plugin, a marketplace-only
- * (not installed) listing, and a multi-scope install. */
+ * enabled claude plugin with skills + an MCP server, a blocked codex plugin, marketplace-only
+ * (not installed) listings with and without install support, and a multi-scope install. */
 export const SEED_PLUGINS: Plugin[] = [
   {
     provider: 'claude-code',
@@ -60,7 +69,7 @@ export const SEED_PLUGINS: Plugin[] = [
     id: 'search@openai-bundled',
     name: 'search',
     displayName: 'Web Search',
-    description: 'Bundled search tools; management is provider-owned.',
+    description: 'Bundled search tools, installed and enabled.',
     keywords: [],
     marketplace: { name: 'openai-bundled', displayName: 'OpenAI Bundled' },
     source: { type: 'remote' },
@@ -71,13 +80,26 @@ export const SEED_PLUGINS: Plugin[] = [
       { kind: 'mcp-server', name: 'search-tools' },
     ],
     assets: [],
-    managementCapabilities: {
-      install: false,
-      uninstall: false,
-      update: false,
-      enable: false,
-      disable: false,
-    },
+    managementCapabilities: CODEX_MANAGEMENT,
+  },
+  {
+    provider: 'codex',
+    id: 'github@openai-curated-remote',
+    name: 'github',
+    displayName: 'GitHub',
+    // An `app` component is what makes the install answer with pendingAuthApps in the mock host.
+    description: 'Installable marketplace listing whose apps need authorizing after install.',
+    keywords: ['github', 'pr'],
+    marketplace: { name: 'openai-curated-remote', displayName: 'OpenAI Curated' },
+    source: { type: 'remote' },
+    availability: 'available',
+    installations: [],
+    components: [
+      { kind: 'skill', name: 'review-pr' },
+      { kind: 'app', name: 'GitHub' },
+    ],
+    assets: [],
+    managementCapabilities: CODEX_MANAGEMENT,
   },
 ];
 

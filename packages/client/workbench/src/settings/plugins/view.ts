@@ -28,6 +28,8 @@ export function pluginCardView(plugin: Plugin): PluginCardView {
     marketplaceLabel: plugin.marketplace?.displayName ?? plugin.marketplace?.name,
     availability: plugin.availability,
     installed: plugin.installations.length > 0,
+    canInstall: plugin.managementCapabilities.install,
+    canUninstall: plugin.managementCapabilities.uninstall,
     installations: plugin.installations.map((entry) => ({
       scope: entry.scope,
       enabled: entry.enabled,

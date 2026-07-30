@@ -4,6 +4,7 @@ import type {
   HistoryListClientOptions,
   HistoryReadClientOptions,
   PluginList,
+  PluginMutation,
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
@@ -32,7 +33,6 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
-  Plugin,
   PluginProvider,
   PluginScope,
   ProvidersConfig,
@@ -248,8 +248,26 @@ export class LinkCodeSdkClient {
     enabled: boolean;
     scope?: PluginScope;
     cwd?: string;
-  }): RequestResult<Plugin> {
+  }): RequestResult<PluginMutation> {
     return toResult(this.raw.setPluginEnabled(params));
+  }
+
+  /** Install a catalog entry the host does not have yet. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): RequestResult<PluginMutation> {
+    return toResult(this.raw.installPlugin(params));
+  }
+
+  /** Uninstall a plugin; the marketplace entry survives with no installations. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): RequestResult<PluginMutation> {
+    return toResult(this.raw.uninstallPlugin(params));
   }
 
   /** Toggle one skill through its provider; resolves with the re-read skill. */

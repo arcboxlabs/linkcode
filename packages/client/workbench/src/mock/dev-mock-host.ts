@@ -416,6 +416,35 @@ export class DevMockHost {
         this.send({ kind: 'plugin.updated', replyTo: p.clientReqId, plugin });
         break;
       }
+      case 'plugin.install':
+      case 'plugin.uninstall': {
+        await wait(CONTROL_LATENCY_MS);
+        const installing = p.kind === 'plugin.install';
+        const plugin = this.plugins.find(
+          (entry) => entry.provider === p.provider && entry.id === p.id,
+        );
+        const capable = installing
+          ? plugin?.managementCapabilities.install
+          : plugin?.managementCapabilities.uninstall;
+        if (!plugin || !capable) {
+          this.sendFailure(p.clientReqId, `${p.provider}: plugin ${p.kind} is not supported`);
+          break;
+        }
+        // Mirrors the daemon: the marketplace entry survives an uninstall with no installations.
+        plugin.installations = installing
+          ? [{ enabled: true, version: plugin.version, scope: 'user' }]
+          : [];
+        this.send({
+          kind: 'plugin.updated',
+          replyTo: p.clientReqId,
+          plugin,
+          ...(installing &&
+            plugin.components.some((component) => component.kind === 'app') && {
+              pendingAuthApps: ['Mock Connector'],
+            }),
+        });
+        break;
+      }
       case 'workspace.list':
         await wait(CONTROL_LATENCY_MS);
         this.send({

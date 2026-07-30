@@ -687,6 +687,14 @@ export const en = {
       marketTruncated: 'Showing {shown} of {total} · narrow it down with search',
       noSearchResults: 'No matching plugins.',
       notInstalled: 'Not installed',
+      cancel: 'Cancel',
+      install: 'Install',
+      uninstall: 'Uninstall',
+      uninstallTitle: 'Uninstall “{title}”?',
+      uninstallHint:
+        'Its files and config on this machine are removed; the entry returns to Market, ready to install again.',
+      installNeedsAuthTitle: '“{title}” installed, but needs authorization',
+      installNeedsAuth: '{apps} must be authorized in Codex before they can be used.',
       availability: {
         blocked: 'Blocked',
         unknown: 'Unknown',

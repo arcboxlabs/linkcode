@@ -29,7 +29,6 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
-  Plugin,
   PluginProvider,
   PluginScope,
   ProvidersConfig,
@@ -79,7 +78,7 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { PluginList, RandomUUID, RequestAck } from './client/pending-registry';
+import type { PluginList, PluginMutation, RandomUUID, RequestAck } from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
@@ -87,7 +86,7 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
-export type { PluginList } from './client/pending-registry';
+export type { PluginList, PluginMutation } from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
@@ -368,7 +367,10 @@ export class LinkCodeClient {
         });
         break;
       case 'plugin.updated':
-        this.pending.resolve('pluginSetEnabled', p.replyTo, p.plugin);
+        this.pending.resolve('pluginMutation', p.replyTo, {
+          plugin: p.plugin,
+          pendingAuthApps: p.pendingAuthApps,
+        });
         break;
       case 'skill.updated':
         this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
@@ -752,8 +754,26 @@ export class LinkCodeClient {
     enabled: boolean;
     scope?: PluginScope;
     cwd?: string;
-  }): Promise<Plugin> {
+  }): Promise<PluginMutation> {
     return this.control.setPluginEnabled(params);
+  }
+
+  /** Install a catalog entry the host does not have yet. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.installPlugin(params);
+  }
+
+  /** Remove an installed plugin; the marketplace entry survives with no installations. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.uninstallPlugin(params);
   }
 
   /** Toggle one skill through its provider; resolves with the re-read skill. */
