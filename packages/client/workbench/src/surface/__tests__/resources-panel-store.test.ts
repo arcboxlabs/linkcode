@@ -19,6 +19,23 @@ beforeEach(() => storage.clear());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('resources panel visibility', () => {
+  it('selects a presentation without competing for right-side space', async () => {
+    const { getResourcesPanelPresentation } = await import('../resources-panel-store');
+
+    expect(
+      getResourcesPanelPresentation({ available: false, wide: true, rightPanelOpen: false }),
+    ).toBe('hidden');
+    expect(
+      getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: false }),
+    ).toBe('floating');
+    expect(
+      getResourcesPanelPresentation({ available: true, wide: false, rightPanelOpen: false }),
+    ).toBe('dialog');
+    expect(
+      getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: true }),
+    ).toBe('dialog');
+  });
+
   it('roundtrips open state', async () => {
     const first = await loadStore();
     first.getState().setOpen(true);

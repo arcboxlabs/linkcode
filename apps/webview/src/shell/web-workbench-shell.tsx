@@ -1,8 +1,13 @@
 import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
-import { useResourcesPanelStore, WorkspaceServicesMenu } from '@linkcode/workbench';
+import {
+  getResourcesPanelPresentation,
+  useResourcesPanelStore,
+  WorkspaceServicesMenu,
+} from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
-import { Drawer, DrawerPopup } from 'coss-ui/components/drawer';
+import { Card } from 'coss-ui/components/card';
+import { Dialog, DialogHeader, DialogPopup, DialogTitle } from 'coss-ui/components/dialog';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { ChevronLeftIcon, ChevronRightIcon, PackageOpenIcon, SettingsIcon } from 'lucide-react';
 import { ViewTransition } from 'react';
@@ -20,14 +25,18 @@ export function WebWorkbenchShell({
   const navigate = useNavigate();
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
-  const wide = useMediaQuery('lg');
+  const wide = useMediaQuery('xl');
   const resourcesAvailable = props.activeSession !== null && resourcesPanel !== undefined;
+  const resourcesPresentation = getResourcesPanelPresentation({
+    available: resourcesAvailable,
+    wide,
+  });
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1">
+    <div className="relative h-full min-h-0">
+      <div className="h-full min-w-0">
         <ShellFrame
           {...props}
           onOpenAutomations={() => {
@@ -106,20 +115,23 @@ export function WebWorkbenchShell({
           }
         />
       </div>
-      {wide && resourcesAvailable && resourcesOpen && (
-        <aside
+      {resourcesPresentation === 'floating' && resourcesOpen && (
+        <Card
           aria-label={tPanel('resources')}
-          className="w-96 shrink-0 border-border border-l bg-background"
+          className="absolute top-12 right-3 z-20 max-h-[calc(100%-3.75rem)] w-72 overflow-hidden shadow-xl"
         >
           {resourcesPanel}
-        </aside>
+        </Card>
       )}
-      {!wide && resourcesAvailable && (
-        <Drawer open={resourcesOpen} onOpenChange={setResourcesOpen} position="right">
-          <DrawerPopup className="w-[min(24rem,calc(100%-3rem))]" position="right">
-            <div className="h-full min-h-0 pt-3">{resourcesPanel}</div>
-          </DrawerPopup>
-        </Drawer>
+      {resourcesPresentation === 'dialog' && (
+        <Dialog open={resourcesOpen} onOpenChange={setResourcesOpen}>
+          <DialogPopup bottomStickOnMobile={false} className="max-h-[calc(100dvh-2rem)] max-w-md">
+            <DialogHeader className="border-border border-b p-4">
+              <DialogTitle className="text-base">{tPanel('resources')}</DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto">{resourcesPanel}</div>
+          </DialogPopup>
+        </Dialog>
       )}
     </div>
   );

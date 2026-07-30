@@ -19,6 +19,7 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   AttachedTerminalPanel,
+  getResourcesPanelPresentation,
   isAbsoluteFilePath,
   locateFileArtifact,
   SimulatorAutoReveal,
@@ -26,10 +27,14 @@ import {
   TerminalPanel,
   useBrowserHostRegistration,
   useCloudHosts,
+  useResourcesPanelStore,
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
+import { Card } from 'coss-ui/components/card';
+import { Dialog, DialogHeader, DialogPopup, DialogTitle } from 'coss-ui/components/dialog';
 import { toastManager } from 'coss-ui/components/toast';
+import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -162,6 +167,10 @@ export function DesktopShell({
     })),
   );
   const cloudAuth = useCloudAccount();
+  const resourcesOpen = useResourcesPanelStore((state) => state.open);
+  const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
+  const toggleResources = useResourcesPanelStore((state) => state.toggle);
+  const wide = useMediaQuery('xl');
   const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
   const { selectedHostId, selectHost } = useSelectedHostStore(
     useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
@@ -200,6 +209,7 @@ export function DesktopShell({
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
   const tComposer = useTranslations('workbench.composer');
+  const tPanel = useTranslations('workbench.panel.window');
   const syncSidebarPaneSize = useCallback((size: number): void => {
     setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size);
   }, []);
@@ -289,6 +299,12 @@ export function DesktopShell({
 
   const active = activeSession;
   const activeSessionId = active?.sessionId ?? null;
+  const resourcesAvailable = draft === null && active !== null && resourcesPanel !== undefined;
+  const resourcesPresentation = getResourcesPanelPresentation({
+    available: resourcesAvailable,
+    wide,
+    rightPanelOpen: rightPanel.open,
+  });
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -641,6 +657,8 @@ export function DesktopShell({
         sidebarOpen={sidebarOpen}
         rightPanelOpen={rightPanel.open}
         bottomPanelOpen={bottomPanel.open}
+        resourcesOpen={resourcesOpen}
+        resourcesAvailable={resourcesAvailable}
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
@@ -712,6 +730,7 @@ export function DesktopShell({
         onHideSidebar={() => updateSidebarOpen(false)}
         onToggleRight={() => togglePanel('right')}
         onToggleBottom={() => togglePanel('bottom')}
+        onToggleResources={toggleResources}
       >
         <DesktopWorkspace
           main={main}
@@ -780,6 +799,24 @@ export function DesktopShell({
           }}
         />
       </DesktopChrome>
+      {resourcesPresentation === 'floating' && resourcesOpen && (
+        <Card
+          aria-label={tPanel('resources')}
+          className="absolute top-[calc(var(--lc-chrome-h)+0.75rem)] right-3 z-40 max-h-[calc(100%-var(--lc-chrome-h)-1.5rem)] w-72 overflow-hidden shadow-xl"
+        >
+          {resourcesPanel}
+        </Card>
+      )}
+      {resourcesPresentation === 'dialog' && (
+        <Dialog open={resourcesOpen} onOpenChange={setResourcesOpen}>
+          <DialogPopup bottomStickOnMobile={false} className="max-h-[calc(100dvh-2rem)] max-w-md">
+            <DialogHeader className="border-border border-b p-4">
+              <DialogTitle className="text-base">{tPanel('resources')}</DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto">{resourcesPanel}</div>
+          </DialogPopup>
+        </Dialog>
+      )}
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
