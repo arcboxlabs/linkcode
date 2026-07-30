@@ -174,8 +174,11 @@ export const StandaloneSkillSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   scope: StandaloneSkillScopeSchema,
-  /** Absolute path on the daemon host. */
+  /** Absolute path on the daemon host. Codex's toggle is keyed by this path. */
   path: z.string().min(1),
+  /** Provider-reported enablement (claude: `skillOverrides` in settings.json; codex:
+   * `[[skills.config]]` in config.toml). */
+  enabled: z.boolean(),
   /** Whether the owning adapter can toggle it. Clients gate the affordance on this flag,
    * never on `provider`. */
   toggleable: z.boolean(),

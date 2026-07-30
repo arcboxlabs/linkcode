@@ -38,7 +38,8 @@ function skill(provider: PluginProvider, id: string): StandaloneSkill {
     name: id,
     scope: 'user',
     path: `/skills/${id}`,
-    toggleable: false,
+    enabled: true,
+    toggleable: true,
   };
 }
 
@@ -162,6 +163,66 @@ describe('PluginService', () => {
     const outcome = await Effect.runPromise(
       Effect.flip(
         new PluginService(factory).setPluginEnabled('claude-code', 'ghost@nowhere', true),
+      ),
+    );
+
+    expect(outcome).toMatchObject({ _tag: 'RequestError', code: 'not_found' });
+  });
+
+  it('toggles a skill through the adapter and returns the re-read skill', async () => {
+    const setSkillEnabled = vi.fn(asyncNoop);
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([]),
+      listStandaloneSkills: () => Promise.resolve([{ ...skill(provider, 'docx'), enabled: false }]),
+      ...(provider === 'claude-code' && { setSkillEnabled }),
+    });
+    const target = { id: 'docx', path: '/skills/docx', scope: 'user' } as const;
+
+    const updated = await Effect.runPromise(
+      new PluginService(factory).setSkillEnabled('claude-code', target, false, { cwd: '/repo' }),
+    );
+
+    expect(setSkillEnabled).toHaveBeenCalledWith(target, false, { cwd: '/repo' });
+    expect(updated).toMatchObject({ id: 'docx', enabled: false });
+  });
+
+  it('fails skill toggles with unsupported when the adapter has no mechanism', async () => {
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([]),
+      listStandaloneSkills: () => Promise.resolve([]),
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.flip(
+        new PluginService(factory).setSkillEnabled(
+          'codex',
+          { id: 'x', path: '/x', scope: 'user' },
+          true,
+        ),
+      ),
+    );
+
+    expect(outcome).toMatchObject({ _tag: 'RequestError', code: 'unsupported' });
+  });
+
+  it('fails with not_found when the toggled skill never shows up in the readback', async () => {
+    // Both providers blind-write, so the re-read is the only proof the toggle landed.
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([]),
+      listStandaloneSkills: () => Promise.resolve([]),
+      setSkillEnabled: asyncNoop,
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.flip(
+        new PluginService(factory).setSkillEnabled(
+          'claude-code',
+          { id: 'ghost', path: '/ghost', scope: 'user' },
+          true,
+        ),
       ),
     );
 

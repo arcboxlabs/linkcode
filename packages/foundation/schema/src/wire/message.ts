@@ -30,7 +30,8 @@ import { WirePayloadSchema } from './payload';
 // 62 carries project cwd on history reads so provider-local environment resolution stays coherent.
 // 63 adds plugin discovery/enablement (plugin.*), custom MCP servers on config.get/set, and
 // session.started mcpWarnings (CODE-487).
-export const WIRE_PROTOCOL_VERSION = 63 as const;
+// 64 adds per-skill enablement (skill.set-enabled/updated) and StandaloneSkill.enabled (CODE-502).
+export const WIRE_PROTOCOL_VERSION = 64 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

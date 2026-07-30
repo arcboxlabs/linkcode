@@ -121,7 +121,8 @@ describe('skillRows', () => {
             name: 'linear',
             scope: 'project',
             path: '/x',
-            toggleable: false,
+            enabled: false,
+            toggleable: true,
           },
         ],
       }),
@@ -136,7 +137,11 @@ describe('skillRows', () => {
     });
     expect(rows[2]).toMatchObject({
       pluginKey: undefined,
-      canToggle: false,
+      skillId: 'linear',
+      path: '/x',
+      // Standalone skills now carry the provider's own state and toggle individually.
+      enabled: false,
+      canToggle: true,
       standaloneScope: 'project',
     });
   });

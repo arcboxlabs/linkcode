@@ -2,6 +2,7 @@ import type {
   PluginDiscoveryOptions,
   PluginProviderAdapterFactory,
   PluginToggleOptions,
+  SkillToggleTarget,
 } from '@linkcode/agent-adapter';
 import type {
   Plugin,
@@ -96,6 +97,59 @@ export class PluginService {
           ? Effect.succeed(updated)
           : Effect.fail(
               new RequestError({ code: 'not_found', message: `Plugin not found: ${id}` }),
+            );
+      }),
+    );
+  }
+
+  /**
+   * Per-skill toggle. Both providers blind-write (claude edits `skillOverrides`, codex answers
+   * `skills/config/write` for any path), so the re-read is the only proof the toggle landed.
+   */
+  setSkillEnabled(
+    provider: PluginProvider,
+    skill: SkillToggleTarget,
+    enabled: boolean,
+    opts: PluginDiscoveryOptions = {},
+  ): Effect.Effect<StandaloneSkill, RequestError | OperationError> {
+    const adapter = this.factory(provider);
+    const toggle = adapter.setSkillEnabled?.bind(adapter);
+    if (!toggle) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${provider}: skill management is not supported`,
+        }),
+      );
+    }
+    return Effect.tryPromise({
+      try: () => toggle(skill, enabled, opts),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'plugin',
+          operation: `skill.set-enabled.${provider}`,
+          publicMessage: `Failed to ${enabled ? 'enable' : 'disable'} the skill`,
+          cause,
+        }),
+    }).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => adapter.listStandaloneSkills(opts),
+          catch: (cause) =>
+            new OperationError({
+              subsystem: 'plugin',
+              operation: `skill.reload.${provider}`,
+              publicMessage: 'Failed to reload the skill after the update',
+              cause,
+            }),
+        }),
+      ),
+      Effect.flatMap((skills) => {
+        const updated = skills.find((entry) => entry.id === skill.id);
+        return updated
+          ? Effect.succeed(updated)
+          : Effect.fail(
+              new RequestError({ code: 'not_found', message: `Skill not found: ${skill.id}` }),
             );
       }),
     );

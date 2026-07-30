@@ -11,7 +11,7 @@ import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { CodexAppServer, resolveCodexBinaryPath } from '../native/codex/app-server';
 import { agentRuntimeProber } from '../probe';
-import type { PluginDiscoveryOptions, PluginProviderAdapter } from './adapter';
+import type { PluginDiscoveryOptions, PluginProviderAdapter, SkillToggleTarget } from './adapter';
 
 const OptionalStringSchema = z.string().min(1).nullable();
 const OptionalUrlSchema = z.url().nullable().catch(null);
@@ -183,6 +183,22 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
     });
   }
 
+  /**
+   * `skills/config/write {path, enabled}` → `{effectiveEnabled}`, persisted as
+   * `[[skills.config]]` in config.toml (verified live on 0.144.1). It is a blind write — a
+   * nonexistent path still answers success — so the engine's `skills/list` readback is the real
+   * check, exactly like `claude plugin enable`.
+   */
+  async setSkillEnabled(
+    skill: SkillToggleTarget,
+    enabled: boolean,
+    _opts: PluginDiscoveryOptions = {},
+  ): Promise<void> {
+    await this.withDiscoveryServer(async (server) => {
+      await server.request('skills/config/write', { path: skill.path, enabled });
+    });
+  }
+
   private async withDiscoveryServer<T>(run: (server: CodexPluginServer) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     let server: CodexPluginServer | undefined;
@@ -245,7 +261,8 @@ function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {
         description: description || undefined,
         scope: scope === 'repo' ? 'project' : 'user',
         path,
-        toggleable: false,
+        enabled: entry.data.enabled,
+        toggleable: true,
       });
     }
   }

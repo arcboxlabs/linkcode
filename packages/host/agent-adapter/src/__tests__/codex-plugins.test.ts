@@ -275,7 +275,8 @@ describe('CodexPluginAdapter', () => {
         description: undefined,
         scope: 'user',
         path: '/home/user/skills/better-skill-creator/SKILL.md',
-        toggleable: false,
+        enabled: true,
+        toggleable: true,
       },
       {
         provider: 'codex',
@@ -284,9 +285,27 @@ describe('CodexPluginAdapter', () => {
         description: 'Linear workflow',
         scope: 'project',
         path: '/workspace/.agents/skills/linear/SKILL.md',
-        toggleable: false,
+        enabled: true,
+        toggleable: true,
       },
     ]);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('writes per-skill enablement by SKILL.md path', async () => {
+    const close = vi.fn();
+    const request = vi.fn(() => Promise.resolve({ effectiveEnabled: false }));
+    const server: CodexPluginServer = { request, close };
+
+    await new CodexPluginAdapter(() => Promise.resolve(server)).setSkillEnabled(
+      { id: 'linear', path: '/workspace/.agents/skills/linear/SKILL.md', scope: 'project' },
+      false,
+    );
+
+    expect(request).toHaveBeenCalledWith('skills/config/write', {
+      path: '/workspace/.agents/skills/linear/SKILL.md',
+      enabled: false,
+    });
     expect(close).toHaveBeenCalledOnce();
   });
 

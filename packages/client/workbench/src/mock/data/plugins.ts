@@ -89,7 +89,8 @@ export const SEED_STANDALONE_SKILLS: StandaloneSkill[] = [
     description: 'Create and edit Word documents.',
     scope: 'user',
     path: '/home/user/.claude/skills/docx',
-    toggleable: false,
+    enabled: true,
+    toggleable: true,
   },
   {
     provider: 'codex',
@@ -98,7 +99,8 @@ export const SEED_STANDALONE_SKILLS: StandaloneSkill[] = [
     description: 'Linear workflow conventions.',
     scope: 'project',
     path: '/workspace/.agents/skills/linear/SKILL.md',
-    toggleable: false,
+    enabled: false,
+    toggleable: true,
   },
 ];
 

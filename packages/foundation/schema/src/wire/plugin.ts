@@ -5,6 +5,7 @@ import {
   PluginSchema,
   PluginScopeSchema,
   StandaloneSkillSchema,
+  StandaloneSkillScopeSchema,
 } from '../model/plugin';
 import { WireRequestIdSchema } from './request';
 
@@ -41,5 +42,23 @@ export const pluginWireVariants = [
     kind: z.literal('plugin.updated'),
     replyTo: WireRequestIdSchema,
     plugin: PluginSchema,
+  }),
+  /** Per-skill enablement. claude keys its `skillOverrides` by skill name, codex keys
+   * `[[skills.config]]` by SKILL.md path — both travel so either adapter can address the skill.
+   * On/off only: claude's `name-only`/`user-invocable-only` tiers stay provider-side for now. */
+  z.object({
+    kind: z.literal('skill.set-enabled'),
+    clientReqId: WireRequestIdSchema,
+    provider: PluginProviderSchema,
+    skillId: z.string().min(1),
+    path: z.string().min(1),
+    scope: StandaloneSkillScopeSchema.optional(),
+    enabled: z.boolean(),
+    cwd: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('skill.updated'),
+    replyTo: WireRequestIdSchema,
+    skill: StandaloneSkillSchema,
   }),
 ] as const;

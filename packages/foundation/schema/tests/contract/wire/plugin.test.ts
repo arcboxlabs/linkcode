@@ -48,7 +48,8 @@ describe('plugin wire schema', () => {
             name: 'docx',
             scope: 'user',
             path: '/home/user/.claude/skills/docx',
-            toggleable: false,
+            enabled: true,
+            toggleable: true,
           },
         ],
         providerStatus: [
@@ -87,6 +88,40 @@ describe('plugin wire schema', () => {
       }),
     );
     expect(parsed.success).toBe(false);
+  });
+
+  it('round-trips a per-skill enablement request and its reply', () => {
+    const request = parseWireMessage(
+      envelope({
+        kind: 'skill.set-enabled',
+        clientReqId: 'request-1',
+        provider: 'claude-code',
+        skillId: 'docx',
+        path: '/home/user/.claude/skills/docx',
+        scope: 'user',
+        enabled: false,
+      }),
+    );
+    expect(request.success).toBe(true);
+
+    const reply = parseWireMessage(
+      envelope({
+        kind: 'skill.updated',
+        replyTo: 'request-1',
+        skill: {
+          provider: 'claude-code',
+          id: 'docx',
+          name: 'docx',
+          scope: 'user',
+          path: '/home/user/.claude/skills/docx',
+          enabled: false,
+          toggleable: true,
+        },
+      }),
+    );
+    expect(reply.success).toBe(true);
+    if (!reply.success || reply.data.payload.kind !== 'skill.updated') return;
+    expect(reply.data.payload.skill.enabled).toBe(false);
   });
 
   it('round-trips the updated reply carrying the full plugin', () => {

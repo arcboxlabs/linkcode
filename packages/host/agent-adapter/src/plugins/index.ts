@@ -9,6 +9,7 @@ export type {
   PluginProviderAdapter,
   PluginProviderAdapterFactory,
   PluginToggleOptions,
+  SkillToggleTarget,
 } from './adapter';
 export { ClaudeCodePluginAdapter } from './claude-code';
 export { CodexPluginAdapter } from './codex';

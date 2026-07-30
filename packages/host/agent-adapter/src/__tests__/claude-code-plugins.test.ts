@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { asyncNoop } from 'foxts/noop';
@@ -168,7 +168,8 @@ describe('ClaudeCodePluginAdapter', () => {
         description: 'Create .docx files',
         scope: 'user',
         path: join(userRoot, 'docx'),
-        toggleable: false,
+        enabled: true,
+        toggleable: true,
       },
       {
         provider: 'claude-code',
@@ -177,7 +178,8 @@ describe('ClaudeCodePluginAdapter', () => {
         description: 'Ship it',
         scope: 'project',
         path: join(projectSkills, 'deploy'),
-        toggleable: false,
+        enabled: true,
+        toggleable: true,
       },
     ]);
   });
@@ -206,6 +208,99 @@ describe('ClaudeCodePluginAdapter', () => {
       [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
       [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
     ]);
+  });
+
+  it('reflects skillOverrides in discovery and writes only the off tier back', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-overrides-'));
+    tempRoots.push(home);
+    const skillsDir = join(home, 'skills');
+    const settingsFile = join(home, 'settings.json');
+    await Promise.all([
+      mkdir(join(skillsDir, 'docx'), { recursive: true }),
+      mkdir(join(skillsDir, 'pptx'), { recursive: true }),
+      mkdir(join(skillsDir, 'xlsx'), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(join(skillsDir, 'docx', 'SKILL.md'), '---\nname: docx\n---'),
+      writeFile(join(skillsDir, 'pptx', 'SKILL.md'), '---\nname: pptx\n---'),
+      writeFile(join(skillsDir, 'xlsx', 'SKILL.md'), '---\nname: xlsx\n---'),
+      writeFile(
+        settingsFile,
+        JSON.stringify({
+          permissions: { defaultMode: 'acceptEdits' },
+          skillOverrides: { docx: 'off', pptx: 'name-only' },
+        }),
+      ),
+    ]);
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const adapter = new ClaudeCodePluginAdapter(command, skillsDir, asyncNoop, settingsFile);
+
+    const discovered = await adapter.listStandaloneSkills();
+    expect(discovered.map((skill) => [skill.id, skill.enabled, skill.toggleable])).toEqual([
+      ['docx', false, true],
+      // A finer-grained tier is not "off": the skill still lists, so it reads as enabled.
+      ['pptx', true, true],
+      ['xlsx', true, true],
+    ]);
+
+    // Disabling writes the off tier; unrelated settings and other overrides survive.
+    await adapter.setSkillEnabled({ id: 'xlsx', path: '', scope: 'user' }, false);
+    expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({
+      permissions: { defaultMode: 'acceptEdits' },
+      skillOverrides: { docx: 'off', pptx: 'name-only', xlsx: 'off' },
+    });
+
+    // Re-enabling drops the key (absent = on) but never coarsens someone else's finer tier.
+    await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, true);
+    await adapter.setSkillEnabled({ id: 'pptx', path: '', scope: 'user' }, true);
+    expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({
+      permissions: { defaultMode: 'acceptEdits' },
+      skillOverrides: { pptx: 'name-only', xlsx: 'off' },
+    });
+  });
+
+  it('creates a settings file and drops an empty override map', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-fresh-'));
+    tempRoots.push(home);
+    const settingsFile = join(home, 'nested', 'settings.json');
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const adapter = new ClaudeCodePluginAdapter(
+      command,
+      join(home, 'skills'),
+      asyncNoop,
+      settingsFile,
+    );
+
+    await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false);
+    expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({
+      skillOverrides: { docx: 'off' },
+    });
+
+    await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, true);
+    expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({});
+  });
+
+  it('targets the project settings file for a project-scoped skill', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-project-'));
+    const projectRoot = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-repo-'));
+    tempRoots.push(home, projectRoot);
+    const userSettings = join(home, 'settings.json');
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const adapter = new ClaudeCodePluginAdapter(
+      command,
+      join(home, 'skills'),
+      asyncNoop,
+      userSettings,
+    );
+
+    await adapter.setSkillEnabled({ id: 'deploy', path: '', scope: 'project' }, false, {
+      cwd: projectRoot,
+    });
+
+    expect(
+      JSON.parse(await readFile(join(projectRoot, '.claude', 'settings.json'), 'utf8')),
+    ).toEqual({ skillOverrides: { deploy: 'off' } });
+    await expect(readFile(userSettings, 'utf8')).rejects.toThrow();
   });
 
   it('propagates a toggle failure from the CLI', async () => {

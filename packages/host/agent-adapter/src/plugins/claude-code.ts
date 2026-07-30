@@ -1,13 +1,19 @@
 import { execFile } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Plugin, PluginComponent, PluginSource, StandaloneSkill } from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { z } from 'zod';
 import { agentRuntimeProber, ClaudeCodeProbe } from '../probe';
-import type { PluginDiscoveryOptions, PluginProviderAdapter, PluginToggleOptions } from './adapter';
+import type {
+  PluginDiscoveryOptions,
+  PluginProviderAdapter,
+  PluginToggleOptions,
+  SkillToggleTarget,
+} from './adapter';
 
 const execFileAsync = promisify(execFile);
 const GIT_SOURCE_RE = /^(?:https?:\/\/|git@)/;
@@ -106,6 +112,7 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     private readonly command: ClaudePluginCommand = runClaudePluginCommand,
     private readonly userSkillsDir: string = join(homedir(), '.claude', 'skills'),
     private readonly action: ClaudePluginAction = runClaudePluginAction,
+    private readonly userSettingsFile: string = join(homedir(), '.claude', 'settings.json'),
   ) {}
 
   /**
@@ -135,17 +142,87 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
 
   /** Personal/project Agent Skills are bare `SKILL.md` directories that `claude plugin list`
    * never surfaces (verified on CLI 2.1.220) — a plain filesystem read is the only source.
-   * No CLI toggle exists for them, so `toggleable` is always false. */
+   * Enablement comes from the merged `skillOverrides` map, keyed by skill name. */
   async listStandaloneSkills(opts: PluginDiscoveryOptions = {}): Promise<StandaloneSkill[]> {
     const roots: { dir: string; scope: StandaloneSkill['scope'] }[] = [
       { dir: this.userSkillsDir, scope: 'user' },
     ];
     if (opts.cwd) roots.push({ dir: join(opts.cwd, '.claude', 'skills'), scope: 'project' });
-    const groups = await Promise.all(
-      roots.map(({ dir, scope }) => readClaudeSkillsDirectory(dir, scope)),
-    );
-    return groups.flat();
+    const [overrides, ...groups] = await Promise.all([
+      this.readSkillOverrides(opts.cwd),
+      ...roots.map(({ dir, scope }) => readClaudeSkillsDirectory(dir, scope)),
+    ]);
+    return groups
+      .flat()
+      .map((skill) => ({ ...skill, enabled: overrides[skill.id] !== 'off', toggleable: true }));
   }
+
+  /**
+   * The TUI `/skills` dialog persists per-skill state as `skillOverrides` in settings.json; there
+   * is no CLI subcommand, so read-modify-write of that file is the write path. Only the `off`
+   * tier is used here — claude's `name-only`/`user-invocable-only` tiers have no wire
+   * representation yet and are preserved untouched when already present.
+   */
+  async setSkillEnabled(
+    skill: SkillToggleTarget,
+    enabled: boolean,
+    opts: PluginDiscoveryOptions = {},
+  ): Promise<void> {
+    const file = this.settingsFileFor(skill.scope, opts.cwd);
+    const settings = await readJsonRecord(file);
+    const overrides = isRecord(settings.skillOverrides) ? { ...settings.skillOverrides } : {};
+    if (enabled) {
+      // Absent means on; drop the key instead of writing "on" so the file stays minimal, but keep
+      // a finer-grained tier the user set in the TUI rather than coarsening it to plain on.
+      const current = overrides[skill.id];
+      if (current === 'off' || current === undefined) delete overrides[skill.id];
+    } else {
+      overrides[skill.id] = 'off';
+    }
+    const next: Record<string, unknown> = { ...settings };
+    if (isObjectEmpty(overrides)) delete next.skillOverrides;
+    else next.skillOverrides = overrides;
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  }
+
+  /** Merged in claude's own precedence order: project-local beats project beats user. */
+  private async readSkillOverrides(cwd: string | undefined): Promise<Record<string, string>> {
+    const files = [this.userSettingsFile];
+    if (cwd) {
+      files.push(
+        join(cwd, '.claude', 'settings.json'),
+        join(cwd, '.claude', 'settings.local.json'),
+      );
+    }
+    const documents = await Promise.all(files.map((file) => readJsonRecord(file)));
+    const merged: Record<string, string> = {};
+    for (const document of documents) {
+      if (!isRecord(document.skillOverrides)) continue;
+      for (const [name, tier] of Object.entries(document.skillOverrides)) {
+        if (typeof tier === 'string') merged[name] = tier;
+      }
+    }
+    return merged;
+  }
+
+  private settingsFileFor(scope: StandaloneSkill['scope'], cwd: string | undefined): string {
+    if (scope === 'project' && cwd) return join(cwd, '.claude', 'settings.json');
+    return this.userSettingsFile;
+  }
+}
+
+async function readJsonRecord(file: string): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function readClaudeSkillsDirectory(
@@ -187,6 +264,8 @@ async function readClaudeSkill(
     name: frontmatter.name ?? id,
     description: frontmatter.description,
     scope,
+    // Both overwritten by listStandaloneSkills once the merged overrides are known.
+    enabled: true,
     path,
     toggleable: false,
   };
