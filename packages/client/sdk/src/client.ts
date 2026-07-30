@@ -46,6 +46,8 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -248,6 +250,18 @@ export class LinkCodeSdkClient {
     cwd?: string;
   }): RequestResult<Plugin> {
     return toResult(this.raw.setPluginEnabled(params));
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): RequestResult<StandaloneSkill> {
+    return toResult(this.raw.setSkillEnabled(params));
   }
 
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

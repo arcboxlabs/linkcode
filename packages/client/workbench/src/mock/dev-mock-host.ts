@@ -22,6 +22,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionStatus,
+  StandaloneSkill,
   TerminalMetadata,
   TerminalReplayEvent,
   ToolCall,
@@ -182,6 +183,7 @@ export class DevMockHost {
   /** Stored with full secrets like the daemon; config.get serves the masked projection. */
   private customMcpServers: CustomMcpServer[] = [];
   private readonly plugins: Plugin[] = structuredClone(SEED_PLUGINS);
+  private readonly standaloneSkills: StandaloneSkill[] = structuredClone(SEED_STANDALONE_SKILLS);
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -380,10 +382,23 @@ export class DevMockHost {
           kind: 'plugin.list.result',
           replyTo: p.clientReqId,
           plugins: this.plugins,
-          standaloneSkills: SEED_STANDALONE_SKILLS,
+          standaloneSkills: this.standaloneSkills,
           providerStatus: SEED_PLUGIN_PROVIDER_STATUS,
         });
         break;
+      case 'skill.set-enabled': {
+        await wait(CONTROL_LATENCY_MS);
+        const skill = this.standaloneSkills.find(
+          (entry) => entry.provider === p.provider && entry.id === p.skillId,
+        );
+        if (!skill?.toggleable) {
+          this.sendFailure(p.clientReqId, 'skill management is not supported');
+          break;
+        }
+        skill.enabled = p.enabled;
+        this.send({ kind: 'skill.updated', replyTo: p.clientReqId, skill });
+        break;
+      }
       case 'plugin.set-enabled': {
         await wait(CONTROL_LATENCY_MS);
         const plugin = this.plugins.find(

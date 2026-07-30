@@ -3,6 +3,7 @@ import {
   getPlugins,
   setCustomMcpServers,
   setPluginEnabled,
+  setSkillEnabled,
 } from '@linkcode/sdk';
 import { useData, useMutation } from '../../runtime/tayori';
 
@@ -21,6 +22,10 @@ export function usePlugins() {
 
 export function useSetPluginEnabled() {
   return useMutation(setPluginEnabled);
+}
+
+export function useSetSkillEnabled() {
+  return useMutation(setSkillEnabled);
 }
 
 /** Masked custom MCP servers; cheap config read, normal trigger-then-revalidate rhythm. */

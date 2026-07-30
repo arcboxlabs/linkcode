@@ -15,17 +15,12 @@ export interface SkillsTabProps {
   rows: SkillRowView[] | undefined;
   busy: boolean;
   searchQuery: string;
-  /** Plugin-granularity toggle: no provider supports per-skill toggling. */
-  onTogglePlugin: (row: SkillRowView, enabled: boolean) => void;
+  /** Per-skill for standalone skills; plugin-granularity for plugin-bundled ones. */
+  onToggle: (row: SkillRowView, enabled: boolean) => void;
 }
 
 /** Plugin-bundled skills grouped by plugin, then standalone skills (display-only). */
-export function SkillsTab({
-  rows,
-  busy,
-  searchQuery,
-  onTogglePlugin,
-}: SkillsTabProps): React.ReactNode {
+export function SkillsTab({ rows, busy, searchQuery, onToggle }: SkillsTabProps): React.ReactNode {
   const t = useTranslations('settings.plugins.skills');
   if (rows === undefined) {
     return (
@@ -55,7 +50,7 @@ export function SkillsTab({
         <SettingsSection title={t('pluginSkillsTitle')}>
           <Card className="divide-y divide-border">
             {pluginRows.map((row) => (
-              <SkillRow key={row.key} row={row} busy={busy} onTogglePlugin={onTogglePlugin} />
+              <SkillRow key={row.key} row={row} busy={busy} onToggle={onToggle} />
             ))}
           </Card>
         </SettingsSection>
@@ -65,7 +60,7 @@ export function SkillsTab({
           <p className="-mt-1 px-1 text-muted-foreground text-xs">{t('standaloneHint')}</p>
           <Card className="divide-y divide-border">
             {standaloneRows.map((row) => (
-              <SkillRow key={row.key} row={row} busy={busy} onTogglePlugin={onTogglePlugin} />
+              <SkillRow key={row.key} row={row} busy={busy} onToggle={onToggle} />
             ))}
           </Card>
         </SettingsSection>
@@ -77,11 +72,11 @@ export function SkillsTab({
 function SkillRow({
   row,
   busy,
-  onTogglePlugin,
+  onToggle,
 }: {
   row: SkillRowView;
   busy: boolean;
-  onTogglePlugin: (row: SkillRowView, enabled: boolean) => void;
+  onToggle: (row: SkillRowView, enabled: boolean) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.plugins.skills');
   const tScope = useTranslations('settings.plugins.scope');
@@ -101,7 +96,9 @@ function SkillRow({
         {row.description === undefined ? null : (
           <p className="line-clamp-1 text-muted-foreground text-xs">{row.description}</p>
         )}
-        {row.canToggle && row.siblingSkillCount > 1 ? (
+        {/* Standalone skills toggle individually; a plugin-bundled skill has no per-skill
+            mechanism, so its switch acts on the whole plugin and says so. */}
+        {row.canToggle && row.pluginKey !== undefined && row.siblingSkillCount > 1 ? (
           <p className="text-2xs text-label-tertiary">
             {t('groupToggleNote', { count: row.siblingSkillCount })}
           </p>
@@ -111,7 +108,7 @@ function SkillRow({
         <Switch
           checked={row.enabled}
           disabled={busy}
-          onCheckedChange={(checked) => onTogglePlugin(row, checked)}
+          onCheckedChange={(checked) => onToggle(row, checked)}
         />
       ) : null}
     </div>

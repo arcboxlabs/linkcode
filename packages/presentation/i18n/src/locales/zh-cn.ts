@@ -699,7 +699,7 @@ export const zhCN = {
       skills: {
         pluginSkillsTitle: '插件技能',
         standaloneTitle: '独立技能',
-        standaloneHint: '直接放在技能目录中的技能，随所在目录自动加载，暂不支持在这里启停。',
+        standaloneHint: '直接放在技能目录中的技能，可单独启用或禁用（写入所在智能体自己的配置）。',
         empty: '还没有发现任何技能。',
         noSearchResults: '没有匹配的技能。',
         groupToggleNote: '此插件共有 {count} 个技能，启用/禁用时会一起生效。',

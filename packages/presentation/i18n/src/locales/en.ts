@@ -712,7 +712,7 @@ export const en = {
         pluginSkillsTitle: 'Plugin skills',
         standaloneTitle: 'Standalone skills',
         standaloneHint:
-          'Skills that live directly in a skills directory load automatically; toggling them here is not supported yet.',
+          'Skills that live directly in a skills directory can be enabled or disabled individually; the change is written to the agent’s own config.',
         empty: 'No skills discovered yet.',
         noSearchResults: 'No matching skills.',
         groupToggleNote: 'This plugin bundles {count} skills; toggling affects all of them.',

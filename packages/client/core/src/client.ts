@@ -54,6 +54,8 @@ import type {
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -359,6 +361,9 @@ export class LinkCodeClient {
         break;
       case 'plugin.updated':
         this.pending.resolve('pluginSetEnabled', p.replyTo, p.plugin);
+        break;
+      case 'skill.updated':
+        this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -738,6 +743,18 @@ export class LinkCodeClient {
     cwd?: string;
   }): Promise<Plugin> {
     return this.control.setPluginEnabled(params);
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): Promise<StandaloneSkill> {
+    return this.control.setSkillEnabled(params);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {

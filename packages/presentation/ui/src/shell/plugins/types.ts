@@ -45,13 +45,16 @@ export interface PluginProviderGroup {
 export interface SkillRowView {
   key: string;
   provider: PluginProvider;
+  /** Provider-side identity for the toggle: claude keys by name, codex by SKILL.md path. */
+  skillId: string;
+  path: string;
   /** Present for plugin-bundled skills; undefined for standalone ones. */
   pluginKey: string | undefined;
   pluginTitle: string | undefined;
   name: string;
   description: string | undefined;
   enabled: boolean;
-  /** Toggling acts on the whole plugin (no provider has per-skill toggling). */
+  /** Standalone skills toggle individually; plugin-bundled ones toggle their plugin. */
   canToggle: boolean;
   /** How many skills the owning plugin bundles — >1 shows the "toggles together" note. */
   siblingSkillCount: number;

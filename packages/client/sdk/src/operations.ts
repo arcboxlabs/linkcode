@@ -42,6 +42,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -221,6 +223,21 @@ export function setPluginEnabled(
 ): RequestResult<Plugin> {
   const { provider, id, enabled, scope, cwd } = options;
   return resolveClient(options).setPluginEnabled({ provider, id, enabled, scope, cwd });
+}
+
+/** Toggle one skill; resolves with the re-read skill so callers patch one cache entry. */
+export function setSkillEnabled(
+  options: Options<{
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }>,
+): RequestResult<StandaloneSkill> {
+  const { provider, skillId, path, scope, enabled, cwd } = options;
+  return resolveClient(options).setSkillEnabled({ provider, skillId, path, scope, enabled, cwd });
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

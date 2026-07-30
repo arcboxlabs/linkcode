@@ -3,7 +3,7 @@ import type { PluginCardView, SkillRowView } from '@linkcode/ui';
 import { PluginsShell, PluginsTab, SkillsTab } from '@linkcode/ui';
 import { useState } from 'react';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
-import { usePlugins, useSetPluginEnabled } from './hooks';
+import { usePlugins, useSetPluginEnabled, useSetSkillEnabled } from './hooks';
 import { McpTab } from './mcp-settings';
 import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows } from './view';
 
@@ -16,6 +16,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
   const { data, isLoading, isValidating, mutate } = usePlugins();
   const { data: runtimes } = useAgentRuntimes();
   const toggle = useSetPluginEnabled();
+  const toggleSkill = useSetSkillEnabled();
   const [searchQuery, setSearchQuery] = useState('');
 
   const missingRuntimes = new Set<string>();
@@ -31,8 +32,30 @@ export function PluginsSettingsPanel(): React.ReactNode {
           plugins: filterPluginCards(group.plugins, searchQuery),
         }));
 
-  const onToggleSkillPlugin = async (row: SkillRowView, enabled: boolean): Promise<void> => {
-    if (row.pluginKey === undefined) return;
+  const onToggleSkill = async (row: SkillRowView, enabled: boolean): Promise<void> => {
+    if (row.pluginKey === undefined) {
+      // A standalone skill has its own provider mechanism (claude `skillOverrides`, codex
+      // `skills/config/write`); the reply carries the re-read skill.
+      const updated = await toggleSkill.trigger({
+        provider: row.provider,
+        skillId: row.skillId,
+        path: row.path,
+        scope: row.standaloneScope,
+        enabled,
+      });
+      if (updated === undefined) return;
+      void mutate(
+        (current) =>
+          current && {
+            ...current,
+            standaloneSkills: current.standaloneSkills.map((skill) =>
+              skill.provider === updated.provider && skill.id === updated.id ? updated : skill,
+            ),
+          },
+        { revalidate: false },
+      );
+      return;
+    }
     const separator = row.pluginKey.indexOf(':');
     const provider = row.pluginKey.slice(0, separator);
     if (provider !== 'claude-code' && provider !== 'codex') return;
@@ -93,11 +116,11 @@ export function PluginsSettingsPanel(): React.ReactNode {
       mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
       skillsTab={
         <SkillsTab
-          busy={toggle.isMutating}
+          busy={toggle.isMutating || toggleSkill.isMutating}
           rows={data === undefined ? undefined : skillRows(data)}
           searchQuery={searchQuery}
-          onTogglePlugin={(row, enabled) => {
-            void onToggleSkillPlugin(row, enabled);
+          onToggle={(row, enabled) => {
+            void onToggleSkill(row, enabled);
           }}
         />
       }

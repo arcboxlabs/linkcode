@@ -85,6 +85,8 @@ export function skillRows(list: PluginList): SkillRowView[] {
       rows.push({
         key: `${card.key}:${skill.name}`,
         provider: plugin.provider,
+        skillId: skill.name,
+        path: '',
         pluginKey: card.key,
         pluginTitle: card.title,
         name: skill.name,
@@ -107,11 +109,13 @@ function standaloneSkillRow(skill: StandaloneSkill): SkillRowView {
   return {
     key: `${skill.provider}:standalone:${skill.scope}:${skill.id}`,
     provider: skill.provider,
+    skillId: skill.id,
+    path: skill.path,
     pluginKey: undefined,
     pluginTitle: undefined,
     name: skill.name,
     description: skill.description,
-    enabled: true,
+    enabled: skill.enabled,
     canToggle: skill.toggleable,
     siblingSkillCount: 1,
     standaloneScope: skill.scope,

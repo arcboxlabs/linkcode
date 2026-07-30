@@ -51,6 +51,8 @@ import type {
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -409,6 +411,22 @@ export class ControlChannel {
   }): Promise<Plugin> {
     return this.sendCorrelated('pluginSetEnabled', (clientReqId) => ({
       kind: 'plugin.set-enabled',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): Promise<StandaloneSkill> {
+    return this.sendCorrelated('skillSetEnabled', (clientReqId) => ({
+      kind: 'skill.set-enabled',
       clientReqId,
       ...params,
     }));

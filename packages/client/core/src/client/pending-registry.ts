@@ -85,6 +85,7 @@ export interface PendingValueMap {
   customMcpGet: CustomMcpServerPublic[];
   pluginList: PluginList;
   pluginSetEnabled: Plugin;
+  skillSetEnabled: StandaloneSkill;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
@@ -140,6 +141,7 @@ export class PendingRegistry {
     customMcpGet: new Map(),
     pluginList: new Map(),
     pluginSetEnabled: new Map(),
+    skillSetEnabled: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),
     assetList: new Map(),

@@ -5,7 +5,10 @@ import { Effect } from 'effect';
 import type { WireResponder } from '../wire/responder';
 import type { PluginService } from './service';
 
-type PluginRequest = Extract<WirePayload, { kind: 'plugin.list.get' | 'plugin.set-enabled' }>;
+type PluginRequest = Extract<
+  WirePayload,
+  { kind: 'plugin.list.get' | 'plugin.set-enabled' | 'skill.set-enabled' }
+>;
 
 /** Serves plugin discovery and plugin-level enablement over the wire. */
 export class PluginRequestHandler {
@@ -52,6 +55,30 @@ export class PluginRequestHandler {
                       kind: 'plugin.updated',
                       replyTo: payload.clientReqId,
                       plugin,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+        );
+      case 'skill.set-enabled':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.plugins
+            .setSkillEnabled(
+              payload.provider,
+              { id: payload.skillId, path: payload.path, scope: payload.scope ?? 'user' },
+              payload.enabled,
+              { cwd: payload.cwd },
+            )
+            .pipe(
+              Effect.flatMap((skill) =>
+                Effect.sync(() =>
+                  this.transport.send(
+                    createWireMessage({
+                      kind: 'skill.updated',
+                      replyTo: payload.clientReqId,
+                      skill,
                     }),
                   ),
                 ),

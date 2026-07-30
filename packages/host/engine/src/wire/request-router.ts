@@ -94,7 +94,8 @@ export class WireRequestRouter {
         return this.handlers.git.handle(p);
       }
       case 'plugin.list.get':
-      case 'plugin.set-enabled': {
+      case 'plugin.set-enabled':
+      case 'skill.set-enabled': {
         return this.handlers.plugin.handle(p);
       }
       case 'file.read':
