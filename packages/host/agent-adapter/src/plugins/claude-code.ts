@@ -7,7 +7,7 @@ import type { Plugin, PluginComponent, PluginSource, StandaloneSkill } from '@li
 import { PluginSchema } from '@linkcode/schema';
 import { z } from 'zod';
 import { agentRuntimeProber, ClaudeCodeProbe } from '../probe';
-import type { PluginDiscoveryOptions, PluginProviderAdapter } from './adapter';
+import type { PluginDiscoveryOptions, PluginProviderAdapter, PluginToggleOptions } from './adapter';
 
 const execFileAsync = promisify(execFile);
 const GIT_SOURCE_RE = /^(?:https?:\/\/|git@)/;
@@ -66,6 +66,10 @@ export type ClaudePluginCommand = (
   opts: PluginDiscoveryOptions,
 ) => Promise<unknown>;
 
+/** Runner for `claude plugin` subcommands with human-text output (no `--json` exists on
+ * enable/disable) — success is exit 0, stdout is discarded. */
+export type ClaudePluginAction = (args: string[], opts: PluginDiscoveryOptions) => Promise<void>;
+
 interface ClaudePluginRecord {
   id: string;
   available?: ClaudeAvailablePlugin;
@@ -77,13 +81,18 @@ interface ClaudePackageMetadata {
   components: PluginComponent[];
 }
 
+/** enable/disable verified live on CLI 2.1.220 (`claude plugin enable|disable [-s scope]`);
+ * install/uninstall/update stay unimplemented by this adapter, not unsupported by the CLI. */
 const CLAUDE_MANAGEMENT_CAPABILITIES = {
   install: false,
   uninstall: false,
   update: false,
-  enable: false,
-  disable: false,
+  enable: true,
+  disable: true,
 } as const;
+
+/** `-s` values the CLI accepts (2.1.220); `managed` installs have no toggle flag. */
+const CLAUDE_TOGGLE_SCOPES = new Set<string>(['user', 'project', 'local']);
 
 /**
  * Claude's verified machine-readable plugin surface (CLI 2.1.212): `plugin list --available
@@ -96,7 +105,23 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
   constructor(
     private readonly command: ClaudePluginCommand = runClaudePluginCommand,
     private readonly userSkillsDir: string = join(homedir(), '.claude', 'skills'),
+    private readonly action: ClaudePluginAction = runClaudePluginAction,
   ) {}
+
+  /**
+   * Trap verified live on 2.1.220: enable/disable exit 0 even for a plugin that does not exist
+   * (the CLI blind-writes `enabledPlugins`), so exit code alone never proves the toggle landed on
+   * a real install — the engine re-lists after this call and that readback is the success check.
+   */
+  async setPluginEnabled(
+    id: string,
+    enabled: boolean,
+    opts: PluginToggleOptions = {},
+  ): Promise<void> {
+    const args = ['plugin', enabled ? 'enable' : 'disable', id];
+    if (opts.scope && CLAUDE_TOGGLE_SCOPES.has(opts.scope)) args.push('-s', opts.scope);
+    await this.action(args, { cwd: opts.cwd });
+  }
 
   async list(opts: PluginDiscoveryOptions = {}): Promise<Plugin[]> {
     const [pluginsValue, marketplacesValue] = await Promise.all([
@@ -195,18 +220,25 @@ async function runClaudePluginCommand(
   args: string[],
   opts: PluginDiscoveryOptions,
 ): Promise<unknown> {
+  const { stdout } = await execClaudeCli(args, opts);
+  return JSON.parse(stdout) as unknown;
+}
+
+async function runClaudePluginAction(args: string[], opts: PluginDiscoveryOptions): Promise<void> {
+  await execClaudeCli(args, opts);
+}
+
+function execClaudeCli(args: string[], opts: PluginDiscoveryOptions) {
   const binaryPath =
     agentRuntimeProber.resolveBinary('claude-code') ??
     new ClaudeCodeProbe().sdkPlatformBinaryPath();
   if (!binaryPath) throw new Error('claude-code: CLI is not available');
-  const { stdout } = await execFileAsync(binaryPath, args, {
+  return execFileAsync(binaryPath, args, {
     cwd: opts.cwd,
     maxBuffer: 10 * 1024 * 1024,
     timeout: 30000,
     windowsHide: true,
   });
-
-  return JSON.parse(stdout) as unknown;
 }
 
 async function normalizeClaudePlugins(

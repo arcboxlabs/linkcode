@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { asyncNoop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClaudePluginCommand } from '../plugins/claude-code';
 import { ClaudeCodePluginAdapter } from '../plugins/claude-code';
@@ -118,8 +119,8 @@ describe('ClaudeCodePluginAdapter', () => {
           install: false,
           uninstall: false,
           update: false,
-          enable: false,
-          disable: false,
+          enable: true,
+          disable: true,
         },
       }),
     ]);
@@ -186,5 +187,32 @@ describe('ClaudeCodePluginAdapter', () => {
     const adapter = new ClaudeCodePluginAdapter(command, '/nonexistent/claude/skills');
 
     await expect(adapter.listStandaloneSkills()).resolves.toEqual([]);
+  });
+
+  it('toggles a plugin with an explicit CLI scope and omits untoggleable scopes', async () => {
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const action = vi.fn(asyncNoop);
+    const adapter = new ClaudeCodePluginAdapter(command, '/nonexistent', action);
+
+    await adapter.setPluginEnabled('latex@team-tools', true, {
+      scope: 'project',
+      cwd: '/workspace/demo',
+    });
+    await adapter.setPluginEnabled('latex@team-tools', false, { scope: 'managed' });
+    await adapter.setPluginEnabled('latex@team-tools', false);
+
+    expect(action.mock.calls).toEqual([
+      [['plugin', 'enable', 'latex@team-tools', '-s', 'project'], { cwd: '/workspace/demo' }],
+      [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
+      [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
+    ]);
+  });
+
+  it('propagates a toggle failure from the CLI', async () => {
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const action = vi.fn(() => Promise.reject(new Error('exit 1')));
+    const adapter = new ClaudeCodePluginAdapter(command, '/nonexistent', action);
+
+    await expect(adapter.setPluginEnabled('latex@team-tools', true)).rejects.toThrow('exit 1');
   });
 });

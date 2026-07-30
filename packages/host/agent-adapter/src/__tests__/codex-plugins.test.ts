@@ -1,5 +1,6 @@
 import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PluginProviderAdapter } from '../plugins/adapter';
 import type { CodexPluginServer, StartCodexPluginServer } from '../plugins/codex';
 import { CodexPluginAdapter } from '../plugins/codex';
 
@@ -287,5 +288,13 @@ describe('CodexPluginAdapter', () => {
       },
     ]);
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('honestly reports no plugin toggle support', () => {
+    const adapter: PluginProviderAdapter = new CodexPluginAdapter(() =>
+      Promise.reject(new Error('not used')),
+    );
+
+    expect('setPluginEnabled' in adapter).toBe(false);
   });
 });
