@@ -1,4 +1,9 @@
-import type { AgentRuntimes, ManagedAssetStatus } from '@linkcode/schema';
+import type {
+  Accounts,
+  AgentRuntimes,
+  ManagedAssetStatus,
+  ProvidersConfig,
+} from '@linkcode/schema';
 import { managedAgentAssetId, managedToolAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { AssetActivityMap } from '../onboarding';
@@ -196,6 +201,41 @@ describe('deriveAgentRuntimeCues', () => {
     ).toEqual({});
     // No key configured → the login cue still shows.
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
+      'claude-code': { state: 'needs-login', phase: 'idle' },
+    });
+  });
+
+  it('suppresses the login cue for a bound key account, but not for a bound oauth one', () => {
+    const runtimes: AgentRuntimes = {
+      'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    const providers: ProvidersConfig = {
+      'claude-code': { enabled: true, activeAccountId: 'acc_1' },
+    };
+    const relay: Accounts = [
+      {
+        id: 'acc_1',
+        label: 'relay',
+        credential: { type: 'api-key', key: 'sk-x' },
+        endpoint: { baseUrl: 'https://relay.test', protocol: 'anthropic' },
+        createdAt: 1,
+      },
+    ];
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {}, providers, relay)).toEqual({});
+    // An oauth account carries no secret — it delegates back to the signed-out CLI login.
+    const delegated: Accounts = [
+      {
+        id: 'acc_1',
+        label: 'Claude',
+        credential: { type: 'oauth', agent: 'claude-code' },
+        createdAt: 1,
+      },
+    ];
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {}, providers, delegated)).toEqual({
+      'claude-code': { state: 'needs-login', phase: 'idle' },
+    });
+    // A stale binding (account deleted) leaves nothing injected either.
+    expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {}, providers, [])).toEqual({
       'claude-code': { state: 'needs-login', phase: 'idle' },
     });
   });

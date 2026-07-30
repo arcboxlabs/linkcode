@@ -48,6 +48,8 @@ export interface ConversationSurfaceProps {
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   /** Aborts an in-flight login. */
   onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens the API-key / relay-endpoint alternative to the CLI's OAuth login. */
+  onUseApiKey?: (kind: AgentKind) => void;
   disabled?: boolean;
   isRunning: boolean;
   className?: string;
@@ -90,6 +92,7 @@ export function ConversationSurface({
   onLoginAgent,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
   disabled = false,
   isRunning,
   className,
@@ -153,6 +156,7 @@ export function ConversationSurface({
               onCancelLogin={onCancelLogin}
               onLogin={onLoginAgent}
               onSubmitLoginCode={onSubmitLoginCode}
+              onUseApiKey={onUseApiKey}
             />
           </div>
         </div>

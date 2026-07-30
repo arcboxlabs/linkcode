@@ -82,6 +82,7 @@ export function DesktopShell({
   onLoginAgent,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
   conversation,
   respondingRequestIds,
   responseErrors,
@@ -416,6 +417,7 @@ export function DesktopShell({
           onLoginAgent={onLoginAgent}
           onSubmitLoginCode={onSubmitLoginCode}
           onCancelLogin={onCancelLogin}
+          onUseApiKey={onUseApiKey}
           onMentionQueryChange={onMentionQueryChange}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
@@ -437,6 +439,7 @@ export function DesktopShell({
           onLoginAgent={onLoginAgent}
           onSubmitLoginCode={onSubmitLoginCode}
           onCancelLogin={onCancelLogin}
+          onUseApiKey={onUseApiKey}
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}

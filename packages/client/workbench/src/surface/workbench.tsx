@@ -46,6 +46,8 @@ import { useSet } from 'foxact/use-set';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { AgentApiKeyLoginDialog } from '../agent-runtime/api-key-login/dialog';
+import { useAgentApiKeyLoginStore } from '../agent-runtime/api-key-login/store';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { captureProductEvent } from '../analytics/product-analytics';
 import { useFileMentionSource } from '../files/mentions';
@@ -270,6 +272,7 @@ function WorkbenchSessionSurface({
     (state) => state.branchesByWorkspace,
   );
   const onboarding = useAgentRuntimeOnboarding();
+  const openApiKeyLogin = useAgentApiKeyLoginStore((state) => state.open);
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
@@ -611,73 +614,77 @@ function WorkbenchSessionSurface({
   }
 
   return (
-    <ShellComponent
-      attachmentSupport={ATTACHMENT_SUPPORT}
-      threadGroups={threadGroups}
-      workspaces={projectWorkspaces}
-      workspacesLoading={workspacesLoading}
-      sessionsLoading={sessions.isLoading}
-      chatWorkspace={chatWorkspace}
-      activeSession={active}
-      draft={draft}
-      newSessionWorkspaceId={newSessionWorkspaceId}
-      onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
-      newSessionDefaultModels={newSessionDefaultModels}
-      agentCatalogs={agentCatalogs}
-      newSessionPreferredModels={newSessionPreferredModels}
-      newSessionPreferredEfforts={newSessionPreferredEfforts}
-      newSessionPreferredBranches={newSessionPreferredBranches}
-      NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
-      runtimeCues={onboarding.cues}
-      onDownloadAgent={onboarding.download}
-      onContinueUnverified={onboarding.acknowledgeUnverified}
-      onLoginAgent={onboarding.login}
-      onSubmitLoginCode={onboarding.submitLoginCode}
-      onCancelLogin={onboarding.cancelLogin}
-      conversation={conversation}
-      respondingRequestIds={respondingRequestIds}
-      responseErrors={visibleResponseErrors}
-      header={{
-        title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
-        subtitle: active?.cwd,
-        sessionId: active?.sessionId ?? null,
-        usage: conversation.usage,
-      }}
-      navigation={{
-        canGoBack: sessions.canGoBack,
-        canGoForward: sessions.canGoForward,
-        onBack: sessions.goBack,
-        onForward: sessions.goForward,
-      }}
-      errorMessage={errorMessage}
-      pinnedSessionIds={pinnedSessionIds}
-      collapsedSections={collapsedSections}
-      onSelectSession={sessions.select}
-      onCloseSession={sessions.close}
-      onToggleSessionPinned={toggleSessionPinned}
-      onReorderGroups={handleReorderGroups}
-      onReorderThreads={handleReorderThreads}
-      onStartDraft={sessions.startDraft}
-      onSubmitDraft={handleSubmitDraft}
-      onRegisterWorkspace={handleRegisterWorkspace}
-      onRenameWorkspace={handleRenameWorkspace}
-      onArchiveWorkspace={handleArchiveWorkspace}
-      onToggleGroupCollapsed={toggleGroupCollapsed}
-      onToggleSectionCollapsed={toggleSectionCollapsed}
-      onTogglePreviewExpanded={handleTogglePreviewExpanded}
-      mentionItems={mentionItems}
-      onMentionQueryChange={onMentionQueryChange}
-      conversationComposer={conversationComposer}
-      onRespondPermission={handleRespond}
-      onRespondQuestion={handleRespondQuestion}
-      onHostArtifact={handleHostArtifact}
-      onHostVideoFile={handleHostVideoFile}
-      onReadAttachmentFile={handleReadAttachmentFile}
-      onOpenSearch={openCommandPalette}
-      searchShortcut={searchShortcut}
-      TerminalBlockComponent={RuntimeTerminalBlock}
-      BranchStatusComponent={RuntimeBranchStatus}
-      onDismissError={onClearError}
-    />
+    <>
+      <ShellComponent
+        attachmentSupport={ATTACHMENT_SUPPORT}
+        threadGroups={threadGroups}
+        workspaces={projectWorkspaces}
+        workspacesLoading={workspacesLoading}
+        sessionsLoading={sessions.isLoading}
+        chatWorkspace={chatWorkspace}
+        activeSession={active}
+        draft={draft}
+        newSessionWorkspaceId={newSessionWorkspaceId}
+        onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
+        newSessionDefaultModels={newSessionDefaultModels}
+        agentCatalogs={agentCatalogs}
+        newSessionPreferredModels={newSessionPreferredModels}
+        newSessionPreferredEfforts={newSessionPreferredEfforts}
+        newSessionPreferredBranches={newSessionPreferredBranches}
+        NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
+        runtimeCues={onboarding.cues}
+        onDownloadAgent={onboarding.download}
+        onContinueUnverified={onboarding.acknowledgeUnverified}
+        onLoginAgent={onboarding.login}
+        onSubmitLoginCode={onboarding.submitLoginCode}
+        onCancelLogin={onboarding.cancelLogin}
+        onUseApiKey={openApiKeyLogin}
+        conversation={conversation}
+        respondingRequestIds={respondingRequestIds}
+        responseErrors={visibleResponseErrors}
+        header={{
+          title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
+          subtitle: active?.cwd,
+          sessionId: active?.sessionId ?? null,
+          usage: conversation.usage,
+        }}
+        navigation={{
+          canGoBack: sessions.canGoBack,
+          canGoForward: sessions.canGoForward,
+          onBack: sessions.goBack,
+          onForward: sessions.goForward,
+        }}
+        errorMessage={errorMessage}
+        pinnedSessionIds={pinnedSessionIds}
+        collapsedSections={collapsedSections}
+        onSelectSession={sessions.select}
+        onCloseSession={sessions.close}
+        onToggleSessionPinned={toggleSessionPinned}
+        onReorderGroups={handleReorderGroups}
+        onReorderThreads={handleReorderThreads}
+        onStartDraft={sessions.startDraft}
+        onSubmitDraft={handleSubmitDraft}
+        onRegisterWorkspace={handleRegisterWorkspace}
+        onRenameWorkspace={handleRenameWorkspace}
+        onArchiveWorkspace={handleArchiveWorkspace}
+        onToggleGroupCollapsed={toggleGroupCollapsed}
+        onToggleSectionCollapsed={toggleSectionCollapsed}
+        onTogglePreviewExpanded={handleTogglePreviewExpanded}
+        mentionItems={mentionItems}
+        onMentionQueryChange={onMentionQueryChange}
+        conversationComposer={conversationComposer}
+        onRespondPermission={handleRespond}
+        onRespondQuestion={handleRespondQuestion}
+        onHostArtifact={handleHostArtifact}
+        onHostVideoFile={handleHostVideoFile}
+        onReadAttachmentFile={handleReadAttachmentFile}
+        onOpenSearch={openCommandPalette}
+        searchShortcut={searchShortcut}
+        TerminalBlockComponent={RuntimeTerminalBlock}
+        BranchStatusComponent={RuntimeBranchStatus}
+        onDismissError={onClearError}
+      />
+      <AgentApiKeyLoginDialog />
+    </>
   );
 }

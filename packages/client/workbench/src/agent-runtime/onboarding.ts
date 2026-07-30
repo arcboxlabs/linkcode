@@ -1,5 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type {
+  Accounts,
   AgentKind,
   AgentRuntimeAvailability,
   AgentRuntimes,
@@ -9,7 +10,7 @@ import type {
   ProvidersConfig,
 } from '@linkcode/schema';
 import { managedAgentAssetId, managedAssetIdEquals, managedAssetKey } from '@linkcode/schema';
-import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
+import { ensureAsset, getAccounts, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -100,16 +101,43 @@ export function deriveAgentRuntimeCues(
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap = {},
   providers: ProvidersConfig = {},
+  accounts: Accounts = [],
 ): AgentRuntimeCues {
   const cues: AgentRuntimeCues = {};
   if (!runtimes) return cues;
   for (const [kind, runtime] of Object.entries(runtimes) as Array<
     [AgentKind, AgentRuntimeAvailability]
   >) {
-    const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity, providers);
+    const cue = deriveCue(
+      kind,
+      runtime,
+      assets,
+      activity,
+      acknowledged,
+      loginActivity,
+      providers,
+      accounts,
+    );
     if (cue) cues[kind] = cue;
   }
   return cues;
+}
+
+/**
+ * Whether LinkCode injects a secret for this agent at spawn, which makes a signed-out CLI runnable
+ * (`applyProviderDefaults`): the bound account's own key/token, or the legacy per-agent api key. An
+ * `oauth` account delegates back to the CLI's login store, so it does not count.
+ */
+export function hasInjectedCredential(
+  kind: AgentKind,
+  providers: ProvidersConfig,
+  accounts: Accounts,
+): boolean {
+  if (providers[kind]?.apiKey !== undefined) return true;
+  const boundId = providers[kind]?.activeAccountId;
+  if (boundId === undefined) return false;
+  const bound = accounts.find((account) => account.id === boundId);
+  return bound?.credential.type === 'api-key' || bound?.credential.type === 'auth-token';
 }
 
 /** The login cue for a signed-out runtime, its phase driven by any in-flight login activity. */
@@ -151,12 +179,13 @@ function deriveCue(
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap,
   providers: ProvidersConfig,
+  accounts: Accounts,
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
     case 'available':
-      // `auth` absent means unprobed or a fail-open probe — don't block. A configured API key is
-      // injected at spawn (applyProviderDefaults), making a signed-out CLI runnable — no cue then.
-      return runtime.auth?.loggedIn === false && !providers[kind]?.apiKey
+      // `auth` absent means unprobed or a fail-open probe — don't block. An injected credential
+      // makes a signed-out CLI runnable, so it clears the cue (see hasInjectedCredential).
+      return runtime.auth?.loggedIn === false && !hasInjectedCredential(kind, providers, accounts)
         ? loginCue(loginActivity[kind])
         : undefined;
     case 'out-of-range': {
@@ -199,8 +228,9 @@ export function useAgentRuntimeOnboarding(): {
   const client = useLinkCodeClient();
   const { data: runtimes } = useAgentRuntimes();
   const { data: assets } = useAssets();
-  // A saved API key makes a signed-out CLI runnable, so it suppresses the login cue.
+  // An injected credential makes a signed-out CLI runnable, so it suppresses the login cue.
   const { data: providers } = useData(getProviderConfig, {});
+  const { data: accounts } = useData(getAccounts, {});
   const [activity, setActivity] = useState<AssetActivityMap>({});
   const [loginActivity, setLoginActivity] = useState<LoginActivityMap>({});
   // The in-flight loginId per kind (+ a cancel flag so a user-aborted login settles to idle, not
@@ -336,6 +366,7 @@ export function useAgentRuntimeOnboarding(): {
       acknowledged,
       loginActivity,
       providers,
+      accounts,
     ),
     download,
     acknowledgeUnverified,

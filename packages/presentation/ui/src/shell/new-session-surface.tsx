@@ -109,6 +109,8 @@ export interface NewSessionSurfaceProps {
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   /** Aborts an in-flight login. */
   onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens the API-key / relay-endpoint alternative to the CLI's OAuth login. */
+  onUseApiKey?: (kind: AgentKind) => void;
   /** Starts the session and sends the prompt. A rejection keeps the page up — the caller's error
    * banner reports the failure, same contract as the conversation composer. */
   onSubmit: (submission: NewSessionSubmission) => Promise<void>;
@@ -158,6 +160,7 @@ export function NewSessionSurface({
   onLoginAgent,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
@@ -320,6 +323,7 @@ export function NewSessionSurface({
                   onDownload={onDownloadAgent}
                   onLogin={onLoginAgent}
                   onSubmitLoginCode={onSubmitLoginCode}
+                  onUseApiKey={onUseApiKey}
                 />
               </div>
             </div>

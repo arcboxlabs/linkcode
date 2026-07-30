@@ -71,6 +71,8 @@ export interface ShellFrameProps
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   /** Aborts an in-flight login. */
   onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens the API-key / relay-endpoint alternative to the CLI's OAuth login. */
+  onUseApiKey?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
@@ -135,6 +137,7 @@ export function ShellFrame({
   onLoginAgent,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
   conversation,
   respondingRequestIds,
   responseErrors,
@@ -227,6 +230,7 @@ export function ShellFrame({
             onLoginAgent={onLoginAgent}
             onSubmitLoginCode={onSubmitLoginCode}
             onCancelLogin={onCancelLogin}
+            onUseApiKey={onUseApiKey}
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
@@ -248,6 +252,7 @@ export function ShellFrame({
             onLoginAgent={onLoginAgent}
             onSubmitLoginCode={onSubmitLoginCode}
             onCancelLogin={onCancelLogin}
+            onUseApiKey={onUseApiKey}
             respondingRequestIds={respondingRequestIds}
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}

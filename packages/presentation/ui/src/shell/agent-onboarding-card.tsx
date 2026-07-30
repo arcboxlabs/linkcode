@@ -40,6 +40,7 @@ export function AgentOnboardingCard({
   onLogin,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
 }: {
   kind: AgentKind;
   cue: AgentRuntimeCue;
@@ -48,6 +49,8 @@ export function AgentOnboardingCard({
   onLogin?: (kind: AgentKind) => void;
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens the API-key / relay-endpoint alternative to the CLI's OAuth login. */
+  onUseApiKey?: (kind: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
 
@@ -59,6 +62,7 @@ export function AgentOnboardingCard({
         onLogin={onLogin}
         onSubmitLoginCode={onSubmitLoginCode}
         onCancelLogin={onCancelLogin}
+        onUseApiKey={onUseApiKey}
       />
     );
   }
@@ -163,12 +167,14 @@ function AgentLoginCard({
   onLogin,
   onSubmitLoginCode,
   onCancelLogin,
+  onUseApiKey,
 }: {
   kind: AgentKind;
   cue: Extract<AgentRuntimeCue, { state: 'needs-login' }>;
   onLogin?: (kind: AgentKind) => void;
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   onCancelLogin?: (kind: AgentKind) => void;
+  onUseApiKey?: (kind: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
   const agent = AGENT_LABELS[kind];
@@ -263,13 +269,18 @@ function AgentLoginCard({
         <TriangleAlertIcon />
         <AlertTitle>{t('loginFailedTitle', { agent })}</AlertTitle>
         {cue.error && <AlertDescription>{cue.error}</AlertDescription>}
-        {onLogin && (
-          <AlertAction>
+        <AlertAction className="flex gap-2">
+          {onLogin && (
             <Button size="sm" variant="outline" onClick={() => onLogin(kind)}>
               {t('retry')}
             </Button>
-          </AlertAction>
-        )}
+          )}
+          {onUseApiKey && (
+            <Button size="sm" variant="ghost" onClick={() => onUseApiKey(kind)}>
+              {t('loginWithApiKey')}
+            </Button>
+          )}
+        </AlertAction>
       </Alert>
     );
   }
@@ -279,13 +290,18 @@ function AgentLoginCard({
       <LogInIcon />
       <AlertTitle>{t('needsLoginTitle', { agent })}</AlertTitle>
       <AlertDescription>{t('needsLoginBody', { agent })}</AlertDescription>
-      {onLogin && (
-        <AlertAction>
+      <AlertAction className="flex gap-2">
+        {onLogin && (
           <Button size="sm" onClick={() => onLogin(kind)}>
             {t('login', { agent })}
           </Button>
-        </AlertAction>
-      )}
+        )}
+        {onUseApiKey && (
+          <Button size="sm" variant="ghost" onClick={() => onUseApiKey(kind)}>
+            {t('loginWithApiKey')}
+          </Button>
+        )}
+      </AlertAction>
     </Alert>
   );
 }
