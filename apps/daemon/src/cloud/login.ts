@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { wait } from 'foxts/wait';
+import type { SecretVault } from '../secrets';
 import {
   CloudApiError,
   DEFAULT_CLOUD_URL,
@@ -20,7 +21,7 @@ const log = (message: string): void => console.log(`[linkcode/daemon] ${message}
  * and the server keeps one device per key, so every login — including under a different account —
  * resolves to the same device id; only a lost key mints a new identity.
  */
-export async function runLoginCommand(): Promise<void> {
+export async function runLoginCommand(vault: SecretVault): Promise<void> {
   const baseUrl = process.env.LINKCODE_CLOUD_URL || DEFAULT_CLOUD_URL;
   const grant = await requestDeviceCode(baseUrl);
 
@@ -48,7 +49,7 @@ export async function runLoginCommand(): Promise<void> {
   }
   if (!sessionToken) throw new CloudApiError('sign-in timed out — run login again');
 
-  const key = ensureDeviceKey();
+  const key = ensureDeviceKey(vault);
   const { deviceId } = await registerDevice(baseUrl, sessionToken, {
     kind: 'daemon',
     name: hostname(),
@@ -59,13 +60,13 @@ export async function runLoginCommand(): Promise<void> {
     keyProtection: key.protection,
   });
   log(`signed in to ${baseUrl}; device ${deviceId} (${key.protection} key)`);
-  saveCloudCredentials({ baseUrl, sessionToken, deviceId });
+  saveCloudCredentials(vault, { baseUrl, sessionToken, deviceId });
   log('restart the daemon to bring the remote-access uplink online');
 }
 
 /** `linkcode-daemon logout` — revoke the cloud session and clear local state. */
-export async function runLogoutCommand(): Promise<void> {
-  const credentials = loadCloudCredentials();
+export async function runLogoutCommand(vault: SecretVault): Promise<void> {
+  const credentials = loadCloudCredentials(vault);
   if (!credentials) {
     log('not signed in');
     return;
@@ -77,6 +78,6 @@ export async function runLogoutCommand(): Promise<void> {
     // expires on its own schedule.
     log(`sign-out request failed (${extractErrorMessage(err)}); clearing local credentials anyway`);
   }
-  clearCloudCredentials();
+  clearCloudCredentials(vault);
   log('signed out');
 }

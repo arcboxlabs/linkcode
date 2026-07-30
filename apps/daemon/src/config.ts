@@ -14,10 +14,10 @@ import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
+import type { SecretStore, SecretVault } from './secrets';
 import {
   detachAccountSecrets,
   detachProviderSecrets,
-  hasInlineSecrets,
   withAccountSecret,
   withProviderSecret,
 } from './secrets/provider-credentials';
@@ -105,7 +105,11 @@ export function chatWorkspaceRoot(): string {
   return join(homedir(), workspacesDirName(daemonChannel()));
 }
 
-export function loadConfig(): DaemonConfig {
+/** `config.json` owns two vault namespaces; it opens them itself rather than being handed refs. */
+const providerSecrets = (vault: SecretVault): SecretStore => vault.namespace('provider');
+const accountSecrets = (vault: SecretVault): SecretStore => vault.namespace('account');
+
+export function loadConfig(vault: SecretVault): DaemonConfig {
   let file: ConfigFile = {};
   try {
     file = JSON.parse(readFileSync(configPath(), 'utf8')) as ConfigFile;
@@ -120,28 +124,35 @@ export function loadConfig(): DaemonConfig {
       })
     : [];
 
-  const providers = parseProviders(file.providers);
-  const accounts = parseAccounts(file.accounts);
+  const parsedProviders = parseProviders(providerSecrets(vault), file.providers);
+  const parsedAccounts = parseAccounts(accountSecrets(vault), file.accounts);
 
-  // Parsing already moved every inline secret into the vault; rewriting is what takes the exposed
-  // copies off disk. Done here, at the read that found them, so an upgrade needs no user action.
-  if (hasInlineSecrets(file.providers, file.accounts)) {
+  // Parsing already moved every inline secret into the vault and told us so; rewriting is what takes
+  // the exposed copies off disk. Done here, at the read that found them, so an upgrade needs no user
+  // action.
+  if (parsedProviders.migrated || parsedAccounts.migrated) {
     logger.warn(
       { operation: 'config.load' },
       'Moving credentials out of config.json into the secret vault',
     );
-    saveProviders(providers);
-    saveAccounts(accounts);
+    saveProviders(vault, parsedProviders.value);
+    saveAccounts(vault, parsedAccounts.value);
   }
 
   return {
     listeners: applyEnvOverrides(
       configuredListeners.length > 0 ? configuredListeners : [fallbackListener],
     ),
-    providers,
-    accounts,
+    providers: parsedProviders.value,
+    accounts: parsedAccounts.value,
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
+}
+
+/** A parsed collection plus whether any of its entries carried an inline secret to migrate. */
+interface Parsed<T> {
+  value: T;
+  migrated: boolean;
 }
 
 /**
@@ -168,37 +179,41 @@ export function saveSimulatorConsent(state: SimulatorConsentState): void {
  * Parse element by element: an invalid account is dropped and logged, never blanking the pool —
  * `saveAccounts` would persist that loss on the next write. Mirrors {@link parseProviders}.
  */
-function parseAccounts(raw: unknown): Accounts {
-  if (raw === undefined) return [];
+function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
+  if (raw === undefined) return { value: [], migrated: false };
   if (!Array.isArray(raw)) {
     logger.warn({ operation: 'config.load' }, 'Invalid accounts config: expected an array');
-    return [];
+    return { value: [], migrated: false };
   }
   const accounts: Accounts = [];
+  let migrated = false;
   for (const value of raw) {
     // The credential secret lives in the vault (CODE-371); merge it back before validating, so a
     // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
-    const account = AccountSchema.safeParse(withAccountSecret(value));
+    const attached = withAccountSecret(store, value);
+    migrated ||= attached.migrated;
+    const account = AccountSchema.safeParse(attached.value);
     if (!account.success) {
       logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
     }
     accounts.push(account.data);
   }
-  return accounts;
+  return { value: accounts, migrated };
 }
 
 /**
  * Parse field by field: an invalid entry is dropped and logged, never blanking the other entries —
  * `saveProviders` would persist that loss on the next write.
  */
-function parseProviders(raw: unknown): ProvidersConfig {
-  if (raw === undefined) return {};
+function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfig> {
+  if (raw === undefined) return { value: {}, migrated: false };
   if (!isRecord(raw)) {
     logger.warn({ operation: 'config.load' }, 'Invalid providers config: expected an object');
-    return {};
+    return { value: {}, migrated: false };
   }
   const providers: ProvidersConfig = {};
+  let migrated = false;
   for (const [key, value] of Object.entries(raw)) {
     const kind = AgentKindSchema.safeParse(key);
     if (!kind.success) {
@@ -208,24 +223,26 @@ function parseProviders(raw: unknown): ProvidersConfig {
       );
       continue;
     }
-    const config = ProviderConfigSchema.safeParse(withProviderSecret(kind.data, value));
+    const attached = withProviderSecret(store, kind.data, value);
+    migrated ||= attached.migrated;
+    const config = ProviderConfigSchema.safeParse(attached.value);
     if (!config.success) {
       logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;
     }
     providers[kind.data] = config.data;
   }
-  return providers;
+  return { value: providers, migrated };
 }
 
 /** Persist providers to config.json, preserving its other fields; api keys go to the vault instead. */
-export function saveProviders(providers: ProvidersConfig): void {
-  writeConfigField('providers', detachProviderSecrets(providers));
+export function saveProviders(vault: SecretVault, providers: ProvidersConfig): void {
+  writeConfigField('providers', detachProviderSecrets(providerSecrets(vault), providers));
 }
 
 /** Persist the account pool to config.json; credential secrets go to the vault instead. */
-export function saveAccounts(accounts: Accounts): void {
-  writeConfigField('accounts', detachAccountSecrets(accounts));
+export function saveAccounts(vault: SecretVault, accounts: Accounts): void {
+  writeConfigField('accounts', detachAccountSecrets(accountSecrets(vault), accounts));
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */

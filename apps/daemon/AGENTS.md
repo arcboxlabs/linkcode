@@ -29,11 +29,21 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   `providers[kind].apiKey` and each account's credential secret live in `secrets.json` below, and
   `withAccountSecret` merges them back *before* zod validation, so a secret that is gone fails
   `AccountSchema` and drops through that same per-entry path.
-- **`secrets.json`** (`0600`) — every long-lived credential, keyed by a ref derived from the record
-  that owns it: `cloud:session`, `provider:<kind>`, `account:<id>`, `device:software-key`. Custody is
-  a 32-byte AES-256-GCM master key in the OS keyring (`@napi-rs/keyring`, service =
-  `keyringServiceName(channel, profile)` so a development daemon cannot read the release one's), and
-  the file is ciphertext. **On a host with no usable keyring it degrades to plaintext rather than
+- **`secrets.json`** (`0600`) — every long-lived credential, keyed `namespace:key` where the key is
+  the id the owning record already carries: `cloud:session`, `provider:<kind>`, `account:<id>`,
+  `device:software-key`. Custody is a 32-byte AES-256-GCM master key in the OS keyring
+  (`@napi-rs/keyring`, service = `keyringServiceName(channel, profile)` so a development daemon cannot
+  read the release one's), and the file is ciphertext.
+  - **`vault.namespace(name)` is the only way in** — there is no whole-store handle. That is what
+    makes `SecretStore.replaceAll` safe to hand out: a `save*` replaces its own namespace in one
+    write, so pruning a deleted account is implicit and cannot reach a neighbour's secrets. Adding a
+    subsystem is one entry in the `SecretNamespace` union plus its own key names; the vault stays
+    ignorant of what any of them mean.
+  - **The vault is constructed once, in `main()`, and passed down.** Every consumer takes a
+    `SecretVault` parameter and opens its own namespace — nothing reaches `secretVault()` by import.
+    That is what lets tests hand over `createInMemoryVault()` instead of mocking the module, and what
+    a future consumer outside `apps/daemon` would need (it would take the same parameter, supplied
+    through the engine's injected-store pattern). **On a host with no usable keyring it degrades to plaintext rather than
   failing closed** — a deliberate trade so headless machines survive a restart — recording
   `protection: "plaintext"` in the file and warning at boot; it re-encrypts itself as soon as a
   keyring appears. Consequences to expect:

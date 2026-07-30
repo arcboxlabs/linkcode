@@ -1,113 +1,105 @@
 import type { Accounts, ProvidersConfig } from '@linkcode/schema';
-import { logger } from '../logger';
-import { accountSecretRef, providerApiKeyRef, secretVault } from '.';
+import type { SecretStore } from './vault';
 
 /**
  * The secret/structure split for `config.json` (CODE-371). Provider API keys and account credentials
  * are the file's only secrets; everything else — ids, labels, endpoints, which account an agent is
  * bound to — is configuration worth keeping readable. So the secrets move to the vault and the file
- * keeps the rest, with the vault ref derived from the id the record already carries.
+ * keeps the rest, keyed by the id the record already carries.
  *
  * Reading merges the secret back in *before* zod validation, so an account whose secret is gone
  * simply fails `AccountSchema` and is dropped by the existing field-by-field handling — one code
  * path for "malformed" and "unrecoverable", both logged, neither able to blank the whole pool.
  */
 
-/** Attach the stored api key to one raw provider entry, migrating an inline one into the vault. */
-export function withProviderSecret(kind: string, raw: unknown): unknown {
-  if (typeof raw !== 'object' || raw === null) return raw;
-  const entry = { ...(raw as Record<string, unknown>) };
-  const ref = providerApiKeyRef(kind);
+/** A raw entry with its stored secret merged back in, and whether that secret was found inline. */
+export interface AttachedSecret {
+  value: unknown;
+  /**
+   * True when the secret was still in `config.json` — i.e. written before the vault existed. Reported
+   * from the same pass that migrates it, so nothing has to re-walk the config to ask the question;
+   * the caller rewrites the file once if any entry reports it.
+   */
+  migrated: boolean;
+}
 
-  if (typeof entry.apiKey === 'string') {
-    secretVault().set(ref, entry.apiKey);
-    return entry;
+/** Attach the stored api key to one raw provider entry, migrating an inline one into the vault. */
+export function withProviderSecret(store: SecretStore, kind: string, raw: unknown): AttachedSecret {
+  if (typeof raw !== 'object' || raw === null) return { value: raw, migrated: false };
+  const entry = { ...(raw as Record<string, unknown>) };
+
+  const inline = entry.apiKey;
+  if (typeof inline === 'string') {
+    store.set(kind, inline);
+    return { value: entry, migrated: true };
   }
-  const stored = secretVault().get(ref);
+  const stored = store.get(kind);
   if (stored !== null) entry.apiKey = stored;
-  return entry;
+  return { value: entry, migrated: false };
 }
 
 /** Attach the stored credential secret to one raw account, migrating an inline one into the vault. */
-export function withAccountSecret(raw: unknown): unknown {
-  if (typeof raw !== 'object' || raw === null) return raw;
+export function withAccountSecret(store: SecretStore, raw: unknown): AttachedSecret {
+  if (typeof raw !== 'object' || raw === null) return { value: raw, migrated: false };
   const account = { ...(raw as Record<string, unknown>) };
   const { credential, id } = account;
-  if (typeof id !== 'string' || typeof credential !== 'object' || credential === null) return raw;
+  if (typeof id !== 'string' || typeof credential !== 'object' || credential === null) {
+    return { value: raw, migrated: false };
+  }
 
   const field = secretField(credential as Record<string, unknown>);
-  if (field === null) return raw;
+  if (field === null) return { value: raw, migrated: false };
 
   const next = { ...(credential as Record<string, unknown>) };
-  const ref = accountSecretRef(id);
   const inline = next[field];
   if (typeof inline === 'string') {
-    secretVault().set(ref, inline);
-  } else {
-    const stored = secretVault().get(ref);
-    if (stored === null) return raw;
-    next[field] = stored;
+    store.set(id, inline);
+    account.credential = next;
+    return { value: account, migrated: true };
   }
+  const stored = store.get(id);
+  if (stored === null) return { value: raw, migrated: false };
+  next[field] = stored;
   account.credential = next;
-  return account;
+  return { value: account, migrated: false };
 }
 
-/** True when the raw config still carries a secret inline — i.e. it predates the vault. */
-export function hasInlineSecrets(providers: unknown, accounts: unknown): boolean {
-  const providerEntries =
-    typeof providers === 'object' && providers !== null ? Object.values(providers) : [];
-  if (providerEntries.some((entry) => typeof readField(entry, 'apiKey') === 'string')) return true;
-
-  if (!Array.isArray(accounts)) return false;
-  return accounts.some((entry) => {
-    const credential = readField(entry, 'credential');
-    if (typeof credential !== 'object' || credential === null) return false;
-    const field = secretField(credential as Record<string, unknown>);
-    return field !== null && typeof readField(credential, field) === 'string';
-  });
-}
-
-function readField(value: unknown, key: string): unknown {
-  if (typeof value !== 'object' || value === null) return undefined;
-  return Reflect.get(value, key);
-}
-
-/** The on-disk form of `providers`: api keys moved to the vault, refs of removed agents pruned. */
-export function detachProviderSecrets(providers: ProvidersConfig): ProvidersConfig {
-  const vault = secretVault();
+/**
+ * The on-disk form of `providers`: api keys handed to the vault in a **single** write, and any key
+ * whose agent is no longer configured dropped along with them — `replaceAll` makes the prune implicit
+ * and scoped, so this cannot reach another subsystem's secrets.
+ */
+export function detachProviderSecrets(
+  store: SecretStore,
+  providers: ProvidersConfig,
+): ProvidersConfig {
   const stripped: ProvidersConfig = {};
-  const live = new Set<string>();
+  const secrets = new Map<string, string>();
 
   for (const [kind, config] of Object.entries(providers)) {
     const { apiKey, ...rest } = config;
-    if (apiKey !== undefined) {
-      const ref = providerApiKeyRef(kind);
-      vault.set(ref, apiKey);
-      live.add(ref);
-    }
+    if (apiKey !== undefined) secrets.set(kind, apiKey);
     Reflect.set(stripped, kind, rest);
   }
-  pruneOrphans(vault, 'provider:', live);
+  store.replaceAll(secrets);
   return stripped;
 }
 
-/** The on-disk form of the account pool: credential secrets moved to the vault, deleted ones pruned. */
-export function detachAccountSecrets(accounts: Accounts): unknown[] {
-  const vault = secretVault();
-  const live = new Set<string>();
+/**
+ * The on-disk form of the account pool, same contract: one write, and a deleted account's credential
+ * goes with it rather than outliving the account in the OS keyring.
+ */
+export function detachAccountSecrets(store: SecretStore, accounts: Accounts): unknown[] {
+  const secrets = new Map<string, string>();
 
   const stripped = accounts.map((account) => {
     const field = secretField(account.credential);
     if (field === null) return account;
-    const ref = accountSecretRef(account.id);
     const { [field]: secret, ...credential } = account.credential as Record<string, unknown>;
-    if (typeof secret === 'string') {
-      vault.set(ref, secret);
-      live.add(ref);
-    }
+    if (typeof secret === 'string') secrets.set(account.id, secret);
     return { ...account, credential };
   });
-  pruneOrphans(vault, 'account:', live);
+  store.replaceAll(secrets);
   return stripped;
 }
 
@@ -119,17 +111,4 @@ function secretField(credential: Record<string, unknown>): 'key' | 'token' | nul
   if (credential.type === 'api-key') return 'key';
   if (credential.type === 'auth-token') return 'token';
   return null;
-}
-
-/** Drop refs whose owning record is gone, so deleting an account deletes its credential too. */
-function pruneOrphans(
-  vault: ReturnType<typeof secretVault>,
-  prefix: string,
-  live: ReadonlySet<string>,
-): void {
-  for (const ref of vault.list(prefix)) {
-    if (live.has(ref)) continue;
-    vault.delete(ref);
-    logger.info({ operation: 'secrets.prune', ref }, 'Dropped a stored secret with no owner');
-  }
 }

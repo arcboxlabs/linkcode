@@ -3,10 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '../logger';
 import type { MasterKey } from '../secrets/keyring';
+import type { SecretStore } from '../secrets/vault';
 import { createSecretVault } from '../secrets/vault';
 
 const KEY = Buffer.alloc(32, 1);
@@ -18,6 +20,13 @@ const storedKey = (secret: Buffer) => (): MasterKey => ({ secret, fresh: false }
 /** A keyring that had nothing, so this key was minted just now. */
 const mintedKey = (secret: Buffer) => (): MasterKey => ({ secret, fresh: true });
 const noKeyring = (): MasterKey | null => null;
+
+/**
+ * Secrets are only reachable through a namespace, so every case goes through one. On disk the same
+ * entry is the full `cloud:session` ref — asserting against that is what proves the prefixing.
+ */
+const open = (file: string, loadKey: () => MasterKey | null): SecretStore =>
+  createSecretVault(file, loadKey).namespace('cloud');
 
 let file: string;
 const realPlatform = process.platform;
@@ -47,37 +56,76 @@ function readDocument(): { protection: string; data: unknown; keyringDistrusted?
 
 describe('secret vault under an OS keyring', () => {
   it('keeps the secret out of the file and reads it back through the master key', () => {
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
     const raw = readFileSync(file, 'utf8');
     expect(raw).not.toContain(TOKEN);
     expect(readDocument().protection).toBe('os-keyring');
-    expect(createSecretVault(file, storedKey(KEY)).get('cloud:session')).toBe(TOKEN);
+    expect(open(file, storedKey(KEY)).get('session')).toBe(TOKEN);
   });
 
   it('writes the store 0600 — the ciphertext is still a credential envelope', () => {
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it('starts empty when the master key no longer matches the ciphertext', () => {
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
     // A wiped keyring entry mints a fresh key; the old ciphertext is then unrecoverable, which is a
     // permanent loss to report and reset from, not a transient failure to retry.
-    const vault = createSecretVault(file, storedKey(OTHER_KEY));
-
-    expect(vault.get('cloud:session')).toBeNull();
+    expect(open(file, storedKey(OTHER_KEY)).get('session')).toBeNull();
     expect(logger.error).toHaveBeenCalled();
   });
 
   it('forgets a deleted secret on disk, not just in memory', () => {
-    const vault = createSecretVault(file, storedKey(KEY));
-    vault.set('cloud:session', TOKEN);
-    vault.delete('cloud:session');
+    const store = open(file, storedKey(KEY));
+    store.set('session', TOKEN);
+    store.delete('session');
 
-    expect(createSecretVault(file, storedKey(KEY)).get('cloud:session')).toBeNull();
+    expect(open(file, storedKey(KEY)).get('session')).toBeNull();
+  });
+});
+
+describe('secret vault namespaces', () => {
+  it('scopes keys so two subsystems cannot collide on the same name', () => {
+    const vault = createSecretVault(file, storedKey(KEY));
+    vault.namespace('cloud').set('session', 'cloud-secret');
+    vault.namespace('account').set('session', 'account-secret');
+
+    expect(vault.namespace('cloud').get('session')).toBe('cloud-secret');
+    expect(vault.namespace('account').get('session')).toBe('account-secret');
+  });
+
+  it('confines replaceAll to its own namespace', () => {
+    const vault = createSecretVault(file, storedKey(KEY));
+    vault.namespace('account').set('acc_1', 'first');
+    vault.namespace('cloud').set('session', TOKEN);
+
+    // Prune-on-save is only safe to hand out because it cannot reach a neighbour: this is the
+    // property that replaced a hand-rolled prefix scan every consumer would have re-implemented.
+    vault.namespace('account').replaceAll(new Map([['acc_2', 'second']]));
+
+    expect(vault.namespace('account').get('acc_1')).toBeNull();
+    expect(vault.namespace('account').get('acc_2')).toBe('second');
+    expect(vault.namespace('cloud').get('session')).toBe(TOKEN);
+  });
+
+  it('takes a whole namespace in one call, however many entries it holds', () => {
+    const vault = createSecretVault(file, storedKey(KEY));
+    const entries = new Map(createFixedArray(20).map((index) => [`acc_${index}`, 'secret']));
+
+    // The point of the single-call shape is that a save costs one re-encrypt of the store rather
+    // than one per entry. That count is not cheaply observable without mocking `node:fs`, so what is
+    // pinned here is the contract that makes it possible: the whole set lands atomically.
+    vault.namespace('account').replaceAll(entries);
+
+    expect(vault.namespace('account').get('acc_0')).toBe('secret');
+    expect(vault.namespace('account').get('acc_19')).toBe('secret');
+    expect(createSecretVault(file, storedKey(KEY)).namespace('account').get('acc_19')).toBe(
+      'secret',
+    );
   });
 });
 
@@ -86,7 +134,7 @@ describe('secret vault without a keyring', () => {
     // The chosen trade-off (CODE-371): a headless host stays usable across restarts, and the file
     // says outright what protection it has, so the degradation is never invisible.
     const vault = createSecretVault(file, noKeyring);
-    vault.set('cloud:session', TOKEN);
+    vault.namespace('cloud').set('session', TOKEN);
 
     expect(vault.protection).toBe('plaintext');
     expect(readDocument()).toEqual({
@@ -98,23 +146,19 @@ describe('secret vault without a keyring', () => {
   });
 
   it('re-encrypts an unprotected store as soon as a keyring is available', () => {
-    createSecretVault(file, noKeyring).set('cloud:session', TOKEN);
+    open(file, noKeyring).set('session', TOKEN);
 
     // Opening alone must migrate it: waiting for the next credential edit would leave the exposed
     // copy on disk indefinitely.
-    const upgraded = createSecretVault(file, storedKey(KEY));
-
-    expect(upgraded.get('cloud:session')).toBe(TOKEN);
+    expect(open(file, storedKey(KEY)).get('session')).toBe(TOKEN);
     expect(readDocument().protection).toBe('os-keyring');
     expect(readFileSync(file, 'utf8')).not.toContain(TOKEN);
   });
 
   it('starts empty when the store is encrypted but the keyring is gone', () => {
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
-    const vault = createSecretVault(file, noKeyring);
-
-    expect(vault.get('cloud:session')).toBeNull();
+    expect(open(file, noKeyring).get('session')).toBeNull();
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -124,7 +168,7 @@ describe('secret vault without a keyring', () => {
       JSON.stringify({ v: 1, protection: 'plaintext', data: { 'cloud:session': TOKEN } }),
     );
 
-    expect(createSecretVault(file, noKeyring).get('cloud:session')).toBe(TOKEN);
+    expect(open(file, noKeyring).get('session')).toBe(TOKEN);
   });
 });
 
@@ -136,7 +180,7 @@ describe('secret vault against a non-durable keyring', () => {
   /** What a keyutils host looks like on the boot after it wrote ciphertext. */
   function seedOrphanedCiphertext(): void {
     setPlatform('linux');
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
   }
 
   it('stops trusting the keyring and records the verdict on disk', () => {
@@ -165,20 +209,19 @@ describe('secret vault against a non-durable keyring', () => {
     seedOrphanedCiphertext();
     createSecretVault(file, mintedKey(OTHER_KEY));
 
-    const vault = createSecretVault(file, storedKey(KEY));
-    vault.set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
     // The upgrade path and the demotion would otherwise fight each other on alternating boots.
     expect(readDocument().protection).toBe('plaintext');
     expect(readDocument().keyringDistrusted).toBe(true);
-    expect(createSecretVault(file, noKeyring).get('cloud:session')).toBe(TOKEN);
+    expect(open(file, noKeyring).get('session')).toBe(TOKEN);
   });
 
   it('leaves a first-run host alone — no ciphertext means nothing was lost', () => {
     setPlatform('linux');
 
     const vault = createSecretVault(file, mintedKey(KEY));
-    vault.set('cloud:session', TOKEN);
+    vault.namespace('cloud').set('session', TOKEN);
 
     expect(vault.protection).toBe('os-keyring');
     expect(readDocument().keyringDistrusted).toBeUndefined();
@@ -186,7 +229,7 @@ describe('secret vault against a non-durable keyring', () => {
 
   it('does not demote macOS, where a missing entry means someone deleted it', () => {
     setPlatform('darwin');
-    createSecretVault(file, storedKey(KEY)).set('cloud:session', TOKEN);
+    open(file, storedKey(KEY)).set('session', TOKEN);
 
     // Durable keyring: the honest reading is a deliberate deletion or a new profile, not a backend
     // that cannot hold a key — so keep encrypting.
@@ -201,7 +244,7 @@ describe('secret vault store integrity', () => {
   it('starts empty on a corrupt store instead of throwing at boot', () => {
     writeFileSync(file, 'not json at all');
 
-    expect(createSecretVault(file, storedKey(KEY)).get('cloud:session')).toBeNull();
+    expect(open(file, storedKey(KEY)).get('session')).toBeNull();
   });
 
   it('drops one malformed entry rather than losing the whole store', () => {
@@ -210,14 +253,14 @@ describe('secret vault store integrity', () => {
       JSON.stringify({
         v: 1,
         protection: 'plaintext',
-        data: { 'cloud:session': TOKEN, 'account:acc_1': { not: 'a secret' } },
+        data: { 'cloud:session': TOKEN, 'cloud:other': { not: 'a secret' } },
       }),
     );
 
-    const vault = createSecretVault(file, noKeyring);
+    const store = open(file, noKeyring);
 
-    expect(vault.get('cloud:session')).toBe(TOKEN);
-    expect(vault.get('account:acc_1')).toBeNull();
+    expect(store.get('session')).toBe(TOKEN);
+    expect(store.get('other')).toBeNull();
     expect(logger.warn).toHaveBeenCalled();
   });
 

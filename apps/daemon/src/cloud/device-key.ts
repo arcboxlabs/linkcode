@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import process from 'node:process';
 import { deviceKeysDir, legacyDeviceKeyPath } from '../config';
 import { logger } from '../logger';
-import { DEVICE_SOFTWARE_KEY_REF, secretVault } from '../secrets';
+import type { SecretStore, SecretVault } from '../secrets';
 
 /**
  * The device key is the machine's identity: it keeps the device id (= tunnel host id) stable
@@ -27,6 +27,10 @@ export interface DeviceKey {
 
 const require = createRequire(import.meta.url);
 
+/** This module's slice of the vault; the key name is its own business, not the vault's. */
+const SOFTWARE_KEY = 'software-key';
+const keyStore = (vault: SecretVault): SecretStore => vault.namespace('device');
+
 /**
  * Load the native module, separately from calling it — the two failures mean different things and
  * only one is a defect. `@arcboxlabs/deviceid` resolves a per-platform prebuilt through npm
@@ -45,9 +49,9 @@ function loadDeviceId(): typeof import('@arcboxlabs/deviceid') | null {
   }
 }
 
-export function ensureDeviceKey(): DeviceKey {
+export function ensureDeviceKey(vault: SecretVault): DeviceKey {
   const module = loadDeviceId();
-  if (module === null) return ensureSoftwareDeviceKey();
+  if (module === null) return ensureSoftwareDeviceKey(vault);
   try {
     // Fail-closed by design: throws on machines with no usable backend (no TPM, no Secret
     // Service). That is a legitimate property of the host, not an error to escalate.
@@ -62,13 +66,14 @@ export function ensureDeviceKey(): DeviceKey {
       { operation: 'device-key.ensure', err },
       'No hardware key store on this machine; using a software device key',
     );
-    return ensureSoftwareDeviceKey();
+    return ensureSoftwareDeviceKey(vault);
   }
 }
 
 /** The fallback custody path, reachable on its own: no hardware backend, key held by the vault. */
-export function ensureSoftwareDeviceKey(): DeviceKey {
-  const privatePem = loadSoftwarePrivateKey() ?? createSoftwarePrivateKey();
+export function ensureSoftwareDeviceKey(vault: SecretVault): DeviceKey {
+  const store = keyStore(vault);
+  const privatePem = store.get(SOFTWARE_KEY) ?? createSoftwarePrivateKey(store);
   const privateKey = createPrivateKey(privatePem);
   const publicKeyPem = createPublicKey(privatePem).export({ type: 'spki', format: 'pem' });
   return {
@@ -76,11 +81,6 @@ export function ensureSoftwareDeviceKey(): DeviceKey {
     protection: 'software',
     sign: (payload) => sign(null, Buffer.from(payload), privateKey).toString('base64url'),
   };
-}
-
-/** The stored software key, or `null` when this machine has none yet. */
-function loadSoftwarePrivateKey(): string | null {
-  return secretVault().get(DEVICE_SOFTWARE_KEY_REF);
 }
 
 /**
@@ -94,7 +94,8 @@ function loadSoftwarePrivateKey(): string | null {
  * hardware custody (fallback never taken). Both would otherwise keep a registered device's private
  * key in the clear indefinitely.
  */
-export function adoptLegacyDeviceKeyFile(): void {
+export function adoptLegacyDeviceKeyFile(vault: SecretVault): void {
+  const store = keyStore(vault);
   const path = legacyDeviceKeyPath();
   let legacyPem: string;
   try {
@@ -102,9 +103,7 @@ export function adoptLegacyDeviceKeyFile(): void {
   } catch {
     return;
   }
-  if (secretVault().get(DEVICE_SOFTWARE_KEY_REF) === null) {
-    secretVault().set(DEVICE_SOFTWARE_KEY_REF, legacyPem);
-  }
+  if (store.get(SOFTWARE_KEY) === null) store.set(SOFTWARE_KEY, legacyPem);
   rmSync(path, { force: true });
   logger.warn(
     { operation: 'device-key.migrate' },
@@ -118,12 +117,12 @@ export function adoptLegacyDeviceKeyFile(): void {
  * reset: the same vault loss also takes the session token, so the daemon is already signed out and
  * the next sign-in registers this key. Nothing is silently left half-valid.
  */
-function createSoftwarePrivateKey(): string {
+function createSoftwarePrivateKey(store: SecretStore): string {
   const { privateKey } = generateKeyPairSync('ed25519');
   const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
-  secretVault().set(DEVICE_SOFTWARE_KEY_REF, privatePem);
+  store.set(SOFTWARE_KEY, privatePem);
   logger.warn(
-    { operation: 'device-key.create', protection: secretVault().protection },
+    { operation: 'device-key.create', protection: store.protection },
     'Generated a new software device key; this machine registers with the cloud under a new device id',
   );
   return privatePem;

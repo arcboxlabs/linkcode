@@ -54,6 +54,7 @@ import {
   writeRuntimeFile,
 } from './runtime';
 import { createScheduleStore } from './schedule-store';
+import { secretVault } from './secrets';
 import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
 import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
@@ -126,19 +127,24 @@ async function main(): Promise<void> {
   const profile = daemonProfile();
   const channel = daemonChannel();
 
+  // The one place the vault is constructed (CODE-371): every module that needs a secret takes it as a
+  // parameter and opens its own namespace, so no subsystem reaches the store by import and tests can
+  // hand over an in-memory one. Resolved after the universe is known, never at module load.
+  const vault = secretVault();
+
   const command = process.argv[2];
-  if (command === 'login') return runLoginCommand();
-  if (command === 'logout') return runLogoutCommand();
+  if (command === 'login') return runLoginCommand(vault);
+  if (command === 'logout') return runLogoutCommand(vault);
 
   installAsarSpawnFix();
 
   const SharedLive = Layer.effect(
     Shared,
     Effect.gen(function* () {
-      const config = loadConfig();
+      const config = loadConfig(vault);
       // Sweep credentials an older daemon left in the clear. loadConfig has already moved
       // config.json's; the device key has no reader at boot, so it is swept explicitly (CODE-371).
-      adoptLegacyDeviceKeyFile();
+      adoptLegacyDeviceKeyFile(vault);
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -171,7 +177,7 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
+      const store = createProviderConfigStore(vault, config.providers ?? {}, config.accounts ?? []);
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
@@ -368,7 +374,7 @@ async function main(): Promise<void> {
         () => finalize(removeRuntimeFile),
       );
       yield* Effect.acquireRelease(
-        Effect.sync(() => startCloudUplink(hub)),
+        Effect.sync(() => startCloudUplink(hub, vault)),
         (stop) => finalize(stop),
       );
     }),
