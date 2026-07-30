@@ -217,9 +217,13 @@ function WorkbenchSWRConfig({ children }: React.PropsWithChildren): React.ReactN
   const { current: cache } = useSingleton<Cache>(() => new Map());
   const { current: provider } = useSingleton(() => createCacheProvider(cache));
   return (
+    // `keepPreviousData` stays at SWR's own default (off) on purpose. Turning it on here made the
+    // risky option the default: every identity-scoped request — keyed by session, workspace, loop —
+    // would answer with the *previous* identity's data while the new key loads, and forever if that
+    // request fails. A surface that genuinely wants the stale-while-loading behavior asks for it at
+    // its own call site, where the intent is visible.
     <SWRConfig
       value={{
-        keepPreviousData: true,
         onError: handleFetchError,
         provider,
         use: [debugMiddleware],

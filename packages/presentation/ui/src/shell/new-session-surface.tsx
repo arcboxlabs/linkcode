@@ -34,7 +34,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_DEFAULT_MODELS } from './agent-models';
+import { AGENT_DEFAULT_MODELS, AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -72,6 +72,11 @@ export interface NewSessionSurfaceProps {
   /** Project workspaces offered by the picker; the chat workspace arrives separately. */
   workspaces: WorkspaceRecord[];
   chatWorkspace: WorkspaceRecord | null;
+  /** The selected workspace. Controlled by the workbench, which needs that same cwd to scope the
+   * agent catalogs it feeds back in through `agentCatalogs` — a second copy of this state here
+   * would let the two drift and show a default the session would not start in. */
+  workspaceId: WorkspaceId | null;
+  onWorkspaceChange: (workspaceId: WorkspaceId) => void;
   className?: string;
   topContent?: React.ReactNode;
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
@@ -134,6 +139,8 @@ export function NewSessionSurface({
   draft,
   workspaces,
   chatWorkspace,
+  workspaceId,
+  onWorkspaceChange,
   className,
   topContent,
   runtimeCues,
@@ -158,7 +165,6 @@ export function NewSessionSurface({
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const [provider, setProvider] = useState(draft.initialProvider);
-  const [workspaceId, setWorkspaceId] = useState(draft.initialWorkspaceId);
   const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
@@ -188,13 +194,16 @@ export function NewSessionSurface({
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const catalog = agentCatalogs?.[provider];
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOptionById = new Map(dynamicModels?.map((option) => [option.id, option] as const));
-  const modelOption = displayedModel === null ? undefined : modelOptionById.get(displayedModel);
+  const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
+  // Only a real pick travels to the adapter. The catalog default is a display value: submitting it
+  // would read as an explicit choice and override the agent's own startup resolution — claude's
+  // `permissions.defaultMode`, codex's configured `config.toml` sandbox.
+  const pickedPolicyId = selectedPolicies[provider];
   const currentPolicyId =
-    selectedPolicies[provider] ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
+    pickedPolicyId ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
     currentPolicyId && catalog && catalog.policies.length > 0
       ? { availablePolicies: catalog.policies, currentPolicyId }
@@ -212,7 +221,7 @@ export function NewSessionSurface({
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),
-        ...(currentPolicyId && { approvalPolicyId: currentPolicyId }),
+        ...(pickedPolicyId && { approvalPolicyId: pickedPolicyId }),
         modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
         ...(selectedBranch && { branch: { name: selectedBranch } }),
         input,
@@ -284,7 +293,7 @@ export function NewSessionSurface({
 
   function handleWorkspaceChange(nextWorkspaceId: WorkspaceId): void {
     onMentionQueryChange(undefined, null);
-    setWorkspaceId(nextWorkspaceId);
+    onWorkspaceChange(nextWorkspaceId);
   }
 
   function handleBranchChange(branch: string): void {
@@ -429,7 +438,7 @@ function NewSessionContextBar({
         >
           {isChatSelected ? <MessagesSquareIcon /> : <FolderIcon />}
           <span className="max-w-48 truncate">{chipLabel}</span>
-          <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+          <ChevronDownIcon className="size-3 text-label-tertiary" />
         </MenuTrigger>
         <MenuPopup align="start" className="w-72" side="top" sideOffset={8}>
           <MenuRadioGroup
@@ -484,7 +493,7 @@ function NewSessionContextBar({
       <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
         <LaptopMinimalIcon />
         {t('workLocally')}
-        <ChevronDownIcon className="size-3 text-muted-foreground/72" />
+        <ChevronDownIcon className="size-3 text-label-tertiary" />
       </Button>
       {selected && !isChatSelected && NewSessionBranchPickerComponent && (
         <NewSessionBranchPickerComponent

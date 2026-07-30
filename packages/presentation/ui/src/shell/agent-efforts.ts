@@ -15,6 +15,7 @@ export const EFFORT_OPTIONS_BY_ID: Readonly<Record<EffortLevel, EffortOption>> =
   high: { id: 'high', label: 'High', shortLabel: 'H' },
   xhigh: { id: 'xhigh', label: 'xHigh', shortLabel: 'xH' },
   max: { id: 'max', label: 'Max', shortLabel: 'Max' },
+  ultra: { id: 'ultra', label: 'Ultra', shortLabel: 'U' },
   ultracode: { id: 'ultracode', label: 'Ultracode', shortLabel: 'UC' },
 };
 
@@ -25,8 +26,9 @@ export const EFFORT_OPTIONS_BY_ID: Readonly<Record<EffortLevel, EffortOption>> =
  * process and resumes in place (entering and leaving — the startup flag outranks flag-settings);
  * `ultracode` needs dynamic workflows enabled, else the pick is rejected and the selector keeps
  * the previous level.
- * codex: exactly these four (`minimal` isn't in our EffortLevel vocabulary; `max`/`ultracode` are
- * claude-only and rejected); switches apply from the next turn, not mid-turn.
+ * codex: these four are the conservative fallback when model metadata is unavailable. A Codex
+ * catalog replaces them with each model's advertised levels (including `max`/`ultra`); `minimal`
+ * isn't in our normalized vocabulary and `ultracode` remains Claude-only.
  */
 export const AGENT_EFFORT_OPTIONS: Partial<Record<AgentKind, EffortOption[]>> = {
   'claude-code': [
@@ -58,7 +60,6 @@ export function effortOptionsForModel(
   model: ModelOption | undefined,
 ): EffortOption[] | undefined {
   const options = kind ? AGENT_EFFORT_OPTIONS[kind] : undefined;
-  if (!options || model?.effortLevels === undefined) return options;
-  const supported = new Set<EffortLevel>(model.effortLevels);
-  return options.filter((option) => supported.has(option.id));
+  if (model?.effortLevels === undefined) return options;
+  return model.effortLevels.map((effort) => EFFORT_OPTIONS_BY_ID[effort]);
 }

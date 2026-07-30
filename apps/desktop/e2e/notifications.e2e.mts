@@ -26,6 +26,9 @@ const electronBinary = require('electron') as unknown as string;
 const PROMPT = 'Reply with one short sentence about ping pong.';
 const PORT = 42000 + (process.pid % 1000);
 
+const DEFAULT_MODEL_BUTTON_RE = /Default/;
+const PI_MENU_ITEM_RE = /Pi$/;
+
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
   process.exit(1);
@@ -73,10 +76,10 @@ async function run(app: ElectronApplication, win: Page): Promise<void> {
   await win.waitForTimeout(2000);
 
   // Switch the new-session provider to pi (auth-free) via the composer's model-selector menu.
-  await win.getByRole('button', { name: /Default/ }).click();
+  await win.getByRole('button', { name: DEFAULT_MODEL_BUTTON_RE }).click();
   await win.getByRole('menuitem', { name: 'Claude Code' }).click();
   // The AgentIcon initials fallback makes the item's accessible name "PIPi".
-  await win.getByRole('menuitemradio', { name: /Pi$/ }).click();
+  await win.getByRole('menuitemradio', { name: PI_MENU_ITEM_RE }).click();
   await win.waitForTimeout(500);
 
   // Blur the window: an unfocused window must be notified even for the active session, which
@@ -131,7 +134,14 @@ async function main(): Promise<void> {
   try {
     daemon = spawn(process.execPath, ['dist/index.js'], {
       cwd: daemonDir,
-      env: { ...process.env, HOME: home, LINKCODE_PORT: String(PORT) },
+      // The dist bundle is stamped `release`, the dev Electron shell resolves as `development` —
+      // without this they pick different state dirs and the shell never finds runtime.json.
+      env: {
+        ...process.env,
+        HOME: home,
+        LINKCODE_PORT: String(PORT),
+        LINKCODE_CHANNEL: 'development',
+      },
       stdio: 'ignore',
     });
     await waitForDaemon();

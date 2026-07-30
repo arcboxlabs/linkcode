@@ -49,6 +49,11 @@ function assertNoApplicationErrors(appErrors: string[]): void {
   assert.deepEqual(appErrors, [], `Browser application errors:\n${appErrors.join('\n')}`);
 }
 
+async function selectMockThread(page: Page): Promise<void> {
+  await page.locator('[data-thread-title]', { hasText: mockThreadTitle }).click();
+  await page.locator('[data-conversation-title]', { hasText: mockThreadTitle }).waitFor();
+}
+
 async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Promise<void> {
   const editor = page.locator('[data-slot="composer-editor"][contenteditable="true"]');
   await editor.waitFor({ state: 'visible' });
@@ -128,6 +133,17 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     const appErrors: string[] = [];
     const page = await browser.newPage();
     monitorApplicationErrors(page, server.origin, appErrors);
+    // This boundary verifies wire prompt/reload recovery, not animation timing. React's
+    // `<ViewTransition>` still runs `document.startViewTransition` under reduce-motion (the
+    // preference only collapses the snapshot animations to ~0ms via CSS), so selection is no
+    // longer synchronous — but near-instant finishes keep a throttled headless tab from holding
+    // transitions (and the assertions below) open across animation frames.
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'linkcode.workbench.appearance:v1',
+        JSON.stringify({ state: { reduceMotion: true }, version: 0 }),
+      );
+    });
     await page.goto(server.origin, { waitUntil: 'domcontentloaded' });
     await page.locator('#root > *').waitFor();
 
@@ -136,13 +152,13 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     await page.getByRole('link', { name: 'Back' }).click();
     await page.waitForURL(`${server.origin}/`);
 
-    await page.getByText(mockThreadTitle, { exact: true }).click();
+    await selectMockThread(page);
     const firstPrompt = `browser-wire-smoke-${Date.now().toString(36)}`;
     await sendPrompt(page, firstPrompt, appErrors);
 
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByText(mockThreadTitle, { exact: true }).waitFor();
-    await page.getByText(mockThreadTitle, { exact: true }).click();
+    await page.locator('[data-thread-title]', { hasText: mockThreadTitle }).waitFor();
+    await selectMockThread(page);
     const recoveryPrompt = `${firstPrompt}-after-reload`;
     await sendPrompt(page, recoveryPrompt, appErrors);
     assertNoApplicationErrors(appErrors);

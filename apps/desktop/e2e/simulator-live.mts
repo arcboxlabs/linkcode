@@ -16,6 +16,7 @@ import { wait } from 'foxts/wait';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 import { io } from 'socket.io-client';
+import { WIRE_VERSION } from './wire-version.mts';
 
 const require = createRequire(import.meta.url);
 const desktopDir = resolve(import.meta.dirname, '..');
@@ -25,7 +26,9 @@ const simSidecar = join(repoRoot, 'target', 'release', 'linkcode-sim');
 const electronBinary = require('electron') as unknown as string;
 
 const PORT = 43000 + (process.pid % 1000);
-const WIRE_VERSION = 52;
+
+/** The untitled thread row reads "<agent> in <repository>". */
+const THREAD_ROW_RE = / in LinkCode$/;
 
 async function waitForDaemon(): Promise<void> {
   const deadline = Date.now() + 30000;
@@ -113,6 +116,9 @@ async function main(): Promise<void> {
       HOME: home,
       LINKCODE_PORT: String(PORT),
       LINKCODE_PROFILE: profile,
+      // The dist bundle is stamped `release`, the dev Electron shell resolves as `development` —
+      // without this they pick different state dirs and the shell never finds runtime.json.
+      LINKCODE_CHANNEL: 'development',
       LINKCODE_SIM_SIDECAR_PATH: simSidecar,
     },
     stdio: 'ignore',
@@ -152,7 +158,7 @@ async function main(): Promise<void> {
   }
   await win.getByRole('menuitem', { name: 'Simulator' }).click().catch(noop);
   await win.waitForTimeout(1000);
-  const row = win.getByText(/ in LinkCode$/).first();
+  const row = win.getByText(THREAD_ROW_RE).first();
   await row.waitFor({ state: 'visible', timeout: 15000 }).catch(noop);
   await row.click().catch(noop);
 

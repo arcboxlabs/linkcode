@@ -39,6 +39,11 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionSubscriptionMode,
+  SimulatorAxNode,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -61,6 +66,8 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
+import type { BrowserCommandExecutor } from './client/browser-host-channel';
+import { BrowserHostChannel } from './client/browser-host-channel';
 import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
@@ -71,6 +78,7 @@ import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
+export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
 
@@ -116,7 +124,16 @@ type SimulatorActivityCb = (activity: {
   udid?: string;
   tool: string;
   phase: 'started' | 'settled';
+  /** Normalized 0..1 point the tool acted on; absent for tools without a single point. */
+  x?: number;
+  y?: number;
 }) => void;
+type SimulatorConsentRequiredCb = (request: {
+  sessionId: SessionId;
+  udid: string;
+  tool: string;
+}) => void;
+type SimulatorConsentChangedCb = (state: SimulatorConsentState) => void;
 /** A live stream frame: base64 bytes (JPEG image or Annex-B H.264 access unit) for one device. */
 type SimulatorFrameCb = (frame: {
   udid: string;
@@ -154,6 +171,7 @@ export class LinkCodeClient {
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
   private readonly terminals: TerminalChannel;
+  private readonly browserHost: BrowserHostChannel;
   private readonly agentLogin: AgentLoginChannel;
   private readonly scriptStatusSubs = new Set<ScriptStatusCb>();
   private readonly scheduleEventSubs = new Set<ScheduleEventCb>();
@@ -165,6 +183,8 @@ export class LinkCodeClient {
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
   private readonly simulatorDevicesChangedSubs = new Set<SimulatorDevicesChangedCb>();
   private readonly simulatorActivitySubs = new Set<SimulatorActivityCb>();
+  private readonly simulatorConsentRequiredSubs = new Set<SimulatorConsentRequiredCb>();
+  private readonly simulatorConsentChangedSubs = new Set<SimulatorConsentChangedCb>();
   /** Framebuffer-frame listeners keyed by udid, so each panel tab only sees its device's frames. */
   private readonly simulatorFrameSubs = new Map<string, Set<SimulatorFrameCb>>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
@@ -183,6 +203,7 @@ export class LinkCodeClient {
     this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
     this.terminals = new TerminalChannel(transport, this.pending, randomUUID);
+    this.browserHost = new BrowserHostChannel(transport, this.pending, randomUUID);
     this.agentLogin = new AgentLoginChannel(transport, this.pending);
   }
 
@@ -347,13 +368,34 @@ export class LinkCodeClient {
       case 'simulator.screenshotted':
         this.pending.resolve('simulatorScreenshot', p.replyTo, { format: p.format, data: p.data });
         break;
+      case 'simulator.described-ui':
+        this.pending.resolve('simulatorDescribeUi', p.replyTo, p.tree);
+        break;
       case 'simulator.devices.changed':
         for (const cb of this.simulatorDevicesChangedSubs) cb(p.devices);
         break;
       case 'simulator.activity':
         for (const cb of this.simulatorActivitySubs) {
-          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool, phase: p.phase });
+          cb({
+            sessionId: p.sessionId,
+            udid: p.udid,
+            tool: p.tool,
+            phase: p.phase,
+            x: p.x,
+            y: p.y,
+          });
         }
+        break;
+      case 'simulator.consent.state':
+        this.pending.resolve('simulatorConsentGet', p.replyTo, p.state);
+        break;
+      case 'simulator.consent.required':
+        for (const cb of this.simulatorConsentRequiredSubs) {
+          cb({ sessionId: p.sessionId, udid: p.udid, tool: p.tool });
+        }
+        break;
+      case 'simulator.consent.changed':
+        for (const cb of this.simulatorConsentChangedSubs) cb(p.state);
         break;
       case 'simulator.stream.started':
         this.pending.resolve('simulatorStreamStart', p.replyTo, {
@@ -493,6 +535,9 @@ export class LinkCodeClient {
       case 'terminal.exit':
         this.terminals.handleMessage(p);
         break;
+      case 'browser.command':
+        this.browserHost.handleMessage(p);
+        break;
       case 'agent-login.started':
       case 'agent-login.url':
       case 'agent-login.settled':
@@ -583,7 +628,29 @@ export class LinkCodeClient {
 
   /** See {@link ControlChannel.attachSession}. */
   attachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
     this.control.attachSession(sessionId);
+  }
+
+  /** See {@link ControlChannel.detachSession}. */
+  detachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
+    this.control.detachSession(sessionId);
+  }
+
+  /**
+   * Whether a subscription announcement is still worth sending. Once the connection is gone the
+   * Hub has already discarded this connection's whole subscription, so the frame would be a no-op
+   * — and the socket transports throw on `send` with no socket open. React teardown runs after
+   * `ConnectionController` disposes the generation, so an unmount-time detach lands here.
+   */
+  private canAnnounce(): boolean {
+    return this.state !== 'closed' && this.state !== 'disposed';
+  }
+
+  /** See {@link ControlChannel.setSubscriptionMode}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.control.setSubscriptionMode(mode);
   }
 
   setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
@@ -698,6 +765,25 @@ export class LinkCodeClient {
     return this.control.simulatorOpenUrl(sessionId, udid, url);
   }
 
+  /** Shake the device (undo-typing prompts, React Native's dev menu). */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.control.simulatorShake(sessionId, udid);
+  }
+
+  /** Start the iOS runtime download; resolves once it is running, not once it finishes. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.control.simulatorInstallRuntime();
+  }
+
+  /** The frontmost app's accessibility tree; node centres are in {@link simulatorTap}'s units. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.control.simulatorDescribeUi(sessionId, udid, limits);
+  }
+
   simulatorScreenshot(
     sessionId: SessionId,
     udid: string,
@@ -709,6 +795,18 @@ export class LinkCodeClient {
   /** The device's screen-outline mask as base64 PNG — clip the stream to the real screen shape. */
   simulatorScreenMask(udid: string): Promise<string> {
     return this.control.simulatorScreenMask(udid);
+  }
+
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.control.simulatorConsentGet();
+  }
+
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.control.simulatorConsentSet(udid, decision);
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.control.simulatorConsentSetAgentTools(enabled);
   }
 
   simulatorTap(sessionId: SessionId, udid: string, x: number, y: number): Promise<RequestAck> {
@@ -765,7 +863,7 @@ export class LinkCodeClient {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.control.simulatorButton(sessionId, udid, button);
   }
@@ -817,6 +915,17 @@ export class LinkCodeClient {
   subscribeSimulatorActivity(cb: SimulatorActivityCb): Unsubscribe {
     this.simulatorActivitySubs.add(cb);
     return () => this.simulatorActivitySubs.delete(cb);
+  }
+
+  /** An agent tool is suspended waiting for the user to decide about a device (CODE-420). */
+  subscribeSimulatorConsentRequired(cb: SimulatorConsentRequiredCb): Unsubscribe {
+    this.simulatorConsentRequiredSubs.add(cb);
+    return () => this.simulatorConsentRequiredSubs.delete(cb);
+  }
+
+  subscribeSimulatorConsentChanged(cb: SimulatorConsentChangedCb): Unsubscribe {
+    this.simulatorConsentChangedSubs.add(cb);
+    return () => this.simulatorConsentChangedSubs.delete(cb);
   }
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
@@ -996,6 +1105,11 @@ export class LinkCodeClient {
 
   eventsSnapshot(sessionId: SessionId): readonly SequencedAgentEvent[] {
     return this.events.snapshot(sessionId);
+  }
+
+  /** Register this client as THE browser host; `executor` runs broker commands (desktop only). */
+  registerBrowserHost(executor: BrowserCommandExecutor): Promise<void> {
+    return this.browserHost.register(executor);
   }
 
   openTerminal(opts: {

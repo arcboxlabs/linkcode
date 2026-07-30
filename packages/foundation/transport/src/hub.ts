@@ -22,6 +22,11 @@ interface PendingTerminalRequest extends TerminalAttachmentCredentials {
   conn: Transport;
 }
 
+interface BrowserHostRegistration {
+  conn: Transport;
+  hostId: string;
+}
+
 /**
  * Composes many client connections into the single `Transport` the daemon's `Host` consumes.
  * Correlated replies return only to their request's connection; session events keep their
@@ -38,6 +43,8 @@ export class Hub implements Transport {
   /** Kept through origin disconnect so a late host reply cannot collide with a reused request id. */
   private readonly pendingReplies = new Map<string, Transport>();
   private readonly pendingTerminals = new Map<string, PendingTerminalRequest>();
+  private readonly pendingBrowserHosts = new Map<string, BrowserHostRegistration>();
+  private browserHost: BrowserHostRegistration | null = null;
   private readonly inbound = new Listeners<ValidatedWireMessage>();
   private readonly closed = new Listeners<void>();
 
@@ -57,6 +64,11 @@ export class Hub implements Transport {
     this.unsubs.get(conn)?.();
     this.unsubs.delete(conn);
     this.conns.delete(conn);
+    if (this.browserHost?.conn === conn) {
+      const { hostId } = this.browserHost;
+      this.browserHost = null;
+      this.inbound.emit(createWireMessage({ kind: 'browser.host.detached', hostId }));
+    }
     const subscription = this.subscriptions.get(conn);
     this.subscriptions.delete(conn);
     if (!subscription) return;
@@ -85,6 +97,8 @@ export class Hub implements Transport {
 
   private route(conn: Transport, msg: ValidatedWireMessage): void {
     const p = msg.payload;
+    if (p.kind === 'browser.host.detached') return;
+    if (p.kind === 'browser.command.result' && this.browserHost?.conn !== conn) return;
     const subscription = this.subscriptions.get(conn);
     if ('clientReqId' in p && this.pendingReplies.has(p.clientReqId)) {
       bestEffort(() =>
@@ -129,6 +143,9 @@ export class Hub implements Transport {
           attachmentSecret: p.attachmentSecret,
         });
       }
+      if (p.kind === 'browser.host.register') {
+        this.pendingBrowserHosts.set(p.clientReqId, { conn, hostId: p.hostId });
+      }
     }
     this.inbound.emit(msg);
   }
@@ -158,7 +175,43 @@ export class Hub implements Transport {
           );
         }
       }
+      const pendingBrowserHost = this.pendingBrowserHosts.get(p.replyTo);
+      this.pendingBrowserHosts.delete(p.replyTo);
+      if (pendingBrowserHost && p.kind === 'request.succeeded') {
+        if (this.conns.has(pendingBrowserHost.conn)) {
+          this.browserHost = pendingBrowserHost;
+        } else {
+          this.inbound.emit(
+            createWireMessage({
+              kind: 'browser.host.detached',
+              hostId: pendingBrowserHost.hostId,
+            }),
+          );
+        }
+      }
       if (conn && this.conns.has(conn)) bestEffort(() => conn.send(msg));
+      return;
+    }
+
+    if (p.kind === 'browser.command') {
+      const host = this.browserHost;
+      if (host && this.conns.has(host.conn)) bestEffort(() => host.conn.send(msg));
+      else {
+        this.inbound.emit(
+          createWireMessage({
+            kind: 'browser.command.result',
+            commandId: p.commandId,
+            result: {
+              ok: false,
+              error: {
+                code: 'host-unavailable',
+                message: 'no desktop client is registered as the browser host',
+                retryable: true,
+              },
+            },
+          }),
+        );
+      }
       return;
     }
 
@@ -224,6 +277,8 @@ export class Hub implements Transport {
     this.subscriptions.clear();
     this.pendingReplies.clear();
     this.pendingTerminals.clear();
+    this.pendingBrowserHosts.clear();
+    this.browserHost = null;
     this.inbound.clear();
     this.closed.emit();
   }

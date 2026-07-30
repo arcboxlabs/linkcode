@@ -6,6 +6,12 @@ import { agentRuntimeProber } from '../probe';
 
 let listener: ((event: AgentSessionEvent) => void) | undefined;
 const prompt = vi.fn<AgentSession['prompt']>();
+const resources = {
+  promptFail: false,
+  skillFail: false,
+  prompts: [] as Array<{ name: string; description: string; argumentHint?: string }>,
+  skills: [] as Array<{ name: string; description: string }>,
+};
 
 const session = {
   abort: vi.fn(),
@@ -25,6 +31,14 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
   AuthStorage: { create: () => ({ setRuntimeApiKey: vi.fn() }) },
   DefaultResourceLoader: class {
     reload = vi.fn();
+    getPrompts() {
+      if (resources.promptFail) throw new Error('prompt discovery failed');
+      return { prompts: resources.prompts, diagnostics: [] };
+    }
+    getSkills() {
+      if (resources.skillFail) throw new Error('skill discovery failed');
+      return { skills: resources.skills, diagnostics: [] };
+    }
   },
   ModelRegistry: {
     create: () => ({
@@ -42,12 +56,18 @@ function record(adapter: PiAdapter): AgentEvent[] {
   return events;
 }
 
-async function startedAdapter(): Promise<{ adapter: PiAdapter; events: AgentEvent[] }> {
+async function startAdapter(): Promise<{ adapter: PiAdapter; events: AgentEvent[] }> {
   const adapter = new PiAdapter();
   const events = record(adapter);
   await adapter.start({ kind: 'pi', cwd: '/tmp/repo' });
-  events.length = 0;
   return { adapter, events };
+}
+
+async function startedAdapter(): Promise<{ adapter: PiAdapter; events: AgentEvent[] }> {
+  const result = await startAdapter();
+  const { events } = result;
+  events.length = 0;
+  return result;
 }
 
 function assistant(stopReason: 'aborted' | 'error' | 'stop', errorMessage?: string): object {
@@ -62,7 +82,91 @@ describe('PiAdapter lifecycle', () => {
   beforeEach(() => {
     listener = undefined;
     prompt.mockReset();
+    resources.promptFail = false;
+    resources.skillFail = false;
+    resources.prompts = [];
+    resources.skills = [];
     vi.spyOn(agentRuntimeProber, 'resolveEntry').mockReturnValue(undefined);
+  });
+
+  it('advertises prompt templates and skills in its slash-command catalog', async () => {
+    resources.prompts = [
+      { name: 'review', description: 'Review changes', argumentHint: '<target>' },
+      { name: 'bare', description: '' },
+    ];
+    resources.skills = [
+      { name: 'pdf', description: 'PDF tools' },
+      { name: 'user-only', description: '' },
+    ];
+
+    const { adapter, events } = await startAdapter();
+
+    expect(adapter.capabilities.slashCommands).toBe(true);
+    expect(events).toContainEqual({
+      type: 'available-commands-update',
+      commands: [
+        { name: 'review', description: 'Review changes', argumentHint: '<target>' },
+        { name: 'bare', description: undefined, argumentHint: undefined },
+        { name: 'skill:pdf', description: 'PDF tools' },
+        { name: 'skill:user-only', description: undefined },
+      ],
+    });
+  });
+
+  it('publishes an empty catalog without failing the session when discovery fails', async () => {
+    resources.promptFail = true;
+    resources.skillFail = true;
+
+    const { events } = await startAdapter();
+
+    expect(events).toContainEqual({ type: 'available-commands-update', commands: [] });
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+  });
+
+  it.each([
+    {
+      failed: 'prompt templates',
+      configure() {
+        resources.promptFail = true;
+        resources.skills = [{ name: 'pdf', description: 'PDF tools' }];
+      },
+      commands: [{ name: 'skill:pdf', description: 'PDF tools' }],
+    },
+    {
+      failed: 'skills',
+      configure() {
+        resources.skillFail = true;
+        resources.prompts = [{ name: 'review', description: 'Review changes' }];
+      },
+      commands: [{ name: 'review', description: 'Review changes', argumentHint: undefined }],
+    },
+  ])('preserves valid commands when $failed discovery fails', async (testCase) => {
+    testCase.configure();
+
+    const { events } = await startAdapter();
+
+    expect(events).toContainEqual({
+      type: 'available-commands-update',
+      commands: testCase.commands,
+    });
+    expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+  });
+
+  it('runs slash commands through the prompt lifecycle', async () => {
+    const { adapter, events } = await startedAdapter();
+
+    await adapter.send({ type: 'command', name: 'skill:pdf', arguments: 'extract a.pdf' });
+    expect(prompt).toHaveBeenCalledWith('/skill:pdf extract a.pdf', undefined);
+    expect(events).toEqual([{ type: 'status', status: 'running' }]);
+
+    emit({ type: 'agent_end', messages: [assistant('stop')], willRetry: false });
+    emit({ type: 'agent_settled' });
+
+    expect(events).toEqual([
+      { type: 'status', status: 'running' },
+      { type: 'stop', stopReason: 'end_turn' },
+      { type: 'status', status: 'idle' },
+    ]);
   });
 
   it('unwinds a prompt rejected after announcing running', async () => {

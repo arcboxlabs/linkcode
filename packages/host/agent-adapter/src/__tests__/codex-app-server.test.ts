@@ -1,7 +1,13 @@
+import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { CodexAppServer } from '../native/codex/app-server';
+
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal()),
+  spawn: vi.fn(),
+}));
 
 const RE_TAIL = /TAIL$/;
 
@@ -53,6 +59,29 @@ async function attach(child: ReturnType<typeof fakeChild>) {
 }
 
 describe('CodexAppServer stdio JSON-RPC', () => {
+  it('uses a supplied environment as a complete replacement', async () => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValueOnce(child.child as never);
+    const environment = { PATH: '/project/bin', PROJECT_ONLY: '1' };
+    const starting = CodexAppServer.start({
+      binaryPath: '/codex',
+      env: environment,
+      onNotification: vi.fn(),
+      onExit: vi.fn(),
+    });
+    await vi.waitFor(() => expect(child.writes).toHaveLength(1));
+    child.receive({ id: 1, result: {} });
+
+    const server = await starting;
+    expect(spawn).toHaveBeenLastCalledWith('/codex', ['app-server'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: environment,
+      signal: undefined,
+      windowsHide: true,
+    });
+    server.close();
+  });
+
   it('completes initialize/initialized handshake over an attached child', async () => {
     const child = fakeChild();
 

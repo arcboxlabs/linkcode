@@ -1,3 +1,5 @@
+// First import in the app: patches the AbortSignal gaps everything below assumes (see the module).
+import '../polyfills';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { sanitizeSentryTransaction } from '@linkcode/common/sentry';
 import type { TelemetryConfig } from '@linkcode/common/telemetry-config';
@@ -12,7 +14,11 @@ import { useSingleton } from 'foxact/use-singleton';
 import { useEffect, useMemo } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppIntlProvider, AppThemeProvider } from '../components/app-providers';
+import {
+  AppIntlProvider,
+  AppKeyboardProvider,
+  AppThemeProvider,
+} from '../components/app-providers';
 import { RootNavigator } from '../components/navigation';
 import { MobileProductAnalyticsProvider } from '../components/product-analytics-provider';
 import '../global.css';
@@ -66,6 +72,7 @@ function RootLayout() {
           <SafeAreaProvider key="safe-area" />,
           <AppThemeProvider key="theme" />,
           <AppIntlProvider key="intl" locale={locale} messages={messages} />,
+          <AppKeyboardProvider key="keyboard" />,
           <BottomSheetModalProvider key="bottom-sheet" />,
           <MobileProductAnalyticsProvider key="product-analytics" />,
         ]}

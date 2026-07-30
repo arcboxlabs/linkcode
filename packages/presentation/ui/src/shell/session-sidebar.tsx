@@ -272,7 +272,7 @@ export function HostFooter({
                   <Button size="icon-xs" variant="ghost" aria-label={t('account')}>
                     <Avatar className="size-5">
                       {account.image && <AvatarImage src={account.image} alt={account.name} />}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-2xs">
                         {accountInitial(account)}
                       </AvatarFallback>
                     </Avatar>
@@ -475,7 +475,7 @@ function RemoteHostList({
                 <span className="size-1.5 shrink-0 rounded-full bg-success" />
                 <span className="min-w-0 flex-1 truncate text-left font-medium">{host.name}</span>
                 {host.statusLabel && (
-                  <span className="shrink-0 font-normal text-muted-foreground text-xs">
+                  <span className="shrink-0 font-normal text-muted-foreground text-xs tabular-nums">
                     {host.statusLabel}
                   </span>
                 )}

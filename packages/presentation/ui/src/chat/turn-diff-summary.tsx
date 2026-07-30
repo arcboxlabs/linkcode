@@ -128,7 +128,10 @@ function FileRow({
     <FilePathTooltip anchor={tooltipAnchorRef} tooltip={file.path}>
       {onOpenFile ? (
         <button
-          className={cn(rowClassName, 'cursor-pointer transition-colors hover:bg-muted')}
+          className={cn(
+            rowClassName,
+            'cursor-pointer transition-colors hover:bg-muted active:bg-muted',
+          )}
           type="button"
           onClick={() => onOpenFile(file.path)}
         >

@@ -42,6 +42,8 @@ export class TunnelSocketCloseError extends Error {
   }
 }
 
+const HTTP_SCHEME_RE = /^http/;
+
 export async function dialTunnelSocket(opts: TunnelSocketOptions): Promise<WebSocket> {
   let token: string;
   try {
@@ -49,7 +51,7 @@ export async function dialTunnelSocket(opts: TunnelSocketOptions): Promise<WebSo
   } catch (error) {
     throw new TunnelAuthError(`TunnelClient: token refresh failed: ${extractErrorMessage(error)}`);
   }
-  const url = new URL(TUNNEL_PATH, opts.baseUrl.replace(/^http/, 'ws'));
+  const url = new URL(TUNNEL_PATH, opts.baseUrl.replace(HTTP_SCHEME_RE, 'ws'));
   url.searchParams.set('access_token', token);
   url.searchParams.set('role', opts.role);
   url.searchParams.set('host', opts.hostId);
@@ -89,8 +91,11 @@ export function prepareTunnelSocket(
     let failure: Error | null = null;
     const timer = setTimeout(() => {
       const error = new Error('TunnelClient: host handshake timed out');
-      if (!settled) reject(error);
-      else rejectActive(error);
+      if (settled) {
+        rejectActive(error);
+      } else {
+        reject(error);
+      }
     }, HANDSHAKE_TIMEOUT_MS);
     const settle = (status: PreparedTunnelSocket['status']): void => {
       if (settled) return;
@@ -124,15 +129,21 @@ export function prepareTunnelSocket(
       if (released) return;
       const error = new TunnelSocketCloseError(event.code);
       failure ??= error;
-      if (!settled) reject(error);
-      else rejectActive(error);
+      if (settled) {
+        rejectActive(error);
+      } else {
+        reject(error);
+      }
     });
     ws.addEventListener('error', () => {
       if (released) return;
       const error = new Error('TunnelClient: connection error during handshake');
       failure ??= error;
-      if (!settled) reject(error);
-      else rejectActive(error);
+      if (settled) {
+        rejectActive(error);
+      } else {
+        reject(error);
+      }
     });
     ws.send(rotation ? `${TUNNEL_HOST_ROTATE_PREFIX}${rotation}` : TUNNEL_HOST_READY_FRAME);
   });

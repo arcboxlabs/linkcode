@@ -24,6 +24,7 @@ const PORT = 44000 + (process.pid % 1000);
 const FEATURE_BRANCH = 'feature/code-428';
 const RE_FIXTURE_WORKSPACE = /branch-picker-fixture/;
 const RE_FEATURE_BRANCH = /feature\/code-428/;
+const RECORDING_PAUSE_MS = process.env.LINKCODE_E2E_RECORDING === '1' ? 1500 : 0;
 
 function fail(message: string): never {
   console.error(`FAIL: ${message}`);
@@ -41,6 +42,10 @@ async function waitForDaemon(): Promise<void> {
     }
   }
   fail(`daemon did not come up on port ${PORT}`);
+}
+
+async function pauseForRecording(win: Page): Promise<void> {
+  if (RECORDING_PAUSE_MS > 0) await win.waitForTimeout(RECORDING_PAUSE_MS);
 }
 
 function makeRepository(path: string): void {
@@ -80,22 +85,26 @@ function makeRepository(path: string): void {
 
 async function run(app: ElectronApplication, win: Page, repository: string): Promise<void> {
   await win.getByRole('combobox').waitFor({ state: 'visible', timeout: 30000 });
+  await pauseForRecording(win);
   await app.evaluate(({ dialog }, directory) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [directory] });
   }, repository);
 
   await win.getByRole('button', { name: 'Add project' }).click();
+  await pauseForRecording(win);
   await win.getByRole('menuitem', { name: 'Use an existing folder' }).click();
   await win.getByText('branch-picker-fixture').first().waitFor({
     state: 'visible',
     timeout: 15000,
   });
+  await pauseForRecording(win);
 
   const workspacePicker = win.getByRole('button', { name: 'Choose a workspace' });
   await workspacePicker.click();
   await win
     .getByRole('menuitemradio', { name: RE_FIXTURE_WORKSPACE })
     .waitFor({ state: 'visible', timeout: 15000 });
+  await pauseForRecording(win);
   await win.getByRole('menuitemradio', { name: RE_FIXTURE_WORKSPACE }).click();
 
   const branchPicker = win.getByRole('button', { name: 'Branch' });
@@ -107,11 +116,13 @@ async function run(app: ElectronApplication, win: Page, repository: string): Pro
   if (!itemText?.includes('isolated worktree')) {
     fail('non-current branch did not explain isolated worktree startup');
   }
+  await pauseForRecording(win);
   await feature.click();
 
   if (!(await branchPicker.textContent())?.includes(FEATURE_BRANCH)) {
     fail('selected branch was not reflected in the desktop context bar');
   }
+  await pauseForRecording(win);
   console.log('PASS desktop new-session branch picker');
 }
 
@@ -134,7 +145,14 @@ async function main(): Promise<void> {
   try {
     daemon = spawn(process.execPath, ['dist/index.js'], {
       cwd: daemonDir,
-      env: { ...process.env, HOME: home, LINKCODE_PORT: String(PORT) },
+      // The dist bundle is stamped `release`, while this unpackaged Electron shell resolves as
+      // `development`; force both onto the same isolated state dir so desktop finds runtime.json.
+      env: {
+        ...process.env,
+        HOME: home,
+        LINKCODE_PORT: String(PORT),
+        LINKCODE_CHANNEL: 'development',
+      },
       stdio: 'ignore',
     });
     await waitForDaemon();

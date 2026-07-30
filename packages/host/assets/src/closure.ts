@@ -48,6 +48,8 @@ export const CLOSURE_REGISTRIES = [
   'https://registry.npmmirror.com',
 ] as const;
 
+const TRAILING_SLASH_RE = /\/$/;
+
 export function npmTarballUrls(
   name: string,
   version: string,
@@ -55,5 +57,5 @@ export function npmTarballUrls(
 ): string[] {
   const basename = name[0] === '@' ? name.split('/', 2)[1] : name;
   const tail = `${name}/-/${basename}-${version}.tgz`;
-  return registries.map((registry) => `${registry.replace(/\/$/, '')}/${tail}`);
+  return registries.map((registry) => `${registry.replace(TRAILING_SLASH_RE, '')}/${tail}`);
 }

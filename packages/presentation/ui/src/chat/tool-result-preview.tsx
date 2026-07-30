@@ -46,16 +46,7 @@ function RenderedContent({
 }): React.ReactNode {
   if (content.type === 'content') return <ContentBlockView block={content.content} />;
   if (content.type === 'diff') {
-    return (
-      <DiffBlock
-        navigation={toolCallDiffNavigation(toolCall, content)}
-        path={content.path}
-        oldPath={content.oldPath}
-        oldText={content.oldText}
-        newText={content.newText}
-        patch={content.patch?.text}
-      />
-    );
+    return <DiffBlock content={content} navigation={toolCallDiffNavigation(toolCall, content)} />;
   }
   const command = toolCallCommand(toolCall);
   if (TerminalBlockComponent) {

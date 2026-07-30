@@ -6,7 +6,10 @@
       "@desktop/*": ["./src/*"],
       "@renderer/*": ["./src/renderer/src/*"]
     },
-    "types": ["node"]
+    "types": ["node", "react/canary"],
+    // The `e2e/*.mts` harnesses run under plain `node`, whose ESM resolver requires the explicit
+    // file extension on relative imports. Safe here because the base config is `noEmit`.
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src",

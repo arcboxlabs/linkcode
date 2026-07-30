@@ -1,84 +1,125 @@
-import { LinkCodeClient } from '@linkcode/client-core';
+import type { ConnectionSource } from '@linkcode/client-core';
+import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
+import NetInfo from '@react-native-community/netinfo';
 import { randomUUID } from 'expo-crypto';
-import { useEffect } from 'foxact/use-abortable-effect';
-import { useCallback, useState } from 'react';
+import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 import type { HostProfile } from '../stores/host-store';
 import { createHostTransport } from './create-host-transport';
 import { captureMobileProductEvent } from './product-analytics';
 
 export type HostConnectionStatus = 'connecting' | 'ready' | 'error';
 
-export interface HostClientState {
-  client: LinkCodeClient;
-  status: HostConnectionStatus;
-  /** Tears down the current client and dials again. */
-  retry: () => void;
+interface HostClientBase {
+  /** Attempt number of the in-flight or last recovery run; above 1 means this is a reconnect. */
+  readonly attempt: number;
+  /** Abandon any pending backoff and dial again now. */
+  readonly retry: () => void;
+  /** Why the last attempt failed, when the controller knows. Kept because "unable to reach" alone
+   * tells neither the user nor a triager whether the host is down, unreachable, or speaking a
+   * different wire version — the causes need entirely different responses. */
+  readonly failure?: string;
 }
 
-const connectionStartedAtByClient = new WeakMap<LinkCodeClient, number>();
+interface HostClientReady extends HostClientBase {
+  readonly status: 'ready';
+  readonly client: LinkCodeClient;
+}
+
+interface HostClientPending extends HostClientBase {
+  readonly status: 'connecting' | 'error';
+  readonly client: null;
+}
+
+export type HostClientState = HostClientReady | HostClientPending;
 
 /**
- * One client's connection lifecycle per host, mirroring workbench's WorkbenchRuntimeConnection:
- * connecting → ready | error; retry recreates the transport + client pair.
+ * One host's connection lifecycle, on the shared {@link ConnectionController}: a dropped socket
+ * recovers on its own with capped backoff, and regaining the network or returning to the foreground
+ * cuts the remaining wait short instead of letting the user stare at a stale screen.
+ *
+ * `retrying` is reported as `connecting` — the distinction is in `attempt`, so a caller that only
+ * branches on the three statuses needs no change. Callers must key this hook's component by
+ * `host.id`; the render-time reset below is only a backstop.
  */
 export function useHostClient(host: HostProfile): HostClientState {
-  const [client, setClient] = useState(() => createClient(host));
-  const [status, setStatus] = useState<HostConnectionStatus>('connecting');
+  const [controller, setController] = useState(() => createController(host));
 
-  // Render-time reset keeps the client in sync when the same mounted screen
-  // switches to a different host.
   const [trackedId, setTrackedId] = useState(host.id);
   if (trackedId !== host.id) {
     setTrackedId(host.id);
-    setStatus('connecting');
-    setClient(createClient(host));
+    setController(createController(host));
   }
 
-  const retry = useCallback(() => {
-    setStatus('connecting');
-    setClient(createClient(host));
-  }, [host]);
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 
-  // Status is already 'connecting' wherever a client is (re)created: initial state,
-  // the render-time reset above, and retry.
-  useEffect(
-    (signal) => {
-      const connectionStartedAt = connectionStartedAtByClient.get(client) ?? Date.now();
-      const offClose = client.onClose(() => {
-        if (!signal.aborted) setStatus('error');
-      });
-      client
-        .connect()
-        .then(() => {
-          if (!signal.aborted) {
-            setStatus('ready');
-            captureMobileProductEvent('host connection ready', {
-              duration_ms: Date.now() - connectionStartedAt,
-            });
-          }
-        })
-        .catch(() => {
-          if (!signal.aborted) {
-            setStatus('error');
-            captureMobileProductEvent('host connection failed', {
-              duration_ms: Date.now() - connectionStartedAt,
-            });
-          }
-        });
+  useEffect(() => {
+    controller.start();
+    return () => controller.dispose();
+  }, [controller]);
 
-      return () => {
-        offClose();
-        client.dispose();
+  // Both triggers only ever hurry a stalled connection along; neither tears down a healthy one.
+  useEffect(() => {
+    const hurryAlong = (): void => {
+      if (controller.getSnapshot().status !== 'ready') controller.retry();
+    };
+    const appState = AppState.addEventListener('change', (next) => {
+      if (next === 'active') hurryAlong();
+    });
+    const offNetInfo = NetInfo.addEventListener((state) => {
+      if (state.isConnected === true) hurryAlong();
+    });
+    return () => {
+      appState.remove();
+      offNetInfo();
+    };
+  }, [controller]);
+
+  const retry = useCallback(() => controller.retry(), [controller]);
+  const client = snapshot.contextGeneration?.client ?? null;
+  const readyClient = client && snapshot.status === 'ready' ? client : null;
+
+  // A phone pays for bytes and battery, so it takes only the sessions it opened rather than every
+  // session on the host. Re-sent per generation: a recovered connection starts back at `all`.
+  // Failing leaves the daemon broadcasting everything, which is wasteful but not broken.
+  useEffect(() => {
+    if (!readyClient) return;
+    // eslint-disable-next-line sukka/react-no-use-effect-watching -- a request to the daemon, not a useState setter the `set` prefix suggests
+    readyClient.setSubscriptionMode('attached').catch(noop);
+  }, [readyClient]);
+
+  return readyClient
+    ? { attempt: snapshot.attempt, client: readyClient, retry, status: 'ready' }
+    : {
+        attempt: snapshot.attempt,
+        client: null,
+        failure: extractErrorMessage(snapshot.error, false) ?? undefined,
+        retry,
+        status: snapshot.status === 'error' ? 'error' : 'connecting',
       };
-    },
-    [client],
-  );
-
-  return { client, status, retry };
 }
 
-function createClient(host: HostProfile): LinkCodeClient {
-  const client = new LinkCodeClient(createHostTransport(host), { randomUUID });
-  connectionStartedAtByClient.set(client, Date.now());
-  return client;
+function createController(host: HostProfile): ConnectionController<LinkCodeClient> {
+  const source: ConnectionSource = {
+    resolve: () => ({
+      endpoint: 'url' in host ? host.url : host.tunnelHostId,
+      transport: createHostTransport(host),
+    }),
+  };
+  return new ConnectionController(source, {
+    createClient: (transport) => new LinkCodeClient(transport, { randomUUID }),
+    onOutcome(outcome) {
+      captureMobileProductEvent(
+        outcome.status === 'ready' ? 'host connection ready' : 'host connection failed',
+        { duration_ms: outcome.durationMs },
+      );
+    },
+    // ~13s of dialing (250·2ⁿ capped at 5s), then stop and surface `error`. Unbounded retries
+    // would drain a phone in someone's pocket and never give up on a permanent failure — a wire
+    // version mismatch cannot heal. The AppState/NetInfo triggers restart a run when something
+    // actually changed, which is the only time another attempt can succeed.
+    retry: { retries: 6 },
+  });
 }

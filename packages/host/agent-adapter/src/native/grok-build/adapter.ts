@@ -1,4 +1,10 @@
-import type { ContentBlock, EffortLevel, StartOptions } from '@linkcode/schema';
+import type {
+  AgentStartCatalog,
+  ApprovalPolicy,
+  ContentBlock,
+  EffortLevel,
+  StartOptions,
+} from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -13,6 +19,16 @@ import { runGrokHeadless } from './process';
 
 const RE_RESUME_FAIL = /session|resume|not found/i;
 const DEFAULT_GROK_MODEL = 'grok-4.5';
+
+/** Headless mode cannot wait for interactive approval, so the single tier is visibility only —
+ * `set-approval-policy` still rejects. */
+const POLICIES = [
+  {
+    policyId: 'bypassPermissions',
+    name: 'Bypass permissions',
+    description: 'All tools run without approval prompts; this adapter cannot change it.',
+  },
+] as const satisfies ReadonlyArray<ApprovalPolicy>;
 
 /**
  * Grok Build adapter — drives the local `grok` CLI in **headless** mode (`grok -p`), not ACP.
@@ -47,17 +63,22 @@ export class GrokBuildAdapter extends BaseAgentAdapter {
     // is reflected only after a successful headless run proves the CLI accepted its `-m` value.
     if (!this.model) this.emitModel(DEFAULT_GROK_MODEL);
     this.emitApprovalPolicy({
-      availablePolicies: [
-        {
-          policyId: 'bypassPermissions',
-          name: 'Bypass permissions',
-          description: 'All tools run without approval prompts; this adapter cannot change it.',
-        },
-      ],
+      availablePolicies: [...POLICIES],
       currentPolicyId: 'bypassPermissions',
     });
     this.emitEffort(this.effort);
     return Promise.resolve();
+  }
+
+  /** Pre-session catalog: the fixed tier, so the new-session surface shows the same
+   * non-switchable posture the session will run under. Models stay on the static
+   * AGENT_MODEL_OPTIONS table. */
+  override startCatalog(): Promise<AgentStartCatalog> {
+    return Promise.resolve({
+      models: [],
+      policies: [...POLICIES],
+      defaultPolicyId: 'bypassPermissions',
+    });
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {

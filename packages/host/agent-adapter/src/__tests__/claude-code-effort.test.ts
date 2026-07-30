@@ -16,6 +16,13 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     if (!sdkMock.query) throw new Error('query mock not installed');
     return sdkMock.query(opts);
   },
+  createSdkMcpServer: (config: unknown) => config,
+  tool: (name: string, description: string, schema: unknown, handler: unknown) => ({
+    name,
+    description,
+    schema,
+    handler,
+  }),
   resolveSettings: () => Promise.resolve({ effective: sdkMock.settings }),
 }));
 
@@ -127,6 +134,37 @@ async function waitIdle(events: AgentEvent[]): Promise<void> {
 }
 
 describe('ClaudeCodeAdapter effort switching', () => {
+  it('rejects Codex ultra instead of treating it as a Claude flag setting', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    await expect(
+      adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', effort: 'ultra' }),
+    ).rejects.toThrow("claude-code: effort 'ultra' is not supported");
+    expect(queries).toHaveLength(0);
+  });
+
+  it('loads the project environment and lets account variables override it', async () => {
+    const inherited = new ClaudeCodeAdapter();
+    await inherited.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+    expect(queries[0].options.env).toEqual({
+      PATH: '/project/bin',
+      CODEX_HOME: '/project/codex',
+      PROJECT_ENV: 'loaded',
+    });
+
+    const overridden = new ClaudeCodeAdapter();
+    await overridden.start({
+      kind: 'claude-code',
+      cwd: '/tmp/repo',
+      config: { extraEnv: { PATH: '/account/bin', ACCOUNT_ENV: 'set' } },
+    });
+    expect(queries[1].options.env).toEqual({
+      PATH: '/account/bin',
+      CODEX_HOME: '/project/codex',
+      PROJECT_ENV: 'loaded',
+      ACCOUNT_ENV: 'set',
+    });
+  });
+
   it('applies initial effort while constructing the first Query', async () => {
     const { events } = await makeAdapter('high');
     const q0 = queries[0];
@@ -283,6 +321,23 @@ describe('ClaudeCodeAdapter effort switching', () => {
     expect(q2.options.effort).toBeUndefined();
     expect(q2.options.resume).toBe('sess-1');
     expect(q2.applyFlagSettings).toHaveBeenCalledWith({ ultracode: null, effortLevel: 'high' });
+  });
+
+  it('keeps one browser REPL toolset across effort-driven Query rebuilds', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const execute = vi.fn(() => Promise.resolve({ ok: true, value: null, logs: [] }));
+    const createToolset = vi.fn(() => ({ documentation: 'browser docs', execute }));
+    adapter.attachBrowserTools(createToolset);
+
+    await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+    const firstServer = (queries[0].options.mcpServers as Record<string, unknown>).linkcode_browser;
+    await setEffort(adapter, 'max');
+    await prompt(adapter);
+    const secondServer = (queries[1].options.mcpServers as Record<string, unknown>)
+      .linkcode_browser;
+
+    expect(createToolset).toHaveBeenCalledTimes(1);
+    expect(secondServer).not.toBe(firstServer);
   });
 
   it('does not let a detached Query unwind settle its replacement', async () => {

@@ -105,6 +105,13 @@ export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
 }
 
+/** A new-session workspace choice, tagged with the resolved workspace it was made against so a
+ * draft opened from another entry point cannot inherit it. */
+interface NewSessionWorkspacePick {
+  forInitial: WorkspaceId | null;
+  picked: WorkspaceId;
+}
+
 /**
  * The workbench feature surface: session inbox + conversation stream + composer. Assumes the data
  * plane is already mounted above it — wrap in `WorkbenchProviders` and mount as a feature page.
@@ -114,33 +121,41 @@ export function Workbench({
 }: WorkbenchProps): React.ReactNode {
   const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [workspacePick, setWorkspacePick] = useState<NewSessionWorkspacePick | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err));
   }
 
-  const rawSessions = useWorkbenchSessions(handleError);
   // Leaving the current surface drops its error state: a stale failure must not follow the user
   // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
+  // The new-session workspace pick goes with it: the shells remount the draft page per entry
+  // point, which resets its other picks, so an abandoned workspace must not outlive it either.
+  function leaveSurface(): void {
+    setErrorMessage(null);
+    setWorkspacePick(null);
+  }
+
+  const rawSessions = useWorkbenchSessions(handleError);
   const sessions: WorkbenchSessions = {
     ...rawSessions,
     select(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.select(id);
     },
     startDraft(workspaceId) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.startDraft(workspaceId);
     },
     goBack() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goBack();
     },
     goForward() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goForward();
     },
     close(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.close(id);
     },
   };
@@ -159,6 +174,8 @@ export function Workbench({
         conversation={conversation}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
+        workspacePick={workspacePick}
+        onWorkspacePick={setWorkspacePick}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
       />
@@ -172,6 +189,8 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
+  workspacePick: NewSessionWorkspacePick | null;
+  onWorkspacePick: (pick: NewSessionWorkspacePick) => void;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -181,6 +200,8 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
+  workspacePick,
+  onWorkspacePick,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
@@ -210,7 +231,6 @@ function WorkbenchSessionSurface({
   const active = sessions.active;
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
-  const agentCatalogs = useAgentStartCatalogs();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -494,16 +514,17 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const workspaceIds = new Set<WorkspaceId>();
+  const workspacesById = new Map<WorkspaceId, WorkspaceRecord>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
   for (const workspace of allWorkspaces) {
     const kind = workspaceKind(workspace);
     if (kind === 'worktree') continue;
-    workspaceIds.add(workspace.workspaceId);
+    workspacesById.set(workspace.workspaceId, workspace);
     if (kind === 'chat') chatWorkspace ??= workspace;
     else projectWorkspaces.push(workspace);
   }
+  const workspaceIds = new Set(workspacesById.keys());
 
   // Resolve the draft's initial picks: an explicit preselection (group "+", Chats "+") wins, then
   // the persisted last-used workspace (if it still exists), then chat, then the first project.
@@ -524,6 +545,20 @@ function WorkbenchSessionSurface({
         initialProvider: lastProvider ?? 'claude-code',
       }
     : null;
+
+  // The new-session page's workspace is owned above rather than by the surface because the
+  // catalogs below are scoped by its cwd — two copies would let them drift and advertise a default
+  // the session would not start in. The pick is tagged with the workspace it was resolved against,
+  // and leaving the surface clears it (see `leaveSurface`), so a later draft never inherits it.
+  const newSessionWorkspaceId =
+    workspacePick?.forInitial === initialWorkspaceId ? workspacePick.picked : initialWorkspaceId;
+  const agentCatalogs = useAgentStartCatalogs(
+    newSessionWorkspaceId === null ? undefined : workspacesById.get(newSessionWorkspaceId)?.cwd,
+  );
+
+  function handleNewSessionWorkspaceChange(workspaceId: WorkspaceId): void {
+    onWorkspacePick({ forInitial: initialWorkspaceId, picked: workspaceId });
+  }
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId || respondingRequestIds.has(requestId)) return;
@@ -582,6 +617,8 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      newSessionWorkspaceId={newSessionWorkspaceId}
+      onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
@@ -600,6 +637,7 @@ function WorkbenchSessionSurface({
       header={{
         title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
+        sessionId: active?.sessionId ?? null,
         usage: conversation.usage,
       }}
       navigation={{

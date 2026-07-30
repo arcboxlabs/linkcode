@@ -8,7 +8,7 @@ const schedule: Schedule = {
   scheduleId: 'sch-1' as ScheduleId,
   spec: {
     prompt: 'summarize',
-    cadence: { type: 'interval', everyMs: 60_000 },
+    cadence: { type: 'interval', everyMs: 60000 },
     target: { type: 'new-session', config: { kind: 'claude-code', cwd: '/repo' } },
   },
   status: 'active',

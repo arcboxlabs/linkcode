@@ -15,7 +15,9 @@ Read by the daemon, desktop, webview, or mobile at run time.
 
 | Variable | Read at | Effect |
 | --- | --- | --- |
-| `LINKCODE_PROFILE` | `apps/daemon/src/config.ts` | Isolated state universe: forks the daemon state dir to `~/.linkcode-<name>`, plus DB, `runtime.json`, and HQ device identity. `[a-z0-9-]`, ≤32 chars; invalid aborts boot. Desktop reads it too, where `--profile=<name>` outranks it, and re-injects the resolved value into the supervised daemon. Unset = the shared `~/.linkcode`. |
+| `LINKCODE_CHANNEL` | `apps/daemon/src/paths.ts` | Picks the daemon's on-disk universe: `release` → `~/.linkcode` + `~/LinkCode` + `…/LinkCode/assets`; `development` → the `LinkCode Development` / `.linkcode.development` set (CODE-460). Outranks the build-time stamp, which is why the desktop supervisor always injects its own `CHANNEL` — the devshell pack's bundled daemon is stamped `release`. Any other value aborts boot. |
+| `LINKCODE_BUILD_CHANNEL` | `apps/daemon/tsup.config.ts` (`define`) | **Build-time stamp, not a runtime knob.** tsup replaces the literal with `release`, so a built daemon defaults to release and the TS source defaults to development. Setting it by hand in a shell works but is not the supported override — use `LINKCODE_CHANNEL`. |
+| `LINKCODE_PROFILE` | `apps/daemon/src/config.ts` | Isolated state universe *within a channel*: forks the state dir to the `-<name>` sibling (`~/.linkcode.development-alpha`), plus DB, `runtime.json`, and HQ device identity. `[a-z0-9-]`, ≤32 chars; invalid aborts boot. Workspaces and the asset store do not fork by profile. Desktop reads it too, where `--profile=<name>` outranks it, and re-injects the resolved value into the supervised daemon. Unset = the channel's default universe. |
 | `LINKCODE_PORT` | `apps/daemon/src/config.ts` | Overrides every configured listener's port. Must parse as an integer in `1..65535`, otherwise the config value stands. |
 | `LINKCODE_HOST` | `apps/daemon/src/config.ts` | Overrides every listener's bind host. |
 | `LINKCODE_PTY_SIDECAR_PATH` | `apps/daemon/src/pty/sidecar.ts` | Absolute path to the `linkcode-pty` binary; always wins. Dev falls back to `target/release/linkcode-pty`; a bundled `dist/` daemon has no fallback and disables terminals. The packaged desktop supervisor sets it to `<resourcesPath>/sidecar/<arch>`. |
@@ -24,12 +26,17 @@ Read by the daemon, desktop, webview, or mobile at run time.
 | `LINKCODE_ASSETS_DIR` | `packages/host/assets/src/paths.ts` | Redirects the managed-asset store root (default: `~/Library/Application Support/LinkCode/assets`, `%LOCALAPPDATA%/LinkCode/assets`, `$XDG_DATA_HOME/linkcode/assets`). Resolved per call, so tests can stub it. |
 | `ELECTRON_RENDERER_URL` | `apps/desktop/src/main/window.ts` | Dev-server URL the main process loads instead of the packaged renderer. Written by `apps/desktop/scripts/dev.mts`. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and lowercase forms) | `packages/host/assets/src/system-proxy/index.ts` | If any proxy variable is non-empty, OS proxy autodetection is skipped and the fetch layer's own env handling takes over. `NO_PROXY` is merged back in when an OS-detected proxy is passed explicitly. |
-| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). macOS starts a login shell on purpose: a Finder-launched app inherits launchd's bare `PATH`. |
+| `SHELL`, `COMSPEC` | `apps/daemon/src/pty/sidecar.ts`; `packages/host/agent-adapter/src/shell-env.ts` | Default PTY shell (`/bin/bash` / `cmd.exe` when unset). On macOS, terminals and Codex/Claude agent processes load the user's login shell because a Finder-launched app inherits launchd's bare `PATH`. |
 | `CODEX_HOME`, `PI_CODING_AGENT_DIR` | `packages/host/agent-adapter/src/native/{codex,pi}/history.ts` | Agent CLI home directories the adapters read history and auth from (`~/.codex`, `~/.pi/agent`). |
 
 ### Written into child processes
 
 Not configuration you set — the daemon produces these for the processes it spawns.
+
+On macOS, Codex and Claude start with the environment returned by the user's login shell in the
+project directory. If `direnv` is available after shell startup, the project environment is applied
+too. The resolved environment is cached for the session, account `extraEnv` is merged last, and
+Codex config/history paths use the same environment. Other platforms retain the daemon environment.
 
 | Variable | Written by | Meaning |
 | --- | --- | --- |
@@ -37,6 +44,7 @@ Not configuration you set — the daemon produces these for the processes it spa
 | `LINKCODE_SERVICE_<NAME>_PORT`, `LINKCODE_SERVICE_<NAME>_URL` | same | Sibling-service discovery; `<NAME>` is the service name upper-cased with non-word characters replaced by `_`. |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CODEX_API_KEY`, `OPENAI_BASE_URL`, `XAI_API_KEY` | `packages/host/agent-adapter/src/credential.ts` | Account credentials handed to the agent subprocess. With token auth, `ANTHROPIC_API_KEY` is explicitly blanked so an inherited key can't defeat the bearer token. |
 | account `extraEnv` | `packages/foundation/schema/src/model/account.ts` | A user-defined `Record<string, string>` merged last into every agent subprocess. Open-ended by design — this is the supported escape hatch for agent-specific variables the adapters don't model. |
+| `ELECTRON_RUN_AS_NODE`, `ELECTRON_NO_ATTACH_CONSOLE`, `LINKCODE_RESOLVING_ENVIRONMENT` | `packages/host/agent-adapter/src/shell-env.ts` | Temporary flags used only while the login shell reports its environment. They make the packaged Electron runtime execute the JSON probe as Node, suppress console attachment, and let shell startup skip interactive-only work. Original values are restored before the agent starts. |
 | `TERM` | `crates/linkcode-pty/src/pty.rs` | Hard-set to `xterm-256color` on every PTY child, then overlaid with the caller's env. The sidecar itself reads no environment. |
 
 ## Cloud overrides
@@ -81,8 +89,11 @@ client configuration or new build.
 | `LINKCODE_REQUIRE_PTY_SIDECAR` | `apps/daemon/tests/integration/pty-sidecar.test.ts`, `terminal-flood.test.ts` | `1` turns a missing `linkcode-pty` binary from a silent skip into a hard failure. CI sets it; set it locally too when you mean to exercise the real wire protocol. |
 | `LINKCODE_PTY_SIDECAR_PATH` | `apps/daemon/e2e/startup.e2e.ts` | Points the spawned daemon at the compiled sidecar (CI uses `target/debug/linkcode-pty`). |
 | `LINKCODE_HOST`, `LINKCODE_PORT` | daemon/webview/desktop E2E harnesses | Pin the harness daemon to `127.0.0.1` on an ephemeral port. |
-| `LINKCODE_PROFILE` | desktop E2E | Isolates a run's state universe. Must be identical on both sides — the desktop app and its daemon — or they follow different `runtime.json` files. |
-| `HOME` | every E2E harness | Redirected to a fresh temp dir so runs never touch the real `~/.linkcode`. Use a *fresh* one per run. |
+| `LINKCODE_PROFILE` | desktop E2E | Isolates a run's state universe. Must be identical on both sides — the desktop app and its daemon — or they follow different `runtime.json` files. The same applies to `LINKCODE_CHANNEL` when a harness sets it. |
+| `HOME` | every E2E harness | Redirected to a fresh temp dir so runs never touch the real state dirs. Use a *fresh* one per run. |
+| `LINKCODE_E2E_KEEP_OPEN` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` hands the app over at the pause and waits for you to close the window instead of running a timer. The two section-close checks after the pause are given up in exchange — the alternative is yanking the window away from whoever is driving it. |
+| `LINKCODE_E2E_HOLD_MS` | `apps/desktop/e2e/simulator-panel.e2e.mts` | Widens the pause that leaves the window live to be driven by hand (default `30000`). For demoing the simulator panel rather than checking it. |
+| `LINKCODE_E2E_SKIP_RECLAIM` | `apps/desktop/e2e/simulator-panel.e2e.mts` | `1` drops the closing CODE-419 reclaim check, whose last act is to SIGTERM the daemon — correct in a test, looks like a crash in a demo. The run then proves everything *except* reclaim-on-shutdown. |
 | `XDG_CONFIG_HOME` | `apps/desktop/e2e/packaged-smoke.e2e.mts` | Redirects Electron/Chromium config for the packaged run. |
 | `NODE_ENV` | `apps/webview/e2e/browser-smoke.e2e.mts` | Forced to `development` — the mock transport is guarded by `import.meta.env.DEV`. |
 | `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` | `packages/host/engine/tests/integration/git-status.test.ts` | Point git at fixture config so the machine's gitconfig (notably commit signing) can't leak into assertions. |

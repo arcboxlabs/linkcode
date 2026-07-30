@@ -32,9 +32,8 @@ export function readAgentCredential(config: StartOptions['config']): AgentCreden
 /**
  * Build the `env` for the claude-code subprocess. The SDK `env` **replaces** the process
  * environment, so `base` is spread to preserve PATH/HOME; undefined when the account contributes
- * nothing, so the CLI inherits the parent environment (the login / OAuth path). With an `authToken`,
- * `ANTHROPIC_API_KEY` is blanked — Claude Code prefers a non-empty key over the token, so a leftover
- * inherited key would silently defeat a bearer-token gateway.
+ * nothing. With an `authToken`, `ANTHROPIC_API_KEY` is blanked — Claude Code prefers a non-empty key
+ * over the token, so a leftover inherited key would silently defeat a bearer-token gateway.
  */
 export function claudeCodeEnv(
   base: Record<string, string | undefined>,
@@ -55,9 +54,8 @@ export function claudeCodeEnv(
 }
 
 /**
- * Build the extra `env` for the codex app-server subprocess. `CodexAppServer.start` **merges** this
- * over the inherited env, so only the account's own keys are returned (no base spread); undefined
- * when nothing is contributed.
+ * Build the account-specific `env` for the codex app-server subprocess. The adapter merges this
+ * over the resolved project environment; undefined when nothing is contributed.
  */
 export function codexEnv(cred: AgentCredential): Record<string, string> | undefined {
   const env: Record<string, string> = {};

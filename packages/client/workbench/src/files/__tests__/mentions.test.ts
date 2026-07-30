@@ -29,10 +29,11 @@ beforeEach(() => {
     (_operation: unknown, request: MentionRequest | null, options?: MentionDataOptions) => {
       if (!request) return { data: [{ path: 'src/stale.ts' }] };
       const nextData = [{ path: request.cwd === '/project-a' ? 'src/a.ts' : 'src/b.ts' }];
+      // Mirrors the provider: keepPreviousData is off unless a call site opts in.
       const keepsPreviousWorkspace =
         previousData !== undefined &&
         previousCwd !== request.cwd &&
-        options?.keepPreviousData !== false;
+        options?.keepPreviousData === true;
       const data = keepsPreviousWorkspace ? previousData : nextData;
       previousData = nextData;
       previousCwd = request.cwd;

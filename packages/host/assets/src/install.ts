@@ -3,6 +3,7 @@ import { existsSync, renameSync, rmSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import process from 'node:process';
 import type { InstalledAsset } from '@linkcode/schema';
+import { managedAssetKey } from '@linkcode/schema';
 import pMap from 'p-map';
 import type { AssetDescriptor, NpmClosureAssetDescriptor } from './catalog';
 import { isClosureDescriptor } from './catalog';
@@ -81,7 +82,7 @@ export function installAsset(
   version: string,
   options: InstallOptions = {},
 ): Promise<InstalledAsset> {
-  const key = `${descriptor.id}@${version}`;
+  const key = `${managedAssetKey(descriptor.id)}@${version}`;
   const running = inFlight.get(key);
   if (running) return running;
   const task = doInstall(descriptor, version, options).finally(() => inFlight.delete(key));

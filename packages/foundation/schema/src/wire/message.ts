@@ -22,10 +22,14 @@ import { WirePayloadSchema } from './payload';
 // 50 adds two-finger pinch and IME pasteboard input (CODE-397).
 // 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
 // 52 adds the simulator device-rotation wire (CODE-408).
-// 53 adds git.branch.list (CODE-426).
-// 54 adds StartOptions.branch for managed worktree provisioning (CODE-427).
-// 55 adds managed worktree workspace records (CODE-429).
-export const WIRE_PROTOCOL_VERSION = 55 as const;
+// 53 migrates managed-asset IDs from public strings to discriminated objects.
+// 54 adds the simulator agent-consent variants (CODE-420).
+// 55 adds the simulator volume buttons (CODE-414).
+// 60 adds provider/model-specific reasoning-effort metadata and Codex's distinct `ultra` level.
+// 61 adds the browser broker variants (CODE-267).
+// 62 carries project cwd on history reads so provider-local environment resolution stays coherent.
+// 63 adds branch selection and managed worktree session/workspace variants (CODE-425).
+export const WIRE_PROTOCOL_VERSION = 63 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

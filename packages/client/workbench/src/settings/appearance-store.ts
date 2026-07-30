@@ -10,6 +10,9 @@ export type TextSize = z.infer<typeof TextSizeSchema>;
 export const FilesTreeSideSchema = z.enum(['left', 'right']);
 export type FilesTreeSide = z.infer<typeof FilesTreeSideSchema>;
 
+export const ListDensitySchema = z.enum(['comfortable', 'compact']);
+export type ListDensity = z.infer<typeof ListDensitySchema>;
+
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
 const PersistedAppearanceSchema = z
   .object({
@@ -20,6 +23,7 @@ const PersistedAppearanceSchema = z
     uiFont: z.string(),
     codeFont: z.string(),
     filesTreeSide: FilesTreeSideSchema,
+    listDensity: ListDensitySchema,
   })
   .partial();
 type PersistedAppearance = z.infer<typeof PersistedAppearanceSchema>;
@@ -44,6 +48,8 @@ export interface AppearancePrefsState {
   codeFont: string;
   /** Which side of the Files panel the workspace tree docks to. */
   filesTreeSide: FilesTreeSide;
+  /** Row density for long list surfaces (thread sidebar, history); drives `data-density`. */
+  listDensity: ListDensity;
   setTextSize: (textSize: TextSize) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
   setCodeThemeLight: (codeThemeLight: CodeThemeLightId) => void;
@@ -51,6 +57,7 @@ export interface AppearancePrefsState {
   setUiFont: (uiFont: string) => void;
   setCodeFont: (codeFont: string) => void;
   setFilesTreeSide: (filesTreeSide: FilesTreeSide) => void;
+  setListDensity: (listDensity: ListDensity) => void;
 }
 
 export const useAppearancePrefsStore = create<AppearancePrefsState>()(
@@ -63,6 +70,7 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       uiFont: '',
       codeFont: '',
       filesTreeSide: 'right',
+      listDensity: 'comfortable',
       setTextSize: (textSize) => set({ textSize }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
       setCodeThemeLight: (codeThemeLight) => set({ codeThemeLight }),
@@ -70,6 +78,7 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       setUiFont: (uiFont) => set({ uiFont }),
       setCodeFont: (codeFont) => set({ codeFont }),
       setFilesTreeSide: (filesTreeSide) => set({ filesTreeSide }),
+      setListDensity: (listDensity) => set({ listDensity }),
     }),
     {
       name: 'linkcode.workbench.appearance:v1',
@@ -82,6 +91,7 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
         uiFont: state.uiFont,
         codeFont: state.codeFont,
         filesTreeSide: state.filesTreeSide,
+        listDensity: state.listDensity,
       }),
     },
   ),

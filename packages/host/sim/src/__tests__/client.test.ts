@@ -1,4 +1,5 @@
 import { PassThrough } from 'node:stream';
+import { wait } from 'foxts/wait';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimSidecarClient, SimSidecarError } from '../client';
 import { REQUEST, SCREENSHOT, STREAM_FRAME } from '../codec';
@@ -56,9 +57,7 @@ function readRequest(child: FakeChild): { requestId: string; op: { type: string 
 }
 
 async function tick(): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  await wait(0);
 }
 
 beforeEach(() => {

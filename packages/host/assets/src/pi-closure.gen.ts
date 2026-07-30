@@ -242,6 +242,13 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/@google/genai',
   },
   {
+    name: 'ws',
+    version: '8.21.0',
+    integrity:
+      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
+    path: 'node_modules/@google/genai/node_modules/ws',
+  },
+  {
     name: '@hono/node-server',
     version: '1.19.14',
     integrity:
@@ -350,6 +357,13 @@ const packages: NpmClosure['packages'] = [
     integrity:
       'sha512-W8pX7zHxjJvMIpw8JMxeJEleapXX0Q9NPszdNzqkM3MIEoIGPObdodujj+WHteXEvGfaP/AMwlNyRfEzSY6dQQ==',
     path: 'node_modules/@mistralai/mistralai',
+  },
+  {
+    name: 'ws',
+    version: '8.21.0',
+    integrity:
+      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
+    path: 'node_modules/@mistralai/mistralai/node_modules/ws',
   },
   {
     name: '@modelcontextprotocol/sdk',
@@ -1571,9 +1585,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'ws',
-    version: '8.21.0',
+    version: '8.21.1',
     integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
+      'sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==',
     path: 'node_modules/ws',
   },
   {

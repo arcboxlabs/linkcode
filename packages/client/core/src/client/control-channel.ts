@@ -36,6 +36,11 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionSubscriptionMode,
+  SimulatorAxNode,
+  SimulatorButton,
+  SimulatorConsentDecision,
+  SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorOrientation,
@@ -200,9 +205,27 @@ export class ControlChannel {
   }
 
   /** Fire-and-forget: announce this client now observes the session, so the daemon re-broadcasts
-   * the buffered per-session state a late attacher missed (the approval-policy advertisement). */
+   * the buffered per-session state a late attacher missed (the approval-policy advertisement).
+   * Also what `attached` delivery scopes to — see {@link setSubscriptionMode}. */
   attachSession(sessionId: SessionId): void {
     this.transport.send(createWireMessage({ kind: 'session.attach', sessionId }));
+  }
+
+  /** Fire-and-forget: stop observing the session. Under `attached` scope its `agent.event`s stop
+   * arriving, so a client that may reopen the session needs a seed read to catch up. */
+  detachSession(sessionId: SessionId): void {
+    this.transport.send(createWireMessage({ kind: 'session.detach', sessionId }));
+  }
+
+  /** Scope this connection's `agent.event` delivery. Answered by the Hub, not the Engine, and
+   * scoped to this connection only. `attached` is for clients paying per byte — every session the
+   * caller still wants must already be, or later be, announced via {@link attachSession}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'subscription.set',
+      clientReqId,
+      mode,
+    }));
   }
 
   /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
@@ -671,12 +694,74 @@ export class ControlChannel {
     }));
   }
 
+  /** Shake the device — the gesture apps use for "undo typing" and, in React Native, the dev menu. */
+  simulatorShake(sessionId: SessionId, udid: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.shake',
+      clientReqId,
+      sessionId,
+      udid,
+    }));
+  }
+
+  /** Start the iOS runtime download. Resolves once it is running, not once it finishes — poll
+   * {@link simulatorStatus} until the blocker clears to follow progress. */
+  simulatorInstallRuntime(): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.install-runtime',
+      clientReqId,
+    }));
+  }
+
+  /** Resolves with the frontmost app's accessibility tree. Node centres are normalized 0..1, the
+   * same scale {@link simulatorTap} takes, so a caller can act on a node it found by label. */
+  simulatorDescribeUi(
+    sessionId: SessionId,
+    udid: string,
+    limits?: { maxDepth?: number; maxNodes?: number },
+  ): Promise<SimulatorAxNode> {
+    return this.sendCorrelated('simulatorDescribeUi', (clientReqId) => ({
+      kind: 'simulator.describe-ui',
+      clientReqId,
+      sessionId,
+      udid,
+      maxDepth: limits?.maxDepth,
+      maxNodes: limits?.maxNodes,
+    }));
+  }
+
   /** Resolves with the device's screen-outline mask as base64 PNG (no session claim). */
   simulatorScreenMask(udid: string): Promise<string> {
     return this.sendCorrelated('simulatorScreenMask', (clientReqId) => ({
       kind: 'simulator.screen-mask',
       clientReqId,
       udid,
+    }));
+  }
+
+  /** Current per-device agent consent plus the global agent-tools switch (CODE-420). */
+  simulatorConsentGet(): Promise<SimulatorConsentState> {
+    return this.sendCorrelated('simulatorConsentGet', (clientReqId) => ({
+      kind: 'simulator.consent.get',
+      clientReqId,
+    }));
+  }
+
+  /** Record a decision for a device; `undefined` clears it, so the next agent call asks again. */
+  simulatorConsentSet(udid: string, decision?: SimulatorConsentDecision): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set',
+      clientReqId,
+      udid,
+      decision,
+    }));
+  }
+
+  simulatorConsentSetAgentTools(enabled: boolean): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'simulator.consent.set-agent-tools',
+      clientReqId,
+      enabled,
     }));
   }
 
@@ -811,7 +896,7 @@ export class ControlChannel {
   simulatorButton(
     sessionId: SessionId,
     udid: string,
-    button: 'home' | 'lock',
+    button: SimulatorButton,
   ): Promise<RequestAck> {
     return this.sendCorrelated('ack', (clientReqId) => ({
       kind: 'simulator.button',

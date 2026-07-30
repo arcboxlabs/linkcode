@@ -1,6 +1,6 @@
 import { hostname } from 'node:os';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { wait } from 'foxts/wait';
 import {
   DEFAULT_HQ_URL,
   HqApiError,
@@ -32,7 +32,7 @@ export async function runLoginCommand(): Promise<void> {
   let sessionToken: string | null = null;
   while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop -- RFC 8628 polling is inherently sequential
-    await sleep(intervalMs);
+    await wait(intervalMs);
     // eslint-disable-next-line no-await-in-loop -- RFC 8628 polling is inherently sequential
     const poll = await pollDeviceToken(baseUrl, grant.deviceCode);
     if (poll.status === 'authorized') {

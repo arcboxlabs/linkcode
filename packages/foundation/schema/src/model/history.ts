@@ -42,6 +42,8 @@ export type AgentHistoryListResult = z.infer<typeof AgentHistoryListResultSchema
 
 export const AgentHistoryReadOptionsSchema = z.object({
   historyId: AgentHistoryIdSchema,
+  /** Project cwd used to resolve provider-local environment such as CODEX_HOME. */
+  cwd: z.string().optional(),
   limit: z.number().int().positive().max(1000).optional(),
   cursor: z.string().optional(),
 });

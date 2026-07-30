@@ -45,7 +45,7 @@ export function StackTrace({
   return (
     <Collapsible
       className={cn(
-        'my-2 overflow-hidden rounded-2xl border border-border bg-card font-mono text-[12px]',
+        'my-2 overflow-hidden rounded-2xl border border-border bg-card font-mono text-xs',
         className,
       )}
       open={open}
@@ -81,7 +81,10 @@ export function StackTraceHeader({
 }: StackTraceHeaderProps): React.ReactNode {
   return (
     <div
-      className={cn('flex w-full items-center gap-2 px-3 py-2 hover:bg-muted', className)}
+      className={cn(
+        'flex w-full items-center gap-2 px-3 py-2 hover:bg-muted active:bg-muted',
+        className,
+      )}
       {...props}
     >
       {children ?? (

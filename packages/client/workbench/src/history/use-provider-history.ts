@@ -81,16 +81,12 @@ export async function importHistoryGroup({
 
 /** Global (cwd-less) provider history for one agent kind, plus the import mutation. */
 export function useProviderHistory(kind: AgentKind): ProviderHistory {
-  const { data, isLoading, error, mutate } = useData(
-    listHistory,
-    {
-      agentKind: kind,
-      opts: { limit: HISTORY_PAGE_LIMIT },
-    },
-    // Provider history is identity-scoped: retaining the previous key's rows would label one
-    // agent's sessions as another agent's while the next scan is pending or unavailable.
-    { keepPreviousData: false },
-  );
+  // Identity-scoped by agent kind — never opt this into keepPreviousData: retaining the previous
+  // key's rows labels one agent's sessions as another's while the next scan is pending.
+  const { data, isLoading, error, mutate } = useData(listHistory, {
+    agentKind: kind,
+    opts: { limit: HISTORY_PAGE_LIMIT },
+  });
   const importMutation = useMutation(importSession);
   const pendingImportsRef = useRef(new Map<string, Promise<SessionId>>());
   const pendingGroupsRef = useRef(new Set<string>());

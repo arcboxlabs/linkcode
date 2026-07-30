@@ -10,7 +10,7 @@ import { deleteSession, listSessions, resumeSession, startSession } from '@linkc
 import { withoutAutomationSessions } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { useMemo, useRef } from 'react';
+import { useDeferredValue, useMemo, useRef } from 'react';
 import { captureProductEvent } from '../analytics/product-analytics';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
@@ -85,15 +85,19 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Session page: every thread stays one click away in the sidebar, so we skip straight to the
   // new-thread draft instead of auto-opening an arbitrary recent session (an all-automation list
   // has nothing to open either; an explicit automation selection resolves against the full list).
-  const draft = explicitDraft ?? (selectedId === null ? LANDING_DRAFT : null);
+  // Deferred for the render path only: zustand updates ride useSyncExternalStore, which never
+  // enters a transition lane, so this bridge is what activates the `<ViewTransition>` boundaries
+  // (row title → header) on a switch. Mutations keep using the live store values.
+  const deferredSelectedId = useDeferredValue(selectedId);
+  const draft = explicitDraft ?? (deferredSelectedId === null ? LANDING_DRAFT : null);
 
   const active = useMemo(() => {
     if (draft) return null;
     // Only an explicit selection resolves a conversation. One absent from the loaded list must NOT
     // fall back to a different thread (wrong conversation); hold null while the effect below
     // refreshes the list so a click-through to a not-yet-listed session resolves.
-    return sessionById(sessions, selectedId);
-  }, [draft, selectedId, sessions]);
+    return sessionById(sessions, deferredSelectedId);
+  }, [draft, deferredSelectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
   const recordNavigation = useNavigationHistoryStore((state) => state.record);

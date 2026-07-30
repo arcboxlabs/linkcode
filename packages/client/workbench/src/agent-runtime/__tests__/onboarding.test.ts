@@ -1,12 +1,13 @@
 import type { AgentRuntimes, ManagedAssetStatus } from '@linkcode/schema';
+import { managedAgentAssetId, managedToolAssetId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { AssetActivityMap } from '../onboarding';
 import { deriveAgentRuntimeCues, dropConfirmedInstalls } from '../onboarding';
 
 const ASSETS: ManagedAssetStatus[] = [
-  { id: 'agent:claude-code', wantedVersion: '0.3.179' },
-  { id: 'agent:codex', wantedVersion: '0.140.0' },
-  { id: 'tool:tectonic', wantedVersion: '0.16.9' },
+  { id: managedAgentAssetId('claude-code'), wantedVersion: '0.3.179' },
+  { id: managedAgentAssetId('codex'), wantedVersion: '0.140.0' },
+  { id: managedToolAssetId('tectonic'), wantedVersion: '0.16.9' },
 ];
 
 describe('deriveAgentRuntimeCues', () => {
@@ -25,7 +26,7 @@ describe('deriveAgentRuntimeCues', () => {
       'claude-code': { state: 'missing', downloadable: true },
     });
     // No pin (SDK absent on this host) — the download button would be a dead end.
-    const pinless: ManagedAssetStatus[] = [{ id: 'agent:claude-code' }];
+    const pinless: ManagedAssetStatus[] = [{ id: managedAgentAssetId('claude-code') }];
     expect(deriveAgentRuntimeCues(runtimes, pinless, {}, {})).toEqual({
       'claude-code': { state: 'missing', downloadable: false },
     });
@@ -44,7 +45,10 @@ describe('deriveAgentRuntimeCues', () => {
 
   it('marks a missing pi downloadable through its closure asset (CODE-219)', () => {
     const runtimes: AgentRuntimes = { pi: { status: 'missing' } };
-    const assets: ManagedAssetStatus[] = [...ASSETS, { id: 'agent:pi', wantedVersion: '0.80.6' }];
+    const assets: ManagedAssetStatus[] = [
+      ...ASSETS,
+      { id: managedAgentAssetId('pi'), wantedVersion: '0.80.6' },
+    ];
     expect(deriveAgentRuntimeCues(runtimes, assets, {}, {})).toEqual({
       pi: { state: 'missing', downloadable: true },
     });

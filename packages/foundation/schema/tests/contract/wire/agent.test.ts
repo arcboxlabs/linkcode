@@ -36,6 +36,18 @@ describe('agent wire variants', () => {
       outcome: { outcome: 'cancelled' },
       source: 'session',
     },
+    { type: 'effort-update', effort: 'ultra' },
+    {
+      type: 'available-models-update',
+      models: [
+        {
+          id: 'gpt-5.6-sol',
+          label: 'GPT-5.6-Sol',
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+          defaultEffort: 'low',
+        },
+      ],
+    },
     {
       type: 'tool-call-content-chunk',
       toolCallId: 'tool-1',
@@ -63,6 +75,27 @@ describe('agent wire variants', () => {
         payload: { kind: 'agent.event', sessionId: 'session-1', event },
       }).success,
     ).toBe(true);
+  });
+
+  it('accepts Codex ultra as input but rejects provider values outside the normalized vocabulary', () => {
+    const message = {
+      v: WIRE_PROTOCOL_VERSION,
+      id: 'message-1',
+      ts: 0,
+      payload: {
+        kind: 'agent.input',
+        clientReqId: 'request-1',
+        sessionId: 'session-1',
+        input: { type: 'set-effort', effort: 'ultra' },
+      },
+    };
+    expect(WireMessageSchema.safeParse(message).success).toBe(true);
+    expect(
+      WireMessageSchema.safeParse({
+        ...message,
+        payload: { ...message.payload, input: { type: 'set-effort', effort: 'minimal' } },
+      }).success,
+    ).toBe(false);
   });
 
   it('requires identity on user messages', () => {

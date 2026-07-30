@@ -48,6 +48,9 @@ export function FilesPanel({
   const treeRef = useRef<WorkspaceFileTreeHandle>(null);
 
   const { data: treeFiles } = useData(listWorkspaceFiles, cwd === undefined ? null : { cwd }, {
+    // Hold the previous workspace's tree while the next enumeration loads, rather than collapsing
+    // the pane to empty — same call as `files/hooks.ts`, same intent.
+    keepPreviousData: true,
     onSuccess(paths) {
       treeRef.current?.resetPaths(paths);
     },

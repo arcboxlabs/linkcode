@@ -6,19 +6,40 @@ import { OpenCodeAdapter } from '../native/opencode';
 import type { OpencodeHistoryServerLike } from '../native/opencode/history-server';
 import { FakeEventStream } from './fake-event-stream';
 
-const sdkMock = vi.hoisted(() => ({
-  createOpencode: null as ((opts: unknown) => unknown) | null,
-  createOpencodeClient: null as ((opts: unknown) => unknown) | null,
-}));
+const sdkMock = vi.hoisted(
+  (): {
+    createOpencode: ((opts: unknown) => unknown) | null;
+    createOpencodeClient: ((opts: unknown) => unknown) | null;
+    liveClient: unknown;
+  } => ({ createOpencode: null, createOpencodeClient: null, liveClient: null }),
+);
 
 vi.mock('@opencode-ai/sdk/v2', () => ({
-  createOpencode(opts: unknown) {
-    if (!sdkMock.createOpencode) throw new Error('createOpencode mock not installed');
-    return sdkMock.createOpencode(opts);
+  // History reads pass the stub server's url; the live session client is whatever the last
+  // bridged serve spawn produced (see the serve mock below).
+  createOpencodeClient(opts: { baseUrl?: string }) {
+    if (opts.baseUrl === 'http://stub') {
+      if (!sdkMock.createOpencodeClient) throw new Error('createOpencodeClient mock not installed');
+      return sdkMock.createOpencodeClient(opts);
+    }
+    if (sdkMock.liveClient === null) throw new Error('no live server was started');
+    return sdkMock.liveClient;
   },
-  createOpencodeClient(opts: unknown) {
-    if (!sdkMock.createOpencodeClient) throw new Error('createOpencodeClient mock not installed');
-    return sdkMock.createOpencodeClient(opts);
+}));
+
+// The adapter spawns its per-session server through the owned serve helper (CODE-76), then builds
+// the client separately — bridge that spawn back onto the `createOpencode`-shaped mock the cases
+// install, so each case keeps stubbing one function that yields both client and server.
+vi.mock('../native/opencode/serve', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  async startOpencodeServe(opts: unknown) {
+    if (!sdkMock.createOpencode) throw new Error('createOpencode mock not installed');
+    const started = (await sdkMock.createOpencode(opts)) as {
+      client: unknown;
+      server: { url?: string; close(): void };
+    };
+    sdkMock.liveClient = started.client;
+    return { url: started.server.url ?? 'http://fake', close: () => started.server.close() };
   },
 }));
 
@@ -72,6 +93,55 @@ describe('OpenCodeAdapter.listHistory', () => {
     const page2 = await adapter.listHistory({ cwd: '/tmp/repo', limit: 2, cursor: page1.cursor });
     expect(page2.sessions.map((s) => s.historyId)).toEqual(['ses-old']);
     expect(page2.cursor).toBeUndefined();
+  });
+});
+
+describe('OpenCodeAdapter.startCatalog', () => {
+  it('advertises selectable agents as policies and reachable models, scoped to the cwd', async () => {
+    const list = vi.fn(() =>
+      Promise.resolve({
+        data: {
+          connected: ['anthropic'],
+          all: [
+            { id: 'anthropic', name: 'Anthropic', models: { 'claude-opus-5': { name: 'Opus 5' } } },
+            { id: 'offline', name: 'Offline', source: 'env', models: { 'some-model': {} } },
+          ],
+        },
+      }),
+    );
+    const agents = vi.fn(() =>
+      Promise.resolve({
+        data: [
+          { name: 'plan', mode: 'primary', description: 'Read-only' },
+          { name: 'build', mode: 'primary' },
+          { name: 'title', mode: 'primary', hidden: true },
+          { name: 'reviewer', mode: 'subagent' },
+        ],
+      }),
+    );
+    sdkMock.createOpencodeClient = () => ({ provider: { list }, app: { agents } });
+
+    const catalog = await new HistoryTestAdapter().startCatalog({ cwd: '/tmp/repo' });
+    expect(list).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+    expect(agents).toHaveBeenCalledWith({ directory: '/tmp/repo' });
+    expect(catalog.models).toEqual([
+      { id: 'anthropic/claude-opus-5', label: 'Opus 5', description: 'Anthropic' },
+    ]);
+    // Hidden primaries and subagents are not personas a user runs a turn under.
+    expect(catalog.policies.map((p) => p.policyId)).toEqual(['plan', 'build']);
+    expect(catalog.defaultPolicyId).toBe('plan');
+  });
+
+  it('leaves each axis empty when its read fails, rather than blocking the new-session surface', async () => {
+    sdkMock.createOpencodeClient = () => ({
+      provider: { list: vi.fn(() => Promise.resolve({ error: { message: 'boom' } })) },
+      app: { agents: vi.fn(() => Promise.resolve({ error: { message: 'boom' } })) },
+    });
+
+    await expect(new HistoryTestAdapter().startCatalog({ cwd: '/tmp/repo' })).resolves.toEqual({
+      models: [],
+      policies: [],
+    });
   });
 });
 

@@ -2,9 +2,11 @@ import type {
   AssetInstallEvent,
   InstalledAsset,
   ManagedAssetId,
+  ManagedAssetKey,
   ManagedAssetStatus,
   WirePayload,
 } from '@linkcode/schema';
+import { managedAssetIdEquals, managedAssetKey } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -24,7 +26,7 @@ export interface AssetService {
 const PROGRESS_INTERVAL_MS = 150;
 
 export class ManagedAssetService {
-  private readonly progressSentAt = new Map<ManagedAssetId, number>();
+  private readonly progressSentAt = new Map<ManagedAssetKey, number>();
   private unsubscribe?: Unsubscribe;
 
   constructor(
@@ -99,17 +101,17 @@ export class ManagedAssetService {
         return yield* Effect.fail(
           new RequestError({
             code: 'unsupported',
-            message: `Asset ${id} cannot be installed here`,
+            message: `Asset ${managedAssetKey(id)} cannot be installed here`,
           }),
         );
       }
       const status = yield* Effect.try({
-        try: () => assets.statuses().find((candidate) => candidate.id === id),
+        try: () => assets.statuses().find((candidate) => managedAssetIdEquals(candidate.id, id)),
         catch: assetEnsureFailure,
       });
       if (!status) {
         return yield* Effect.fail(
-          assetEnsureFailure(new Error(`Missing installed status for ${id}`)),
+          assetEnsureFailure(new Error(`Missing installed status for ${managedAssetKey(id)}`)),
         );
       }
       return status;
@@ -120,8 +122,9 @@ export class ManagedAssetService {
     switch (event.kind) {
       case 'progress': {
         const now = Date.now();
-        if (now - (this.progressSentAt.get(event.id) ?? 0) < PROGRESS_INTERVAL_MS) return;
-        this.progressSentAt.set(event.id, now);
+        const key = managedAssetKey(event.id);
+        if (now - (this.progressSentAt.get(key) ?? 0) < PROGRESS_INTERVAL_MS) return;
+        this.progressSentAt.set(key, now);
         this.transport.send(
           createWireMessage({
             kind: 'asset.progress',
@@ -133,15 +136,15 @@ export class ManagedAssetService {
         break;
       }
       case 'installed': {
-        this.progressSentAt.delete(event.id);
+        this.progressSentAt.delete(managedAssetKey(event.id));
         this.transport.send(
           createWireMessage({ kind: 'asset.settled', id: event.id, installed: event.installed }),
         );
-        if (event.id.startsWith('agent:')) this.onAgentInstalled();
+        if (event.id.kind === 'agent') this.onAgentInstalled();
         break;
       }
       case 'failed': {
-        this.progressSentAt.delete(event.id);
+        this.progressSentAt.delete(managedAssetKey(event.id));
         this.transport.send(
           createWireMessage({ kind: 'asset.settled', id: event.id, error: event.error }),
         );

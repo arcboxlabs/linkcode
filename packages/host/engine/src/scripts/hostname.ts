@@ -13,12 +13,12 @@ export function scriptHostname(scriptName: string, workspaceName: string, cwd: s
   return `${script}--${workspace}-${hash}.localhost`;
 }
 
+const NON_LABEL_RUN_RE = /[^a-z0-9]+/g;
+const EDGE_DASHES_RE = /^-+|-+$/g;
+
 /** Lowercased `[a-z0-9-]` label; runs of anything else collapse to one dash. */
 function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '');
+  const slug = value.toLowerCase().replaceAll(NON_LABEL_RUN_RE, '-').replaceAll(EDGE_DASHES_RE, '');
   // A label made entirely of separators still needs to be a valid DNS label.
   return slug.length > 0 ? slug.slice(0, 40) : 'x';
 }

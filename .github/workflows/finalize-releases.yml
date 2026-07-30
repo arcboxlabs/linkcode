@@ -35,7 +35,7 @@ jobs:
           sparse-checkout: .github/scripts
 
       - name: Verify release automation was CI-tested
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
@@ -72,7 +72,7 @@ jobs:
       # pushes are no-ops, and release-please may only see this one pending Desktop release PR.
       - name: Resolve tested release candidate
         id: candidate
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
@@ -90,7 +90,7 @@ jobs:
       # release-PR merge SHA. Ordinary commits may advance master; release policy must not drift.
       - name: Verify tested release configuration is still current
         if: ${{ steps.candidate.outputs.state == 'pending' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TESTED_SHA: ${{ steps.candidate.outputs.sha }}
         with:
@@ -108,7 +108,7 @@ jobs:
       - name: Create draft releases
         id: release
         if: ${{ steps.candidate.outputs.state == 'pending' }}
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.release-token.outputs.token }}
           config-file: release-please-config.json
@@ -121,7 +121,7 @@ jobs:
       # acted on exactly the commit this CI run tested.
       - name: Verify started Desktop release
         if: ${{ steps.candidate.outputs.state == 'pending' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
           RELEASE_SHA: ${{ steps.candidate.outputs.sha }}

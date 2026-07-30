@@ -1,4 +1,4 @@
-import { FrameHeader, FramePanel } from 'coss-ui/components/frame';
+import { FrameFooter, FrameHeader, FramePanel } from 'coss-ui/components/frame';
 import { cn } from '../lib/cn';
 
 export type ChatCardHeaderProps = React.ComponentProps<typeof FrameHeader>;
@@ -36,4 +36,16 @@ export type ChatCardPanelProps = React.ComponentProps<typeof FramePanel>;
 /** coss-ui `FramePanel` body at chat-flow density. */
 export function ChatCardPanel({ className, ...props }: ChatCardPanelProps): React.ReactNode {
   return <FramePanel className={cn('px-3 py-2', className)} {...props} />;
+}
+
+export type ChatCardFooterProps = React.ComponentProps<typeof FrameFooter>;
+
+/** coss-ui `FrameFooter` as a single compact row, at chat-flow density. */
+export function ChatCardFooter({ className, ...props }: ChatCardFooterProps): React.ReactNode {
+  return (
+    <FrameFooter
+      className={cn('flex flex-row items-center px-3 py-1 text-xs', className)}
+      {...props}
+    />
+  );
 }

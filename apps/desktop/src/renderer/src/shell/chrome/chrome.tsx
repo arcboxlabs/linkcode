@@ -5,13 +5,12 @@ import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  EllipsisIcon,
   FileTextIcon,
   PanelBottomIcon,
   PanelLeftIcon,
   PanelRightIcon,
 } from 'lucide-react';
-import { createContext, use, useCallback, useRef, useState } from 'react';
+import { createContext, use, useCallback, useRef, useState, ViewTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
@@ -51,6 +50,8 @@ export interface DesktopChromeProps {
   titleIcon?: React.ReactNode;
   /** Rendered beside the default title (ignored when `titleContent` overrides the whole area). */
   titleChip?: React.ReactNode;
+  /** The title area's trailing overflow menu (ignored when `titleContent` overrides the area). */
+  titleMenu?: React.ReactNode;
 }
 
 export type DesktopChromeSegment = 'sidebar' | 'main' | 'right';
@@ -174,6 +175,7 @@ export function DesktopChrome({
   titleContent,
   titleIcon,
   titleChip,
+  titleMenu,
 }: DesktopChromeProps): React.ReactNode {
   const [portalTargets, setPortalTargets] = useState<ChromePortalTargetMap>({});
   const [portalUse, setPortalUse] = useState<ChromePortalUseMap>({});
@@ -219,6 +221,7 @@ export function DesktopChrome({
               titleContent={titleContent}
               titleIcon={titleIcon}
               titleChip={titleChip}
+              titleMenu={titleMenu}
               portalUse={portalUse}
               setPortalTarget={setPortalTarget}
             />
@@ -270,6 +273,7 @@ function ChromeSegmentGrid({
   titleContent,
   titleIcon,
   titleChip,
+  titleMenu,
   portalUse,
   setPortalTarget,
 }: {
@@ -279,6 +283,7 @@ function ChromeSegmentGrid({
   titleContent?: React.ReactNode;
   titleIcon?: React.ReactNode;
   titleChip?: React.ReactNode;
+  titleMenu?: React.ReactNode;
   portalUse: ChromePortalUseMap;
   setPortalTarget: SetChromePortalTarget;
 }): React.ReactNode {
@@ -309,7 +314,7 @@ function ChromeSegmentGrid({
         // and controls, so the document title/actions step aside entirely.
         defaultSlots={{
           left: expandedPanel ? null : titleContent === undefined ? (
-            <MainChromeTitle header={header} icon={titleIcon} chip={titleChip} />
+            <MainChromeTitle header={header} icon={titleIcon} chip={titleChip} menu={titleMenu} />
           ) : (
             titleContent
           ),
@@ -512,21 +517,32 @@ function MainChromeTitle({
   header,
   icon,
   chip,
+  menu,
 }: {
   header: WorkbenchShellHeader;
   icon?: React.ReactNode;
   chip?: React.ReactNode;
+  menu?: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="pointer-events-none flex h-full max-w-[min(420px,100%)] min-w-0 px-2 items-center gap-(--lc-chrome-control-gap)">
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+      {header.sessionId ? (
+        <ViewTransition
+          key={header.sessionId}
+          enter="none"
+          exit="none"
+          name={`thread-title-${header.sessionId}`}
+        >
+          <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+        </ViewTransition>
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
+      )}
       {chip}
-      <ShellIconButton label="More" disabled>
-        <EllipsisIcon className="size-4" />
-      </ShellIconButton>
+      {menu}
     </div>
   );
 }

@@ -47,6 +47,7 @@ module.exports = require('eslint-config-sukka').sukka(
         // Workspace tests belong to their source tsconfig or a tests/tsconfig.json referenced by
         // the root solution; listing them here too would breach typescript-eslint's 8-file cap.
         'vitest.config.ts',
+        'vitest.setup.ts',
       ],
     },
   },
@@ -123,6 +124,19 @@ module.exports = require('eslint-config-sukka').sukka(
     ],
     rules: {
       'import-x/no-unresolved': ['error', { ignore: ['^~icons/'] }],
+    },
+  },
+  {
+    // jsx-a11y reads these as DOM props, but the JSX here is `@expo/ui`'s SwiftUI views:
+    // `Image` is an SF Symbol with no `alt` (decorative next to the row's own label), and
+    // `role` is SwiftUI's `ButtonRole`, not an ARIA role. Only files that render a real RN
+    // element are exempted back, so the checks still cover the shrinking non-SwiftUI set.
+    name: 'linkcode/expo-ui-props-are-not-dom-props',
+    files: ['apps/mobile/src/**/*.tsx'],
+    ignores: ['apps/mobile/src/components/brand-mark.tsx'],
+    rules: {
+      'jsx-a11y/alt-text': 'off',
+      'jsx-a11y/aria-role': 'off',
     },
   },
   {

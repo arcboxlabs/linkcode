@@ -3,14 +3,18 @@ import { SessionIdSchema } from '@linkcode/schema';
 import { AGENT_LABELS, EmptyState, repositoryLabel } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { FlatList, View } from 'react-native';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
+import { Composer } from '../../../../components/composer';
 import { TimelineItem } from '../../../../components/conversation-timeline';
 import { SessionStatusChip } from '../../../../components/session-status-chip';
 import { useSeededConversation } from '../../../../runtime/use-seeded-conversation';
+import { useSessionActions } from '../../../../runtime/use-session-actions';
 
-/** Read-only conversation view of one session running on the host. The inverted list pins
- * to the newest item and leaves the user's scroll position alone while output streams. */
+/** Conversation view of one session running on the host, with the composer that drives it. The
+ * inverted list pins to the newest item and leaves the user's scroll position alone while output
+ * streams. */
 export default function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
   const insets = useSafeAreaInsets();
@@ -19,7 +23,11 @@ export default function SessionScreen(): React.ReactNode {
   const { sessions } = useSessions();
 
   const session = sessions.find((entry) => entry.sessionId === sessionId);
-  const conversation = useSeededConversation(parsed.success ? (session ?? null) : null);
+  const conversation = useSeededConversation(parsed.success ? parsed.data : null, session ?? null);
+  const { send, stop, isRunning, canCompose, failure } = useSessionActions(
+    parsed.success ? parsed.data : null,
+    conversation.status,
+  );
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
     : '';
@@ -50,6 +58,17 @@ export default function SessionScreen(): React.ReactNode {
           className="flex-1"
         />
       )}
+      {/* Sticky rather than an avoiding view: the inverted list already pins to the bottom, so
+          the composer only has to ride the keyboard instead of resizing the whole screen. */}
+      <KeyboardStickyView>
+        <Composer
+          onSend={send}
+          onStop={stop}
+          isRunning={isRunning}
+          disabled={!canCompose}
+          error={failure ? t(failure === 'send' ? 'sendError' : 'stopError') : undefined}
+        />
+      </KeyboardStickyView>
     </View>
   );
 }

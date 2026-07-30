@@ -4,6 +4,7 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
@@ -42,6 +43,10 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
+  /** The new-session page's selected workspace, owned by the workbench so the same cwd scopes
+   * `agentCatalogs`. */
+  newSessionWorkspaceId: WorkspaceId | null;
+  onNewSessionWorkspaceChange: (workspaceId: WorkspaceId) => void;
   /** Agent runtime availability cues: the new-session page's onboarding flow (CODE-112) and the
    * active session's needs-login recovery card (CODE-172). */
   runtimeCues?: AgentRuntimeCues;
@@ -115,6 +120,8 @@ export function ShellFrame({
   chatWorkspace,
   activeSession,
   draft,
+  newSessionWorkspaceId,
+  onNewSessionWorkspaceChange,
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
@@ -204,6 +211,8 @@ export function ShellFrame({
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
+            workspaceId={newSessionWorkspaceId}
+            onWorkspaceChange={onNewSessionWorkspaceChange}
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}

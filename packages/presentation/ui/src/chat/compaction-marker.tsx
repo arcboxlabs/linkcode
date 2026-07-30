@@ -37,10 +37,10 @@ function CompactingRow({ startedAt }: { startedAt?: number }): React.ReactNode {
   const now = useNowEverySecond();
   const elapsed = startedAt === undefined ? null : formatElapsed(now - startedAt);
   return (
-    <div className="my-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+    <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
       <Spinner className="size-3.5 shrink-0" />
       <Shimmer className="font-medium">{t('compacting')}</Shimmer>
-      {elapsed ? <span className="text-muted-foreground/70">· {elapsed}</span> : null}
+      {elapsed ? <span className="text-label-tertiary">· {elapsed}</span> : null}
     </div>
   );
 }
@@ -86,7 +86,7 @@ export function CompactionMarker({
 
   if (!summary) {
     return (
-      <div className="my-2 flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
+      <div className="my-2 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         {row}
         <Separator className="min-w-8 flex-1" />
       </div>
@@ -94,11 +94,7 @@ export function CompactionMarker({
   }
 
   return (
-    <Collapsible
-      className="my-2 text-[13px] text-muted-foreground"
-      onOpenChange={setOpen}
-      open={open}
-    >
+    <Collapsible className="my-2 text-xs text-muted-foreground" onOpenChange={setOpen} open={open}>
       <div className="flex min-w-0 items-center gap-2">
         <CollapsibleTrigger className={cn(CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, 'max-w-full shrink')}>
           {row}

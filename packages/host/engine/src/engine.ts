@@ -1,5 +1,6 @@
-import { createAdapter } from '@linkcode/agent-adapter';
-import type { WorkspaceRecord } from '@linkcode/schema';
+import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
+import { createAdapter, createPluginProviderAdapter } from '@linkcode/agent-adapter';
+import type { Plugin, WorkspaceRecord } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
@@ -16,11 +17,15 @@ import {
   ScheduleService,
 } from './automation';
 import { AutomationRequestHandler } from './automation/request-handler';
+import { BrowserBrokerService } from './browser/broker';
+import { BrowserReplHost } from './browser/repl-host';
+import { BrowserRequestHandler } from './browser/request-handler';
 import type { EngineDeps } from './deps';
 import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
+import { PluginService } from './plugin/service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { FileHostService } from './preview/file-host-service';
 import { ArtifactRequestHandler } from './preview/request-handler';
@@ -35,6 +40,7 @@ import { SessionRequestHandler } from './session/request-handler';
 import { SessionRecordRegistry } from './session/session-record-registry';
 import { InMemorySessionStore } from './session/session-store';
 import { SessionStartOptionsResolver } from './session/start-options-resolver';
+import { SimulatorConsentService } from './simulator/consent';
 import { SimulatorRequestHandler } from './simulator/request-handler';
 import { TerminalRequestHandler } from './terminal/request-handler';
 import { TerminalService } from './terminal/service';
@@ -57,6 +63,7 @@ import { InMemoryWorktreeStore } from './worktree/worktree-store';
 export interface EngineRuntime {
   readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
   readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
+  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<Plugin[]>;
   readonly stop: Effect.Effect<void>;
 }
 
@@ -73,6 +80,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
   const history = new HistoryService(factory);
+  const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const runtimes = yield* AgentRuntimeService.make(
     {
       initial: deps.agentRuntimes,
@@ -89,6 +97,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   // it here; the engine owns the session registry, so it hands the service a session-existence
   // predicate that gates claims on a live session.
   const simulators = deps.simulators;
+  const browserBroker = new BrowserBrokerService(transport);
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -101,13 +110,22 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       simulators?.releaseSession(sessionId);
       deps.simulatorMcp?.release(sessionId);
     },
+    deps.browserToolsEnabled
+      ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
+      : undefined,
   );
   simulators?.setSessionValidator((id) => sessions.has(id));
   terminals = deps.ptyBackend
     ? new TerminalService(deps.ptyBackend, transport, (id) => sessions.has(id))
     : undefined;
   const terminalRequests = new TerminalRequestHandler(terminals, responder);
-  const simulatorRequests = new SimulatorRequestHandler(simulators, transport, responder);
+  const simulatorConsent = deps.simulatorConsent ?? new SimulatorConsentService();
+  const simulatorRequests = new SimulatorRequestHandler(
+    simulators,
+    transport,
+    responder,
+    simulatorConsent,
+  );
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
@@ -191,6 +209,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     responder,
     factory,
   );
+  const browserRequests = new BrowserRequestHandler(transport, browserBroker);
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
@@ -204,6 +223,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     automation: automationRequests,
     terminal: terminalRequests,
     simulator: simulatorRequests,
+    browser: browserRequests,
   });
   let acceptingRequests = false;
   let unsubscribeRequests: Unsubscribe | undefined;
@@ -292,6 +312,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         () => workspaces.ensureChatWorkspace(cwd),
       );
     }),
+    listPlugins: (opts?: PluginDiscoveryOptions) => plugins.list(opts),
     stop: Effect.gen(function* () {
       // Close request admission before yielding so a transport callback already in flight cannot
       // launch work after the teardown sweep starts. Each step logs and continues so one broken
@@ -312,10 +333,14 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* finalize('artifacts.shutdown', () => artifacts.close());
       yield* finalize('file-host.shutdown', () => fileHost.close());
       yield* finalizeEffect('terminals.shutdown', terminals?.shutdown() ?? Effect.void);
+      // Release consent waiters first: a tool suspended on a prompt nobody can answer any more
+      // would otherwise hold the simulator shutdown behind its two-minute timeout.
+      simulatorConsent.close();
       yield* finalizeEffect('simulators.shutdown', simulators?.shutdown() ?? Effect.void);
       yield* finalize('agent-login.shutdown', () => logins?.closeAll());
       yield* finalize('translator.shutdown', () => translator?.closeAll());
       yield* finalize('assets.shutdown', () => assets.close());
+      yield* finalize('browser.shutdown', () => browserBroker.shutdown());
       // Session teardown can enqueue best-effort record persistence into the root set. All
       // producers are closed now, so a final clear leaves no Engine-owned fibers behind.
       yield* FiberSet.clear(taskSet);
