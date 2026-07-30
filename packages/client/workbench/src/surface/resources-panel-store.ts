@@ -11,7 +11,7 @@ export interface ResourcesPanelState {
   toggle: () => void;
 }
 
-export type ResourcesPanelPresentation = 'hidden' | 'floating' | 'popover';
+export type ResourcesPanelPresentation = 'hidden' | 'inline' | 'popover';
 
 export function getResourcesPanelPresentation({
   available,
@@ -23,7 +23,7 @@ export function getResourcesPanelPresentation({
   rightPanelOpen?: boolean;
 }): ResourcesPanelPresentation {
   if (!available) return 'hidden';
-  return wide && !rightPanelOpen ? 'floating' : 'popover';
+  return wide && !rightPanelOpen ? 'inline' : 'popover';
 }
 
 /** Cross-client surface visibility. Resource data and task execution do not live in this store. */

@@ -31,6 +31,7 @@ export function WebWorkbenchShell({
     available: resourcesAvailable,
     wide,
   });
+  const resourcesInlineOpen = resourcesPresentation === 'inline' && resourcesOpen;
   const resourcesButton = (
     <ShellIconButton
       label={tPanel('resources')}
@@ -46,7 +47,7 @@ export function WebWorkbenchShell({
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
       <div className="h-full min-w-0">
         <ShellFrame
           {...props}
@@ -135,14 +136,19 @@ export function WebWorkbenchShell({
           }
         />
       </div>
-      {resourcesPresentation === 'floating' && resourcesOpen && (
-        <Card
-          aria-label={tPanel('resources')}
-          className="absolute top-12 right-3 z-20 max-h-[calc(100%-3.75rem)] w-72 overflow-hidden shadow-xl"
-        >
-          {resourcesPanel}
-        </Card>
-      )}
+      <aside
+        aria-hidden={!resourcesInlineOpen}
+        inert={!resourcesInlineOpen}
+        className={`min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)] ${
+          resourcesInlineOpen ? 'w-[19.5rem]' : 'w-0'
+        }`}
+      >
+        <div className="h-full w-[19.5rem] p-3 pt-12">
+          <Card aria-label={tPanel('resources')} className="h-full w-72 overflow-hidden shadow-xl">
+            {resourcesPresentation === 'inline' ? resourcesPanel : null}
+          </Card>
+        </div>
+      </aside>
     </div>
   );
 }

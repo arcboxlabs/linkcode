@@ -19,7 +19,7 @@ beforeEach(() => storage.clear());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('resources panel visibility', () => {
-  it('selects a presentation without competing for right-side space', async () => {
+  it('selects an inline surface only when right-side space is available', async () => {
     const { getResourcesPanelPresentation } = await import('../resources-panel-store');
 
     expect(
@@ -27,7 +27,7 @@ describe('resources panel visibility', () => {
     ).toBe('hidden');
     expect(
       getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: false }),
-    ).toBe('floating');
+    ).toBe('inline');
     expect(
       getResourcesPanelPresentation({ available: true, wide: false, rightPanelOpen: false }),
     ).toBe('popover');

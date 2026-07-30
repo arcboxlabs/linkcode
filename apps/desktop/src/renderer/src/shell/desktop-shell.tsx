@@ -304,6 +304,7 @@ export function DesktopShell({
     wide,
     rightPanelOpen: rightPanel.open,
   });
+  const resourcesInlineOpen = resourcesPresentation === 'inline' && resourcesOpen;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -733,81 +734,91 @@ export function DesktopShell({
         onToggleResources={toggleResources}
         onResourcesOpenChange={setResourcesOpen}
       >
-        <DesktopWorkspace
-          main={main}
-          right={workspaceRight}
-          bottom={workspaceBottom}
-          expandedPanel={expandedPanel}
-          layout={layout}
-          onLayoutChange={updateLayout}
-          onSidebarResize={syncSidebarPaneSize}
-          onRightResize={syncRightPaneSize}
-          onBottomResize={syncBottomPaneSize}
-          sidebar={{
-            transition: sidebarTransition,
-            open: sidebarOpen,
-            onResetSize: resetSidebarSize,
-            node: (
-              <SessionSidebar
-                className={sidebarClassName}
-                threadGroups={threadGroups}
-                workspacesLoading={workspacesLoading}
-                sessionsLoading={sessionsLoading}
-                activeId={active?.sessionId ?? null}
-                pinnedSessionIds={pinnedSessionIds}
-                collapsedSections={collapsedSections}
-                topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
-                footer={
-                  <HostFooter
-                    state={tConnection('connected')}
-                    appVersion={appVersion}
-                    pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.account}
-                    authPending={cloudAuth.authenticating}
-                    onSignIn={cloudAuth.signIn}
-                    onSignOut={cloudAuth.signOut}
-                    onManageAccount={cloudAuth.manageAccount}
-                    remoteHosts={remoteHostItems}
-                    remoteHostsLoading={remoteHosts.isLoading}
-                    selectedHostId={selectedHostId}
-                    onSelectHost={selectHost}
-                    onOpenSettings={onOpenSettings}
-                  />
-                }
-                onPickDirectory={pickDirectory}
-                onOpenSearch={onOpenSearch}
-                onOpenAutomations={onOpenAutomations}
-                searchShortcut={searchShortcut}
-                onRegisterWorkspace={onRegisterWorkspace}
-                onImportHistory={onImportHistory}
-                onRenameWorkspace={onRenameWorkspace}
-                onArchiveWorkspace={onArchiveWorkspace}
-                onToggleGroupCollapsed={onToggleGroupCollapsed}
-                onToggleSectionCollapsed={onToggleSectionCollapsed}
-                onTogglePreviewExpanded={onTogglePreviewExpanded}
-                BranchStatusComponent={BranchStatusComponent}
-                // Cloud-gated: without a session the IM source can't authenticate, so the
-                // row menu (and its ellipsis) stays hidden entirely.
-                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
-                onSelect={onSelectSession}
-                onClose={onCloseSession}
-                onToggleSessionPinned={onToggleSessionPinned}
-                onReorderGroups={onReorderGroups}
-                onReorderThreads={onReorderThreads}
-                onStartDraft={onStartDraft}
-              />
-            ),
-          }}
-        />
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
+          <DesktopWorkspace
+            main={main}
+            right={workspaceRight}
+            bottom={workspaceBottom}
+            expandedPanel={expandedPanel}
+            layout={layout}
+            onLayoutChange={updateLayout}
+            onSidebarResize={syncSidebarPaneSize}
+            onRightResize={syncRightPaneSize}
+            onBottomResize={syncBottomPaneSize}
+            sidebar={{
+              transition: sidebarTransition,
+              open: sidebarOpen,
+              onResetSize: resetSidebarSize,
+              node: (
+                <SessionSidebar
+                  className={sidebarClassName}
+                  threadGroups={threadGroups}
+                  workspacesLoading={workspacesLoading}
+                  sessionsLoading={sessionsLoading}
+                  activeId={active?.sessionId ?? null}
+                  pinnedSessionIds={pinnedSessionIds}
+                  collapsedSections={collapsedSections}
+                  topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
+                  footer={
+                    <HostFooter
+                      state={tConnection('connected')}
+                      appVersion={appVersion}
+                      pendingPermissionCount={conversation.pendingPermissionIds.length}
+                      account={cloudAuth.account}
+                      authPending={cloudAuth.authenticating}
+                      onSignIn={cloudAuth.signIn}
+                      onSignOut={cloudAuth.signOut}
+                      onManageAccount={cloudAuth.manageAccount}
+                      remoteHosts={remoteHostItems}
+                      remoteHostsLoading={remoteHosts.isLoading}
+                      selectedHostId={selectedHostId}
+                      onSelectHost={selectHost}
+                      onOpenSettings={onOpenSettings}
+                    />
+                  }
+                  onPickDirectory={pickDirectory}
+                  onOpenSearch={onOpenSearch}
+                  onOpenAutomations={onOpenAutomations}
+                  searchShortcut={searchShortcut}
+                  onRegisterWorkspace={onRegisterWorkspace}
+                  onImportHistory={onImportHistory}
+                  onRenameWorkspace={onRenameWorkspace}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onToggleGroupCollapsed={onToggleGroupCollapsed}
+                  onToggleSectionCollapsed={onToggleSectionCollapsed}
+                  onTogglePreviewExpanded={onTogglePreviewExpanded}
+                  BranchStatusComponent={BranchStatusComponent}
+                  // Cloud-gated: without a session the IM source can't authenticate, so the
+                  // row menu (and its ellipsis) stays hidden entirely.
+                  ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
+                  onSelect={onSelectSession}
+                  onClose={onCloseSession}
+                  onToggleSessionPinned={onToggleSessionPinned}
+                  onReorderGroups={onReorderGroups}
+                  onReorderThreads={onReorderThreads}
+                  onStartDraft={onStartDraft}
+                />
+              ),
+            }}
+          />
+          <aside
+            aria-hidden={!resourcesInlineOpen}
+            inert={!resourcesInlineOpen}
+            className={`min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)] ${
+              resourcesInlineOpen ? 'w-[19.5rem]' : 'w-0'
+            }`}
+          >
+            <div className="h-full w-[19.5rem] p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]">
+              <Card
+                aria-label={tPanel('resources')}
+                className="h-full w-72 overflow-hidden shadow-xl"
+              >
+                {resourcesPresentation === 'inline' ? resourcesPanel : null}
+              </Card>
+            </div>
+          </aside>
+        </div>
       </DesktopChrome>
-      {resourcesPresentation === 'floating' && resourcesOpen && (
-        <Card
-          aria-label={tPanel('resources')}
-          className="absolute top-[calc(var(--lc-chrome-h)+0.75rem)] right-3 z-40 max-h-[calc(100%-var(--lc-chrome-h)-1.5rem)] w-72 overflow-hidden shadow-xl"
-        >
-          {resourcesPanel}
-        </Card>
-      )}
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
     </div>
