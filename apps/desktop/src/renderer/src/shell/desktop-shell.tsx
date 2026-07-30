@@ -738,7 +738,7 @@ export function DesktopShell({
         onToggleResources={toggleResources}
         onResourcesOpenChange={setResourcesOpen}
       >
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
           <DesktopWorkspace
             main={main}
             right={workspaceRight}

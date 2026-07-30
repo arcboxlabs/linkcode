@@ -53,7 +53,7 @@ export function WebWorkbenchShell({
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
       <div className="h-full min-w-0">
         <ShellFrame
           {...props}
