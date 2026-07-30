@@ -8,8 +8,7 @@ import type { MasterKey } from './keyring';
 
 /**
  * Where the daemon's long-lived secrets — cloud session token, provider/account credentials, the
- * software device key — actually live. They are kept out of `config.json` / `cloud.json` entirely and
- * addressed by a stable ref (`account:<id>`, `cloud:session`, …), so those files hold structure only.
+ * software device key — actually live, keeping `config.json` / `cloud.json` to structure only.
  *
  * Custody is a master key in the OS keyring plus AES-256-GCM ciphertext in `secrets.json` — one
  * keyring round-trip per boot regardless of how many secrets there are, and losing the keyring entry
@@ -17,16 +16,42 @@ import type { MasterKey } from './keyring';
  * the vault degrades to plaintext on disk (`0600`) rather than failing closed, which keeps headless
  * machines usable; `protection` reports which of the two is in force and the file records it, so the
  * degradation is never invisible.
+ *
+ * Callers never see a whole-store handle: {@link namespace} is the only way in, so no subsystem can
+ * read or clear another's secrets.
  */
 export interface SecretVault {
   /** Whether the OS is protecting `secrets.json`, or it is plaintext on disk. */
   readonly protection: SecretProtection;
-  get: (ref: string) => string | null;
-  set: (ref: string, secret: string) => void;
-  delete: (ref: string) => void;
-  /** Stored refs under `prefix` — what a caller prunes against when its owning records are rewritten. */
-  list: (prefix: string) => string[];
+  namespace: (name: SecretNamespace) => SecretStore;
 }
+
+/**
+ * One subsystem's slice of the vault. Keys are scoped to the namespace, so
+ * {@link SecretStore.replaceAll} can prune what the owner no longer has without any risk of reaching
+ * a neighbour — the property that makes prune-on-save safe to hand out.
+ */
+export interface SecretStore {
+  /** Whether the OS is protecting the store these secrets live in. */
+  readonly protection: SecretProtection;
+  get: (key: string) => string | null;
+  set: (key: string, secret: string) => void;
+  delete: (key: string) => void;
+  /**
+   * Replace this namespace's entire content in **one** write: keys absent from `entries` are dropped.
+   * This is what a `save*` should call — it makes deletion implicit and costs a single re-encrypt no
+   * matter how many entries there are.
+   */
+  replaceAll: (entries: ReadonlyMap<string, string>) => void;
+}
+
+/**
+ * The registry of vault namespaces. A closed union rather than a free string so a typo cannot mint a
+ * silently orphaned universe; the `:` delimiter is what actually makes cross-namespace pruning
+ * impossible. Domain knowledge (which keys exist, what they mean) belongs to the owning module, not
+ * here — this is only the list of who has a slice.
+ */
+export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'device';
 
 export type SecretProtection = 'os-keyring' | 'plaintext';
 
@@ -100,16 +125,28 @@ export function createSecretVault(file: string, loadKey: () => MasterKey | null)
 
   return {
     protection,
-    get: (ref) => secrets.get(ref) ?? null,
-    set(ref, secret) {
-      secrets.set(ref, secret);
-      persist();
+    namespace(name) {
+      const prefix = `${name}:`;
+      return {
+        protection,
+        get: (key) => secrets.get(prefix + key) ?? null,
+        set(key, secret) {
+          secrets.set(prefix + key, secret);
+          persist();
+        },
+        delete(key) {
+          if (!secrets.delete(prefix + key)) return;
+          persist();
+        },
+        replaceAll(entries) {
+          for (const ref of secrets.keys()) {
+            if (ref.startsWith(prefix)) secrets.delete(ref);
+          }
+          for (const [key, secret] of entries) secrets.set(prefix + key, secret);
+          persist();
+        },
+      };
     },
-    delete(ref) {
-      if (!secrets.delete(ref)) return;
-      persist();
-    },
-    list: (prefix) => [...secrets.keys()].filter((ref) => ref.startsWith(prefix)),
   };
 }
 

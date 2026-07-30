@@ -3,16 +3,7 @@ import { loadMasterKey } from './keyring';
 import type { SecretVault } from './vault';
 import { createSecretVault } from './vault';
 
-export type { SecretProtection, SecretVault } from './vault';
-
-/**
- * Stable vault refs. Derivable from what the caller already holds — an account id, an agent kind —
- * so no file needs to store a pointer alongside the structure it describes.
- */
-export const CLOUD_SESSION_REF = 'cloud:session';
-export const DEVICE_SOFTWARE_KEY_REF = 'device:software-key';
-export const accountSecretRef = (accountId: string): string => `account:${accountId}`;
-export const providerApiKeyRef = (agentKind: string): string => `provider:${agentKind}`;
+export type { SecretNamespace, SecretProtection, SecretStore, SecretVault } from './vault';
 
 /**
  * Keyed by the resolved file so a changed `$HOME` (an E2E daemon, a test) yields a fresh vault,
@@ -21,6 +12,11 @@ export const providerApiKeyRef = (agentKind: string): string => `provider:${agen
  */
 const vaults = new Map<string, SecretVault>();
 
+/**
+ * The composition root's handle on the vault. Consumers take a {@link SecretVault} as a parameter and
+ * open their own namespace rather than reaching this — which is what keeps each subsystem's key names
+ * with the subsystem, and lets tests hand over an in-memory vault instead of mocking this module.
+ */
 export function secretVault(): SecretVault {
   const file = secretsFilePath();
   const existing = vaults.get(file);
