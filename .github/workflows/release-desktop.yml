@@ -52,7 +52,7 @@ jobs:
     env:
       R2_BUCKET: linkcode-releases
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      # Gate for the Homebrew cask bump (below). Either secret absent ⇒ the bump steps self-skip.
+      # Gate for the Homebrew and WinGet bumps (below). Either secret absent ⇒ they self-skip.
       BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
       BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
     steps:
@@ -178,6 +178,32 @@ jobs:
           version: ${{ steps.cask-shas.outputs.version }}
           arm_sha256: ${{ steps.cask-shas.outputs.arm }}
           intel_sha256: ${{ steps.cask-shas.outputs.intel }}
+
+      - name: Mint WinGet fork token
+        # The App must be installed on the org fork arcboxlabs/winget-pkgs (contents +
+        # pull-requests write); komac pushes its branch there before opening the upstream PR.
+        id: winget-token
+        if: ${{ (github.event_name == 'push' || inputs.dry_run == false) && startsWith(steps.meta.outputs.tag, 'v') && !contains(steps.meta.outputs.tag, '-') && env.BOT_APP_ID != '' && env.BOT_APP_PRIVATE_KEY != '' }}
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: winget-pkgs
+
+      - name: Publish to WinGet
+        # Soft-fail on purpose: the action only *updates* a package already in winget-pkgs, and an
+        # App installation token may be refused when opening the PR on microsoft/winget-pkgs.
+        if: ${{ steps.winget-token.outputs.token != '' }}
+        continue-on-error: true
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
+        with:
+          identifier: ArcBox.LinkCode
+          release-tag: ${{ steps.meta.outputs.tag }}
+          installers-regex: '\.exe$'
+          token: ${{ steps.winget-token.outputs.token }}
+          fork-user: ${{ github.repository_owner }}
 
       - name: Dry-run summary
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}

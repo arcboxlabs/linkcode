@@ -109,9 +109,17 @@ brew install --cask arcboxlabs/tap/linkcode
 
 也可以从 [最新 Release](https://github.com/arcboxlabs/linkcode/releases/latest) 下载 DMG（Apple silicon / Intel）。
 
-### Windows 与 Linux
+### Windows
 
-从 [最新 Release](https://github.com/arcboxlabs/linkcode/releases/latest) 下载安装包（`.exe`）、`.AppImage` 或 `.deb`。
+```powershell
+winget install -e --id ArcBox.LinkCode
+```
+
+也可以从 [最新 Release](https://github.com/arcboxlabs/linkcode/releases/latest) 下载安装包（`.exe`，x64 / arm64）。
+
+### Linux
+
+从 [最新 Release](https://github.com/arcboxlabs/linkcode/releases/latest) 下载 `.AppImage` 或 `.deb`。
 
 桌面端会自动保持更新。
 
