@@ -4,7 +4,6 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
 import { RefreshCwIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
-import { SettingsPageTitle } from '../settings-page';
 
 export interface PluginsShellProps {
   searchQuery: string;
@@ -29,9 +28,9 @@ export function PluginsShell({
 }: PluginsShellProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
   return (
+    // No page title here: the settings frame renders the tab title above every panel.
     <div className="flex flex-col">
-      <SettingsPageTitle>{t('title')}</SettingsPageTitle>
-      <p className="-mt-6 mb-6 text-muted-foreground text-sm">{t('hint')}</p>
+      <p className="mb-6 text-muted-foreground text-sm">{t('hint')}</p>
       <Tabs defaultValue="plugins">
         <div className="mb-3 flex items-center justify-between gap-3">
           <TabsList>
