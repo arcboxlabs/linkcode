@@ -74,6 +74,8 @@ export interface ShellFrameProps
   conversation: ConversationViewModel;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
+  /** Optional rail beside the transcript; the active-session composer remains outside it. */
+  conversationAside?: React.ReactNode;
   header?: React.ReactNode;
   errorMessage?: string | null;
   onSelectSession: (id: SessionId) => void;
@@ -138,6 +140,7 @@ export function ShellFrame({
   conversation,
   respondingRequestIds,
   responseErrors,
+  conversationAside,
   header,
   errorMessage,
   pinnedSessionIds,
@@ -250,6 +253,7 @@ export function ShellFrame({
             onCancelLogin={onCancelLogin}
             respondingRequestIds={respondingRequestIds}
             responseErrors={responseErrors}
+            conversationAside={conversationAside}
             TerminalBlockComponent={TerminalBlockComponent}
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}

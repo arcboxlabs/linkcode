@@ -409,6 +409,26 @@ export function DesktopShell({
     openRightPanelSection('diff');
   }
 
+  const resourcesAside = (
+    <aside
+      aria-hidden={!resourcesFloatingOpen}
+      inert={!resourcesFloatingOpen}
+      className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)]"
+      style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
+    >
+      <div className="h-full p-3" style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}>
+        <Card
+          aria-label={tPanel('resources')}
+          className="max-h-[min(32rem,100%)] w-72 overflow-hidden shadow-xl"
+        >
+          <div className="min-h-0 overflow-y-auto">
+            {resourcesPresentation === 'floating' ? resourcesPanel : null}
+          </div>
+        </Card>
+      </div>
+    </aside>
+  );
+
   const main = (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-background">
       <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
@@ -460,6 +480,7 @@ export function DesktopShell({
           onCancelLogin={onCancelLogin}
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
+          conversationAside={resourcesAside}
           TerminalBlockComponent={TerminalBlockComponent}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
@@ -738,91 +759,72 @@ export function DesktopShell({
         onToggleResources={toggleResources}
         onResourcesOpenChange={setResourcesOpen}
       >
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
-          <DesktopWorkspace
-            main={main}
-            right={workspaceRight}
-            bottom={workspaceBottom}
-            expandedPanel={expandedPanel}
-            layout={layout}
-            onLayoutChange={updateLayout}
-            onSidebarResize={syncSidebarPaneSize}
-            onRightResize={syncRightPaneSize}
-            onBottomResize={syncBottomPaneSize}
-            sidebar={{
-              transition: sidebarTransition,
-              open: sidebarOpen,
-              onResetSize: resetSidebarSize,
-              node: (
-                <SessionSidebar
-                  className={sidebarClassName}
-                  threadGroups={threadGroups}
-                  workspacesLoading={workspacesLoading}
-                  sessionsLoading={sessionsLoading}
-                  activeId={active?.sessionId ?? null}
-                  pinnedSessionIds={pinnedSessionIds}
-                  collapsedSections={collapsedSections}
-                  topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
-                  footer={
-                    <HostFooter
-                      state={tConnection('connected')}
-                      appVersion={appVersion}
-                      pendingPermissionCount={conversation.pendingPermissionIds.length}
-                      account={cloudAuth.account}
-                      authPending={cloudAuth.authenticating}
-                      onSignIn={cloudAuth.signIn}
-                      onSignOut={cloudAuth.signOut}
-                      onManageAccount={cloudAuth.manageAccount}
-                      remoteHosts={remoteHostItems}
-                      remoteHostsLoading={remoteHosts.isLoading}
-                      selectedHostId={selectedHostId}
-                      onSelectHost={selectHost}
-                      onOpenSettings={onOpenSettings}
-                    />
-                  }
-                  onPickDirectory={pickDirectory}
-                  onOpenSearch={onOpenSearch}
-                  onOpenAutomations={onOpenAutomations}
-                  searchShortcut={searchShortcut}
-                  onRegisterWorkspace={onRegisterWorkspace}
-                  onImportHistory={onImportHistory}
-                  onRenameWorkspace={onRenameWorkspace}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onToggleGroupCollapsed={onToggleGroupCollapsed}
-                  onToggleSectionCollapsed={onToggleSectionCollapsed}
-                  onTogglePreviewExpanded={onTogglePreviewExpanded}
-                  BranchStatusComponent={BranchStatusComponent}
-                  // Cloud-gated: without a session the IM source can't authenticate, so the
-                  // row menu (and its ellipsis) stays hidden entirely.
-                  ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
-                  onSelect={onSelectSession}
-                  onClose={onCloseSession}
-                  onToggleSessionPinned={onToggleSessionPinned}
-                  onReorderGroups={onReorderGroups}
-                  onReorderThreads={onReorderThreads}
-                  onStartDraft={onStartDraft}
-                />
-              ),
-            }}
-          />
-          <aside
-            aria-hidden={!resourcesFloatingOpen}
-            inert={!resourcesFloatingOpen}
-            className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-emphasis) ease-[cubic-bezier(0.2,0,0,1)]"
-            style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
-          >
-            <div
-              className="h-full p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]"
-              style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}
-            >
-              <Card aria-label={tPanel('resources')} className="w-72 overflow-hidden shadow-xl">
-                <div className="max-h-[min(32rem,calc(100vh-var(--lc-chrome-h)-1.5rem))] min-h-0 overflow-y-auto">
-                  {resourcesPresentation === 'floating' ? resourcesPanel : null}
-                </div>
-              </Card>
-            </div>
-          </aside>
-        </div>
+        <DesktopWorkspace
+          main={main}
+          right={workspaceRight}
+          bottom={workspaceBottom}
+          expandedPanel={expandedPanel}
+          layout={layout}
+          onLayoutChange={updateLayout}
+          onSidebarResize={syncSidebarPaneSize}
+          onRightResize={syncRightPaneSize}
+          onBottomResize={syncBottomPaneSize}
+          sidebar={{
+            transition: sidebarTransition,
+            open: sidebarOpen,
+            onResetSize: resetSidebarSize,
+            node: (
+              <SessionSidebar
+                className={sidebarClassName}
+                threadGroups={threadGroups}
+                workspacesLoading={workspacesLoading}
+                sessionsLoading={sessionsLoading}
+                activeId={active?.sessionId ?? null}
+                pinnedSessionIds={pinnedSessionIds}
+                collapsedSections={collapsedSections}
+                topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
+                footer={
+                  <HostFooter
+                    state={tConnection('connected')}
+                    appVersion={appVersion}
+                    pendingPermissionCount={conversation.pendingPermissionIds.length}
+                    account={cloudAuth.account}
+                    authPending={cloudAuth.authenticating}
+                    onSignIn={cloudAuth.signIn}
+                    onSignOut={cloudAuth.signOut}
+                    onManageAccount={cloudAuth.manageAccount}
+                    remoteHosts={remoteHostItems}
+                    remoteHostsLoading={remoteHosts.isLoading}
+                    selectedHostId={selectedHostId}
+                    onSelectHost={selectHost}
+                    onOpenSettings={onOpenSettings}
+                  />
+                }
+                onPickDirectory={pickDirectory}
+                onOpenSearch={onOpenSearch}
+                onOpenAutomations={onOpenAutomations}
+                searchShortcut={searchShortcut}
+                onRegisterWorkspace={onRegisterWorkspace}
+                onImportHistory={onImportHistory}
+                onRenameWorkspace={onRenameWorkspace}
+                onArchiveWorkspace={onArchiveWorkspace}
+                onToggleGroupCollapsed={onToggleGroupCollapsed}
+                onToggleSectionCollapsed={onToggleSectionCollapsed}
+                onTogglePreviewExpanded={onTogglePreviewExpanded}
+                BranchStatusComponent={BranchStatusComponent}
+                // Cloud-gated: without a session the IM source can't authenticate, so the
+                // row menu (and its ellipsis) stays hidden entirely.
+                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
+                onSelect={onSelectSession}
+                onClose={onCloseSession}
+                onToggleSessionPinned={onToggleSessionPinned}
+                onReorderGroups={onReorderGroups}
+                onReorderThreads={onReorderThreads}
+                onStartDraft={onStartDraft}
+              />
+            ),
+          }}
+        />
       </DesktopChrome>
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}
