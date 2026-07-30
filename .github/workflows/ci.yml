@@ -39,31 +39,44 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+      - uses: actions/checkout@v7
 
       - name: Setup Rust
+        id: setup-rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: "" # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
+        background: true
 
-      - name: Restore ESLint cache
-        uses: actions/cache@v6
-        with:
-          path: .eslintcache
-          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-${{ github.sha }}
-          restore-keys: |
-            eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-
-            eslint-${{ runner.os }}-
+      - parallel:
+          - uses: pnpm/action-setup@v6
+            with:
+              run_install: false
+              cache: true
+
+          - uses: actions/setup-node@v6
+            with:
+              node-version-file: .nvmrc
+              package-manager-cache: false
+
+          # Before `pnpm install`, so the hashFiles globs below cannot reach into node_modules.
+          #
+          # eslint validates a cached entry against that file's own content only, so a cross-file
+          # type change would leave an unchanged file's cached result in place — a type-aware rule
+          # such as no-floating-promises can start applying to a caller nobody edited, and `tsc`
+          # does not reject that code either. The key therefore covers every lint-visible input at
+          # once and there are deliberately no restore-keys: a prefix match would reintroduce
+          # exactly that hole. The cost is that this only hits on commits touching no lintable
+          # source (docs, Rust, workflows); a run that changes any of them re-lints from cold,
+          # which is the correct answer.
+          - name: Restore ESLint cache
+            uses: actions/cache@v6
+            with:
+              path: .eslintcache
+              key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-${{ github.sha }}
+              restore-keys: |
+                eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-
+                eslint-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -83,6 +96,11 @@ jobs:
           restore-keys: |
             tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-
             tsc-${{ runner.os }}-
+      - wait: setup-rust
+      - name: Build PTY sidecar for interoperability tests
+        id: build-sidecar
+        run: cargo build --locked -p linkcode-pty
+        background: true
 
       - name: Check formatting and imports
         run: pnpm format:check
@@ -95,8 +113,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build PTY sidecar for interoperability tests
-        run: cargo build --locked -p linkcode-pty
+      - wait: build-sidecar
 
       - name: Test
         env:
@@ -119,22 +136,25 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+      - uses: actions/checkout@v7
 
       - name: Setup Rust
+        id: setup-rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
+        background: true
+
+      - parallel:
+          - uses: pnpm/action-setup@v6
+            with:
+              run_install: false
+              cache: true
+
+          - uses: actions/setup-node@v6
+            with:
+              node-version-file: .nvmrc
+              package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -162,6 +182,8 @@ jobs:
             pnpm -F @linkcode/desktop e2e:window-bounds
           '
 
+      - wait: setup-rust
+
       - name: Test unsigned packaged app entry
         run: xvfb-run -a pnpm -F @linkcode/desktop e2e:packaged
 
@@ -174,14 +196,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - parallel:
+          - uses: pnpm/action-setup@v6
+            with:
+              run_install: false
+              cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+          - uses: actions/setup-node@v6
+            with:
+              node-version-file: .nvmrc
+              package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -211,14 +235,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - parallel:
+          - uses: pnpm/action-setup@v6
+            with:
+              run_install: false
+              cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+          - uses: actions/setup-node@v6
+            with:
+              node-version-file: .nvmrc
+              package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -246,11 +272,12 @@ jobs:
         with:
           rustflags: ""
 
-      - name: Format
-        run: cargo fmt --check
+      - parallel:
+          - name: Format
+            run: cargo fmt --check
 
-      - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+          - name: Clippy
+            run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Test
         run: cargo test --locked
