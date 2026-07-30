@@ -52,8 +52,6 @@ export interface ConversationSurfaceProps {
   isRunning: boolean;
   className?: string;
   conversationClassName?: string;
-  /** Optional rail beside only the transcript; prompts, login recovery, and composer stay below. */
-  conversationAside?: React.ReactNode;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
   mentionItems?: MentionItem[];
@@ -96,7 +94,6 @@ export function ConversationSurface({
   isRunning,
   className,
   conversationClassName,
-  conversationAside,
   TerminalBlockComponent,
   mentionItems,
   onMentionQueryChange,
@@ -128,20 +125,17 @@ export function ConversationSurface({
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
-      <div className={cn('flex min-h-0 flex-1', conversationClassName)}>
-        <div className="min-h-0 min-w-0 flex-1">
-          <ArtifactHostActionsProvider actions={artifactActions}>
-            <ConversationView
-              conversation={conversation}
-              agentKind={agentKind}
-              cwd={cwd}
-              modelName={modelName ?? conversation.currentModel ?? undefined}
-              TerminalBlockComponent={TerminalBlockComponent}
-              onReviewChanges={onReviewChanges}
-            />
-          </ArtifactHostActionsProvider>
-        </div>
-        {conversationAside}
+      <div className={cn('min-h-0 flex-1', conversationClassName)}>
+        <ArtifactHostActionsProvider actions={artifactActions}>
+          <ConversationView
+            conversation={conversation}
+            agentKind={agentKind}
+            cwd={cwd}
+            modelName={modelName ?? conversation.currentModel ?? undefined}
+            TerminalBlockComponent={TerminalBlockComponent}
+            onReviewChanges={onReviewChanges}
+          />
+        </ArtifactHostActionsProvider>
       </div>
       <ConversationPromptDock
         conversation={conversation}

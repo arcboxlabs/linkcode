@@ -19,7 +19,7 @@ beforeEach(() => storage.clear());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('resources panel visibility', () => {
-  it('selects a floating card only when normal content and the card both fit', async () => {
+  it('selects a floating card only when content, breathing room, and the card all fit', async () => {
     const { getResourcesPanelPresentation } = await import('../resources-panel-store');
 
     expect(

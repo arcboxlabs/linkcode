@@ -57,7 +57,6 @@ const RE_MAX_EFFORT = /Max/;
 function surface(
   runtimeCues?: AgentRuntimeCues,
   conversation: ConversationViewModel = EMPTY_CONVERSATION,
-  conversationAside?: React.ReactNode,
 ): React.ReactNode {
   return (
     <ConversationSurface
@@ -70,7 +69,6 @@ function surface(
       agentKind="claude-code"
       respondingRequestIds={new Set()}
       isRunning={false}
-      conversationAside={conversationAside}
       runtimeCues={runtimeCues}
       onLoginAgent={vi.fn()}
       onRespondPermission={vi.fn()}
@@ -133,20 +131,6 @@ describe('ConversationSurface prompt card', () => {
 });
 
 describe('ConversationSurface needs-login recovery (CODE-172)', () => {
-  it('keeps the transcript aside separate from login recovery and the composer', () => {
-    render(
-      surface(
-        { 'claude-code': { state: 'needs-login', phase: 'idle' } },
-        EMPTY_CONVERSATION,
-        <aside>Resources rail</aside>,
-      ),
-    );
-
-    const transcriptRow = screen.getByText('Resources rail').parentElement;
-    expect(transcriptRow?.contains(screen.getByText('needsLoginTitle'))).toBe(false);
-    expect(transcriptRow?.contains(screen.getByRole('combobox'))).toBe(false);
-  });
-
   it('renders the sign-in card and blocks send for a needs-login cue', () => {
     render(surface({ 'claude-code': { state: 'needs-login', phase: 'idle' } }));
     // The AgentLoginCard idle phase: title + sign-in button (mocked i18n returns raw keys).
