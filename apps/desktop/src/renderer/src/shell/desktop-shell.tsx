@@ -324,6 +324,7 @@ export function DesktopShell({
     owner: shellRootRef,
     closeBottomTerminalTab: closeTab,
     closeRightTerminalTab,
+    closeWindow: () => systemBridge.window.close(),
     togglePanel,
     updateSidebarOpen,
   });

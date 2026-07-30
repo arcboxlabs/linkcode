@@ -23,6 +23,7 @@ interface UseDesktopShellShortcutsOptions {
   owner: React.RefObject<Element | null>;
   closeBottomTerminalTab: (id: string) => void;
   closeRightTerminalTab: (id: string) => void;
+  closeWindow: () => unknown;
   togglePanel: (side: PanelSide) => void;
   updateSidebarOpen: (updater: boolean | ((current: boolean) => boolean)) => void;
 }
@@ -32,6 +33,7 @@ export function useDesktopShellShortcuts({
   owner,
   closeBottomTerminalTab,
   closeRightTerminalTab,
+  closeWindow,
   togglePanel,
   updateSidebarOpen,
 }: UseDesktopShellShortcutsOptions): void {
@@ -40,15 +42,19 @@ export function useDesktopShellShortcuts({
     shortcut: CLOSE_TERMINAL_TAB_SHORTCUT,
     owner,
     handler(event) {
-      if (!(event.target instanceof Element)) return false;
-      const terminal = event.target.closest<HTMLElement>(
-        '[data-terminal-panel][data-terminal-tab]',
-      );
-      if (!terminal) return false;
-      const id = terminal.dataset.terminalTab;
-      if (id === undefined) return false;
-      if (terminal.dataset.terminalPanel === 'right') closeRightTerminalTab(id);
-      else closeBottomTerminalTab(id);
+      const terminal =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>('[data-terminal-panel][data-terminal-tab]')
+          : null;
+      if (terminal) {
+        const id = terminal.dataset.terminalTab;
+        if (id !== undefined) {
+          if (terminal.dataset.terminalPanel === 'right') closeRightTerminalTab(id);
+          else closeBottomTerminalTab(id);
+        }
+      } else {
+        closeWindow();
+      }
       return true;
     },
   });
