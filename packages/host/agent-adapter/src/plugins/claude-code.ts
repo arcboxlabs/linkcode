@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import type { Plugin, PluginComponent, PluginSource } from '@linkcode/schema';
+import type { Plugin, PluginComponent, PluginSource, StandaloneSkill } from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
 import { z } from 'zod';
 import { agentRuntimeProber, ClaudeCodeProbe } from '../probe';
@@ -92,7 +93,10 @@ const CLAUDE_MANAGEMENT_CAPABILITIES = {
 export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
   readonly provider = 'claude-code' as const;
 
-  constructor(private readonly command: ClaudePluginCommand = runClaudePluginCommand) {}
+  constructor(
+    private readonly command: ClaudePluginCommand = runClaudePluginCommand,
+    private readonly userSkillsDir: string = join(homedir(), '.claude', 'skills'),
+  ) {}
 
   async list(opts: PluginDiscoveryOptions = {}): Promise<Plugin[]> {
     const [pluginsValue, marketplacesValue] = await Promise.all([
@@ -103,6 +107,88 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     const marketplaces = z.array(ClaudeMarketplaceSchema).parse(marketplacesValue);
     return normalizeClaudePlugins(catalog, marketplaces);
   }
+
+  /** Personal/project Agent Skills are bare `SKILL.md` directories that `claude plugin list`
+   * never surfaces (verified on CLI 2.1.220) — a plain filesystem read is the only source.
+   * No CLI toggle exists for them, so `toggleable` is always false. */
+  async listStandaloneSkills(opts: PluginDiscoveryOptions = {}): Promise<StandaloneSkill[]> {
+    const roots: { dir: string; scope: StandaloneSkill['scope'] }[] = [
+      { dir: this.userSkillsDir, scope: 'user' },
+    ];
+    if (opts.cwd) roots.push({ dir: join(opts.cwd, '.claude', 'skills'), scope: 'project' });
+    const groups = await Promise.all(
+      roots.map(({ dir, scope }) => readClaudeSkillsDirectory(dir, scope)),
+    );
+    return groups.flat();
+  }
+}
+
+async function readClaudeSkillsDirectory(
+  dir: string,
+  scope: StandaloneSkill['scope'],
+): Promise<StandaloneSkill[]> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const reads: Array<Promise<StandaloneSkill | undefined>> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    reads.push(readClaudeSkill(dir, entry.name, scope));
+  }
+  const skills = await Promise.all(reads);
+  return skills
+    .filter((skill) => skill !== undefined)
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function readClaudeSkill(
+  dir: string,
+  id: string,
+  scope: StandaloneSkill['scope'],
+): Promise<StandaloneSkill | undefined> {
+  const path = join(dir, id);
+  let frontmatter;
+  try {
+    frontmatter = parseSkillFrontmatter(await readFile(join(path, 'SKILL.md'), 'utf8'));
+  } catch {
+    return undefined;
+  }
+  return {
+    provider: 'claude-code',
+    id,
+    name: frontmatter.name ?? id,
+    description: frontmatter.description,
+    scope,
+    path,
+    toggleable: false,
+  };
+}
+
+const RE_SKILL_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
+const RE_LINE_BREAK = /\r?\n/;
+
+/** SKILL.md frontmatter is a flat two-key block (name/description, optionally quoted) — a full
+ * YAML parser is unwarranted and would be a new dependency. */
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = RE_SKILL_FRONTMATTER.exec(content);
+  if (!match) return {};
+  const fields: { name?: string; description?: string } = {};
+  for (const line of match[1].split(RE_LINE_BREAK)) {
+    const separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    if (key !== 'name' && key !== 'description') continue;
+    const raw = line.slice(separator + 1).trim();
+    const unquoted =
+      (raw[0] === '"' && raw.endsWith('"')) || (raw[0] === "'" && raw.endsWith("'"))
+        ? raw.slice(1, -1)
+        : raw;
+    if (unquoted) fields[key] = unquoted;
+  }
+  return fields;
 }
 
 async function runClaudePluginCommand(

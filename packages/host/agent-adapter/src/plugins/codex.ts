@@ -1,4 +1,10 @@
-import type { Plugin, PluginComponent, PluginLinks, PluginSource } from '@linkcode/schema';
+import type {
+  Plugin,
+  PluginComponent,
+  PluginLinks,
+  PluginSource,
+  StandaloneSkill,
+} from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
 import { never } from 'foxts/guard';
 import { noop } from 'foxts/noop';
@@ -101,6 +107,25 @@ const CodexPluginDetailSchema = z.object({
 
 const CodexPluginReadSchema = z.object({ plugin: CodexPluginDetailSchema });
 
+/** `skills/list` entry shape observed live on 0.144.1; tolerant per-entry so one malformed
+ * skill never hides the rest. */
+const CodexSkillEntrySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  path: z.string().min(1),
+  scope: z.enum(['repo', 'user']),
+  enabled: z.boolean(),
+});
+
+const CodexSkillListSchema = z.object({
+  data: z.array(
+    z.object({
+      cwd: z.string().optional(),
+      skills: z.array(z.unknown()),
+    }),
+  ),
+});
+
 type CodexMarketplace = z.infer<typeof CodexMarketplaceSchema>;
 type CodexPluginSummary = z.infer<typeof CodexPluginSummarySchema>;
 type CodexPluginDetail = z.infer<typeof CodexPluginDetailSchema>;
@@ -123,6 +148,42 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
   constructor(private readonly startServer: StartCodexPluginServer = startCodexPluginServer) {}
 
   async list(opts: PluginDiscoveryOptions = {}): Promise<Plugin[]> {
+    return this.withDiscoveryServer(async (server) => {
+      const value = await server.request('plugin/list', {
+        cwds: opts.cwd ? [opts.cwd] : undefined,
+      });
+      const catalog = CodexPluginListSchema.parse(value);
+      const entries = catalog.marketplaces.flatMap((marketplace) =>
+        marketplace.plugins.map((summary) => ({ marketplace, summary })),
+      );
+      const plugins = await Promise.all(
+        entries.map(async ({ marketplace, summary }) =>
+          normalizeCodexPlugin(
+            marketplace,
+            summary,
+            await readCodexPluginDetail(server, marketplace, summary),
+          ),
+        ),
+      );
+      return plugins.sort((left, right) => left.id.localeCompare(right.id));
+    });
+  }
+
+  /** `skills/list` works pre-thread on a discovery-only app-server, accepts omitted `cwds`, and
+   * tags every entry with an explicit `scope` (`repo`/`user`) — all verified live on 0.144.1.
+   * Plugin-bundled skills arrive in the same response under `plugin:skill` qualified names, so
+   * a bare (colon-free) name is what marks a skill standalone. */
+  async listStandaloneSkills(opts: PluginDiscoveryOptions = {}): Promise<StandaloneSkill[]> {
+    return this.withDiscoveryServer(async (server) => {
+      const value = await server.request('skills/list', {
+        cwds: opts.cwd ? [opts.cwd] : undefined,
+        forceReload: false,
+      });
+      return normalizeCodexStandaloneSkills(value);
+    });
+  }
+
+  private async withDiscoveryServer<T>(run: (server: CodexPluginServer) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     let server: CodexPluginServer | undefined;
     let closed = false;
@@ -138,23 +199,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
     try {
       const activeServer = await this.startServer(controller.signal);
       server = activeServer;
-      const value = await activeServer.request('plugin/list', {
-        cwds: opts.cwd ? [opts.cwd] : undefined,
-      });
-      const catalog = CodexPluginListSchema.parse(value);
-      const entries = catalog.marketplaces.flatMap((marketplace) =>
-        marketplace.plugins.map((summary) => ({ marketplace, summary })),
-      );
-      const plugins = await Promise.all(
-        entries.map(async ({ marketplace, summary }) =>
-          normalizeCodexPlugin(
-            marketplace,
-            summary,
-            await readCodexPluginDetail(activeServer, marketplace, summary),
-          ),
-        ),
-      );
-      return plugins.sort((left, right) => left.id.localeCompare(right.id));
+      return await run(activeServer);
     } finally {
       clearTimeout(timeout);
       closeOnce();
@@ -181,6 +226,30 @@ async function readCodexPluginDetail(
   } catch {
     return undefined;
   }
+}
+
+function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {
+  const parsed = CodexSkillListSchema.parse(value);
+  const skills = new Map<string, StandaloneSkill>();
+  for (const group of parsed.data) {
+    for (const raw of group.skills) {
+      const entry = CodexSkillEntrySchema.safeParse(raw);
+      if (!entry.success) continue;
+      const { name, description, path, scope } = entry.data;
+      // Plugin-qualified names (`plugin:skill`) belong to Plugin.components, not this list.
+      if (name.includes(':') || skills.has(path)) continue;
+      skills.set(path, {
+        provider: 'codex',
+        id: name,
+        name,
+        description: description || undefined,
+        scope: scope === 'repo' ? 'project' : 'user',
+        path,
+        toggleable: false,
+      });
+    }
+  }
+  return [...skills.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
 async function startCodexPluginServer(signal: AbortSignal): Promise<CodexPluginServer> {

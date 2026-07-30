@@ -134,4 +134,57 @@ describe('ClaudeCodePluginAdapter', () => {
 
     await expect(new ClaudeCodePluginAdapter(command).list()).rejects.toThrow();
   });
+
+  it('discovers standalone skills from the user and project skill directories', async () => {
+    const userRoot = await mkdtemp(join(tmpdir(), 'linkcode-claude-skills-user-'));
+    const projectRoot = await mkdtemp(join(tmpdir(), 'linkcode-claude-skills-project-'));
+    tempRoots.push(userRoot, projectRoot);
+    const projectSkills = join(projectRoot, '.claude', 'skills');
+    await Promise.all([
+      mkdir(join(userRoot, 'docx'), { recursive: true }),
+      mkdir(join(userRoot, 'no-manifest'), { recursive: true }),
+      mkdir(join(projectSkills, 'deploy'), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(
+        join(userRoot, 'docx', 'SKILL.md'),
+        '---\nname: "Word documents"\ndescription: \'Create .docx files\'\nlicense: MIT\n---\nBody',
+      ),
+      writeFile(join(userRoot, 'stray-file.md'), 'not a skill directory'),
+      writeFile(join(projectSkills, 'deploy', 'SKILL.md'), '---\ndescription: Ship it\n---'),
+    ]);
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+
+    const skills = await new ClaudeCodePluginAdapter(command, userRoot).listStandaloneSkills({
+      cwd: projectRoot,
+    });
+
+    expect(skills).toEqual([
+      {
+        provider: 'claude-code',
+        id: 'docx',
+        name: 'Word documents',
+        description: 'Create .docx files',
+        scope: 'user',
+        path: join(userRoot, 'docx'),
+        toggleable: false,
+      },
+      {
+        provider: 'claude-code',
+        id: 'deploy',
+        name: 'deploy',
+        description: 'Ship it',
+        scope: 'project',
+        path: join(projectSkills, 'deploy'),
+        toggleable: false,
+      },
+    ]);
+  });
+
+  it('returns no standalone skills when the skill roots do not exist', async () => {
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const adapter = new ClaudeCodePluginAdapter(command, '/nonexistent/claude/skills');
+
+    await expect(adapter.listStandaloneSkills()).resolves.toEqual([]);
+  });
 });

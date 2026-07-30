@@ -211,4 +211,81 @@ describe('CodexPluginAdapter', () => {
 
     await rejection;
   });
+
+  it('lists bare-named skills as standalone and filters plugin-qualified ones', async () => {
+    const close = vi.fn();
+    const request = vi.fn((method: string, params: unknown) => {
+      expect(method).toBe('skills/list');
+      expect(params).toEqual({ cwds: ['/workspace'], forceReload: false });
+      return Promise.resolve({
+        data: [
+          {
+            cwd: '/workspace',
+            skills: [
+              {
+                name: 'linear',
+                description: 'Linear workflow',
+                path: '/workspace/.agents/skills/linear/SKILL.md',
+                scope: 'repo',
+                enabled: true,
+              },
+              {
+                name: 'browser:control-in-app-browser',
+                description: 'Bundled plugin skill',
+                path: '/home/user/.codex/plugins/cache/browser/skills/control/SKILL.md',
+                scope: 'user',
+                enabled: true,
+              },
+              {
+                name: 'better-skill-creator',
+                description: '',
+                path: '/home/user/skills/better-skill-creator/SKILL.md',
+                scope: 'user',
+                enabled: true,
+              },
+              { malformed: true },
+            ],
+          },
+          {
+            skills: [
+              {
+                name: 'better-skill-creator',
+                description: 'duplicate path entry',
+                path: '/home/user/skills/better-skill-creator/SKILL.md',
+                scope: 'user',
+                enabled: true,
+              },
+            ],
+          },
+        ],
+      });
+    });
+    const server: CodexPluginServer = { request, close };
+
+    const skills = await new CodexPluginAdapter(() => Promise.resolve(server)).listStandaloneSkills(
+      { cwd: '/workspace' },
+    );
+
+    expect(skills).toEqual([
+      {
+        provider: 'codex',
+        id: 'better-skill-creator',
+        name: 'better-skill-creator',
+        description: undefined,
+        scope: 'user',
+        path: '/home/user/skills/better-skill-creator/SKILL.md',
+        toggleable: false,
+      },
+      {
+        provider: 'codex',
+        id: 'linear',
+        name: 'linear',
+        description: 'Linear workflow',
+        scope: 'project',
+        path: '/workspace/.agents/skills/linear/SKILL.md',
+        toggleable: false,
+      },
+    ]);
+    expect(close).toHaveBeenCalledOnce();
+  });
 });

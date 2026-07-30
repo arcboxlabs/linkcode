@@ -36,6 +36,7 @@ describe('PluginService', () => {
     const options = new Map<PluginProvider, PluginDiscoveryOptions | undefined>();
     const factory: PluginProviderAdapterFactory = (provider) => ({
       provider,
+      listStandaloneSkills: () => Promise.resolve([]),
       list(opts) {
         options.set(provider, opts);
 
@@ -61,6 +62,7 @@ describe('PluginService', () => {
   it('keeps healthy provider results when another provider fails', async () => {
     const factory: PluginProviderAdapterFactory = (provider) => ({
       provider,
+      listStandaloneSkills: () => Promise.resolve([]),
       list: () =>
         provider === 'claude-code'
           ? Promise.reject(new Error('native discovery failed'))
@@ -75,6 +77,7 @@ describe('PluginService', () => {
   it('returns an empty catalog when every provider fails', async () => {
     const factory: PluginProviderAdapterFactory = (provider) => ({
       provider,
+      listStandaloneSkills: () => Promise.resolve([]),
       list: () => Promise.reject(new Error(`${provider} discovery failed`)),
     });
 
@@ -86,6 +89,7 @@ describe('PluginService', () => {
   it('exposes the injected provider aggregation through the Engine runtime', async () => {
     const factory: PluginProviderAdapterFactory = (provider) => ({
       provider,
+      listStandaloneSkills: () => Promise.resolve([]),
       list: () => Promise.resolve([plugin(provider, 'runtime')]),
     });
     const transport: Transport = {
