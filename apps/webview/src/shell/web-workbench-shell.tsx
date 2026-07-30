@@ -149,8 +149,10 @@ export function WebWorkbenchShell({
         style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
       >
         <div className="h-full p-3 pt-12" style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}>
-          <Card aria-label={tPanel('resources')} className="h-full w-72 overflow-hidden shadow-xl">
-            {resourcesPresentation === 'floating' ? resourcesPanel : null}
+          <Card aria-label={tPanel('resources')} className="w-72 overflow-hidden shadow-xl">
+            <div className="max-h-[min(32rem,calc(100vh-3.75rem))] min-h-0 overflow-y-auto">
+              {resourcesPresentation === 'floating' ? resourcesPanel : null}
+            </div>
           </Card>
         </div>
       </aside>

@@ -815,11 +815,10 @@ export function DesktopShell({
               className="h-full p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]"
               style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}
             >
-              <Card
-                aria-label={tPanel('resources')}
-                className="h-full w-72 overflow-hidden shadow-xl"
-              >
-                {resourcesPresentation === 'floating' ? resourcesPanel : null}
+              <Card aria-label={tPanel('resources')} className="w-72 overflow-hidden shadow-xl">
+                <div className="max-h-[min(32rem,calc(100vh-var(--lc-chrome-h)-1.5rem))] min-h-0 overflow-y-auto">
+                  {resourcesPresentation === 'floating' ? resourcesPanel : null}
+                </div>
               </Card>
             </div>
           </aside>
