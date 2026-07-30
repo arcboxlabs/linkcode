@@ -8,6 +8,7 @@ import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { BrowserRequestHandler } from '../browser/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import { observeRequest } from '../observability';
+import type { PluginRequestHandler } from '../plugin/request-handler';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
 import type { ScriptRequestHandler } from '../scripts/request-handler';
 import type { HistoryRequestHandler } from '../session/history-request-handler';
@@ -24,6 +25,7 @@ interface RequestHandlers {
   readonly asset: ManagedAssetService;
   readonly workspace: WorkspaceRequestHandler;
   readonly git: GitRequestHandler;
+  readonly plugin: PluginRequestHandler;
   readonly file: FileRequestHandler;
   readonly script: ScriptRequestHandler;
   readonly artifact: ArtifactRequestHandler;
@@ -90,6 +92,10 @@ export class WireRequestRouter {
       case 'git.pr_status.get':
       case 'git.diff.get': {
         return this.handlers.git.handle(p);
+      }
+      case 'plugin.list.get':
+      case 'plugin.set-enabled': {
+        return this.handlers.plugin.handle(p);
       }
       case 'file.read':
       case 'file.list':

@@ -8,6 +8,7 @@ export type {
   PluginDiscoveryOptions,
   PluginProviderAdapter,
   PluginProviderAdapterFactory,
+  PluginToggleOptions,
 } from './adapter';
 export { ClaudeCodePluginAdapter } from './claude-code';
 export { CodexPluginAdapter } from './codex';

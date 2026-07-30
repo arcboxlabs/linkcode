@@ -1,6 +1,6 @@
 import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
 import { createAdapter, createPluginProviderAdapter } from '@linkcode/agent-adapter';
-import type { Plugin, WorkspaceRecord } from '@linkcode/schema';
+import type { WorkspaceRecord } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
@@ -25,6 +25,8 @@ import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
+import { PluginRequestHandler } from './plugin/request-handler';
+import type { PluginDiscoveryResult } from './plugin/service';
 import { PluginService } from './plugin/service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { FileHostService } from './preview/file-host-service';
@@ -61,7 +63,7 @@ import { InMemoryWorkspaceStore } from './workspace/workspace-store';
 export interface EngineRuntime {
   readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
   readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
-  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<Plugin[]>;
+  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<PluginDiscoveryResult>;
   readonly stop: Effect.Effect<void>;
 }
 
@@ -202,6 +204,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     factory,
   );
   const browserRequests = new BrowserRequestHandler(transport, browserBroker);
+  const pluginRequests = new PluginRequestHandler(transport, plugins, responder);
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
@@ -209,6 +212,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     asset: assets,
     workspace: workspaceRequests,
     git: gitRequests,
+    plugin: pluginRequests,
     file: fileRequests,
     script: scriptRequests,
     artifact: artifactRequests,
