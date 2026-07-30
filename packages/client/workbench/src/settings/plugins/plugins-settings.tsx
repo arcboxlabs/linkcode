@@ -24,13 +24,15 @@ export function PluginsSettingsPanel(): React.ReactNode {
     if (runtime.status === 'missing') missingRuntimes.add(kind);
   }
 
-  const groups =
+  const groupsFor = (installed: boolean) =>
     data === undefined
       ? undefined
-      : pluginProviderGroups(data).map((group) => ({
+      : pluginProviderGroups(data, { installed }).map((group) => ({
           ...group,
           plugins: filterPluginCards(group.plugins, searchQuery),
         }));
+  const installedGroups = groupsFor(true);
+  const marketGroups = groupsFor(false);
 
   const onToggleSkill = async (row: SkillRowView, enabled: boolean): Promise<void> => {
     if (row.pluginKey === undefined) {
@@ -105,9 +107,22 @@ export function PluginsSettingsPanel(): React.ReactNode {
       pluginsTab={
         <PluginsTab
           busy={toggle.isMutating}
-          groups={groups}
+          groups={installedGroups}
           missingRuntimes={missingRuntimes}
           searchQuery={searchQuery}
+          variant="installed"
+          onToggleInstallation={(card, scope, enabled) => {
+            void onToggleInstallation(card, scope, enabled);
+          }}
+        />
+      }
+      marketTab={
+        <PluginsTab
+          busy={toggle.isMutating}
+          groups={marketGroups}
+          missingRuntimes={missingRuntimes}
+          searchQuery={searchQuery}
+          variant="market"
           onToggleInstallation={(card, scope, enabled) => {
             void onToggleInstallation(card, scope, enabled);
           }}

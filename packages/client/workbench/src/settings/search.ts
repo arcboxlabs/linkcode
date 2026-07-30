@@ -94,6 +94,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
     plugins: [
       t('plugins.title'),
       t('plugins.tabPlugins'),
+      t('plugins.tabMarket'),
       t('plugins.tabMcp'),
       t('plugins.tabSkills'),
       t('plugins.componentKind.mcp-server'),

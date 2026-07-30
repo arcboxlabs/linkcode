@@ -12,6 +12,7 @@ export interface PluginsShellProps {
   onRefresh: () => void;
   refreshing: boolean;
   pluginsTab: React.ReactNode;
+  marketTab: React.ReactNode;
   mcpTab: React.ReactNode;
   skillsTab: React.ReactNode;
 }
@@ -23,6 +24,7 @@ export function PluginsShell({
   onRefresh,
   refreshing,
   pluginsTab,
+  marketTab,
   mcpTab,
   skillsTab,
 }: PluginsShellProps): React.ReactNode {
@@ -35,6 +37,7 @@ export function PluginsShell({
         <div className="mb-3 flex items-center justify-between gap-3">
           <TabsList>
             <TabsTab value="plugins">{t('tabPlugins')}</TabsTab>
+            <TabsTab value="market">{t('tabMarket')}</TabsTab>
             <TabsTab value="mcp">{t('tabMcp')}</TabsTab>
             <TabsTab value="skills">{t('tabSkills')}</TabsTab>
           </TabsList>
@@ -57,6 +60,7 @@ export function PluginsShell({
           </div>
         </div>
         <TabsPanel value="plugins">{pluginsTab}</TabsPanel>
+        <TabsPanel value="market">{marketTab}</TabsPanel>
         <TabsPanel value="mcp">{mcpTab}</TabsPanel>
         <TabsPanel value="skills">{skillsTab}</TabsPanel>
       </Tabs>

@@ -9,6 +9,8 @@ import type { PluginCardView, PluginInstallationRow } from './types';
 export interface PluginCardProps {
   card: PluginCardView;
   busy: boolean;
+  /** False in the market list, where "not installed" is true of every entry and pure noise. */
+  showInstallState?: boolean;
   onToggleInstallation: (
     card: PluginCardView,
     scope: PluginScope | undefined,
@@ -17,7 +19,12 @@ export interface PluginCardProps {
 }
 
 /** One provider plugin: identity, capability summary, and per-installation enablement. */
-export function PluginCard({ card, busy, onToggleInstallation }: PluginCardProps): React.ReactNode {
+export function PluginCard({
+  card,
+  busy,
+  showInstallState = true,
+  onToggleInstallation,
+}: PluginCardProps): React.ReactNode {
   const t = useTranslations('settings.plugins');
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -33,7 +40,9 @@ export function PluginCard({ card, busy, onToggleInstallation }: PluginCardProps
               {card.availability === 'available' ? null : (
                 <Badge variant="warning">{t(`availability.${card.availability}`)}</Badge>
               )}
-              {card.installed ? null : <Badge variant="secondary">{t('notInstalled')}</Badge>}
+              {!showInstallState || card.installed ? null : (
+                <Badge variant="secondary">{t('notInstalled')}</Badge>
+              )}
             </div>
             {card.description === undefined ? null : (
               <p className="line-clamp-2 text-muted-foreground text-xs">{card.description}</p>

@@ -47,13 +47,23 @@ export function pluginCardView(plugin: Plugin): PluginCardView {
   };
 }
 
-/** Group cards by provider in the discovery result's provider order, folding in per-provider
- * failure state so an empty group renders "discovery failed", not a bare empty state. */
-export function pluginProviderGroups(list: PluginList): PluginProviderGroup[] {
+/**
+ * Group cards by provider in the discovery result's provider order, folding in per-provider
+ * failure state so an empty group renders "discovery failed", not a bare empty state.
+ *
+ * `installed` partitions the catalog: the Plugins tab shows what this host actually has, the
+ * Market tab shows the rest (on a real machine that is hundreds of marketplace listings).
+ */
+export function pluginProviderGroups(
+  list: PluginList,
+  opts: { installed: boolean },
+): PluginProviderGroup[] {
   return list.providerStatus.map((status) => {
     const plugins: PluginCardView[] = [];
     for (const plugin of list.plugins) {
-      if (plugin.provider === status.provider) plugins.push(pluginCardView(plugin));
+      if (plugin.provider !== status.provider) continue;
+      if (plugin.installations.length > 0 !== opts.installed) continue;
+      plugins.push(pluginCardView(plugin));
     }
     return {
       provider: status.provider,

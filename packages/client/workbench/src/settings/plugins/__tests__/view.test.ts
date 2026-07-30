@@ -85,7 +85,7 @@ describe('pluginCardView', () => {
 
 describe('pluginProviderGroups', () => {
   it('keeps failed discovery distinguishable from an empty catalog', () => {
-    const groups = pluginProviderGroups(list());
+    const groups = pluginProviderGroups(list(), { installed: true });
 
     expect(groups).toHaveLength(2);
     expect(groups[0]).toMatchObject({ provider: 'claude-code', discoveryFailed: false });
@@ -96,6 +96,20 @@ describe('pluginProviderGroups', () => {
       failureReason: 'binary not found',
       plugins: [],
     });
+  });
+});
+
+describe('pluginProviderGroups partitioning', () => {
+  it('separates installed plugins from uninstalled marketplace listings', () => {
+    const catalog = list({
+      plugins: [plugin(), plugin({ id: 'market-only@m', installations: [] })],
+    });
+
+    const installed = pluginProviderGroups(catalog, { installed: true });
+    const market = pluginProviderGroups(catalog, { installed: false });
+
+    expect(installed[0].plugins.map((card) => card.id)).toEqual(['latex@team-tools']);
+    expect(market[0].plugins.map((card) => card.id)).toEqual(['market-only@m']);
   });
 });
 
