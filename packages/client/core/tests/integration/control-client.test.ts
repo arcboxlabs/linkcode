@@ -130,6 +130,32 @@ describe('LinkCodeClient control API', () => {
     client.dispose();
     serverTransport.close();
   });
+
+  it('preserves conversation reporting metadata on request failures', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+
+    serverTransport.onMessage((msg) => {
+      if (msg.payload.kind !== 'agent.input') return;
+      serverTransport.send(
+        createWireMessage({
+          kind: 'request.failed',
+          replyTo: msg.payload.clientReqId,
+          code: 'conflict',
+          message: 'Session is busy',
+          reportedInConversation: true,
+        }),
+      );
+    });
+
+    await expect(client.promptText(sessionId, 'hello')).rejects.toMatchObject({
+      code: 'conflict',
+      message: 'Session is busy',
+      reportedInConversation: true,
+    });
+
+    client.dispose();
+    serverTransport.close();
+  });
 });
 
 describe('LinkCodeClient event delivery scope', () => {

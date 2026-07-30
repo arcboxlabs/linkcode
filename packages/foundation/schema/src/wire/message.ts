@@ -28,7 +28,8 @@ import { WirePayloadSchema } from './payload';
 // 60 adds provider/model-specific reasoning-effort metadata and Codex's distinct `ultra` level.
 // 61 adds the browser broker variants (CODE-267).
 // 62 carries project cwd on history reads so provider-local environment resolution stays coherent.
-export const WIRE_PROTOCOL_VERSION = 62 as const;
+// 63 marks request failures already reported through the conversation event stream (CODE-284).
+export const WIRE_PROTOCOL_VERSION = 63 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

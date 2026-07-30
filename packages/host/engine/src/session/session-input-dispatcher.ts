@@ -30,6 +30,7 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'unsupported',
         message: `Unknown slash command: /${input.name}`,
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
@@ -38,6 +39,7 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'unsupported',
         message: 'Shell commands are not supported by this session',
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
@@ -46,6 +48,7 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'conflict',
         message: `Session is busy: ${sessionId}`,
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
@@ -100,6 +103,7 @@ export class SessionInputDispatcher {
             operation: 'session.input',
             publicMessage: 'Agent input was rejected',
             cause,
+            ...(startsTurn && { reportedInConversation: true }),
           }),
       }).pipe(
         Effect.catch((error) =>
