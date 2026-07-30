@@ -244,10 +244,13 @@ function CustomServerDialog({
               <Input {...register('url')} placeholder="https://example.com/mcp" />
             </Field>
           )}
-          <Field>
-            <FieldLabel>
+          {/* No <Field> wrapper here: base-ui Field supports ONE control, and a second
+              InputPrimitive inside the same Field gets its `name` overwritten by the context
+              (observed live: both row inputs rendered name="secrets.0.value"). */}
+          <div className="flex flex-col gap-1.5">
+            <p className="font-medium text-sm">
               {transport === 'stdio' ? t('form.secretsEnv') : t('form.secretsHeaders')}
-            </FieldLabel>
+            </p>
             <div className="flex flex-col gap-2">
               {secrets.fields.map((row, index) => (
                 <div key={row.id} className="flex items-center gap-2">
@@ -307,7 +310,7 @@ function CustomServerDialog({
                 {t('form.addSecret')}
               </Button>
             </div>
-          </Field>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={onClose}>
               {t('form.cancel')}
