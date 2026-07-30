@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionIdSchema } from '@linkcode/schema';
@@ -12,8 +12,13 @@ import { InMemoryWorktreeStore } from '../../src/worktree/worktree-store';
 
 const roots: string[] = [];
 
+/**
+ * `realpathSync` because macOS `tmpdir()` is `/var/folders/…` behind a `/private` symlink (and
+ * `/tmp` → `/private/tmp`). The service records the resolved path git reports, so a test comparing
+ * against the unresolved one fails on macOS and passes on Linux, where nothing is symlinked.
+ */
 function temp(): string {
-  const path = mkdtempSync(join(tmpdir(), 'linkcode-worktree-test-'));
+  const path = realpathSync(mkdtempSync(join(tmpdir(), 'linkcode-worktree-test-')));
   roots.push(path);
   return path;
 }
