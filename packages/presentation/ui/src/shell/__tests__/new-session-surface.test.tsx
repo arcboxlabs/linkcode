@@ -120,6 +120,24 @@ describe('NewSessionSurface', () => {
     },
   );
 
+  it('keeps permission mode visible while the agent catalog is unavailable', () => {
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'permissionMode' }).disabled).toBe(
+      true,
+    );
+  });
+
   it('names the model selector with its agent, model, and reasoning effort', () => {
     render(
       <NewSessionSurface

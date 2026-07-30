@@ -8,29 +8,7 @@ import { WirePayloadSchema } from './payload';
  * sending and after receiving (docs/ARCHITECTURE.md, Transport & wire protocol).
  */
 
-// 39 disambiguates a parallel double-bump: #186 (CODE-142) and #189 (CODE-219) both shipped as
-// "38" with different schemas, so a build from between their merges shares a number with a
-// schema it does not speak.
-// 43 combines 42's agent.catalog/agent.cataloged with CODE-316's parallel 42 bump for
-// file.host/file.hosted, keeping every distinct schema on a distinct protocol version.
-// 44 adds the simulator.* variants (CODE-394).
-// 45 adds the simulator.activity broadcast (CODE-395).
-// 46 adds the simulator interactive + framebuffer-stream variants (CODE-397).
-// 47 adds the simulator screen-mask wire (CODE-397).
-// 48 adds the H.264 stream codec plumbing (CODE-397).
-// 49 adds streamed touch, wheel scroll, and HID keyboard input (CODE-397).
-// 50 adds two-finger pinch and IME pasteboard input (CODE-397).
-// 51 adds the simulator interactive-capability flag to the status wire (CODE-397).
-// 52 adds the simulator device-rotation wire (CODE-408).
-// 53 migrates managed-asset IDs from public strings to discriminated objects.
-// 54 adds the simulator agent-consent variants (CODE-420).
-// 55 adds the simulator volume buttons (CODE-414).
-// 60 adds provider/model-specific reasoning-effort metadata and Codex's distinct `ultra` level.
-// 61 adds the browser broker variants (CODE-267).
-// 62 carries project cwd on history reads so provider-local environment resolution stays coherent.
-// 63 adds plugin discovery/enablement (plugin.*), custom MCP servers on config.get/set, and
-// session.started mcpWarnings (CODE-487).
-// 64 adds per-skill enablement (skill.set-enabled/updated) and StandaloneSkill.enabled (CODE-502).
+// Bump on every wire schema change; mismatched peers silently discard all frames (Invariant 1).
 export const WIRE_PROTOCOL_VERSION = 64 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */

@@ -70,6 +70,12 @@ describe('generateClosure', () => {
     expect(byPath.get('node_modules/loop-b')?.version).toBe('1.0.0');
     // Platform constraints ride through from the lockfile.
     expect(byPath.get('node_modules/native-bit')).toMatchObject({ os: ['linux'], cpu: ['x64'] });
+    const changed = generateClosure({
+      lockfileText: lockfileFixture().replace('sha512-shared2', 'sha512-patched'),
+      rootPackage: 'root-pkg',
+      entry: 'node_modules/root-pkg/dist/index.js',
+    });
+    expect(changed.revision).not.toBe(closure.revision);
   });
 
   it('rejects non-registry dependencies', () => {
@@ -106,6 +112,7 @@ describe('closurePackagesForHost', () => {
   it('filters by os/cpu', () => {
     const closure = {
       version: '1.0.0',
+      revision: 'fixture',
       entry: 'node_modules/a/index.js',
       packages: [
         { name: 'a', version: '1.0.0', integrity: 'sha512-a', path: 'node_modules/a' },
@@ -133,7 +140,12 @@ describe('closure pins', () => {
     const descriptor: NpmClosureAssetDescriptor = {
       id: opencodeId,
       version: { kind: 'pinned', version: '2.0.0' },
-      closure: { version: '1.0.0', entry: 'node_modules/x/index.js', packages: [] },
+      closure: {
+        version: '1.0.0',
+        revision: 'fixture',
+        entry: 'node_modules/x/index.js',
+        packages: [],
+      },
     };
     const manager = new AssetManager({ catalog: [descriptor] });
     expect(manager.wantedVersionOf(opencodeId)).toBeUndefined();

@@ -62,7 +62,7 @@ catalog:
   # export is untyped by @types/react — see the local module augmentation in workbench.
   react: 19.3.0-canary-96fcba90-20260728
   react-dom: 19.3.0-canary-96fcba90-20260728
-  react-router: ^8.2.0
+  react-router: ^8.3.0
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
 
@@ -202,7 +202,16 @@ overrides:
   # The plugin only uses createHighlighter/bundledLanguages/createJavaScriptRegexEngine —
   # all unchanged in shiki 4.
   shiki@<4.0.0: ^4.3.0
-  linkify-it@<=5.0.0: ^5.0.1
+  "@hono/node-server@<2.0.5": ^2.0.5
+  "@xmldom/xmldom@<0.8.13": ^0.8.13
+  brace-expansion@<1.1.16: ^1.1.16
+  brace-expansion@>=2.0.0 <2.1.2: ^2.1.2
+  brace-expansion@>=5.0.0 <5.0.8: ^5.0.8
+  esbuild@>=0.27.3 <0.28.1: ^0.28.1
+  fast-uri@>=3.0.0 <3.1.4: ^3.1.4
+  linkify-it@<=5.0.1: ^5.0.2
+  protobufjs@>=7.5.0 <7.6.5: ^7.6.5
+  shell-quote@<=1.8.4: ^1.9.0
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
   ws@>=8.0.0 <8.21.0: ^8.21.0

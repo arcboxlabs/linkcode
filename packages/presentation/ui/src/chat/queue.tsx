@@ -22,8 +22,6 @@ import {
   ChatDisclosureIconSlot,
 } from './disclosure-header';
 
-// TODO(linkcode-schema): Provisional UI-only queue item, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when queued agent operations are emitted by client-core.
 export interface ChatQueueItem {
   id: string;
   title: string;

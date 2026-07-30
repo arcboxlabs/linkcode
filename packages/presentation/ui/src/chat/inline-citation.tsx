@@ -4,8 +4,6 @@ import { ExternalLinkIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { UrlLinkIcon } from './link-icon';
 
-// TODO(linkcode-schema): Provisional UI-only citation reference, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema citation metadata when message content supports citations.
 export interface ChatCitation {
   id: string;
   sourceId: string;

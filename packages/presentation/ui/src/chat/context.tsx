@@ -12,8 +12,6 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-// TODO(linkcode-schema): Provisional UI-only context item, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when active context/files are emitted by the runtime data plane.
 export interface ChatContextItem {
   id: string;
   label: string;

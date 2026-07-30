@@ -7,7 +7,7 @@ on:
       - release/*
   pull_request:
     paths-ignore:
-      - '**.md'
+      - "**.md"
   workflow_dispatch:
     inputs:
       release_type:
@@ -54,25 +54,35 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          rustflags: '' # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
+          rustflags: "" # keep build.rustflags; the -D warnings default belongs to the Rust job's clippy call
 
-      # Before `pnpm install`, so the hashFiles globs below cannot reach into node_modules.
-      #
-      # eslint validates a cached entry against that file's own content only, so a cross-file type
-      # change would leave an unchanged file's cached result in place — a type-aware rule such as
-      # no-floating-promises can start applying to a caller nobody edited, and `tsc` does not
-      # reject that code either. The key therefore covers every lint-visible input at once and
-      # there are deliberately no restore-keys: a prefix match would reintroduce exactly that hole.
-      # The cost is that this only hits on commits touching no lintable source (docs, Rust,
-      # workflows); a run that changes any of them re-lints from cold, which is the correct answer.
       - name: Restore ESLint cache
         uses: actions/cache@v6
         with:
           path: .eslintcache
-          key: eslint-${{ runner.os }}-${{ hashFiles('**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts', '**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs', '**/tsconfig*.json', 'eslint.config.cjs', 'pnpm-lock.yaml') }}
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-${{ github.sha }}
+          restore-keys: |
+            eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'apps/*/package.json', 'packages/*/*/package.json', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ hashFiles('packages/*/*/src/**') }}-
+            eslint-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # After `pnpm install`, which could otherwise prune the restored node_modules/.cache dirs.
+      # `tsc --build` validates staleness from .tsbuildinfo content hashes, not timestamps
+      # (touching every source leaves a warm build sub-second), so restoring a stale build info
+      # is always safe — tsc rechecks exactly what changed. restore-keys is therefore sound here,
+      # unlike for the ESLint cache above.
+      - name: Restore TypeScript build info
+        uses: actions/cache@v6
+        with:
+          path: |
+            apps/*/node_modules/.cache/tsconfig*.tsbuildinfo
+            packages/*/*/node_modules/.cache/tsconfig*.tsbuildinfo
+          key: tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-${{ github.sha }}
+          restore-keys: |
+            tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig*.json', 'apps/*/tsconfig.json', 'apps/*/tests/tsconfig.json', 'apps/*/e2e/tsconfig.json', 'packages/*/*/tsconfig.json', 'packages/*/*/tests/tsconfig.json') }}-
+            tsc-${{ runner.os }}-
 
       - name: Check formatting and imports
         run: pnpm format:check
@@ -91,7 +101,7 @@ jobs:
       - name: Test
         env:
           LINKCODE_PTY_SIDECAR_PATH: ${{ github.workspace }}/target/debug/linkcode-pty
-          LINKCODE_REQUIRE_PTY_SIDECAR: '1'
+          LINKCODE_REQUIRE_PTY_SIDECAR: "1"
         run: |
           pnpm test --exclude='apps/daemon/tests/integration/**'
           pnpm test apps/daemon/tests/integration --no-file-parallelism
@@ -124,7 +134,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          rustflags: ''
+          rustflags: ""
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -234,7 +244,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          rustflags: ''
+          rustflags: ""
 
       - name: Format
         run: cargo fmt --check

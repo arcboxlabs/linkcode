@@ -9,8 +9,6 @@ import type { ChatDisclosureContentProps } from './disclosure-content';
 import { ChatDisclosureContent } from './disclosure-content';
 import { CHAT_DISCLOSURE_TRIGGER_CLASS_NAME, ChatDisclosureChevron } from './disclosure-header';
 
-// TODO(linkcode-schema): Provisional UI-only commit metadata, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when git/checkpoint events expose structured commits.
 export interface ChatCommit {
   id: string;
   hash: string;

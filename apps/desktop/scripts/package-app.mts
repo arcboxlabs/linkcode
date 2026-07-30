@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Package the desktop app from a materialized, single-importer staging directory (CODE-107):
- * `node scripts/package-app.mts [mac|win|linux] [--devshell] [-- <extra electron-builder args>]`.
+ * `node scripts/package-app.mts [mac|win|linux] [--x64|--arm64] [--devshell] [builder args]`.
  *
  * Packing apps/desktop in place fails silently twice under pnpm's hoisted layout: on Windows the
  * @electron/rebuild workspace-root detection misses the repo root, so better-sqlite3 is never
@@ -28,6 +28,7 @@ const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
 };
 const BUILDER_PLATFORMS = ['mac', 'win', 'linux'] as const;
 type BuilderPlatform = (typeof BUILDER_PLATFORMS)[number];
+const BUILDER_ARCHES = ['x64', 'arm64'] as const;
 
 const desktopDir = join(import.meta.dirname, '..');
 const repoRoot = join(desktopDir, '..', '..');
@@ -59,8 +60,14 @@ const devshell = args.includes('--devshell');
 const platform =
   BUILDER_PLATFORMS.find((name) => args.includes(name)) ?? HOST_PLATFORM[process.platform];
 if (!platform) throw new Error(`unsupported host platform ${process.platform}; pass mac|win|linux`);
+const requestedArches = BUILDER_ARCHES.filter((arch) => args.includes(`--${arch}`));
 // Everything the caller passed that isn't ours is forwarded to electron-builder (--publish, signing).
-const passthrough = args.filter((arg) => arg !== '--devshell' && !platformTokens.has(arg));
+const passthrough = args.filter(
+  (arg) =>
+    arg !== '--devshell' &&
+    !platformTokens.has(arg) &&
+    !BUILDER_ARCHES.some((arch) => arg === `--${arch}`),
+);
 
 /** Deploy the production closure into a fresh staging dir, then sync the build outputs into it. */
 function materializeStaging(): void {
@@ -121,11 +128,15 @@ function pruneStaging(): void {
  * resolve an arch that wasn't (CI stages both via `stage-sidecar --all`; a local
  * `stage:host-runtime` stages just the host).
  */
-const KNOWN_ARCHES = new Set(['x64', 'arm64']);
-
 function stagedArches(): string[] {
-  const arches = readdirSync(join(desktopDir, 'sidecar')).filter((name) => KNOWN_ARCHES.has(name));
-  if (arches.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
+  const staged = readdirSync(join(desktopDir, 'sidecar')).filter((name) =>
+    BUILDER_ARCHES.some((arch) => arch === name),
+  );
+  if (staged.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
+  const arches = requestedArches.length === 0 ? staged : requestedArches;
+  for (const arch of arches) {
+    if (!staged.includes(arch)) throw new Error(`sidecar/${arch} is not staged`);
+  }
   return arches;
 }
 

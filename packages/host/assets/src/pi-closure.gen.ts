@@ -250,9 +250,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: '@hono/node-server',
-    version: '1.19.14',
+    version: '2.0.12',
     integrity:
-      'sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==',
+      'sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==',
     path: 'node_modules/@hono/node-server',
   },
   {
@@ -367,9 +367,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: '@modelcontextprotocol/sdk',
-    version: '1.29.0',
+    version: '1.30.0',
     integrity:
-      'sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==',
+      'sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==',
     path: 'node_modules/@modelcontextprotocol/sdk',
   },
   {
@@ -619,9 +619,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'brace-expansion',
-    version: '5.0.7',
+    version: '5.0.8',
     integrity:
-      'sha512-7oFy703dxfY3/NLxC1fh2SUCQ0H9rmAY+5EpDVfXjUTTs+HEwR2nYaqLv+GWcTsumwxPfiz6CzCNkwXwBUwqCA==',
+      'sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==',
     path: 'node_modules/brace-expansion',
   },
   {
@@ -815,9 +815,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'express-rate-limit',
-    version: '8.5.2',
+    version: '8.6.1',
     integrity:
-      'sha512-5Kb34ipNX694DH48vN9irak1Qx30nb0PLYHXfJgw4YEjiC3ZEmZJhwOp+VfiCYwFzvFTdB9QkArYS5kXa2cx2A==',
+      'sha512-0D493aP61w0TJ2A0wy27riRsO7FMQ7FK+KUHOKCSfPvYo0R55aiC6emCVgFUeShH0fq0ICPVzNcgoS+BsbXQCA==',
     path: 'node_modules/express-rate-limit',
   },
   {
@@ -843,9 +843,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'fast-uri',
-    version: '3.1.3',
+    version: '3.1.4',
     integrity:
-      'sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==',
+      'sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==',
     path: 'node_modules/fast-uri',
   },
   {
@@ -997,9 +997,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'hono',
-    version: '4.12.27',
+    version: '4.12.32',
     integrity:
-      'sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==',
+      'sha512-XcuyW9qE2kJn07PkecMOBd5Vq/hMy7mmGw+idz1yblbg9N17ijJODrvPkn7/dwL3Kulj8LcRJ69DLOWf91dRUg==',
     path: 'node_modules/hono',
   },
   {
@@ -1032,9 +1032,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'iconv-lite',
-    version: '0.7.2',
+    version: '0.7.3',
     integrity:
-      'sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==',
+      'sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==',
     path: 'node_modules/iconv-lite',
   },
   {
@@ -1053,9 +1053,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'ip-address',
-    version: '10.2.0',
+    version: '10.3.1',
     integrity:
-      'sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==',
+      'sha512-1e9d3kb97NHJTIJDZW9rKqW2h6+dFa50Dy0fpPSMQp2ADje5gvKsXmdiK6dwY5t76TaTt5+P5N1Y/LoToIxP6g==',
     path: 'node_modules/ip-address',
   },
   {
@@ -1088,9 +1088,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'jose',
-    version: '6.2.3',
+    version: '6.2.4',
     integrity:
-      'sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==',
+      'sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==',
     path: 'node_modules/jose',
   },
   {
@@ -1165,9 +1165,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'media-typer',
-    version: '1.1.0',
+    version: '1.1.1',
     integrity:
-      'sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==',
+      'sha512-yz3xRaG20c6/BOzvYoDaGtPmGscs7YivItZEEqe6GbwNfHuxu9YNmvnEkMzKldAGY4/80pRcQRZSEnhquk9XuQ==',
     path: 'node_modules/media-typer',
   },
   {
@@ -1340,9 +1340,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'protobufjs',
-    version: '7.6.4',
+    version: '7.6.5',
     integrity:
-      'sha512-RJJPTTpvFfHcWLkIa2JFWK4XvtSzS0yEWDmunqHXli1h3JlkbcQZXDZdcWxv+JK3Xsl5/UFDPZ0iGm7DAengYw==',
+      'sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==',
     path: 'node_modules/protobufjs',
   },
   {
@@ -1622,6 +1622,7 @@ const packages: NpmClosure['packages'] = [
 
 export const PI_CLOSURE: NpmClosure = {
   version: '0.80.6',
+  revision: 'b77bf10e9a04fe3f',
   entry: 'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
   packages,
 };

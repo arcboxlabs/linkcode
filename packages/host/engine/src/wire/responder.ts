@@ -21,8 +21,8 @@ export class WireResponder {
   }
 
   sendFailure(replyTo: string, error: unknown): void {
-    const { code, message } = toRequestFailure(error);
-    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, code, message }));
+    const failure = toRequestFailure(error);
+    this.transport.send(createWireMessage({ kind: 'request.failed', replyTo, ...failure }));
   }
 
   sendSuccess(replyTo: string): void {

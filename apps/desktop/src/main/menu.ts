@@ -13,6 +13,10 @@ function openSettings(): void {
   win?.webContents.send(SETTINGS_OPEN_CHANNEL);
 }
 
+function closeWindow(): void {
+  BrowserWindow.getFocusedWindow()?.close();
+}
+
 export function buildAppMenu(): Menu {
   const isMac = process.platform === 'darwin';
   const settingsItem: MenuItemConstructorOptions = {
@@ -45,7 +49,7 @@ export function buildAppMenu(): Menu {
     {
       label: 'File',
       submenu: isMac
-        ? [{ role: 'close' }]
+        ? [{ label: 'Close Window', click: closeWindow }]
         : [settingsItem, { type: 'separator' }, { role: 'quit' }],
     },
     { role: 'editMenu' },

@@ -2,8 +2,6 @@ import { Button } from 'coss-ui/components/button';
 import { ScrollArea } from 'coss-ui/components/scroll-area';
 import { cn } from '../lib/cn';
 
-// TODO(linkcode-schema): Provisional UI-only suggested action, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when daemon/client suggestions are part of the data plane.
 export interface ChatSuggestion {
   id: string;
   label: string;

@@ -989,7 +989,14 @@ export class DevMockHost {
   ): void {
     const fixture = mockCommandFixture(name);
     if (!fixture) {
-      this.sendFailure(replyTo, `Unknown mock slash command: /${name}`);
+      const message = `Unknown mock slash command: /${name}`;
+      this.emit(session.sessionId, {
+        type: 'error',
+        message,
+        code: 'input_rejected',
+        recoverable: true,
+      });
+      this.sendFailure(replyTo, message, { reportedInConversation: true });
       return;
     }
 
@@ -1055,10 +1062,15 @@ export class DevMockHost {
         return;
       }
       const message = `Mock failure requested via the "${FAIL_PROMPT}" prompt.`;
-      this.emit(session.sessionId, { type: 'error', message, recoverable: true });
+      this.emit(session.sessionId, {
+        type: 'error',
+        message,
+        code: 'input_rejected',
+        recoverable: true,
+      });
       session.status = 'idle';
       this.emit(session.sessionId, { type: 'status', status: 'idle' });
-      this.sendFailure(replyTo, message);
+      this.sendFailure(replyTo, message, { reportedInConversation: true });
       return;
     }
 
@@ -1430,8 +1442,12 @@ export class DevMockHost {
     this.send({ kind: 'request.succeeded', replyTo });
   }
 
-  private sendFailure(replyTo: string, message: string): void {
-    this.send({ kind: 'request.failed', replyTo, message });
+  private sendFailure(
+    replyTo: string,
+    message: string,
+    reporting: { reportedInConversation?: true } = {},
+  ): void {
+    this.send({ kind: 'request.failed', replyTo, message, ...reporting });
   }
 
   private nextSessionId(): SessionId {

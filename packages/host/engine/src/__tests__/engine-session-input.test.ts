@@ -22,6 +22,13 @@ class GatedSendAdapter extends FakeAdapter {
   }
 }
 
+class RejectingTurnAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return Promise.reject(new Error('provider rejected input'));
+  }
+}
+
 function eventsAfter(sent: WirePayload[], mark: number): AgentEvent[] {
   return sent.slice(mark).flatMap((p) => (p.kind === 'agent.event' ? [p.event] : []));
 }
@@ -204,7 +211,46 @@ describe('engine session input', () => {
           payload.event.code === 'input_rejected',
       ),
     ).toHaveLength(2);
-    expect(rejected.filter((payload) => payload.kind === 'request.failed')).toHaveLength(2);
+    expect(rejected.filter((payload) => payload.kind === 'request.failed')).toMatchObject([
+      { reportedInConversation: true },
+      { reportedInConversation: true },
+    ]);
+  });
+
+  it('marks an adapter-rejected turn as already reported in the conversation', async () => {
+    const h = harness(new InMemorySessionStore(), () => new RejectingTurnAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('hello')] },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
+      reportedInConversation: true,
+    });
+    expect(h.sent).toContainEqual({
+      kind: 'agent.event',
+      sessionId,
+      event: {
+        type: 'error',
+        message: 'Agent input was rejected',
+        code: 'input_rejected',
+        recoverable: true,
+      },
+    });
   });
 
   it('rejects a concurrent turn input before echoing or dispatching it', async () => {
@@ -242,6 +288,7 @@ describe('engine session input', () => {
       replyTo: 'r-second',
       code: 'conflict',
       message: `Session is busy: ${sessionId}`,
+      reportedInConversation: true,
     });
     expect(h.sent).toContainEqual({
       kind: 'agent.event',

@@ -45,6 +45,7 @@ describe('closure install', () => {
       version: { kind: 'pinned', version: '1.0.0' },
       closure: {
         version: '1.0.0',
+        revision: 'fixture',
         entry: 'node_modules/tool-a/dist/index.js',
         packages: [
           {
@@ -78,7 +79,7 @@ describe('closure install', () => {
       progress.push(receivedBytes);
     });
 
-    const root = versionDir(OPENCODE_ID, '1.0.0');
+    const root = versionDir(OPENCODE_ID, '1.0.0+fixture');
     expect(installed?.path).toBe(join(root, 'node_modules/tool-a/dist/index.js'));
     expect(existsSync(join(root, 'node_modules/tool-a/package.json'))).toBe(true);
     expect(existsSync(join(root, 'node_modules/tool-a/node_modules/tool-b/index.js'))).toBe(true);

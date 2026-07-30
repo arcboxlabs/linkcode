@@ -1,4 +1,5 @@
 import type { Conversation } from '@linkcode/client-core';
+import { isRequestFailureReportedInConversation } from '@linkcode/client-core';
 import type {
   AgentInput,
   ContentBlock,
@@ -125,10 +126,6 @@ export function Workbench({
     setErrorMessage(extractErrorMessage(err));
   }
 
-  // Leaving the current surface drops its error state: a stale failure must not follow the user
-  // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
-  // The new-session workspace pick goes with it: the shells remount the draft page per entry
-  // point, which resets its other picks, so an abandoned workspace must not outlive it either.
   function leaveSurface(): void {
     setErrorMessage(null);
     setWorkspacePick(null);
@@ -213,9 +210,16 @@ function WorkbenchSessionSurface({
   const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Prompts (with attachments) and workflow-mode/approval-policy switches all ride this generic
-  // input op; each reflects back via its own session event.
-  const inputMutation = useMutation(sendInput, { onError });
+  // The host mirrors recoverable turn-input failures into the conversation as `input_rejected`.
+  // Keep transport/validation failures global because they do not have a corresponding event.
+  const turnInputMutation = useMutation(sendInput, {
+    onError(err) {
+      if (!isRequestFailureReportedInConversation(err)) onError(err);
+    },
+  });
+  // Workflow-mode and approval-policy switches do not start a turn, so their failures are not
+  // mirrored into conversation history and still belong in the global error surface.
+  const controlInputMutation = useMutation(sendInput, { onError });
   const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
   const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
   const visibleResponseErrors = new Map<string, string>();
@@ -307,7 +311,7 @@ function WorkbenchSessionSurface({
   function submitActiveInput(input: AgentInput): Promise<void> {
     const sessionId = sessions.activeId;
     if (sessionId) onClearError();
-    return submitActiveSessionInput(sessionId, input, inputMutation.trigger);
+    return submitActiveSessionInput(sessionId, input, turnInputMutation.trigger);
   }
 
   function handleSend(content: ContentBlock[]): Promise<void> {
@@ -354,7 +358,7 @@ function WorkbenchSessionSurface({
     );
     rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
     // The first input rides behind the started session, like any conversation send.
-    void inputMutation
+    void turnInputMutation
       .trigger({ sessionId, input: submission.input })
       .then(() => {
         captureProductEvent('turn submitted', { input_kind: submission.input.type });
@@ -394,7 +398,7 @@ function WorkbenchSessionSurface({
     onClearError();
     // Unlike model/effort, the composer doesn't await this to reflect the pick locally: the active
     // mode only ever comes back via current-mode-update, and failures surface in the error banner.
-    return inputMutation
+    return controlInputMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-mode', modeId } })
       .then(noop);
   }
@@ -403,7 +407,7 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Same contract as handleModeChange: the pick reflects back via approval-policy-update.
-    return inputMutation
+    return controlInputMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-approval-policy', policyId } })
       .then(noop);
   }

@@ -109,9 +109,17 @@ brew install --cask arcboxlabs/tap/linkcode
 
 Or grab the DMG (Apple silicon / Intel) from the [latest release](https://github.com/arcboxlabs/linkcode/releases/latest).
 
-### Windows & Linux
+### Windows
 
-Download the installer (`.exe`), `.AppImage`, or `.deb` from the [latest release](https://github.com/arcboxlabs/linkcode/releases/latest).
+```powershell
+winget install -e --id ArcBox.LinkCode
+```
+
+Or grab the installer (`.exe`, x64 / arm64) from the [latest release](https://github.com/arcboxlabs/linkcode/releases/latest).
+
+### Linux
+
+Download the `.AppImage` or `.deb` from the [latest release](https://github.com/arcboxlabs/linkcode/releases/latest).
 
 The desktop app keeps itself up to date automatically.
 

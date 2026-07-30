@@ -24,7 +24,8 @@ the `asset.list` wire resource; presentation belongs to the onboarding UI (CODE-
   when the SDK also resolves (dev/standalone) a disagreement reads as a stale manifest —
   unpinnable — and when it does not (packaged hosts exclude the closure) the manifest alone is
   the pin, compiled into the daemon alongside the adapter it must match.
-- **Store layout** `<root>/<namespace>/<name>/<version>/<binary>` under the platform data dir
+- **Store layout** `<root>/<namespace>/<name>/<version>/<binary>` under the platform data dir;
+  closure versions append their generated content revision (`<version>+<revision>`)
   (darwin `~/Library/Application Support/LinkCode/assets`; `LINKCODE_ASSETS_DIR` overrides —
   tests and E2E must set it). An artifact's `extraMembers` land as siblings of the binary under
   their basenames (codex's Windows sandbox helpers, which the CLI resolves strictly next to its

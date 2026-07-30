@@ -13,8 +13,6 @@ import {
 } from './disclosure-header';
 import { UrlLinkIcon } from './link-icon';
 
-// TODO(linkcode-schema): Provisional UI-only source metadata, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when assistant messages can emit source/citation metadata.
 export interface ChatSource {
   id: string;
   title: string;

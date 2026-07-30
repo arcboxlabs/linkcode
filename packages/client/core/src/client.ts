@@ -68,7 +68,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { extractErrorMessage } from 'foxts/extract-error-message';
+import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
@@ -166,6 +166,14 @@ type LoopEventCb = (event: LoopEvent) => void;
 type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
+
+export function isRequestFailureReportedInConversation(error: unknown): boolean {
+  return (
+    isErrorLikeObject(error) &&
+    'reportedInConversation' in error &&
+    error.reportedInConversation === true
+  );
+}
 
 /**
  * Cross-platform data-plane client: session semantics over any Transport
@@ -534,7 +542,10 @@ export class LinkCodeClient {
         break;
       case 'request.failed': {
         const err = new Error(p.message);
-        if (p.code) Object.assign(err, { code: p.code });
+        if (p.code !== undefined) Object.assign(err, { code: p.code });
+        if (p.reportedInConversation === true) {
+          Object.assign(err, { reportedInConversation: true });
+        }
         this.pending.reject(p.replyTo, err);
         break;
       }

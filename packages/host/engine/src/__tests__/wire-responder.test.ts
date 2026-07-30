@@ -28,7 +28,11 @@ describe('wire responder', () => {
 
     responder.sendFailure(
       'request-1',
-      new RequestError({ code: 'not_found', message: 'Workspace not found' }),
+      new RequestError({
+        code: 'not_found',
+        message: 'Workspace not found',
+        reportedInConversation: true,
+      }),
     );
 
     expect(sent).toEqual([
@@ -37,6 +41,7 @@ describe('wire responder', () => {
         replyTo: 'request-1',
         code: 'not_found',
         message: 'Workspace not found',
+        reportedInConversation: true,
       },
     ]);
   });

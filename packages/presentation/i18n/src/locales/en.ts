@@ -339,6 +339,7 @@ export const en = {
     newSession: {
       heading: 'What should we build?',
       headingIn: 'What should we build in {name}?',
+      permissionMode: 'Permission mode',
       chooseWorkspace: 'Choose a workspace',
       chat: 'Chat',
       noProject: "Don't work in a project",
