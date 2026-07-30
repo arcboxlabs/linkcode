@@ -27,7 +27,7 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/sim": "workspace:*",
     "@linkcode/transport": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@sentry/node": "10.62.0",
     "@sentry/profiling-node": "10.62.0",
     "better-sqlite3": "^12.11.1",
