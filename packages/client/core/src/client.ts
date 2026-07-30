@@ -1,4 +1,7 @@
 import type {
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentEvent,
   AgentHistoryId,
@@ -351,6 +354,9 @@ export class LinkCodeClient {
         // One result carries both; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
         this.pending.resolve('accountsGet', p.replyTo, p.accounts);
+        break;
+      case 'config.probe-models.result':
+        this.pending.resolve('accountModels', p.replyTo, p.models);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -710,6 +716,11 @@ export class LinkCodeClient {
 
   getAccounts(): Promise<Accounts> {
     return this.control.getAccounts();
+  }
+
+  /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
+  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+    return this.control.probeAccountModels(endpoint, secret);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {

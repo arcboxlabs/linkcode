@@ -1,5 +1,8 @@
 import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
 import type {
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -182,6 +185,12 @@ export function getAccounts(options?: Options): RequestResult<Accounts> {
 
 export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
   return resolveClient(options).setAccounts(options.accounts);
+}
+
+export function probeAccountModels(
+  options: Options<{ endpoint: AccountEndpoint; secret: AccountSecret }>,
+): RequestResult<AccountModel[]> {
+  return resolveClient(options).probeAccountModels(options.endpoint, options.secret);
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

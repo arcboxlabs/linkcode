@@ -25,6 +25,12 @@ const TRANSLATABLE: ReadonlyArray<{ agent: AgentKind; upstream: AccountProtocol 
   { agent: 'claude-code', upstream: 'openai-chat' },
 ];
 
+/** The protocol an agent speaks natively — what an API-key login should offer it by default.
+ * grok-build accepts no custom endpoint at all, so its fallback is only a form default. */
+export function nativeAccountProtocol(kind: AgentKind): AccountProtocol {
+  return AGENT_NATIVE_PROTOCOLS[kind][0] ?? 'openai-chat';
+}
+
 export type BindingTier = 'native' | 'translate' | 'unavailable';
 
 export type BindingUnavailableReason =

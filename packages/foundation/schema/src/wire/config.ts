@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { AccountsSchema } from '../model/account';
+import {
+  AccountEndpointSchema,
+  AccountModelSchema,
+  AccountSecretSchema,
+  AccountsSchema,
+} from '../model/account';
 import { ProvidersConfigSchema } from '../model/provider-config';
 import { WireRequestIdSchema } from './request';
 
@@ -21,5 +26,19 @@ export const configWireVariants = [
     providers: ProvidersConfigSchema.optional(),
     /** The global account pool; omitted by a client editing only provider settings. */
     accounts: AccountsSchema.optional(),
+  }),
+  /** Enumerate what an endpoint serves, before the account is saved: the daemon reads the
+   * endpoint's own model list with the given secret. The client cannot do this itself — the
+   * renderer's CSP blocks remote fetches, and only the daemon may hold the secret. */
+  z.object({
+    kind: z.literal('config.probe-models'),
+    clientReqId: WireRequestIdSchema,
+    endpoint: AccountEndpointSchema,
+    secret: AccountSecretSchema,
+  }),
+  z.object({
+    kind: z.literal('config.probe-models.result'),
+    replyTo: WireRequestIdSchema,
+    models: z.array(AccountModelSchema),
   }),
 ] as const;
