@@ -18,12 +18,12 @@ runs:
         target: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin' || runner.os == 'Windows' && 'aarch64-pc-windows-msvc' || 'aarch64-unknown-linux-gnu' }}
         rustflags: ''
 
-    - name: Install aarch64 cross linker
+    - name: Install aarch64 cross toolchain
       if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update -q
-        sudo apt-get install -yq gcc-aarch64-linux-gnu
+        sudo apt-get install -yq g++-aarch64-linux-gnu
 
     # The runner image ships x64-only VC tools; linking aarch64-pc-windows-msvc needs the ARM64
     # component. A no-op when already present.
