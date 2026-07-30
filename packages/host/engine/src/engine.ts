@@ -5,6 +5,7 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
 import { Cause, Effect, FiberSet } from 'effect';
+import { CustomMcpServerService } from './agent/custom-mcp-service';
 import { AgentLoginService } from './agent/login-service';
 import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
@@ -195,10 +196,12 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         runtimes.refresh();
       })
     : undefined;
+  const customMcp = new CustomMcpServerService(providerStore);
   const agentRequests = new AgentRequestHandler(
     transport,
     runtimes,
     providerStore,
+    customMcp,
     logins,
     responder,
     factory,

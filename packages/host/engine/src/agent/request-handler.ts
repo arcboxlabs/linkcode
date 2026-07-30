@@ -5,6 +5,7 @@ import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
+import type { CustomMcpServerService } from './custom-mcp-service';
 import type { AgentLoginService } from './login-service';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults } from './provider-config';
@@ -30,6 +31,7 @@ export class AgentRequestHandler {
     private readonly transport: Transport,
     private readonly runtimes: AgentRuntimeService,
     private readonly providers: ProviderConfigStore,
+    private readonly customMcp: CustomMcpServerService,
     private readonly logins: AgentLoginService | undefined,
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
@@ -98,8 +100,7 @@ export class AgentRequestHandler {
                   replyTo: payload.clientReqId,
                   providers: this.providers.get(),
                   accounts: this.providers.getAccounts(),
-                  // Real masked projection lands with the custom-MCP config plane (CODE-490).
-                  customMcpServers: [],
+                  customMcpServers: this.customMcp.listPublic(),
                 }),
               ),
             catch: (cause) =>
@@ -109,6 +110,7 @@ export class AgentRequestHandler {
       case 'config.set': {
         const providers = payload.providers;
         const accounts = payload.accounts;
+        const customMcpServers = payload.customMcpServers;
         return this.responder.reply(
           payload.clientReqId,
           Effect.andThen(
@@ -121,6 +123,11 @@ export class AgentRequestHandler {
                   this.providers.setAccounts(accounts),
                 ),
           ).pipe(
+            Effect.andThen(
+              customMcpServers === undefined
+                ? Effect.void
+                : this.customMcp.applyPatch(customMcpServers),
+            ),
             Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
           ),
         );

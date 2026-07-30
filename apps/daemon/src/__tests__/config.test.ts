@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CustomMcpServer } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import {
   hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  saveCustomMcpServers,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
@@ -239,5 +241,48 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadConfig custom MCP servers', () => {
+  const validServer = {
+    id: 'custom-1',
+    enabled: true,
+    server: {
+      type: 'stdio',
+      name: 'github',
+      command: 'gh-mcp',
+      env: { GITHUB_TOKEN: 'secret' },
+    },
+    createdAt: 1,
+  } as const satisfies CustomMcpServer;
+
+  function writeCustomMcpConfig(customMcpServers: unknown): void {
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers }));
+  }
+
+  it('keeps valid servers and drops an invalid one without blanking the rest', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeCustomMcpConfig([validServer, { id: 'broken', server: { type: 'stdio' } }]);
+
+    const config = loadConfig();
+
+    expect(config.customMcpServers).toEqual([validServer]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('round-trips through saveCustomMcpServers preserving other fields at mode 0600', () => {
+    writeCustomMcpConfig([]);
+    const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
+    writeFileSync(path, JSON.stringify({ providers: {}, customMcpServers: [] }));
+
+    saveCustomMcpServers([validServer]);
+
+    const written: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    expect(written).toEqual({ providers: {}, customMcpServers: [validServer] });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(loadConfig().customMcpServers).toEqual([validServer]);
   });
 });

@@ -1,11 +1,17 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
+import type {
+  Accounts,
+  CustomMcpServer,
+  ProvidersConfig,
+  SimulatorConsentState,
+} from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
+  CustomMcpServerSchema,
   daemonBasePort,
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
@@ -30,6 +36,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** LinkCode-owned custom MCP servers (data plane); undefined when nothing is configured. */
+  customMcpServers?: CustomMcpServer[];
   /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
   simulatorConsent: SimulatorConsentState;
 }
@@ -42,6 +50,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  customMcpServers?: unknown;
   simulatorConsent?: unknown;
 }
 
@@ -104,6 +113,7 @@ export function loadConfig(): DaemonConfig {
     ),
     providers: parseProviders(file.providers),
     accounts: parseAccounts(file.accounts),
+    customMcpServers: parseCustomMcpServers(file.customMcpServers),
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
 }
@@ -151,6 +161,28 @@ function parseAccounts(raw: unknown): Accounts {
 }
 
 /**
+ * Parse element by element like {@link parseAccounts}: one invalid server is dropped and logged,
+ * never blanking the rest.
+ */
+function parseCustomMcpServers(raw: unknown): CustomMcpServer[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    logger.warn({ operation: 'config.load' }, 'Invalid custom MCP config: expected an array');
+    return [];
+  }
+  const servers: CustomMcpServer[] = [];
+  for (const value of raw) {
+    const server = CustomMcpServerSchema.safeParse(value);
+    if (!server.success) {
+      logger.warn({ operation: 'config.load' }, 'Dropping invalid custom MCP server config');
+      continue;
+    }
+    servers.push(server.data);
+  }
+  return servers;
+}
+
+/**
  * Parse field by field: an invalid entry is dropped and logged, never blanking the other entries —
  * `saveProviders` would persist that loss on the next write.
  */
@@ -190,9 +222,14 @@ export function saveAccounts(accounts: Accounts): void {
   writeConfigField('accounts', accounts);
 }
 
+/** Persist custom MCP servers, preserving other fields; `0600` (env/headers may hold secrets). */
+export function saveCustomMcpServers(servers: CustomMcpServer[]): void {
+  writeConfigField('customMcpServers', servers);
+}
+
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
 function writeConfigField(
-  key: 'providers' | 'accounts' | 'simulatorConsent',
+  key: 'providers' | 'accounts' | 'customMcpServers' | 'simulatorConsent',
   value: unknown,
 ): void {
   const path = configPath();
@@ -206,6 +243,9 @@ function writeConfigField(
   file[key] = value;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+  // writeFileSync's mode only applies at creation — re-assert on a pre-existing file, which may
+  // have been created loose by hand and now holds secrets (accounts, custom MCP env/headers).
+  chmodSync(path, 0o600);
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {
