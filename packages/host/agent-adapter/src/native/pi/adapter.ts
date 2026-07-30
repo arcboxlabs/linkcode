@@ -236,9 +236,6 @@ export class PiAdapter extends BaseAgentAdapter {
     if (opts.mcpServers?.length) {
       throw new Error('pi: MCP servers are not supported');
     }
-    // Managed closure entry first (the packaged source, CODE-219), then node_modules
-    // self-resolution (dev/standalone). The entry import is type-erased by the dynamic path;
-    // the closure manifest is lockfile-generated, so its bytes match the compiled-against types.
     const generation = ++this.lifecycle;
     const pi = await this.importSdk();
     if (opts.approvalPolicyId) {

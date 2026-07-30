@@ -59,16 +59,12 @@ import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
 import { createWorktreeStore } from './worktree-store';
 
-// After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
-// die loudly rather than keep serving clients from an unknown state.
+// State is untrustworthy after an uncaught exception — die rather than serve from unknown state.
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });
 
-// An unhandled rejection is scoped to one async operation — the rest of the daemon stays
-// coherent, so log instead of exiting. Reaching here means a fire-and-forget path missed its
-// `.catch`; fix that path.
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'Unhandled rejection');
 });
@@ -91,7 +87,6 @@ class BoundListeners extends Context.Service<BoundListeners, readonly DaemonList
   'daemon/BoundListeners',
 ) {}
 
-// A failing finalizer must not change the shutdown outcome; log and move on.
 function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
   return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
     Effect.catchCause((cause) =>
@@ -104,10 +99,7 @@ function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
   );
 }
 
-// Explicit exits everywhere, not exitCode+return: under utilityProcess the parent IPC channel
-// keeps the event loop alive forever, so a natural exit never happens and the supervisor never
-// hears it. runMain's onExit only skips process.exit for a signal-less code 0, which the
-// never-completing program cannot produce.
+// Explicit process.exit: utilityProcess IPC keeps the event loop alive, preventing natural exit.
 const teardown: Runtime.Teardown = (exit, onExit) => {
   if (Exit.isSuccess(exit)) {
     onExit(0);
@@ -128,39 +120,21 @@ const teardown: Runtime.Teardown = (exit, onExit) => {
   onExit(1);
 };
 
-/**
- * Link Code daemon — the standalone local host process: one shared `Engine` behind a fan-out
- * `Hub`, exposing configured listeners to clients. Real agents live here — they spawn CLI
- * subprocesses and hold credentials, so they cannot run inside a browser tab.
- *
- * Boot/shutdown is an Effect layer graph (CODE-244): acquisition order Shared → Engine →
- * Listeners → lifecycle (runtime file, then uplink), finalizers in reverse. Signals interrupt
- * the root fiber at any boot phase, unwinding exactly the layers that were acquired.
- */
+/** Link Code daemon — local host process: Engine behind a fan-out Hub, serving agents to clients. */
 async function main(): Promise<void> {
-  // Resolved before anything (subcommands included) touches state paths: an invalid
-  // LINKCODE_PROFILE or LINKCODE_CHANNEL must abort here, not mid-command or as a daemon that
-  // silently landed in the default universe.
   const profile = daemonProfile();
   const channel = daemonChannel();
 
-  // Subcommands run and exit instead of booting the host (a running daemon
-  // picks the new sign-in state up on its next restart).
   const command = process.argv[2];
   if (command === 'login') return runLoginCommand();
   if (command === 'logout') return runLogoutCommand();
 
-  // Before the engine starts: agent adapters spawn vendored CLI binaries that resolve inside the
-  // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
   installAsarSpawnFix();
 
   const SharedLive = Layer.effect(
     Shared,
     Effect.gen(function* () {
       const config = loadConfig();
-      // One daemon per universe (channel × profile) — a second instance would share this
-      // universe's daemon.db and split sessions. Daemons of other channels/profiles live in
-      // sibling state dirs and are not visible here.
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -184,12 +158,7 @@ async function main(): Promise<void> {
       yield* Effect.addFinalizer(() =>
         Effect.promise(() => Sentry.close(DRAIN_TIMEOUT_MS)).pipe(Effect.ignore),
       );
-      // Engine.stop() also closes the hub via transport.close(); Hub.close is idempotent, so the
-      // late double-close here matches the old stopAll behavior.
       yield* Effect.addFinalizer(() => finalize(() => hub.close()));
-      // Written by the engine's script service, read by every listener's reverse proxy. Preview
-      // traffic bypasses daemon auth by decision — the loopback bind is the boundary; remote
-      // exposure is the tunnel's job.
       const previewRoutes = new PreviewRouteRegistry();
       return { config, identity, hub, previewRoutes };
     }),
@@ -199,11 +168,7 @@ async function main(): Promise<void> {
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
       const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
-      // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
-      // store into spawn resolution — managed wins over detected as soon as an install lands.
       const assets = new AssetManager();
-      // Prior managed install = standing consent to keep that agent current (CODE-221). Snapshot
-      // before GC removes superseded versions.
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
@@ -220,7 +185,6 @@ async function main(): Promise<void> {
         const name = ManagedAgentAssetNameSchema.safeParse(kind);
         return name.success ? assets.managedBinary(managedAgentAssetId(name.data)) : undefined;
       });
-      // In-process agents (pi) import a managed closure entry instead of spawning (CODE-219).
       agentRuntimeProber.setManagedEntryResolver((kind) => {
         const name = ManagedAgentAssetNameSchema.safeParse(kind);
         if (!name.success) return;
@@ -229,23 +193,12 @@ async function main(): Promise<void> {
         const version = assets.wantedVersionOf(id);
         return path && version ? { path, version } : undefined;
       });
-      // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
-      // boot); fills the adapters' spawn-path resolution and is served on `agent-runtime.list`.
-      // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth
-      // status`) that take seconds on a cold machine — listener bind must not wait on them, or
-      // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
+      // Not awaited: CLI probes are slow; listeners must bind without waiting.
       const agentRuntimesReady = agentRuntimeProber.collect();
-      // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
-      // simulator surface at all, which is what the capability gate reads. The daemon owns the
-      // service (not just the sidecar client) so the MCP endpoint and the engine share one
-      // device-claims registry.
       const simSidecarPath = resolveSimSidecarPath();
       const simulators = simSidecarPath
         ? new SimulatorService(new SimSidecarClient(simSidecarPath))
         : undefined;
-      // Decisions persist in config.json, so a grant outlives the session that earned it. The ask
-      // hook reports whether anyone is attached: with no client there is nobody to answer, and
-      // suspending the agent for two minutes would just look like a hang.
       const simulatorConsent = new SimulatorConsentService({
         load: () => Promise.resolve(config.simulatorConsent),
         save: (state) => Promise.resolve(saveSimulatorConsent(state)),
@@ -311,9 +264,6 @@ async function main(): Promise<void> {
       const EngineReady = Layer.effectDiscard(
         Effect.gen(function* () {
           const engine = yield* EngineService;
-          // Refresh consented managed installs in the background — boot never waits on a download.
-          // Rides the probe promise (CODE-225); yielding the service first guarantees the engine's
-          // asset subscription sees the whole install lifecycle.
           void agentRuntimesReady
             .then((agentRuntimes) => {
               for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {

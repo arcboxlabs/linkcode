@@ -12,8 +12,6 @@ import {
 
 const PATH_PARAM_RE = /\{[^}]+\}/g;
 
-// TODO(linkcode-schema): Provisional UI-only schema endpoint model, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when tools expose structured API/schema metadata.
 export interface ChatSchemaEndpoint {
   id: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

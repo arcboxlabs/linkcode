@@ -1,5 +1,10 @@
 import { Data } from 'effect';
 
+interface FailureReporting {
+  /** True only when an emitted conversation event already owns presentation of this failure. */
+  readonly reportedInConversation?: true;
+}
+
 export type RequestErrorCode =
   | 'invalid_request'
   | 'not_found'
@@ -11,10 +16,12 @@ export type RequestErrorCode =
   | 'limit_exceeded'
   | 'cancelled';
 
-export class RequestError extends Data.TaggedError('RequestError')<{
-  readonly code: RequestErrorCode;
-  readonly message: string;
-}> {}
+export class RequestError extends Data.TaggedError('RequestError')<
+  FailureReporting & {
+    readonly code: RequestErrorCode;
+    readonly message: string;
+  }
+> {}
 
 export type OperationSubsystem =
   | 'agent'
@@ -30,19 +37,23 @@ export type OperationSubsystem =
   | 'translator'
   | 'transport';
 
-export class OperationError extends Data.TaggedError('OperationError')<{
-  readonly subsystem: OperationSubsystem;
-  readonly operation: string;
-  readonly publicMessage: string;
-  readonly cause: unknown;
-}> {}
+export class OperationError extends Data.TaggedError('OperationError')<
+  FailureReporting & {
+    readonly subsystem: OperationSubsystem;
+    readonly operation: string;
+    readonly publicMessage: string;
+    readonly cause: unknown;
+  }
+> {}
 
-export class OperationTimeout extends Data.TaggedError('OperationTimeout')<{
-  readonly operation: string;
-  /** Timeout duration in milliseconds. */
-  readonly duration: number;
-  readonly publicMessage: string;
-}> {}
+export class OperationTimeout extends Data.TaggedError('OperationTimeout')<
+  FailureReporting & {
+    readonly operation: string;
+    /** Timeout duration in milliseconds. */
+    readonly duration: number;
+    readonly publicMessage: string;
+  }
+> {}
 
 export type EngineFailure = RequestError | OperationError | OperationTimeout;
 
@@ -73,15 +84,27 @@ export type RequestFailureCode =
 export interface RequestFailure {
   readonly code: RequestFailureCode;
   readonly message: string;
+  readonly reportedInConversation?: true;
 }
 
 export function toRequestFailure(error: unknown): RequestFailure {
-  if (error instanceof RequestError) return { code: error.code, message: error.message };
+  if (error instanceof RequestError) {
+    return withFailureReporting(error, { code: error.code, message: error.message });
+  }
   if (error instanceof OperationError) {
-    return { code: 'operation_failed', message: error.publicMessage };
+    return withFailureReporting(error, {
+      code: 'operation_failed',
+      message: error.publicMessage,
+    });
   }
   if (error instanceof OperationTimeout) {
-    return { code: 'timeout', message: error.publicMessage };
+    return withFailureReporting(error, { code: 'timeout', message: error.publicMessage });
   }
   return { code: 'internal_error', message: 'Internal engine error' };
+}
+
+function withFailureReporting(error: FailureReporting, failure: RequestFailure): RequestFailure {
+  return error.reportedInConversation === true
+    ? { ...failure, reportedInConversation: true }
+    : failure;
 }

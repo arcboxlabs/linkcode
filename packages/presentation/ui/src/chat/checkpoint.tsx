@@ -4,8 +4,6 @@ import { cn } from '../lib/cn';
 import type { TooltipIconButtonProps } from './tooltip-icon-button';
 import { TooltipIconButton } from './tooltip-icon-button';
 
-// TODO(linkcode-schema): Provisional UI-only checkpoint metadata, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when restore/checkpoint events exist in the data plane.
 export interface ChatCheckpoint {
   id: string;
   label: string;

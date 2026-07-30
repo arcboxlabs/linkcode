@@ -120,8 +120,6 @@ function tectonicArtifact(
   };
 }
 
-// The first-party Anthropic⇄OpenAI translation sidecar (CODE-133). GitHub-release binaries; digests
-// hand-verified against the downloaded v0.5.0-rc2 assets (2026-07-09). No win32-arm64 build (like tectonic).
 const AIGATEWAY_VERSION = '0.5.0-rc2';
 const AIGATEWAY_RELEASE = `https://github.com/arcboxlabs/aigateway/releases/download/v${AIGATEWAY_VERSION}`;
 

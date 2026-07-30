@@ -34,39 +34,40 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/scripts
 
-      - name: Verify release automation was CI-tested
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
-        with:
-          github-token: ${{ github.token }}
-          script: |
-            const path = '.github/scripts/release-automation.cjs'
-            const read = async (ref) => {
-              const response = await github.rest.repos.getContent({
-                ...context.repo,
-                path,
-                ref,
-              })
-              return response.data.sha
-            }
-            const [testedBlob, currentBlob] = await Promise.all([
-              read(process.env.TESTED_SHA),
-              read('master'),
-            ])
-            if (currentBlob !== testedBlob) {
-              throw new Error(`${path} changed after CI-tested release candidate ${process.env.TESTED_SHA}`)
-            }
+      - parallel:
+          - name: Verify release automation was CI-tested
+            uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+            env:
+              TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+            with:
+              github-token: ${{ github.token }}
+              script: |
+                const path = '.github/scripts/release-automation.cjs'
+                const read = async (ref) => {
+                  const response = await github.rest.repos.getContent({
+                    ...context.repo,
+                    path,
+                    ref,
+                  })
+                  return response.data.sha
+                }
+                const [testedBlob, currentBlob] = await Promise.all([
+                  read(process.env.TESTED_SHA),
+                  read('master'),
+                ])
+                if (currentBlob !== testedBlob) {
+                  throw new Error(`${path} changed after CI-tested release candidate ${process.env.TESTED_SHA}`)
+                }
 
-      - name: Mint release bot token
-        id: release-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          app-id: ${{ secrets.BOT_APP_ID }}
-          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-issues: write
-          permission-pull-requests: write
+          - name: Mint release bot token
+            id: release-token
+            uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+            with:
+              app-id: ${{ secrets.BOT_APP_ID }}
+              private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+              permission-contents: write
+              permission-issues: write
+              permission-pull-requests: write
 
       # Bind release-please to the exact commit that this successful CI run tested. Normal master
       # pushes are no-ops, and release-please may only see this one pending Desktop release PR.

@@ -62,14 +62,7 @@ export class Listeners<T> {
   }
 }
 
-/**
- * Base for the four wire-carried `Transport` implementations (ws / ws-server / socket-io /
- * socket-io-server): factors out the listener bookkeeping and the deferred `emitClosed` arming
- * they all repeat. Binding timing is the load-bearing difference:
- * client transports create their socket in an overridden `connect()` and arm `emitClosed` there;
- * server-side connections already hold a live socket at construction, so they arm it in their
- * constructor and keep the inherited default `connect()`.
- */
+/** Base for the four wire-carried Transport implementations, factoring out listener bookkeeping. */
 export abstract class WireConnection implements Transport {
   protected readonly inbound = new Listeners<ValidatedWireMessage>();
   protected readonly closed = new Listeners<void>();
@@ -86,9 +79,6 @@ export abstract class WireConnection implements Transport {
   /** Push the message onto the underlying socket (or drop it if it isn't ready). */
   protected abstract sendBytes(msg: ValidatedWireMessage): void;
 
-  // No zod parse on send: the ValidatedWireMessage brand is the proof (minted only by
-  // createWireMessage / parseWireMessage), so a per-frame parse here would only re-check it
-  // (CODE-231). LocalTransport keeps its send-side parse to catch schema drift in tests.
   send(msg: ValidatedWireMessage): void {
     this.sendBytes(msg);
   }

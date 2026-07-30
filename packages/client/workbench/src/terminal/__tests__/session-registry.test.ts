@@ -202,6 +202,24 @@ describe('terminal session registry', () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
 
+  it('delivers an exit once across a panel handoff', async () => {
+    const client = createFakeClient();
+    const firstOwner = vi.fn();
+    const secondOwner = vi.fn();
+    const first = acquireTerminalSession(client, 'tab-1', dims, firstOwner);
+    await vi.advanceTimersByTimeAsync(0);
+
+    first.release();
+    client.exitCbs.get('term-1')?.(0);
+    const second = acquireTerminalSession(client, 'tab-1', dims, secondOwner);
+    client.exitCbs.get('term-1')?.(0);
+
+    expect(firstOwner).not.toHaveBeenCalled();
+    expect(secondOwner).toHaveBeenCalledOnce();
+    second.release();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+
   it('preserves a signal exit as distinct from a running terminal', async () => {
     const client = createFakeClient();
     const lease = acquireTerminalSession(client, 'tab-1', dims);

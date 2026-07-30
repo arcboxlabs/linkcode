@@ -58,7 +58,6 @@ export async function importHistoryGroup({
   if (inFlight.has(inFlightKey)) return null;
   inFlight.add(inFlightKey);
   try {
-    // session.import registers each successful entry's cwd as a project in the engine (CODE-345).
     const settled: Array<PromiseSettledResult<SessionId>> = [];
     for (let start = 0; start < entries.length; start += GROUP_IMPORT_CONCURRENCY) {
       const batch = entries.slice(start, start + GROUP_IMPORT_CONCURRENCY);

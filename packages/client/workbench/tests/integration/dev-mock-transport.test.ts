@@ -208,7 +208,14 @@ describe('dev mock transport', () => {
     await expect(client.invokeCommand(sessionId, 'missing')).rejects.toThrow(
       'Unknown mock slash command: /missing',
     );
-    expect(events).toHaveLength(mark);
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'error',
+        message: 'Unknown mock slash command: /missing',
+        code: 'input_rejected',
+        recoverable: true,
+      },
+    ]);
 
     mark = events.length;
     await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });

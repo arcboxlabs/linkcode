@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { rcompare } from 'semver';
 import { parse } from 'yaml';
 import type { ClosurePackage, NpmClosure } from './closure';
@@ -167,9 +168,13 @@ export function generateClosure(options: GenerateClosureOptions): NpmClosure {
     place(node, `node_modules/${name}`, rootProvided);
   }
 
-  return {
+  const closure = {
     version: parseSnapshotKey(rootKeys[0]).version,
     entry: options.entry,
     packages: [...placements.values()].sort((a, b) => a.path.localeCompare(b.path)),
+  };
+  return {
+    ...closure,
+    revision: createHash('sha256').update(JSON.stringify(closure)).digest('hex').slice(0, 16),
   };
 }

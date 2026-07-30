@@ -294,10 +294,6 @@ export class SimulatorService {
     const claim = this.claims.get(udid);
     if (claim?.sessionId !== sessionId) return;
     await this.backend.streamStop(udid);
-    // Detaching (CODE-416) leaves the device booted and still owned — the session lives on and an
-    // agent may keep driving it. But nothing is watching any more, so start the idle clock: a
-    // device we booted should not linger unattended. Any later operation on it disarms this again,
-    // so a device an agent is still working never expires out from under it.
     if (claim.bootedByService) this.armIdleReclaim(udid, claim);
   }
 

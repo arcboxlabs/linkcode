@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.11.0](https://github.com/arcboxlabs/linkcode/compare/v0.10.1...v0.11.0) (2026-07-30)
+
+
+### Features
+
+* **pty:** close terminal tabs on process exit ([#338](https://github.com/arcboxlabs/linkcode/issues/338)) ([1e77c38](https://github.com/arcboxlabs/linkcode/commit/1e77c38f6204d1cbf011cc950fdceab12b9cc87e))
+
+
+### Bug Fixes
+
+* **assets:** version Pi closures by content ([2fdab62](https://github.com/arcboxlabs/linkcode/commit/2fdab62651c1df11c62a454b24ad4279f384b34c))
+* **release:** repair Linux desktop cross-architecture builds ([#343](https://github.com/arcboxlabs/linkcode/issues/343)) ([995dcc2](https://github.com/arcboxlabs/linkcode/commit/995dcc2b90e869dd3c864afc5efea1bb466f83e2))
+
+## [0.10.1](https://github.com/arcboxlabs/linkcode/compare/v0.10.0...v0.10.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **release:** build Linux native modules with Clang ([5e29a84](https://github.com/arcboxlabs/linkcode/commit/5e29a84c77a3790183fa2c4143ea5462b4ad5074))
+* **ui:** i18n for sidebar ([#333](https://github.com/arcboxlabs/linkcode/issues/333)) ([271278b](https://github.com/arcboxlabs/linkcode/commit/271278bc4bd39375cbf5e5527542ee62801c9cb4))
+* **ui:** keep permission mode visible on new task ([#336](https://github.com/arcboxlabs/linkcode/issues/336)) ([d0dacea](https://github.com/arcboxlabs/linkcode/commit/d0dacea81366d8fbe9494b4e458c4ebe4560e30a))
+
 ## [0.10.0](https://github.com/arcboxlabs/linkcode/compare/v0.9.0...v0.10.0) (2026-07-29)
 
 
