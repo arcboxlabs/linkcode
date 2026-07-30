@@ -6,8 +6,6 @@ import { cn } from '../lib/cn';
 
 const EMPTY_TEST_RESULTS: readonly ChatTestResult[] = [];
 
-// TODO(linkcode-schema): Provisional UI-only test result model, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when test tool outputs expose structured results.
 export interface ChatTestResult {
   id: string;
   name: string;

@@ -116,6 +116,8 @@ export function SessionSidebar({
   BranchStatusComponent,
   ImMenuComponent,
 }: SessionSidebarProps): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
+
   return (
     <ShellSidebar
       className={className}
@@ -129,7 +131,7 @@ export function SessionSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton className="hover:bg-transparent" onClick={() => onStartDraft()}>
               <FilePlus2Icon />
-              <span className="min-w-0 flex-1 truncate">New Task</span>
+              <span className="min-w-0 flex-1 truncate">{t('newTask')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -139,7 +141,7 @@ export function SessionSidebar({
               onClick={onOpenSearch}
             >
               <SearchIcon />
-              <span className="min-w-0 flex-1 truncate">Search</span>
+              <span className="min-w-0 flex-1 truncate">{t('search')}</span>
               {searchShortcut && <Kbd>{searchShortcut}</Kbd>}
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -150,7 +152,7 @@ export function SessionSidebar({
               onClick={onOpenAutomations}
             >
               <SparklesIcon />
-              <span className="min-w-0 flex-1 truncate">Automations</span>
+              <span className="min-w-0 flex-1 truncate">{t('automations')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -193,13 +195,15 @@ export function DefaultHostFooter({
   state?: string;
   latency?: string;
 }): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
+
   if (!latency) return <HostFooter state={state} />;
 
   return (
     <SidebarFooter className="shrink-0 px-2 py-1">
       <div className="flex h-8 items-center gap-2 px-2 text-sm">
         <span className="size-2 rounded-full bg-success" />
-        <span>Local Host</span>
+        <span>{t('localHost')}</span>
         {state && <span className="text-muted-foreground">{state}</span>}
         <span className="text-muted-foreground">{latency}</span>
         <ChevronUpIcon className="ml-auto size-4 text-muted-foreground" />
@@ -258,7 +262,7 @@ export function HostFooter({
                 size="icon-xs"
                 variant="ghost"
                 className="relative"
-                aria-label={state ? `Local Host · ${state}` : 'Local Host'}
+                aria-label={state ? `${t('localHost')} · ${state}` : t('localHost')}
               >
                 <ServerIcon />
                 <span className="absolute right-0.5 bottom-0.5 size-2 rounded-full bg-success ring-2 ring-sidebar" />
@@ -320,7 +324,7 @@ export function HostFooter({
       >
         <div className="flex items-center gap-2 py-1.5">
           <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="font-semibold">Local Host</span>
+          <span className="font-semibold">{t('localHost')}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {state && (
               <Badge size="sm" variant="success">
@@ -336,7 +340,7 @@ export function HostFooter({
         <Separator className="my-1" />
 
         <div className="py-0.5">
-          <HostRow icon={GlobeIcon} label="Remote access">
+          <HostRow icon={GlobeIcon} label={t('remoteAccess')}>
             {!account && (
               <span className="text-muted-foreground text-xs">{t('remoteSignedOut')}</span>
             )}
@@ -354,13 +358,13 @@ export function HostFooter({
             </div>
           )}
         </div>
-        <HostRow icon={ShieldIcon} label="Permission requests">
+        <HostRow icon={ShieldIcon} label={t('permissionRequests')}>
           <Badge size="sm" variant={pendingPermissionCount > 0 ? 'warning' : 'secondary'}>
             {pendingPermissionCount}
           </Badge>
         </HostRow>
-        <HostRow icon={BotIcon} label="Agent availability">
-          <span className="text-muted-foreground text-xs">Not reported</span>
+        <HostRow icon={BotIcon} label={t('agentAvailability')}>
+          <span className="text-muted-foreground text-xs">{t('notReported')}</span>
         </HostRow>
 
         <Separator className="my-1" />
@@ -508,11 +512,13 @@ function HostRow({
 }
 
 export function EmptyHostFooter(): React.ReactNode {
+  const t = useTranslations('workbench.sidebar');
+
   return (
     <SidebarFooter className="shrink-0 px-2 py-1">
       <div className="flex h-8 items-center gap-2 px-2 text-muted-foreground text-sm">
         <BotIcon className="size-4" />
-        Local Host
+        {t('localHost')}
       </div>
     </SidebarFooter>
   );

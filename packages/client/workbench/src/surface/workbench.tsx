@@ -126,10 +126,6 @@ export function Workbench({
     setErrorMessage(extractErrorMessage(err));
   }
 
-  // Leaving the current surface drops its error state: a stale failure must not follow the user
-  // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
-  // The new-session workspace pick goes with it: the shells remount the draft page per entry
-  // point, which resets its other picks, so an abandoned workspace must not outlive it either.
   function leaveSurface(): void {
     setErrorMessage(null);
     setWorkspacePick(null);

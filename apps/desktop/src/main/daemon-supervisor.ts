@@ -8,14 +8,7 @@ import { CHANNEL, PROFILE } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
-/**
- * Supervises the bundled daemon (out/daemon/index.mjs): forks it under Electron's Node via
- * `utilityProcess`, started on app-ready, SIGTERMed on quit; closing windows leaves it running.
- * It only spawns — the one-daemon-per-universe contract lives in the daemon itself
- * (apps/daemon/src/runtime.ts): an external daemon makes the child exit
- * DAEMON_EXIT_ALREADY_RUNNING and the supervisor stands down; which daemon clients dial is
- * discovery's job (runtime.json).
- */
+/** Supervises the bundled daemon: fork via utilityProcess, SIGTERM on quit, respawn on crash. */
 
 const RESPAWN_DELAY_MS = 1000;
 /** A child that lived at least this long resets the crash-loop counter. */
@@ -47,9 +40,7 @@ export function startDaemonSupervisor(): void {
     const proc = child;
     if (draining || proc === null) return;
     draining = true;
-    // Electron destroys its utility processes as the browser exits, so quitting straight after
-    // the SIGTERM truncates the daemon's drain — it dies mid-shutdown, leaving runtime.json
-    // behind and its session writes unfinished. Hold the quit until the child is actually gone.
+    // Hold quit until daemon exits; Electron kills utilities on browser exit.
     event.preventDefault();
     const deadline = setTimeout(() => {
       log.warn('[linkcode/desktop] daemon did not drain in time; quitting anyway');
@@ -94,8 +85,6 @@ function spawnDaemon(): void {
   if (quitting || !isDaemonManaged()) return;
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = { ...process.env };
-  // The child must live in the desktop's resolved universe: a `--profile` switch outranks any
-  // inherited LINKCODE_PROFILE, and the default universe must not leak a stray env value through.
   if (PROFILE === undefined) delete env.LINKCODE_PROFILE;
   else env.LINKCODE_PROFILE = PROFILE;
   // The channel cannot be inferred by the child: the devshell pack bundles a daemon stamped
@@ -115,9 +104,6 @@ function spawnDaemon(): void {
   // Same DSN the Electron main process inlined at build time (signed builds only). Publishable id.
   const sentryDsn = import.meta.env.MAIN_VITE_SENTRY_DSN;
   if (sentryDsn) env.LINKCODE_SENTRY_DSN = sentryDsn;
-  // Agent CLI binaries need no env here: the daemon owns its managed-asset store
-  // (@linkcode/assets, CODE-111) and resolves spawn paths managed → detected on its own.
-
   const daemonDir = join(__dirname, '../daemon');
   const instrument = join(daemonDir, 'instrument.mjs');
   // Preload Sentry before any daemon module loads (same contract as `node --import` standalone).

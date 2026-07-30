@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.1](https://github.com/arcboxlabs/linkcode/compare/v0.10.0...v0.10.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **release:** build Linux native modules with Clang ([5e29a84](https://github.com/arcboxlabs/linkcode/commit/5e29a84c77a3790183fa2c4143ea5462b4ad5074))
+* **ui:** i18n for sidebar ([#333](https://github.com/arcboxlabs/linkcode/issues/333)) ([271278b](https://github.com/arcboxlabs/linkcode/commit/271278bc4bd39375cbf5e5527542ee62801c9cb4))
+* **ui:** keep permission mode visible on new task ([#336](https://github.com/arcboxlabs/linkcode/issues/336)) ([d0dacea](https://github.com/arcboxlabs/linkcode/commit/d0dacea81366d8fbe9494b4e458c4ebe4560e30a))
+
 ## [0.10.0](https://github.com/arcboxlabs/linkcode/compare/v0.9.0...v0.10.0) (2026-07-29)
 
 

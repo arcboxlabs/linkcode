@@ -329,6 +329,7 @@ export const zhCN = {
     newSession: {
       heading: '想构建什么？',
       headingIn: '在 {name} 中构建什么？',
+      permissionMode: '权限模式',
       chooseWorkspace: '选择工作区',
       chat: '聊天',
       noProject: '不使用项目',
@@ -477,6 +478,14 @@ export const zhCN = {
       },
     },
     sidebar: {
+      newTask: '新建任务',
+      search: '搜索',
+      automations: '自动化',
+      localHost: '本地主机',
+      remoteAccess: '远程访问',
+      permissionRequests: '权限请求',
+      agentAvailability: '智能体可用性',
+      notReported: '未报告',
       unregisteredGroup: '未注册',
       emptyTitle: '暂无线程',
       projects: '项目',

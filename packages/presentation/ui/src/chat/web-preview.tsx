@@ -16,8 +16,6 @@ import { TooltipIconButton } from './tooltip-icon-button';
 
 const EMPTY_WEB_PREVIEW_LOGS: readonly ChatWebPreviewLog[] = [];
 
-// TODO(linkcode-schema): Provisional UI-only web preview data, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when preview sessions/logs are emitted by the data plane.
 export interface ChatWebPreviewData {
   id: string;
   url: string;

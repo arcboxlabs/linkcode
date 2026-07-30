@@ -171,8 +171,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   /** True between clicking "download the runtime" and the runtime appearing in a later probe. */
   const [installingRuntime, setInstallingRuntime] = useState(false);
   const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
-  // Open devices live in the store, not here: agent activity can open one before this component
-  // ever mounts (CODE-418), and the cap is per thread, so the strip counts the way the host does.
   const sessionKey = simulatorSessionKey(sessionId);
   const tabs = useSimulatorPanelStore((state) => selectDeviceTabs(state, sessionKey));
   const openDevice = useSimulatorPanelStore((state) => state.openDevice);
@@ -421,8 +419,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
       recorder.start(screenCanvas, captureFileStem(device.name));
     }
   };
-  // Simulator.app's chords, scoped to this panel (CODE-414). Declared before the availability
-  // guard below because hooks must run unconditionally.
   useSimulatorShortcuts({
     owner: panelRef,
     enabled: ownerSessionId !== null && udid !== null,

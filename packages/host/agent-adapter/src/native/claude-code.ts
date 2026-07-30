@@ -777,30 +777,17 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
         pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
-        // `options.effort` becomes `--effort`, which outranks flag-settings for the process's whole
-        // lifetime — passing it pins the level and makes every later applyFlagSettings switch a
-        // silent no-op. Only `max` goes in here (the flag-settings key rejects it); other levels
-        // apply through the switchable channel right after creation.
+        // Only `max` here — it pins the level; other levels switch live via applyFlagSettings.
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
-        // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
-        // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
-        // Opus 4.6+ models default `thinking.display` to 'omitted' at the API — thinking blocks
-        // arrive with EMPTY text (signature only), so no thought event would ever carry content
-        // (CODE-273). The TUI shows thinking because interactive mode requests summaries; SDK mode
-        // must ask explicitly. Ride the raw `--thinking-display` flag rather than the typed
-        // `options.thinking`, which would also pin `--thinking adaptive` and override the CLI's
-        // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
+        // Raw flag, not options.thinking — the typed option would also pin --thinking adaptive.
         extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [reflectCurrentQueryEffort] }] },
         canUseTool: this.canUseTool,
-        // Resolved in onStart via `settingsDefaultMode` — the SDK-driven CLI does not apply
-        // settings.json itself. `undefined` = no pick anywhere; the CLI then starts in 'default'.
         permissionMode: this.approvalPolicy,
-        // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
-        // startup for a later live switch to 'bypassPermissions' to be accepted at all.
+        // Gate for later live switch to bypassPermissions; must be set at startup.
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
@@ -1377,8 +1364,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.cancelling = false;
     this.turnActive = false;
     if (msg.subtype === 'success') {
-      // A 401 comes back as a `success` result carrying `api_error_status` (CODE-75) — surface it
-      // as a non-recoverable auth error driving the daemon's login re-probe, not usage + a phantom stop.
       if (msg.api_error_status === 401) {
         this.emitError(
           'Claude authentication failed — sign in to Claude',
@@ -1822,8 +1807,6 @@ export function createClaudeHistoryEventMapper(
       announced.set(toolCall.toolCallId, toolCall);
       return { historyId, itemId: toolCall.toolCallId, ts, event: { type: 'tool-call', toolCall } };
     };
-    // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
-    // would fake a giant user turn (CODE-141). It becomes the compaction marker in place instead.
     const compaction = message.type === 'user' ? compactions?.get(message.uuid) : undefined;
     if (compaction) {
       const summary = plainTextContent(
@@ -1857,8 +1840,6 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
-      // Thinking replays under the provider message id used by the live stream. Pre-CODE-273
-      // transcripts store empty thinking text; the helper's empty-drop rule skips those.
       for (const block of blocks) {
         if (!isThinkingBlock(block)) continue;
         const thought = thoughtHistoryEvent(

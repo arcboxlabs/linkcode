@@ -339,6 +339,7 @@ export const en = {
     newSession: {
       heading: 'What should we build?',
       headingIn: 'What should we build in {name}?',
+      permissionMode: 'Permission mode',
       chooseWorkspace: 'Choose a workspace',
       chat: 'Chat',
       noProject: "Don't work in a project",
@@ -488,6 +489,14 @@ export const en = {
       },
     },
     sidebar: {
+      newTask: 'New Task',
+      search: 'Search',
+      automations: 'Automations',
+      localHost: 'Local Host',
+      remoteAccess: 'Remote access',
+      permissionRequests: 'Permission requests',
+      agentAvailability: 'Agent availability',
+      notReported: 'Not reported',
       unregisteredGroup: 'Unregistered',
       emptyTitle: 'No threads yet',
       projects: 'Projects',
