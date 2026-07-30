@@ -1,1 +1,0 @@
-ALTER TABLE `workspaces` ADD `parent_workspace_id` text;

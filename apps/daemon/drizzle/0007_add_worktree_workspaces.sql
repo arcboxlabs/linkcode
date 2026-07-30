@@ -8,4 +8,5 @@ CREATE TABLE `worktrees` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `worktrees_repo_root_branch_unique` ON `worktrees` (`repo_root`,`branch`);--> statement-breakpoint
-CREATE INDEX `worktrees_session_id_idx` ON `worktrees` (`session_id`);
+CREATE UNIQUE INDEX `worktrees_session_id_unique` ON `worktrees` (`session_id`);--> statement-breakpoint
+ALTER TABLE `workspaces` ADD `parent_workspace_id` text;

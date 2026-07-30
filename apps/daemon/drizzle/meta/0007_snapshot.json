@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "24608cb9-142a-40c6-9b33-0778a4c4aa3f",
+  "id": "09729734-3d60-48c3-a391-a5e31703b4fb",
   "prevId": "73dc0d74-adb6-434a-82e8-d904567e8b74",
   "tables": {
     "loop_iterations": {
@@ -619,6 +619,13 @@
           "autoincrement": false,
           "default": "'project'"
         },
+        "parent_workspace_id": {
+          "name": "parent_workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -703,10 +710,10 @@
           "columns": ["repo_root", "branch"],
           "isUnique": true
         },
-        "worktrees_session_id_idx": {
-          "name": "worktrees_session_id_idx",
+        "worktrees_session_id_unique": {
+          "name": "worktrees_session_id_unique",
           "columns": ["session_id"],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {},

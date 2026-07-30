@@ -54,22 +54,8 @@
     {
       "idx": 7,
       "version": "6",
-      "when": 1784883236095,
-      "tag": "0007_slow_puppet_master",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1784883717182,
-      "tag": "0008_talented_nitro",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1784884614792,
-      "tag": "0009_third_quentin_quire",
+      "when": 1785411858802,
+      "tag": "0007_add_worktree_workspaces",
       "breakpoints": true
     }
   ]
