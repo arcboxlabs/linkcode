@@ -140,6 +140,13 @@ jobs:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
         run: printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
 
+      # Electron 43 / V8 15 headers fail under Ubuntu 22.04's GCC 11; keep the older glibc floor.
+      - name: Use Clang for Linux native modules
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
