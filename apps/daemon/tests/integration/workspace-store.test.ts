@@ -34,6 +34,20 @@ describe('daemon sqlite workspace store', () => {
     expect(await store.load()).toEqual([chat]);
   });
 
+  it('round-trips a managed worktree and its parent workspace id', async () => {
+    const store = createWorkspaceStore(':memory:');
+    const worktree = makeRecord({
+      workspaceId: 'ws-worktree',
+      cwd: '/worktrees/feature',
+      kind: 'worktree',
+      parentWorkspaceId: 'ws-1',
+      name: 'feature',
+    });
+    await store.save(worktree);
+
+    expect(await store.load()).toEqual([worktree]);
+  });
+
   it('saves as a whole-record upsert', async () => {
     const store = createWorkspaceStore(':memory:');
     await store.save(makeRecord({}));

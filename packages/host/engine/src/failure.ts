@@ -12,6 +12,7 @@ export type RequestErrorCode =
   /** The request was understood and refused — the user withheld consent, not a broken call. */
   | 'forbidden'
   | 'unsupported'
+  | 'worktree_missing'
   | 'limit_exceeded'
   | 'cancelled';
 

@@ -51,6 +51,7 @@ function toRow(record: WorkspaceRecord): typeof workspaces.$inferInsert {
     cwd: record.cwd,
     name: record.name ?? null,
     kind: workspaceKind(record),
+    parentWorkspaceId: record.parentWorkspaceId ?? null,
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
   };
@@ -62,6 +63,7 @@ function toRecord(row: WorkspaceRow): WorkspaceRecord {
     cwd: row.cwd,
     name: row.name ?? undefined,
     kind: row.kind,
+    parentWorkspaceId: row.parentWorkspaceId ?? undefined,
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
   });

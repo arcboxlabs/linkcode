@@ -51,6 +51,8 @@ import { FileSuggestService } from './workspace/file-suggest-service';
 import { WorkspaceRequestHandler } from './workspace/request-handler';
 import { WorkspaceRegistry } from './workspace/workspace-registry';
 import { InMemoryWorkspaceStore } from './workspace/workspace-store';
+import { WorktreeService } from './worktree/worktree-service';
+import { InMemoryWorktreeStore } from './worktree/worktree-store';
 
 /**
  * The local core engine — the "host" that runs the agents, carrier-agnostic
@@ -127,6 +129,11 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
   const git = deps.git ?? (yield* GitService.make());
+  const worktrees = new WorktreeService(
+    deps.worktreeStore ?? new InMemoryWorktreeStore(),
+    deps.worktreeRoot,
+    git,
+  );
   const gitRequests = new GitRequestHandler(transport, git, responder);
   const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
   const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
@@ -156,6 +163,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     history,
     startOptions,
     workspaces,
+    worktrees,
   );
   const sessionRequests = new SessionRequestHandler(
     transport,
@@ -229,9 +237,24 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* records.start((effect) => {
         runTask(effect);
       });
+      yield* worktrees.start(new Set(Array.from(records.values(), ({ sessionId }) => sessionId)));
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
       );
+      for (const workspace of workspaces.list()) {
+        if (workspace.kind === 'worktree' && !worktrees.hasPath(workspace.cwd)) {
+          yield* tryOperation(
+            'store',
+            'workspace.archive-stale',
+            'Failed to archive workspace',
+            () => workspaces.archive(workspace.workspaceId),
+          ).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning('Stale worktree workspace reconciliation deferred', error),
+            ),
+          );
+        }
+      }
       // Reconcile imports created before workspace auto-registration. Known workspaces are skipped so
       // daemon startup never renames or freshens an existing project merely because it has imports.
       for (const record of records.values()) {

@@ -87,6 +87,7 @@ export class WireRequestRouter {
         return this.handlers.workspace.handle(p);
       }
       case 'git.status.get':
+      case 'git.branch.list':
       case 'git.pr_status.get':
       case 'git.diff.get': {
         return this.handlers.git.handle(p);

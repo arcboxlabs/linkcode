@@ -50,9 +50,48 @@ export class WorkspaceRegistry {
     name?: string;
     kind?: WorkspaceKind;
   }): Promise<WorkspaceRecord> {
+    if (opts.kind === 'worktree') {
+      throw new RequestError({
+        code: 'invalid_request',
+        message: 'Managed worktrees cannot be registered by clients',
+      });
+    }
     const cwd = resolve(opts.cwd);
     await this.assertDirectoryExists(cwd);
     return this.upsert(cwd, opts.name, opts.kind ?? 'project');
+  }
+
+  /** Register or freshen trusted daemon metadata for a managed worktree. */
+  async registerWorktree(opts: {
+    cwd: string;
+    parentWorkspaceId: WorkspaceId;
+    branch: string;
+  }): Promise<WorkspaceRecord> {
+    const parent = this.byId.get(opts.parentWorkspaceId);
+    if (!parent || workspaceKind(parent) !== 'project') {
+      throw new RequestError({
+        code: 'invalid_request',
+        message: `Managed worktree parent is not a project: ${opts.parentWorkspaceId}`,
+      });
+    }
+    const cwd = resolve(opts.cwd);
+    await this.assertDirectoryExists(cwd);
+    const key = normalizeCwdKey(cwd);
+    const existingId = this.byCwdKey.get(key);
+    if (!existingId) {
+      return this.upsert(cwd, opts.branch, 'worktree', opts.parentWorkspaceId);
+    }
+    const existing = nullthrow(this.byId.get(existingId), `Unindexed workspace: ${existingId}`);
+    const updated: WorkspaceRecord = {
+      ...existing,
+      name: opts.branch,
+      kind: 'worktree',
+      parentWorkspaceId: opts.parentWorkspaceId,
+      lastUsedAt: Date.now(),
+    };
+    await this.save(updated);
+    this.index(updated);
+    return updated;
   }
 
   /** Ensure a directory a session just ran in is registered: freshen `lastUsedAt` if known, else
@@ -132,6 +171,7 @@ export class WorkspaceRegistry {
     rawCwd: string,
     name: string | undefined,
     kind: WorkspaceKind,
+    parentWorkspaceId?: WorkspaceId,
   ): Promise<WorkspaceRecord> {
     const cwd = resolve(rawCwd);
     const key = normalizeCwdKey(cwd);
@@ -149,6 +189,7 @@ export class WorkspaceRegistry {
       cwd,
       name: name ?? lastPathSegment(cwd),
       kind,
+      parentWorkspaceId,
       createdAt: now,
       lastUsedAt: now,
     };

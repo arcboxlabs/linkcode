@@ -335,6 +335,10 @@ export const zhCN = {
       noProject: '不使用项目',
       workLocally: '本地运行',
       branch: '分支',
+      branchLoading: '正在加载本地分支…',
+      branchEmpty: '没有本地分支',
+      branchError: '无法加载本地分支',
+      branchWorktreeHint: '将在隔离 worktree 中启动',
     },
     panel: {
       window: {

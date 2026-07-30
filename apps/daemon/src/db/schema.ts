@@ -1,4 +1,11 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 /**
  * Session registry tables. These mirror `SessionRecord` from `@linkcode/schema` — the zod schema
@@ -143,11 +150,30 @@ export const workspaces = sqliteTable(
     workspaceId: text('workspace_id').primaryKey(),
     cwd: text('cwd').notNull().unique(),
     name: text('name'),
-    kind: text('kind', { enum: ['project', 'chat'] })
+    kind: text('kind', { enum: ['project', 'chat', 'worktree'] })
       .notNull()
       .default('project'),
+    parentWorkspaceId: text('parent_workspace_id'),
     createdAt: integer('created_at').notNull(),
     lastUsedAt: integer('last_used_at').notNull(),
   },
   (table) => [index('workspaces_last_used_at_idx').on(table.lastUsedAt)],
+);
+
+/** Managed git worktrees. Session ids intentionally have no FK: rows survive session deletion until
+ * the dedicated cleanup lifecycle owns removal. */
+export const worktrees = sqliteTable(
+  'worktrees',
+  {
+    worktreePath: text('worktree_path').primaryKey(),
+    repoRoot: text('repo_root').notNull(),
+    branch: text('branch').notNull(),
+    sessionId: text('session_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    state: text('state', { enum: ['active', 'orphaned'] }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('worktrees_repo_root_branch_unique').on(table.repoRoot, table.branch),
+    uniqueIndex('worktrees_session_id_unique').on(table.sessionId),
+  ],
 );
