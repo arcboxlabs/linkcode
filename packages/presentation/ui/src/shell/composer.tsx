@@ -158,6 +158,8 @@ export interface ComposerProps {
   agentModels?: AgentModelOption[] | null;
   /** A promise defers draft clearing until the caller accepts the submission. */
   onSend: (content: ContentBlock[]) => ComposerSubmissionResult;
+  /** Fires once after a valid prompt, slash command, or shell command is handed to its caller. */
+  onSubmit?: () => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -215,6 +217,7 @@ export function Composer({
   directiveControls,
   agentModels,
   onSend,
+  onSubmit,
   onStop,
   onModeChange,
   onApprovalPolicyChange,
@@ -416,6 +419,7 @@ export function Composer({
       submissionPendingRef.current = false;
       throw error;
     }
+    onSubmit?.();
 
     if (result === undefined) {
       try {

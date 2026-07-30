@@ -2,6 +2,7 @@ import type { AgentKind } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { StickToBottomContext } from 'use-stick-to-bottom';
 import {
   Conversation,
   ConversationContent,
@@ -23,6 +24,8 @@ export interface ConversationViewProps {
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
+  /** Receives the conversation scroll controller for composer-driven positioning. */
+  scrollContextRef?: React.Ref<StickToBottomContext>;
 }
 
 /** The centered message stream — the main reading surface. Auto-follows only while pinned to the bottom. */
@@ -33,6 +36,7 @@ export function ConversationView({
   modelName,
   TerminalBlockComponent,
   onReviewChanges,
+  scrollContextRef,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
   const tk = useTranslations('workbench.agentKind');
@@ -73,6 +77,7 @@ export function ConversationView({
 
   return (
     <Conversation
+      contextRef={scrollContextRef}
       style={{
         maskImage:
           'linear-gradient(to bottom, transparent 0, black 24px, black calc(100% - 16px), transparent 100%)',
