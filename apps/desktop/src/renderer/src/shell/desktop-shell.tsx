@@ -32,7 +32,6 @@ import {
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
 import { Card } from 'coss-ui/components/card';
-import { Dialog, DialogHeader, DialogPopup, DialogTitle } from 'coss-ui/components/dialog';
 import { toastManager } from 'coss-ui/components/toast';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -659,6 +658,7 @@ export function DesktopShell({
         bottomPanelOpen={bottomPanel.open}
         resourcesOpen={resourcesOpen}
         resourcesAvailable={resourcesAvailable}
+        resourcesPopoverPanel={resourcesPresentation === 'popover' ? resourcesPanel : undefined}
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
@@ -731,6 +731,7 @@ export function DesktopShell({
         onToggleRight={() => togglePanel('right')}
         onToggleBottom={() => togglePanel('bottom')}
         onToggleResources={toggleResources}
+        onResourcesOpenChange={setResourcesOpen}
       >
         <DesktopWorkspace
           main={main}
@@ -806,16 +807,6 @@ export function DesktopShell({
         >
           {resourcesPanel}
         </Card>
-      )}
-      {resourcesPresentation === 'dialog' && (
-        <Dialog open={resourcesOpen} onOpenChange={setResourcesOpen}>
-          <DialogPopup bottomStickOnMobile={false} className="max-h-[calc(100dvh-2rem)] max-w-md">
-            <DialogHeader className="border-border border-b p-4">
-              <DialogTitle className="text-base">{tPanel('resources')}</DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto">{resourcesPanel}</div>
-          </DialogPopup>
-        </Dialog>
       )}
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}

@@ -7,7 +7,7 @@ import {
 } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
-import { Dialog, DialogHeader, DialogPopup, DialogTitle } from 'coss-ui/components/dialog';
+import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { ChevronLeftIcon, ChevronRightIcon, PackageOpenIcon, SettingsIcon } from 'lucide-react';
 import { ViewTransition } from 'react';
@@ -31,6 +31,17 @@ export function WebWorkbenchShell({
     available: resourcesAvailable,
     wide,
   });
+  const resourcesButton = (
+    <ShellIconButton
+      label={tPanel('resources')}
+      aria-pressed={resourcesOpen}
+      onClick={
+        resourcesPresentation === 'popover' ? undefined : () => setResourcesOpen(!resourcesOpen)
+      }
+    >
+      <PackageOpenIcon />
+    </ShellIconButton>
+  );
   const hasUsage =
     header.usage != null && (header.usage.inputTokens != null || header.usage.outputTokens != null);
 
@@ -93,15 +104,24 @@ export function WebWorkbenchShell({
                     {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out
                   </span>
                 )}
-                {resourcesAvailable && (
-                  <ShellIconButton
-                    label={tPanel('resources')}
-                    aria-pressed={resourcesOpen}
-                    onClick={() => setResourcesOpen(!resourcesOpen)}
-                  >
-                    <PackageOpenIcon />
-                  </ShellIconButton>
-                )}
+                {resourcesAvailable &&
+                  (resourcesPresentation === 'popover' ? (
+                    <Popover open={resourcesOpen} onOpenChange={setResourcesOpen}>
+                      <PopoverTrigger render={resourcesButton} />
+                      <PopoverPopup
+                        align="end"
+                        side="bottom"
+                        sideOffset={8}
+                        className="w-72 [&_[data-slot=popover-viewport]]:p-0"
+                      >
+                        <div className="max-h-[min(32rem,var(--available-height))] min-h-0 overflow-y-auto">
+                          {resourcesPanel}
+                        </div>
+                      </PopoverPopup>
+                    </Popover>
+                  ) : (
+                    resourcesButton
+                  ))}
                 <Button
                   render={<Link to="/settings" />}
                   size="icon-sm"
@@ -122,16 +142,6 @@ export function WebWorkbenchShell({
         >
           {resourcesPanel}
         </Card>
-      )}
-      {resourcesPresentation === 'dialog' && (
-        <Dialog open={resourcesOpen} onOpenChange={setResourcesOpen}>
-          <DialogPopup bottomStickOnMobile={false} className="max-h-[calc(100dvh-2rem)] max-w-md">
-            <DialogHeader className="border-border border-b p-4">
-              <DialogTitle className="text-base">{tPanel('resources')}</DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto">{resourcesPanel}</div>
-          </DialogPopup>
-        </Dialog>
       )}
     </div>
   );

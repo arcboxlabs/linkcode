@@ -30,10 +30,10 @@ describe('resources panel visibility', () => {
     ).toBe('floating');
     expect(
       getResourcesPanelPresentation({ available: true, wide: false, rightPanelOpen: false }),
-    ).toBe('dialog');
+    ).toBe('popover');
     expect(
       getResourcesPanelPresentation({ available: true, wide: true, rightPanelOpen: true }),
-    ).toBe('dialog');
+    ).toBe('popover');
   });
 
   it('roundtrips open state', async () => {
