@@ -59,7 +59,12 @@ function closureDescriptor(sdkPackage = 'fake-pi-sdk'): NpmClosureAssetDescripto
   return {
     id: PI_ID,
     version: { kind: 'sdk-version', package: sdkPackage },
-    closure: { version: '1.0.0', entry: 'node_modules/fake-pi-sdk/index.js', packages: [] },
+    closure: {
+      version: '1.0.0',
+      revision: 'fixture',
+      entry: 'node_modules/fake-pi-sdk/index.js',
+      packages: [],
+    },
   };
 }
 
@@ -112,13 +117,19 @@ describe('AssetManager closure pins (CODE-219)', () => {
     freshStore();
     const manager = new AssetManager({ catalog: [closureDescriptor()], pinFrom: anchorWith({}) });
     expect(manager.managedBinary(PI_ID)).toBeUndefined();
+
+    const legacyEntry = join(assetDir(PI_ID), '1.0.0', 'node_modules', 'fake-pi-sdk', 'index.js');
+    mkdirSync(dirname(legacyEntry), { recursive: true });
+    writeFileSync(legacyEntry, '');
     expect(manager.managedEntry(PI_ID)).toBeUndefined();
 
-    const entry = join(assetDir(PI_ID), '1.0.0', 'node_modules', 'fake-pi-sdk', 'index.js');
+    const entry = join(assetDir(PI_ID), '1.0.0+fixture', 'node_modules', 'fake-pi-sdk', 'index.js');
     mkdirSync(dirname(entry), { recursive: true });
     writeFileSync(entry, '');
     expect(manager.managedEntry(PI_ID)).toBe(entry);
     expect(manager.managedBinary(PI_ID)).toBeUndefined();
+    manager.gcAtBoot();
+    expect(existsSync(join(assetDir(PI_ID), '1.0.0'))).toBe(false);
   });
 });
 

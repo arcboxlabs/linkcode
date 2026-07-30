@@ -53,10 +53,13 @@ ${closure.packages.map((pkg) => serializePackage(pkg)).join('\n')}
 
 export const PI_CLOSURE: NpmClosure = {
   version: '${closure.version}',
+  revision: '${closure.revision}',
   entry: '${closure.entry}',
   packages,
 };
 `;
 
 writeFileSync(join(packageDir, 'src', 'pi-closure.gen.ts'), generated);
-console.log(`pi closure: ${closure.version}, ${closure.packages.length} packages`);
+console.log(
+  `pi closure: ${closure.version}+${closure.revision}, ${closure.packages.length} packages`,
+);

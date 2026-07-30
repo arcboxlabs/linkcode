@@ -14,7 +14,7 @@ import type { DownloadProgress } from './download';
 import type { GcReport } from './gc';
 import { collectGarbage } from './gc';
 import type { InstallOptions } from './install';
-import { installAsset, installedComplete, installedPath } from './install';
+import { installAsset, installedComplete, installedPath, installIdentity } from './install';
 import { assetDir } from './paths';
 import { wantedVersion } from './version-pin';
 
@@ -71,7 +71,15 @@ export class AssetManager {
 
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
-    return collectGarbage(this.wanted.values());
+    return collectGarbage(
+      [...this.descriptors.values()].map((descriptor) => {
+        const wanted = this.wanted.get(managedAssetKey(descriptor.id));
+        return {
+          id: descriptor.id,
+          version: wanted?.version ? installIdentity(descriptor, wanted.version) : undefined,
+        };
+      }),
+    );
   }
 
   /**
@@ -135,7 +143,7 @@ export class AssetManager {
   }
 
   /**
-   * Ensure the wanted version is installed, downloading on miss (deduped per id+version);
+   * Ensure the wanted version is installed, downloading on miss (deduped per install identity);
    * `undefined` when unpinnable or unknown — callers fall back to detected/SDK resolution.
    */
   async ensure(
