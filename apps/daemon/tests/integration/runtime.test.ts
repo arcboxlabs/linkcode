@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DaemonIdentity } from '@linkcode/schema';
+import { DAEMON_PORT_HUNT_SPAN } from '@linkcode/schema';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DaemonAlreadyRunningError,
@@ -16,6 +17,18 @@ import {
 } from '../../src/runtime';
 
 const servers: Server[] = [];
+
+/**
+ * The hunt walks upward from the requested port, so what a "hunted past it" case can assert is that
+ * it landed above the occupant and inside the span — not the exact neighbour. `port` here is an
+ * ephemeral port the OS handed out, and nothing reserves `port + 1`: asserting adjacency made these
+ * cases fail whenever another process (a parallel vitest worker, most often) held it.
+ */
+function expectHuntedPast(url: string, occupied: number): void {
+  const hunted = Number(new URL(url).port);
+  expect(hunted).toBeGreaterThan(occupied);
+  expect(hunted).toBeLessThan(occupied + DAEMON_PORT_HUNT_SPAN);
+}
 let savedHome: string | undefined;
 
 // The runtime file lives under os.homedir(); point HOME at a fresh temp dir per test.
@@ -59,6 +72,21 @@ function serveIdentity(id: DaemonIdentity): Promise<number> {
     }
     res.writeHead(404);
     res.end();
+  });
+}
+
+/** Occupy one specific port; resolves to it, or rejects if something else already holds it. */
+function listenOn(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200);
+      res.end();
+    });
+    servers.push(server);
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      resolve(port);
+    });
   });
 }
 
@@ -119,13 +147,27 @@ describe('probeDaemonIdentity', () => {
 });
 
 describe('listenWithPortHunt', () => {
-  it('hunts past a foreign occupant to the next port', async () => {
+  it('hunts past a foreign occupant', async () => {
     const port = await serveForeign();
     const { server, url } = await listenWithPortHunt(
       { type: 'ws', port, host: '127.0.0.1' },
       identity(process.pid),
     );
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
+    await server.close();
+  });
+
+  // The scenario the adjacency assertions used to fail on, made deterministic: the neighbour is
+  // occupied too, so the hunt has to keep walking rather than settle on `port + 1`.
+  it('keeps walking when the neighbouring port is taken as well', async () => {
+    const port = await serveForeign();
+    const neighbour = await listenOn(port + 1);
+    const { server, url } = await listenWithPortHunt(
+      { type: 'ws', port, host: '127.0.0.1' },
+      identity(process.pid),
+    );
+    expect(Number(new URL(url).port)).toBeGreaterThan(neighbour);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -140,7 +182,7 @@ describe('listenWithPortHunt', () => {
     const self = identity(process.pid);
     const port = await serveIdentity(self);
     const { server, url } = await listenWithPortHunt({ type: 'ws', port, host: '127.0.0.1' }, self);
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -150,7 +192,7 @@ describe('listenWithPortHunt', () => {
       { type: 'ws', port, host: '127.0.0.1' },
       identity(process.pid),
     );
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -173,7 +215,7 @@ describe('listenWithPortHunt', () => {
       { type: 'ws', port, host: '127.0.0.1' },
       { ...identity(process.pid), channel: 'development' },
     );
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
