@@ -10,6 +10,8 @@ export const requestWireVariants = [
     replyTo: WireRequestIdSchema,
     message: z.string(),
     code: z.string().optional(),
+    /** The host also emitted a conversation event that owns presentation of this failure. */
+    reportedInConversation: z.literal(true).optional(),
   }),
   z.object({
     kind: z.literal('request.succeeded'),
