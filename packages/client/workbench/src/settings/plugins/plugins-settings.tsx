@@ -4,7 +4,8 @@ import { PluginsShell, PluginsTab } from '@linkcode/ui';
 import { useState } from 'react';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { usePlugins, useSetPluginEnabled } from './hooks';
-import { filterPluginCards, pluginProviderGroups } from './view';
+import { McpTab } from './mcp-settings';
+import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups } from './view';
 
 /**
  * The plugins/MCP/skills settings page container. Transport-backed — it must render inside
@@ -68,7 +69,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
           }}
         />
       }
-      mcpTab={null}
+      mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
       skillsTab={null}
     />
   );
