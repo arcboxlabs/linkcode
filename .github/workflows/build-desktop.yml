@@ -140,13 +140,6 @@ jobs:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
         run: printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
 
-      # Electron 43 / V8 15 headers fail under Ubuntu 22.04's GCC 11; keep the older glibc floor.
-      - name: Use Clang 15 for Linux native modules
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          echo "CC=clang-15" >> "$GITHUB_ENV"
-          echo "CXX=clang++-15" >> "$GITHUB_ENV"
-
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
@@ -161,8 +154,17 @@ jobs:
           if [ -n "$MACOS_CSC_LINK" ]; then
             export CSC_LINK="$MACOS_CSC_LINK" CSC_KEY_PASSWORD="$MACOS_CSC_KEY_PASSWORD"
           fi
-          node scripts/package-app.mts ${{ matrix.platform }} --publish never \
-            ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
+          if [ "${{ matrix.platform }}" = linux ]; then
+            # Electron 43 needs Clang 15; the arm64 rebuild also needs an explicit cross target.
+            CC=clang-15 CXX=clang++-15 \
+              node scripts/package-app.mts linux --x64 --publish never
+            CC='clang-15 --target=aarch64-linux-gnu' \
+              CXX='clang++-15 --target=aarch64-linux-gnu' \
+              node scripts/package-app.mts linux --arm64 --publish never
+          else
+            node scripts/package-app.mts ${{ matrix.platform }} --publish never \
+              ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
