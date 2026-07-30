@@ -1,7 +1,8 @@
-import type { McpServer, SessionId } from '@linkcode/schema';
+import type { CustomMcpServer, McpServer, SessionId } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
+import { CustomMcpServerService } from '../agent/custom-mcp-service';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { SessionStartOptionsResolver } from '../session/start-options-resolver';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
@@ -20,6 +21,21 @@ function provider(endpoint: McpServer | undefined): SimulatorMcpProvider {
   };
 }
 
+function customService(...servers: CustomMcpServer[]): CustomMcpServerService {
+  const store = new InMemoryProviderConfigStore();
+  store.setCustomMcpServers(servers);
+  return new CustomMcpServerService(store);
+}
+
+function customEntry(name: string, enabled = true): CustomMcpServer {
+  return {
+    id: `custom-${name}`,
+    enabled,
+    server: { type: 'stdio', name, command: `${name}-mcp`, env: { TOKEN: 'secret' } },
+    createdAt: 1,
+  };
+}
+
 describe('simulator MCP injection at session start', () => {
   it('appends the session endpoint for MCP-capable agents', async () => {
     const resolver = new SessionStartOptionsResolver(
@@ -27,10 +43,11 @@ describe('simulator MCP injection at session start', () => {
       undefined,
       provider(ENDPOINT),
     );
-    const resolved = await Effect.runPromise(
+    const { options: resolved, warnings } = await Effect.runPromise(
       resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
     );
     expect(resolved.mcpServers).toEqual([ENDPOINT]);
+    expect(warnings).toEqual([]);
   });
 
   it('preserves explicitly requested servers ahead of the injected one', async () => {
@@ -40,7 +57,7 @@ describe('simulator MCP injection at session start', () => {
       undefined,
       provider(ENDPOINT),
     );
-    const resolved = await Effect.runPromise(
+    const { options: resolved } = await Effect.runPromise(
       resolver.resolve({ kind: 'opencode', cwd: '/repo', mcpServers: [explicit] }, SESSION),
     );
     expect(resolved.mcpServers).toEqual([explicit, ENDPOINT]);
@@ -57,7 +74,7 @@ describe('simulator MCP injection at session start', () => {
       undefined,
       provider(ENDPOINT),
     );
-    const resolved = await Effect.runPromise(
+    const { options: resolved } = await Effect.runPromise(
       resolver.resolve({ kind: 'claude-code', cwd: '/repo', mcpServers: [userOwned] }, SESSION),
     );
     // The user's server keeps the name; ours is not appended over it.
@@ -71,16 +88,77 @@ describe('simulator MCP injection at session start', () => {
       provider(ENDPOINT),
     );
     const pi = await Effect.runPromise(withProvider.resolve({ kind: 'pi', cwd: '/repo' }, SESSION));
-    expect(pi.mcpServers).toBeUndefined();
+    expect(pi.options.mcpServers).toBeUndefined();
 
     const unavailable = new SessionStartOptionsResolver(
       new InMemoryProviderConfigStore(),
       undefined,
       provider(undefined),
     );
-    const resolved = await Effect.runPromise(
+    const { options: resolved } = await Effect.runPromise(
       unavailable.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
     );
     expect(resolved.mcpServers).toBeUndefined();
+  });
+});
+
+describe('custom MCP injection at session start', () => {
+  it('folds enabled custom servers in for claude-code, codex, and opencode', async () => {
+    for (const kind of ['claude-code', 'codex', 'opencode'] as const) {
+      const resolver = new SessionStartOptionsResolver(
+        new InMemoryProviderConfigStore(),
+        undefined,
+        undefined,
+        customService(customEntry('github'), customEntry('disabled-one', false)),
+      );
+      const { options: resolved, warnings } = await Effect.runPromise(
+        resolver.resolve({ kind, cwd: '/repo' }, SESSION),
+      );
+      expect(resolved.mcpServers).toEqual([customEntry('github').server]);
+      expect(warnings).toEqual([]);
+    }
+  });
+
+  it('warns instead of injecting for an MCP-incapable agent', async () => {
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(customEntry('github')),
+    );
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'pi', cwd: '/repo' }, SESSION),
+    );
+    expect(resolved.mcpServers).toBeUndefined();
+    expect(warnings).toEqual([{ serverName: 'github', reason: 'agent-unsupported' }]);
+  });
+
+  it('skips a caller-claimed name with a name-conflict warning', async () => {
+    const explicit: McpServer = { type: 'http', name: 'github', url: 'http://127.0.0.1:9/x' };
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(customEntry('github'), customEntry('search')),
+    );
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo', mcpServers: [explicit] }, SESSION),
+    );
+    expect(resolved.mcpServers).toEqual([explicit, customEntry('search').server]);
+    expect(warnings).toEqual([{ serverName: 'github', reason: 'name-conflict' }]);
+  });
+
+  it('injects custom servers before the simulator endpoint without disturbing it', async () => {
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      provider(ENDPOINT),
+      customService(customEntry('github')),
+    );
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+    expect(resolved.mcpServers).toEqual([customEntry('github').server, ENDPOINT]);
+    expect(warnings).toEqual([]);
   });
 });

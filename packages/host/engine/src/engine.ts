@@ -79,6 +79,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const runEffect = yield* FiberSet.runtimePromise(taskSet)();
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
+  const customMcp = new CustomMcpServerService(providerStore);
   const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
   const history = new HistoryService(factory);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
@@ -152,6 +153,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     providerStore,
     translator,
     deps.simulatorMcp,
+    customMcp,
   );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,
@@ -196,7 +198,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         runtimes.refresh();
       })
     : undefined;
-  const customMcp = new CustomMcpServerService(providerStore);
   const agentRequests = new AgentRequestHandler(
     transport,
     runtimes,

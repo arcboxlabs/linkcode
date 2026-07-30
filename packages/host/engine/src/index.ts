@@ -17,6 +17,7 @@ export {
   makeEngineInfrastructureLayer,
   makeEngineLayer,
 } from './service';
+export { MCP_CAPABLE_AGENT_KINDS, SIMULATOR_MCP_SERVER_NAME } from './session/mcp-capability';
 export type { SessionStore } from './session/session-store';
 export type {
   SimulatorBackend,
@@ -27,7 +28,6 @@ export type {
 export type { SimulatorConsentStore } from './simulator/consent';
 export { InMemorySimulatorConsentStore, SimulatorConsentService } from './simulator/consent';
 export type { SimulatorMcpProvider } from './simulator/mcp';
-export { MCP_CAPABLE_AGENT_KINDS } from './simulator/mcp';
 export { SimulatorService } from './simulator/service';
 export type { PtyBackend, PtyOpenOptions, PtyProcess } from './terminal/pty-backend';
 export type { WorkspaceStore } from './workspace/workspace-store';

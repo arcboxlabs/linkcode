@@ -11,12 +11,13 @@ import { Effect } from 'effect';
 import { never } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { OperationError, RequestError } from '../failure';
+import { SIMULATOR_MCP_SERVER_NAME } from '../session/mcp-capability';
 import type { ProviderConfigStore } from './provider-config';
 
 /** Names the daemon injects itself (simulator endpoint, claude browser tools); a custom server
  * must never claim one or the session-start merge would silently shadow a built-in. */
 export const RESERVED_MCP_SERVER_NAMES: ReadonlySet<string> = new Set([
-  'linkcode-sim',
+  SIMULATOR_MCP_SERVER_NAME,
   'linkcode_browser',
 ]);
 

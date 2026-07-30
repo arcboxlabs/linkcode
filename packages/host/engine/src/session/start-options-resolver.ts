@@ -1,32 +1,43 @@
-import type { SessionId, StartOptions } from '@linkcode/schema';
+import type { McpWarning, SessionId, StartOptions } from '@linkcode/schema';
 import { Effect } from 'effect';
+import type { CustomMcpServerService } from '../agent/custom-mcp-service';
 import type { ProviderConfigStore } from '../agent/provider-config';
 import { applyProviderDefaults } from '../agent/provider-config';
 import type { TranslatorService } from '../agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from '../agent/translator';
 import { OperationError, RequestError } from '../failure';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
-import { MCP_CAPABLE_AGENT_KINDS } from '../simulator/mcp';
+import { MCP_CAPABLE_AGENT_KINDS } from './mcp-capability';
 
-/** Resolves daemon-owned provider defaults, the optional cross-protocol translation endpoint,
- * and the per-session simulator MCP injection for MCP-capable agents. */
+export interface ResolvedStartOptions {
+  readonly options: StartOptions;
+  /** Custom-MCP injection advisories, delivered on the `session.started` reply. */
+  readonly warnings: McpWarning[];
+}
+
+/** Resolves daemon-owned provider defaults, enabled custom MCP servers, the optional
+ * cross-protocol translation endpoint, and the per-session simulator MCP injection. */
 export class SessionStartOptionsResolver {
   constructor(
     private readonly providers: ProviderConfigStore,
     private readonly translator: TranslatorService | undefined,
     private readonly simulatorMcp?: SimulatorMcpProvider,
+    private readonly customMcp?: CustomMcpServerService,
   ) {}
 
   resolve(
     options: StartOptions,
     sessionId: SessionId,
-  ): Effect.Effect<StartOptions, RequestError | OperationError> {
-    const resolved = this.withSimulatorMcp(
-      applyProviderDefaults(options, this.providers.get(), this.providers.getAccounts()),
-      sessionId,
+  ): Effect.Effect<ResolvedStartOptions, RequestError | OperationError> {
+    const defaults = applyProviderDefaults(
+      options,
+      this.providers.get(),
+      this.providers.getAccounts(),
     );
+    const custom = this.withCustomMcpServers(defaults);
+    const resolved = this.withSimulatorMcp(custom.options, sessionId);
     const upstream = translationUpstream(resolved);
-    if (!upstream) return Effect.succeed(resolved);
+    if (!upstream) return Effect.succeed({ options: resolved, warnings: custom.warnings });
     if (!this.translator) {
       return Effect.fail(
         new RequestError({
@@ -45,7 +56,37 @@ export class SessionStartOptionsResolver {
           publicMessage: 'Failed to start cross-protocol translation',
           cause,
         }),
-    }).pipe(Effect.map((url) => withTranslatorEndpoint(resolved, url)));
+    }).pipe(
+      Effect.map((url) => ({
+        options: withTranslatorEndpoint(resolved, url),
+        warnings: custom.warnings,
+      })),
+    );
+  }
+
+  /** Fold enabled custom MCP servers into the session's server list, warning instead of
+   * silently dropping: unsupported agent kinds and name collisions are user-visible facts. */
+  private withCustomMcpServers(options: StartOptions): ResolvedStartOptions {
+    const warnings: McpWarning[] = [];
+    const enabled = this.customMcp?.listEnabled() ?? [];
+    if (enabled.length === 0) return { options, warnings };
+    if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
+      for (const entry of enabled) {
+        warnings.push({ serverName: entry.server.name, reason: 'agent-unsupported' });
+      }
+      return { options, warnings };
+    }
+    const servers = [...(options.mcpServers ?? [])];
+    for (const entry of enabled) {
+      // Same posture as the simulator injection below: a caller-supplied server of the same name
+      // wins, because most SDKs key servers by name and let the last one silently replace.
+      if (servers.some((server) => server.name === entry.server.name)) {
+        warnings.push({ serverName: entry.server.name, reason: 'name-conflict' });
+        continue;
+      }
+      servers.push(entry.server);
+    }
+    return { options: { ...options, mcpServers: servers }, warnings };
   }
 
   /** Append the session's simulator MCP endpoint for agents whose SDK can consume it. */
