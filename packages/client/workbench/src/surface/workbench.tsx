@@ -313,9 +313,8 @@ function WorkbenchSessionSurface({
   );
 
   function submitActiveInput(input: AgentInput): Promise<void> {
-    const sessionId = sessions.activeId;
-    if (sessionId) onClearError();
-    return submitActiveSessionInput(sessionId, input, turnInputMutation.trigger);
+    onClearError();
+    return submitActiveSessionInput(input, turnInputMutation.trigger);
   }
 
   function handleSend(content: ContentBlock[]): Promise<void> {
