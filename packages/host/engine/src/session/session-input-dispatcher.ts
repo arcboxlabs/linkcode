@@ -64,9 +64,9 @@ export class SessionInputDispatcher {
           try: () => assertAttachmentContentAllowed(input.content),
           catch: (e) => e,
         });
-        adapterInput = yield* resources.readySourcePaths(sessionId).pipe(
-          Effect.map((paths) =>
-            paths.length === 0
+        adapterInput = yield* resources.readySourceLocators(sessionId).pipe(
+          Effect.map((locators) =>
+            locators.length === 0
               ? input
               : {
                   ...input,
@@ -74,7 +74,7 @@ export class SessionInputDispatcher {
                     ...input.content,
                     {
                       type: 'text' as const,
-                      text: `${RESOURCE_CONTEXT_SENTINEL}\n${paths.join('\n')}`,
+                      text: `${RESOURCE_CONTEXT_SENTINEL}\n${locators.join('\n')}`,
                     },
                   ],
                 },

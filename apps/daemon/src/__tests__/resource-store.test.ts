@@ -45,6 +45,7 @@ describe('SQLite resource store', () => {
 
     const first = createResourceStore(database);
     expect(await first.save(resource, locatorKey)).toBe(true);
+    expect(await first.findByLocator(session.sessionId, locatorKey)).toEqual(resource);
     expect(
       await first.save(
         SessionResourceSchema.parse({ ...resource, resourceId: 'resource-duplicate' }),
@@ -52,8 +53,32 @@ describe('SQLite resource store', () => {
       ),
     ).toBe(false);
 
+    const sourceUrl = 'https://example.com/reference';
+    const discoveredSource = SessionResourceSchema.parse({
+      resourceId: 'resource-source',
+      sessionId: session.sessionId,
+      direction: 'source',
+      name: 'Reference',
+      kind: 'link',
+      status: 'ready',
+      locator: { type: 'url', url: sourceUrl },
+      createdAt: 3,
+      updatedAt: 3,
+    });
+    expect(await first.save(discoveredSource, sourceUrl)).toBe(true);
+    const promotedOutput = SessionResourceSchema.parse({
+      ...discoveredSource,
+      direction: 'output',
+      name: 'Published reference',
+      updatedAt: 4,
+    });
+    expect(await first.save(promotedOutput, sourceUrl)).toBe(true);
+    expect(await first.findByLocator(session.sessionId, sourceUrl)).toEqual(promotedOutput);
+
     const restarted = createResourceStore(database);
-    expect(await restarted.list(session.sessionId)).toEqual([resource]);
+    expect(await restarted.list(session.sessionId)).toEqual(
+      expect.arrayContaining([resource, promotedOutput]),
+    );
     await sessions.delete(session.sessionId);
     expect(await restarted.list(session.sessionId)).toEqual([]);
   });

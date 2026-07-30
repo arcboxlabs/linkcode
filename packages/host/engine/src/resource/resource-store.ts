@@ -3,6 +3,10 @@ import type { SessionId, SessionResource, SessionResourceId } from '@linkcode/sc
 export interface ResourceStore {
   list(sessionId: SessionId): Promise<SessionResource[]>;
   get(resourceId: SessionResourceId): Promise<SessionResource | undefined>;
+  findByLocator(
+    sessionId: SessionId,
+    normalizedLocatorKey: string,
+  ): Promise<SessionResource | undefined>;
   save(resource: SessionResource, normalizedLocatorKey?: string): Promise<boolean>;
   remove(resourceId: SessionResourceId): Promise<SessionResource | undefined>;
   deleteSession(sessionId: SessionId): Promise<SessionResource[]>;
@@ -25,10 +29,19 @@ export class InMemoryResourceStore implements ResourceStore {
     return Promise.resolve(value ? structuredClone(value) : undefined);
   }
 
+  findByLocator(
+    sessionId: SessionId,
+    normalizedLocatorKey: string,
+  ): Promise<SessionResource | undefined> {
+    const resourceId = this.locatorKeys.get(`${sessionId}:${normalizedLocatorKey}`);
+    return resourceId ? this.get(resourceId) : Promise.resolve(undefined);
+  }
+
   save(resource: SessionResource, normalizedLocatorKey?: string): Promise<boolean> {
     if (normalizedLocatorKey) {
       const key = `${resource.sessionId}:${normalizedLocatorKey}`;
-      if (this.locatorKeys.has(key)) return Promise.resolve(false);
+      const existingId = this.locatorKeys.get(key);
+      if (existingId && existingId !== resource.resourceId) return Promise.resolve(false);
       this.locatorKeys.set(key, resource.resourceId);
     }
     this.resources.set(resource.resourceId, structuredClone(resource));

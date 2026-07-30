@@ -178,21 +178,47 @@ export class ResourceService {
     });
   }
 
-  readySourcePaths(sessionId: SessionId): Effect.Effect<string[], OperationError> {
+  readySourceLocators(sessionId: SessionId): Effect.Effect<string[], OperationError> {
     return this.list(sessionId).pipe(
       Effect.map((items) => {
-        const paths: string[] = [];
+        const locators: string[] = [];
         for (const resource of items) {
-          if (
-            resource.direction === 'source' &&
-            resource.status === 'ready' &&
-            resource.locator.type === 'managed-file'
-          ) {
-            paths.push(resource.locator.path);
+          if (resource.direction === 'source' && resource.status === 'ready') {
+            locators.push(
+              resource.locator.type === 'url' ? resource.locator.url : resource.locator.path,
+            );
           }
         }
-        return paths;
+        return locators;
       }),
+    );
+  }
+
+  registerSource(
+    sessionId: SessionId,
+    locator: string,
+    name?: string,
+    mimeType?: string,
+  ): Effect.Effect<void, OperationError> {
+    const record = this.records.get(sessionId);
+    if (!record) return Effect.void;
+    const normalized = normalizeResourceLocator(record.cwd, locator);
+    if (normalized?.type !== 'url') return Effect.void;
+    const now = Date.now();
+    return this.persistDiscovered(
+      {
+        resourceId: SessionResourceIdSchema.parse(`resource-${randomUUID()}`),
+        sessionId,
+        direction: 'source',
+        name: name ?? new URL(normalized.url).hostname,
+        kind: 'link',
+        status: 'ready',
+        locator: normalized,
+        mimeType,
+        createdAt: now,
+        updatedAt: now,
+      },
+      normalized.url,
     );
   }
 
@@ -202,11 +228,11 @@ export class ResourceService {
     name?: string,
     mimeType?: string,
   ): Effect.Effect<void, OperationError> {
-    const { records, transport } = this;
+    const { records } = this;
     return Effect.gen({ self: this }, function* () {
       const record = records.get(sessionId);
       if (!record) return;
-      const normalized = normalizeOutputLocator(record.cwd, locator);
+      const normalized = normalizeResourceLocator(record.cwd, locator);
       if (!normalized) return;
       if (
         normalized.type === 'workspace-file' &&
@@ -244,9 +270,7 @@ export class ResourceService {
         createdAt: now,
         updatedAt: now,
       };
-      if (yield* this.run('save', () => this.store.save(resource, key))) {
-        transport.send(createWireMessage({ kind: 'resource.changed', resource }));
-      }
+      yield* this.persistDiscovered(resource, key);
     });
   }
 
@@ -290,6 +314,25 @@ export class ResourceService {
         }),
     });
   }
+
+  private persistDiscovered(
+    resource: SessionResource,
+    key: string,
+  ): Effect.Effect<void, OperationError> {
+    const { store, transport } = this;
+    return Effect.gen({ self: this }, function* () {
+      const existing = yield* this.run('findByLocator', () =>
+        store.findByLocator(resource.sessionId, key),
+      );
+      if (existing && (resource.direction === 'source' || existing.direction === 'output')) return;
+      const candidate = existing
+        ? { ...resource, resourceId: existing.resourceId, createdAt: existing.createdAt }
+        : resource;
+      if (yield* this.run('save', () => store.save(candidate, key))) {
+        transport.send(createWireMessage({ kind: 'resource.changed', resource: candidate }));
+      }
+    });
+  }
 }
 
 function classify(name: string, mimeType?: string): SessionResource['kind'] {
@@ -301,7 +344,7 @@ function classify(name: string, mimeType?: string): SessionResource['kind'] {
   return 'file';
 }
 
-function normalizeOutputLocator(
+function normalizeResourceLocator(
   cwd: string,
   locator: string,
 ): SessionResource['locator'] | undefined {

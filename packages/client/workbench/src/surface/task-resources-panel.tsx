@@ -17,7 +17,12 @@ function resourceItem(resource: SessionResource, localFileLabel: string): Resour
     name: resource.name,
     kind: resource.kind,
     status: resource.status,
-    source: resource.direction === 'source' ? localFileLabel : undefined,
+    source:
+      resource.direction !== 'source'
+        ? undefined
+        : resource.locator.type === 'url'
+          ? new URL(resource.locator.url).hostname
+          : localFileLabel,
     updatedAt: resource.updatedAt,
     error: resource.error,
     canOpen: resource.status === 'ready',

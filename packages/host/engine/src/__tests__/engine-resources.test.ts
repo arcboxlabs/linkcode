@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentEvent, SessionResource, WirePayload } from '@linkcode/schema';
-import { SessionIdSchema } from '@linkcode/schema';
+import { MessageIdSchema, SessionIdSchema } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { createSessionHarness, startedSessionId } from './fixtures/session-harness';
@@ -221,6 +221,116 @@ describe('engine session resources', () => {
         }),
       ]),
     );
+    await h.engine.stop();
+  });
+
+  it('registers consumed web resources as sources and promotes presented results to outputs', async () => {
+    const cwd = await tempDirectory();
+    const h = createSessionHarness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start',
+      opts: { kind: 'claude-code', cwd },
+    });
+    const sessionId = startedSessionId(h.sent, 'start');
+    const url = 'https://example.com/reference/call-for-papers';
+    const fetched: AgentEvent = {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: 'fetch-source',
+        title: 'Fetch reference',
+        kind: 'fetch',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: { type: 'resource_link', uri: url, name: 'Call for papers' },
+          },
+          {
+            type: 'content',
+            content: {
+              type: 'resource_link',
+              uri: `file://${join(cwd, 'local-reference.pdf')}`,
+              name: 'Local reference',
+            },
+          },
+        ],
+      },
+    };
+    h.adapters[0].emit(fetched);
+    h.adapters[0].emit(fetched);
+    h.adapters[0].emit({
+      ...fetched,
+      toolCall: {
+        ...fetched.toolCall,
+        toolCallId: 'failed-fetch',
+        status: 'failed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'resource_link',
+              uri: 'https://example.com/unavailable',
+              name: 'Unavailable',
+            },
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({
+          kind: 'resource.changed',
+          resource: expect.objectContaining({ direction: 'source', name: 'Call for papers' }),
+        }),
+      );
+    });
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-source', sessionId });
+    expect(listedResources(h.sent, 'list-source')).toEqual([
+      expect.objectContaining({
+        direction: 'source',
+        name: 'Call for papers',
+        kind: 'link',
+        locator: { type: 'url', url },
+      }),
+    ]);
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'follow-up',
+      sessionId,
+      input: { type: 'prompt', content: [{ type: 'text', text: 'Use the source again' }] },
+    });
+    expect(h.adapters[0].sentInputs.at(-1)).toEqual({
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'Use the source again' },
+        { type: 'text', text: `${RESOURCE_CONTEXT_SENTINEL}\n${url}` },
+      ],
+    });
+
+    h.adapters[0].emit({
+      type: 'agent-message',
+      messageId: MessageIdSchema.parse('published-reference'),
+      content: [{ type: 'resource_link', uri: url, name: 'Published reference' }],
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({
+          kind: 'resource.changed',
+          resource: expect.objectContaining({ direction: 'output', name: 'Published reference' }),
+        }),
+      );
+    });
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-output', sessionId });
+    expect(listedResources(h.sent, 'list-output')).toEqual([
+      expect.objectContaining({
+        direction: 'output',
+        name: 'Published reference',
+        locator: { type: 'url', url },
+      }),
+    ]);
     await h.engine.stop();
   });
 });

@@ -24,20 +24,33 @@ export function createResourceStore(dbPath: string): ResourceStore {
       Promise.resolve(
         db.select().from(sessionResources).where(eq(sessionResources.resourceId, resourceId)).get(),
       ).then((row) => (row ? toResource(row) : undefined)),
-    save(resource, key) {
-      if (
-        key &&
+    findByLocator: (sessionId, key) =>
+      Promise.resolve(
         db
-          .select({ id: sessionResources.resourceId })
+          .select()
           .from(sessionResources)
           .where(
             and(
-              eq(sessionResources.sessionId, resource.sessionId),
+              eq(sessionResources.sessionId, sessionId),
               eq(sessionResources.normalizedLocatorKey, key),
             ),
           )
-          .get()
-      ) {
+          .get(),
+      ).then((row) => (row ? toResource(row) : undefined)),
+    save(resource, key) {
+      const existing = key
+        ? db
+            .select({ id: sessionResources.resourceId })
+            .from(sessionResources)
+            .where(
+              and(
+                eq(sessionResources.sessionId, resource.sessionId),
+                eq(sessionResources.normalizedLocatorKey, key),
+              ),
+            )
+            .get()
+        : undefined;
+      if (existing && existing.id !== resource.resourceId) {
         return Promise.resolve(false);
       }
       const row = toRow(resource, key);
