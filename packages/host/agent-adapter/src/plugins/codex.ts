@@ -182,12 +182,18 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
           entries.set(summary.id, { marketplace, summary });
         }
       }
+      // Detail is read for INSTALLED plugins only. `plugin/read` costs ~160ms and the live remote
+      // catalog is 2300+ entries, so reading every one blows the discovery deadline (measured on
+      // 0.144.1: list 3.3s, one read ~160ms). Market entries keep the summary's own metadata and
+      // simply carry no component list.
       const plugins = await Promise.all(
         [...entries.values()].map(async ({ marketplace, summary }) =>
           normalizeCodexPlugin(
             marketplace,
             summary,
-            await readCodexPluginDetail(server, marketplace, summary),
+            summary.installed
+              ? await readCodexPluginDetail(server, marketplace, summary)
+              : undefined,
           ),
         ),
       );

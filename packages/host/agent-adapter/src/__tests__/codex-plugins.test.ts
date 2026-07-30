@@ -157,7 +157,9 @@ describe('CodexPluginAdapter', () => {
       pluginName: 'latex',
       marketplacePath: '/marketplaces/local-tools',
     });
-    expect(request).toHaveBeenCalledWith('plugin/read', {
+    // No detail read for the uninstalled entry — its card is built from the summary alone, which
+    // is what keeps a 2300-entry marketplace listing inside the discovery deadline.
+    expect(request).not.toHaveBeenCalledWith('plugin/read', {
       pluginName: 'remote-review-123',
       remoteMarketplaceName: 'cloud-tools',
     });
