@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/arcboxlabs/linkcode/compare/v0.11.0...v0.12.0) (2026-07-30)
+
+
+### Features
+
+* **git,session:** add branch-selected worktree sessions ([#331](https://github.com/arcboxlabs/linkcode/issues/331)) ([1c00df3](https://github.com/arcboxlabs/linkcode/commit/1c00df3bacce970c13a48338e3daa7857ae89f45))
+
+
+### Bug Fixes
+
+* **daemon:** squash worktree migrations ([e894890](https://github.com/arcboxlabs/linkcode/commit/e894890aa51807a47810af263e1da4172d2f6bfa))
+
 ## [0.11.0](https://github.com/arcboxlabs/linkcode/compare/v0.10.1...v0.11.0) (2026-07-30)
 
 
