@@ -9,7 +9,7 @@ import { WirePayloadSchema } from './payload';
  */
 
 // Bump on every wire schema change; mismatched peers silently discard all frames (Invariant 1).
-export const WIRE_PROTOCOL_VERSION = 64 as const;
+export const WIRE_PROTOCOL_VERSION = 65 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

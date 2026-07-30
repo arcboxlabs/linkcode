@@ -36,12 +36,33 @@ export const pluginWireVariants = [
     scope: PluginScopeSchema.optional(),
     cwd: z.string().min(1).optional(),
   }),
+  /** Install a catalog entry the host does not have yet, or drop an installed one's local state.
+   * Both are gated on the plugin's own `managementCapabilities`; an unsupporting provider replies
+   * request.failed with `unsupported`. Uninstalling keeps the marketplace entry, so both directions
+   * reply with the re-listed plugin. */
+  z.object({
+    kind: z.literal('plugin.install'),
+    clientReqId: WireRequestIdSchema,
+    provider: PluginProviderSchema,
+    id: z.string().min(1),
+    cwd: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('plugin.uninstall'),
+    clientReqId: WireRequestIdSchema,
+    provider: PluginProviderSchema,
+    id: z.string().min(1),
+    cwd: z.string().min(1).optional(),
+  }),
   /** Success reply carrying the full updated plugin, so clients patch one cache entry instead of
    * re-running the expensive discovery. Failures use the shared request.failed reply. */
   z.object({
     kind: z.literal('plugin.updated'),
     replyTo: WireRequestIdSchema,
     plugin: PluginSchema,
+    /** Install only: provider apps the install left unauthorized. LinkCode runs no OAuth flow, so
+     * the names travel to the user rather than being dropped into a "done" that isn't. */
+    pendingAuthApps: z.array(z.string().min(1)).optional(),
   }),
   /** Per-skill enablement. claude keys its `skillOverrides` by skill name, codex keys
    * `[[skills.config]]` by SKILL.md path — both travel so either adapter can address the skill.

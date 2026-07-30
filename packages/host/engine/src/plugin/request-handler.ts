@@ -2,15 +2,23 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
+import type { EngineFailure } from '../failure';
 import type { WireResponder } from '../wire/responder';
-import type { PluginService } from './service';
+import type { PluginMutationResult, PluginService } from './service';
 
 type PluginRequest = Extract<
   WirePayload,
-  { kind: 'plugin.list.get' | 'plugin.set-enabled' | 'skill.set-enabled' }
+  {
+    kind:
+      | 'plugin.list.get'
+      | 'plugin.set-enabled'
+      | 'plugin.install'
+      | 'plugin.uninstall'
+      | 'skill.set-enabled';
+  }
 >;
 
-/** Serves plugin discovery and plugin-level enablement over the wire. */
+/** Serves plugin discovery, enablement, and installation over the wire. */
 export class PluginRequestHandler {
   constructor(
     private readonly transport: Transport,
@@ -40,26 +48,22 @@ export class PluginRequestHandler {
           ),
         );
       case 'plugin.set-enabled':
-        return this.responder.reply(
+        return this.replyUpdated(
           payload.clientReqId,
-          this.plugins
-            .setPluginEnabled(payload.provider, payload.id, payload.enabled, {
-              scope: payload.scope,
-              cwd: payload.cwd,
-            })
-            .pipe(
-              Effect.flatMap((plugin) =>
-                Effect.sync(() =>
-                  this.transport.send(
-                    createWireMessage({
-                      kind: 'plugin.updated',
-                      replyTo: payload.clientReqId,
-                      plugin,
-                    }),
-                  ),
-                ),
-              ),
-            ),
+          this.plugins.setPluginEnabled(payload.provider, payload.id, payload.enabled, {
+            scope: payload.scope,
+            cwd: payload.cwd,
+          }),
+        );
+      case 'plugin.install':
+        return this.replyUpdated(
+          payload.clientReqId,
+          this.plugins.installPlugin(payload.provider, payload.id, { cwd: payload.cwd }),
+        );
+      case 'plugin.uninstall':
+        return this.replyUpdated(
+          payload.clientReqId,
+          this.plugins.uninstallPlugin(payload.provider, payload.id, { cwd: payload.cwd }),
         );
       case 'skill.set-enabled':
         return this.responder.reply(
@@ -88,5 +92,30 @@ export class PluginRequestHandler {
       default:
         return Effect.void;
     }
+  }
+
+  /** Every plugin mutation answers with the re-listed plugin, so clients patch one cache entry
+   * instead of re-running discovery. */
+  private replyUpdated(
+    clientReqId: string,
+    mutation: Effect.Effect<PluginMutationResult, EngineFailure>,
+  ): Effect.Effect<void> {
+    return this.responder.reply(
+      clientReqId,
+      mutation.pipe(
+        Effect.flatMap(({ plugin, pendingAuthApps }) =>
+          Effect.sync(() =>
+            this.transport.send(
+              createWireMessage({
+                kind: 'plugin.updated',
+                replyTo: clientReqId,
+                plugin,
+                ...(pendingAuthApps && pendingAuthApps.length > 0 && { pendingAuthApps }),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

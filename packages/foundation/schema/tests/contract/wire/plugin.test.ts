@@ -132,4 +132,34 @@ describe('plugin wire schema', () => {
     if (!parsed.success || parsed.data.payload.kind !== 'plugin.updated') return;
     expect(parsed.data.payload.plugin.id).toBe('formatter@marketplace');
   });
+
+  it('round-trips install and uninstall requests', () => {
+    for (const kind of ['plugin.install', 'plugin.uninstall']) {
+      expect(
+        parseWireMessage(
+          envelope({
+            kind,
+            clientReqId: 'request-1',
+            provider: 'codex',
+            id: 'github@openai-curated-remote',
+            cwd: '/repo',
+          }),
+        ).success,
+      ).toBe(true);
+    }
+  });
+
+  it('carries the apps an install left unauthorized on the updated reply', () => {
+    const parsed = parseWireMessage(
+      envelope({
+        kind: 'plugin.updated',
+        replyTo: 'request-1',
+        plugin,
+        pendingAuthApps: ['GitHub'],
+      }),
+    );
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.data.payload.kind !== 'plugin.updated') return;
+    expect(parsed.data.payload.pendingAuthApps).toEqual(['GitHub']);
+  });
 });

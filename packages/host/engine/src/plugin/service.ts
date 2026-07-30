@@ -21,6 +21,12 @@ export interface PluginDiscoveryResult {
   readonly providerStatus: PluginProviderStatus[];
 }
 
+export interface PluginMutationResult {
+  readonly plugin: Plugin;
+  /** Install only: provider apps the install left unauthorized. */
+  readonly pendingAuthApps?: string[];
+}
+
 interface ProviderDiscovery {
   readonly plugins: Plugin[];
   readonly standaloneSkills: StandaloneSkill[];
@@ -58,17 +64,10 @@ export class PluginService {
     id: string,
     enabled: boolean,
     opts: PluginToggleOptions = {},
-  ): Effect.Effect<Plugin, RequestError | OperationError> {
+  ): Effect.Effect<PluginMutationResult, RequestError | OperationError> {
     const adapter = this.factory(provider);
     const toggle = adapter.setPluginEnabled?.bind(adapter);
-    if (!toggle) {
-      return Effect.fail(
-        new RequestError({
-          code: 'unsupported',
-          message: `${provider}: plugin management is not supported`,
-        }),
-      );
-    }
+    if (!toggle) return unsupported(provider, 'plugin management');
     return Effect.tryPromise({
       try: () => toggle(id, enabled, opts),
       catch: (cause) =>
@@ -79,26 +78,67 @@ export class PluginService {
           cause,
         }),
     }).pipe(
-      Effect.andThen(
-        Effect.tryPromise({
-          try: () => adapter.list({ cwd: opts.cwd }),
-          catch: (cause) =>
-            new OperationError({
-              subsystem: 'plugin',
-              operation: `plugin.reload.${provider}`,
-              publicMessage: 'Failed to reload the plugin after the update',
-              cause,
-            }),
+      Effect.andThen(this.reloadPlugin(provider, id, { cwd: opts.cwd })),
+      Effect.map((plugin) => ({ plugin })),
+    );
+  }
+
+  /**
+   * Install a catalog entry. The returned `pendingAuthApps` are provider apps the install left
+   * unauthorized — codex reports them for most of its catalog and LinkCode cannot complete those
+   * flows, so they are carried to the client instead of being swallowed.
+   */
+  installPlugin(
+    provider: PluginProvider,
+    id: string,
+    opts: PluginDiscoveryOptions = {},
+  ): Effect.Effect<PluginMutationResult, RequestError | OperationError> {
+    const adapter = this.factory(provider);
+    const install = adapter.installPlugin?.bind(adapter);
+    if (!install) return unsupported(provider, 'plugin installation');
+    return Effect.tryPromise({
+      try: () => install(id, opts),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'plugin',
+          operation: `plugin.install.${provider}`,
+          publicMessage: 'Failed to install the plugin',
+          cause,
         }),
+    }).pipe(
+      Effect.flatMap((outcome) =>
+        this.reloadPlugin(provider, id, opts).pipe(
+          Effect.map((plugin) => ({ plugin, pendingAuthApps: outcome.pendingAuthApps })),
+        ),
       ),
-      Effect.flatMap((plugins) => {
-        const updated = plugins.find((plugin) => plugin.id === id);
-        return updated
-          ? Effect.succeed(updated)
-          : Effect.fail(
-              new RequestError({ code: 'not_found', message: `Plugin not found: ${id}` }),
-            );
-      }),
+    );
+  }
+
+  /**
+   * Uninstall. The provider's marketplace snapshot keeps listing the entry (that is how the market
+   * catalog shows hundreds of uninstalled plugins), so the readback finds it with no installations
+   * rather than gone — a disappearance is a genuine failure, not the success case.
+   */
+  uninstallPlugin(
+    provider: PluginProvider,
+    id: string,
+    opts: PluginDiscoveryOptions = {},
+  ): Effect.Effect<PluginMutationResult, RequestError | OperationError> {
+    const adapter = this.factory(provider);
+    const uninstall = adapter.uninstallPlugin?.bind(adapter);
+    if (!uninstall) return unsupported(provider, 'plugin removal');
+    return Effect.tryPromise({
+      try: () => uninstall(id, opts),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'plugin',
+          operation: `plugin.uninstall.${provider}`,
+          publicMessage: 'Failed to uninstall the plugin',
+          cause,
+        }),
+    }).pipe(
+      Effect.andThen(this.reloadPlugin(provider, id, opts)),
+      Effect.map((plugin) => ({ plugin })),
     );
   }
 
@@ -114,14 +154,7 @@ export class PluginService {
   ): Effect.Effect<StandaloneSkill, RequestError | OperationError> {
     const adapter = this.factory(provider);
     const toggle = adapter.setSkillEnabled?.bind(adapter);
-    if (!toggle) {
-      return Effect.fail(
-        new RequestError({
-          code: 'unsupported',
-          message: `${provider}: skill management is not supported`,
-        }),
-      );
-    }
+    if (!toggle) return unsupported(provider, 'skill management');
     return Effect.tryPromise({
       try: () => toggle(skill, enabled, opts),
       catch: (cause) =>
@@ -150,6 +183,35 @@ export class PluginService {
           ? Effect.succeed(updated)
           : Effect.fail(
               new RequestError({ code: 'not_found', message: `Skill not found: ${skill.id}` }),
+            );
+      }),
+    );
+  }
+
+  /** Re-discovers one provider and returns the named plugin. Every mutation ends here: the
+   * providers blind-write (a nonexistent plugin still reports success), so this readback is the
+   * only proof the change landed. */
+  private reloadPlugin(
+    provider: PluginProvider,
+    id: string,
+    opts: PluginDiscoveryOptions,
+  ): Effect.Effect<Plugin, RequestError | OperationError> {
+    return Effect.tryPromise({
+      try: () => this.factory(provider).list(opts),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'plugin',
+          operation: `plugin.reload.${provider}`,
+          publicMessage: 'Failed to reload the plugin after the update',
+          cause,
+        }),
+    }).pipe(
+      Effect.flatMap((plugins) => {
+        const updated = plugins.find((plugin) => plugin.id === id);
+        return updated
+          ? Effect.succeed(updated)
+          : Effect.fail(
+              new RequestError({ code: 'not_found', message: `Plugin not found: ${id}` }),
             );
       }),
     );
@@ -205,6 +267,14 @@ export class PluginService {
       ),
     );
   }
+}
+
+/** Server-side capability gate, mirroring the client's `managementCapabilities` gate: a provider
+ * that leaves the adapter method undefined refuses the request instead of pretending. */
+function unsupported(provider: PluginProvider, what: string): Effect.Effect<never, RequestError> {
+  return Effect.fail(
+    new RequestError({ code: 'unsupported', message: `${provider}: ${what} is not supported` }),
+  );
 }
 
 function comparePluginOrder(

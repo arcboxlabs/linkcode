@@ -132,7 +132,66 @@ describe('PluginService', () => {
       scope: 'user',
       cwd: '/workspace',
     });
-    expect(updated.id).toBe('latex@team-tools');
+    expect(updated.plugin.id).toBe('latex@team-tools');
+  });
+
+  it('installs through the adapter and carries the apps still needing authorization', async () => {
+    const installPlugin = vi.fn(() => Promise.resolve({ pendingAuthApps: ['GitHub'] }));
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([plugin(provider, 'github@curated', true)]),
+      listStandaloneSkills: () => Promise.resolve([]),
+      ...(provider === 'codex' && { installPlugin }),
+    });
+
+    const result = await Effect.runPromise(
+      new PluginService(factory).installPlugin('codex', 'github@curated', { cwd: '/workspace' }),
+    );
+
+    expect(installPlugin).toHaveBeenCalledWith('github@curated', { cwd: '/workspace' });
+    expect(result).toMatchObject({
+      plugin: { id: 'github@curated' },
+      pendingAuthApps: ['GitHub'],
+    });
+  });
+
+  it('uninstalls through the adapter and returns the entry that survives in the catalog', async () => {
+    const uninstallPlugin = vi.fn(asyncNoop);
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      // The marketplace snapshot keeps listing an uninstalled plugin, with no installations.
+      list: () =>
+        Promise.resolve([{ ...plugin(provider, 'chrome@bundled', true), installations: [] }]),
+      listStandaloneSkills: () => Promise.resolve([]),
+      ...(provider === 'codex' && { uninstallPlugin }),
+    });
+
+    const result = await Effect.runPromise(
+      new PluginService(factory).uninstallPlugin('codex', 'chrome@bundled'),
+    );
+
+    expect(uninstallPlugin).toHaveBeenCalledWith('chrome@bundled', {});
+    expect(result.plugin.installations).toEqual([]);
+    expect(result.pendingAuthApps).toBeUndefined();
+  });
+
+  it('refuses install and uninstall on a provider whose adapter implements neither', async () => {
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([]),
+      listStandaloneSkills: () => Promise.resolve([]),
+    });
+    const service = new PluginService(factory);
+
+    for (const mutation of [
+      service.installPlugin('claude-code', 'any'),
+      service.uninstallPlugin('claude-code', 'any'),
+    ]) {
+      expect(await Effect.runPromise(Effect.flip(mutation))).toMatchObject({
+        _tag: 'RequestError',
+        code: 'unsupported',
+      });
+    }
   });
 
   it('fails with unsupported before touching an adapter without a toggle', async () => {
