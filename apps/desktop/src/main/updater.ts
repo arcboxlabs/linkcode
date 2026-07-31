@@ -68,7 +68,12 @@ export function checkForUpdates(): void {
   if (updaterState.status === 'downloaded') return;
   emitState('checking', null);
   // electron-updater emits `error` before rejecting; that listener owns status and logging.
-  void autoUpdater.checkForUpdates().catch(noop);
+  void autoUpdater
+    .checkForUpdates()
+    .then((result) => {
+      if (result === null) emitState('not-available', null);
+    })
+    .catch(noop);
 }
 
 export function installUpdate(): void {
