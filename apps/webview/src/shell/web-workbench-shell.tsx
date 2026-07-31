@@ -1,4 +1,4 @@
-import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ShellIconButton, ThreadTitle, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   getResourcesPanelPresentation,
@@ -12,7 +12,6 @@ import { Card } from 'coss-ui/components/card';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { ChevronLeftIcon, ChevronRightIcon, Settings2Icon, SettingsIcon } from 'lucide-react';
-import { ViewTransition } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
@@ -78,22 +77,13 @@ export function WebWorkbenchShell({
               </ShellIconButton>
               <div className="min-w-0">
                 {/* data-conversation-title is the browser-smoke E2E's header selector. */}
-                {header.sessionId ? (
-                  <ViewTransition
-                    key={header.sessionId}
-                    enter="none"
-                    exit="none"
-                    name={`thread-title-${header.sessionId}`}
-                  >
-                    <div className="truncate font-medium text-sm" data-conversation-title="">
-                      {header.title}
-                    </div>
-                  </ViewTransition>
-                ) : (
-                  <div className="truncate font-medium text-sm" data-conversation-title="">
-                    {header.title}
-                  </div>
-                )}
+                <ThreadTitle
+                  className="font-medium text-sm"
+                  data-conversation-title=""
+                  sessionId={header.sessionId}
+                >
+                  {header.title}
+                </ThreadTitle>
                 {header.subtitle && (
                   <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
                 )}

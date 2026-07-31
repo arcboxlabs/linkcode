@@ -1,4 +1,4 @@
-import { cn, ShellIconButton } from '@linkcode/ui';
+import { cn, ShellIconButton, ThreadTitle } from '@linkcode/ui';
 import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { nullthrow } from 'foxact/nullthrow';
@@ -12,7 +12,7 @@ import {
   PanelRightIcon,
   Settings2Icon,
 } from 'lucide-react';
-import { createContext, use, useCallback, useRef, useState, ViewTransition } from 'react';
+import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useChromeRailInsets } from './use-chrome-rail-insets';
@@ -546,18 +546,9 @@ function MainChromeTitle({
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      {header.sessionId ? (
-        <ViewTransition
-          key={header.sessionId}
-          enter="none"
-          exit="none"
-          name={`thread-title-${header.sessionId}`}
-        >
-          <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
-        </ViewTransition>
-      ) : (
-        <span className="min-w-0 flex-1 truncate font-semibold text-sm">{header.title}</span>
-      )}
+      <ThreadTitle className="min-w-0 flex-1 font-semibold text-sm" sessionId={header.sessionId}>
+        {header.title}
+      </ThreadTitle>
       {chip}
       {menu}
     </div>

@@ -85,9 +85,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Session page: every thread stays one click away in the sidebar, so we skip straight to the
   // new-thread draft instead of auto-opening an arbitrary recent session (an all-automation list
   // has nothing to open either; an explicit automation selection resolves against the full list).
-  // Deferred for the render path only: zustand updates ride useSyncExternalStore, which never
-  // enters a transition lane, so this bridge is what activates the `<ViewTransition>` boundaries
-  // (row title → header) on a switch. Mutations keep using the live store values.
+  // Deferred for the render path only: the outgoing thread stays painted while the incoming tree
+  // renders, instead of flashing through an empty surface. Mutations use the live store values.
   const deferredSelectedId = useDeferredValue(selectedId);
   const draft = explicitDraft ?? (deferredSelectedId === null ? LANDING_DRAFT : null);
 
