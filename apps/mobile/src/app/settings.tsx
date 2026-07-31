@@ -1,5 +1,5 @@
-import { Form, Host, Link, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
+import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslations } from 'use-intl';
@@ -7,6 +7,16 @@ import { NavigationRow } from '../components/form-row';
 import { useCloudAccount } from '../runtime/cloud/account';
 import { setMobileProductAnalyticsEnabled } from '../runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '../stores/analytics-store';
+import type { ThemePreference } from '../stores/settings-store';
+import { useSettingsStore } from '../stores/settings-store';
+
+const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+
+const THEME_LABEL_KEY = {
+  system: 'appearanceSystem',
+  light: 'appearanceLight',
+  dark: 'appearanceDark',
+} as const;
 
 const PRIVACY_POLICY_URL = 'https://linkcode.ai/privacy';
 const TERMS_OF_SERVICE_URL = 'https://linkcode.ai/terms';
@@ -21,6 +31,8 @@ export default function SettingsScreen(): React.ReactNode {
   const router = useRouter();
   const account = useCloudAccount();
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
+  const themePreference = useSettingsStore((state) => state.themePreference);
+  const setThemePreference = useSettingsStore((state) => state.setThemePreference);
 
   return (
     <>
@@ -43,6 +55,20 @@ export default function SettingsScreen(): React.ReactNode {
               title={t('terminalAppearance')}
               onPress={() => router.push('/terminal-appearance')}
             />
+          </Section>
+
+          <Section title={t('appearance')}>
+            <Picker
+              selection={themePreference}
+              onSelectionChange={setThemePreference}
+              modifiers={[pickerStyle('segmented')]}
+            >
+              {THEME_PREFERENCES.map((preference) => (
+                <Text key={preference} modifiers={[tag(preference)]}>
+                  {t(THEME_LABEL_KEY[preference])}
+                </Text>
+              ))}
+            </Picker>
           </Section>
 
           <Section title={t('privacy')} footer={<Text>{t('analyticsHint')}</Text>}>

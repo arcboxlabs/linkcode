@@ -1,19 +1,7 @@
 import type { ToolCall } from '@linkcode/schema';
-import {
-  BotIcon,
-  FileOutputIcon,
-  FileTextIcon,
-  GlobeIcon,
-  PencilIcon,
-  SearchIcon,
-  SparklesIcon,
-  TerminalIcon,
-  Trash2Icon,
-  WrenchIcon,
-} from 'lucide-react';
 import prettyBytes from 'pretty-bytes';
 import prettyMilliseconds from 'pretty-ms';
-import { toolCallFilePresentation } from './file-tool-presentation';
+import { toolCallFilePresentation } from './chat/file-tool-presentation';
 import {
   recordValue,
   stringValue,
@@ -22,7 +10,9 @@ import {
   toolCallFetchStatus,
   toolCallFetchUrl,
   toolCallSearchQuery,
-} from './tool-result-content';
+} from './chat/tool-result-content';
+
+export { toolCallDisplayContent } from './chat/tool-result-content';
 
 export type ToolMetadataKey =
   | 'duration'
@@ -223,19 +213,3 @@ export function hasToolBody(toolCall: ToolCall): boolean {
   }
   return toolCallMetadata(toolCall).length > 0 || toolCallFailureMessage(toolCall) !== undefined;
 }
-
-export const TOOL_KIND_ICONS: Record<
-  ToolCall['kind'],
-  React.ComponentType<{ className?: string }>
-> = {
-  read: FileTextIcon,
-  edit: PencilIcon,
-  delete: Trash2Icon,
-  move: FileOutputIcon,
-  search: SearchIcon,
-  execute: TerminalIcon,
-  think: SparklesIcon,
-  fetch: GlobeIcon,
-  task: BotIcon,
-  other: WrenchIcon,
-};

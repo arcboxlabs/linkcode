@@ -2,9 +2,9 @@ import type { ToolCall } from '@linkcode/schema';
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { BanIcon, CircleXIcon, MessageCircleQuestionMarkIcon, ShieldIcon } from 'lucide-react';
 import { useRef } from 'react';
+import type { DiffStats } from '../diff-utils';
 import { cn } from '../lib/cn';
 import { DiffCounter } from './diff-block';
-import type { DiffStats } from './diff-utils';
 import type { ChatDisclosureContentProps } from './disclosure-content';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
@@ -16,7 +16,7 @@ import {
   ChatDisclosureIconSlot,
 } from './disclosure-header';
 import { Shimmer } from './shimmer';
-import { TOOL_KIND_ICONS } from './tool-utils';
+import { TOOL_KIND_ICONS } from './tool-kind-icons';
 import { FilePathTooltip } from './with-tooltip';
 
 export type ToolProps = React.ComponentProps<typeof Collapsible>;
