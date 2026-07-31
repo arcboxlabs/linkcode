@@ -1,6 +1,6 @@
 import type { SessionId, TokenUsage } from '@linkcode/schema';
 import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
-import { ErrorBadge, ShellFrame, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ThreadTitle, TitleStrip } from '@linkcode/ui';
 
 export interface WorkbenchShellHeader {
   title: string;
@@ -70,14 +70,9 @@ function DefaultTitleStrip({
   return (
     <TitleStrip className="border-border border-b">
       <div className="min-w-0">
-        {/* Keyed so a switch remounts the title and replays its enter animation; a rename inside
-            the open thread keeps the key and stays put. */}
-        <div
-          key={header.sessionId ?? 'none'}
-          className="animate-title-enter truncate font-medium text-sm"
-        >
+        <ThreadTitle className="font-medium text-sm" sessionId={header.sessionId}>
           {header.title}
-        </div>
+        </ThreadTitle>
         {header.subtitle && (
           <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
         )}

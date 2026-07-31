@@ -1,4 +1,4 @@
-import { cn, ShellIconButton } from '@linkcode/ui';
+import { cn, ShellIconButton, ThreadTitle } from '@linkcode/ui';
 import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
 import { nullthrow } from 'foxact/nullthrow';
 import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
@@ -529,13 +529,9 @@ function MainChromeTitle({
       <span className="mr-1 flex shrink-0 items-center">
         {icon ?? <FileTextIcon className="size-4 text-foreground" />}
       </span>
-      {/* Keyed so a switch remounts the title and replays its enter animation. */}
-      <span
-        key={header.sessionId ?? 'none'}
-        className="animate-title-enter min-w-0 flex-1 truncate font-semibold text-sm"
-      >
+      <ThreadTitle className="min-w-0 flex-1 font-semibold text-sm" sessionId={header.sessionId}>
         {header.title}
-      </span>
+      </ThreadTitle>
       {chip}
       {menu}
     </div>

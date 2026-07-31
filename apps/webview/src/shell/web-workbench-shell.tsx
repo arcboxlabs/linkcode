@@ -1,4 +1,4 @@
-import { ErrorBadge, ShellFrame, ShellIconButton, TitleStrip } from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ShellIconButton, ThreadTitle, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { WorkspaceServicesMenu } from '@linkcode/workbench';
 import { Button } from 'coss-ui/components/button';
@@ -39,15 +39,14 @@ export function WebWorkbenchShell({
             <ChevronRightIcon className="size-4" />
           </ShellIconButton>
           <div className="min-w-0">
-            {/* data-conversation-title is the browser-smoke E2E's header selector. Keyed so a
-                switch remounts the title and replays its enter animation. */}
-            <div
-              key={header.sessionId ?? 'none'}
-              className="animate-title-enter truncate font-medium text-sm"
+            {/* data-conversation-title is the browser-smoke E2E's header selector. */}
+            <ThreadTitle
+              className="font-medium text-sm"
               data-conversation-title=""
+              sessionId={header.sessionId}
             >
               {header.title}
-            </div>
+            </ThreadTitle>
             {header.subtitle && (
               <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
             )}
