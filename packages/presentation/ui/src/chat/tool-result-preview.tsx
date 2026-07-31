@@ -22,7 +22,9 @@ import {
   toolCallFetchUrl,
   toolCallReadPreviewText,
   toolCallSearchQuery,
+  toolSearchPresentation,
 } from './tool-result-content';
+import { ToolSearchResult } from './tool-search';
 
 /** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
 export type TerminalBlockComponent = React.ComponentType<{
@@ -55,20 +57,12 @@ function RenderedContent({
   return <TerminalBlock command={command} terminalId={content.terminalId} />;
 }
 
+/** The expanded card is the raw query's only home — headers summarize counts instead. */
 function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): React.ReactNode {
-  let resultCount = 0;
-  let lineStart = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (text.codePointAt(index) !== 10) continue;
-    if (index > lineStart) resultCount += 1;
-    lineStart = index + 1;
-  }
-  if (lineStart < text.length) resultCount += 1;
   // Search adapters return paths, grep-style lines, or prose. Preserve their text as one node:
   // splitting an unbounded grep result into rows can freeze the Electron renderer.
   return (
     <ToolPreviewCard
-      badge={String(resultCount)}
       icon={SearchIcon}
       title={toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall)}
     >
@@ -325,6 +319,8 @@ export function ToolResultPreview({
   toolCall,
   TerminalBlockComponent,
 }: ToolResultPreviewProps): React.ReactNode {
+  const toolSearch = toolSearchPresentation(toolCall);
+  if (toolSearch) return <ToolSearchResult presentation={toolSearch} />;
   const content = toolCallDisplayContent(toolCall);
   const file = toolCallFilePresentation(toolCall);
   if (file) {
