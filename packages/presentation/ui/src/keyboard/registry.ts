@@ -236,7 +236,9 @@ export function createKeyboardShortcutRegistry(warnOnMultipleMatches = IS_DEVELO
       event.defaultPrevented ||
       event.isComposing ||
       event.key === 'Process' ||
-      (currentPlatform === 'non-mac' && event.getModifierState('AltGraph')) ||
+      (currentPlatform === 'non-mac' &&
+        typeof event.getModifierState === 'function' &&
+        event.getModifierState('AltGraph')) ||
       event.repeat
     ) {
       return false;
