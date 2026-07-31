@@ -1,28 +1,36 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Account } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
+  cloudCredentialsPath,
   daemonProfile,
   databasePath,
-  hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  saveAccounts,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
+import type { InMemoryVault } from './fixtures/in-memory-vault';
+import { createInMemoryVault } from './fixtures/in-memory-vault';
 
+// loadConfig takes its vault as a parameter, so credential storage needs no module mocking here.
+let vault: InMemoryVault;
 let savedHome: string | undefined;
 
-// loadConfig() reads the channel's config.json; point HOME at a fresh temp dir per test. The
+// loadConfig(vault) reads the channel's config.json; point HOME at a fresh temp dir per test. The
 // channel is pinned to release so these cases keep asserting plain `~/.linkcode` — running the TS
 // source would otherwise resolve as development. The channel axis itself is covered further down.
 beforeEach(() => {
   savedHome = process.env.HOME;
   process.env.HOME = mkdtempSync(join(tmpdir(), 'linkcode-config-'));
   process.env.LINKCODE_CHANNEL = 'release';
+  vault = createInMemoryVault();
 });
 
 afterEach(() => {
@@ -44,7 +52,12 @@ function writeAccountsConfig(accounts: unknown): void {
   writeFileSync(join(dir, 'config.json'), JSON.stringify({ accounts }));
 }
 
-const validAccount = {
+function readConfigFile(): Record<string, unknown> {
+  const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
+  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+}
+
+const validAccount: Account = {
   id: 'acc_1',
   label: 'Personal key',
   credential: { type: 'api-key', key: 'sk-test' },
@@ -59,7 +72,7 @@ describe('loadConfig providers', () => {
       codex: { enabled: 'not-a-boolean' },
     });
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.providers).toEqual({
       'claude-code': { enabled: true, defaultModel: 'sonnet' },
@@ -74,7 +87,7 @@ describe('loadConfig providers', () => {
       'not-a-real-agent': { enabled: true },
     });
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.providers).toEqual({
       'claude-code': { enabled: true },
@@ -86,7 +99,7 @@ describe('loadConfig providers', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeConfig('nonsense');
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.providers).toEqual({});
     expect(errorSpy).toHaveBeenCalled();
@@ -97,7 +110,7 @@ describe('loadConfig providers', () => {
     writeConfig(undefined);
     // JSON.stringify drops an `undefined` value entirely, so the field is simply missing.
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.providers).toEqual({});
     expect(errorSpy).not.toHaveBeenCalled();
@@ -116,7 +129,7 @@ describe('profile-scoped state paths', () => {
     expect(daemonProfile()).toBe('alpha');
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
-    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(cloudCredentialsPath()).toBe(join(root, 'cloud.json'));
     expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 
@@ -148,7 +161,7 @@ describe('channel-scoped state paths', () => {
     expect(daemonChannel()).toBe('development');
     expect(databasePath()).toBe(join(root, 'daemon.db'));
     expect(runtimeFilePath()).toBe(join(root, 'runtime.json'));
-    expect(hqCredentialsPath()).toBe(join(root, 'hq.json'));
+    expect(cloudCredentialsPath()).toBe(join(root, 'cloud.json'));
     expect(telemetryConfigCachePath()).toBe(join(root, 'telemetry-config.json'));
   });
 
@@ -173,10 +186,10 @@ describe('channel-scoped state paths', () => {
   // already-shipped release binary away from a development daemon's port.
   it('starts each channel in its own port range, with no overlap between them', () => {
     process.env.LINKCODE_CHANNEL = 'release';
-    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT);
+    expect(loadConfig(vault).listeners[0].port).toBe(DAEMON_DEFAULT_PORT);
 
     process.env.LINKCODE_CHANNEL = 'development';
-    expect(loadConfig().listeners[0].port).toBe(DAEMON_DEFAULT_PORT + DAEMON_PORT_HUNT_SPAN);
+    expect(loadConfig(vault).listeners[0].port).toBe(DAEMON_DEFAULT_PORT + DAEMON_PORT_HUNT_SPAN);
 
     const releaseLastPort = daemonBasePort('release') + DAEMON_PORT_HUNT_SPAN - 1;
     expect(daemonBasePort('development')).toBeGreaterThan(releaseLastPort);
@@ -211,13 +224,25 @@ describe('loadConfig accounts', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig([
       validAccount,
-      // Missing the api-key `key` — fails the credential union.
-      { id: 'acc_2', label: 'Bad', credential: { type: 'api-key' }, createdAt: 0 },
+      // `credential` is not even a record — nothing the vault could complete.
+      { id: 'acc_2', label: 'Bad', credential: 'nope', createdAt: 0 },
     ]);
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.accounts).toEqual([validAccount]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('drops an account whose stored secret is gone, rather than half-loading it', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    // The post-migration on-disk shape: an api-key credential with no key. With an empty vault the
+    // secret is unrecoverable, so the account cannot be used and must not reach the pool.
+    writeAccountsConfig([
+      { id: 'acc_1', label: 'Orphan', credential: { type: 'api-key' }, createdAt: 0 },
+    ]);
+
+    expect(loadConfig(vault).accounts).toEqual([]);
     expect(errorSpy).toHaveBeenCalled();
   });
 
@@ -225,7 +250,7 @@ describe('loadConfig accounts', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig({ not: 'an array' });
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).toHaveBeenCalled();
@@ -235,9 +260,70 @@ describe('loadConfig accounts', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     writeAccountsConfig(undefined);
 
-    const config = loadConfig();
+    const config = loadConfig(vault);
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+// CODE-371: config.json used to hold provider api keys and account credentials in the clear. The
+// vault owns them now, and an upgrade has to move them without the user re-entering anything.
+describe('credential storage', () => {
+  it('moves inline credentials into the vault on the read that finds them', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(noop);
+    mkdirSync(join(process.env.HOME ?? '', '.linkcode'), { recursive: true });
+    writeFileSync(
+      join(process.env.HOME ?? '', '.linkcode', 'config.json'),
+      JSON.stringify({
+        providers: { 'claude-code': { enabled: true, apiKey: 'sk-legacy' } },
+        accounts: [validAccount],
+      }),
+    );
+
+    // The load still returns usable credentials — an upgrade must not sign anyone out.
+    const config = loadConfig(vault);
+    expect(config.providers?.['claude-code']?.apiKey).toBe('sk-legacy');
+    expect(config.accounts).toEqual([validAccount]);
+
+    expect(vault.refs.get('provider:claude-code')).toBe('sk-legacy');
+    expect(vault.refs.get('account:acc_1')).toBe('sk-test');
+
+    // …and the exposed copies are off disk by the time that load returns.
+    const raw = readFileSync(join(process.env.HOME ?? '', '.linkcode', 'config.json'), 'utf8');
+    expect(raw).not.toContain('sk-legacy');
+    expect(raw).not.toContain('sk-test');
+  });
+
+  it('round-trips an account through the vault without ever writing the secret', () => {
+    saveAccounts(vault, [validAccount]);
+
+    const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
+    expect(stored[0].credential).toEqual({ type: 'api-key' });
+    expect(vault.refs.get('account:acc_1')).toBe('sk-test');
+    expect(loadConfig(vault).accounts).toEqual([validAccount]);
+  });
+
+  it('drops the stored secret when its account is removed', () => {
+    saveAccounts(vault, [validAccount]);
+    saveAccounts(vault, []);
+
+    // Otherwise a deleted account leaves a live credential behind in the OS keyring forever.
+    expect(vault.refs.get('account:acc_1')).toBeUndefined();
+  });
+
+  it('leaves an oauth account alone — the agent CLI owns that login, not us', () => {
+    const oauth: Account = {
+      id: 'acc_oauth',
+      label: 'Subscription',
+      credential: { type: 'oauth', agent: 'claude-code' },
+      createdAt: 0,
+    };
+    saveAccounts(vault, [oauth]);
+
+    const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
+    expect(stored[0].credential).toEqual({ type: 'oauth', agent: 'claude-code' });
+    expect([...vault.refs.keys()]).toEqual([]);
+    expect(loadConfig(vault).accounts).toEqual([oauth]);
   });
 });

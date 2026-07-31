@@ -1,7 +1,7 @@
 /** Zero-dependency half of the daemon discovery contract (see `model/daemon-discovery.ts`);
  * kept zod-free so the sandboxed Electron preload (no `require('zod')`) can import it. */
 import type { ProductChannel } from './product';
-import { stateDirBasename } from './product';
+import { dataDirName, stateDirBasename } from './product';
 
 export type { ProductChannel } from './product';
 export { parseProductChannel } from './product';
@@ -61,6 +61,19 @@ export function linkcodeStateDirName(channel: ProductChannel, profile?: string):
   const parsed = parseProfileName(profile);
   const base = stateDirBasename(channel);
   return parsed === undefined ? base : `${base}-${parsed}`;
+}
+
+/**
+ * Service name under which the daemon's secret vault stores its master key in the OS keyring
+ * (CODE-371). Forks by channel × profile for the same reason every path does: a development daemon
+ * must not be able to read — or overwrite — the release daemon's credentials. Matches the desktop
+ * shell's `APP_NAME`, so one keychain group covers the whole universe, and a fork that renames the
+ * brand in `product.ts` renames this too.
+ */
+export function keyringServiceName(channel: ProductChannel, profile?: string): string {
+  const parsed = parseProfileName(profile);
+  const base = dataDirName(channel);
+  return parsed === undefined ? base : `${base} (${parsed})`;
 }
 
 /** Runtime discovery file the daemon writes after binding, as path segments under the user's home directory. */
