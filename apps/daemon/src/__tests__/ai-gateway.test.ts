@@ -30,10 +30,16 @@ class FakeChild implements SidecarChildProcess {
     this.killed = true;
   }
   emitStdout(text: string): void {
-    for (const listener of this.dataListeners) listener(text);
+    for (let i = 0, len = this.dataListeners.length; i < len; i++) {
+      const listener = this.dataListeners[i];
+      listener(text);
+    }
   }
   emitExit(code: number | null): void {
-    for (const listener of this.exitListeners) listener(code);
+    for (let i = 0, len = this.exitListeners.length; i < len; i++) {
+      const listener = this.exitListeners[i];
+      listener(code);
+    }
   }
 }
 

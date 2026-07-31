@@ -25,7 +25,9 @@ const readDirtyFileCount = Effect.fn('Git.readDirtyFileCount')(function* (cwd: s
   const result = yield* git(cwd, 'status', '--porcelain');
   if (result.exitCode !== 0) return 0;
   let count = 0;
-  for (const line of result.stdout.split('\n')) {
+  const lines = result.stdout.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.length > 0) count += 1;
   }
   return count;

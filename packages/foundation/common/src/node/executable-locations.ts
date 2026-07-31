@@ -17,7 +17,9 @@ import { delimiter, isAbsolute, join } from 'node:path';
  */
 function pathInstallLocations(binary: string): string[] {
   const locations: string[] = [];
-  for (const entry of (process.env.PATH ?? '').split(delimiter)) {
+  const entries = (process.env.PATH ?? '').split(delimiter);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     // Windows PATH entries with spaces are conventionally double-quoted.
     const dir = entry.replaceAll('"', '');
     if (dir.length > 0 && isAbsolute(dir)) locations.push(join(dir, binary));

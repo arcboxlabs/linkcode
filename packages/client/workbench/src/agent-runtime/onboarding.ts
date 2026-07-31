@@ -58,9 +58,9 @@ export function dropConfirmedInstalls(
   runtimes: AgentRuntimes,
 ): AssetActivityMap {
   const next: AssetActivityMap = {};
-  for (const [kind, assetId] of Object.entries(AGENT_ASSET_IDS) as Array<
-    [AgentKind, ManagedAssetId]
-  >) {
+  const agentAssets = Object.entries(AGENT_ASSET_IDS) as Array<[AgentKind, ManagedAssetId]>;
+  for (let i = 0, len = agentAssets.length; i < len; i++) {
+    const [kind, assetId] = agentAssets[i];
     const key = managedAssetKey(assetId);
     const entry = activity[key];
     if (!entry) continue;
@@ -103,9 +103,9 @@ export function deriveAgentRuntimeCues(
 ): AgentRuntimeCues {
   const cues: AgentRuntimeCues = {};
   if (!runtimes) return cues;
-  for (const [kind, runtime] of Object.entries(runtimes) as Array<
-    [AgentKind, AgentRuntimeAvailability]
-  >) {
+  const entries = Object.entries(runtimes) as Array<[AgentKind, AgentRuntimeAvailability]>;
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [kind, runtime] = entries[i];
     const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity, providers);
     if (cue) cues[kind] = cue;
   }

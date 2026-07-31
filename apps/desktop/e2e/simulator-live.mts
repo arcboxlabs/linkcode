@@ -148,7 +148,9 @@ async function main(): Promise<void> {
     await win.waitForTimeout(1200);
   }
   const plus = win.locator('button[aria-label="Open window"]:visible');
-  for (const candidate of await plus.all()) {
+  const candidates = await plus.all();
+  for (let i = 0, len = candidates.length; i < len; i++) {
+    const candidate = candidates[i];
     try {
       await candidate.click({ timeout: 2000 });
       break;

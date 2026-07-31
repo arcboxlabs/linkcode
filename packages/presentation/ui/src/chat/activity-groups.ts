@@ -41,7 +41,8 @@ export function groupTimeline(
 ): TimelineEntry[] {
   // Policies may preserve approval-gated tools as standalone interaction points.
   const approvalGated = new Set<string>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind === 'approval') approvalGated.add(item.toolCall.toolCallId);
   }
 

@@ -36,7 +36,10 @@ export function useBackgroundSimulatorStreams(
       return lease;
     });
     return () => {
-      for (const lease of leases) lease.release();
+      for (let i = 0, len = leases.length; i < len; i++) {
+        const lease = leases[i];
+        lease.release();
+      }
     };
   }, [client, sessionId, key, scale, codec]);
 }

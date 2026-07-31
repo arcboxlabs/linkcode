@@ -555,7 +555,8 @@ export function DesktopShell({
     // Browser webviews live here permanently: unmounting or DOM-moving a webview
     // reloads it, so section and tab switches only toggle visibility.
     const activeIsBrowser = rightPanel.activeSection === 'browser';
-    for (const tab of rightPanel.browser.tabs) {
+    for (let i = 0, len = rightPanel.browser.tabs.length; i < len; i++) {
+      const tab = rightPanel.browser.tabs[i];
       items.push({
         id: tab.id,
         active: activeIsBrowser && tab.id === rightPanel.browser.activeTabId,

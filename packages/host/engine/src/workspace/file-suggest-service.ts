@@ -44,14 +44,16 @@ const listGitFiles = Effect.fn('FileSuggestService.listGitFiles')(function* (cwd
 const walkFiles = Effect.fn('FileSuggestService.walkFiles')(function* (root: string) {
   const files: string[] = [];
   const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
-  for (let head = 0; head < queue.length && files.length < MAX_ENUMERATED_FILES; head++) {
-    const { dir, depth } = queue[head];
+  let head = 0;
+  while (head < queue.length && files.length < MAX_ENUMERATED_FILES) {
+    const { dir, depth } = queue[head++];
     const entries = yield* Effect.tryPromise(() => readdir(dir, { withFileTypes: true })).pipe(
       Effect.catch(() => Effect.succeed(null)),
     );
     // Unreadable directory (permissions, races) — skip, don't fail the search.
     if (!entries) continue;
-    for (const entry of entries) {
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const entry = entries[i];
       if (entry.name[0] === '.') continue;
       const absolute = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -121,7 +123,8 @@ export class FileSuggestService {
 function rankFiles(files: readonly string[], query: string): string[] {
   const needle = query.toLowerCase();
   const ranked: Array<{ file: string; tier: number; depth: number }> = [];
-  for (const file of files) {
+  for (let i = 0, len = files.length; i < len; i++) {
+    const file = files[i];
     const tier = matchTier(file, needle);
     if (tier === null) continue;
     ranked.push({ file, tier, depth: file.split('/').length });

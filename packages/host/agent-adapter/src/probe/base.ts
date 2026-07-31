@@ -56,7 +56,8 @@ export abstract class AgentCliProbe {
   sdkPlatformBinaryPath(): string | undefined {
     const scope = this.sdkPackage.split('/', 1)[0];
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
-    for (const dir of paths) {
+    for (let i = 0, len = paths.length; i < len; i++) {
+      const dir = paths[i];
       const candidate = join(dir, scope, this.platformPackageBase(), this.binaryName());
       if (existsSync(candidate)) return candidate;
     }
@@ -100,7 +101,9 @@ export abstract class AgentCliProbe {
 
   /** Probe the known install locations in order; the first verified install wins. */
   async detect(): Promise<DetectedAgentRuntime | undefined> {
-    for (const location of this.knownLocations()) {
+    const locations = this.knownLocations();
+    for (let i = 0, len = locations.length; i < len; i++) {
+      const location = locations[i];
       // eslint-disable-next-line no-await-in-loop -- locations are a precedence list; the first verified install wins
       const runtime = await this.probeAt(location);
       if (runtime) return runtime;

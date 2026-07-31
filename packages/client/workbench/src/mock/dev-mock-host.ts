@@ -242,7 +242,9 @@ export class DevMockHost {
   /** Staged download: throttled progress → settled → correlated reply → runtime re-probe push. */
   private async ensureAsset(clientReqId: string, id: ManagedAssetId): Promise<void> {
     const totalBytes = 66 * 1_048_576;
-    for (const fraction of [0.04, 0.19, 0.42, 0.68, 0.91]) {
+    const progressFractions = [0.04, 0.19, 0.42, 0.68, 0.91];
+    for (let i = 0, len = progressFractions.length; i < len; i++) {
+      const fraction = progressFractions[i];
       this.send({
         kind: 'asset.progress',
         id,
@@ -279,7 +281,8 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, ...seed } of SEED_SESSIONS) {
+    for (let i = 0, len = SEED_SESSIONS.length; i < len; i++) {
+      const { ageMs, ...seed } = SEED_SESSIONS[i];
       const createdAt = now - ageMs;
       this.addSession({ ...seed, createdAt, updatedAt: createdAt });
       this.touchWorkspace(seed.cwd, createdAt);
@@ -1165,9 +1168,10 @@ export class DevMockHost {
       ...toolEvents(bursts.activityRun.afterTask),
     ];
 
-    for (const event of script) {
+    for (let i = 0, len = script.length; i < len; i++) {
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       if (!(await waitForShowcaseStep(session, epoch))) return false;
+      const event = script[i];
       this.emit(session.sessionId, event);
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
@@ -1177,7 +1181,8 @@ export class DevMockHost {
       toolCall: SHOWCASE_QUESTION.toolCall,
     });
     if (!(await this.emitShowcaseEvent(session, epoch, SHOWCASE_QUESTION))) return false;
-    for (const permission of SHOWCASE_PERMISSIONS) {
+    for (let i = 0, len = SHOWCASE_PERMISSIONS.length; i < len; i++) {
+      const permission = SHOWCASE_PERMISSIONS[i];
       this.permissions.set(permission.requestId, {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,

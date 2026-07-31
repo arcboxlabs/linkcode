@@ -13,7 +13,9 @@ async function main(): Promise<void> {
   const desktopDir = resolve(import.meta.dirname, '..');
   // Main goes first: its closeBundle stages out/daemon + out/drizzle, matching electron-vite's
   // main → preload → renderer order.
-  for (const target of ['main', 'preload', 'renderer']) {
+  const targets = ['main', 'preload', 'renderer'];
+  for (let i = 0, len = targets.length; i < len; i++) {
+    const target = targets[i];
     await build({ configFile: resolve(desktopDir, `vite.${target}.config.ts`), mode });
   }
 }

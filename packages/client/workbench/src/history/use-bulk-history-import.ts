@@ -70,7 +70,8 @@ export function useBulkHistoryImport(): BulkHistoryImportSurface {
           const result = await historyByKind[group.kind].importGroup(group.cwd, group.entries);
           if (!result) return null;
           const importedIds = new Set(result.imported);
-          for (const entry of group.entries) {
+          for (let i = 0, len = group.entries.length; i < len; i++) {
+            const entry = group.entries[i];
             if (importedIds.has(entry.historyId)) {
               importedKeys.add(importedSessionKey(entry.kind, entry.historyId));
             }
@@ -111,7 +112,8 @@ export function useBulkHistoryImport(): BulkHistoryImportSurface {
 
 function groupByProviderDirectory(entries: readonly AgentHistorySession[]) {
   const groups = new Map<string, AgentHistorySession[]>();
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const key = `${entry.kind}\0${entry.cwd ?? ''}`;
     const group = groups.get(key);
     if (group) group.push(entry);

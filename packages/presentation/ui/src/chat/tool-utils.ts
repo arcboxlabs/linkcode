@@ -153,7 +153,9 @@ function toolCallParamMetadata(toolCall: ToolCall): ToolMetadata[] {
   const input = recordValue(toolCall.rawInput);
   if (!input) return [];
   const metadata: ToolMetadata[] = [];
-  for (const [key, value] of Object.entries(input)) {
+  const entries = Object.entries(input);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     if (metadata.length >= PARAM_BADGE_LIMIT) break;
     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
       continue;

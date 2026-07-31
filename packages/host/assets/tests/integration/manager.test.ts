@@ -71,7 +71,9 @@ function closureDescriptor(sdkPackage = 'fake-pi-sdk'): NpmClosureAssetDescripto
 /** A pinFrom anchor whose node_modules holds the given packages. */
 function anchorWith(packages: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'closure-pin-'));
-  for (const [name, version] of Object.entries(packages)) {
+  const entries = Object.entries(packages);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [name, version] = entries[i];
     const dir = join(root, 'node_modules', name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version }));

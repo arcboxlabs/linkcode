@@ -135,7 +135,8 @@ export class SidecarPtyBackend implements PtyBackend {
     this.child = child;
     child.stdout.on('data', (chunk: Buffer) => {
       try {
-        for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
+        const frames = this.decoder.feed(chunk);
+        for (let i = 0, len = frames.length; i < len; i++) this.handleFrame(frames[i]);
       } catch (err) {
         logger.error(
           {
@@ -219,7 +220,10 @@ export class SidecarPtyBackend implements PtyBackend {
         const unsub = terminal.exited ? noop : terminal.data.add(cb);
         if (!terminal.dataSubscribed) {
           terminal.dataSubscribed = true;
-          for (const data of terminal.bufferedData) cb(data);
+          for (let i = 0, len = terminal.bufferedData.length; i < len; i++) {
+            const data = terminal.bufferedData[i];
+            cb(data);
+          }
           terminal.bufferedData.length = 0;
         }
         return unsub;
@@ -271,7 +275,10 @@ export class SidecarPtyBackend implements PtyBackend {
     }
     this.pending.clear();
     const terminalIds = Array.from(this.terminals.keys());
-    for (const terminalId of terminalIds) this.finish(terminalId, null, false);
+    for (let i = 0, len = terminalIds.length; i < len; i++) {
+      const terminalId = terminalIds[i];
+      this.finish(terminalId, null, false);
+    }
   }
 }
 

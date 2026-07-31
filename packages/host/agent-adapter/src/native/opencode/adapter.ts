@@ -79,7 +79,8 @@ export function opencodeMcpConfig(
 ): Record<string, McpLocalConfig | McpRemoteConfig> | undefined {
   if (!servers?.length) return undefined;
   const out: Record<string, McpLocalConfig | McpRemoteConfig> = {};
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     out[server.name] =
       server.type === 'http'
         ? {
@@ -150,7 +151,12 @@ type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 type OpencodeProviderList = NonNullable<
   Awaited<ReturnType<OpencodeClient['provider']['list']>>['data']
 >;
-type OpencodeAgentSummary = { name: string; mode: string; hidden?: boolean; description?: string };
+interface OpencodeAgentSummary {
+  name: string;
+  mode: string;
+  hidden?: boolean;
+  description?: string;
+}
 
 /** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to the
  * credential-injected provider when one is in play. Pre-session reads pass null — the injection is
@@ -161,13 +167,16 @@ function opencodeModelOptions(
 ): AgentModelOption[] {
   const connected = new Set(listed.connected);
   const models: AgentModelOption[] = [];
-  for (const provider of listed.all) {
+  for (let i = 0, len = listed.all.length; i < len; i++) {
+    const provider = listed.all[i];
     if (credentialProviderId) {
       if (provider.id !== credentialProviderId) continue;
     } else if (!connected.has(provider.id) && provider.source !== 'api') {
       continue;
     }
-    for (const [modelId, model] of Object.entries(provider.models)) {
+    const entries = Object.entries(provider.models);
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const [modelId, model] = entries[i];
       models.push({
         id: `${provider.id}/${modelId}`,
         label: model.name || modelId,
@@ -183,7 +192,7 @@ function opencodeModelOptions(
  * the first primary, else the first selectable. Null when nothing is selectable, so the axis stays
  * hidden rather than advertising an empty list. */
 function opencodeAgentPolicies(
-  agents: ReadonlyArray<OpencodeAgentSummary>,
+  agents: readonly OpencodeAgentSummary[],
 ): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
   const selectable = agents.filter(
     (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
@@ -762,7 +771,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
   private adoptAgentCatalog(
-    agents: ReadonlyArray<OpencodeAgentSummary>,
+    agents: readonly OpencodeAgentSummary[],
     preferredAgent: string | null,
   ): void {
     const catalog = opencodeAgentPolicies(agents);
@@ -1128,7 +1137,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // cumulative part updates do not retransmit an ever-growing content array.
         const toolCall = toolCallFromPart(part);
         if (toolCall.status === 'completed' || toolCall.status === 'failed') {
-          for (const content of toolCall.content) this.appendToolContent(part.id, content);
+          for (let i = 0, len = toolCall.content.length; i < len; i++) {
+            const content = toolCall.content[i];
+            this.appendToolContent(part.id, content);
+          }
           this.emitTool({ ...toolCall, content: undefined });
         } else {
           this.emitTool(toolCall);

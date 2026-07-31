@@ -82,7 +82,10 @@ export function createSashDragStyleWriter(
   };
 
   const restore = (): void => {
-    for (const [style, property, value] of touched) style.setProperty(property, value);
+    for (let i = 0, len = touched.length; i < len; i++) {
+      const [style, property, value] = touched[i];
+      style.setProperty(property, value);
+    }
     touched.length = 0;
   };
 

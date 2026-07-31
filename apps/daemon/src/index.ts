@@ -276,7 +276,9 @@ async function main(): Promise<void> {
           const engine = yield* EngineService;
           void agentRuntimesReady
             .then((agentRuntimes) => {
-              for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
+              const agents = agentsToRefresh(consentedAgents, agentRuntimes, assets);
+              for (let i = 0, len = agents.length; i < len; i++) {
+                const kind = agents[i];
                 void assets
                   .ensure(managedAgentAssetId(kind))
                   .catch((err) => {

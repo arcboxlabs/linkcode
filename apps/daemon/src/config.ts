@@ -187,7 +187,8 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
   }
   const accounts: Accounts = [];
   let migrated = false;
-  for (const value of raw) {
+  for (let i = 0, len = raw.length; i < len; i++) {
+    const value = raw[i];
     // The credential secret lives in the vault (CODE-371); merge it back before validating, so a
     // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
     const attached = withAccountSecret(store, value);
@@ -214,7 +215,9 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
   }
   const providers: ProvidersConfig = {};
   let migrated = false;
-  for (const [key, value] of Object.entries(raw)) {
+  const entries = Object.entries(raw);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     const kind = AgentKindSchema.safeParse(key);
     if (!kind.success) {
       logger.warn(

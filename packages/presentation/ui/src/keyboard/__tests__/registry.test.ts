@@ -27,7 +27,9 @@ function keydown(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
     stopImmediatePropagation: vi.fn(),
     ...overrides,
   };
-  for (const [key, value] of Object.entries(properties)) {
+  const entries = Object.entries(properties);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     Object.defineProperty(event, key, { configurable: true, value });
   }
   return event;
@@ -182,7 +184,8 @@ describe('keyboard shortcut registry', () => {
         stopImmediatePropagation,
       }),
     ];
-    for (const event of events) {
+    for (let i = 0, len = events.length; i < len; i++) {
+      const event = events[i];
       expect(registry.dispatch(event, true)).toBe(false);
     }
     expect(preventDefault).not.toHaveBeenCalled();
@@ -229,7 +232,9 @@ describe('keyboard shortcut registry', () => {
     registry.setPlatform('mac');
     expect(registry.dispatch(keydown({ code: 'KeyJ', metaKey: true }), true)).toBe(false);
     expect(getOwner).not.toHaveBeenCalled();
-    for (currentOwner of [null, owner(false), owner(true, true)]) {
+    const inactiveOwners = [null, owner(false), owner(true, true)];
+    for (let i = 0, len = inactiveOwners.length; i < len; i++) {
+      currentOwner = inactiveOwners[i];
       expect(registry.dispatch(keydown({ code: 'KeyK', metaKey: true }), true)).toBe(false);
     }
     const ownerClosest = vi.fn(() => null);

@@ -291,10 +291,12 @@ describe('Composer directive chips', () => {
 
     await pressInComposer('ArrowRight');
     expect(hasNodeSelection(editor, chipKey)).toBe(true);
-    for (const [key, modifier] of [
+    const modifiedKeys = [
       ['ArrowLeft', { altKey: true }],
       ['ArrowRight', { shiftKey: true }],
-    ] as const) {
+    ] as const;
+    for (let i = 0, len = modifiedKeys.length; i < len; i++) {
+      const [key, modifier] = modifiedKeys[i];
       expect(fireEvent.keyDown(composerTextbox(), { code: key, key, ...modifier })).toBe(true);
       expect(hasNodeSelection(editor, chipKey)).toBe(true);
     }
@@ -459,9 +461,9 @@ describe('Composer directive chips', () => {
     rerender(composer({ disabled: true }));
 
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '/typo' }).disabled).toBe(true);
-    for (const action of within(screen.getByRole('status')).getAllByRole<HTMLButtonElement>(
-      'button',
-    )) {
+    const actions = within(screen.getByRole('status')).getAllByRole<HTMLButtonElement>('button');
+    for (let i = 0, len = actions.length; i < len; i++) {
+      const action = actions[i];
       expect(action.disabled).toBe(true);
     }
   });

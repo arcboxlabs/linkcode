@@ -84,7 +84,9 @@ function mergeEnvNoProxy(osNoProxy: string[]): string[] {
     ([key, value]) => key.toLowerCase() === 'no_proxy' && !!value,
   )?.[1];
   const envNoProxy: string[] = [];
-  for (const host of env?.split(',') ?? []) {
+  const hosts = env?.split(',') ?? [];
+  for (let i = 0, len = hosts.length; i < len; i++) {
+    const host = hosts[i];
     const trimmed = host.trim();
     if (trimmed) envNoProxy.push(trimmed);
   }

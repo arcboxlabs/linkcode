@@ -136,7 +136,8 @@ export function createAiGatewaySidecar(options: AiGatewaySidecarOptions = {}): T
       const pending = [...running.values()];
       running.clear();
       const settled = await Promise.allSettled(pending);
-      for (const result of settled) {
+      for (let i = 0, len = settled.length; i < len; i++) {
+        const result = settled[i];
         if (result.status === 'fulfilled') result.value.child.kill('SIGTERM');
       }
     },

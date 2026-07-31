@@ -388,7 +388,9 @@ function allowMentionLinkProtocols(entry: RehypePlugins[number]): RehypePlugins[
 // which would corrupt cwd-relative file mentions into absolute paths for openFile.
 const defaultRehypePluginValues: RehypePlugins = [];
 let rawRehypePluginIndex = -1;
-for (const [name, entry] of Object.entries(defaultRehypePlugins)) {
+const defaultRehypePluginEntries = Object.entries(defaultRehypePlugins);
+for (let i = 0, len = defaultRehypePluginEntries.length; i < len; i++) {
+  const [name, entry] = defaultRehypePluginEntries[i];
   if (name === 'harden') continue;
   if (name === 'raw') rawRehypePluginIndex = defaultRehypePluginValues.length;
   defaultRehypePluginValues.push(name === 'sanitize' ? allowMentionLinkProtocols(entry) : entry);

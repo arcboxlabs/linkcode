@@ -52,7 +52,8 @@ export function groupThreadsByWorkspace(
   const sessionsByWorkspaceId = new Map<string, SessionInfo[]>();
   const unregistered: SessionInfo[] = [];
 
-  for (const session of sessions) {
+  for (let i = 0, len = sessions.length; i < len; i++) {
+    const session = sessions[i];
     const matched = workspaceByCwdKey.get(normalizeCwdKey(session.cwd));
     let workspace = matched;
     if (matched && workspaceKind(matched) === 'worktree') {

@@ -709,7 +709,10 @@ export function createConversationBuilder(): ConversationBuilder {
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const builder = createConversationBuilder();
-  for (const event of events) builder.advance(event);
+  for (let i = 0, len = events.length; i < len; i++) {
+    const event = events[i];
+    builder.advance(event);
+  }
   return builder.snapshot();
 }
 

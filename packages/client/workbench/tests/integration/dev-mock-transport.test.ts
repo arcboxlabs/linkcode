@@ -500,7 +500,8 @@ describe('dev mock transport', () => {
       },
       source: 'user',
     });
-    for (const request of permissionRequests) {
+    for (let i = 0, len = permissionRequests.length; i < len; i++) {
+      const request = permissionRequests[i];
       // eslint-disable-next-line no-await-in-loop -- answer the asks in order, like a user would.
       await expect(
         client.respondPermission(showcase.sessionId, request.requestId, {
@@ -632,7 +633,8 @@ describe('dev mock transport', () => {
       }),
     ).rejects.toThrow('Unknown question request');
 
-    for (const request of permissionRequests) {
+    for (let i = 0, len = permissionRequests.length; i < len; i++) {
+      const request = permissionRequests[i];
       // eslint-disable-next-line no-await-in-loop -- assert each cancelled ask reaches its own tool snapshot.
       const cancelledTool = await eventually(() =>
         toolCalls(events).find(

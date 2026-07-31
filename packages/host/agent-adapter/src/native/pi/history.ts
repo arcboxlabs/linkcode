@@ -137,7 +137,8 @@ export function mapPiHistoryEvents(
       event: { type: 'tool-call', toolCall: value },
     });
   };
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const ts = timestampMs(entry.timestamp);
     if (entry.type === 'compaction') {
       events.push({
@@ -247,7 +248,8 @@ export function lastPiModelChange(entries: SessionEntry[]) {
   return null;
 }
 function firstUser(entries: SessionEntry[]): string | undefined {
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (entry.type === 'message' && isRecord(entry.message) && entry.message.role === 'user') {
       const content = entry.message.content;
       const text =

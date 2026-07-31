@@ -191,13 +191,21 @@ describe('Composer command menu', () => {
     });
 
     const initialActive = editor.getAttribute('aria-activedescendant');
-    for (const key of ['ArrowDown', 'ArrowUp']) {
-      for (const modifier of [
+    const keys = ['ArrowDown', 'ArrowUp'];
+    for (let keyIndex = 0, keyCount = keys.length; keyIndex < keyCount; keyIndex++) {
+      const key = keys[keyIndex];
+      const modifiers = [
         { altKey: true },
         { ctrlKey: true },
         { metaKey: true },
         { shiftKey: true },
-      ]) {
+      ];
+      for (
+        let modifierIndex = 0, modifierCount = modifiers.length;
+        modifierIndex < modifierCount;
+        modifierIndex++
+      ) {
+        const modifier = modifiers[modifierIndex];
         expect(fireEvent.keyDown(editor, { code: key, key, ...modifier })).toBe(true);
         expect(editor.getAttribute('aria-activedescendant')).toBe(initialActive);
       }

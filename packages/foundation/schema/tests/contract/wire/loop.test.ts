@@ -63,7 +63,8 @@ describe('loop wire variants', () => {
       { kind: 'loop.iteration', iteration },
       { kind: 'loop.log', loopId: loop.loopId, entry: log },
     ];
-    for (const payload of payloads) {
+    for (let i = 0, len = payloads.length; i < len; i++) {
+      const payload = payloads[i];
       expect(parseWireMessage(envelope(payload)).success, payload.kind).toBe(true);
     }
   });

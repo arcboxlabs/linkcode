@@ -174,14 +174,9 @@ describe('directive tokenizer', () => {
 
   it('keeps mid-line slash and dollar-sign tokens as prose', () => {
     const editor = createEditor();
-    for (const draft of [
-      'run /usage now',
-      'run /typo now',
-      'run $ now',
-      'pay $5',
-      'echo $HOME',
-      ' $ls',
-    ]) {
+    const drafts = ['run /usage now', 'run /typo now', 'run $ now', 'pay $5', 'echo $HOME', ' $ls'];
+    for (let i = 0, len = drafts.length; i < len; i++) {
+      const draft = drafts[i];
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['text']);
       expect(draftText(editor)).toBe(draft);
@@ -258,7 +253,9 @@ describe('directive tokenizer', () => {
       () => {
         const paragraph = $getRoot().getFirstChild();
         if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
-        for (const child of paragraph.getChildren()) {
+        const children = paragraph.getChildren();
+        for (let i = 0, len = children.length; i < len; i++) {
+          const child = children[i];
           if (child.getType() !== 'composer-command') continue;
           const converted = $convertDirectiveToText(child.getKey());
           if (converted) suppressed.add(converted);
@@ -460,10 +457,12 @@ describe('$draftDirective', () => {
 
   it('moves a lone misplaced directive to the start without doubling separator whitespace', () => {
     const editor = createEditor();
-    for (const [before, after, expected] of [
+    const cases = [
       ['please ', ' now', '/review please now'],
       [' ', ' now', '/review now'],
-    ]) {
+    ];
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [before, after, expected] = cases[i];
       setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {
@@ -482,12 +481,14 @@ describe('$draftDirective', () => {
 
   it('normalizes boundary whitespace when removing a directive', () => {
     const editor = createEditor();
-    for (const [before, after, expected] of [
+    const cases = [
       ['please ', ' now', 'please now'],
       ['', ' now', 'now'],
       ['please ', ' ', 'please'],
       ['', ' ', ''],
-    ]) {
+    ];
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [before, after, expected] = cases[i];
       setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {

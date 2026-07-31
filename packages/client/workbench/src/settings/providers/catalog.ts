@@ -187,7 +187,8 @@ export function detectedLoginSuggestions(
   runtimes: AgentRuntimes | undefined,
 ): DetectedLoginSuggestion[] {
   const suggestions: DetectedLoginSuggestion[] = [];
-  for (const service of SERVICE_CATALOG) {
+  for (let i = 0, len = SERVICE_CATALOG.length; i < len; i++) {
+    const service = SERVICE_CATALOG[i];
     if (service.kind !== 'oauth') continue;
     const auth = runtimes?.[service.agent]?.auth;
     if (auth?.loggedIn !== true) continue;

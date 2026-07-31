@@ -297,7 +297,10 @@ export function ComposerEditor({
       const analysis = $analyzeDirectives();
       const placementIssues: Partial<Record<string, DirectivePlacementIssue>> = {};
       if (analysis.composition.kind === 'blocked') {
-        for (const key of analysis.blockedKeys) placementIssues[key] = analysis.composition.issue;
+        for (let i = 0, len = analysis.blockedKeys.length; i < len; i++) {
+          const key = analysis.blockedKeys[i];
+          placementIssues[key] = analysis.composition.issue;
+        }
       }
       return {
         caretOffset: $caretFlatOffset(),

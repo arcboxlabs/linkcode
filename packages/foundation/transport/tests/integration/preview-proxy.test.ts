@@ -9,8 +9,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterAll(async () => {
+  const reversedCleanups = cleanups.reverse();
   // eslint-disable-next-line no-await-in-loop -- teardown must run one at a time in LIFO order
-  for (const cleanup of cleanups.reverse()) await cleanup();
+  for (let i = 0, len = reversedCleanups.length; i < len; i++) await reversedCleanups[i]();
 });
 
 /** An upstream dev-server stand-in: echoes the request path and Host, and echoes WS frames. */

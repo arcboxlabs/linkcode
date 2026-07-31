@@ -35,7 +35,9 @@ export function getWin32SystemProxy(): SystemProxyDetection | undefined {
  */
 export function parseRegQueryOutput(output: string): Map<string, string | number> {
   const values = new Map<string, string | number>();
-  for (const line of output.split(NEWLINE)) {
+  const lines = output.split(NEWLINE);
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     const row = VALUE_ROW.exec(line);
     if (!row) continue;
     const [, name, type, data] = row;
@@ -94,7 +96,9 @@ function parseProxyServer(config: string): string {
 function parseProxyOverride(override: string | number | undefined): string[] {
   if (typeof override !== 'string') return [];
   const noProxy: string[] = [];
-  for (const entry of override.split(';')) {
+  const entries = override.split(';');
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const host = entry.trim();
     if (!host) continue;
     if (host === '<local>') noProxy.push('localhost', '127.0.0.1', '::1');

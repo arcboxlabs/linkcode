@@ -101,7 +101,9 @@ describe('Chat card chrome contract', () => {
       </>,
     );
 
-    for (const testId of ['commit', 'stack-trace', 'step']) {
+    const roundedCards = ['commit', 'stack-trace', 'step'];
+    for (let i = 0, len = roundedCards.length; i < len; i++) {
+      const testId = roundedCards[i];
       expect(screen.getByTestId(testId).classList.contains('rounded-2xl')).toBe(true);
     }
 

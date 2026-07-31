@@ -105,7 +105,9 @@ export function sanitizeSentryTransaction<T extends SentryTransactionEvent>(
     ? sanitizeProfileContext(event.contexts.profile)
     : undefined;
   const spans: TransactionSpan[] = [];
-  for (const span of event.spans ?? []) {
+  const eventSpans = event.spans ?? [];
+  for (let i = 0, len = eventSpans.length; i < len; i++) {
+    const span = eventSpans[i];
     const sanitizedSpan = sanitizeSpan(span, options);
     if (sanitizedSpan) spans.push(sanitizedSpan);
   }
@@ -122,7 +124,10 @@ export function sanitizeSentryTransaction<T extends SentryTransactionEvent>(
     measurements: sanitizeMeasurements(event.measurements, options.safeMeasurementNames),
   };
 
-  for (const key of Object.keys(event)) Reflect.deleteProperty(event, key);
+  const eventKeys = Object.keys(event);
+  for (let i = 0, len = eventKeys.length; i < len; i++) {
+    Reflect.deleteProperty(event, eventKeys[i]);
+  }
   Object.assign(event, sanitized);
   return event;
 }
@@ -187,7 +192,8 @@ function sanitizeMeasurements(
   if (!isRecord(measurements) || !safeNames?.length) return undefined;
   const sanitized: Record<string, { value: number; unit?: string }> = {};
   let hasMeasurement = false;
-  for (const name of safeNames) {
+  for (let i = 0, len = safeNames.length; i < len; i++) {
+    const name = safeNames[i];
     const measurement = measurements[name];
     if (!isRecord(measurement)) continue;
     const value = finiteNumber(measurement.value);

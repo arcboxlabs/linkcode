@@ -462,7 +462,9 @@ describe('ActivityRun', () => {
       'Made 2 file changes',
       'Explored once',
     ];
-    for (const label of ['An action failed', ...regularLabels]) {
+    const labels = ['An action failed', ...regularLabels];
+    for (let i = 0, len = labels.length; i < len; i++) {
+      const label = labels[i];
       expect(header.textContent.split(label)).toHaveLength(2);
     }
     const failureClause = within(header).getByText(RE_FAILURE);
@@ -470,7 +472,8 @@ describe('ActivityRun', () => {
     expect(failureClause.className).toContain('font-medium');
     expect(failureClause.className).toContain('opacity-100');
     const regularClauses = regularLabels.map((label) => within(header).getByText(`· ${label}`));
-    for (const clause of regularClauses) {
+    for (let i = 0, len = regularClauses.length; i < len; i++) {
+      const clause = regularClauses[i];
       expect(clause.className).toContain('font-medium');
       expect(clause.className).toContain('opacity-80');
       expect(clause.className).not.toContain('text-label-tertiary');
@@ -483,14 +486,16 @@ describe('ActivityRun', () => {
     expect(header.querySelector('svg.lucide-circle-x')).toBeNull();
     // A settled abstract never shimmers.
     expect(header.querySelector('.bg-clip-text')).toBeNull();
-    for (const detail of [
+    const details = [
       'first.ts',
       'second.ts',
       'Linear',
       'git status',
       'README.md',
       'Reviewed the results',
-    ]) {
+    ];
+    for (let i = 0, len = details.length; i < len; i++) {
+      const detail = details[i];
       expect(header.textContent).not.toContain(detail);
       expect(header.getAttribute('aria-label')).not.toContain(detail);
     }

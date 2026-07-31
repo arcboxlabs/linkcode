@@ -125,7 +125,8 @@ export function isSyntheticCodexUserPayload(
 /** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */
 export function collectCodexPromptTexts(rows: JsonRecord[]): Set<string> {
   const texts = new Set<string>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'user_message') continue;
@@ -228,7 +229,8 @@ export function codexHome(environment: NodeJS.ProcessEnv = env): string {
 export async function readCodexIndex(home = codexHome()): Promise<Map<string, CodexIndexEntry>> {
   const rows = await readJsonlFile(join(home, 'session_index.jsonl'));
   const index = new Map<string, CodexIndexEntry>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     const id = stringField(row, 'id');
     if (!id) continue;
     index.set(id, {
@@ -271,12 +273,16 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
   }
   const files: string[] = [];
   const pendingDirs: Array<Promise<string[]>> = [];
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const path = join(root, entry.name);
     if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
-  for (const nestedFiles of await Promise.all(pendingDirs)) appendArrayInPlace(files, nestedFiles);
+  const nestedFileGroups = await Promise.all(pendingDirs);
+  for (let i = 0, len = nestedFileGroups.length; i < len; i++) {
+    appendArrayInPlace(files, nestedFileGroups[i]);
+  }
   return files;
 }
 
@@ -288,7 +294,9 @@ export async function readJsonlFile(path: string): Promise<JsonRecord[]> {
     return [];
   }
   const rows: JsonRecord[] = [];
-  for (const line of raw.split('\n')) {
+  const lines = raw.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.trim().length === 0) continue;
     try {
       const parsed: unknown = JSON.parse(line);
@@ -322,7 +330,8 @@ async function readCodexTranscriptSummary(
   let modelProvider: string | undefined;
   let gitBranch: string | undefined;
 
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     const rowType = stringField(row, 'type');
     const rowTs = timestampMs(row.timestamp);
     if (rowTs !== undefined) {

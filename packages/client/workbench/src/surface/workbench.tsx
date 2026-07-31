@@ -224,11 +224,13 @@ function WorkbenchSessionSurface({
   const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
   const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
   const visibleResponseErrors = new Map<string, string>();
-  for (const requestId of conversation.pendingPermissionIds) {
+  for (let i = 0, len = conversation.pendingPermissionIds.length; i < len; i++) {
+    const requestId = conversation.pendingPermissionIds[i];
     const message = responseErrors.get(requestId);
     if (message) visibleResponseErrors.set(requestId, message);
   }
-  for (const requestId of conversation.pendingQuestionIds) {
+  for (let i = 0, len = conversation.pendingQuestionIds.length; i < len; i++) {
+    const requestId = conversation.pendingQuestionIds[i];
     const message = responseErrors.get(requestId);
     if (message) visibleResponseErrors.set(requestId, message);
   }
@@ -520,7 +522,8 @@ function WorkbenchSessionSurface({
   const workspacesById = new Map<WorkspaceId, WorkspaceRecord>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
-  for (const workspace of allWorkspaces) {
+  for (let i = 0, len = allWorkspaces.length; i < len; i++) {
+    const workspace = allWorkspaces[i];
     const kind = workspaceKind(workspace);
     if (kind === 'worktree') continue;
     workspacesById.set(workspace.workspaceId, workspace);

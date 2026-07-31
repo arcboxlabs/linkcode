@@ -26,13 +26,20 @@ export function fileArtifactCandidates(
   const suffix = `/${relative}`;
   const exactHits: string[] = [];
   const touchedDirs: string[] = [];
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind !== 'tool') continue;
     const paths = (item.toolCall.locations ?? []).map((location) => location.path);
-    for (const content of item.toolCall.content) {
+    for (
+      let contentIndex = 0, contentCount = item.toolCall.content.length;
+      contentIndex < contentCount;
+      contentIndex++
+    ) {
+      const content = item.toolCall.content[contentIndex];
       if (content.type === 'diff') paths.push(content.path);
     }
-    for (const touched of paths) {
+    for (let pathIndex = 0, pathCount = paths.length; pathIndex < pathCount; pathIndex++) {
+      const touched = paths[pathIndex];
       // Relative locations (adapter-dependent) have no reliable anchor; skip them.
       if (!isAbsolute(touched)) continue;
       const normalized = normalize(touched);
@@ -64,7 +71,8 @@ export async function locateFileArtifact(
 ): Promise<string> {
   const candidates = fileArtifactCandidates(requestPath, cwd, items);
   if (candidates.length > 1) {
-    for (const candidate of candidates) {
+    for (let i = 0, len = candidates.length; i < len; i++) {
+      const candidate = candidates[i];
       try {
         // eslint-disable-next-line no-await-in-loop -- candidates must be probed in priority order and stop at the first readable path.
         await readWorkspaceFile({ cwd, path: candidate });

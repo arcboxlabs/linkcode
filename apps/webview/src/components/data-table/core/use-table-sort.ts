@@ -96,7 +96,8 @@ export function useTableSort<TData = unknown>({
       } else if (mode === 'single') {
         // activating a column replaces the current sort — evict the rest atomically
         const payload: TableSortsState = { [columnId]: direction };
-        for (const id of prevOrder) {
+        for (let i = 0, len = prevOrder.length; i < len; i++) {
+          const id = prevOrder[i];
           if (id !== columnId) payload[id] = undefined;
         }
         setSortsState(payload);
@@ -135,7 +136,9 @@ export function useTableSort<TData = unknown>({
   // getter reads the tracked `sorts` at access time, keeping the preview live.
   const nextSorts = useMemo(() => {
     const result: TableSortsState = {};
-    for (const column of table?.columns ?? []) {
+    const columns = table?.columns ?? [];
+    for (let i = 0, len = columns.length; i < len; i++) {
+      const column = columns[i];
       const { id } = column;
       Object.defineProperty(result, id, { enumerable: true, get: () => computeNextSort(id) });
     }
@@ -151,7 +154,10 @@ export function useTableSort<TData = unknown>({
         const someOtherActive = orderState.order.some((id) => id !== columnId);
         if (!someOtherActive) {
           const reset: TableSortsState = {};
-          for (const key of Object.keys(sorts)) reset[key] = undefined;
+          const keys = Object.keys(sorts);
+          for (let i = 0, len = keys.length; i < len; i++) {
+            reset[keys[i]] = undefined;
+          }
           setSortsState({ ...reset, ...defaultSorts });
           setOrderState({ order: Object.keys(defaultSorts) });
           onAfterSortChange();
