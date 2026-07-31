@@ -25,6 +25,15 @@ export function fisheyeWidth(factor: number): number {
 }
 
 /**
+ * The same stretch as a horizontal scale on a resting tick. The rail animates `transform`, never
+ * `width`: a tick's box has to stay fixed, or the fit-content column it sits in widens under the
+ * pointer and drags every other tick sideways.
+ */
+export function fisheyeScaleX(factor: number): number {
+  return fisheyeWidth(factor) / MINIMAP_TICK_BASE_WIDTH;
+}
+
+/**
  * Where the rail scrolls itself so the conversation's visible turns sit centered in it. Ticks are
  * evenly spaced, so a long thread outgrows the rail and the rail follows the viewport instead of
  * compressing — `end` is inclusive.

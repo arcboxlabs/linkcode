@@ -7,13 +7,14 @@ import { clamp } from 'foxts/clamp';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { VirtualizerHandle } from 'virtua';
+import { useInputModality } from '../input-modality';
 import { cn } from '../lib/cn';
 import { SidePreviewCardPopup } from '../preview-card-popup';
 import { useRenderPrefs } from '../render-prefs';
 import { Markdown } from './markdown';
 import {
   fisheyeFactor,
-  fisheyeWidth,
+  fisheyeScaleX,
   MINIMAP_ROW_HEIGHT,
   railScrollTopFor,
 } from './minimap-geometry';
@@ -46,6 +47,7 @@ export function useConversationMinimap(count: number): {
   const railRef = useRef<HTMLDivElement>(null);
   const [range, setRange] = useState<MinimapVisibleRange | null>(null);
   const { reduceMotion } = useRenderPrefs();
+  const modality = useInputModality();
 
   const onScroll = useCallback(
     (offset: number) => {
@@ -69,10 +71,13 @@ export function useConversationMinimap(count: number): {
       const from = virtualizer.findItemIndex(virtualizer.scrollOffset);
       virtualizer.scrollToIndex(index, {
         align: 'start',
-        smooth: !reduceMotion && Math.abs(index - from) <= SMOOTH_JUMP_ROWS,
+        // Enter and Space reach this through the same click, and a keyed jump repeats far too often
+        // to animate.
+        smooth:
+          modality === 'pointer' && !reduceMotion && Math.abs(index - from) <= SMOOTH_JUMP_ROWS,
       });
     },
-    [reduceMotion],
+    [modality, reduceMotion],
   );
 
   return {
@@ -145,12 +150,12 @@ export function ConversationMinimap({
     tickNodesRef.current.forEach((tick, index) => {
       if (!tick) return;
       if (pointerY === null) {
-        // Back to the resting width in the class, which the transition eases into.
-        tick.style.width = '';
+        // Back to the resting size in the class, which the transition eases into.
+        tick.style.transform = '';
         return;
       }
       const center = listTop + index * MINIMAP_ROW_HEIGHT + MINIMAP_ROW_HEIGHT / 2;
-      tick.style.width = `${fisheyeWidth(fisheyeFactor(center - pointerY)).toFixed(2)}px`;
+      tick.style.transform = `scaleX(${fisheyeScaleX(fisheyeFactor(center - pointerY)).toFixed(3)})`;
     });
   }, []);
 
@@ -178,9 +183,8 @@ export function ConversationMinimap({
       const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
       if (delta === 0) return;
       event.preventDefault();
-      const next = clamp(focusIndex + delta, 0, count - 1);
-      setFocused(next);
-      buttonNodesRef.current[next]?.focus();
+      // `onFocus` carries the roving index, so a tick focused by a click stays the arrows' origin.
+      buttonNodesRef.current[clamp(focusIndex + delta, 0, count - 1)]?.focus();
     },
     [count, focusIndex],
   );
@@ -193,21 +197,23 @@ export function ConversationMinimap({
       <nav
         aria-label={t('label')}
         className={cn(
-          // The column is transparent, but it must be at least as wide as a tick at full stretch:
-          // `overflow-y-auto` below makes the x axis clip too, which would cut the magnified tick.
-          'absolute inset-y-0 left-2.5 hidden w-8 @min-[55rem]/conversation:block',
+          // `left` is the gutter itself: ticks sit flush against this column's left edge. The column
+          // is transparent but must outrun a tick at full stretch — `overflow-y-auto` below clips
+          // the x axis too, which would cut the magnified tick off.
+          'absolute inset-y-0 left-[22px] hidden w-8 @min-[55rem]/conversation:block',
           className,
         )}
       >
         <div
-          className="flex h-full flex-col overflow-y-auto [scrollbar-width:none]"
+          className="flex h-full flex-col items-start overflow-y-auto [scrollbar-width:none]"
           onPointerLeave={handlePointerLeave}
           onPointerMove={handlePointerMove}
           ref={railRef}
         >
           {/* Auto margins center a short stack and collapse once it outgrows the rail, which
-              `justify-center` would instead clip at the top. */}
-          <div className="m-auto flex flex-col" ref={listRef}>
+              `justify-center` would instead clip at the top. Vertical only: centering this
+              fit-content column horizontally would move it whenever a tick's box changed. */}
+          <div className="my-auto flex flex-col" ref={listRef}>
             {segments.map((segment, index) => (
               <PreviewCardTrigger
                 aria-label={t('turn', { index: index + 1 })}
@@ -217,6 +223,7 @@ export function ConversationMinimap({
                 handle={handle}
                 key={segment.turnId ?? 'lead-in'}
                 onClick={() => onSelect(index)}
+                onFocus={() => setFocused(index)}
                 onKeyDown={handleKeyDown}
                 payload={index}
                 ref={(element) => {
@@ -226,17 +233,12 @@ export function ConversationMinimap({
                 style={{ height: MINIMAP_ROW_HEIGHT }}
                 tabIndex={index === focusIndex ? 0 : -1}
               >
-                {/* Resting width lives in the class, not `style`, so a re-render mid-hover can't
-                    clobber the magnification written to the node. The transition covers both the
-                    return to rest and the per-frame retargeting, which damps the follow.
-                    Dimming is a colour, not container opacity, which would flatten the on-screen
-                    step along with everything else. */}
+                {/* Resting size lives in the class, never `style`: a re-render mid-hover would
+                    otherwise clobber the magnification written straight to the node. */}
                 <span
                   className={cn(
-                    'h-[2px] w-2 rounded-full transition-[width,background-color] duration-(--motion-fast) ease-(--motion-ease-out) group-focus-visible/tick:bg-foreground group-hover/tick:bg-foreground',
-                    // Off-screen turns rest at the hairline tone — texture, not content. The label
-                    // tiers all sit too high for that; they are built for text, this is a fill.
-                    // Hovering the rail does not lift them: the magnification already announces it.
+                    'h-[2px] w-2 origin-left rounded-full transition-[transform,background-color] duration-(--motion-fast) ease-(--motion-ease-out) group-focus-visible/tick:bg-foreground group-hover/tick:bg-foreground',
+                    // A fill this small needs a tone below every label tier, which are built for text.
                     index >= visible.start && index <= visible.end
                       ? 'bg-muted-foreground'
                       : 'bg-border',
