@@ -1,6 +1,6 @@
 import type { WireMessage } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
@@ -169,7 +169,7 @@ export class WireRequestRouter {
         return this.handlers.browser.handle(p);
       }
       case 'ping': {
-        return Effect.sync(() => this.transport.send(createWireMessage({ kind: 'pong' })));
+        return Effect.sync(() => this.transport.send(createWireMessage(pong())));
       }
       // Downstream-only payloads are ignored here.
       default:

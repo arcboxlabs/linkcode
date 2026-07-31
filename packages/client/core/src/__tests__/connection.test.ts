@@ -1,6 +1,7 @@
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
+import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 
@@ -62,11 +63,30 @@ describe('LinkCodeClient connection lifetime', () => {
     await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
     expect(ready).toBe(false);
 
-    transport.receive({ kind: 'pong' });
+    transport.receive(pong());
     await connecting;
     expect(ready).toBe(true);
+    expect(client.peerWireVersion).toBe(WIRE_PROTOCOL_VERSION);
     await expect(client.connect()).rejects.toThrow('already started');
 
+    client.dispose();
+  });
+
+  it('names the skew when the host has moved its floor past this build', async () => {
+    const transport = new ControlledTransport();
+    const client = new LinkCodeClient(transport);
+    const connecting = expect(client.connect()).rejects.toThrow(
+      `this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${WIRE_PROTOCOL_VERSION + 3} the host needs`,
+    );
+
+    await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
+    transport.receive({
+      kind: 'pong',
+      version: WIRE_PROTOCOL_VERSION + 5,
+      minCompatible: WIRE_PROTOCOL_VERSION + 3,
+    });
+
+    await connecting;
     client.dispose();
   });
 
@@ -106,7 +126,7 @@ describe('LinkCodeClient connection lifetime', () => {
     client.onClose(onClose);
     const connecting = client.connect();
     await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-    transport.receive({ kind: 'pong' });
+    transport.receive(pong());
     await connecting;
     const pending = client.listSessions();
 

@@ -5,7 +5,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +21,7 @@ function terminalFrameFailingTransport(err: Error): Transport {
     },
     send(message) {
       if (message.payload.kind === 'ping') {
-        queueMicrotask(() => onMessage(createWireMessage({ kind: 'pong' })));
+        queueMicrotask(() => onMessage(createWireMessage(pong())));
         return;
       }
       if (message.payload.kind === 'terminal.attach') {
