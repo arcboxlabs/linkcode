@@ -739,7 +739,9 @@ export function DesktopShell({
         onToggleResources={toggleResources}
         onResourcesOpenChange={setResourcesOpen}
       >
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
+        {/* Never paint this wrapper: it spans the sidebar column, whose translucent tint has to
+            reach the native backdrop. Only the floating rail needs its own opaque gutter. */}
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
           <DesktopWorkspace
             main={main}
             right={workspaceRight}
@@ -812,7 +814,7 @@ export function DesktopShell({
           <aside
             aria-hidden={!resourcesFloatingOpen}
             inert={!resourcesFloatingOpen}
-            className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+            className="min-h-0 min-w-0 shrink-0 overflow-hidden bg-background transition-[width] duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
             style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
           >
             <div
