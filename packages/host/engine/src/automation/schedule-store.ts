@@ -71,7 +71,10 @@ export class InMemoryScheduleStore implements ScheduleStore {
   pruneRuns(scheduleId: ScheduleId, keep: number): Promise<void> {
     const runs = this.runsForSchedule(scheduleId);
     runs.sort((a, b) => b.startedAt - a.startedAt);
-    for (const run of runs.slice(keep)) this.runs.delete(run.runId);
+    const prunedRuns = runs.slice(keep);
+    for (let i = 0, len = prunedRuns.length; i < len; i++) {
+      this.runs.delete(prunedRuns[i].runId);
+    }
     return Promise.resolve();
   }
 }

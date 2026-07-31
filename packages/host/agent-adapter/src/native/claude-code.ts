@@ -42,6 +42,7 @@ import type {
   StartOptions,
   StopReason,
   SupportedAttachmentImageMimeType,
+  TokenUsage,
   ToolCall,
   ToolCallContent,
   ToolCallLocation,
@@ -167,7 +168,8 @@ async function settingsDefaultMode(cwd: string): Promise<ClaudeApprovalPolicyId 
     path.join(cwd, '.claude', 'settings.json'),
     path.join(homedir(), '.claude', 'settings.json'),
   ];
-  for (const file of files) {
+  for (let i = 0, len = files.length; i < len; i++) {
+    const file = files[i];
     let mode: unknown;
     try {
       // eslint-disable-next-line no-await-in-loop -- precedence order is inherently sequential
@@ -248,7 +250,8 @@ export function claudeMcpServers(
 ): Record<string, McpServerConfig> | undefined {
   if (!servers?.length) return undefined;
   const out: Record<string, McpServerConfig> = {};
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     out[server.name] =
       server.type === 'http'
         ? { type: 'http', url: server.url, ...(server.headers && { headers: server.headers }) }
@@ -318,7 +321,9 @@ function usageWindows(
   push('seven_day_oauth_apps', 10080, limits.seven_day_oauth_apps);
   push('seven_day_opus', 10080, limits.seven_day_opus);
   push('seven_day_sonnet', 10080, limits.seven_day_sonnet);
-  for (const bucket of limits.model_scoped ?? []) {
+  const modelBuckets = limits.model_scoped ?? [];
+  for (let i = 0, len = modelBuckets.length; i < len; i++) {
+    const bucket = modelBuckets[i];
     windows.push({
       label: bucket.display_name,
       utilization: bucket.utilization,
@@ -360,17 +365,18 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
       totalDurationMs: raw.session.total_duration_ms,
       totalLinesAdded: raw.session.total_lines_added,
       totalLinesRemoved: raw.session.total_lines_removed,
-      modelUsage: Object.fromEntries(
-        Object.entries(raw.session.model_usage).map(([model, usage]) => [
-          model,
-          {
+      modelUsage: Object.entries(raw.session.model_usage).reduce<Record<string, TokenUsage>>(
+        (modelUsage, [model, usage]) => {
+          modelUsage[model] = {
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             cacheReadTokens: usage.cacheReadInputTokens,
             cacheCreationTokens: usage.cacheCreationInputTokens,
             totalCostUsd: usage.costUSD,
-          },
-        ]),
+          };
+          return modelUsage;
+        },
+        {},
       ),
     },
     subscriptionType: raw.subscription_type,
@@ -648,7 +654,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         const children = subagentEvents.get(event.event.toolCall.toolCallId);
         if (children) {
           subagentEvents.delete(event.event.toolCall.toolCallId);
-          for (const child of children) pushWithSubagents(child);
+          for (let i = 0, len = children.length; i < len; i++) {
+            const child = children[i];
+            pushWithSubagents(child);
+          }
         }
       }
     };
@@ -660,8 +669,20 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const returned = new Set(page.map((message) => message.uuid));
     const dropped =
       offset === 0 ? supplement.droppedRows.filter((row) => !returned.has(row.uuid)) : [];
-    for (const message of [...dropped, ...page]) {
-      for (const event of mapper(message)) pushWithSubagents(event);
+    const pageMessages = [...dropped, ...page];
+    for (
+      let messageIndex = 0, messageCount = pageMessages.length;
+      messageIndex < messageCount;
+      messageIndex++
+    ) {
+      const mappedEvents = mapper(pageMessages[messageIndex]);
+      for (
+        let eventIndex = 0, eventCount = mappedEvents.length;
+        eventIndex < eventCount;
+        eventIndex++
+      ) {
+        pushWithSubagents(mappedEvents[eventIndex]);
+      }
     }
     return {
       session: info
@@ -1276,7 +1297,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // (`init` fires only at Query creation, so it can't catch a live `setModel`).
     this.syncModel(message.model);
     let calledTool = false;
-    for (const block of message.content) {
+    for (let i = 0, len = message.content.length; i < len; i++) {
+      const block = message.content[i];
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
@@ -1304,7 +1326,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * cursors or calls `freshSegment()`, so a mid-turn subagent can't break the main streaming bubble.
    */
   private handleSubagentAssistant(message: AssistantMessage, parent: string): void {
-    for (const block of message.content) {
+    for (let i = 0, len = message.content.length; i < len; i++) {
+      const block = message.content[i];
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
         const diff = editDiffContent(block.name, block.input);
@@ -1337,14 +1360,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const results = content.filter((block) => block.type === 'tool_result');
     const envelope = results.length === 1 ? toolUseResultEnvelope(msg.tool_use_result) : undefined;
     const patched = results.length === 1 ? editResultDiffContent(msg.tool_use_result) : undefined;
-    for (const block of content) {
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
       if (block.type !== 'tool_result') continue;
       // Replace (not append) so the patch-bearing diff supersedes the announce-time fragment
       // instead of stacking a second card, and do it before the settle below: a completed tool is
       // terminal, so any content emitted after it is silently dropped.
       if (patched) this.emitTool({ toolCallId: block.tool_use_id, content: patched });
-      for (const result of toolResultContent(block.content)) {
-        this.appendToolContent(block.tool_use_id, result);
+      const results = toolResultContent(block.content);
+      for (let i = 0, len = results.length; i < len; i++) {
+        this.appendToolContent(block.tool_use_id, results[i]);
       }
       this.emitTool({
         toolCallId: block.tool_use_id,
@@ -1490,7 +1515,9 @@ export function toolUseResultEnvelope(value: unknown): Record<string, unknown> |
   if (!isRecord(value)) return undefined;
   const envelope: Record<string, unknown> = {};
   let fields = 0;
-  for (const [key, field] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, field] = entries[i];
     const scalar =
       typeof field === 'string'
         ? field.length > 0 && field.length <= TOOL_USE_RESULT_SCALAR_MAX
@@ -1840,7 +1867,8 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
-      for (const block of blocks) {
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
         if (!isThinkingBlock(block)) continue;
         const thought = thoughtHistoryEvent(
           historyId,
@@ -1853,7 +1881,8 @@ export function createClaudeHistoryEventMapper(
       }
       const text = textHistoryEvent(historyId, 'assistant', messageId, message.message, ts, parent);
       if (text) events.push(text);
-      for (const block of blocks) {
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
         if (!isToolUseBlock(block)) continue;
         events.push(
           toolEvent({
@@ -1871,7 +1900,8 @@ export function createClaudeHistoryEventMapper(
     }
 
     const results = blocks.filter((block) => isToolResultBlock(block));
-    for (const block of results) {
+    for (let i = 0, len = results.length; i < len; i++) {
+      const block = results[i];
       const existing = announced.get(block.tool_use_id);
       events.push(
         toolEvent({

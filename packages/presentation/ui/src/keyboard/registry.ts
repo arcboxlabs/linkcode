@@ -65,7 +65,8 @@ function matchesShortcut(
   shortcuts: readonly KeyboardShortcut[],
   platform: KeyboardPlatform,
 ) {
-  for (const shortcut of shortcuts) {
+  for (let i = 0, len = shortcuts.length; i < len; i++) {
+    const shortcut = shortcuts[i];
     if (matchesChord(event, chordForPlatform(shortcut, platform), platform)) return true;
   }
   return false;
@@ -173,7 +174,8 @@ export function createKeyboardShortcutRegistry(warnOnMultipleMatches = IS_DEVELO
   const refreshLabels = (): void => {
     const nextLabels = new Map<string, string>();
     if (platform !== undefined) {
-      for (const registration of registrations) {
+      for (let i = 0, len = registrations.length; i < len; i++) {
+        const registration = registrations[i];
         nextLabels.set(
           registration.actionId,
           formatKeyboardShortcut(registration.shortcut, platform),
@@ -247,7 +249,9 @@ export function createKeyboardShortcutRegistry(warnOnMultipleMatches = IS_DEVELO
 
     let claimed = false;
     let matches: string[] | undefined;
-    for (const registration of registrations) {
+    for (let i = 0, len = registrations.length; i < len; i++) {
+      if (i >= registrations.length) break;
+      const registration = registrations[i];
       if (!isOwnerMatch(registration, event, currentPlatform)) continue;
       if (warnOnMultipleMatches) (matches ??= []).push(registration.actionId);
       if (claimed) continue;

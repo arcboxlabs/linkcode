@@ -36,7 +36,8 @@ export function collectGarbage(
     }
     // Version dirs publish via atomic rename, so presence = a complete install.
     const wantedInstalled = entries.includes(version);
-    for (const entry of entries) {
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const entry = entries[i];
       if (entry === version) continue;
       if (!wantedInstalled && !entry.startsWith('.tmp-')) continue;
       const target = join(dir, entry);

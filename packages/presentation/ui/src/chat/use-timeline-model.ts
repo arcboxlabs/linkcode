@@ -75,13 +75,16 @@ function advanceTimeline(
 
   const snapshotted = new Set<string>();
   const questions = new Map<string, QuestionConversationItem>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind === 'tool') snapshotted.add(item.toolCall.toolCallId);
     if (item.kind === 'question') questions.set(item.toolCall.toolCallId, item);
   }
   const awaiting = new Set<string>();
   const answering = new Set<string>();
-  for (const item of selectPendingPromptItems(conversation)) {
+  const pendingItems = selectPendingPromptItems(conversation);
+  for (let i = 0, len = pendingItems.length; i < len; i++) {
+    const item = pendingItems[i];
     if (item.kind === 'approval') awaiting.add(item.toolCall.toolCallId);
     if (item.kind === 'question') answering.add(item.toolCall.toolCallId);
   }

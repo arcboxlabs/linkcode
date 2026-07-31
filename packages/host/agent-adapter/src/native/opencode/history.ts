@@ -108,7 +108,8 @@ export function mapOpencodeHistoryEvents(
   messages: OpencodeMessageWithParts[],
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
-  for (const { info, parts } of messages) {
+  for (let i = 0, len = messages.length; i < len; i++) {
+    const { info, parts } = messages[i];
     const ts = info.time.created;
     if (info.role === 'user') {
       const text = parts
@@ -123,7 +124,8 @@ export function mapOpencodeHistoryEvents(
       if (event) events.push(event);
       continue;
     }
-    for (const part of parts) {
+    for (let partIndex = 0, partCount = parts.length; partIndex < partCount; partIndex++) {
+      const part = parts[partIndex];
       switch (part.type) {
         case 'text': {
           const event = textHistoryEvent(historyId, 'assistant', part.id, part.text, ts);

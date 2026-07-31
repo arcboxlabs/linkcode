@@ -35,7 +35,9 @@ export function readWorkspaceScripts(cwd: string): ScriptDeclaration[] {
   if (scripts === null || typeof scripts !== 'object') return [];
 
   const declarations: ScriptDeclaration[] = [];
-  for (const [name, raw] of Object.entries(scripts as Record<string, unknown>)) {
+  const entries = Object.entries(scripts as Record<string, unknown>);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [name, raw] = entries[i];
     const entry = ScriptEntrySchema.safeParse(raw);
     if (!entry.success || name.trim().length === 0) continue;
     const type = entry.data.type ?? 'task';

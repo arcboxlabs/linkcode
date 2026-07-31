@@ -85,7 +85,8 @@ export function bindElectronSystemIpc({
   const dispose = (reason?: unknown): void => {
     if (disposed) return;
     disposed = true;
-    for (const removeHandler of Object.values(removeHandlers)) removeHandler();
+    const handlers = Object.values(removeHandlers);
+    for (let i = 0, len = handlers.length; i < len; i++) handlers[i]();
     ipcMain.removeListener(SETTINGS_SNAPSHOT_CHANNEL, handleSnapshot);
     ipcMain.removeListener(DAEMON_URL_SNAPSHOT_CHANNEL, handleDaemonUrlSnapshot);
     window.off('maximize', emitMaximizedState);

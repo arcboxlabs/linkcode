@@ -530,7 +530,8 @@ export function Composer({
       return;
     }
     let total = attachmentPayloadBytes(attachments);
-    for (const file of files) {
+    for (let i = 0, len = files.length; i < len; i++) {
+      const file = files[i];
       const validationError = isSupportedImageFile(file)
         ? file.size > MAX_ATTACHMENT_BYTES
           ? t('attachmentTooLarge')
@@ -801,7 +802,8 @@ export function Composer({
   // Workflow mode and approval policy are orthogonal axes (see session-modes.ts, approval-policy.ts).
   // The active mode is server-reflected; a rejected switch (error banner) leaves the previous active.
   let matchedMode: SessionMode | null = null;
-  for (const mode of workflowModes) {
+  for (let i = 0, len = workflowModes.length; i < len; i++) {
+    const mode = workflowModes[i];
     if (mode.modeId === currentModeId) matchedMode = mode;
   }
   const activeMode = matchedMode;

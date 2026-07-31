@@ -242,13 +242,6 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/@google/genai',
   },
   {
-    name: 'ws',
-    version: '8.21.0',
-    integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
-    path: 'node_modules/@google/genai/node_modules/ws',
-  },
-  {
     name: '@hono/node-server',
     version: '2.0.12',
     integrity:
@@ -357,13 +350,6 @@ const packages: NpmClosure['packages'] = [
     integrity:
       'sha512-W8pX7zHxjJvMIpw8JMxeJEleapXX0Q9NPszdNzqkM3MIEoIGPObdodujj+WHteXEvGfaP/AMwlNyRfEzSY6dQQ==',
     path: 'node_modules/@mistralai/mistralai',
-  },
-  {
-    name: 'ws',
-    version: '8.21.0',
-    integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
-    path: 'node_modules/@mistralai/mistralai/node_modules/ws',
   },
   {
     name: '@modelcontextprotocol/sdk',
@@ -1622,7 +1608,7 @@ const packages: NpmClosure['packages'] = [
 
 export const PI_CLOSURE: NpmClosure = {
   version: '0.80.6',
-  revision: 'b77bf10e9a04fe3f',
+  revision: '606dbeda05e086fb',
   entry: 'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
   packages,
 };

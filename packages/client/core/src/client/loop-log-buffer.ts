@@ -26,8 +26,12 @@ export class LoopLogBuffer {
       seen.add(entry.seq);
       merged.push(entry);
     };
-    for (const entry of logs) add(entry);
-    for (const entry of this.entries.get(loopId) ?? []) add(entry);
+    for (let i = 0, len = logs.length; i < len; i++) {
+      const entry = logs[i];
+      add(entry);
+    }
+    const existing = this.entries.get(loopId) ?? [];
+    for (let i = 0, len = existing.length; i < len; i++) add(existing[i]);
     merged.sort((a, b) => a.seq - b.seq);
     this.commit(loopId, merged, seen);
   }
@@ -79,7 +83,10 @@ export class LoopLogBuffer {
   private commit(loopId: LoopId, list: LoopLogEntry[], seen: Set<number>): void {
     if (list.length > MAX_LOG_ENTRIES) {
       const dropped = list.splice(0, list.length - MAX_LOG_ENTRIES);
-      for (const entry of dropped) seen.delete(entry.seq);
+      for (let i = 0, len = dropped.length; i < len; i++) {
+        const entry = dropped[i];
+        seen.delete(entry.seq);
+      }
     }
     this.entries.set(loopId, list);
     this.seen.set(loopId, seen);

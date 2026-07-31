@@ -260,7 +260,8 @@ function sessionById(
   sessionId: SessionId | null,
 ): SessionInfo | null {
   if (!sessionId) return null;
-  for (const session of sessions) {
+  for (let i = 0, len = sessions.length; i < len; i++) {
+    const session = sessions[i];
     if (session.sessionId === sessionId) return session;
   }
   return null;

@@ -10,7 +10,8 @@ export function configuredDefaultModels(
   accounts: Accounts | undefined,
 ): Partial<Record<AgentKind, string>> {
   const defaults: Partial<Record<AgentKind, string>> = {};
-  for (const kind of AgentKindSchema.options) {
+  for (let i = 0, len = AgentKindSchema.options.length; i < len; i++) {
+    const kind = AgentKindSchema.options[i];
     const provider = providers?.[kind];
     const account = accounts?.find((candidate) => candidate.id === provider?.activeAccountId);
     const model = account?.model ?? provider?.defaultModel;

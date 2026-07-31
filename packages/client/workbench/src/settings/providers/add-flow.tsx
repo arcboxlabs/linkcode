@@ -26,7 +26,10 @@ const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 const SERVICES_BY_GROUP = new Map<ServiceGroup, ServiceDescriptor[]>(
   GROUPS.map((group) => [group, []]),
 );
-for (const service of SERVICE_CATALOG) SERVICES_BY_GROUP.get(service.group)?.push(service);
+for (let i = 0, len = SERVICE_CATALOG.length; i < len; i++) {
+  const service = SERVICE_CATALOG[i];
+  SERVICES_BY_GROUP.get(service.group)?.push(service);
+}
 
 /** Account constructors live at module scope: `Date.now` may not run in a component body. */
 function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdAt'> {
@@ -50,7 +53,9 @@ function catalogAccount(
   draft: CatalogDraft,
 ): Account {
   const trimmed: Record<string, string> = {};
-  for (const key of templatePlaceholders(variant.baseUrl)) {
+  const placeholders = templatePlaceholders(variant.baseUrl);
+  for (let i = 0, len = placeholders.length; i < len; i++) {
+    const key = placeholders[i];
     const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
     trimmed[key] = value.trim();
   }
@@ -320,7 +325,9 @@ type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
 function catalogDraftSchema(variant: ServiceVariant): typeof CatalogDraftSchema {
   return CatalogDraftSchema.superRefine((draft, ctx) => {
-    for (const key of templatePlaceholders(variant.baseUrl)) {
+    const placeholders = templatePlaceholders(variant.baseUrl);
+    for (let i = 0, len = placeholders.length; i < len; i++) {
+      const key = placeholders[i];
       const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
       if (!value.trim()) {
         ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });

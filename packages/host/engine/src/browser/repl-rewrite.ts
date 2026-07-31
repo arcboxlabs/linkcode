@@ -28,7 +28,8 @@ export function rewriteForPersistentRepl(code: string): string {
   const hoisted: string[] = [];
   const edits: Array<{ start: number; end: number; text: string }> = [];
 
-  for (const node of program.body) {
+  for (let i = 0, len = program.body.length; i < len; i++) {
+    const node = program.body[i];
     switch (node.type) {
       case 'VariableDeclaration': {
         if (node.kind === 'using' || node.kind === 'await using') break;
@@ -58,7 +59,9 @@ export function rewriteForPersistentRepl(code: string): string {
   }
 
   let rewritten = code;
-  for (const edit of edits.reverse()) {
+  const reversedEdits = edits.reverse();
+  for (let i = 0, len = reversedEdits.length; i < len; i++) {
+    const edit = reversedEdits[i];
     rewritten = rewritten.slice(0, edit.start) + edit.text + rewritten.slice(edit.end);
   }
   const prelude = hoisted.length > 0 ? `var ${hoisted.join(', ')};\n` : '';
@@ -75,12 +78,14 @@ function collectPatternNames(pattern: Pattern, names: string[]): void {
       names.push(pattern.name);
       break;
     case 'ObjectPattern':
-      for (const property of pattern.properties) {
+      for (let i = 0, len = pattern.properties.length; i < len; i++) {
+        const property = pattern.properties[i];
         collectPatternNames(property.type === 'RestElement' ? property : property.value, names);
       }
       break;
     case 'ArrayPattern':
-      for (const element of pattern.elements) {
+      for (let i = 0, len = pattern.elements.length; i < len; i++) {
+        const element = pattern.elements[i];
         if (element) collectPatternNames(element, names);
       }
       break;

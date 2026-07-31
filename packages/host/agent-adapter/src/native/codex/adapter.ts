@@ -85,9 +85,15 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
-  for (const entry of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const entry = response.data[i];
     if (!isRecord(entry) || !Array.isArray(entry.skills)) continue;
-    for (const skill of entry.skills) {
+    for (
+      let skillIndex = 0, skillCount = entry.skills.length;
+      skillIndex < skillCount;
+      skillIndex++
+    ) {
+      const skill = entry.skills[skillIndex];
       if (!isRecord(skill) || skill.enabled !== true) continue;
       const name = stringField(skill, 'name');
       const path = stringField(skill, 'path');
@@ -118,7 +124,8 @@ interface CodexModelCatalog {
 function codexModelCatalog(response: unknown): CodexModelCatalog {
   const catalog: CodexModelCatalog = { defaultModel: undefined, models: [] };
   if (!isRecord(response) || !Array.isArray(response.data)) return catalog;
-  for (const candidate of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const candidate = response.data[i];
     if (!isRecord(candidate)) continue;
     const model = stringField(candidate, 'model') ?? stringField(candidate, 'id');
     if (!model) continue;
@@ -126,7 +133,8 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
     let effortLevels: EffortLevel[] | undefined;
     if (Array.isArray(advertised)) {
       const supported = new Set<EffortLevel>();
-      for (const option of advertised) {
+      for (let i = 0, len = advertised.length; i < len; i++) {
+        const option = advertised[i];
         if (!isRecord(option)) continue;
         const effort = EffortLevelSchema.safeParse(stringField(option, 'reasoningEffort'));
         if (effort.success && effort.data !== 'ultracode') supported.add(effort.data);
@@ -237,7 +245,8 @@ export function codexMcpConfigOverrides(
   const out: Record<string, unknown> = {};
   if (!servers?.length) return out;
   let hasHttp = false;
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     const prefix = `mcp_servers.${server.name}`;
     if (server.type === 'http') {
       if (server.headers && !isObjectEmpty(server.headers)) {
@@ -467,7 +476,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     // live-verified against codex app-server 0.144.1; nothing documents it (codex has no .d.ts) —
     // verify again if the app-server pin moves.
     const input: CodexTurnInput[] = [];
-    for (const block of content) {
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
       if (block.type === 'text') {
         const previous = input.at(-1);
         if (previous?.type === 'text') previous.text += `\n${block.text}`;
@@ -857,7 +867,10 @@ export class CodexAdapter extends BaseAgentAdapter {
         (skill) => skill.name !== COMPACT_COMMAND.name,
       );
       this.skillCommands.clear();
-      for (const skill of skills) this.skillCommands.set(skill.name, skill);
+      for (let i = 0, len = skills.length; i < len; i++) {
+        const skill = skills[i];
+        this.skillCommands.set(skill.name, skill);
+      }
       this.emitCommands([COMPACT_COMMAND, ...skills.map(({ path: _path, ...command }) => command)]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
@@ -1151,7 +1164,10 @@ export class CodexAdapter extends BaseAgentAdapter {
           this.emitTool(toolCall);
           break;
         }
-        for (const content of toolCall.content) this.appendToolContent(id, content);
+        for (let i = 0, len = toolCall.content.length; i < len; i++) {
+          const content = toolCall.content[i];
+          this.appendToolContent(id, content);
+        }
         this.emitTool({ ...toolCall, content: undefined });
         break;
       }
@@ -1159,7 +1175,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const changes = Array.isArray(item.changes) ? item.changes.filter(isRecord) : [];
         const locations: Array<{ path: string }> = [];
         const content: ToolCallContent[] = [];
-        for (const change of changes) {
+        for (let i = 0, len = changes.length; i < len; i++) {
+          const change = changes[i];
           const path = stringField(change, 'path');
           if (!path) continue;
           // An update kind can carry a rename: `kind: {type:'update', move_path}` with `path`

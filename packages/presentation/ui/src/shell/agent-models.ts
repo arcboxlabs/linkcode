@@ -24,7 +24,9 @@ export function groupModelsByProvider(
 ): ModelProviderGroups | null {
   const ungrouped: ModelOption[] = [];
   const byProvider = new Map<string, ModelOption[]>();
-  for (const option of options ?? []) {
+  const modelOptions = options ?? [];
+  for (let i = 0, len = modelOptions.length; i < len; i++) {
+    const option = modelOptions[i];
     if (option.description === undefined) {
       ungrouped.push(option);
       continue;

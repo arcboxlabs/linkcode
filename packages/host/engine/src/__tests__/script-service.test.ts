@@ -30,7 +30,10 @@ function makeWorkspace(config?: unknown): string {
 }
 
 afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  for (let i = 0, len = roots.length; i < len; i++) {
+    const root = roots[i];
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 class FakePtyProcess implements PtyProcess {
@@ -58,7 +61,10 @@ class FakePtyProcess implements PtyProcess {
     this.exit(0);
   }
   exit(code: number | null): void {
-    for (const cb of this.exitCbs) cb(code);
+    for (let i = 0, len = this.exitCbs.length; i < len; i++) {
+      const cb = this.exitCbs[i];
+      cb(code);
+    }
   }
 }
 

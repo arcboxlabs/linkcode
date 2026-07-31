@@ -76,7 +76,9 @@ export function diffLines(oldStr: string, newStr: string): DiffRow[] {
 export function patchLines(patch: string): DiffRow[] {
   const rows: DiffRow[] = [];
   let inHunk = false;
-  for (const line of patch.split('\n')) {
+  const lines = patch.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.startsWith('@@')) {
       inHunk = true;
       continue;
@@ -135,7 +137,8 @@ export function diffContentStats(content: DiffToolCallContent): DiffStats {
 export function toolCallDiffStats(toolCall: Pick<ToolCall, 'content'>): DiffStats {
   let additions = 0;
   let deletions = 0;
-  for (const content of toolCall.content) {
+  for (let i = 0, len = toolCall.content.length; i < len; i++) {
+    const content = toolCall.content[i];
     if (content.type !== 'diff') continue;
     const stats = diffContentStats(content);
     additions += stats.additions;

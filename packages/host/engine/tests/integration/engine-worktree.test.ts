@@ -56,7 +56,10 @@ class RejectingStartAdapter extends FakeAdapter {
 }
 
 afterEach(() => {
-  for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const roots = tempRoots.splice(0);
+  for (let i = 0, len = roots.length; i < len; i++) {
+    rmSync(roots[i], { recursive: true, force: true });
+  }
 });
 
 describe('engine managed worktree sessions', () => {

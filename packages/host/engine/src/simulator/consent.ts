@@ -57,7 +57,10 @@ export class SimulatorConsentService {
   async init(): Promise<void> {
     const state = await this.store.load();
     this.agentToolsEnabled = state.agentToolsEnabled;
-    for (const entry of state.entries) this.decisions.set(entry.udid, entry.decision);
+    for (let i = 0, len = state.entries.length; i < len; i++) {
+      const entry = state.entries[i];
+      this.decisions.set(entry.udid, entry.decision);
+    }
   }
 
   /**

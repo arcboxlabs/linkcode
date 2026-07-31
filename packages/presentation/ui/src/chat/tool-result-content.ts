@@ -15,7 +15,8 @@ export function stringValue(
   keys: readonly string[],
 ): string | undefined {
   if (!record) return undefined;
-  for (const key of keys) {
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const key = keys[i];
     const value = record[key];
     if (typeof value === 'string' && value.length > 0) return value;
   }

@@ -37,7 +37,8 @@ const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as co
 export function locationsFromToolInput(input: unknown): ToolCallLocation[] | undefined {
   if (input === null || typeof input !== 'object') return undefined;
   const record = input as Record<string, unknown>;
-  for (const key of PATH_INPUT_KEYS) {
+  for (let i = 0, len = PATH_INPUT_KEYS.length; i < len; i++) {
+    const key = PATH_INPUT_KEYS[i];
     const value = record[key];
     if (typeof value === 'string' && value.length > 0) return [{ path: value }];
   }

@@ -145,9 +145,15 @@ export function useSessions(): SessionsApi {
     const list = await client.listSessions();
     setSessions((local) => {
       const byId = new Map<SessionId, SessionInfo>();
-      for (const s of list) byId.set(s.sessionId, s);
+      for (let i = 0, len = list.length; i < len; i++) {
+        const s = list[i];
+        byId.set(s.sessionId, s);
+      }
       // Keep optimistic locals the snapshot doesn't know about yet.
-      for (const s of local) if (!byId.has(s.sessionId)) byId.set(s.sessionId, s);
+      for (let i = 0, len = local.length; i < len; i++) {
+        const s = local[i];
+        if (!byId.has(s.sessionId)) byId.set(s.sessionId, s);
+      }
       return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
     });
     setLoading(false);

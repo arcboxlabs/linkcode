@@ -40,7 +40,9 @@ function sanitizeValue(value: unknown, seen: WeakMap<object, unknown>): unknown 
     seen.set(value, sanitized);
     const cause = Reflect.get(value, 'cause');
     if (cause !== undefined) sanitized.cause = sanitizeValue(cause, seen);
-    for (const [key, entry] of Object.entries(value)) {
+    const entries = Object.entries(value);
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const [key, entry] = entries[i];
       sanitized[key] = SENSITIVE_KEY.test(key) ? REDACTED : sanitizeValue(entry, seen);
     }
     return sanitized;
@@ -49,7 +51,10 @@ function sanitizeValue(value: unknown, seen: WeakMap<object, unknown>): unknown 
   if (Array.isArray(value)) {
     const sanitized: unknown[] = [];
     seen.set(value, sanitized);
-    for (const entry of value) sanitized.push(sanitizeValue(entry, seen));
+    for (let i = 0, len = value.length; i < len; i++) {
+      const entry = value[i];
+      sanitized.push(sanitizeValue(entry, seen));
+    }
     return sanitized;
   }
 
@@ -59,7 +64,9 @@ function sanitizeValue(value: unknown, seen: WeakMap<object, unknown>): unknown 
 
   const sanitized: Record<string, unknown> = {};
   seen.set(value, sanitized);
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     sanitized[key] = SENSITIVE_KEY.test(key) ? REDACTED : sanitizeValue(entry, seen);
   }
   return sanitized;

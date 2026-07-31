@@ -59,11 +59,13 @@ describe('smooth text controller', () => {
     expect(state.visible).toBe(source);
     expect(seen.every((visible) => source.startsWith(visible))).toBe(true);
 
-    for (const [initial, nextSource, firstStep] of [
+    const cases = [
       ['👨', '👨\u{200D}👩x', '👨\u{200D}👩'],
       ['🇺', '🇺🇸x', '🇺🇸'],
       ['e', 'éx', 'é'],
-    ]) {
+    ];
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [initial, nextSource, firstStep] = cases[i];
       const joined = reconcileSmoothText(createSmoothTextState(initial, false), nextSource, false);
       expect(advanceSmoothText(joined).visible).toBe(firstStep);
     }

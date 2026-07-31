@@ -187,7 +187,8 @@ function verifyNativeBindings(platform: string, resourceDir: string, problems: s
   const bindings: Array<[label: string, path: string]> = [['better-sqlite3', NATIVE_BINDING]];
   if (keyring !== null) bindings.push(['@napi-rs/keyring', keyring]);
 
-  for (const [label, relative] of bindings) {
+  for (let i = 0, len = bindings.length; i < len; i++) {
+    const [label, relative] = bindings[i];
     const binding = join(RELEASE_DIR, resourceDir, 'app.asar.unpacked', relative);
     if (!existsSync(binding)) {
       problems.push(`${resourceDir}: missing native binding ${relative} (${label})`);
@@ -208,7 +209,8 @@ function verifyNativeBindings(platform: string, resourceDir: string, problems: s
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
   let missing = false;
-  for (const inner of ASAR_HOST_RUNTIME) {
+  for (let i = 0, len = ASAR_HOST_RUNTIME.length; i < len; i++) {
+    const inner = ASAR_HOST_RUNTIME[i];
     try {
       // asar's lookup splits on the platform separator — normalize or Windows never matches.
       statFile(asarPath, inner.replaceAll('/', sep));
@@ -240,7 +242,9 @@ function verifyNoAgentBinaries(resourceDir: string, asarPath: string, problems: 
     );
   }
   const shipped: string[] = [];
-  for (const raw of listPackage(asarPath, { isPack: false })) {
+  const packageEntries = listPackage(asarPath, { isPack: false });
+  for (let i = 0, len = packageEntries.length; i < len; i++) {
+    const raw = packageEntries[i];
     const normalized = raw.replaceAll('\\', '/');
     const entry = normalized[0] === '/' ? normalized.slice(1) : normalized;
     if (EXCLUDED_MODULE_PREFIXES.some((prefix) => entry.startsWith(prefix))) shipped.push(entry);
@@ -250,7 +254,8 @@ function verifyNoAgentBinaries(resourceDir: string, asarPath: string, problems: 
       `${resourceDir}/app.asar: agent platform packages shipped: ${shipped[0]} (+${shipped.length - 1} more)`,
     );
   }
-  for (const prefix of EXCLUDED_MODULE_PREFIXES) {
+  for (let i = 0, len = EXCLUDED_MODULE_PREFIXES.length; i < len; i++) {
+    const prefix = EXCLUDED_MODULE_PREFIXES[i];
     const dir = join(
       RELEASE_DIR,
       resourceDir,
@@ -260,7 +265,9 @@ function verifyNoAgentBinaries(resourceDir: string, asarPath: string, problems: 
     if (!existsSync(dir)) continue;
 
     const base = prefix.split('/').at(-1)!;
-    for (const entry of readdirSync(dir)) {
+    const entries = readdirSync(dir);
+    for (let entryIndex = 0, entryCount = entries.length; entryIndex < entryCount; entryIndex++) {
+      const entry = entries[entryIndex];
       if (entry.startsWith(base)) {
         problems.push(`${resourceDir}/app.asar.unpacked: agent platform package shipped: ${entry}`);
       }
@@ -277,7 +284,9 @@ interface FeedEntry {
 function parseFeedEntries(text: string): FeedEntry[] {
   const entries: FeedEntry[] = [];
   let current: FeedEntry | null = null;
-  for (const line of text.split('\n')) {
+  const lines = text.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     const url = FEED_URL_LINE.exec(line);
     const sha = FEED_SHA_LINE.exec(line);
     if (url) entries.push((current = { url: url[1].trim(), sha512: '' }));
@@ -313,7 +322,8 @@ async function verifyFeed(feed: string, archTokens: string[], problems: string[]
   if (!text.includes(`version: ${version}`)) problems.push(`${feed}: version is not ${version}`);
   const entries = parseFeedEntries(text);
   if (entries.length === 0) problems.push(`${feed}: no file entries parsed`);
-  for (const token of archTokens) {
+  for (let i = 0, len = archTokens.length; i < len; i++) {
+    const token = archTokens[i];
     if (!entries.some((entry) => entry.url.includes(token))) {
       problems.push(`${feed}: no entry for arch "${token}"`);
     }
@@ -344,7 +354,8 @@ async function main(): Promise<number> {
   }
 
   const problems: string[] = [];
-  for (const name of expected.artifacts) {
+  for (let i = 0, len = expected.artifacts.length; i < len; i++) {
+    const name = expected.artifacts[i];
     let size: number;
     try {
       size = statSync(join(RELEASE_DIR, name)).size;
@@ -363,13 +374,17 @@ async function main(): Promise<number> {
       verifyFeed(feed, archTokens, problems),
     ),
   );
-  for (const resourceDir of expected.resourceDirs) {
+  for (let i = 0, len = expected.resourceDirs.length; i < len; i++) {
+    const resourceDir = expected.resourceDirs[i];
     verifyHostRuntime(resourceDir, problems);
     verifyNativeBindings(platform, resourceDir, problems);
   }
 
   if (problems.length > 0) {
-    for (const problem of problems) console.error(`✗ ${problem}`);
+    for (let i = 0, len = problems.length; i < len; i++) {
+      const problem = problems[i];
+      console.error(`✗ ${problem}`);
+    }
     return 1;
   }
   console.log(

@@ -91,7 +91,8 @@ function logPageErrors(page: Page): void {
 }
 
 function watchAppErrors(app: ElectronApplication): void {
-  for (const page of app.windows()) logPageErrors(page);
+  const pages = app.windows();
+  for (let i = 0, len = pages.length; i < len; i++) logPageErrors(pages[i]);
   app.on('window', logPageErrors);
 }
 

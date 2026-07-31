@@ -47,7 +47,9 @@ const resolveBaseRef = Effect.fn('Git.resolveBaseRef')(function* (cwd: string) {
     const base = symref.stdout.trim().replace(REMOTES_REF_PREFIX, '');
     if (base.length > 0) return base;
   }
-  for (const candidate of ['origin/main', 'origin/master']) {
+  const candidates = ['origin/main', 'origin/master'];
+  for (let i = 0, len = candidates.length; i < len; i++) {
+    const candidate = candidates[i];
     const verify = yield* git(cwd, 'rev-parse', '--verify', '--quiet', `refs/remotes/${candidate}`);
     if (verify.exitCode === 0) return candidate;
   }
@@ -115,7 +117,9 @@ const readUntrackedDiff = Effect.fn('Git.readUntrackedDiff')(function* (cwd: str
   if (status.exitCode !== 0) return { patch: '', truncated: false };
 
   const paths: string[] = [];
-  for (const entry of status.stdout.split('\0')) {
+  const statusEntries = status.stdout.split('\0');
+  for (let i = 0, len = statusEntries.length; i < len; i++) {
+    const entry = statusEntries[i];
     if (entry.startsWith('?? ')) paths.push(entry.slice(3));
   }
   const truncated = paths.length > MAX_UNTRACKED_FILES;
@@ -164,7 +168,8 @@ function capToFileBoundary(patch: string, capBytes: number): { patch: string; tr
 
   const fileEnds = [...findFileBoundaries(patch).slice(1), patch.length];
   let cut = 0;
-  for (const end of fileEnds) {
+  for (let i = 0, len = fileEnds.length; i < len; i++) {
+    const end = fileEnds[i];
     if (Buffer.byteLength(patch.slice(0, end), 'utf8') > capBytes) break;
     cut = end;
   }
@@ -176,7 +181,9 @@ function computeStat(patch: string): GitDiffStat {
   let files = 0;
   let additions = 0;
   let deletions = 0;
-  for (const line of patch.split('\n')) {
+  const lines = patch.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.startsWith('diff --git ')) files += 1;
     else if (line.startsWith('+++') || line.startsWith('---')) continue;
     else if (line[0] === '+') additions += 1;

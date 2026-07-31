@@ -120,7 +120,9 @@ async function main(): Promise<void> {
         .map((row) => (row as { name: string }).name),
     );
     sqlite.close();
-    for (const table of ['__drizzle_migrations', 'sessions', 'workspaces', 'schedules', 'loops']) {
+    const expectedTables = ['__drizzle_migrations', 'sessions', 'workspaces', 'schedules', 'loops'];
+    for (let i = 0, len = expectedTables.length; i < len; i++) {
+      const table = expectedTables[i];
       assert(tables.has(table), `missing migrated table ${table}`);
     }
 

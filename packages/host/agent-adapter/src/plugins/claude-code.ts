@@ -131,14 +131,16 @@ async function normalizeClaudePlugins(
     marketplaces.map((marketplace) => [marketplace.name, marketplace]),
   );
   const records = new Map<string, ClaudePluginRecord>();
-  for (const available of catalog.available) {
+  for (let i = 0, len = catalog.available.length; i < len; i++) {
+    const available = catalog.available[i];
     records.set(available.pluginId, {
       id: available.pluginId,
       available,
       installations: [],
     });
   }
-  for (const installed of catalog.installed) {
+  for (let i = 0, len = catalog.installed.length; i < len; i++) {
+    const installed = catalog.installed[i];
     const record = records.get(installed.id) ?? { id: installed.id, installations: [] };
     record.installations.push(installed);
     records.set(installed.id, record);

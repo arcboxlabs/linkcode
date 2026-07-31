@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const electronArgs: string[] = [];
   let mode = 'development';
-  for (let i = 0; i < args.length; i++) {
+  for (let i = 0, len = args.length; i < len; i++) {
     const arg = args[i];
     if (arg === '--') continue;
     if (arg === '--mode') {
@@ -30,7 +30,9 @@ async function main(): Promise<void> {
   process.env.NODE_ENV ??= 'development';
 
   const desktopDir = resolve(import.meta.dirname, '..');
-  for (const target of ['main', 'preload']) {
+  const targets = ['main', 'preload'];
+  for (let i = 0, len = targets.length; i < len; i++) {
+    const target = targets[i];
     await build({ configFile: resolve(desktopDir, `vite.${target}.config.ts`), mode });
   }
 

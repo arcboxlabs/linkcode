@@ -67,7 +67,9 @@ async function runLinkCodePty(
   const pending = new Map<string, { resolve(ms: number): void; reject(error: Error): void }>();
 
   child.stdout.on('data', (chunk: Buffer) => {
-    for (const frame of decoder.feed(chunk)) {
+    const frames = decoder.feed(chunk);
+    for (let i = 0, len = frames.length; i < len; i++) {
+      const frame = frames[i];
       switch (frame.type) {
         case OPENED:
         case OUTPUT:

@@ -80,7 +80,9 @@ function materializeStaging(): void {
   );
   // deploy's file selection skips .gitignore'd paths inconsistently across pnpm versions; sync the
   // build outputs in explicitly so `files: out/**` and `extraResources: sidecar/${arch}` resolve.
-  for (const dir of ['out', 'sidecar']) {
+  const buildOutputDirs = ['out', 'sidecar'];
+  for (let i = 0, len = buildOutputDirs.length; i < len; i++) {
+    const dir = buildOutputDirs[i];
     const dest = join(stagingDir, dir);
     rmSync(dest, { recursive: true, force: true });
     cpSync(join(desktopDir, dir), dest, { recursive: true });
@@ -103,10 +105,12 @@ const MARKDOWN_RE = /\.(?:md|markdown)$/i;
 function pruneStaging(): void {
   let files = 0;
   let bytes = 0;
-  for (const entry of readdirSync(join(stagingDir, 'node_modules'), {
+  const entries = readdirSync(join(stagingDir, 'node_modules'), {
     recursive: true,
     withFileTypes: true,
-  })) {
+  });
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (!entry.isFile()) continue;
     const prunable =
       entry.name.endsWith('.map') ||
@@ -134,7 +138,8 @@ function stagedArches(): string[] {
   );
   if (staged.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
   const arches = requestedArches.length === 0 ? staged : requestedArches;
-  for (const arch of arches) {
+  for (let i = 0, len = arches.length; i < len; i++) {
+    const arch = arches[i];
     if (!staged.includes(arch)) throw new Error(`sidecar/${arch} is not staged`);
   }
   return arches;

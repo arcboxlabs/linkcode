@@ -51,7 +51,10 @@ export function useSeededConversation(
             cursor,
             forceRefresh: page === 0,
           });
-          for (const entry of result.events) events.push({ event: entry.event, ts: entry.ts });
+          for (let i = 0, len = result.events.length; i < len; i++) {
+            const entry = result.events[i];
+            events.push({ event: entry.event, ts: entry.ts });
+          }
           cursor = result.cursor;
           if (cursor === undefined) break;
         }

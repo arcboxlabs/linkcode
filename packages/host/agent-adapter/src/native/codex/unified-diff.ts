@@ -27,7 +27,8 @@ export function diffContentFromUnified(
   const newLines: string[] = [];
   let inHunk = false;
 
-  for (const line of lines) {
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (HUNK_HEADER_RE.test(line)) {
       inHunk = true;
       continue;

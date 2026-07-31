@@ -79,8 +79,15 @@ function collectNodes(lockfile: Lockfile, rootKey: string): Map<string, ClosureN
     if (!integrity) throw new Error(`no integrity recorded for ${name}@${version}`);
     const snapshot = snapshots[key] ?? {};
     const deps = new Map<string, string>();
-    for (const source of [snapshot.dependencies, snapshot.optionalDependencies]) {
-      for (const [depName, depVersion] of Object.entries(source ?? {})) {
+    const dependencyGroups = [snapshot.dependencies, snapshot.optionalDependencies];
+    for (
+      let groupIndex = 0, groupCount = dependencyGroups.length;
+      groupIndex < groupCount;
+      groupIndex++
+    ) {
+      const entries = Object.entries(dependencyGroups[groupIndex] ?? {});
+      for (let entryIndex = 0, entryCount = entries.length; entryIndex < entryCount; entryIndex++) {
+        const [depName, depVersion] = entries[entryIndex];
         const childKey = `${depName}@${depVersion}`;
         deps.set(depName, childKey);
         queue.push(childKey);

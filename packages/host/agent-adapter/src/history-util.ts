@@ -41,7 +41,8 @@ export function cursorFromTotal(
 function eventAttachmentLength(event: AgentHistoryEvent): number {
   if (event.event.type !== 'user-message') return 0;
   let total = 0;
-  for (const block of event.event.content) {
+  for (let i = 0, len = event.event.content.length; i < len; i++) {
+    const block = event.event.content[i];
     if (block.type === 'image' || block.type === 'audio') total += block.data.length;
     else if (block.type === 'resource' && 'blob' in block.resource) {
       total += block.resource.blob.length;
@@ -64,13 +65,16 @@ export function sliceHistoryEventPage(
 ): { events: AgentHistoryEvent[]; cursor: string | undefined } {
   const page: AgentHistoryEvent[] = [];
   let payloadLength = 0;
-  for (let index = offset; index < events.length && page.length < limit; index += 1) {
+  const eventCount = events.length;
+  let index = offset;
+  while (index < eventCount && page.length < limit) {
     const attachmentLength = eventAttachmentLength(events[index]);
     if (page.length > 0 && payloadLength + attachmentLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
       break;
     }
     payloadLength += attachmentLength;
     page.push(events[index]);
+    index += 1;
   }
   const next = offset + page.length;
   return { events: page, cursor: next < events.length ? String(next) : undefined };

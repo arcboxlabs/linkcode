@@ -42,7 +42,8 @@ export function groupHistoryBrowserEntries(
 ): HistoryBrowserGroup[] {
   const groups: HistoryBrowserGroup[] = [];
   const byCwd = new Map<string | undefined, HistoryBrowserGroup>();
-  for (const entry of sorted) {
+  for (let i = 0, len = sorted.length; i < len; i++) {
+    const entry = sorted[i];
     const existing = byCwd.get(entry.cwd);
     if (existing) {
       existing.entries.push(entry);

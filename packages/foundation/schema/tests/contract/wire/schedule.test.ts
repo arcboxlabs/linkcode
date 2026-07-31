@@ -54,7 +54,8 @@ describe('schedule wire variants', () => {
       { kind: 'schedule.removed', scheduleId: schedule.scheduleId },
       { kind: 'schedule.run', run },
     ];
-    for (const payload of payloads) {
+    for (let i = 0, len = payloads.length; i < len; i++) {
+      const payload = payloads[i];
       expect(parseWireMessage(envelope(payload)).success, payload.kind).toBe(true);
     }
   });

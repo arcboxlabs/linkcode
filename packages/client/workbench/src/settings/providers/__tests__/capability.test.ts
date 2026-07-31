@@ -82,7 +82,9 @@ describe('bindingAvailability', () => {
 
   it('keeps protocol-unknown legacy accounts bindable everywhere', () => {
     const legacy = account({});
-    for (const kind of ['claude-code', 'codex', 'opencode', 'pi', 'grok-build'] as const) {
+    const agentKinds = ['claude-code', 'codex', 'opencode', 'pi', 'grok-build'] as const;
+    for (let i = 0, len = agentKinds.length; i < len; i++) {
+      const kind = agentKinds[i];
       expect(bindingAvailability(legacy, kind)).toEqual({ tier: 'native' });
     }
   });

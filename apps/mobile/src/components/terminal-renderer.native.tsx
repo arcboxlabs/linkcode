@@ -41,7 +41,8 @@ export default function TerminalRenderer({
       events(events) {
         const terminal = terminalRef.current;
         if (!terminal) return;
-        for (const event of events) {
+        for (let i = 0, len = events.length; i < len; i++) {
+          const event = events[i];
           // Remote resizes are not applied: the ghostty grid derives from the
           // local view size, so only 'write' payloads reach the surface.
           if (event.type === 'write') terminal.writeText(event.data).catch(reportError);
