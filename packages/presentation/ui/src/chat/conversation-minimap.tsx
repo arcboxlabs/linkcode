@@ -13,9 +13,8 @@ import { useRenderPrefs } from '../render-prefs';
 import { Markdown } from './markdown';
 import {
   fisheyeFactor,
-  fisheyeSize,
+  fisheyeWidth,
   MINIMAP_ROW_HEIGHT,
-  MINIMAP_TURN_TICK,
   railScrollTopFor,
 } from './minimap-geometry';
 import type { TurnSegment } from './turn-edits';
@@ -134,9 +133,9 @@ export function ConversationMinimap({
   const count = segments.length;
   const focusIndex = Math.min(focused, count - 1);
 
-  // Magnification is a continuous per-frame value across every tick; routing it through state
-  // would re-render the whole rail each frame, so the falloff is written straight to the nodes.
-  // Row pitch is fixed, so one rect read locates all of them.
+  // A continuous per-frame value across every tick: routing it through state would re-render the
+  // whole rail each frame, so the falloff is written straight to the nodes. The row pitch is fixed,
+  // so one rect read locates all of them.
   const paint = useCallback(() => {
     frameRef.current = null;
     const list = listRef.current;
@@ -146,14 +145,12 @@ export function ConversationMinimap({
     tickNodesRef.current.forEach((tick, index) => {
       if (!tick) return;
       if (pointerY === null) {
+        // Back to the resting width in the class, which the transition eases into.
         tick.style.width = '';
-        tick.style.height = '';
         return;
       }
       const center = listTop + index * MINIMAP_ROW_HEIGHT + MINIMAP_ROW_HEIGHT / 2;
-      const { width, height } = fisheyeSize(MINIMAP_TURN_TICK, fisheyeFactor(center - pointerY));
-      tick.style.width = `${width.toFixed(2)}px`;
-      tick.style.height = `${height.toFixed(2)}px`;
+      tick.style.width = `${fisheyeWidth(fisheyeFactor(center - pointerY)).toFixed(2)}px`;
     });
   }, []);
 
@@ -188,14 +185,17 @@ export function ConversationMinimap({
     [count, focusIndex],
   );
 
-  if (count === 0) return null;
+  // A single turn has nowhere to navigate to, so the rail would be decoration.
+  if (count <= 1) return null;
 
   return (
     <>
       <nav
         aria-label={t('label')}
         className={cn(
-          'absolute inset-y-0 left-4 hidden w-10 opacity-40 transition-opacity duration-(--motion-fast) ease-(--motion-ease-out) focus-within:opacity-100 hover:opacity-100 @min-[55rem]/conversation:block',
+          // The column is transparent, but it must be at least as wide as a tick at full stretch:
+          // `overflow-y-auto` below makes the x axis clip too, which would cut the magnified tick.
+          'absolute inset-y-0 left-2.5 hidden w-8 @min-[55rem]/conversation:block',
           className,
         )}
       >
@@ -211,7 +211,7 @@ export function ConversationMinimap({
             {segments.map((segment, index) => (
               <PreviewCardTrigger
                 aria-label={t('turn', { index: index + 1 })}
-                className="flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/tick flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 closeDelay={100}
                 delay={300}
                 handle={handle}
@@ -226,14 +226,20 @@ export function ConversationMinimap({
                 style={{ height: MINIMAP_ROW_HEIGHT }}
                 tabIndex={index === focusIndex ? 0 : -1}
               >
-                {/* Resting size is `MINIMAP_TURN_TICK`'s base, in classes rather than `style` so a
-                    re-render mid-hover can't clobber the magnification written to the node. */}
+                {/* Resting width lives in the class, not `style`, so a re-render mid-hover can't
+                    clobber the magnification written to the node. The transition covers both the
+                    return to rest and the per-frame retargeting, which damps the follow.
+                    Dimming is a colour, not container opacity, which would flatten the on-screen
+                    step along with everything else. */}
                 <span
                   className={cn(
-                    'h-[3px] w-3 rounded-full transition-[width,height,background-color] duration-(--motion-fast) ease-(--motion-ease-out)',
+                    'h-[2px] w-2 rounded-full transition-[width,background-color] duration-(--motion-fast) ease-(--motion-ease-out) group-focus-visible/tick:bg-foreground group-hover/tick:bg-foreground',
+                    // Off-screen turns rest at the hairline tone — texture, not content. The label
+                    // tiers all sit too high for that; they are built for text, this is a fill.
+                    // Hovering the rail does not lift them: the magnification already announces it.
                     index >= visible.start && index <= visible.end
-                      ? 'bg-label-tertiary'
-                      : 'bg-label-quaternary',
+                      ? 'bg-muted-foreground'
+                      : 'bg-border',
                   )}
                   ref={(element) => {
                     tickNodesRef.current[index] = element;

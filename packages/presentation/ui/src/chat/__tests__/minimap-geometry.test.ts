@@ -1,10 +1,12 @@
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
 import {
   fisheyeFactor,
-  fisheyeSize,
+  fisheyeWidth,
   MINIMAP_FISHEYE_SPREAD,
   MINIMAP_ROW_HEIGHT,
-  MINIMAP_TURN_TICK,
+  MINIMAP_TICK_BASE_WIDTH,
+  MINIMAP_TICK_PEAK_WIDTH,
   railScrollTopFor,
 } from '../minimap-geometry';
 
@@ -20,7 +22,8 @@ describe('fisheyeFactor', () => {
   });
 
   it('decreases monotonically across the falloff', () => {
-    const samples = [0, 10, 20, 30, 40, 50, 54].map((d) => fisheyeFactor(d));
+    const step = MINIMAP_FISHEYE_SPREAD / 6;
+    const samples = createFixedArray(7).map((_, i) => fisheyeFactor(i * step));
     for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeLessThan(samples[i - 1]);
   });
 
@@ -29,27 +32,29 @@ describe('fisheyeFactor', () => {
   });
 });
 
-describe('fisheyeSize', () => {
+describe('fisheyeWidth', () => {
   it('spans exactly base to peak', () => {
-    expect(fisheyeSize(MINIMAP_TURN_TICK, 0)).toEqual({ width: 12, height: 3 });
-    expect(fisheyeSize(MINIMAP_TURN_TICK, 1)).toEqual({ width: 39, height: 6 });
+    expect(fisheyeWidth(0)).toBe(MINIMAP_TICK_BASE_WIDTH);
+    expect(fisheyeWidth(1)).toBe(MINIMAP_TICK_PEAK_WIDTH);
   });
 
-  it('interpolates both axes together', () => {
-    expect(fisheyeSize(MINIMAP_TURN_TICK, 0.5)).toEqual({ width: 25.5, height: 4.5 });
+  it('interpolates linearly between them', () => {
+    expect(fisheyeWidth(0.5)).toBe((MINIMAP_TICK_BASE_WIDTH + MINIMAP_TICK_PEAK_WIDTH) / 2);
   });
 });
 
 describe('railScrollTopFor', () => {
-  const railHeight = 180; // 10 rows
+  const railHeight = MINIMAP_ROW_HEIGHT * 10;
 
   it('does not scroll while every turn fits', () => {
     expect(railScrollTopFor({ start: 0, end: 4 }, 8, railHeight)).toBe(0);
   });
 
   it('centers the visible range once the rail overflows', () => {
-    // Rows 20..29 → center at row 25 → 25 * 18 - 90.
-    expect(railScrollTopFor({ start: 20, end: 29 }, 100, railHeight)).toBe(360);
+    // Rows 20..29 → center at row 25 → 25 pitches, less half a rail.
+    expect(railScrollTopFor({ start: 20, end: 29 }, 100, railHeight)).toBe(
+      25 * MINIMAP_ROW_HEIGHT - railHeight / 2,
+    );
   });
 
   it('clamps at both ends instead of overscrolling', () => {
