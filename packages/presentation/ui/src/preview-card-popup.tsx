@@ -1,25 +1,34 @@
 import { PreviewCardPrimitive } from 'coss-ui/components/preview-card';
-import { cn } from '../../lib/cn';
+import { cn } from './lib/cn';
+
+export type SidePreviewCardPopupProps = PreviewCardPrimitive.Popup.Props & {
+  side?: PreviewCardPrimitive.Positioner.Props['side'];
+  align?: PreviewCardPrimitive.Positioner.Props['align'];
+  sideOffset?: PreviewCardPrimitive.Positioner.Props['sideOffset'];
+};
 
 /**
  * Minimal fork of coss-ui's `PreviewCardPopup` (same popup styling) that exposes the positioner's
- * `side`, which the vendored component hard-defaults to `bottom`. Sidebar cards open to the right
- * of their row — like the row dropdown menus — so they never cover the list they annotate.
- * Compose with `PreviewCard` + `PreviewCardTrigger` from coss-ui.
+ * `side`, which the vendored component hard-defaults to `bottom`. Cards annotating a list open
+ * beside it so they never cover the rows they describe. Compose with `PreviewCard` +
+ * `PreviewCardTrigger` from coss-ui.
  */
-export function SidebarPreviewCardPopup({
+export function SidePreviewCardPopup({
   className,
   children,
+  side = 'right',
+  align = 'start',
+  sideOffset = 8,
   ...props
-}: PreviewCardPrimitive.Popup.Props): React.ReactNode {
+}: SidePreviewCardPopupProps): React.ReactNode {
   return (
     <PreviewCardPrimitive.Portal>
       <PreviewCardPrimitive.Positioner
-        side="right"
-        align="start"
-        sideOffset={8}
+        align={align}
         className="z-50"
         data-slot="preview-card-positioner"
+        side={side}
+        sideOffset={sideOffset}
       >
         <PreviewCardPrimitive.Popup
           className={cn(

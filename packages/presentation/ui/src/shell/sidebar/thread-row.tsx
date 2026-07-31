@@ -8,10 +8,10 @@ import { ClockIcon, EllipsisIcon, FolderIcon, GitBranchIcon, PinIcon, XIcon } fr
 import { useTranslations } from 'use-intl';
 import { AGENT_LABELS, AgentIcon } from '../../chat/agent-icon';
 import { cn } from '../../lib/cn';
+import { SidePreviewCardPopup } from '../../preview-card-popup';
 import { repositoryLabel } from '../../repository-label';
 import { useRelativeTimeLabel } from '../use-relative-time-label';
 import type { BranchStatusComponentType } from './branch-status';
-import { SidebarPreviewCardPopup } from './preview-card';
 import {
   ROW_ACTION_CLASS,
   ROW_HOVER_PE_CLASS,
@@ -99,7 +99,7 @@ export function ThreadRow({
             {title}
           </span>
         </PreviewCardTrigger>
-        <SidebarPreviewCardPopup>
+        <SidePreviewCardPopup>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <span>{title}</span>
             <div className="flex flex-col gap-1.5 text-muted-foreground text-xs">
@@ -120,7 +120,7 @@ export function ThreadRow({
               </span>
             </div>
           </div>
-        </SidebarPreviewCardPopup>
+        </SidePreviewCardPopup>
       </PreviewCard>
       <RowActionsCluster>
         {ImMenuComponent && (
