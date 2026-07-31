@@ -118,10 +118,8 @@ mac:
   entitlementsInherit: build-resources/entitlements.mac.inherit.plist
   notarize: true # notarytool via App Store Connect API key (APPLE_API_KEY / _KEY_ID / _ISSUER)
   target:
-    - target: dmg
-      arch: [x64, arm64]
-    - target: zip # REQUIRED for macOS auto-update (electron-updater pulls the .zip, not the .dmg)
-      arch: [x64, arm64]
+    - dmg
+    - zip # REQUIRED for macOS auto-update (electron-updater pulls the .zip, not the .dmg)
 
 # UDBZ (bzip2) instead of the default ULFO (lzfse): smaller first-download dmg for slower mount.
 # ULMO (lzma) would be smaller still but electron-builder's schema doesn't accept it. Only the
@@ -131,9 +129,7 @@ dmg:
 
 win:
   icon: ../../assets/icon.png # shared repo-root raster (no Liquid Glass on Windows)
-  target:
-    - target: nsis
-      arch: [x64, arm64]
+  target: nsis
 
 nsis:
   oneClick: false
@@ -155,10 +151,8 @@ linux:
   # executable explicitly.
   executableName: linkcode
   target:
-    - target: AppImage # the only Linux format electron-updater can self-update
-      arch: [x64, arm64]
-    - target: deb
-      arch: [x64, arm64]
+    - AppImage # the only Linux format electron-updater can self-update
+    - deb
   # rpm/snap need extra host tooling (rpm/fakeroot, snapcraft); add install steps to
   # build-desktop.yml's Linux job before enabling them here.
 
