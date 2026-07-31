@@ -14,6 +14,7 @@ import type { ComposerDirectiveState } from './directive-state';
 import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
+const SHELL_DIRECTIVE_BODY_RE = /^[\t ]+\S/;
 
 type TokenizerState = Pick<ComposerDirectiveState, 'suppressed'>;
 
@@ -47,9 +48,9 @@ function $findDirectiveCandidate(
   if (!$isDocumentStart(node, 0) || state.suppressed.has(node.getKey())) return null;
 
   if (content[0] === '$') {
-    // A bare marker is ordinary prose. Shell intent becomes unambiguous only after the user
-    // supplies a non-whitespace payload, including when that payload is in a following node.
-    return $getRoot().getTextContent().slice(1).trim() ? { end: 1, kind: 'shell', start: 0 } : null;
+    return SHELL_DIRECTIVE_BODY_RE.test($getRoot().getTextContent().slice(1))
+      ? { end: 1, kind: 'shell', start: 0 }
+      : null;
   }
   if (content[0] !== '/') return null;
   let end = 1;

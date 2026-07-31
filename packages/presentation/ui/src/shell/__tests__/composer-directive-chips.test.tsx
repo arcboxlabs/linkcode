@@ -405,18 +405,18 @@ describe('Composer directive chips', () => {
     expect(composerText()).toBe('please /review ');
   });
 
-  it('sends a bare $ as prose instead of materializing an empty shell directive', async () => {
+  it('sends a leading dollar word as prose', async () => {
     const onRunShellCommand = vi.fn();
     const onSend = vi.fn();
     render(composer({ onRunShellCommand, onSend, shellSupported: true }));
 
-    typeInComposer('$');
+    typeInComposer('$HOME');
 
     expect(screen.queryByRole('button', { name: '$' })).toBeNull();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'send' }).disabled).toBe(false);
     await pressInComposer('Enter');
     expect(onRunShellCommand).not.toHaveBeenCalled();
-    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: '$' }]);
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([{ type: 'text', text: '$HOME' }]);
   });
 
   it('explains an unavailable shell directive and blocks submit', async () => {
