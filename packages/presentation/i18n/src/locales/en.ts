@@ -132,6 +132,10 @@ export const en = {
       compacting: 'Compacting context…',
       compacted: 'Context compacted',
       compactedTokens: '{pre} → {post} tokens',
+      minimap: {
+        label: 'Conversation navigation',
+        turn: 'Turn {index}',
+      },
     },
     tool: {
       input: 'Input',

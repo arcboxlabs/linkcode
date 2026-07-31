@@ -128,6 +128,10 @@ export const zhCN = {
       compacting: '正在压缩上下文…',
       compacted: '上下文已压缩',
       compactedTokens: '{pre} → {post} tokens',
+      minimap: {
+        label: '对话导航',
+        turn: '第 {index} 轮',
+      },
     },
     tool: {
       input: '输入',
