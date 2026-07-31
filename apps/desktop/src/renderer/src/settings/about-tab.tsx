@@ -5,6 +5,7 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
+import { useUpdaterState } from '../updater';
 
 const STATUS_KEYS = {
   checking: 'status.checking',
@@ -18,14 +19,12 @@ const STATUS_KEYS = {
 export function AboutTab(): React.ReactNode {
   const t = useTranslations('settings.about');
   const [version, setVersion] = useState('');
-  const [status, setStatus] = useState<UpdaterStatus>('idle');
+  const { status } = useUpdaterState();
 
   useEffect((signal) => {
     void systemBridge.app.version().then((value) => {
       if (!signal.aborted) setVersion(value);
     });
-    const unsubscribe = systemBridge.app.onUpdaterStatus(setStatus);
-    return () => unsubscribe();
   }, []);
 
   const statusKey = status === 'idle' ? null : STATUS_KEYS[status];
@@ -43,7 +42,6 @@ export function AboutTab(): React.ReactNode {
           size="sm"
           variant="outline"
           onClick={() => {
-            setStatus('checking');
             void systemBridge.app.checkForUpdates();
           }}
         >

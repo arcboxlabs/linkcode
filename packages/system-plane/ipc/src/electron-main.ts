@@ -8,6 +8,7 @@ import {
   PickFileOptionsSchema,
   ShellPathSchema,
   SystemNotificationSchema,
+  UpdaterStateSchema,
 } from './context';
 import {
   DAEMON_URL_SNAPSHOT_CHANNEL,
@@ -49,6 +50,8 @@ export function bindElectronSystemIpc({
       ctx.shell.openInEditor(OpenInEditorRequestSchema.parse(request)),
     appVersion: () => ctx.app.getVersion(),
     appCheckForUpdates: () => ctx.app.checkForUpdates(),
+    appUpdaterState: () => UpdaterStateSchema.parse(ctx.app.getUpdaterState()),
+    appInstallUpdate: () => ctx.app.installUpdate(),
     daemonIsManaged: () => ctx.daemon.isManaged(),
     daemonRetry: () => ctx.daemon.retry(),
     settingsGet: () => ctx.settings.get(),

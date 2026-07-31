@@ -7,7 +7,7 @@ import {
   BROWSER_OPEN_TAB_CHANNEL,
   BROWSER_SHORTCUT_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
-  UPDATER_STATUS_CHANNEL,
+  UPDATER_STATE_CHANNEL,
 } from '@linkcode/ipc';
 import { bindElectronSystemIpc } from '@linkcode/ipc/electron-main';
 import { BrowserWindow, ipcMain, nativeTheme, session, shell } from 'electron';
@@ -20,7 +20,7 @@ import { desktopBackdropOptions, desktopBackgroundColor } from './appearance';
 import { APP_NAME } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { systemContextFor } from './system-context';
-import { onUpdaterStatus } from './updater';
+import { onUpdaterState } from './updater';
 import {
   deriveDefaultWindowSize,
   MIN_WINDOW_SIZE,
@@ -39,8 +39,8 @@ export function createDesktopWindow(): BrowserWindow {
   bindElectronSystemIpc({ ipcMain, window: win, ctx });
 
   // Forward auto-update status (a main-side singleton) to this window's renderer.
-  const unsubscribeUpdater = onUpdaterStatus((status) => {
-    if (!win.isDestroyed()) win.webContents.send(UPDATER_STATUS_CHANNEL, status);
+  const unsubscribeUpdater = onUpdaterState((state) => {
+    if (!win.isDestroyed()) win.webContents.send(UPDATER_STATE_CHANNEL, state);
   });
   win.once('closed', unsubscribeUpdater);
 
