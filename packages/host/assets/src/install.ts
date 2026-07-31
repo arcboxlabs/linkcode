@@ -46,9 +46,13 @@ function expectedFiles(descriptor: AssetDescriptor, platform?: PlatformKey): str
   return [binaryName(descriptor), ...extras.map((member) => posix.basename(member))];
 }
 
+export function installIdentity(descriptor: AssetDescriptor, version: string): string {
+  return isClosureDescriptor(descriptor) ? `${version}+${descriptor.closure.revision}` : version;
+}
+
 /** The canonical install target: the executable, or a closure's entry module. */
 export function installedAssetPath(descriptor: AssetDescriptor, version: string): string {
-  const dir = versionDir(descriptor.id, version);
+  const dir = versionDir(descriptor.id, installIdentity(descriptor, version));
   return isClosureDescriptor(descriptor)
     ? join(dir, descriptor.closure.entry)
     : join(dir, binaryName(descriptor));
@@ -70,11 +74,11 @@ export function installedComplete(
   version: string,
   platform?: PlatformKey,
 ): boolean {
-  const dir = versionDir(descriptor.id, version);
+  const dir = versionDir(descriptor.id, installIdentity(descriptor, version));
   return expectedFiles(descriptor, platform).every((file) => existsSync(join(dir, file)));
 }
 
-/** Concurrent `installAsset` calls for the same id+version share one in-flight install. */
+/** Concurrent `installAsset` calls for the same install identity share one in-flight install. */
 const inFlight = new Map<string, Promise<InstalledAsset>>();
 
 export function installAsset(
@@ -82,7 +86,7 @@ export function installAsset(
   version: string,
   options: InstallOptions = {},
 ): Promise<InstalledAsset> {
-  const key = `${managedAssetKey(descriptor.id)}@${version}`;
+  const key = `${managedAssetKey(descriptor.id)}@${installIdentity(descriptor, version)}`;
   const running = inFlight.get(key);
   if (running) return running;
   const task = doInstall(descriptor, version, options).finally(() => inFlight.delete(key));
@@ -121,7 +125,11 @@ async function doInstall(
         await extractMember(archive, artifact.format, member, join(stage, posix.basename(member)));
       }
     }
-    publish(stage, versionDir(descriptor.id, version), expectedFiles(descriptor, options.platform));
+    publish(
+      stage,
+      versionDir(descriptor.id, installIdentity(descriptor, version)),
+      expectedFiles(descriptor, options.platform),
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

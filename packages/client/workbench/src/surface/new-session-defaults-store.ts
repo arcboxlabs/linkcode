@@ -10,6 +10,7 @@ const PersistedNewSessionDefaultsSchema = z
     lastWorkspaceId: WorkspaceIdSchema.nullable(),
     modelsByProvider: z.partialRecord(AgentKindSchema, z.string().min(1)),
     effortsByProvider: z.partialRecord(AgentKindSchema, EffortLevelSchema),
+    branchesByWorkspace: z.record(z.string(), z.string().min(1)),
   })
   .partial();
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
@@ -30,7 +31,14 @@ export interface NewSessionDefaultsState {
   modelsByProvider: Partial<Record<AgentKind, string>>;
   /** Last effort accepted by LinkCode per provider; absent means defer to the provider default. */
   effortsByProvider: Partial<Record<AgentKind, EffortLevel>>;
-  remember: (provider: AgentKind, workspaceId: WorkspaceId, selection: NewSessionSelection) => void;
+  /** Last explicitly selected branch per workspace. */
+  branchesByWorkspace: Record<string, string>;
+  remember: (
+    provider: AgentKind,
+    workspaceId: WorkspaceId,
+    selection: NewSessionSelection,
+    branch?: string,
+  ) => void;
   rememberSelection: (provider: AgentKind, selection: NewSessionSelection) => void;
 }
 
@@ -73,23 +81,29 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
       lastWorkspaceId: null,
       modelsByProvider: {},
       effortsByProvider: {},
-      remember: (provider, workspaceId, selection) =>
+      branchesByWorkspace: {},
+      remember: (provider, workspaceId, selection, branch) =>
         set((state) => ({
           ...selectionPatch(state, provider, selection),
           lastProvider: provider,
           lastWorkspaceId: workspaceId,
+          branchesByWorkspace:
+            branch === undefined
+              ? state.branchesByWorkspace
+              : { ...state.branchesByWorkspace, [workspaceId]: branch },
         })),
       rememberSelection: (provider, selection) =>
         set((state) => selectionPatch(state, provider, selection)),
     }),
     {
-      name: 'linkcode.workbench.new-session-defaults:v3',
+      name: 'linkcode.workbench.new-session-defaults:v4',
       schema: PersistedNewSessionDefaultsSchema,
       partialize: (state) => ({
         lastProvider: state.lastProvider,
         lastWorkspaceId: state.lastWorkspaceId,
         modelsByProvider: state.modelsByProvider,
         effortsByProvider: state.effortsByProvider,
+        branchesByWorkspace: state.branchesByWorkspace,
       }),
     },
   ),

@@ -19,6 +19,8 @@ export interface FakeHistoryState {
   listCalls: number;
   readCalls: number;
   resumeCalls: number;
+  lastReadOptions?: AgentHistoryReadOptions;
+  events?: AgentHistoryEvent[];
 }
 
 export const historyId = 'hist-1' as AgentHistoryId;
@@ -79,11 +81,12 @@ export class FakeHistoryAdapter extends BaseAgentAdapter {
     return Promise.resolve({ sessions: [historySession(this.state.listCalls)] });
   }
 
-  override readHistory(_opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
     this.state.readCalls += 1;
+    this.state.lastReadOptions = opts;
     return Promise.resolve({
       session: historySession(this.state.readCalls),
-      events: historyEvents(),
+      events: this.state.events ?? historyEvents(),
     });
   }
 

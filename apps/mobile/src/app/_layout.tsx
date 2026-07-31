@@ -1,5 +1,5 @@
-import '../runtime/polyfills';
-
+// First import in the app: patches the AbortSignal gaps everything below assumes (see the module).
+import '../polyfills';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { sanitizeSentryTransaction } from '@linkcode/common/sentry';
 import type { TelemetryConfig } from '@linkcode/common/telemetry-config';

@@ -3,8 +3,6 @@ import { Card } from 'coss-ui/components/card';
 import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-// TODO(linkcode-schema): Provisional UI-only package metadata, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when package manager tool outputs expose structured package data.
 export interface ChatPackageInfo {
   id: string;
   name: string;

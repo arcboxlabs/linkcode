@@ -1,7 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { env } from 'node:process';
 import type {
   CanUseTool,
   HookCallback,
@@ -81,6 +80,7 @@ import {
   timestampMs,
 } from '../history-util';
 import { agentRuntimeProber } from '../probe';
+import { resolveAgentShellEnvironment } from '../shell-env';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
 
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
@@ -421,6 +421,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   private q: Query | null = null;
   private inputQueue: AsyncMessageQueue | null = null;
+  private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
@@ -500,6 +501,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   protected async onStart(opts: StartOptions): Promise<void> {
     this.stopped = false;
+    this.processEnvironment = await resolveAgentShellEnvironment(opts.cwd);
     const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
@@ -745,9 +747,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // One-time use: the persistent Query carries the conversation itself from here on, so a later
     // Query created after a crash must not resume from this same (by then stale) point again.
     const resume = this.resumeFrom;
-    // The SDK has no apiKey/baseURL option — the resolved account reaches the subprocess via `env`
-    // (see `claudeCodeEnv` for the replace-vs-spread and omit-to-inherit semantics).
-    const credentialEnv = claudeCodeEnv(env, readAgentCredential(opts.config));
+    const processEnvironment = nullthrow(
+      this.processEnvironment,
+      'claude-code: project environment not loaded',
+    );
+    const credentialEnv =
+      claudeCodeEnv(processEnvironment, readAgentCredential(opts.config)) ?? processEnvironment;
     const configuredMcpServers = claudeMcpServers(opts.mcpServers);
     if (this.browserTools && configuredMcpServers?.linkcode_browser) {
       throw new Error(
@@ -772,35 +777,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Bundled pair staged by the packaged host, else a detected user install (runtime-probe);
         // undefined in dev/standalone daemons, where the SDK resolves its own platform package.
         pathToClaudeCodeExecutable: agentRuntimeProber.resolveBinary('claude-code'),
-        // `options.effort` becomes `--effort`, which outranks flag-settings for the process's whole
-        // lifetime — passing it pins the level and makes every later applyFlagSettings switch a
-        // silent no-op. Only `max` goes in here (the flag-settings key rejects it); other levels
-        // apply through the switchable channel right after creation.
+        // Only `max` here — it pins the level; other levels switch live via applyFlagSettings.
         effort: this.effort === 'max' ? 'max' : undefined,
         includePartialMessages: true,
-        // Forward subagent text/thinking (tool_use/tool_result already flow by default) so the
-        // client can render the nested transcript; all subagent frames carry parent_tool_use_id.
         forwardSubagentText: true,
-        // Opus 4.6+ models default `thinking.display` to 'omitted' at the API — thinking blocks
-        // arrive with EMPTY text (signature only), so no thought event would ever carry content
-        // (CODE-273). The TUI shows thinking because interactive mode requests summaries; SDK mode
-        // must ask explicitly. Ride the raw `--thinking-display` flag rather than the typed
-        // `options.thinking`, which would also pin `--thinking adaptive` and override the CLI's
-        // per-model thinking resolution (verified live on the 0.3.206 × 2.1.212 pair).
+        // Raw flag, not options.thinking — the typed option would also pin --thinking adaptive.
         extraArgs: { 'thinking-display': 'summarized' },
         // Read-only Stop hook reflecting the resolved effort (see `reflectEffortHook`).
         hooks: { Stop: [{ hooks: [reflectCurrentQueryEffort] }] },
         canUseTool: this.canUseTool,
-        // Resolved in onStart via `settingsDefaultMode` — the SDK-driven CLI does not apply
-        // settings.json itself. `undefined` = no pick anywhere; the CLI then starts in 'default'.
         permissionMode: this.approvalPolicy,
-        // Gate flag only — the effective mode stays `permissionMode` above. It must be set at
-        // startup for a later live switch to 'bypassPermissions' to be accepted at all.
+        // Gate for later live switch to bypassPermissions; must be set at startup.
         allowDangerouslySkipPermissions: true,
         resume,
         additionalDirectories: opts.additionalDirectories,
         ...(mcpServers && { mcpServers }),
-        ...(credentialEnv && { env: credentialEnv }),
+        env: credentialEnv,
       },
     });
     this.resumeFrom = undefined;
@@ -1286,14 +1278,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
-        const diff = editDiffContent(block.name, block.input);
+        const content = toolInputContent(block.name, block.input);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
         this.emitTool({
           toolCallId: block.id,
           title: block.name,
           kind: claudeToolKind(block.name),
           status: 'in_progress',
-          content: diff,
+          content,
           rawInput: block.input,
           locations: hostLocationsFromToolInput(block.input),
         });
@@ -1315,14 +1307,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     for (const block of message.content) {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
-        const diff = editDiffContent(block.name, block.input);
+        const content = toolInputContent(block.name, block.input);
         this.emitTool({
           toolCallId: block.id,
           parentToolCallId: parent,
           title: block.name,
           kind: claudeToolKind(block.name),
           status: 'in_progress',
-          content: diff,
+          content,
           rawInput: block.input,
           locations: hostLocationsFromToolInput(block.input),
         });
@@ -1372,8 +1364,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.cancelling = false;
     this.turnActive = false;
     if (msg.subtype === 'success') {
-      // A 401 comes back as a `success` result carrying `api_error_status` (CODE-75) — surface it
-      // as a non-recoverable auth error driving the daemon's login re-probe, not usage + a phantom stop.
       if (msg.api_error_status === 401) {
         this.emitError(
           'Claude authentication failed — sign in to Claude',
@@ -1437,6 +1427,25 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
     return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
+}
+
+function toolInputContent(toolName: string, input: unknown): ToolCallContent[] | undefined {
+  const diff = editDiffContent(toolName, input);
+  if (diff || toolName !== 'WebFetch' || !isRecord(input) || typeof input.url !== 'string') {
+    return diff;
+  }
+  try {
+    const url = new URL(input.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+    return [
+      {
+        type: 'content',
+        content: { type: 'resource_link', uri: url.href, name: url.hostname },
+      },
+    ];
+  } catch {
+    return undefined;
+  }
 }
 
 function isUnifiedDiffHunk(value: unknown): value is UnifiedDiffHunk {
@@ -1817,8 +1826,6 @@ export function createClaudeHistoryEventMapper(
       announced.set(toolCall.toolCallId, toolCall);
       return { historyId, itemId: toolCall.toolCallId, ts, event: { type: 'tool-call', toolCall } };
     };
-    // A compaction's swapped-in summary is stored as a user row; replaying it as a user prompt
-    // would fake a giant user turn (CODE-141). It becomes the compaction marker in place instead.
     const compaction = message.type === 'user' ? compactions?.get(message.uuid) : undefined;
     if (compaction) {
       const summary = plainTextContent(
@@ -1852,8 +1859,6 @@ export function createClaudeHistoryEventMapper(
         lastModel = model;
         events.push({ historyId, ts, event: { type: 'model-update', model } });
       }
-      // Thinking replays under the provider message id used by the live stream. Pre-CODE-273
-      // transcripts store empty thinking text; the helper's empty-drop rule skips those.
       for (const block of blocks) {
         if (!isThinkingBlock(block)) continue;
         const thought = thoughtHistoryEvent(
@@ -1876,7 +1881,7 @@ export function createClaudeHistoryEventMapper(
             title: block.name,
             kind: claudeToolKind(block.name),
             status: 'in_progress',
-            content: editDiffContent(block.name, block.input) ?? [],
+            content: toolInputContent(block.name, block.input) ?? [],
             rawInput: block.input,
           }),
         );

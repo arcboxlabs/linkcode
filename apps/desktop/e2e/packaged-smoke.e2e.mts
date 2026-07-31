@@ -43,7 +43,10 @@ async function main(): Promise<void> {
   const home = join(root, 'home');
   const config = join(root, 'config');
   const profile = `packaged-smoke-${process.pid}`;
-  const stateDir = join(home, `.linkcode-${profile}`);
+  // The devshell pack is the development channel, and its supervisor injects that into the daemon
+  // it spawns — so the state dir is the development sibling, profile-suffixed (CODE-460). Asserting
+  // the plain `.linkcode-<profile>` here would prove the channel injection had been lost.
+  const stateDir = join(home, `.linkcode.development-${profile}`);
   const runtimePath = join(stateDir, 'runtime.json');
   mkdirSync(home);
   mkdirSync(config);

@@ -8,6 +8,7 @@ import type {
 } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { AutocompletePrimitive } from 'coss-ui/components/autocomplete';
+import { Button } from 'coss-ui/components/button';
 import { Command } from 'coss-ui/components/command';
 import { Frame, FrameFooter } from 'coss-ui/components/frame';
 import { Input } from 'coss-ui/components/input';
@@ -17,6 +18,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { falseFn, trueFn } from 'foxts/noop';
 import type { EditorState, LexicalEditor } from 'lexical';
 import { $getSelection, $setSelection, CLEAR_HISTORY_COMMAND } from 'lexical';
+import { ShieldIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -143,6 +145,9 @@ export interface ComposerProps {
   /** The agent-advertised approval-policy state (the permission/safety axis), reflected from the
    * session's `approval-policy-update` event. Absent or empty hides the policy menu. */
   approvalPolicy?: ApprovalPolicyState | null;
+  /** Keeps the permission-mode affordance visible before a new session has a policy catalog.
+   * Omit for live sessions, where an absent policy means the adapter does not support switching. */
+  approvalPolicyPlaceholder?: string;
   /** The model the session is actually running on, reflected from the session's `model-update`
    * event. `null` until the adapter reports it — the picker then shows a placeholder. */
   currentModel?: string | null;
@@ -158,6 +163,8 @@ export interface ComposerProps {
   agentModels?: AgentModelOption[] | null;
   /** A promise defers draft clearing until the caller accepts the submission. */
   onSend: (content: ContentBlock[]) => ComposerSubmissionResult;
+  /** Fires once after a valid prompt, slash command, or shell command is handed to its caller. */
+  onSubmit?: () => void;
   onStop: () => void;
   /** Sends the workflow-mode switch (`set-mode`); the active mode is reflected from the session's
    * `current-mode-update` event, not locally. */
@@ -210,11 +217,13 @@ export function Composer({
   currentModeId,
   availableModes = STUB_SESSION_MODES,
   approvalPolicy,
+  approvalPolicyPlaceholder,
   currentModel,
   currentEffort,
   directiveControls,
   agentModels,
   onSend,
+  onSubmit,
   onStop,
   onModeChange,
   onApprovalPolicyChange,
@@ -416,6 +425,7 @@ export function Composer({
       submissionPendingRef.current = false;
       throw error;
     }
+    onSubmit?.();
 
     if (result === undefined) {
       try {
@@ -984,6 +994,20 @@ export function Composer({
                         policies={approvalPolicy.availablePolicies}
                         onSelect={selectPolicy}
                       />
+                    ) : approvalPolicyPlaceholder ? (
+                      <Button
+                        className="text-muted-foreground @max-[480px]/composer:size-8 @max-[480px]/composer:p-0"
+                        disabled
+                        size="sm"
+                        title={approvalPolicyPlaceholder}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <ShieldIcon />
+                        <span className="@max-[480px]/composer:sr-only">
+                          {approvalPolicyPlaceholder}
+                        </span>
+                      </Button>
                     ) : null}
                     {activeMode && onModeChange ? (
                       <SessionModeChip

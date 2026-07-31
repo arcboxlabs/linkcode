@@ -37,9 +37,9 @@ export interface ThreadGroup {
 /**
  * Groups sessions by the workspace whose `cwd` matches (via `normalizeCwdKey`): groups order by
  * `lastUsedAt` desc, sessions by `createdAt` desc, unmatched sessions in one fallback group, last.
- * Every registered workspace produces a group even with zero sessions — an empty one still needs
- * a header to rename/archive/start a thread in. The chat workspace's group is marked `isChat`;
- * callers split it out into the "Chats" section.
+ * Project/chat workspaces produce groups even with zero sessions; worktree sessions join their
+ * parent project and never produce a top-level group. The chat workspace's group is marked
+ * `isChat`; callers split it out into the "Chats" section.
  */
 export function groupThreadsByWorkspace(
   sessions: readonly SessionInfo[],
@@ -48,11 +48,20 @@ export function groupThreadsByWorkspace(
   const workspaceByCwdKey = new Map(
     workspaces.map((workspace) => [normalizeCwdKey(workspace.cwd), workspace]),
   );
+  const workspaceById = new Map(workspaces.map((workspace) => [workspace.workspaceId, workspace]));
   const sessionsByWorkspaceId = new Map<string, SessionInfo[]>();
   const unregistered: SessionInfo[] = [];
 
   for (const session of sessions) {
-    const workspace = workspaceByCwdKey.get(normalizeCwdKey(session.cwd));
+    const matched = workspaceByCwdKey.get(normalizeCwdKey(session.cwd));
+    let workspace = matched;
+    if (matched && workspaceKind(matched) === 'worktree') {
+      const parent =
+        matched.parentWorkspaceId === undefined
+          ? undefined
+          : workspaceById.get(matched.parentWorkspaceId);
+      workspace = parent && workspaceKind(parent) === 'project' ? parent : undefined;
+    }
     if (!workspace) {
       unregistered.push(session);
       continue;
@@ -62,7 +71,8 @@ export function groupThreadsByWorkspace(
     else sessionsByWorkspaceId.set(workspace.workspaceId, [session]);
   }
 
-  const groups: ThreadGroup[] = [...workspaces]
+  const groups: ThreadGroup[] = workspaces
+    .filter((workspace) => workspaceKind(workspace) !== 'worktree')
     .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
     .map((workspace) => ({
       key: workspace.workspaceId,

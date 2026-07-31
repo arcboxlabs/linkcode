@@ -131,19 +131,12 @@ export class AgentRuntimeProber {
           runtimes[probe.kind] = { status: 'available', source: 'sdk', ...(auth && { auth }) };
           return;
         }
-        // Packaged hosts exclude the platform packages (CODE-114): with no detected install either,
-        // this agent genuinely cannot run — do not advertise it.
         runtimes[probe.kind] = { status: 'missing' };
       }),
     );
     return runtimes;
   }
 
-  /**
-   * pi runs in-process, not as a CLI (CODE-219): a managed closure install is the packaged
-   * source; dev/standalone daemons self-resolve the SDK out of node_modules. Neither present —
-   * a packaged host before the first download — reads as missing so onboarding offers it.
-   */
   private piAvailability(): AgentRuntimeAvailability {
     const managed = this.managedEntryResolver?.('pi');
     if (managed) return { status: 'available', source: 'managed', ...managed };

@@ -5,11 +5,13 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
@@ -19,6 +21,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
   SimulatorAxNode,
   SimulatorConsentState,
   SimulatorDevice,
@@ -75,6 +78,7 @@ export interface PendingValueMap {
   assetList: ManagedAssetStatus[];
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
+  gitBranchList: GitBranchList;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
@@ -83,6 +87,9 @@ export interface PendingValueMap {
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
   fileHost: HostedFile;
+  resourceList: SessionResource[];
+  resourceUpload: SessionResource;
+  resourceHost: HostedSessionResource;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -127,6 +134,7 @@ export class PendingRegistry {
     assetList: new Map(),
     assetEnsure: new Map(),
     gitStatus: new Map(),
+    gitBranchList: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),
@@ -135,6 +143,9 @@ export class PendingRegistry {
     scriptList: new Map(),
     artifactHost: new Map(),
     fileHost: new Map(),
+    resourceList: new Map(),
+    resourceUpload: new Map(),
+    resourceHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),

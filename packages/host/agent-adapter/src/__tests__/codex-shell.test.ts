@@ -25,7 +25,7 @@ class FakeCodexServer {
     model: 'gpt-5.6-sol',
     reasoningEffort: null,
   };
-  constructor(private readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
+  constructor(readonly opts: Omit<CodexAppServerOptions, 'binaryPath'>) {}
   request(method: string, params: unknown): Promise<unknown> {
     this.requests.push({ method, params: params as Record<string, unknown> });
     if (method === this.rejectMethod) {
@@ -104,6 +104,7 @@ class FakeCodexServer {
 
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
+  configuredSandboxEnvironment: NodeJS.ProcessEnv | undefined;
   emptyModelList = false;
   rejectMethod: string | undefined;
   threadResponse: unknown;
@@ -117,7 +118,8 @@ class TestCodex extends CodexAdapter {
     this.fakeServers.push(server);
     return Promise.resolve(server);
   }
-  protected override readConfiguredSandbox() {
+  protected override readConfiguredSandbox(environment: NodeJS.ProcessEnv) {
+    this.configuredSandboxEnvironment = environment;
     return Promise.resolve(undefined);
   }
 }
@@ -195,6 +197,36 @@ describe('CodexAdapter shell-command passthrough', () => {
       defaultPolicyId: 'acceptEdits',
     });
     expect(adapter.fakeServers[0].closed).toBe(true);
+  });
+
+  it('loads the project environment and lets account variables override it', async () => {
+    const inherited = new TestCodex();
+    await inherited.start(start);
+    expect(inherited.fakeServers[0].opts.env).toEqual({
+      PATH: '/project/bin',
+      CODEX_HOME: '/project/codex',
+      PROJECT_ENV: 'loaded',
+    });
+    expect(inherited.configuredSandboxEnvironment).toEqual(inherited.fakeServers[0].opts.env);
+
+    const overridden = new TestCodex();
+    await overridden.start({
+      ...start,
+      config: {
+        extraEnv: {
+          PATH: '/account/bin',
+          CODEX_HOME: '/account/codex',
+          ACCOUNT_ENV: 'set',
+        },
+      },
+    });
+    expect(overridden.fakeServers[0].opts.env).toEqual({
+      PATH: '/account/bin',
+      CODEX_HOME: '/account/codex',
+      PROJECT_ENV: 'loaded',
+      ACCOUNT_ENV: 'set',
+    });
+    expect(overridden.configuredSandboxEnvironment).toEqual(overridden.fakeServers[0].opts.env);
   });
 
   it('announces the gated command and requests permission by subject reference', async () => {
@@ -333,47 +365,51 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(events).toContainEqual({ type: 'effort-update', effort: 'high' });
   });
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('accepts Sol effort %s and sends it on the first turn', async (effort) => {
-    const adapter = new TestCodex();
-    await adapter.start({ ...start, effort });
-    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+  it.each(['max', 'ultra'] as const)(
+    'accepts Sol effort %s and sends it on the first turn',
+    async (effort) => {
+      const adapter = new TestCodex();
+      await adapter.start({ ...start, effort });
+      await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
 
-    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
-    expect(turn?.params).toMatchObject({ effort });
-  });
+      const turn = adapter.fakeServers[0].requests.find(
+        (request) => request.method === 'turn/start',
+      );
+      expect(turn?.params).toMatchObject({ effort });
+    },
+  );
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('defers effort %s validation when optional model discovery is unavailable', async (effort) => {
-    const adapter = new TestCodex();
-    adapter.rejectMethod = 'model/list';
+  it.each(['max', 'ultra'] as const)(
+    'defers effort %s validation when optional model discovery is unavailable',
+    async (effort) => {
+      const adapter = new TestCodex();
+      adapter.rejectMethod = 'model/list';
 
-    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
-    await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
+      await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+      await adapter.send({ type: 'prompt', content: [textBlock('hi')] });
 
-    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
-      'thread/start',
-    );
-    const turn = adapter.fakeServers[0].requests.find((request) => request.method === 'turn/start');
-    expect(turn?.params).toMatchObject({ effort });
-  });
+      expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+        'thread/start',
+      );
+      const turn = adapter.fakeServers[0].requests.find(
+        (request) => request.method === 'turn/start',
+      );
+      expect(turn?.params).toMatchObject({ effort });
+    },
+  );
 
-  it.each([
-    'max',
-    'ultra',
-  ] as const)('defers effort %s validation when model discovery has no usable entries', async (effort) => {
-    const adapter = new TestCodex();
-    adapter.emptyModelList = true;
+  it.each(['max', 'ultra'] as const)(
+    'defers effort %s validation when model discovery has no usable entries',
+    async (effort) => {
+      const adapter = new TestCodex();
+      adapter.emptyModelList = true;
 
-    await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
-    expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
-      'thread/start',
-    );
-  });
+      await expect(adapter.start({ ...start, effort })).resolves.toBeUndefined();
+      expect(adapter.fakeServers[0].requests.map((request) => request.method)).toContain(
+        'thread/start',
+      );
+    },
+  );
 
   it('accepts Luna max but rejects Luna ultra from provider metadata', async () => {
     const accepted = new TestCodex();

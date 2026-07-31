@@ -60,10 +60,17 @@ export function NewThreadSheet({
   };
 
   return (
-    // The sheet presents its own window, but the anchor itself must live in a SwiftUI Host —
-    // mounted bare in a UIView it never presents (and red-screens in dev).
-    <Host matchContents>
-      <BottomSheet isPresented={isPresented} onIsPresentedChange={onIsPresentedChange}>
+    // `BottomSheet` is SwiftUI like any other `@expo/ui` view and red-boxes when mounted straight
+    // into the RN tree. The host carries no layout of its own — the sheet presents over the whole
+    // screen from UIKit — so it stays zero-sized and lets touches through to the screen behind it.
+    <Host style={{ position: 'absolute' }} pointerEvents="box-none">
+      {/* Sized to its content, or SwiftUI presents it at a near-full-screen detent — a sheet this
+          short reads as a takeover otherwise. */}
+      <BottomSheet
+        isPresented={isPresented}
+        onIsPresentedChange={onIsPresentedChange}
+        fitToContents
+      >
         <Form>
           {/* Segmented rather than the old icon chips: the agent brand marks are RN SVG
             components, which have no place in a SwiftUI view tree. */}

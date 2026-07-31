@@ -29,6 +29,24 @@ describe('engine request failures', () => {
     expect(failure).toEqual({ code: 'operation_failed', message: 'Agent failed to start' });
   });
 
+  it('preserves conversation reporting without exposing the underlying failure', () => {
+    const failure = toRequestFailure(
+      new OperationError({
+        subsystem: 'agent',
+        operation: 'session.input',
+        publicMessage: 'Agent input was rejected',
+        cause: new Error('provider rejected token sk-secret'),
+        reportedInConversation: true,
+      }),
+    );
+
+    expect(failure).toEqual({
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
+      reportedInConversation: true,
+    });
+  });
+
   it('distinguishes a timeout from other operation failures', () => {
     const failure = toRequestFailure(
       new OperationTimeout({

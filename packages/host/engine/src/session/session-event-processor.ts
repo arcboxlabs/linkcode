@@ -1,11 +1,14 @@
 import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
-import type { AgentEvent, SessionId, SessionNotificationReason } from '@linkcode/schema';
+import type { AgentEvent, SessionId, SessionNotificationReason, ToolKind } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { ResourceService } from '../resource/service';
 import type { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
+
+const SOURCE_TOOL_KINDS = new Set<ToolKind>(['fetch', 'read', 'search']);
 
 /** Applies adapter events to live state, durable records, and wire projections. */
 export class SessionEventProcessor {
@@ -14,12 +17,66 @@ export class SessionEventProcessor {
     private readonly records: SessionRecordRegistry,
     private readonly runtimes: AgentRuntimeService,
     private readonly reportFailure: (effect: Effect.Effect<void>) => void,
+    private readonly resources: ResourceService,
   ) {}
 
   broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
     for (const event of events) {
       this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
     }
+  }
+
+  private registerResources(sessionId: SessionId, event: AgentEvent): void {
+    const links =
+      event.type === 'agent-message'
+        ? (event.content ?? [])
+        : event.type === 'agent-message-chunk'
+          ? [event.content]
+          : [];
+    for (const block of links) {
+      if (block.type === 'resource_link') {
+        this.registerResource(sessionId, 'output', block.uri, block.name, block.mimeType);
+      }
+    }
+    if (event.type !== 'tool-call' || event.toolCall.status !== 'completed') return;
+    for (const item of event.toolCall.content) {
+      if (item.type === 'diff' && item.change === 'add') {
+        this.registerResource(sessionId, 'output', item.path);
+      }
+      if (item.type === 'content' && item.content.type === 'resource_link') {
+        this.registerResource(
+          sessionId,
+          SOURCE_TOOL_KINDS.has(event.toolCall.kind) ? 'source' : 'output',
+          item.content.uri,
+          item.content.name,
+          item.content.mimeType,
+        );
+      }
+    }
+  }
+
+  private registerResource(
+    sessionId: SessionId,
+    direction: 'source' | 'output',
+    locator: string,
+    name?: string,
+    mimeType?: string,
+  ): void {
+    const registration =
+      direction === 'source'
+        ? this.resources.registerSource(sessionId, locator, name, mimeType)
+        : this.resources.registerOutput(sessionId, locator, name, mimeType);
+    this.reportFailure(
+      registration.pipe(
+        Effect.catch((error) =>
+          Effect.logError(
+            'Failed to register session resource',
+            { sessionId, direction, locator, operation: error.operation },
+            error.cause,
+          ),
+        ),
+      ),
+    );
   }
 
   rejectInput(sessionId: SessionId, message: string): void {
@@ -37,6 +94,7 @@ export class SessionEventProcessor {
     // the SDK operation that emitted the event.
     try {
       this.broadcast(sessionId, session.apply(event));
+      this.registerResources(sessionId, event);
       switch (event.type) {
         case 'status':
           if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);

@@ -95,8 +95,8 @@ export interface CodexAppServerOptions {
   binaryPath: string;
   /** Abort the spawned process, including while the initialize handshake is still pending. */
   signal?: AbortSignal;
-  /** Extra environment for the subprocess (e.g. CODEX_API_KEY); merged over the inherited env. */
-  env?: Record<string, string>;
+  /** Complete environment for the subprocess; omit to inherit the daemon environment. */
+  env?: NodeJS.ProcessEnv;
   onNotification: (method: string, params: unknown) => void;
   /** Called once when the subprocess exits, with null code on signal kills and the tail of the
    * process's stderr as diagnostic detail. */
@@ -139,7 +139,7 @@ export class CodexAppServer {
   static async start(this: void, opts: CodexAppServerOptions): Promise<CodexAppServer> {
     const child = spawn(opts.binaryPath, ['app-server'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...processEnv, ...opts.env },
+      env: opts.env ?? processEnv,
       signal: opts.signal,
       windowsHide: true,
     });

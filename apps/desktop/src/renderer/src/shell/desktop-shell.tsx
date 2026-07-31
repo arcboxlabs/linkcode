@@ -19,17 +19,23 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   AttachedTerminalPanel,
+  getResourcesPanelPresentation,
   isAbsoluteFilePath,
   locateFileArtifact,
+  RESOURCES_FLOATING_COLUMN_WIDTH,
+  RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
   SimulatorAutoReveal,
   suppressSimulatorAutoReveal,
   TerminalPanel,
   useBrowserHostRegistration,
   useCloudHosts,
+  useResourcesPanelStore,
   useSelectedHostStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
+import { Card } from 'coss-ui/components/card';
 import { toastManager } from 'coss-ui/components/toast';
+import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
@@ -67,12 +73,16 @@ export function DesktopShell({
   chatWorkspace,
   activeSession,
   draft,
+  newSessionWorkspaceId,
+  onNewSessionWorkspaceChange,
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
+  newSessionPreferredBranches,
+  NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -81,6 +91,7 @@ export function DesktopShell({
   conversation,
   respondingRequestIds,
   responseErrors,
+  resourcesPanel,
   errorMessage,
   pinnedSessionIds,
   collapsedSections,
@@ -157,6 +168,9 @@ export function DesktopShell({
     })),
   );
   const cloudAuth = useCloudAccount();
+  const resourcesOpen = useResourcesPanelStore((state) => state.open);
+  const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
+  const toggleResources = useResourcesPanelStore((state) => state.toggle);
   const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
   const { selectedHostId, selectHost } = useSelectedHostStore(
     useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
@@ -195,6 +209,7 @@ export function DesktopShell({
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
   const tComposer = useTranslations('workbench.composer');
+  const tPanel = useTranslations('workbench.panel.window');
   const syncSidebarPaneSize = useCallback((size: number): void => {
     setShellPaneCssSize(shellRootRef.current, '--lc-sidebar-w', size);
   }, []);
@@ -205,6 +220,9 @@ export function DesktopShell({
     setShellPaneCssSize(shellRootRef.current, '--lc-bottom-h', size);
   }, []);
   const { sidebarOpen, layout, expansionStack, rightPanel, bottomPanel } = shellState;
+  const floatingSpaceAvailable = useMediaQuery({
+    min: RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH + (sidebarOpen ? layout.sidebarW : 0),
+  });
   const sidebarTransition = usePaneTransition({
     open: sidebarOpen,
     size: layout.sidebarW,
@@ -284,6 +302,13 @@ export function DesktopShell({
 
   const active = activeSession;
   const activeSessionId = active?.sessionId ?? null;
+  const resourcesAvailable = draft === null && active !== null && resourcesPanel !== undefined;
+  const resourcesPresentation = getResourcesPanelPresentation({
+    available: resourcesAvailable,
+    floatingSpaceAvailable,
+    rightPanelOpen: rightPanel.open,
+  });
+  const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -320,6 +345,9 @@ export function DesktopShell({
   useDesktopShellShortcuts({
     navigation,
     owner: shellRootRef,
+    closeBottomTerminalTab: closeTab,
+    closeRightTerminalTab,
+    closeWindow: () => systemBridge.window.close(),
     togglePanel,
     updateSidebarOpen,
   });
@@ -392,12 +420,16 @@ export function DesktopShell({
           draft={draft}
           workspaces={workspaces}
           chatWorkspace={chatWorkspace}
+          workspaceId={newSessionWorkspaceId}
+          onWorkspaceChange={onNewSessionWorkspaceChange}
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
           preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}
+          preferredBranches={newSessionPreferredBranches}
+          NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
           mentionItems={mentionItems}
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
@@ -461,6 +493,7 @@ export function DesktopShell({
         cwd={active?.cwd}
         activeSessionId={activeSessionId}
         themeType={themeType}
+        resourcesPanel={resourcesPanel}
         maximized={options.maximized}
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
@@ -522,17 +555,23 @@ export function DesktopShell({
     const items = rightPanel.terminal.tabs.map((tab) => ({
       id: tab.id,
       active: activeIsTerminal && tab.id === rightPanel.terminal.activeTabId,
-      node: tab.id.startsWith('attach:') ? (
-        <AttachedTerminalPanel
-          terminalId={tab.id.slice('attach:'.length)}
-          suspended={rightTransition.phase !== 'open' || shellAnimating}
-        />
-      ) : (
-        <TerminalPanel
-          sessionKey={tab.id}
-          cwd={active?.cwd}
-          suspended={rightTransition.phase !== 'open' || shellAnimating}
-        />
+      node: (
+        <div className="h-full" data-terminal-panel="right" data-terminal-tab={tab.id}>
+          {tab.id.startsWith('attach:') ? (
+            <AttachedTerminalPanel
+              terminalId={tab.id.slice('attach:'.length)}
+              suspended={rightTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeRightTerminalTab(tab.id)}
+            />
+          ) : (
+            <TerminalPanel
+              sessionKey={tab.id}
+              cwd={active?.cwd}
+              suspended={rightTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeRightTerminalTab(tab.id)}
+            />
+          )}
+        </div>
       ),
     }));
     // Browser webviews live here permanently: unmounting or DOM-moving a webview
@@ -555,11 +594,14 @@ export function DesktopShell({
       active: tab.id === bottomPanel.activeTabId,
       node:
         tab.type === 'terminal' ? (
-          <TerminalPanel
-            sessionKey={tab.id}
-            cwd={active?.cwd}
-            suspended={bottomTransition.phase !== 'open' || shellAnimating}
-          />
+          <div className="h-full" data-terminal-panel="bottom" data-terminal-tab={tab.id}>
+            <TerminalPanel
+              sessionKey={tab.id}
+              cwd={active?.cwd}
+              suspended={bottomTransition.phase !== 'open' || shellAnimating}
+              onExit={() => closeTab(tab.id)}
+            />
+          </div>
         ) : (
           <PanelStubContent type={tab.type} />
         ),
@@ -619,6 +661,9 @@ export function DesktopShell({
         sidebarOpen={sidebarOpen}
         rightPanelOpen={rightPanel.open}
         bottomPanelOpen={bottomPanel.open}
+        resourcesOpen={resourcesOpen}
+        resourcesAvailable={resourcesAvailable}
+        resourcesPopoverPanel={resourcesPresentation === 'popover' ? resourcesPanel : undefined}
         expandedPanel={expandedPanel}
         hasNativeBackdrop={hasNativeBackdrop}
         hasNativeTrafficLights={hasNativeTrafficLights}
@@ -690,73 +735,94 @@ export function DesktopShell({
         onHideSidebar={() => updateSidebarOpen(false)}
         onToggleRight={() => togglePanel('right')}
         onToggleBottom={() => togglePanel('bottom')}
+        onToggleResources={toggleResources}
+        onResourcesOpenChange={setResourcesOpen}
       >
-        <DesktopWorkspace
-          main={main}
-          right={workspaceRight}
-          bottom={workspaceBottom}
-          expandedPanel={expandedPanel}
-          layout={layout}
-          onLayoutChange={updateLayout}
-          onSidebarResize={syncSidebarPaneSize}
-          onRightResize={syncRightPaneSize}
-          onBottomResize={syncBottomPaneSize}
-          sidebar={{
-            transition: sidebarTransition,
-            open: sidebarOpen,
-            onResetSize: resetSidebarSize,
-            node: (
-              <SessionSidebar
-                className={sidebarClassName}
-                threadGroups={threadGroups}
-                workspacesLoading={workspacesLoading}
-                sessionsLoading={sessionsLoading}
-                activeId={active?.sessionId ?? null}
-                pinnedSessionIds={pinnedSessionIds}
-                collapsedSections={collapsedSections}
-                topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
-                footer={
-                  <HostFooter
-                    state={tConnection('connected')}
-                    appVersion={appVersion}
-                    pendingPermissionCount={conversation.pendingPermissionIds.length}
-                    account={cloudAuth.account}
-                    authPending={cloudAuth.authenticating}
-                    onSignIn={cloudAuth.signIn}
-                    onSignOut={cloudAuth.signOut}
-                    onManageAccount={cloudAuth.manageAccount}
-                    remoteHosts={remoteHostItems}
-                    remoteHostsLoading={remoteHosts.isLoading}
-                    selectedHostId={selectedHostId}
-                    onSelectHost={selectHost}
-                    onOpenSettings={onOpenSettings}
-                  />
-                }
-                onPickDirectory={pickDirectory}
-                onOpenSearch={onOpenSearch}
-                onOpenAutomations={onOpenAutomations}
-                searchShortcut={searchShortcut}
-                onRegisterWorkspace={onRegisterWorkspace}
-                onImportHistory={onImportHistory}
-                onRenameWorkspace={onRenameWorkspace}
-                onArchiveWorkspace={onArchiveWorkspace}
-                onToggleGroupCollapsed={onToggleGroupCollapsed}
-                onToggleSectionCollapsed={onToggleSectionCollapsed}
-                onTogglePreviewExpanded={onTogglePreviewExpanded}
-                BranchStatusComponent={BranchStatusComponent}
-                // Cloud-gated: without a session the IM source can't authenticate, so the
-                // row menu (and its ellipsis) stays hidden entirely.
-                ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
-                onSelect={onSelectSession}
-                onClose={onCloseSession}
-                onToggleSessionPinned={onToggleSessionPinned}
-                onReorderGroups={onReorderGroups}
-                onReorderThreads={onReorderThreads}
-                onStartDraft={onStartDraft}
-              />
-            ),
-          }}
-        />
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
+          <DesktopWorkspace
+            main={main}
+            right={workspaceRight}
+            bottom={workspaceBottom}
+            expandedPanel={expandedPanel}
+            layout={layout}
+            onLayoutChange={updateLayout}
+            onSidebarResize={syncSidebarPaneSize}
+            onRightResize={syncRightPaneSize}
+            onBottomResize={syncBottomPaneSize}
+            sidebar={{
+              transition: sidebarTransition,
+              open: sidebarOpen,
+              onResetSize: resetSidebarSize,
+              node: (
+                <SessionSidebar
+                  className={sidebarClassName}
+                  threadGroups={threadGroups}
+                  workspacesLoading={workspacesLoading}
+                  sessionsLoading={sessionsLoading}
+                  activeId={active?.sessionId ?? null}
+                  pinnedSessionIds={pinnedSessionIds}
+                  collapsedSections={collapsedSections}
+                  topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
+                  footer={
+                    <HostFooter
+                      state={tConnection('connected')}
+                      appVersion={appVersion}
+                      pendingPermissionCount={conversation.pendingPermissionIds.length}
+                      account={cloudAuth.account}
+                      authPending={cloudAuth.authenticating}
+                      onSignIn={cloudAuth.signIn}
+                      onSignOut={cloudAuth.signOut}
+                      onManageAccount={cloudAuth.manageAccount}
+                      remoteHosts={remoteHostItems}
+                      remoteHostsLoading={remoteHosts.isLoading}
+                      selectedHostId={selectedHostId}
+                      onSelectHost={selectHost}
+                      onOpenSettings={onOpenSettings}
+                    />
+                  }
+                  onPickDirectory={pickDirectory}
+                  onOpenSearch={onOpenSearch}
+                  onOpenAutomations={onOpenAutomations}
+                  searchShortcut={searchShortcut}
+                  onRegisterWorkspace={onRegisterWorkspace}
+                  onImportHistory={onImportHistory}
+                  onRenameWorkspace={onRenameWorkspace}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onToggleGroupCollapsed={onToggleGroupCollapsed}
+                  onToggleSectionCollapsed={onToggleSectionCollapsed}
+                  onTogglePreviewExpanded={onTogglePreviewExpanded}
+                  BranchStatusComponent={BranchStatusComponent}
+                  // Cloud-gated: without a session the IM source can't authenticate, so the
+                  // row menu (and its ellipsis) stays hidden entirely.
+                  ImMenuComponent={cloudAuth.account ? DesktopThreadImMenu : undefined}
+                  onSelect={onSelectSession}
+                  onClose={onCloseSession}
+                  onToggleSessionPinned={onToggleSessionPinned}
+                  onReorderGroups={onReorderGroups}
+                  onReorderThreads={onReorderThreads}
+                  onStartDraft={onStartDraft}
+                />
+              ),
+            }}
+          />
+          <aside
+            aria-hidden={!resourcesFloatingOpen}
+            inert={!resourcesFloatingOpen}
+            className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+            style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
+          >
+            <div
+              className="h-full p-3 pt-[calc(var(--lc-chrome-h)+0.75rem)]"
+              style={{ width: RESOURCES_FLOATING_COLUMN_WIDTH }}
+            >
+              <Card aria-label={tPanel('resources')} className="w-72 overflow-hidden shadow-xl">
+                <div className="max-h-[min(32rem,calc(100vh-var(--lc-chrome-h)-1.5rem))] min-h-0 overflow-y-auto">
+                  {resourcesPresentation === 'floating' ? resourcesPanel : null}
+                </div>
+              </Card>
+            </div>
+          </aside>
+        </div>
       </DesktopChrome>
       {rightContentMounted && renderRightPanelContents(rightContentHost)}
       {bottomContentMounted && renderBottomPanelContents(bottomContentHost)}

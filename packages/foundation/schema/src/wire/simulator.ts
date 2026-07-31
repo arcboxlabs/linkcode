@@ -64,10 +64,7 @@ export const simulatorWireVariants = [
     x: coord.optional(),
     y: coord.optional(),
   }),
-  // ── Agent consent (CODE-420) ──
-  // Device-scoped, not turn-scoped: an agent's first tool call on an unknown device suspends
-  // while the user decides, which the agent-turn approval channel cannot express (it cancels its
-  // open asks whenever a turn goes idle). Decisions persist across sessions and daemon restarts.
+  // ── Agent consent ──
   z.object({ kind: z.literal('simulator.consent.get'), clientReqId: WireRequestIdSchema }),
   z.object({
     kind: z.literal('simulator.consent.state'),
@@ -173,9 +170,7 @@ export const simulatorWireVariants = [
     data: z.string(),
   }),
 
-  // ── Interactive control + framebuffer streaming (CODE-397; private-API, macOS host only) ──
-  // Void commands reply with the generic `request.succeeded`/`request.failed`. Coordinates are
-  // normalized 0..1, so a downscaled stream needs no adjustment.
+  // ── Interactive control + framebuffer streaming (macOS host only) ──
   z.object({
     kind: z.literal('simulator.tap'),
     clientReqId: WireRequestIdSchema,

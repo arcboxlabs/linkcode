@@ -1,20 +1,22 @@
 import { mkdirSync, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { daemonRuntimeFilePath, isPidAlive, readJsonFileSync } from '@linkcode/common/node';
-import { DAEMON_DEFAULT_URL, DaemonRuntimeInfoSchema } from '@linkcode/schema';
-import { PROFILE } from './constants';
+import { DaemonRuntimeInfoSchema, daemonDefaultUrl } from '@linkcode/schema';
+import { CHANNEL, PROFILE } from './constants';
 import { getSettings } from './settings';
 
 /**
  * Daemon endpoint for the renderer: settings override → the running daemon's runtime.json
- * advertisement → the default port. Synchronous so it can serve the renderer's boot snapshot.
+ * advertisement → this channel's default port. Synchronous so it can serve the renderer's boot
+ * snapshot. The fallback is channel-scoped like the discovery file: dialing the bare default would
+ * point a development shell straight at the release daemon.
  */
 export function resolveDaemonUrl(): string {
-  return getSettings().daemonUrl ?? discoverRuntimeUrl() ?? DAEMON_DEFAULT_URL;
+  return getSettings().daemonUrl ?? discoverRuntimeUrl() ?? daemonDefaultUrl(CHANNEL);
 }
 
 function discoverRuntimeUrl(): string | null {
-  const file = daemonRuntimeFilePath(PROFILE);
+  const file = daemonRuntimeFilePath(CHANNEL, PROFILE);
   const parsed = DaemonRuntimeInfoSchema.safeParse(readJsonFileSync(file));
   if (!parsed.success || !isPidAlive(parsed.data.pid)) return null;
   // The renderer connects over Socket.IO; ignore listeners it cannot dial.
@@ -30,7 +32,7 @@ const RUNTIME_WATCH_DEBOUNCE_MS = 100;
  * the file is created/removed across daemon lifetimes, and a watcher on a deleted inode goes blind.
  */
 export function watchDaemonRuntime(onChange: () => void): () => void {
-  const file = daemonRuntimeFilePath(PROFILE);
+  const file = daemonRuntimeFilePath(CHANNEL, PROFILE);
   // The daemon creates its state dir on first start; create it up front so watching never races that.
   mkdirSync(dirname(file), { recursive: true });
   let debounce: NodeJS.Timeout | null = null;

@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DaemonIdentity } from '@linkcode/schema';
+import { DAEMON_PORT_HUNT_SPAN } from '@linkcode/schema';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DaemonAlreadyRunningError,
@@ -16,6 +17,14 @@ import {
 } from '../../src/runtime';
 
 const servers: Server[] = [];
+
+// Ports are shared with the rest of the machine, so the exact landing port is not ours to predict.
+function expectHuntedPast(url: string, occupied: number): void {
+  const hunted = Number(new URL(url).port);
+  expect(hunted).toBeGreaterThan(occupied);
+  expect(hunted).toBeLessThan(occupied + DAEMON_PORT_HUNT_SPAN);
+}
+
 let savedHome: string | undefined;
 
 // The runtime file lives under os.homedir(); point HOME at a fresh temp dir per test.
@@ -60,6 +69,34 @@ function serveIdentity(id: DaemonIdentity): Promise<number> {
     res.writeHead(404);
     res.end();
   });
+}
+
+function listenOn(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200);
+      res.end();
+    });
+    servers.push(server);
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      resolve(port);
+    });
+  });
+}
+
+/**
+ * Two adjacent ports we hold ourselves. Retried because the neighbour of an ephemeral port belongs
+ * to the machine, not to us — assuming it is free is the very flake these cases exist to rule out.
+ */
+async function occupyAdjacentPair(attempt = 0): Promise<{ port: number; neighbour: number }> {
+  const port = await serveForeign();
+  try {
+    return { port, neighbour: await listenOn(port + 1) };
+  } catch (err) {
+    if (attempt >= 20) throw err;
+    return occupyAdjacentPair(attempt + 1);
+  }
 }
 
 function serveForeign(): Promise<number> {
@@ -119,13 +156,25 @@ describe('probeDaemonIdentity', () => {
 });
 
 describe('listenWithPortHunt', () => {
-  it('hunts past a foreign occupant to the next port', async () => {
+  it('hunts past a foreign occupant', async () => {
     const port = await serveForeign();
     const { server, url } = await listenWithPortHunt(
       { type: 'ws', port, host: '127.0.0.1' },
       identity(process.pid),
     );
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
+    await server.close();
+  });
+
+  // Occupying the neighbour too is what forces the hunt to keep walking rather than settle on +1.
+  it('keeps walking when the neighbouring port is taken as well', async () => {
+    const { port, neighbour } = await occupyAdjacentPair();
+    const { server, url } = await listenWithPortHunt(
+      { type: 'ws', port, host: '127.0.0.1' },
+      identity(process.pid),
+    );
+    expect(Number(new URL(url).port)).toBeGreaterThan(neighbour);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -140,7 +189,7 @@ describe('listenWithPortHunt', () => {
     const self = identity(process.pid);
     const port = await serveIdentity(self);
     const { server, url } = await listenWithPortHunt({ type: 'ws', port, host: '127.0.0.1' }, self);
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -150,7 +199,7 @@ describe('listenWithPortHunt', () => {
       { type: 'ws', port, host: '127.0.0.1' },
       identity(process.pid),
     );
-    expect(url).toBe(`ws://127.0.0.1:${port + 1}`);
+    expectHuntedPast(url, port);
     await server.close();
   });
 
@@ -160,6 +209,40 @@ describe('listenWithPortHunt', () => {
       listenWithPortHunt(
         { type: 'ws', port, host: '127.0.0.1' },
         { ...identity(process.pid), profile: 'alpha' },
+      ),
+    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  // CODE-460: this is what lets a dev daemon start while an installed release holds 19523.
+  // Both default profiles are `undefined`, so without the channel comparison the dev daemon
+  // reads the release one as a double-start and exits 3.
+  it('hunts past a live daemon of another channel', async () => {
+    const port = await serveIdentity(identity(4242));
+    const { server, url } = await listenWithPortHunt(
+      { type: 'ws', port, host: '127.0.0.1' },
+      { ...identity(process.pid), channel: 'development' },
+    );
+    expectHuntedPast(url, port);
+    await server.close();
+  });
+
+  it('refuses to hunt past a live daemon of the same channel', async () => {
+    const port = await serveIdentity({ ...identity(4242), channel: 'development' });
+    await expect(
+      listenWithPortHunt(
+        { type: 'ws', port, host: '127.0.0.1' },
+        { ...identity(process.pid), channel: 'development' },
+      ),
+    ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+  });
+
+  // An absent channel is release's, so a pre-CODE-460 daemon still reads as a double-start.
+  it('treats an occupant with no channel field as release', async () => {
+    const port = await serveIdentity(identity(4242));
+    await expect(
+      listenWithPortHunt(
+        { type: 'ws', port, host: '127.0.0.1' },
+        { ...identity(process.pid), channel: 'release' },
       ),
     ).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
   });

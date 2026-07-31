@@ -12,6 +12,8 @@ import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
+const rBlobUrl = /^blob:/;
+
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
   await client.connect();
@@ -135,6 +137,58 @@ describe('dev mock transport', () => {
     client.dispose();
   });
 
+  it('serves seeded Sources and Outputs and supports resource mutations', async () => {
+    const client = await connectedClient();
+    const sessions = await client.listSessions();
+    const showcase = sessions.find((session) => session.title === 'Mocked streaming showcase');
+    if (!showcase) throw new Error('showcase session not found');
+
+    const seeded = await client.listResources(showcase.sessionId);
+    expect(seeded.filter((resource) => resource.direction === 'source')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Task resources requirements.md', status: 'ready' }),
+        expect.objectContaining({
+          name: 'CODE-480 · Task Resources Panel',
+          locator: expect.objectContaining({ type: 'url' }),
+        }),
+      ]),
+    );
+    expect(seeded.filter((resource) => resource.direction === 'output')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'task-resources-implementation.md', status: 'ready' }),
+        expect.objectContaining({ name: 'Resources panel prototype', kind: 'site' }),
+      ]),
+    );
+
+    const webSource = seeded.find((resource) => resource.name === 'LinkCode architecture');
+    if (webSource?.locator.type !== 'url') throw new Error('web source not found');
+    await expect(client.hostResource(webSource.resourceId)).resolves.toEqual({
+      url: webSource.locator.url,
+    });
+
+    const changedStatuses: string[] = [];
+    const removedIds: string[] = [];
+    client.subscribeResources((event) => {
+      if (event.type === 'changed') changedStatuses.push(event.resource.status);
+      else removedIds.push(event.resourceId);
+    });
+    const uploaded = await client.uploadSource(
+      showcase.sessionId,
+      'review-notes.txt',
+      'TW9jayByZXZpZXcgbm90ZXM=',
+      'text/plain',
+    );
+    expect(uploaded).toMatchObject({ direction: 'source', status: 'ready' });
+    expect(changedStatuses).toEqual(['processing', 'ready']);
+    expect(await client.listResources(showcase.sessionId)).toContainEqual(uploaded);
+    expect((await client.hostResource(uploaded.resourceId)).url).toMatch(rBlobUrl);
+
+    await client.removeResource(uploaded.resourceId);
+    expect(removedIds).toContain(uploaded.resourceId);
+    expect(await client.listResources(showcase.sessionId)).not.toContainEqual(uploaded);
+    client.dispose();
+  });
+
   it('advertises and handles composer directives', async () => {
     const client = await connectedClient();
     const sessionId = await client.startSession({
@@ -208,7 +262,14 @@ describe('dev mock transport', () => {
     await expect(client.invokeCommand(sessionId, 'missing')).rejects.toThrow(
       'Unknown mock slash command: /missing',
     );
-    expect(events).toHaveLength(mark);
+    expect(events.slice(mark)).toEqual([
+      {
+        type: 'error',
+        message: 'Unknown mock slash command: /missing',
+        code: 'input_rejected',
+        recoverable: true,
+      },
+    ]);
 
     mark = events.length;
     await expect(client.runShellCommand(sessionId, 'git status')).resolves.toEqual({ ok: true });
@@ -309,6 +370,13 @@ describe('dev mock transport', () => {
       branch: 'mock-host',
       dirtyFileCount: 3,
     });
+    await expect(client.listGitBranches('/mock/linkcode')).resolves.toEqual({
+      isRepo: true,
+      branches: [
+        { name: 'mock-host', isCurrent: true, lastCommitAt: 1_720_000_000_000 },
+        { name: 'main', isCurrent: false, lastCommitAt: 1_710_000_000_000 },
+      ],
+    });
     await expect(client.getGitPullRequestStatus('/mock/linkcode')).resolves.toMatchObject({
       status: 'ok',
       pullRequest: { checks: 'failing', reviewDecision: 'changes_requested' },
@@ -326,6 +394,7 @@ describe('dev mock transport', () => {
       pullRequest: null,
     });
     await expect(client.getGitStatus('/mock/scratch')).resolves.toEqual({ isRepo: false });
+    await expect(client.listGitBranches('/mock/scratch')).resolves.toEqual({ isRepo: false });
     await expect(client.getGitPullRequestStatus('/mock/scratch')).resolves.toEqual({
       status: 'unavailable',
       reason: 'not_git_repo',

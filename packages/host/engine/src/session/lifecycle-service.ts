@@ -5,6 +5,9 @@ import type {
   SessionId,
   SessionRecord,
   StartOptions,
+  WorkspaceId,
+  WorkspaceRecord,
+  WorktreeRecord,
 } from '@linkcode/schema';
 import { Effect, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
@@ -12,6 +15,7 @@ import type { SessionDriver } from '../automation';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
+import type { WorktreeService } from '../worktree/worktree-service';
 import type { HistoryService } from './history-service';
 import type { SessionOrchestrator } from './orchestrator';
 import type { SessionRecordRegistry } from './session-record-registry';
@@ -31,6 +35,7 @@ export class SessionLifecycleService {
     private readonly history: HistoryService,
     private readonly startOptions: SessionStartOptionsResolver,
     private readonly workspaces: WorkspaceRegistry,
+    private readonly worktrees: WorktreeService,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -53,11 +58,36 @@ export class SessionLifecycleService {
     this.runEffect = runEffect;
   }
 
+  deleteSession(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
+    const { sessions, workspaces, worktrees } = this;
+    return Effect.gen(function* () {
+      const worktree = worktrees.get(sessionId);
+      yield* sessions.delete(sessionId);
+      yield* worktrees.cleanupDeletedSession(sessionId);
+      if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
+        const workspace = workspaces.findByCwd(worktree.worktreePath);
+        if (workspace) {
+          yield* Effect.tryPromise(() => workspaces.archive(workspace.workspaceId)).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning('Failed to archive cleaned worktree workspace metadata', error),
+            ),
+          );
+        }
+      }
+    });
+  }
+
   start(replyTo: string, options: StartOptions): Effect.Effect<void, EngineFailure> {
-    const { sessions, startOptions, workspaces } = this;
+    const { sessions, startOptions, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolved = yield* startOptions.resolve(options, sessionId);
+      const resolvedIntent = yield* startOptions.resolve(options, sessionId);
+      const resolved = yield* worktrees.provision(resolvedIntent, sessionId);
+      if (options.cwd) {
+        const parent = yield* workspaceTouch(workspaces, options.cwd);
+        const worktree = worktrees.get(sessionId);
+        if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+      }
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -69,7 +99,6 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ startedAt: now }],
       };
-      if (resolved.cwd) yield* workspaceTouch(workspaces, resolved.cwd);
       yield* sessions.startLive(replyTo, record, (adapter) =>
         sessions.startAdapter(adapter, resolved),
       );
@@ -119,10 +148,16 @@ export class SessionLifecycleService {
     historyId: AgentHistoryId,
     options: StartOptions,
   ): Effect.Effect<void, EngineFailure> {
-    const { history, sessions, startOptions: resolver, workspaces } = this;
+    const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve({ ...options, kind }, sessionId);
+      const resolvedIntent = yield* resolver.resolve({ ...options, kind }, sessionId);
+      const startOptions = yield* worktrees.provision(resolvedIntent, sessionId);
+      if (options.cwd) {
+        const parent = yield* workspaceTouch(workspaces, options.cwd);
+        const worktree = worktrees.get(sessionId);
+        if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+      }
       const now = Date.now();
       const record: SessionRecord = {
         sessionId,
@@ -133,7 +168,6 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ historyId, startedAt: now }],
       };
-      if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(replyTo, record, (adapter) =>
         history.resume(adapter, historyId, startOptions),
       );
@@ -163,15 +197,22 @@ export class SessionLifecycleService {
       // A never-prompted session has no provider transcript to resume from (the adapter only mints one
       // on the first prompt); waking it is a fresh start under the same LinkCode id.
       const historyId = this.records.historyId(sessionId);
-      const { history, sessions, startOptions: resolver, workspaces } = this;
+      const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
       return Effect.gen(function* () {
+        yield* worktrees.verifyResume(sessionId);
         const startOptions = yield* resolver.resolve(
           { kind: record.kind, cwd: record.cwd },
           sessionId,
         );
         // Register before starting so a persistence failure cannot follow a successful
         // `session.started` reply with a contradictory request failure.
-        if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
+        const worktree = worktrees.get(sessionId);
+        if (worktree) {
+          const parent = yield* workspaceTouch(workspaces, worktree.repoRoot);
+          yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+        } else if (record.cwd) {
+          yield* workspaceTouch(workspaces, record.cwd);
+        }
         record.runs.push({ historyId, startedAt: Date.now() });
         yield* sessions.startLive(replyTo, record, (adapter) =>
           historyId === undefined
@@ -238,7 +279,7 @@ export class SessionLifecycleService {
 function workspaceTouch(
   workspaces: WorkspaceRegistry,
   cwd: string,
-): Effect.Effect<unknown, EngineFailure> {
+): Effect.Effect<WorkspaceRecord, EngineFailure> {
   return Effect.tryPromise({
     try: () => workspaces.touch(cwd),
     catch: (cause) =>
@@ -246,6 +287,27 @@ function workspaceTouch(
         subsystem: 'store',
         operation: 'workspace.touch',
         publicMessage: 'Failed to persist workspace',
+      }),
+  });
+}
+
+function workspaceRegisterWorktree(
+  workspaces: WorkspaceRegistry,
+  worktree: WorktreeRecord,
+  parentWorkspaceId: WorkspaceId,
+): Effect.Effect<unknown, EngineFailure> {
+  return Effect.tryPromise({
+    try: () =>
+      workspaces.registerWorktree({
+        cwd: worktree.worktreePath,
+        parentWorkspaceId,
+        branch: worktree.branch,
+      }),
+    catch: (cause) =>
+      toOperationFailure(cause, {
+        subsystem: 'store',
+        operation: 'workspace.register-worktree',
+        publicMessage: 'Failed to persist managed worktree workspace',
       }),
   });
 }

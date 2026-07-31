@@ -19,7 +19,7 @@ export default function HostLayout(): React.ReactNode {
 }
 
 function HostConnection({ host }: { host: HostProfile }): React.ReactNode {
-  const { client, status, retry } = useHostClient(host);
+  const { client, status, retry, failure } = useHostClient(host);
   const screenOptions = useStackScreenOptions();
   const setLastActiveHostId = useHostRegistryStore((state) => state.setLastActiveHostId);
 
@@ -32,6 +32,7 @@ function HostConnection({ host }: { host: HostProfile }): React.ReactNode {
       <HostConnectionState
         status={status}
         url={'url' in host ? host.url : `${host.name} · LinkCode Cloud`}
+        failure={failure}
         onRetry={retry}
       />
     );

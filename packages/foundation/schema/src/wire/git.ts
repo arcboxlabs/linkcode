@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  GitBranchListSchema,
   GitDiffModeSchema,
   GitDiffSchema,
   GitPullRequestStatusSchema,
@@ -18,6 +19,16 @@ export const gitWireVariants = [
     kind: z.literal('git.status.get.result'),
     replyTo: WireRequestIdSchema,
     status: GitStatusSchema,
+  }),
+  z.object({
+    kind: z.literal('git.branch.list'),
+    clientReqId: WireRequestIdSchema,
+    cwd: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('git.branch.list.result'),
+    replyTo: WireRequestIdSchema,
+    branchList: GitBranchListSchema,
   }),
   z.object({
     kind: z.literal('git.pr_status.get'),

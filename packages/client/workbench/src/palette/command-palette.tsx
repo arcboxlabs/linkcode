@@ -48,8 +48,19 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   const workspaceByCwd = new Map(
     (workspaces ?? []).map((workspace) => [normalizeCwdKey(workspace.cwd), workspace]),
   );
+  const workspaceById = new Map(
+    (workspaces ?? []).map((workspace) => [workspace.workspaceId, workspace]),
+  );
   const candidates: PaletteThreadCandidate[] = sessions.sessions.map((session) => {
-    const workspace = workspaceByCwd.get(normalizeCwdKey(session.cwd));
+    const matched = workspaceByCwd.get(normalizeCwdKey(session.cwd));
+    let workspace = matched;
+    if (matched && workspaceKind(matched) === 'worktree') {
+      const parent =
+        matched.parentWorkspaceId === undefined
+          ? undefined
+          : workspaceById.get(matched.parentWorkspaceId);
+      workspace = parent && workspaceKind(parent) === 'project' ? parent : undefined;
+    }
     return {
       session,
       title: session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`,
@@ -87,7 +98,7 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
   ];
   let targetWorkspace: WorkspaceRecord | null = null;
   for (const workspace of workspaces ?? []) {
-    if (workspaceKind(workspace) !== 'chat') {
+    if (workspaceKind(workspace) === 'project') {
       targetWorkspace = workspace;
       break;
     }

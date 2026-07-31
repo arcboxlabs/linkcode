@@ -45,8 +45,8 @@ export default function SessionScreen(): React.ReactNode {
   const sessionId: SessionId | null = parsed.success ? parsed.data : null;
   const { sessions } = useSessions();
 
-  const session = sessions.find((entry) => entry.sessionId === rawSessionId);
-  const conversation = useSeededConversation(sessionId ? (session ?? null) : null);
+  const session = sessions.find((entry) => entry.sessionId === sessionId);
+  const conversation = useSeededConversation(sessionId, session ?? null);
   const actions = useSessionActions(sessionId, conversation.status);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
   const observedSessionRef = useRef<SessionId | null>(null);
@@ -88,7 +88,6 @@ export default function SessionScreen(): React.ReactNode {
   // A failed cold resume retries when the screen next focuses or the client generation changes.
   useFocusEffect(
     useCallback(() => {
-      if (sessionId) client.attachSession(sessionId);
       if (
         sessionId &&
         !autoResumeSuppressed &&
@@ -97,7 +96,7 @@ export default function SessionScreen(): React.ReactNode {
       ) {
         resume(sessionId);
       }
-    }, [autoResumeSuppressed, client, resume, sessionId, session?.status]),
+    }, [autoResumeSuppressed, resume, sessionId, session?.status]),
   );
 
   // Desktop parity (`applySelection`): opening a stopped session resumes it silently, once.

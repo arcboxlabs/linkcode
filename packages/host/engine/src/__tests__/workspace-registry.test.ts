@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { WorkspaceId, WorkspaceRecord } from '@linkcode/schema';
-import { normalizeCwdKey } from '@linkcode/schema';
+import { normalizeCwdKey, WorkspaceIdSchema } from '@linkcode/schema';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRegistry } from '../workspace/workspace-registry';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -67,6 +67,61 @@ describe('WorkspaceRegistry', () => {
       'Workspace path is not a directory',
     );
     expect(registry.list()).toHaveLength(0);
+  });
+
+  it('register() rejects client-supplied worktree records', async () => {
+    const registry = new WorkspaceRegistry();
+    await expect(registry.register({ cwd: makeTempDir(), kind: 'worktree' })).rejects.toMatchObject(
+      { code: 'invalid_request' },
+    );
+    expect(registry.list()).toHaveLength(0);
+  });
+
+  it('registerWorktree() requires a project parent and persists trusted metadata', async () => {
+    const registry = new WorkspaceRegistry();
+    const parent = await registry.register({ cwd: makeTempDir() });
+    const cwd = makeTempDir();
+
+    const record = await registry.registerWorktree({
+      cwd,
+      parentWorkspaceId: parent.workspaceId,
+      branch: 'feature/code-429',
+    });
+
+    expect(record).toMatchObject({
+      cwd,
+      name: 'feature/code-429',
+      kind: 'worktree',
+      parentWorkspaceId: parent.workspaceId,
+    });
+    await expect(
+      registry.registerWorktree({
+        cwd: makeTempDir(),
+        parentWorkspaceId: WorkspaceIdSchema.parse('ws-missing'),
+        branch: 'invalid',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+  });
+
+  it('registerWorktree() upgrades an existing cwd atomically and keeps its id', async () => {
+    const registry = new WorkspaceRegistry();
+    const parent = await registry.register({ cwd: makeTempDir() });
+    const cwd = makeTempDir();
+    const intermediate = await registry.touch(cwd);
+
+    const upgraded = await registry.registerWorktree({
+      cwd,
+      parentWorkspaceId: parent.workspaceId,
+      branch: 'feature',
+    });
+
+    expect(upgraded.workspaceId).toBe(intermediate.workspaceId);
+    expect(upgraded).toMatchObject({
+      kind: 'worktree',
+      parentWorkspaceId: parent.workspaceId,
+      name: 'feature',
+    });
+    expect(registry.list()).toHaveLength(2);
   });
 
   it('touch() resolves a relative cwd to the same record as an absolute register() cwd', async () => {

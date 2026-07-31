@@ -2,6 +2,8 @@ import type { ConnectionSource } from '@linkcode/client-core';
 import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
 import NetInfo from '@react-native-community/netinfo';
 import { randomUUID } from 'expo-crypto';
+import { noop } from 'foxact/noop';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import type { HostProfile } from '../stores/host-store';
@@ -15,6 +17,10 @@ interface HostClientBase {
   readonly attempt: number;
   /** Abandon any pending backoff and dial again now. */
   readonly retry: () => void;
+  /** Why the last attempt failed, when the controller knows. Kept because "unable to reach" alone
+   * tells neither the user nor a triager whether the host is down, unreachable, or speaking a
+   * different wire version — the causes need entirely different responses. */
+  readonly failure?: string;
 }
 
 interface HostClientReady extends HostClientBase {
@@ -73,12 +79,23 @@ export function useHostClient(host: HostProfile): HostClientState {
 
   const retry = useCallback(() => controller.retry(), [controller]);
   const client = snapshot.contextGeneration?.client ?? null;
+  const readyClient = client && snapshot.status === 'ready' ? client : null;
 
-  return client && snapshot.status === 'ready'
-    ? { attempt: snapshot.attempt, client, retry, status: 'ready' }
+  // A phone pays for bytes and battery, so it takes only the sessions it opened rather than every
+  // session on the host. Re-sent per generation: a recovered connection starts back at `all`.
+  // Failing leaves the daemon broadcasting everything, which is wasteful but not broken.
+  useEffect(() => {
+    if (!readyClient) return;
+    // eslint-disable-next-line sukka/react-no-use-effect-watching -- a request to the daemon, not a useState setter the `set` prefix suggests
+    readyClient.setSubscriptionMode('attached').catch(noop);
+  }, [readyClient]);
+
+  return readyClient
+    ? { attempt: snapshot.attempt, client: readyClient, retry, status: 'ready' }
     : {
         attempt: snapshot.attempt,
         client: null,
+        failure: extractErrorMessage(snapshot.error, false) ?? undefined,
         retry,
         status: snapshot.status === 'error' ? 'error' : 'connecting',
       };

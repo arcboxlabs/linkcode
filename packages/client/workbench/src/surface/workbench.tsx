@@ -1,4 +1,5 @@
 import type { Conversation } from '@linkcode/client-core';
+import { isRequestFailureReportedInConversation } from '@linkcode/client-core';
 import type {
   AgentInput,
   ContentBlock,
@@ -48,6 +49,7 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { captureProductEvent } from '../analytics/product-analytics';
 import { useFileMentionSource } from '../files/mentions';
+import { RuntimeNewSessionBranchPicker } from '../git/new-session-branch-picker';
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
@@ -66,6 +68,7 @@ import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
+import { RuntimeTaskResourcesPanel } from './task-resources-panel';
 import { useAgentStartCatalogs } from './use-agent-catalogs';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
@@ -104,6 +107,13 @@ export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
 }
 
+/** A new-session workspace choice, tagged with the resolved workspace it was made against so a
+ * draft opened from another entry point cannot inherit it. */
+interface NewSessionWorkspacePick {
+  forInitial: WorkspaceId | null;
+  picked: WorkspaceId;
+}
+
 /**
  * The workbench feature surface: session inbox + conversation stream + composer. Assumes the data
  * plane is already mounted above it — wrap in `WorkbenchProviders` and mount as a feature page.
@@ -113,33 +123,37 @@ export function Workbench({
 }: WorkbenchProps): React.ReactNode {
   const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [workspacePick, setWorkspacePick] = useState<NewSessionWorkspacePick | null>(null);
   function handleError(err: unknown): void {
     setErrorMessage(extractErrorMessage(err));
   }
 
+  function leaveSurface(): void {
+    setErrorMessage(null);
+    setWorkspacePick(null);
+  }
+
   const rawSessions = useWorkbenchSessions(handleError);
-  // Leaving the current surface drops its error state: a stale failure must not follow the user
-  // to another thread or the new-thread page (CODE-239). `create` clears at submit time instead.
   const sessions: WorkbenchSessions = {
     ...rawSessions,
     select(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.select(id);
     },
     startDraft(workspaceId) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.startDraft(workspaceId);
     },
     goBack() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goBack();
     },
     goForward() {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.goForward();
     },
     close(id) {
-      setErrorMessage(null);
+      leaveSurface();
       rawSessions.close(id);
     },
   };
@@ -158,6 +172,8 @@ export function Workbench({
         conversation={conversation}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
+        workspacePick={workspacePick}
+        onWorkspacePick={setWorkspacePick}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
       />
@@ -171,6 +187,8 @@ interface WorkbenchSessionSurfaceProps {
   conversation: Conversation;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
+  workspacePick: NewSessionWorkspacePick | null;
+  onWorkspacePick: (pick: NewSessionWorkspacePick) => void;
   onClearError: () => void;
   onError: (err: unknown) => void;
 }
@@ -180,6 +198,8 @@ function WorkbenchSessionSurface({
   conversation,
   errorMessage,
   ShellComponent,
+  workspacePick,
+  onWorkspacePick,
   onClearError,
   onError,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
@@ -192,9 +212,16 @@ function WorkbenchSessionSurface({
   const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  // Prompts (with attachments) and workflow-mode/approval-policy switches all ride this generic
-  // input op; each reflects back via its own session event.
-  const inputMutation = useMutation(sendInput, { onError });
+  // The host mirrors recoverable turn-input failures into the conversation as `input_rejected`.
+  // Keep transport/validation failures global because they do not have a corresponding event.
+  const turnInputMutation = useMutation(sendInput, {
+    onError(err) {
+      if (!isRequestFailureReportedInConversation(err)) onError(err);
+    },
+  });
+  // Workflow-mode and approval-policy switches do not start a turn, so their failures are not
+  // mirrored into conversation history and still belong in the global error surface.
+  const controlInputMutation = useMutation(sendInput, { onError });
   const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
   const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
   const visibleResponseErrors = new Map<string, string>();
@@ -209,7 +236,6 @@ function WorkbenchSessionSurface({
   const active = sessions.active;
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
-  const agentCatalogs = useAgentStartCatalogs();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -241,6 +267,9 @@ function WorkbenchSessionSurface({
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
   const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
+  const newSessionPreferredBranches = useNewSessionDefaultsStore(
+    (state) => state.branchesByWorkspace,
+  );
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
@@ -285,9 +314,8 @@ function WorkbenchSessionSurface({
   );
 
   function submitActiveInput(input: AgentInput): Promise<void> {
-    const sessionId = sessions.activeId;
-    if (sessionId) onClearError();
-    return submitActiveSessionInput(sessionId, input, inputMutation.trigger);
+    onClearError();
+    return submitActiveSessionInput(input, turnInputMutation.trigger);
   }
 
   function handleSend(content: ContentBlock[]): Promise<void> {
@@ -327,14 +355,20 @@ function WorkbenchSessionSurface({
       effort: submission.effort ?? undefined,
       approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
+      branch: submission.branch,
     });
     const startupSelection = reflectedStartupSelection(
       submission,
       sdkClient.raw.eventsSnapshot(sessionId),
     );
-    rememberNewSessionDefaults(submission.kind, submission.workspaceId, startupSelection);
+    rememberNewSessionDefaults(
+      submission.kind,
+      submission.workspaceId,
+      startupSelection,
+      submission.branch?.name,
+    );
     // The first input rides behind the started session, like any conversation send.
-    void inputMutation
+    void turnInputMutation
       .trigger({ sessionId, input: submission.input })
       .then(() => {
         captureProductEvent('turn submitted', { input_kind: submission.input.type });
@@ -374,7 +408,7 @@ function WorkbenchSessionSurface({
     onClearError();
     // Unlike model/effort, the composer doesn't await this to reflect the pick locally: the active
     // mode only ever comes back via current-mode-update, and failures surface in the error banner.
-    return inputMutation
+    return controlInputMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-mode', modeId } })
       .then(noop);
   }
@@ -383,7 +417,7 @@ function WorkbenchSessionSurface({
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Same contract as handleModeChange: the pick reflects back via approval-policy-update.
-    return inputMutation
+    return controlInputMutation
       .trigger({ sessionId: sessions.activeId, input: { type: 'set-approval-policy', policyId } })
       .then(noop);
   }
@@ -484,13 +518,17 @@ function WorkbenchSessionSurface({
   // The chat workspace is a fixed system entry (the sidebar's "Chats" section, not a Projects
   // group) — split out so the new-session picker offers it as its own "Chat" entry.
   const allWorkspaces = workspaces ?? [];
-  const workspaceIds = new Set(allWorkspaces.map((workspace) => workspace.workspaceId));
+  const workspacesById = new Map<WorkspaceId, WorkspaceRecord>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
   for (const workspace of allWorkspaces) {
-    if (workspaceKind(workspace) === 'chat') chatWorkspace ??= workspace;
+    const kind = workspaceKind(workspace);
+    if (kind === 'worktree') continue;
+    workspacesById.set(workspace.workspaceId, workspace);
+    if (kind === 'chat') chatWorkspace ??= workspace;
     else projectWorkspaces.push(workspace);
   }
+  const workspaceIds = new Set(workspacesById.keys());
 
   // Resolve the draft's initial picks: an explicit preselection (group "+", Chats "+") wins, then
   // the persisted last-used workspace (if it still exists), then chat, then the first project.
@@ -511,6 +549,20 @@ function WorkbenchSessionSurface({
         initialProvider: lastProvider ?? 'claude-code',
       }
     : null;
+
+  // The new-session page's workspace is owned above rather than by the surface because the
+  // catalogs below are scoped by its cwd — two copies would let them drift and advertise a default
+  // the session would not start in. The pick is tagged with the workspace it was resolved against,
+  // and leaving the surface clears it (see `leaveSurface`), so a later draft never inherits it.
+  const newSessionWorkspaceId =
+    workspacePick?.forInitial === initialWorkspaceId ? workspacePick.picked : initialWorkspaceId;
+  const agentCatalogs = useAgentStartCatalogs(
+    newSessionWorkspaceId === null ? undefined : workspacesById.get(newSessionWorkspaceId)?.cwd,
+  );
+
+  function handleNewSessionWorkspaceChange(workspaceId: WorkspaceId): void {
+    onWorkspacePick({ forInitial: initialWorkspaceId, picked: workspaceId });
+  }
 
   function handleRespond(requestId: string, decision: PermissionDecision): void {
     if (!sessions.activeId || respondingRequestIds.has(requestId)) return;
@@ -561,6 +613,9 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
+      resourcesPanel={
+        activeSessionId ? <RuntimeTaskResourcesPanel sessionId={activeSessionId} /> : undefined
+      }
       attachmentSupport={ATTACHMENT_SUPPORT}
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}
@@ -569,10 +624,14 @@ function WorkbenchSessionSurface({
       chatWorkspace={chatWorkspace}
       activeSession={active}
       draft={draft}
+      newSessionWorkspaceId={newSessionWorkspaceId}
+      onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
+      newSessionPreferredBranches={newSessionPreferredBranches}
+      NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
@@ -585,6 +644,7 @@ function WorkbenchSessionSurface({
       header={{
         title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
         subtitle: active?.cwd,
+        sessionId: active?.sessionId ?? null,
         usage: conversation.usage,
       }}
       navigation={{

@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import type {
   AgentCommand,
   AgentHistoryCapabilities,
@@ -42,11 +43,13 @@ import {
   stringField,
 } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
+import { resolveAgentShellEnvironment } from '../../shell-env';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
 import { codexConfiguredSandbox } from './config';
 import {
+  codexHome,
   codexIndexEntryToSession,
   codexSummaryToSession,
   findCodexTranscript,
@@ -71,6 +74,10 @@ const COMPACT_COMMAND: AgentCommand = {
   name: 'compact',
   description: 'Summarize conversation to prevent hitting the context limit',
 };
+
+function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
+  return resolveAgentShellEnvironment(cwd ?? homedir());
+}
 
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
@@ -298,6 +305,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   };
 
   private server: CodexServerHandle | null = null;
+  private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** Bumped when a server retires/crashes and when a new one spawns: a dead child's buffered
    * stdout (and late exit alarm) carries the old generation and is dropped at the callback gate. */
   private serverGeneration = 0;
@@ -378,14 +386,17 @@ export class CodexAdapter extends BaseAgentAdapter {
         );
       }
     }
+    this.processEnvironment = await resolveCodexEnvironment(opts.cwd);
     // openThread reflects the app-server's effective model after thread/start accepts or corrects
     // the requested override; the request itself is not provider confirmation.
     await this.ensureThread();
   }
 
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
+    const processEnvironment = await resolveCodexEnvironment(opts.cwd);
+    const credentialEnv = codexEnv(readAgentCredential(opts.config));
     const server = await this.startAppServer({
-      env: codexEnv(readAgentCredential(opts.config)),
+      env: credentialEnv ? { ...processEnvironment, ...credentialEnv } : processEnvironment,
       onNotification: noop,
       onExit: noop,
     });
@@ -416,8 +427,9 @@ export class CodexAdapter extends BaseAgentAdapter {
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
-    const index = await readCodexIndex();
-    const summaries = await readCodexTranscriptSummaries(index);
+    const home = codexHome(await resolveCodexEnvironment(opts?.cwd));
+    const index = await readCodexIndex(home);
+    const summaries = await readCodexTranscriptSummaries(index, home);
     const knownIds = new Set(summaries.map((summary) => summary.id));
     const indexOnly = [...index.values()].filter((entry) => !knownIds.has(entry.id));
     const sessions = [
@@ -436,7 +448,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
-    const summary = await findCodexTranscript(opts.historyId);
+    const home = codexHome(await resolveCodexEnvironment(opts.cwd));
+    const summary = await findCodexTranscript(opts.historyId, home);
     if (!summary?.path) throw new Error(`codex: history '${opts.historyId}' was not found`);
     const rows = await readJsonlFile(summary.path);
     const events = mapCodexHistoryEvents(opts.historyId, rows);
@@ -678,21 +691,29 @@ export class CodexAdapter extends BaseAgentAdapter {
     return CodexAppServer.start({ ...opts, binaryPath });
   }
 
-  /** Test seam — the real thing reads `~/.codex/config.toml`. */
-  protected readConfiguredSandbox(): Promise<CodexSandboxMode | undefined> {
-    return codexConfiguredSandbox();
+  /** Test seam — the real thing reads config.toml from the app-server's effective CODEX_HOME. */
+  protected readConfiguredSandbox(
+    environment: NodeJS.ProcessEnv,
+  ): Promise<CodexSandboxMode | undefined> {
+    return codexConfiguredSandbox(environment);
   }
 
   private async openThread(): Promise<void> {
     const opts = nullthrow(this.opts, 'codex: session not started');
-    // Merged over the inherited env by the app-server: CODEX_API_KEY + optional OPENAI_BASE_URL.
+    const processEnvironment = nullthrow(
+      this.processEnvironment,
+      'codex: project environment not loaded',
+    );
     const credentialEnv = codexEnv(readAgentCredential(opts.config));
-    this.configuredSandbox = await this.readConfiguredSandbox();
+    const serverEnvironment = credentialEnv
+      ? { ...processEnvironment, ...credentialEnv }
+      : processEnvironment;
+    this.configuredSandbox = await this.readConfiguredSandbox(serverEnvironment);
     let server: CodexServerHandle;
     const generation = ++this.serverGeneration;
     try {
       server = await this.startAppServer({
-        env: credentialEnv,
+        env: serverEnvironment,
         onNotification: (method, params) => {
           if (generation === this.serverGeneration) this.handleNotification(method, params);
         },

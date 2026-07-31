@@ -1,11 +1,14 @@
-import type { TokenUsage } from '@linkcode/schema';
+import type { SessionId, TokenUsage } from '@linkcode/schema';
 import type { ComposerAttachment, ShellFrameProps } from '@linkcode/ui';
 import { ErrorBadge, ShellFrame, TitleStrip } from '@linkcode/ui';
+import { ViewTransition } from 'react';
 
 export interface WorkbenchShellHeader {
   title: string;
   subtitle?: string;
   usage?: TokenUsage | null;
+  /** The open conversation, when one is; keys the title's matched-geometry boundary. */
+  sessionId?: SessionId | null;
 }
 
 /** History traversal for the shell's ‹ › controls (VS Code-style back/forward). */
@@ -20,6 +23,8 @@ export interface WorkbenchShellNavigation {
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
   navigation: WorkbenchShellNavigation;
+  /** Runtime-provided, business-free resources presentation for the active thread. */
+  resourcesPanel?: React.ReactNode;
   /** Reads a natively-picked attachment path via the daemon. Only a shell that supplies its own
    * native picker trigger (desktop) can use it — the bare fallback shell drops it. */
   onReadAttachmentFile?: (path: string) => Promise<ComposerAttachment>;
@@ -68,9 +73,18 @@ function DefaultTitleStrip({
   return (
     <TitleStrip className="border-border border-b">
       <div className="min-w-0">
-        <div className="truncate font-medium text-sm" data-conversation-title="">
-          {header.title}
-        </div>
+        {header.sessionId ? (
+          <ViewTransition
+            key={header.sessionId}
+            enter="none"
+            exit="none"
+            name={`thread-title-${header.sessionId}`}
+          >
+            <div className="truncate font-medium text-sm">{header.title}</div>
+          </ViewTransition>
+        ) : (
+          <div className="truncate font-medium text-sm">{header.title}</div>
+        )}
         {header.subtitle && (
           <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
         )}

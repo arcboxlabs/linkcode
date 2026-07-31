@@ -1,8 +1,15 @@
-import type { AgentEvent, AgentInput, WirePayload } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  AgentInput,
+  SessionId,
+  SessionResource,
+  WirePayload,
+} from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, textBlock } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
+import { InMemoryResourceStore } from '../resource/resource-store';
 import { InMemorySessionStore } from '../session/session-store';
 import {
   FakeAdapter,
@@ -19,6 +26,23 @@ class GatedSendAdapter extends FakeAdapter {
     return new Promise((resolve) => {
       this.releaseSend = resolve;
     });
+  }
+}
+
+class RejectingTurnAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return Promise.reject(new Error('provider rejected input'));
+  }
+}
+
+class RejectingListResourceStore extends InMemoryResourceStore {
+  private rejectNextList = true;
+
+  override list(sessionId: SessionId): Promise<SessionResource[]> {
+    if (!this.rejectNextList) return super.list(sessionId);
+    this.rejectNextList = false;
+    return Promise.reject(new Error('resource database unavailable'));
   }
 }
 
@@ -57,6 +81,14 @@ describe('engine session input', () => {
       code: 'invalid_request',
       message: 'Unsupported image attachment type: image/svg+xml',
     });
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'valid-input',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [textBlock('valid')] },
+    });
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'valid-input' });
   });
 
   it('reports an oversized attachment as a limit violation', async () => {
@@ -204,7 +236,87 @@ describe('engine session input', () => {
           payload.event.code === 'input_rejected',
       ),
     ).toHaveLength(2);
-    expect(rejected.filter((payload) => payload.kind === 'request.failed')).toHaveLength(2);
+    expect(rejected.filter((payload) => payload.kind === 'request.failed')).toMatchObject([
+      { reportedInConversation: true },
+      { reportedInConversation: true },
+    ]);
+  });
+
+  it('marks an adapter-rejected turn as already reported in the conversation', async () => {
+    const h = harness(new InMemorySessionStore(), () => new RejectingTurnAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('hello')] },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
+      reportedInConversation: true,
+    });
+    expect(h.sent).toContainEqual({
+      kind: 'agent.event',
+      sessionId,
+      event: {
+        type: 'error',
+        message: 'Agent input was rejected',
+        code: 'input_rejected',
+        recoverable: true,
+      },
+    });
+  });
+
+  it('does not leave the turn busy when source lookup fails', async () => {
+    const h = harness(
+      new InMemorySessionStore(),
+      () => new FakeAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { resourceStore: new RejectingListResourceStore() },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'start');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'failed-input',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('first')] },
+    });
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'failed-input',
+      code: 'operation_failed',
+      message: 'Resource operation failed',
+    });
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'retry-input',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('second')] },
+    });
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'retry-input' });
+    expect(h.adapters[0]?.sentInputs).toEqual([{ type: 'prompt', content: [textBlock('second')] }]);
   });
 
   it('rejects a concurrent turn input before echoing or dispatching it', async () => {
@@ -242,6 +354,7 @@ describe('engine session input', () => {
       replyTo: 'r-second',
       code: 'conflict',
       message: `Session is busy: ${sessionId}`,
+      reportedInConversation: true,
     });
     expect(h.sent).toContainEqual({
       kind: 'agent.event',

@@ -28,21 +28,26 @@ import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
+import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
+import { runLoginCommand, runLogoutCommand } from './cloud/login';
+import { startCloudUplink } from './cloud/uplink';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
+  daemonChannel,
   daemonProfile,
   databasePath,
   loadConfig,
   saveSimulatorConsent,
+  worktreeRoot,
 } from './config';
-import { runLoginCommand, runLogoutCommand } from './hq/login';
-import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
+import { daemonStateDir } from './paths';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
+import { createResourceStore } from './resource-store';
 import {
   DaemonAlreadyRunningError,
   findRunningDaemon,
@@ -51,21 +56,19 @@ import {
   writeRuntimeFile,
 } from './runtime';
 import { createScheduleStore } from './schedule-store';
+import { secretVault } from './secrets';
 import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
 import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
 import { createWorkspaceStore } from './workspace-store';
+import { createWorktreeStore } from './worktree-store';
 
-// After an uncaught exception the process state (live sessions, mid-writes) is untrustworthy —
-// die loudly rather than keep serving clients from an unknown state.
+// State is untrustworthy after an uncaught exception — die rather than serve from unknown state.
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });
 
-// An unhandled rejection is scoped to one async operation — the rest of the daemon stays
-// coherent, so log instead of exiting. Reaching here means a fire-and-forget path missed its
-// `.catch`; fix that path.
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'Unhandled rejection');
 });
@@ -88,7 +91,6 @@ class BoundListeners extends Context.Service<BoundListeners, readonly DaemonList
   'daemon/BoundListeners',
 ) {}
 
-// A failing finalizer must not change the shutdown outcome; log and move on.
 function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
   return Effect.tryPromise({ try: async () => run(), catch: (cause) => cause }).pipe(
     Effect.catchCause((cause) =>
@@ -101,10 +103,7 @@ function finalize(run: () => void | Promise<void>): Effect.Effect<void> {
   );
 }
 
-// Explicit exits everywhere, not exitCode+return: under utilityProcess the parent IPC channel
-// keeps the event loop alive forever, so a natural exit never happens and the supervisor never
-// hears it. runMain's onExit only skips process.exit for a signal-less code 0, which the
-// never-completing program cannot produce.
+// Explicit process.exit: utilityProcess IPC keeps the event loop alive, preventing natural exit.
 const teardown: Runtime.Teardown = (exit, onExit) => {
   if (Exit.isSuccess(exit)) {
     onExit(0);
@@ -125,36 +124,29 @@ const teardown: Runtime.Teardown = (exit, onExit) => {
   onExit(1);
 };
 
-/**
- * Link Code daemon — the standalone local host process: one shared `Engine` behind a fan-out
- * `Hub`, exposing configured listeners to clients. Real agents live here — they spawn CLI
- * subprocesses and hold credentials, so they cannot run inside a browser tab.
- *
- * Boot/shutdown is an Effect layer graph (CODE-244): acquisition order Shared → Engine →
- * Listeners → lifecycle (runtime file, then uplink), finalizers in reverse. Signals interrupt
- * the root fiber at any boot phase, unwinding exactly the layers that were acquired.
- */
+/** Link Code daemon — local host process: Engine behind a fan-out Hub, serving agents to clients. */
 async function main(): Promise<void> {
-  // Resolved before anything (subcommands included) touches state paths: an invalid
-  // LINKCODE_PROFILE must abort here, not mid-command or as a default-profile daemon.
   const profile = daemonProfile();
+  const channel = daemonChannel();
 
-  // Subcommands run and exit instead of booting the host (a running daemon
-  // picks the new sign-in state up on its next restart).
+  // The one place the vault is constructed (CODE-371): every module that needs a secret takes it as a
+  // parameter and opens its own namespace, so no subsystem reaches the store by import and tests can
+  // hand over an in-memory one. Resolved after the universe is known, never at module load.
+  const vault = secretVault();
+
   const command = process.argv[2];
-  if (command === 'login') return runLoginCommand();
-  if (command === 'logout') return runLogoutCommand();
+  if (command === 'login') return runLoginCommand(vault);
+  if (command === 'logout') return runLogoutCommand(vault);
 
-  // Before the engine starts: agent adapters spawn vendored CLI binaries that resolve inside the
-  // desktop app's asar (no-op outside Electron — see asar-spawn.ts).
   installAsarSpawnFix();
 
   const SharedLive = Layer.effect(
     Shared,
     Effect.gen(function* () {
-      const config = loadConfig();
-      // One daemon per profile — a second instance would share this profile's daemon.db and split
-      // sessions. Daemons of other profiles live in sibling state dirs and are not visible here.
+      const config = loadConfig(vault);
+      // Sweep credentials an older daemon left in the clear. loadConfig has already moved
+      // config.json's; the device key has no reader at boot, so it is swept explicitly (CODE-371).
+      adoptLegacyDeviceKeyFile(vault);
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -170,17 +162,15 @@ async function main(): Promise<void> {
         startedAt: Date.now(),
         wireProtocolVersion: WIRE_PROTOCOL_VERSION,
         ...(profile !== undefined && { profile }),
+        // Absent means release on the wire, so only development needs stating — this keeps a
+        // release daemon's identity and runtime.json byte-identical to pre-split ones.
+        ...(channel !== 'release' && { channel }),
       };
       const hub = new Hub();
       yield* Effect.addFinalizer(() =>
         Effect.promise(() => Sentry.close(DRAIN_TIMEOUT_MS)).pipe(Effect.ignore),
       );
-      // Engine.stop() also closes the hub via transport.close(); Hub.close is idempotent, so the
-      // late double-close here matches the old stopAll behavior.
       yield* Effect.addFinalizer(() => finalize(() => hub.close()));
-      // Written by the engine's script service, read by every listener's reverse proxy. Preview
-      // traffic bypasses daemon auth by decision — the loopback bind is the boundary; remote
-      // exposure is the tunnel's job.
       const previewRoutes = new PreviewRouteRegistry();
       return { config, identity, hub, previewRoutes };
     }),
@@ -189,12 +179,8 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
-      // Managed assets (CODE-111): GC superseded versions before anything can spawn, then feed the
-      // store into spawn resolution — managed wins over detected as soon as an install lands.
+      const store = createProviderConfigStore(vault, config.providers ?? {}, config.accounts ?? []);
       const assets = new AssetManager();
-      // Prior managed install = standing consent to keep that agent current (CODE-221). Snapshot
-      // before GC removes superseded versions.
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
@@ -211,7 +197,6 @@ async function main(): Promise<void> {
         const name = ManagedAgentAssetNameSchema.safeParse(kind);
         return name.success ? assets.managedBinary(managedAgentAssetId(name.data)) : undefined;
       });
-      // In-process agents (pi) import a managed closure entry instead of spawning (CODE-219).
       agentRuntimeProber.setManagedEntryResolver((kind) => {
         const name = ManagedAgentAssetNameSchema.safeParse(kind);
         if (!name.success) return;
@@ -220,23 +205,12 @@ async function main(): Promise<void> {
         const version = assets.wantedVersionOf(id);
         return path && version ? { path, version } : undefined;
       });
-      // Probed once per boot (user-installed CLIs self-update, so results must not outlive a
-      // boot); fills the adapters' spawn-path resolution and is served on `agent-runtime.list`.
-      // Deliberately not awaited (CODE-225): collect() spawns agent CLIs (`--version`, `auth
-      // status`) that take seconds on a cold machine — listener bind must not wait on them, or
-      // every client sits on ECONNREFUSED for the whole probe. The engine seeds from the promise.
+      // Not awaited: CLI probes are slow; listeners must bind without waiting.
       const agentRuntimesReady = agentRuntimeProber.collect();
-      // Absent (not a rejecting stub) off macOS or unconfigured: the engine then has no
-      // simulator surface at all, which is what the capability gate reads. The daemon owns the
-      // service (not just the sidecar client) so the MCP endpoint and the engine share one
-      // device-claims registry.
       const simSidecarPath = resolveSimSidecarPath();
       const simulators = simSidecarPath
         ? new SimulatorService(new SimSidecarClient(simSidecarPath))
         : undefined;
-      // Decisions persist in config.json, so a grant outlives the session that earned it. The ask
-      // hook reports whether anyone is attached: with no client there is nobody to answer, and
-      // suspending the agent for two minutes would just look like a hang.
       const simulatorConsent = new SimulatorConsentService({
         load: () => Promise.resolve(config.simulatorConsent),
         save: (state) => Promise.resolve(saveSimulatorConsent(state)),
@@ -276,10 +250,14 @@ async function main(): Promise<void> {
         simulatorMcp,
         simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
+        resourceStore: createResourceStore(databasePath()),
+        stateDir: daemonStateDir(),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
+        worktreeStore: createWorktreeStore(databasePath()),
+        worktreeRoot: worktreeRoot(),
         previewRoutes,
         browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',
         agentRuntimesReady,
@@ -300,9 +278,6 @@ async function main(): Promise<void> {
       const EngineReady = Layer.effectDiscard(
         Effect.gen(function* () {
           const engine = yield* EngineService;
-          // Refresh consented managed installs in the background — boot never waits on a download.
-          // Rides the probe promise (CODE-225); yielding the service first guarantees the engine's
-          // asset subscription sees the whole install lifecycle.
           void agentRuntimesReady
             .then((agentRuntimes) => {
               for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
@@ -388,7 +363,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  // Advertise local discovery only after every listener is bound, then bring up the HQ uplink.
+  // Advertise local discovery only after every listener is bound, then bring up the cloud uplink.
   // LIFO teardown stops the uplink first and removes runtime.json before listeners close, so
   // clients stop discovering a daemon that is draining.
   const LifecycleLive = Layer.effectDiscard(
@@ -403,7 +378,7 @@ async function main(): Promise<void> {
         () => finalize(removeRuntimeFile),
       );
       yield* Effect.acquireRelease(
-        Effect.sync(() => startHqUplink(hub)),
+        Effect.sync(() => startCloudUplink(hub, vault)),
         (stop) => finalize(stop),
       );
     }),

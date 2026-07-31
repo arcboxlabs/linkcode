@@ -1,7 +1,14 @@
-import type { GitDiff, GitDiffMode, GitPullRequestStatus, GitStatus } from '@linkcode/schema';
+import type {
+  GitBranchList,
+  GitDiff,
+  GitDiffMode,
+  GitPullRequestStatus,
+  GitStatus,
+} from '@linkcode/schema';
 import { Cache, Effect, Exit } from 'effect';
 import type { EngineFailure } from '../failure';
 import { OperationError, toOperationFailure } from '../failure';
+import { readGitBranches } from './branches';
 import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
 import type { GitProviderClient } from './provider';
@@ -24,6 +31,7 @@ type GitDiffKey = readonly [cwd: string, mode: GitDiffMode];
 export class GitService {
   private constructor(
     private readonly statusCache: Cache.Cache<string, GitStatus, EngineFailure>,
+    private readonly branchListCache: Cache.Cache<string, GitBranchList, EngineFailure>,
     private readonly prStatusCache: Cache.Cache<string, GitPullRequestStatus, EngineFailure>,
     private readonly diffCache: Cache.Cache<GitDiffKey, GitDiff, EngineFailure>,
   ) {}
@@ -40,6 +48,19 @@ export class GitService {
               subsystem: 'git',
               operation: 'git.status',
               publicMessage: 'Failed to read git status',
+            }),
+          ),
+        ),
+      STATUS_TTL_MS,
+    );
+    const branchListCache = yield* makeCache(
+      (cwd: string) =>
+        readGitBranches(cwd).pipe(
+          Effect.mapError((cause) =>
+            toOperationFailure(cause, {
+              subsystem: 'git',
+              operation: 'git.branch.list',
+              publicMessage: 'Failed to list git branches',
             }),
           ),
         ),
@@ -99,11 +120,15 @@ export class GitService {
           Exit.isSuccess(exit) && exit.value.status !== 'error' ? PR_STATUS_TTL_MS : 0,
       },
     );
-    return new GitService(statusCache, prStatusCache, diffCache);
+    return new GitService(statusCache, branchListCache, prStatusCache, diffCache);
   });
 
   getStatus(cwd: string): Effect.Effect<GitStatus, EngineFailure> {
     return Cache.get(this.statusCache, cwd);
+  }
+
+  listBranches(cwd: string): Effect.Effect<GitBranchList, EngineFailure> {
+    return Cache.get(this.branchListCache, cwd);
   }
 
   getDiff(cwd: string, mode: GitDiffMode): Effect.Effect<GitDiff, EngineFailure> {
@@ -112,6 +137,15 @@ export class GitService {
 
   getPullRequestStatus(cwd: string): Effect.Effect<GitPullRequestStatus, EngineFailure> {
     return Cache.get(this.prStatusCache, cwd);
+  }
+
+  /** Drop cwd-scoped reads after a git mutation so the next poll observes it immediately. */
+  invalidate(cwd: string): Effect.Effect<void> {
+    return Effect.all([
+      Cache.invalidate(this.statusCache, cwd),
+      Cache.invalidate(this.branchListCache, cwd),
+      Cache.invalidate(this.prStatusCache, cwd),
+    ]).pipe(Effect.asVoid);
   }
 }
 

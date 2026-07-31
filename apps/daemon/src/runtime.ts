@@ -4,6 +4,7 @@ import { isPidAlive, readJsonFileSync } from '@linkcode/common/node';
 import type { DaemonIdentity, DaemonRuntimeInfo } from '@linkcode/schema';
 import {
   DAEMON_IDENTITY_PATH,
+  DAEMON_PORT_HUNT_SPAN,
   DaemonIdentitySchema,
   DaemonRuntimeInfoSchema,
 } from '@linkcode/schema';
@@ -20,7 +21,9 @@ import { runtimeFilePath } from './config';
  * runtime file for local clients. Daemons of other profiles are port neighbors: the hunt skips them.
  */
 
-const PORT_HUNT_ATTEMPTS = 10;
+/** Bounded by the channel's port range so a hunt can never wander into the other channel's
+ * (see `daemonBasePort` — the ranges are disjoint on purpose). */
+const PORT_HUNT_ATTEMPTS = DAEMON_PORT_HUNT_SPAN;
 const PROBE_TIMEOUT_MS = 1000;
 const PROBE_TIMEOUT_RETRIES = 2;
 
@@ -90,9 +93,10 @@ async function huntFrom(
     if (!isAddrInUse(err)) throw err;
     const probeUrl = httpUrl(listener.host, port);
     const occupant = await probeDaemonIdentity(probeUrl);
-    // Our own pid = another of this daemon's listeners hunted onto the port; another profile
-    // (absent field = default) is an isolated universe, not a double-start — hunt past both.
-    if (occupant && occupant.pid !== identity.pid && occupant.profile === identity.profile) {
+    // Our own pid = another of this daemon's listeners hunted onto the port; another universe
+    // (channel × profile, absent fields = release × default) is isolated, not a double-start —
+    // hunt past both. This is what lets a dev daemon start while a release one holds 19523.
+    if (occupant && occupant.pid !== identity.pid && sameUniverse(occupant, identity)) {
       throw new DaemonAlreadyRunningError(occupant, probeUrl);
     }
     if (attempt + 1 >= PORT_HUNT_ATTEMPTS) {
@@ -103,6 +107,12 @@ async function huntFrom(
     }
     return huntFrom(listener, identity, previewRoutes, attempt + 1);
   }
+}
+
+/** Same state universe = same `daemon.db`. Both fields are optional on the wire and default to the
+ * pre-split universe, so a daemon predating either axis compares equal to release × default. */
+function sameUniverse(a: DaemonIdentity, b: DaemonIdentity): boolean {
+  return (a.channel ?? 'release') === (b.channel ?? 'release') && a.profile === b.profile;
 }
 
 /**

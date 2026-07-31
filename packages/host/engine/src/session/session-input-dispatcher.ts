@@ -3,6 +3,8 @@ import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
+import type { ResourceService } from '../resource/service';
+import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
 import type { LiveSession } from './live-session';
 import type { SessionEventProcessor } from './session-event-processor';
@@ -13,6 +15,7 @@ export class SessionInputDispatcher {
   constructor(
     private readonly records: SessionRecordRegistry,
     private readonly events: SessionEventProcessor,
+    private readonly resources: ResourceService,
   ) {}
 
   send(
@@ -30,6 +33,7 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'unsupported',
         message: `Unknown slash command: /${input.name}`,
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
@@ -38,6 +42,7 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'unsupported',
         message: 'Shell commands are not supported by this session',
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
@@ -46,19 +51,39 @@ export class SessionInputDispatcher {
       const error = new RequestError({
         code: 'conflict',
         message: `Session is busy: ${sessionId}`,
+        reportedInConversation: true,
       });
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
     }
-    const { events, records } = this;
+    const { events, records, resources } = this;
     return Effect.gen(function* () {
-      if (startsTurn) session.turnInputActive = true;
-      // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+      let adapterInput: AgentInput = input;
       if (input.type === 'prompt') {
         yield* Effect.try({
           try: () => assertAttachmentContentAllowed(input.content),
           catch: (e) => e,
         });
+        adapterInput = yield* resources.readySourceLocators(sessionId).pipe(
+          Effect.map((locators) =>
+            locators.length === 0
+              ? input
+              : {
+                  ...input,
+                  content: [
+                    ...input.content,
+                    {
+                      type: 'text' as const,
+                      text: `${RESOURCE_CONTEXT_SENTINEL}\n${locators.join('\n')}`,
+                    },
+                  ],
+                },
+          ),
+        );
+      }
+      if (startsTurn) session.turnInputActive = true;
+      // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+      if (input.type === 'prompt') {
         events.broadcast(sessionId, [
           { type: 'user-message', messageId: nextMessageId(), content: input.content },
         ]);
@@ -93,13 +118,14 @@ export class SessionInputDispatcher {
         ]);
       }
       yield* Effect.tryPromise({
-        try: () => session.adapter.send(input),
+        try: () => session.adapter.send(adapterInput),
         catch: (cause) =>
           new OperationError({
             subsystem: 'agent',
             operation: 'session.input',
             publicMessage: 'Agent input was rejected',
             cause,
+            ...(startsTurn && { reportedInConversation: true }),
           }),
       }).pipe(
         Effect.catch((error) =>

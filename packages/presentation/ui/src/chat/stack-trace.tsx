@@ -17,8 +17,6 @@ import {
 import type { ParsedStackFrame, ParsedStackTrace } from './stack-trace-parser';
 import { formatStackLocationPart, parseStackTrace } from './stack-trace-parser';
 
-// TODO(linkcode-schema): Provisional UI-only stack trace model, not yet wired to daemon/client schema.
-// Move or replace with @linkcode/schema types when test/tool outputs expose structured stack traces.
 export interface ChatStackTrace {
   id: string;
   trace: string;

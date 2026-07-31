@@ -4,6 +4,7 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
@@ -13,6 +14,7 @@ import type { MentionItem } from './composer';
 import type { ConversationComposerController } from './conversation-surface';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
+import type { NewSessionBranchPickerComponent } from './new-session-branch-picker';
 import type {
   AgentStartCatalogs,
   AttachmentSupportByAgent,
@@ -41,6 +43,10 @@ export interface ShellFrameProps
   activeSession: SessionInfo | null;
   /** Non-null while the new-session page is up — it replaces the conversation column. */
   draft: NewSessionDraft | null;
+  /** The new-session page's selected workspace, owned by the workbench so the same cwd scopes
+   * `agentCatalogs`. */
+  newSessionWorkspaceId: WorkspaceId | null;
+  onNewSessionWorkspaceChange: (workspaceId: WorkspaceId) => void;
   /** Agent runtime availability cues: the new-session page's onboarding flow (CODE-112) and the
    * active session's needs-login recovery card (CODE-172). */
   runtimeCues?: AgentRuntimeCues;
@@ -53,6 +59,8 @@ export interface ShellFrameProps
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
+  newSessionPreferredBranches: Readonly<Record<string, string>>;
+  NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
@@ -112,12 +120,16 @@ export function ShellFrame({
   chatWorkspace,
   activeSession,
   draft,
+  newSessionWorkspaceId,
+  onNewSessionWorkspaceChange,
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
+  newSessionPreferredBranches,
+  NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
   onLoginAgent,
@@ -199,12 +211,16 @@ export function ShellFrame({
             draft={draft}
             workspaces={workspaces}
             chatWorkspace={chatWorkspace}
+            workspaceId={newSessionWorkspaceId}
+            onWorkspaceChange={onNewSessionWorkspaceChange}
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
             preferredModels={newSessionPreferredModels}
             preferredEfforts={newSessionPreferredEfforts}
+            preferredBranches={newSessionPreferredBranches}
+            NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
             mentionItems={mentionItems}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}

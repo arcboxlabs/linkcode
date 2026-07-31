@@ -12,12 +12,14 @@ import type {
   ContentBlock,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -35,6 +37,9 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
+  SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
@@ -203,9 +208,27 @@ export class ControlChannel {
   }
 
   /** Fire-and-forget: announce this client now observes the session, so the daemon re-broadcasts
-   * the buffered per-session state a late attacher missed (the approval-policy advertisement). */
+   * the buffered per-session state a late attacher missed (the approval-policy advertisement).
+   * Also what `attached` delivery scopes to — see {@link setSubscriptionMode}. */
   attachSession(sessionId: SessionId): void {
     this.transport.send(createWireMessage({ kind: 'session.attach', sessionId }));
+  }
+
+  /** Fire-and-forget: stop observing the session. Under `attached` scope its `agent.event`s stop
+   * arriving, so a client that may reopen the session needs a seed read to catch up. */
+  detachSession(sessionId: SessionId): void {
+    this.transport.send(createWireMessage({ kind: 'session.detach', sessionId }));
+  }
+
+  /** Scope this connection's `agent.event` delivery. Answered by the Hub, not the Engine, and
+   * scoped to this connection only. `attached` is for clients paying per byte — every session the
+   * caller still wants must already be, or later be, announced via {@link attachSession}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'subscription.set',
+      clientReqId,
+      mode,
+    }));
   }
 
   /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
@@ -250,6 +273,46 @@ export class ControlChannel {
       kind: 'session.delete',
       clientReqId,
       sessionId,
+    }));
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.sendCorrelated('resourceList', (clientReqId) => ({
+      kind: 'resource.list',
+      clientReqId,
+      sessionId,
+    }));
+  }
+
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.sendCorrelated('resourceUpload', (clientReqId) => ({
+      kind: 'resource.source.upload',
+      clientReqId,
+      sessionId,
+      name,
+      mimeType,
+      data,
+    }));
+  }
+
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'resource.remove',
+      clientReqId,
+      resourceId,
+    }));
+  }
+
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.sendCorrelated('resourceHost', (clientReqId) => ({
+      kind: 'resource.host',
+      clientReqId,
+      resourceId,
     }));
   }
 
@@ -400,6 +463,15 @@ export class ControlChannel {
   getGitStatus(cwd: string): Promise<GitStatus> {
     return this.sendCorrelated('gitStatus', (clientReqId) => ({
       kind: 'git.status.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Local branches for a directory, ordered current-first then by descending commit date. */
+  listGitBranches(cwd: string): Promise<GitBranchList> {
+    return this.sendCorrelated('gitBranchList', (clientReqId) => ({
+      kind: 'git.branch.list',
       clientReqId,
       cwd,
     }));
@@ -572,10 +644,6 @@ export class ControlChannel {
       loopId,
     }));
   }
-
-  // iOS Simulator (CODE-394). Commands are session-scoped: the engine claims the device for
-  // `sessionId` (ownership/cap rules) before touching it. Gate the whole surface on
-  // `simulatorStatus().available`.
 
   simulatorStatus(): Promise<SimulatorStatus> {
     return this.sendCorrelated('simulatorStatus', (clientReqId) => ({

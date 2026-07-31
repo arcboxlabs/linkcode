@@ -44,7 +44,8 @@ allowBuilds:
 
 # Shared dependency versions live in the catalog. Application packages reference them
 # with "catalog:" to keep versions consistent across the workspace.
-# apps/mobile's React version also comes from the catalog; react-native remains pinned by the Expo SDK.
+# apps/mobile pins its own React directly (React Native requires an exact match); the catalog
+# react below serves only the web/desktop renderers.
 catalog:
   # Language / types
   # typescript-eslint needs the TypeScript ≤6 compiler API, so the `typescript` package resolves to
@@ -56,32 +57,34 @@ catalog:
   # Data contracts
   zod: ^4.4.3
 
-  # React for web / desktop renderers
-  react: 19.2.7
-  react-dom: 19.2.7
-  react-router: ^8.2.0
+  # React for web / desktop renderers. Canary pin (Next-production channel) for the stable-track
+  # `ViewTransition` component (CODE-457); drop back to latest once 19.3 reaches stable. The
+  # export is untyped by @types/react — see the local module augmentation in workbench.
+  react: 19.3.0-canary-96fcba90-20260728
+  react-dom: 19.3.0-canary-96fcba90-20260728
+  react-router: ^8.3.0
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
 
   # Client data layer
   swr: ^2.4.2
-  use-intl: ^4.13.1
+  use-intl: ^4.13.3
   zustand: ^5.0.14
-  lucide-react: ^1.23.0
+  lucide-react: ^1.25.0
 
   # Web build
-  vite: ^8.1.4
-  "@vitejs/plugin-react": ^6.0.3
+  vite: ^8.1.5
+  "@vitejs/plugin-react": ^6.0.4
   "@rolldown/plugin-babel": ^0.2.3
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
-  tailwindcss: ^4.3.2
+  tailwindcss: ^4.3.3
   "@tailwindcss/postcss": ^4.3.2
-  "@tailwindcss/vite": ^4.3.2
+  "@tailwindcss/vite": ^4.3.3
 
   # Desktop / Electron
-  electron: ^42.4.1
+  electron: ^43.2.0
   electron-builder: ^26.15.3
 
   # Server / communication
@@ -103,6 +106,9 @@ catalog:
   "@iconify-json/material-icon-theme": ^1.2.69
 
 minimumReleaseAgeExclude:
+  # React canary snapshots publish daily; the renderers pin one exact snapshot (CODE-457).
+  - react@19.3.0-canary-96fcba90-20260728
+  - react-dom@19.3.0-canary-96fcba90-20260728
   # Effect v4 betas ship every 1-2 days; the daemon pins an exact beta (CODE-244).
   - effect@4.0.0-beta.98
   - "@effect/platform-node@4.0.0-beta.98"
@@ -118,7 +124,6 @@ minimumReleaseAgeExclude:
   - "expo-apple-authentication@57.0.1"
   - "expo-crypto@57.0.1"
   - "@earendil-works/pi-tui@0.80.6"
-  - electron@42.4.1
   - react-router@7.18.0
   - "@shikijs/core@4.3.0"
   - "@shikijs/engine-javascript@4.3.0"
@@ -186,6 +191,7 @@ minimumReleaseAgeExclude:
   # (CODE-223), then VS16/format 14 via our text-shaper#5 plus the CJK ic_width fix (CODE-241).
   - restty@0.2.3 || 0.2.5
   - text-shaper@0.1.26 || 0.1.27
+  - scheduler@0.28.0-canary-96fcba90-20260728
 
 overrides:
   # GHSA-67mh-4wv8-2f99: advisory metadata claims 0.24.3, but esbuild 0.24.x
@@ -196,7 +202,16 @@ overrides:
   # The plugin only uses createHighlighter/bundledLanguages/createJavaScriptRegexEngine —
   # all unchanged in shiki 4.
   shiki@<4.0.0: ^4.3.0
-  linkify-it@<=5.0.0: ^5.0.1
+  "@hono/node-server@<2.0.5": ^2.0.5
+  "@xmldom/xmldom@<0.8.13": ^0.8.13
+  brace-expansion@<1.1.16: ^1.1.16
+  brace-expansion@>=2.0.0 <2.1.2: ^2.1.2
+  brace-expansion@>=5.0.0 <5.0.8: ^5.0.8
+  esbuild@>=0.27.3 <0.28.1: ^0.28.1
+  fast-uri@>=3.0.0 <3.1.4: ^3.1.4
+  linkify-it@<=5.0.1: ^5.0.2
+  protobufjs@>=7.5.0 <7.6.5: ^7.6.5
+  shell-quote@<=1.8.4: ^1.9.0
   undici@>=8.0.0 <8.5.0: ^8.5.0
   uuid@<11.1.1: ^11.1.1
   ws@>=8.0.0 <8.21.0: ^8.21.0

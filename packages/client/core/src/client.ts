@@ -11,12 +11,14 @@ import type {
   ContentBlock,
   EffortLevel,
   FileSuggestion,
+  GitBranchList,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -38,6 +40,9 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
+  SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
   SimulatorConsentDecision,
@@ -60,7 +65,7 @@ import type {
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { extractErrorMessage } from 'foxts/extract-error-message';
+import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
 import { noop } from 'foxts/noop';
 import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
@@ -85,6 +90,11 @@ type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
+type ResourceEventCb = (
+  event:
+    | { type: 'changed'; resource: SessionResource }
+    | { type: 'removed'; resourceId: SessionResourceId; sessionId: SessionId },
+) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 type TerminalControllerCb = (canControl: boolean) => void;
@@ -158,6 +168,14 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
+export function isRequestFailureReportedInConversation(error: unknown): boolean {
+  return (
+    isErrorLikeObject(error) &&
+    'reportedInConversation' in error &&
+    error.reportedInConversation === true
+  );
+}
+
 /**
  * Cross-platform data-plane client: session semantics over any Transport
  * (docs/ARCHITECTURE.md#packages--repo-layout, #core-principles). Owns one transport generation;
@@ -176,6 +194,7 @@ export class LinkCodeClient {
   private readonly loopEventSubs = new Set<LoopEventCb>();
   private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
+  private readonly resourceEventSubs = new Set<ResourceEventCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
@@ -426,6 +445,9 @@ export class LinkCodeClient {
       case 'git.status.get.result':
         this.pending.resolve('gitStatus', p.replyTo, p.status);
         break;
+      case 'git.branch.list.result':
+        this.pending.resolve('gitBranchList', p.replyTo, p.branchList);
+        break;
       case 'git.pr_status.get.result':
         this.pending.resolve('gitPrStatus', p.replyTo, p.prStatus);
         break;
@@ -449,6 +471,23 @@ export class LinkCodeClient {
         break;
       case 'file.hosted':
         this.pending.resolve('fileHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.listed':
+        this.pending.resolve('resourceList', p.replyTo, p.resources);
+        break;
+      case 'resource.uploaded':
+        this.pending.resolve('resourceUpload', p.replyTo, p.resource);
+        break;
+      case 'resource.hosted':
+        this.pending.resolve('resourceHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.changed':
+        for (const cb of this.resourceEventSubs) cb({ type: 'changed', resource: p.resource });
+        break;
+      case 'resource.removed':
+        for (const cb of this.resourceEventSubs) {
+          cb({ type: 'removed', resourceId: p.resourceId, sessionId: p.sessionId });
+        }
         break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
@@ -511,7 +550,10 @@ export class LinkCodeClient {
         break;
       case 'request.failed': {
         const err = new Error(p.message);
-        if (p.code) Object.assign(err, { code: p.code });
+        if (p.code !== undefined) Object.assign(err, { code: p.code });
+        if (p.reportedInConversation === true) {
+          Object.assign(err, { reportedInConversation: true });
+        }
         this.pending.reject(p.replyTo, err);
         break;
       }
@@ -623,7 +665,29 @@ export class LinkCodeClient {
 
   /** See {@link ControlChannel.attachSession}. */
   attachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
     this.control.attachSession(sessionId);
+  }
+
+  /** See {@link ControlChannel.detachSession}. */
+  detachSession(sessionId: SessionId): void {
+    if (!this.canAnnounce()) return;
+    this.control.detachSession(sessionId);
+  }
+
+  /**
+   * Whether a subscription announcement is still worth sending. Once the connection is gone the
+   * Hub has already discarded this connection's whole subscription, so the frame would be a no-op
+   * — and the socket transports throw on `send` with no socket open. React teardown runs after
+   * `ConnectionController` disposes the generation, so an unmount-time detach lands here.
+   */
+  private canAnnounce(): boolean {
+    return this.state !== 'closed' && this.state !== 'disposed';
+  }
+
+  /** See {@link ControlChannel.setSubscriptionMode}. */
+  setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
+    return this.control.setSubscriptionMode(mode);
   }
 
   setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
@@ -913,6 +977,10 @@ export class LinkCodeClient {
     return this.control.getGitStatus(cwd);
   }
 
+  listGitBranches(cwd: string): Promise<GitBranchList> {
+    return this.control.listGitBranches(cwd);
+  }
+
   getGitPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {
     return this.control.getGitPullRequestStatus(cwd);
   }
@@ -962,6 +1030,28 @@ export class LinkCodeClient {
   subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
     this.sessionNotificationSubs.add(cb);
     return () => this.sessionNotificationSubs.delete(cb);
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.control.listResources(sessionId);
+  }
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.control.uploadSource(sessionId, name, data, mimeType);
+  }
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.control.removeResource(resourceId);
+  }
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.control.hostResource(resourceId);
+  }
+  subscribeResources(cb: ResourceEventCb): Unsubscribe {
+    this.resourceEventSubs.add(cb);
+    return () => this.resourceEventSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */

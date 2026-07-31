@@ -53,6 +53,8 @@ export const StartOptionsSchema = z.object({
   kind: AgentKindSchema,
   /** Working directory (the root of the repository the agent operates on). */
   cwd: z.string().min(1),
+  /** Existing local branch to run in. The host consumes this intent before adapter startup. */
+  branch: z.object({ name: z.string().min(1) }).optional(),
   /** Model id override (vendor-specific). Undefined applies the LinkCode-configured default;
    * null explicitly defers to the agent/provider's own default. */
   model: z.string().nullable().optional(),

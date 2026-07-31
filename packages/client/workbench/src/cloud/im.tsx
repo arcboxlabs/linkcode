@@ -109,7 +109,7 @@ export function useCloudImOverview(
   return useSWR<CloudImOverview>(
     accountKey && source ? [IM_OVERVIEW_KEY, accountKey] : null,
     source ? source.overview : null,
-    { revalidateOnFocus: true, keepPreviousData: false },
+    { revalidateOnFocus: true },
   );
 }
 
@@ -122,7 +122,7 @@ export function useCloudImBindings(
   return useSWR<CloudImBinding[]>(
     accountKey && source ? [IM_BINDINGS_KEY, accountKey] : null,
     source ? source.bindings : null,
-    { revalidateOnFocus: true, refreshInterval: 30000, keepPreviousData: false },
+    { revalidateOnFocus: true, refreshInterval: 30000 },
   );
 }
 
@@ -134,7 +134,7 @@ export function useCloudImPreferences(
   return useSWR<CloudImPreferences>(
     accountKey && source ? [IM_PREFERENCES_KEY, accountKey] : null,
     source ? source.preferences : null,
-    { revalidateOnFocus: true, keepPreviousData: false },
+    { revalidateOnFocus: true },
   );
 }
 

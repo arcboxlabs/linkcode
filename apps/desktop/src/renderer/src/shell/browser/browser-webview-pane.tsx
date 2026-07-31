@@ -201,11 +201,7 @@ export function BrowserWebviewPane({
     };
   }, [webview, t, tabId]);
 
-  // Pause any playing media when the pane is hidden (panel collapsed or another section shown),
-  // so a preview stops instead of playing audio out of sight. Paused, not resumed — the user
-  // restarts it on their next visit.
-  // Gated on `dom-ready`: the resident webview normally mounts hidden, and calling guest methods
-  // before attachment can throw synchronously. A guest that never became ready has nothing playing.
+  // Pause playing media when the pane is hidden; gated on dom-ready to avoid pre-attachment throws.
   useLayoutEffect(() => {
     if (webview === null || !guestReady) return;
     const isVisible = (): boolean => {

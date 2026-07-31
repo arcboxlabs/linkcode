@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentHistoryEvent,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -13,8 +14,9 @@ import type {
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
+import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 
-export const HISTORY_CONVERSION_CACHE_VERSION = 3;
+export const HISTORY_CONVERSION_CACHE_VERSION = 4;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
@@ -46,6 +48,7 @@ interface EventCacheEntry {
 export class HistoryService {
   private readonly listCache = new Map<string, ListCacheEntry>();
   private readonly eventCache = new Map<string, EventCacheEntry>();
+  private readonly historyCwdById = new Map<string, string>();
   private readonly ttlMs: number;
   private readonly now: () => number;
 
@@ -83,6 +86,11 @@ export class HistoryService {
       Effect.tap((result) =>
         Effect.sync(() => {
           this.invalidateEventCacheFromList(kind, result.sessions);
+          for (const session of result.sessions) {
+            const historyKey = eventCacheKey(kind, session.historyId);
+            if (opts.cwd) this.historyCwdById.set(historyKey, opts.cwd);
+            else this.historyCwdById.delete(historyKey);
+          }
           this.listCache.set(key, {
             expiresAt: now + this.ttlMs,
             result: cloneListResult(result),
@@ -99,6 +107,7 @@ export class HistoryService {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const key = eventCacheKey(kind, opts.historyId);
+    const cwd = opts.cwd ?? this.historyCwdById.get(key);
     const cached = this.eventCache.get(key);
     const now = this.now();
 
@@ -122,8 +131,9 @@ export class HistoryService {
       );
     }
     return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-      adapter.readHistory({ historyId: opts.historyId, limit: 1000 }),
+      adapter.readHistory({ historyId: opts.historyId, ...(cwd && { cwd }), limit: 1000 }),
     ).pipe(
+      Effect.map(sanitizeHistoryResult),
       Effect.flatMap((fullResult) => {
         const entry: EventCacheEntry = {
           expiresAt: now + this.ttlMs,
@@ -138,8 +148,8 @@ export class HistoryService {
           return Effect.succeed(sliceEventCache(entry, offset, limit));
         }
         return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-          adapter.readHistory(stripForceRefresh(opts)),
-        );
+          adapter.readHistory({ ...stripForceRefresh(opts), ...(cwd && { cwd }) }),
+        ).pipe(Effect.map(sanitizeHistoryResult));
       }),
     );
   }
@@ -165,6 +175,7 @@ export class HistoryService {
   clear(): void {
     this.listCache.clear();
     this.eventCache.clear();
+    this.historyCwdById.clear();
   }
 
   private invalidateEventCacheFromList(kind: AgentKind, sessions: AgentHistorySession[]): void {
@@ -174,6 +185,30 @@ export class HistoryService {
       if (cached && cached.fingerprint !== sessionFingerprint(session)) this.eventCache.delete(key);
     }
   }
+}
+
+function sanitizeHistoryResult(result: AgentHistoryReadResult): AgentHistoryReadResult {
+  return {
+    ...result,
+    events: result.events.map((entry) => ({ ...entry, event: stripResourceContext(entry.event) })),
+  };
+}
+
+function stripResourceContext(event: AgentEvent): AgentEvent {
+  if (event.type !== 'user-message') return event;
+  const content = [...event.content];
+  const last = content.at(-1);
+  if (last?.type !== 'text') return event;
+  const marker = last.text.lastIndexOf(RESOURCE_CONTEXT_SENTINEL);
+  if (marker < 0 || last.text.slice(marker + RESOURCE_CONTEXT_SENTINEL.length)[0] !== '\n') {
+    return event;
+  }
+  let visibleText = last.text.slice(0, marker);
+  if (visibleText.endsWith('\n\n')) visibleText = visibleText.slice(0, -2);
+  else if (visibleText.endsWith('\n')) visibleText = visibleText.slice(0, -1);
+  if (visibleText.length === 0) content.pop();
+  else content[content.length - 1] = { type: 'text', text: visibleText };
+  return { ...event, content };
 }
 
 function agentHistoryOperation<A>(
