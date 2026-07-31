@@ -32,3 +32,12 @@ export function daemonStateDir(): string {
 export function telemetryConfigCachePath(): string {
   return join(daemonStateDir(), 'telemetry-config.json');
 }
+
+/**
+ * The daemon's secret store (CODE-371) — every long-lived credential, keyed by ref and encrypted
+ * under an OS-keyring master key. Lives here rather than in `config.ts` because `config.ts` reads
+ * the vault to rehydrate provider/account credentials, and the path must sit below that.
+ */
+export function secretsFilePath(): string {
+  return join(daemonStateDir(), 'secrets.json');
+}

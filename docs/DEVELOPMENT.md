@@ -322,7 +322,7 @@ git apply --3way "$(ls -t .devenv/state/prek/patches/*.patch | head -1)"
 The identity is two orthogonal axes (`apps/desktop/src/main/constants.ts`), and the desktop's app name, `userData` dir, single-instance lock, and OS keychain (safeStorage) all derive from them; `src/main/identity.ts` applies the identity as main's **first import**, and boot logs a `userData: <path>` line as self-evidence. Since CODE-460 the **daemon's** state follows the same two axes, so a local build and an installed release share nothing at all.
 
 - **channel** — `CHANNEL === 'development'` for any build that is not the released app: `MODE !== 'production' || !app.isPackaged` (a production bundle run by the dev Electron binary is still a dev shell). `APP_NAME` is `'LinkCode Development'` for dev, `'LinkCode'` for release. Skipping any isolation axis clobbers release settings, steals its instance lock (the second instance exits 0 silently), or writes a safeStorage key under the dev binary's code signature — after which the release app prompts for the keychain password on first launch (macOS keychain ACLs pin the creator cdhash).
-- **profile** — an optional isolated universe *within* a channel: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir and HQ device identity with it. Profiles run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. The devenv `daemon`/`desktop`/`app` scripts pass **no** profile — the development channel is already its own universe; pass one yourself only to fork a second universe within that channel.
+- **profile** — an optional isolated universe *within* a channel: `--profile=<name>` (or `LINKCODE_PROFILE`; `[a-z0-9-]`, ≤32 chars, invalid aborts boot). It suffixes the app name (`LinkCode Development (alpha)`) — forking the same four axes again — and is injected as `LINKCODE_PROFILE` into the supervised daemon, which forks its state dir and cloud device identity with it. Profiles run side by side: daemons hunt past each other's ports, and each desktop follows its own `runtime.json`. The devenv `daemon`/`desktop`/`app` scripts pass **no** profile — the development channel is already its own universe; pass one yourself only to fork a second universe within that channel.
 
 The daemon is a separate process and cannot see `app.isPackaged`, so it resolves its own channel (`apps/daemon/src/paths.ts`): the desktop supervisor's injected `LINKCODE_CHANNEL` wins, else the build-time stamp tsup bakes in (`process.env.LINKCODE_BUILD_CHANNEL` → `release`), else `development`. Running the TS source is therefore a development daemon with nothing to remember, while a packaged one is release — and the devshell pack, which ships a `release`-stamped bundle inside a development shell, is corrected by the injection. Resolution is per call, never cached at module load: `instrument.ts` derives a state path in its module body and `--import` runs it before `index.ts`.
 
@@ -332,6 +332,12 @@ Clean a polluted machine (also after the `LinkCode Dev` → `LinkCode Developmen
 security delete-generic-password -s "LinkCode Safe Storage"
 security delete-generic-password -s "LinkCode Dev Safe Storage"   # pre-rename leftover
 rm -rf "$HOME/Library/Application Support/LinkCode Dev"           # pre-rename leftover
+# The daemon's own secret-vault master key (CODE-371) — a separate service per channel × profile.
+# Deleting it makes that universe's secrets.json undecryptable: the daemon reads as signed out and
+# its stored provider/account credentials are gone for good, so delete the file with it.
+security delete-generic-password -s "LinkCode" -a secret-vault-key
+security delete-generic-password -s "LinkCode Development" -a secret-vault-key
+rm -f "$HOME/.linkcode/secrets.json" "$HOME/.linkcode.development/secrets.json"
 ```
 
 ### What each channel owns on disk
@@ -340,9 +346,12 @@ Names come from `packages/foundation/schema/src/product.ts` — the one file a f
 
 | | release | development |
 | --- | --- | --- |
-| daemon state (`config.json`, `daemon.db`, `runtime.json`, `hq.json`, `device-key.pem`) | `~/.linkcode` | `~/.linkcode.development` |
+| daemon state (`config.json`, `daemon.db`, `runtime.json`, `cloud.json`, `secrets.json`, `keys/`) | `~/.linkcode` | `~/.linkcode.development` |
 | workspaces + daemon chat root | `~/LinkCode` | `~/LinkCode Development` |
 | managed asset store | `…/Application Support/LinkCode/assets` | `…/Application Support/LinkCode Development/assets` |
+| daemon secret-vault master key (OS keyring service) | `LinkCode` | `LinkCode Development` |
+
+The daemon holds no credential in those files: `secrets.json` is AES-256-GCM ciphertext under the master key above, and `config.json` / `cloud.json` keep structure only (CODE-371 — full custody, migration, and reset semantics in [`apps/daemon/AGENTS.md`](../apps/daemon/AGENTS.md)). Two consequences bite in development: a fake `$HOME` has no macOS login keychain, so an isolated daemon always logs the plaintext-fallback warning and writes `protection: "plaintext"`; and copying a state dir between machines or users carries no secrets, only the shape of them.
 
 A profile appends `-<name>` to the **state** directory only (`~/.linkcode.development-alpha`); workspaces and the asset store fork by channel alone. The development suffix is dot-separated on purpose: profile names forbid dots, so `--profile=development` can never reach the development channel's directory.
 

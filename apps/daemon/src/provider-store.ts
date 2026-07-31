@@ -2,6 +2,7 @@ import type { ProviderConfigStore } from '@linkcode/engine';
 import { accountBinding } from '@linkcode/engine';
 import type { Accounts, ProvidersConfig } from '@linkcode/schema';
 import { saveAccounts, saveProviderConfiguration, saveProviders } from './config';
+import type { SecretVault } from './secrets';
 
 /**
  * Daemon-backed data-plane config store: in-memory providers + account pool seeded at boot, each
@@ -9,6 +10,7 @@ import { saveAccounts, saveProviderConfiguration, saveProviders } from './config
  * `config.set` and per-session provider defaults read and write the same persisted values.
  */
 export function createProviderConfigStore(
+  vault: SecretVault,
   initialProviders: ProvidersConfig,
   initialAccounts: Accounts,
 ): ProviderConfigStore {
@@ -18,16 +20,16 @@ export function createProviderConfigStore(
     get: () => providers,
     set(next) {
       providers = next;
-      saveProviders(next);
+      saveProviders(vault, next);
     },
     getAccounts: () => accounts,
     setAccounts(next) {
       accounts = next;
-      saveAccounts(next);
+      saveAccounts(vault, next);
     },
     createAndBindAccount(agent, account) {
       const next = accountBinding(providers, accounts, agent, account);
-      saveProviderConfiguration(next.providers, next.accounts);
+      saveProviderConfiguration(vault, next.providers, next.accounts);
       providers = next.providers;
       accounts = next.accounts;
     },
