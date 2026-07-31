@@ -64,6 +64,19 @@ devenv shell -- pnpm -F @linkcode/daemon run build:rust
 echo "==> Building the daemon bundle required by Electron development"
 devenv shell -- pnpm -F @linkcode/daemon run build
 
+if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+  if ! amp mcp list | grep -Eq '^[[:space:]]*linear[[:space:]]'; then
+    echo "==> Configuring Linear MCP"
+    amp mcp add linear \
+      --header 'Authorization=Bearer ${LINEAR_API_KEY}' \
+      https://mcp.linear.app/mcp
+  else
+    echo "==> Linear MCP is already configured"
+  fi
+else
+  echo "==> LINEAR_API_KEY is unavailable; skipping Linear MCP configuration"
+fi
+
 echo "==> Starting supervised Orb development services"
 amp orb services ensure
 

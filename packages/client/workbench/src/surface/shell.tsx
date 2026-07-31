@@ -22,6 +22,8 @@ export interface WorkbenchShellNavigation {
 export interface WorkbenchShellProps extends Omit<ShellFrameProps, 'header'> {
   header: WorkbenchShellHeader;
   navigation: WorkbenchShellNavigation;
+  /** Runtime-provided, business-free resources presentation for the active thread. */
+  resourcesPanel?: React.ReactNode;
   /** Reads a natively-picked attachment path via the daemon. Only a shell that supplies its own
    * native picker trigger (desktop) can use it — the bare fallback shell drops it. */
   onReadAttachmentFile?: (path: string) => Promise<ComposerAttachment>;

@@ -68,6 +68,7 @@ import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
+import { RuntimeTaskResourcesPanel } from './task-resources-panel';
 import { useAgentStartCatalogs } from './use-agent-catalogs';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
@@ -612,6 +613,9 @@ function WorkbenchSessionSurface({
 
   return (
     <ShellComponent
+      resourcesPanel={
+        activeSessionId ? <RuntimeTaskResourcesPanel sessionId={activeSessionId} /> : undefined
+      }
       attachmentSupport={ATTACHMENT_SUPPORT}
       threadGroups={threadGroups}
       workspaces={projectWorkspaces}

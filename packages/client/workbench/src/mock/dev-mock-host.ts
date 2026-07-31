@@ -17,6 +17,8 @@ import type {
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  SessionResource,
+  SessionResourceId,
   SessionStatus,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -34,10 +36,11 @@ import {
   managedAssetKey,
   managedToolAssetId,
   normalizeCwdKey,
+  SessionResourceIdSchema,
   textBlock,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
@@ -53,6 +56,7 @@ import {
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
+import type { SeedSessionResource } from './data/sessions';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
@@ -171,6 +175,7 @@ interface PendingQuestion {
 
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
+  private readonly resources = new Map<SessionResourceId, SessionResource>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
@@ -183,6 +188,7 @@ export class DevMockHost {
   private messageSeq = 0;
   private workspaceSeq = 0;
   private terminalSeq = 0;
+  private resourceSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
   private readonly installedAssets = new Set<ManagedAssetKey>();
 
@@ -279,9 +285,10 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, ...seed } of SEED_SESSIONS) {
+    for (const { ageMs, resources, ...seed } of SEED_SESSIONS) {
       const createdAt = now - ageMs;
-      this.addSession({ ...seed, createdAt, updatedAt: createdAt });
+      const session = this.addSession({ ...seed, createdAt, updatedAt: createdAt });
+      this.seedResources(session.sessionId, now, resources ?? []);
       this.touchWorkspace(seed.cwd, createdAt);
     }
     this.history = SEED_HISTORY.map(({ ageMs, ...entry }) => ({
@@ -327,6 +334,27 @@ export class DevMockHost {
         break;
       case 'agent.input':
         await this.handleInput(p.clientReqId, p.sessionId, p.input);
+        break;
+      case 'resource.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'resource.listed',
+          replyTo: p.clientReqId,
+          resources: [...this.resources.values()].filter(
+            (resource) => resource.sessionId === p.sessionId,
+          ),
+        });
+        break;
+      case 'resource.source.upload':
+        await this.uploadSource(p);
+        break;
+      case 'resource.remove':
+        await wait(CONTROL_LATENCY_MS);
+        this.removeResource(p.clientReqId, p.resourceId);
+        break;
+      case 'resource.host':
+        await wait(CONTROL_LATENCY_MS);
+        this.hostResource(p.clientReqId, p.resourceId);
         break;
       case 'config.get':
         await wait(CONTROL_LATENCY_MS);
@@ -568,7 +596,7 @@ export class DevMockHost {
         break;
       }
       case 'ping':
-        this.send({ kind: 'pong' });
+        this.send(pong());
         break;
       default:
         break;
@@ -596,6 +624,81 @@ export class DevMockHost {
     };
     this.sessions.set(session.sessionId, session);
     return session;
+  }
+
+  private seedResources(
+    sessionId: SessionId,
+    now: number,
+    seeds: readonly SeedSessionResource[],
+  ): void {
+    for (const { ageMs, ...seed } of seeds) {
+      const timestamp = now - ageMs;
+      const resource: SessionResource = {
+        ...seed,
+        resourceId: this.nextResourceId(),
+        sessionId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      this.resources.set(resource.resourceId, resource);
+    }
+  }
+
+  private async uploadSource(
+    payload: Extract<WirePayload, { kind: 'resource.source.upload' }>,
+  ): Promise<void> {
+    if (!this.sessions.has(payload.sessionId)) {
+      await wait(CONTROL_LATENCY_MS);
+      this.sendFailure(payload.clientReqId, `Unknown session: ${payload.sessionId}`);
+      return;
+    }
+    const resourceId = this.nextResourceId();
+    const now = Date.now();
+    const processing: SessionResource = {
+      resourceId,
+      sessionId: payload.sessionId,
+      direction: 'source',
+      name: payload.name,
+      kind: payload.mimeType?.startsWith('image/') ? 'image' : 'file',
+      status: 'processing',
+      locator: { type: 'managed-file', path: `/mock/resources/${resourceId}` },
+      mimeType: payload.mimeType,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.resources.set(resourceId, processing);
+    this.send({ kind: 'resource.changed', resource: processing });
+    await wait(CONTROL_LATENCY_MS);
+    const ready: SessionResource = { ...processing, status: 'ready', updatedAt: Date.now() };
+    this.resources.set(resourceId, ready);
+    this.send({ kind: 'resource.changed', resource: ready });
+    this.send({ kind: 'resource.uploaded', replyTo: payload.clientReqId, resource: ready });
+  }
+
+  private removeResource(replyTo: string, resourceId: SessionResourceId): void {
+    const resource = this.resources.get(resourceId);
+    if (resource) {
+      this.resources.delete(resourceId);
+      this.send({ kind: 'resource.removed', resourceId, sessionId: resource.sessionId });
+    }
+    this.sendSuccess(replyTo);
+  }
+
+  private hostResource(replyTo: string, resourceId: SessionResourceId): void {
+    const resource = this.resources.get(resourceId);
+    if (resource?.status !== 'ready') {
+      this.sendFailure(replyTo, `Ready mock resource not found: ${resourceId}`);
+      return;
+    }
+    const url =
+      resource.locator.type === 'url'
+        ? resource.locator.url
+        : URL.createObjectURL(
+            new Blob([`Mock resource: ${resource.name}\n`], {
+              type: resource.mimeType ?? 'text/plain',
+            }),
+          );
+    this.send({ kind: 'resource.hosted', replyTo, hosted: { url } });
   }
 
   private listWorkspaces(): WorkspaceRecord[] {
@@ -1417,6 +1520,13 @@ export class DevMockHost {
   private nextWorkspaceId(): WorkspaceId {
     this.workspaceSeq += 1;
     return `mock-ws-${Date.now().toString(36)}-${this.workspaceSeq.toString(36)}` as WorkspaceId;
+  }
+
+  private nextResourceId(): SessionResourceId {
+    this.resourceSeq += 1;
+    return SessionResourceIdSchema.parse(
+      `mock-resource-${Date.now().toString(36)}-${this.resourceSeq.toString(36)}`,
+    );
   }
 }
 

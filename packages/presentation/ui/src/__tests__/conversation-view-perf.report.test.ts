@@ -13,10 +13,10 @@ import {
   selectPendingPromptItems,
 } from '../chat/conversation-prompts';
 import { assistantTurnText } from '../chat/conversation-text';
-import { toolCallDiffStats } from '../chat/diff-utils';
 import { partitionSubagentItems } from '../chat/subagents';
 import { splitTurnSegments, turnFileEdits } from '../chat/turn-edits';
 import type { ConversationItem, ConversationViewModel } from '../chat/types';
+import { toolCallDiffStats } from '../diff-utils';
 
 interface LoadShape {
   label: string;

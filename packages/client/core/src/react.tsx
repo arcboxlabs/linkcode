@@ -14,6 +14,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -132,8 +133,9 @@ export interface SessionsApi {
 }
 
 /**
- * Session-inbox state shared by every client surface. No "session list changed" broadcast exists
- * yet, so the list seeds from `listSessions()` on connect and syncs optimistically on create/stop.
+ * Session-inbox state shared by every client surface: seeded from `listSessions()` on connect,
+ * synced optimistically on create/stop, and revalidated whenever the daemon announces that the
+ * persisted list changed.
  */
 export function useSessions(): SessionsApi {
   const client = useLinkCodeClient();
@@ -141,17 +143,44 @@ export function useSessions(): SessionsApi {
   const [activeId, setActiveId] = useState<SessionId | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // The daemon is the authority and now announces its own changes, so the snapshot replaces the
+  // list outright. Merging local entries over it — the shape this hook used to protect an
+  // optimistic create — is what made a removal impossible to observe.
   const refresh = useCallback(async () => {
     const list = await client.listSessions();
-    setSessions((local) => {
-      const byId = new Map<SessionId, SessionInfo>();
-      for (const s of list) byId.set(s.sessionId, s);
-      // Keep optimistic locals the snapshot doesn't know about yet.
-      for (const s of local) if (!byId.has(s.sessionId)) byId.set(s.sessionId, s);
-      return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
-    });
+    setSessions([...list].sort((a, b) => a.createdAt - b.createdAt));
     setLoading(false);
   }, [client]);
+
+  // A create settles as several frames (created, then its history binding and title), so a refetch
+  // per frame would pull the whole list repeatedly: one in flight, one queued behind it.
+  const revalidatingRef = useRef(false);
+  const queuedRef = useRef(false);
+  useEffect(() => {
+    const takeQueued = (): boolean => {
+      const queued = queuedRef.current;
+      queuedRef.current = false;
+      return queued;
+    };
+    const revalidate = async (): Promise<void> => {
+      if (revalidatingRef.current) {
+        queuedRef.current = true;
+        return;
+      }
+      revalidatingRef.current = true;
+      try {
+        do {
+          // eslint-disable-next-line no-await-in-loop -- serializing is the point: one fetch at a time
+          await refresh();
+        } while (takeQueued());
+      } finally {
+        revalidatingRef.current = false;
+      }
+    };
+    return client.subscribeSessionChanged(() => {
+      revalidate().catch(noop);
+    });
+  }, [client, refresh]);
 
   useEffect(
     (signal) => {
@@ -167,20 +196,13 @@ export function useSessions(): SessionsApi {
   const create = useCallback(
     async (opts: StartOptions): Promise<SessionId> => {
       const id = await client.startSession(opts);
-      const now = Date.now();
-      const optimistic: SessionInfo = {
-        sessionId: id,
-        kind: opts.kind,
-        cwd: opts.cwd,
-        status: 'starting',
-        createdAt: now,
-        updatedAt: now,
-      };
-      setSessions((prev) => (prev.some((s) => s.sessionId === id) ? prev : [...prev, optimistic]));
+      // The daemon announces the create before it answers, so its snapshot already holds the
+      // session; revalidating is both the insert and the confirmation.
+      await refresh().catch(noop);
       setActiveId(id);
       return id;
     },
-    [client],
+    [client, refresh],
   );
 
   const stop = useCallback(

@@ -20,6 +20,7 @@ export interface FakeHistoryState {
   readCalls: number;
   resumeCalls: number;
   lastReadOptions?: AgentHistoryReadOptions;
+  events?: AgentHistoryEvent[];
 }
 
 export const historyId = 'hist-1' as AgentHistoryId;
@@ -85,7 +86,7 @@ export class FakeHistoryAdapter extends BaseAgentAdapter {
     this.state.lastReadOptions = opts;
     return Promise.resolve({
       session: historySession(this.state.readCalls),
-      events: historyEvents(),
+      events: this.state.events ?? historyEvents(),
     });
   }
 

@@ -106,6 +106,46 @@ describe('createClaudeHistoryEventMapper', () => {
     }
   });
 
+  it('keeps a WebFetch source link through history announce and settle snapshots', () => {
+    const map = createClaudeHistoryEventMapper(historyId);
+    const announce = map(
+      row('assistant', 'u1', [
+        {
+          type: 'tool_use',
+          id: 'toolu_fetch',
+          name: 'WebFetch',
+          input: { url: 'https://example.com/reference' },
+        },
+      ]),
+    );
+    const settle = map(
+      row('user', 'u2', [
+        { type: 'tool_result', tool_use_id: 'toolu_fetch', content: 'Reference content' },
+      ]),
+    );
+
+    if (announce[0].event.type !== 'tool-call' || settle[0].event.type !== 'tool-call') {
+      throw new Error('expected WebFetch tool snapshots');
+    }
+    const sourceLink = {
+      type: 'content',
+      content: {
+        type: 'resource_link',
+        uri: 'https://example.com/reference',
+        name: 'example.com',
+      },
+    };
+    expect(announce[0].event.toolCall.content).toEqual([sourceLink]);
+    expect(settle[0].event.toolCall).toMatchObject({
+      kind: 'fetch',
+      status: 'completed',
+      content: [
+        sourceLink,
+        { type: 'content', content: { type: 'text', text: 'Reference content' } },
+      ],
+    });
+  });
+
   it('marks is_error results failed and tolerates a settle whose announce is outside the page', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const settle = map(
@@ -581,6 +621,15 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
     });
 
     const tools = toolSnapshots(seen);
+    const sourceLink = {
+      type: 'content',
+      content: {
+        type: 'resource_link',
+        uri: 'https://a.test/',
+        name: 'a.test',
+      },
+    };
+    expect(tools[0].toolCall.content).toEqual([sourceLink]);
     expect(tools[1].toolCall.rawOutput).toEqual({
       bytes: 9,
       code: 200,
@@ -589,8 +638,27 @@ describe('ClaudeCodeAdapter Edit diff normalization', () => {
       url: 'https://a.test',
     });
     expect(tools[1].toolCall.content).toEqual([
+      sourceLink,
       { type: 'content', content: { type: 'text', text: '# Page' } },
     ]);
+  });
+
+  it('does not synthesize sources for malformed WebFetch URLs', () => {
+    const adapter = new TestClaude();
+    const seen: AgentEvent[] = [];
+    adapter.onEvent((event) => seen.push(event));
+
+    adapter.feed({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'ftp', name: 'WebFetch', input: { url: 'ftp://a.test' } },
+          { type: 'tool_use', id: 'invalid', name: 'WebFetch', input: { url: 'not a URL' } },
+        ],
+      },
+    });
+
+    expect(toolSnapshots(seen).map((event) => event.toolCall.content)).toEqual([[], []]);
   });
 
   it('parses a Write announce into a whole-file diff without oldText', () => {

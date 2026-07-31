@@ -1,0 +1,129 @@
+import { Buffer } from 'node:buffer';
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
+import { readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import process from 'node:process';
+import { deviceKeysDir, legacyDeviceKeyPath } from '../config';
+import { logger } from '../logger';
+import type { SecretStore, SecretVault } from '../secrets';
+
+/**
+ * The device key is the machine's identity: it keeps the device id (= tunnel host id) stable
+ * across re-logins and account switches, and signing with it proves possession (registration
+ * `keyProof`, tunnel handshake). Custody: hardware P-256 via `@arcboxlabs/deviceid` where
+ * available, else a software Ed25519 keypair in the secret vault (CODE-371) — OS-protected wherever
+ * a keyring exists, which notably includes the hosts that reach the fallback *because* they have no
+ * TPM. `protection` reports `software` for it either way: the server must not treat a
+ * keyring-wrapped key as hardware-bound.
+ */
+export interface DeviceKey {
+  /** SPKI PEM, sent on device registration. */
+  publicKeyPem: string;
+  /** Where the private key lives; reported on registration, never trusted. */
+  protection: 'hardware' | 'software';
+  /** Signature over the UTF-8 payload, base64url (Ed25519 raw or P-256 P1363). */
+  sign: (payload: string) => string;
+}
+
+const require = createRequire(import.meta.url);
+
+/** This module's slice of the vault; the key name is its own business, not the vault's. */
+const SOFTWARE_KEY = 'software-key';
+const keyStore = (vault: SecretVault): SecretStore => vault.namespace('device');
+
+/**
+ * Load the native module, separately from calling it — the two failures mean different things and
+ * only one is a defect. `@arcboxlabs/deviceid` resolves a per-platform prebuilt through npm
+ * optional dependencies, so a require failure means this build carries no binding for the arch it
+ * is running on (a packaging bug: the app was packed for an arch the build host did not install).
+ */
+function loadDeviceId(): typeof import('@arcboxlabs/deviceid') | null {
+  try {
+    return require('@arcboxlabs/deviceid') as typeof import('@arcboxlabs/deviceid');
+  } catch (err) {
+    logger.error(
+      { operation: 'device-key.load', err, platform: process.platform, arch: process.arch },
+      'No device-key native binding for this platform/arch; falling back to a software key. This is a packaging defect, not a property of this machine.',
+    );
+    return null;
+  }
+}
+
+export function ensureDeviceKey(vault: SecretVault): DeviceKey {
+  const module = loadDeviceId();
+  if (module === null) return ensureSoftwareDeviceKey(vault);
+  try {
+    // Fail-closed by design: throws on machines with no usable backend (no TPM, no Secret
+    // Service). That is a legitimate property of the host, not an error to escalate.
+    const device = module.ensureDeviceId({ dir: deviceKeysDir() });
+    return {
+      publicKeyPem: device.publicKeyPem,
+      protection: device.protection === 'hardware' ? 'hardware' : 'software',
+      sign: (payload) => device.sign(payload),
+    };
+  } catch (err) {
+    logger.warn(
+      { operation: 'device-key.ensure', err },
+      'No hardware key store on this machine; using a software device key',
+    );
+    return ensureSoftwareDeviceKey(vault);
+  }
+}
+
+/** The fallback custody path, reachable on its own: no hardware backend, key held by the vault. */
+export function ensureSoftwareDeviceKey(vault: SecretVault): DeviceKey {
+  const store = keyStore(vault);
+  const privatePem = store.get(SOFTWARE_KEY) ?? createSoftwarePrivateKey(store);
+  const privateKey = createPrivateKey(privatePem);
+  const publicKeyPem = createPublicKey(privatePem).export({ type: 'spki', format: 'pem' });
+  return {
+    publicKeyPem,
+    protection: 'software',
+    sign: (payload) => sign(null, Buffer.from(payload), privateKey).toString('base64url'),
+  };
+}
+
+/**
+ * Take a key left as a bare PEM by an older daemon into the vault. Adopted rather than replaced: the
+ * device id is the fingerprint of this key, so minting a new one would silently orphan the cloud
+ * registration and the tunnel host id with it. A vault entry already present wins — it is the same
+ * key, or a newer one this machine has since moved to.
+ *
+ * Called at boot rather than from {@link ensureDeviceKey}, because the two hosts that most need the
+ * sweep never reach that function: one signed out (no uplink to start) and one that has since gained
+ * hardware custody (fallback never taken). Both would otherwise keep a registered device's private
+ * key in the clear indefinitely.
+ */
+export function adoptLegacyDeviceKeyFile(vault: SecretVault): void {
+  const store = keyStore(vault);
+  const path = legacyDeviceKeyPath();
+  let legacyPem: string;
+  try {
+    legacyPem = readFileSync(path, 'utf8');
+  } catch {
+    return;
+  }
+  if (store.get(SOFTWARE_KEY) === null) store.set(SOFTWARE_KEY, legacyPem);
+  rmSync(path, { force: true });
+  logger.warn(
+    { operation: 'device-key.migrate' },
+    'Moved the software device key off disk into the secret vault',
+  );
+}
+
+/**
+ * Mint a fresh software key. Reached on a new machine, and on one whose keyring lost the vault's
+ * master key — in which case the device id changes and the cloud sees a new device. That is the defined
+ * reset: the same vault loss also takes the session token, so the daemon is already signed out and
+ * the next sign-in registers this key. Nothing is silently left half-valid.
+ */
+function createSoftwarePrivateKey(store: SecretStore): string {
+  const { privateKey } = generateKeyPairSync('ed25519');
+  const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
+  store.set(SOFTWARE_KEY, privatePem);
+  logger.warn(
+    { operation: 'device-key.create', protection: store.protection },
+    'Generated a new software device key; this machine registers with the cloud under a new device id',
+  );
+  return privatePem;
+}

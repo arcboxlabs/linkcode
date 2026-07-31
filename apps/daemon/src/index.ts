@@ -28,6 +28,9 @@ import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
+import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
+import { runLoginCommand, runLogoutCommand } from './cloud/login';
+import { startCloudUplink } from './cloud/uplink';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
@@ -38,13 +41,13 @@ import {
   saveSimulatorConsent,
   worktreeRoot,
 } from './config';
-import { runLoginCommand, runLogoutCommand } from './hq/login';
-import { startHqUplink } from './hq/uplink';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
+import { daemonStateDir } from './paths';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
+import { createResourceStore } from './resource-store';
 import {
   DaemonAlreadyRunningError,
   findRunningDaemon,
@@ -53,6 +56,7 @@ import {
   writeRuntimeFile,
 } from './runtime';
 import { createScheduleStore } from './schedule-store';
+import { secretVault } from './secrets';
 import { createSessionStore } from './session-store';
 import { resolveSimSidecarPath } from './sim/backend';
 import { SimulatorMcpEndpoint } from './sim/mcp-endpoint';
@@ -125,16 +129,24 @@ async function main(): Promise<void> {
   const profile = daemonProfile();
   const channel = daemonChannel();
 
+  // The one place the vault is constructed (CODE-371): every module that needs a secret takes it as a
+  // parameter and opens its own namespace, so no subsystem reaches the store by import and tests can
+  // hand over an in-memory one. Resolved after the universe is known, never at module load.
+  const vault = secretVault();
+
   const command = process.argv[2];
-  if (command === 'login') return runLoginCommand();
-  if (command === 'logout') return runLogoutCommand();
+  if (command === 'login') return runLoginCommand(vault);
+  if (command === 'logout') return runLogoutCommand(vault);
 
   installAsarSpawnFix();
 
   const SharedLive = Layer.effect(
     Shared,
     Effect.gen(function* () {
-      const config = loadConfig();
+      const config = loadConfig(vault);
+      // Sweep credentials an older daemon left in the clear. loadConfig has already moved
+      // config.json's; the device key has no reader at boot, so it is swept explicitly (CODE-371).
+      adoptLegacyDeviceKeyFile(vault);
       const running = yield* Effect.promise(findRunningDaemon);
       if (running) {
         const urls = running.listeners.map((listener) => listener.url).join(', ');
@@ -167,7 +179,7 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(config.providers ?? {}, config.accounts ?? []);
+      const store = createProviderConfigStore(vault, config.providers ?? {}, config.accounts ?? []);
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
@@ -238,6 +250,8 @@ async function main(): Promise<void> {
         simulatorMcp,
         simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
+        resourceStore: createResourceStore(databasePath()),
+        stateDir: daemonStateDir(),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
@@ -349,7 +363,7 @@ async function main(): Promise<void> {
     }),
   );
 
-  // Advertise local discovery only after every listener is bound, then bring up the HQ uplink.
+  // Advertise local discovery only after every listener is bound, then bring up the cloud uplink.
   // LIFO teardown stops the uplink first and removes runtime.json before listeners close, so
   // clients stop discovering a daemon that is draining.
   const LifecycleLive = Layer.effectDiscard(
@@ -364,7 +378,7 @@ async function main(): Promise<void> {
         () => finalize(removeRuntimeFile),
       );
       yield* Effect.acquireRelease(
-        Effect.sync(() => startHqUplink(hub)),
+        Effect.sync(() => startCloudUplink(hub, vault)),
         (stop) => finalize(stop),
       );
     }),

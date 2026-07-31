@@ -3,6 +3,7 @@ import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import type { RawData } from 'ws';
 import { WebSocket, WebSocketServer } from 'ws';
+import { createFrameDropReporter } from './frame-drop';
 import {
   boundPort,
   closeServerPair,
@@ -41,6 +42,7 @@ class WsServerConnection extends WireConnection {
     // The socket is already live when handed to us, so emitClosed is armed up front.
     this.armClosedListener();
 
+    const reportDrop = createFrameDropReporter('websocket server');
     ws.on('message', (data: RawData) => {
       let raw: unknown;
       try {
@@ -48,9 +50,10 @@ class WsServerConnection extends WireConnection {
       } catch {
         return; // Not JSON, discard.
       }
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
     ws.on('close', () => {
       this.emitClosed();

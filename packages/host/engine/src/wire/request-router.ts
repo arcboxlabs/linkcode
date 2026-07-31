@@ -1,6 +1,6 @@
 import type { WireMessage } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
@@ -9,6 +9,7 @@ import type { BrowserRequestHandler } from '../browser/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import { observeRequest } from '../observability';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
+import type { ResourceRequestHandler } from '../resource/request-handler';
 import type { ScriptRequestHandler } from '../scripts/request-handler';
 import type { HistoryRequestHandler } from '../session/history-request-handler';
 import type { SessionRequestHandler } from '../session/request-handler';
@@ -27,6 +28,7 @@ interface RequestHandlers {
   readonly file: FileRequestHandler;
   readonly script: ScriptRequestHandler;
   readonly artifact: ArtifactRequestHandler;
+  readonly resource: ResourceRequestHandler;
   readonly automation: AutomationRequestHandler;
   readonly terminal: TerminalRequestHandler;
   readonly simulator: SimulatorRequestHandler;
@@ -107,6 +109,12 @@ export class WireRequestRouter {
       case 'artifact.revoke': {
         return this.handlers.artifact.handle(p);
       }
+      case 'resource.list':
+      case 'resource.source.upload':
+      case 'resource.remove':
+      case 'resource.host': {
+        return this.handlers.resource.handle(p);
+      }
       case 'schedule.create':
       case 'schedule.update':
       case 'schedule.delete':
@@ -169,7 +177,7 @@ export class WireRequestRouter {
         return this.handlers.browser.handle(p);
       }
       case 'ping': {
-        return Effect.sync(() => this.transport.send(createWireMessage({ kind: 'pong' })));
+        return Effect.sync(() => this.transport.send(createWireMessage(pong())));
       }
       // Downstream-only payloads are ignored here.
       default:

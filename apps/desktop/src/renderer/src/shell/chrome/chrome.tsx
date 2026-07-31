@@ -1,5 +1,6 @@
 import { cn, ShellIconButton, ThreadTitle } from '@linkcode/ui';
 import type { WorkbenchShellHeader, WorkbenchShellNavigation } from '@linkcode/workbench';
+import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { nullthrow } from 'foxact/nullthrow';
 import { useIsomorphicLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import {
@@ -9,6 +10,7 @@ import {
   PanelBottomIcon,
   PanelLeftIcon,
   PanelRightIcon,
+  Settings2Icon,
 } from 'lucide-react';
 import { createContext, use, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -25,6 +27,9 @@ export interface DesktopChromeProps {
   sidebarOpen: boolean;
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  resourcesOpen?: boolean;
+  resourcesAvailable?: boolean;
+  resourcesPopoverPanel?: React.ReactNode;
   expandedPanel: DesktopPanelSide | null;
   hasNativeBackdrop: boolean;
   hasNativeTrafficLights: boolean;
@@ -34,6 +39,8 @@ export interface DesktopChromeProps {
   onHideSidebar: () => void;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  onToggleResources?: () => void;
+  onResourcesOpenChange?: (open: boolean) => void;
   /** Drives the default left-rail ‹ › controls; absent (e.g. Settings) keeps them disabled. */
   navigation?: WorkbenchShellNavigation;
   /** Pre-formatted shortcut hints for the default sidebar/panel toggles (e.g. "⌘J"). */
@@ -158,6 +165,9 @@ export function DesktopChrome({
   sidebarOpen,
   rightPanelOpen,
   bottomPanelOpen,
+  resourcesOpen = false,
+  resourcesAvailable = false,
+  resourcesPopoverPanel,
   expandedPanel,
   hasNativeBackdrop,
   hasNativeTrafficLights,
@@ -166,6 +176,8 @@ export function DesktopChrome({
   onHideSidebar,
   onToggleRight,
   onToggleBottom,
+  onToggleResources,
+  onResourcesOpenChange,
   navigation,
   sidebarShortcut,
   rightPanelShortcut,
@@ -249,10 +261,15 @@ export function DesktopChrome({
                 <DefaultRightChromeControls
                   rightPanelOpen={rightPanelOpen}
                   bottomPanelOpen={bottomPanelOpen}
+                  resourcesOpen={resourcesOpen}
+                  resourcesAvailable={resourcesAvailable}
+                  resourcesPopoverPanel={resourcesPopoverPanel}
                   rightPanelShortcut={rightPanelShortcut}
                   bottomPanelShortcut={bottomPanelShortcut}
                   onToggleRight={onToggleRight}
                   onToggleBottom={onToggleBottom}
+                  onToggleResources={onToggleResources}
+                  onResourcesOpenChange={onResourcesOpenChange}
                 />
               ) : (
                 rightControls
@@ -565,20 +582,38 @@ function StableRightChrome({
 function DefaultRightChromeControls({
   rightPanelOpen,
   bottomPanelOpen,
+  resourcesOpen,
+  resourcesAvailable,
+  resourcesPopoverPanel,
   rightPanelShortcut,
   bottomPanelShortcut,
   onToggleRight,
   onToggleBottom,
+  onToggleResources,
+  onResourcesOpenChange,
 }: {
   rightPanelOpen: boolean;
   bottomPanelOpen: boolean;
+  resourcesOpen: boolean;
+  resourcesAvailable: boolean;
+  resourcesPopoverPanel?: React.ReactNode;
   rightPanelShortcut?: string;
   bottomPanelShortcut?: string;
   onToggleRight: () => void;
   onToggleBottom: () => void;
+  onToggleResources?: () => void;
+  onResourcesOpenChange?: (open: boolean) => void;
 }): React.ReactNode {
   return (
     <>
+      {resourcesAvailable && onToggleResources && (
+        <ResourcesChromeControl
+          open={resourcesOpen}
+          panel={resourcesPopoverPanel}
+          onOpenChange={onResourcesOpenChange}
+          onToggle={onToggleResources}
+        />
+      )}
       <ShellIconButton
         label="Toggle bottom panel"
         shortcut={bottomPanelShortcut}
@@ -600,6 +635,48 @@ function DefaultRightChromeControls({
         <PanelRightIcon className="size-4" />
       </ShellIconButton>
     </>
+  );
+}
+
+function ResourcesChromeControl({
+  open,
+  panel,
+  onOpenChange,
+  onToggle,
+}: {
+  open: boolean;
+  panel?: React.ReactNode;
+  onOpenChange?: (open: boolean) => void;
+  onToggle: () => void;
+}): React.ReactNode {
+  const tPanel = useTranslations('workbench.panel.window');
+  const button = (
+    <ShellIconButton
+      label={tPanel('resources')}
+      aria-pressed={open}
+      className={open ? ACTIVE_CHROME_BUTTON_CLASS : undefined}
+      data-pressed={open ? '' : undefined}
+      onClick={panel === undefined ? onToggle : undefined}
+    >
+      <Settings2Icon className="size-4" />
+    </ShellIconButton>
+  );
+
+  if (panel === undefined || onOpenChange === undefined) return button;
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger render={button} />
+      <PopoverPopup
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        className="w-72 [&_[data-slot=popover-viewport]]:p-0"
+      >
+        <div className="max-h-[min(32rem,var(--available-height))] min-h-0 overflow-y-auto">
+          {panel}
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 

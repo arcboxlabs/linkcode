@@ -64,7 +64,7 @@ describe('loop wire variants', () => {
       { kind: 'loop.log', loopId: loop.loopId, entry: log },
     ];
     for (const payload of payloads) {
-      expect(parseWireMessage(envelope(payload)).success, payload.kind).toBe(true);
+      expect(parseWireMessage(envelope(payload)).ok, payload.kind).toBe(true);
     }
   });
 
@@ -74,6 +74,6 @@ describe('loop wire variants', () => {
       clientReqId: 'c1',
       spec: { ...spec, verifyChecks: [] },
     };
-    expect(parseWireMessage(envelope(payload)).success).toBe(false);
+    expect(parseWireMessage(envelope(payload)).ok).toBe(false);
   });
 });
