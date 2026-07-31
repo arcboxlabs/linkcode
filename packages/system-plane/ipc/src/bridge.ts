@@ -6,7 +6,7 @@ import type {
   DetectedEditor,
   PickFileOptions,
   SystemNotification,
-  UpdaterStatus,
+  UpdaterState,
 } from './context';
 
 /** The capability contract of TypeSafe IPC (docs/ARCHITECTURE.md#key-contracts) — system / UI
@@ -38,10 +38,12 @@ export interface SystemBridge {
     version(): Promise<string>;
     /** Synchronous Electron platform supplied by the sandboxed preload. */
     readonly platform: NodeJS.Platform;
-    /** Trigger a manual update check; observe progress via `onUpdaterStatus`. */
+    /** Trigger a manual update check; observe progress via `onUpdaterState`. */
     checkForUpdates(): Promise<void>;
-    /** Subscribe to auto-update lifecycle status pushed from main. */
-    onUpdaterStatus(cb: (status: UpdaterStatus) => void): () => void;
+    updaterState(): Promise<UpdaterState>;
+    installUpdate(): Promise<void>;
+    /** Subscribe to auto-update lifecycle state pushed from main. */
+    onUpdaterState(cb: (state: UpdaterState) => void): () => void;
     /** Subscribe to the menubar/Cmd+, "open settings" push from main. */
     onOpenSettings(cb: () => void): () => void;
   };

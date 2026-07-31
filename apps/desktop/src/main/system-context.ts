@@ -8,7 +8,7 @@ import { isDaemonManaged, retryDaemonSupervisor } from './daemon-supervisor';
 import { ensureDefaultPickerDirectory } from './default-picker-directory';
 import { listEditors, openInEditor } from './editors';
 import { getSettings, setSettings } from './settings';
-import { checkForUpdates } from './updater';
+import { checkForUpdates, getUpdaterState, installUpdate } from './updater';
 
 /** Binds the system IPC capability contract to the real Electron implementation (system / UI only, docs/ARCHITECTURE.md#core-principles). */
 export function systemContextFor(win: BrowserWindow): SystemContext {
@@ -45,6 +45,8 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
     app: {
       getVersion: () => app.getVersion(),
       checkForUpdates: () => checkForUpdates(),
+      getUpdaterState: () => getUpdaterState(),
+      installUpdate: () => installUpdate(),
     },
     settings: {
       get: () => getSettings(),

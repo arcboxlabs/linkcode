@@ -6,6 +6,7 @@ import type {
   OpenInEditorRequest,
   PickFileOptions,
   SystemNotification,
+  UpdaterState,
 } from './context';
 
 export const WINDOW_MAXIMIZED_CHANGED_CHANNEL = 'linkcode.system.window.maximizedChanged';
@@ -15,8 +16,8 @@ export const SETTINGS_SNAPSHOT_CHANNEL = 'linkcode.system.settings.snapshot';
 export const DAEMON_URL_SNAPSHOT_CHANNEL = 'linkcode.system.daemon.urlSnapshot';
 /** Main → renderer push: the menubar/Cmd+, asked to open Settings. */
 export const SETTINGS_OPEN_CHANNEL = 'linkcode.system.settings.open';
-/** Main → renderer push: auto-update lifecycle status. */
-export const UPDATER_STATUS_CHANNEL = 'linkcode.system.app.updaterStatus';
+/** Main → renderer push: auto-update lifecycle state. */
+export const UPDATER_STATE_CHANNEL = 'linkcode.system.app.updaterState';
 /** Main → renderer push: the daemon runtime file changed — rediscover the endpoint. */
 export const DAEMON_RUNTIME_CHANGED_CHANNEL = 'linkcode.system.daemon.runtimeChanged';
 /** Main → renderer push: an OS notification was clicked; payload is its `clickToken`. */
@@ -43,6 +44,8 @@ export const systemIpcEvents = {
   ),
   appVersion: defineInvokeEventa<string>('linkcode.system.app.version'),
   appCheckForUpdates: defineInvokeEventa<void>('linkcode.system.app.checkForUpdates'),
+  appUpdaterState: defineInvokeEventa<UpdaterState>('linkcode.system.app.updaterState'),
+  appInstallUpdate: defineInvokeEventa<void>('linkcode.system.app.installUpdate'),
   daemonIsManaged: defineInvokeEventa<boolean>('linkcode.system.daemon.isManaged'),
   daemonRetry: defineInvokeEventa<void>('linkcode.system.daemon.retry'),
   settingsGet: defineInvokeEventa<DesktopSettings>('linkcode.system.settings.get'),

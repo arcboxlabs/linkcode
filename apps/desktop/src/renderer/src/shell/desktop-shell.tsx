@@ -59,6 +59,7 @@ import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
 import { getExpandedPanel } from './store/model';
 import { useDesktopShellStore } from './store/store';
+import { UpdateNotice } from './update-notice';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
 import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
 
@@ -764,21 +765,24 @@ export function DesktopShell({
                   collapsedSections={collapsedSections}
                   topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                   footer={
-                    <HostFooter
-                      state={tConnection('connected')}
-                      appVersion={appVersion}
-                      pendingPermissionCount={conversation.pendingPermissionIds.length}
-                      account={cloudAuth.account}
-                      authPending={cloudAuth.authenticating}
-                      onSignIn={cloudAuth.signIn}
-                      onSignOut={cloudAuth.signOut}
-                      onManageAccount={cloudAuth.manageAccount}
-                      remoteHosts={remoteHostItems}
-                      remoteHostsLoading={remoteHosts.isLoading}
-                      selectedHostId={selectedHostId}
-                      onSelectHost={selectHost}
-                      onOpenSettings={onOpenSettings}
-                    />
+                    <>
+                      <UpdateNotice />
+                      <HostFooter
+                        state={tConnection('connected')}
+                        appVersion={appVersion}
+                        pendingPermissionCount={conversation.pendingPermissionIds.length}
+                        account={cloudAuth.account}
+                        authPending={cloudAuth.authenticating}
+                        onSignIn={cloudAuth.signIn}
+                        onSignOut={cloudAuth.signOut}
+                        onManageAccount={cloudAuth.manageAccount}
+                        remoteHosts={remoteHostItems}
+                        remoteHostsLoading={remoteHosts.isLoading}
+                        selectedHostId={selectedHostId}
+                        onSelectHost={selectHost}
+                        onOpenSettings={onOpenSettings}
+                      />
+                    </>
                   }
                   onPickDirectory={pickDirectory}
                   onOpenSearch={onOpenSearch}
