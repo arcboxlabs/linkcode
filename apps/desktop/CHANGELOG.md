@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.14.0](https://github.com/arcboxlabs/linkcode/compare/v0.13.0...v0.14.0) (2026-07-31)
+
+
+### Features
+
+* **desktop:** add update polling and sidebar prompt ([adda937](https://github.com/arcboxlabs/linkcode/commit/adda937f9d06acf59daa3121b1c587fc2b2e707c))
+
+
+### Bug Fixes
+
+* **desktop:** settle inactive update checks ([78a99d3](https://github.com/arcboxlabs/linkcode/commit/78a99d33cbacb339f7ba0739993f7390978c0f88))
+* **release:** install both CPU keyring bindings ([0bddfce](https://github.com/arcboxlabs/linkcode/commit/0bddfce101d5385d78413bf2210711bcdc8fb4df))
+* **release:** keep builder Linux output layouts ([524b76e](https://github.com/arcboxlabs/linkcode/commit/524b76ecd09f009c7f4833979a22c4bc661b23a7))
+* **release:** let staging select builder architecture ([24bd573](https://github.com/arcboxlabs/linkcode/commit/24bd573df48eb15273671e4ba1c9554d1dd4ee8b))
+* **release:** stage desktop dependencies per architecture ([735a232](https://github.com/arcboxlabs/linkcode/commit/735a232fdbb77cb97e8a05bd7873f5d6301c5350))
+* **ui,workbench,desktop,webview:** swap the thread-title view transition for a header enter animation ([#354](https://github.com/arcboxlabs/linkcode/issues/354)) ([fe034b7](https://github.com/arcboxlabs/linkcode/commit/fe034b71cff65e648d94a8bfb18b4f089e9e066a))
+
 ## [0.13.0](https://github.com/arcboxlabs/linkcode/compare/v0.12.0...v0.13.0) (2026-07-31)
 
 
