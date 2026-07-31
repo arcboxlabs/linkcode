@@ -247,6 +247,32 @@ describe('NewSessionSurface', () => {
     },
   );
 
+  it('submits a leading dollar word as a prompt', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    typeInComposer('$HOME');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: { type: 'prompt', content: [{ type: 'text', text: '$HOME' }] },
+        }),
+      ),
+    );
+  });
+
   it.each([
     {
       draft: '/compact ',
