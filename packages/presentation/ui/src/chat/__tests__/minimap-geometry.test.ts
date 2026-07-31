@@ -2,6 +2,7 @@ import { createFixedArray } from 'foxts/create-fixed-array';
 import { describe, expect, it } from 'vitest';
 import {
   fisheyeFactor,
+  fisheyeScaleX,
   fisheyeWidth,
   MINIMAP_FISHEYE_SPREAD,
   MINIMAP_ROW_HEIGHT,
@@ -40,6 +41,16 @@ describe('fisheyeWidth', () => {
 
   it('interpolates linearly between them', () => {
     expect(fisheyeWidth(0.5)).toBe((MINIMAP_TICK_BASE_WIDTH + MINIMAP_TICK_PEAK_WIDTH) / 2);
+  });
+});
+
+describe('fisheyeScaleX', () => {
+  it('leaves a resting tick untransformed', () => {
+    expect(fisheyeScaleX(0)).toBe(1);
+  });
+
+  it('reaches the peak width without the box changing size', () => {
+    expect(fisheyeScaleX(1) * MINIMAP_TICK_BASE_WIDTH).toBe(MINIMAP_TICK_PEAK_WIDTH);
   });
 });
 
