@@ -42,6 +42,16 @@ describe('desktop updater', () => {
     vi.useRealTimers();
   });
 
+  it('settles checks when the updater is inactive for the current package format', async () => {
+    const updater = await import('../updater');
+
+    updater.checkForUpdates();
+    expect(updater.getUpdaterState()).toEqual({ status: 'checking', version: null });
+
+    await mocks.autoUpdater.checkForUpdates.mock.results[0]?.value;
+    expect(updater.getUpdaterState()).toEqual({ status: 'not-available', version: null });
+  });
+
   it('polls every four hours and preserves a downloaded update until installation', async () => {
     const updater = await import('../updater');
     const states: unknown[] = [];
