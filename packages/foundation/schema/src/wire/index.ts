@@ -1,3 +1,4 @@
+export { deliveryOf, WIRE_DELIVERY, type WireDelivery } from './delivery';
 export {
   type AgentHistoryListWireOptions,
   AgentHistoryListWireOptionsSchema,
@@ -5,14 +6,19 @@ export {
   AgentHistoryReadWireOptionsSchema,
 } from './history';
 export {
+  MIN_COMPATIBLE_WIRE_VERSION,
   parseWireMessage,
   type ValidatedWireMessage,
   WIRE_PROTOCOL_VERSION,
   type WireMessage,
   WireMessageSchema,
+  type WireParseFailure,
+  type WireParseResult,
 } from './message';
-export { type WirePayload, WirePayloadSchema } from './payload';
+export { WIRE_PAYLOAD_KINDS, type WirePayload, WirePayloadSchema } from './payload';
 export {
+  type SessionChangeReason,
+  SessionChangeReasonSchema,
   type SessionSubscriptionMode,
   SessionSubscriptionModeSchema,
 } from './session';

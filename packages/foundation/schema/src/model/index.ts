@@ -21,6 +21,7 @@ export * from './question';
 export * from './schedule';
 export * from './script';
 export * from './session';
+export * from './session-resource';
 export * from './simulator';
 export * from './terminal';
 export * from './tool-call';

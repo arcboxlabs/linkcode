@@ -1,10 +1,10 @@
 import type { FileDiffMetadata, FileDiffOptions } from '@pierre/diffs';
 import { parseDiffFromFile, processFile } from '@pierre/diffs';
 import { FileDiff } from '@pierre/diffs/react';
+import type { DiffStats, DiffToolCallContent } from '../diff-utils';
+import { diffContentStats } from '../diff-utils';
 import { cn } from '../lib/cn';
 import type { ArtifactNavigation } from './artifacts/host-actions';
-import type { DiffStats, DiffToolCallContent } from './diff-utils';
-import { diffContentStats } from './diff-utils';
 import { FilePreviewCard } from './file-preview-card';
 
 export function DiffCounter({

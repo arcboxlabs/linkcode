@@ -1,5 +1,6 @@
 import type { ValidatedWireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
+import { createFrameDropReporter } from './frame-drop';
 import type { Transport, TransportServer, Unsubscribe } from './transport';
 import { Listeners } from './transport';
 import type { TunnelClientOptions, TunnelClientState, TunnelPeer } from './tunnel-client';
@@ -21,6 +22,7 @@ export class TunnelTransport implements Transport {
 
   constructor(opts: TunnelTransportOptions) {
     this.client = new TunnelClient(opts);
+    const reportDrop = createFrameDropReporter('tunnel client');
     this.client.onMessage((message) => {
       let raw: unknown;
       try {
@@ -28,9 +30,10 @@ export class TunnelTransport implements Transport {
       } catch {
         return; // Not JSON, discard
       }
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
     this.client.onClose(() => this.inbound.clear());
   }
@@ -71,6 +74,7 @@ class TunnelPeerTransport implements Transport {
   private ended = false;
 
   constructor(private readonly peer: TunnelPeer) {
+    const reportDrop = createFrameDropReporter('tunnel peer');
     peer.onMessage((message) => {
       let raw: unknown;
       try {
@@ -78,8 +82,9 @@ class TunnelPeerTransport implements Transport {
       } catch {
         return;
       }
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
     peer.onClose(() => this.finish());
   }

@@ -23,7 +23,7 @@ describe('config wire schema — custom MCP servers', () => {
         ],
       }),
     );
-    expect(parsed.success).toBe(true);
+    expect(parsed.ok).toBe(true);
   });
 
   it('rejects a read projection carrying secret values instead of key lists', () => {
@@ -48,13 +48,13 @@ describe('config wire schema — custom MCP servers', () => {
         ],
       }),
     );
-    expect(parsed.success).toBe(false);
+    expect(parsed.ok).toBe(false);
   });
 
   it('accepts patch ops on config.set and leaves them optional', () => {
-    expect(
-      parseWireMessage(envelope({ kind: 'config.set', clientReqId: 'request-1' })).success,
-    ).toBe(true);
+    expect(parseWireMessage(envelope({ kind: 'config.set', clientReqId: 'request-1' })).ok).toBe(
+      true,
+    );
     const parsed = parseWireMessage(
       envelope({
         kind: 'config.set',
@@ -62,7 +62,7 @@ describe('config wire schema — custom MCP servers', () => {
         customMcpServers: [{ op: 'remove', id: 'custom-1' }],
       }),
     );
-    expect(parsed.success).toBe(true);
+    expect(parsed.ok).toBe(true);
   });
 
   it('carries optional mcp warnings on session.started', () => {
@@ -74,7 +74,7 @@ describe('config wire schema — custom MCP servers', () => {
         mcpWarnings: [{ serverName: 'github', reason: 'agent-unsupported' }],
       }),
     );
-    expect(parsed.success).toBe(true);
+    expect(parsed.ok).toBe(true);
   });
 
   it('rejects an mcp warning outside the closed reason set', () => {
@@ -86,6 +86,6 @@ describe('config wire schema — custom MCP servers', () => {
         mcpWarnings: [{ serverName: 'github', reason: 'broker-unavailable' }],
       }),
     );
-    expect(parsed.success).toBe(false);
+    expect(parsed.ok).toBe(false);
   });
 });

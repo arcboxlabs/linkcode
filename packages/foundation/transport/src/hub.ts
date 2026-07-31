@@ -5,7 +5,9 @@ import type {
   TerminalId,
   ValidatedWireMessage,
 } from '@linkcode/schema';
+import { deliveryOf } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
+import { pong } from './pong';
 import type { Transport, Unsubscribe } from './transport';
 import { createWireMessage, Listeners } from './transport';
 
@@ -121,7 +123,7 @@ export class Hub implements Transport {
         return;
       }
       if (p.kind === 'ping') {
-        bestEffort(() => conn.send(createWireMessage({ kind: 'pong' })));
+        bestEffort(() => conn.send(createWireMessage(pong())));
         return;
       }
       if (p.kind === 'session.attach') subscription.attached.add(p.sessionId);
@@ -193,10 +195,12 @@ export class Hub implements Transport {
       return;
     }
 
-    if (p.kind === 'browser.command') {
+    const delivery = deliveryOf(p);
+
+    if (delivery?.scope === 'browser-host') {
       const host = this.browserHost;
       if (host && this.conns.has(host.conn)) bestEffort(() => host.conn.send(msg));
-      else {
+      else if (p.kind === 'browser.command') {
         this.inbound.emit(
           createWireMessage({
             kind: 'browser.command.result',
@@ -215,32 +219,28 @@ export class Hub implements Transport {
       return;
     }
 
-    if (
-      p.kind === 'terminal.output' ||
-      p.kind === 'terminal.resized' ||
-      p.kind === 'terminal.controller.changed' ||
-      p.kind === 'terminal.exit'
-    ) {
+    if (delivery?.scope === 'terminal') {
+      const terminalId = delivery.terminalId(p);
       for (const conn of this.conns) {
-        if (!this.subscriptions.get(conn)?.terminals.has(p.terminalId)) continue;
+        if (!this.subscriptions.get(conn)?.terminals.has(terminalId)) continue;
         bestEffort(() => conn.send(msg));
       }
+      // The capability dies with the PTY, so no reattach can outlive it.
       if (p.kind === 'terminal.exit') {
         for (const subscription of this.subscriptions.values()) {
-          subscription.terminals.delete(p.terminalId);
+          subscription.terminals.delete(terminalId);
         }
       }
       return;
     }
 
+    const sessionId = delivery?.scope === 'session' ? delivery.sessionId(p) : null;
     for (const conn of this.conns) {
-      // Session-scoped events (agent activity, high-frequency framebuffer frames) reach only
-      // connections that carry that session — never a global broadcast.
-      if (p.kind === 'agent.event' || p.kind === 'simulator.stream.frame') {
+      // A session-scoped frame reaches only the connections carrying that session, once a
+      // connection has narrowed its scope; everything else fans out.
+      if (sessionId !== null) {
         const subscription = this.subscriptions.get(conn);
-        if (subscription?.mode === 'attached' && !subscription.attached.has(p.sessionId)) {
-          continue;
-        }
+        if (subscription?.mode === 'attached' && !subscription.attached.has(sessionId)) continue;
       }
       // A dead/closing socket shouldn't break the broadcast; it will be removed on its close event.
       bestEffort(() => conn.send(msg));

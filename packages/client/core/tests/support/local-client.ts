@@ -1,5 +1,5 @@
 import type { LocalTransport } from '@linkcode/transport';
-import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { createLocalTransportPair, createWireMessage, pong } from '@linkcode/transport';
 import type { LinkCodeClientOptions } from '../../src/client';
 import { LinkCodeClient } from '../../src/client';
 
@@ -11,7 +11,7 @@ export async function createConnectedLocalClient(options?: LinkCodeClientOptions
   await serverTransport.connect();
   serverTransport.onMessage((message) => {
     if (message.payload.kind === 'ping') {
-      serverTransport.send(createWireMessage({ kind: 'pong' }));
+      serverTransport.send(createWireMessage(pong()));
     }
   });
   const client = new LinkCodeClient(clientTransport, options);

@@ -33,6 +33,9 @@ import { ArtifactHostService } from './preview/artifact-host-service';
 import { FileHostService } from './preview/file-host-service';
 import { ArtifactRequestHandler } from './preview/request-handler';
 import { PreviewRouteRegistry } from './preview/route-registry';
+import { ResourceRequestHandler } from './resource/request-handler';
+import { InMemoryResourceStore } from './resource/resource-store';
+import { ResourceService } from './resource/service';
 import { ScriptRequestHandler } from './scripts/request-handler';
 import { ScriptService } from './scripts/script-service';
 import { HistoryRequestHandler } from './session/history-request-handler';
@@ -82,7 +85,21 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const customMcp = new CustomMcpServerService(providerStore);
-  const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
+  const records = new SessionRecordRegistry(
+    deps.sessionStore ?? new InMemorySessionStore(),
+    (sessionId, reason) => {
+      transport.send(createWireMessage({ kind: 'session.changed', sessionId, reason }));
+    },
+  );
+  const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
+  const fileHost = new FileHostService(routes);
+  const resources = new ResourceService(
+    transport,
+    deps.resourceStore ?? new InMemoryResourceStore(),
+    records,
+    deps.stateDir,
+    fileHost,
+  );
   const history = new HistoryService(factory);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const runtimes = yield* AgentRuntimeService.make(
@@ -114,6 +131,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       simulators?.releaseSession(sessionId);
       deps.simulatorMcp?.release(sessionId);
     },
+    resources,
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
@@ -140,8 +158,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const gitRequests = new GitRequestHandler(transport, git, responder);
   const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
-  const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
-  const fileHost = new FileHostService(routes);
   const fileRequests = new FileRequestHandler(
     transport,
     fileSuggest,
@@ -155,6 +171,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const scriptRequests = new ScriptRequestHandler(transport, scripts, responder);
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
+  const resourceRequests = new ResourceRequestHandler(transport, resources, responder);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
     providerStore,
@@ -229,6 +246,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     file: fileRequests,
     script: scriptRequests,
     artifact: artifactRequests,
+    resource: resourceRequests,
     automation: automationRequests,
     terminal: terminalRequests,
     simulator: simulatorRequests,

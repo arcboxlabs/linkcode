@@ -12,12 +12,12 @@ function message(id: unknown) {
 
 describe('managed-asset wire contract', () => {
   it('accepts discriminated object IDs', () => {
-    expect(parseWireMessage(message({ kind: 'agent', name: 'codex' })).success).toBe(true);
-    expect(parseWireMessage(message({ kind: 'tool', name: 'tectonic' })).success).toBe(true);
+    expect(parseWireMessage(message({ kind: 'agent', name: 'codex' })).ok).toBe(true);
+    expect(parseWireMessage(message({ kind: 'tool', name: 'tectonic' })).ok).toBe(true);
   });
 
   it('rejects legacy string IDs', () => {
-    expect(parseWireMessage(message('agent:codex')).success).toBe(false);
-    expect(parseWireMessage(message('tool:tectonic')).success).toBe(false);
+    expect(parseWireMessage(message('agent:codex')).ok).toBe(false);
+    expect(parseWireMessage(message('tool:tectonic')).ok).toBe(false);
   });
 });

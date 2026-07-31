@@ -3,14 +3,14 @@
 import type { ToolCall } from '@linkcode/schema';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 import {
   hasToolBody,
   mcpToolName,
   toolCallContextSummary,
   toolCallHeaderSummary,
   toolCallMetadata,
-} from '../tool-utils';
+} from '../../tool-utils';
+import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 
 function translateKey(key: string): string {
   return key;

@@ -1,6 +1,7 @@
 import type { ToolCall, ToolCallContent } from '@linkcode/schema';
 import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
 import { Fragment } from 'react';
+import { toolCallCommand, toolCallDisplayTitle } from '../tool-utils';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
 import { CodeBlock } from './code-block';
 import { ContentBlockView } from './content-block-view';
@@ -22,7 +23,6 @@ import {
   toolCallReadPreviewText,
   toolCallSearchQuery,
 } from './tool-result-content';
-import { toolCallCommand, toolCallDisplayTitle } from './tool-utils';
 
 /** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
 export type TerminalBlockComponent = React.ComponentType<{

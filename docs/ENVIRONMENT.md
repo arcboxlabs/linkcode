@@ -56,9 +56,9 @@ Point a client at something other than production LinkCode Cloud. All default to
 | `LINKCODE_CLOUD_API_URL` | `apps/desktop/src/main/cloud-auth/client.ts` | `https://api.linkcode.ai` |
 | `LINKCODE_CLOUD_SIGN_IN_URL` | `apps/desktop/src/main/cloud-auth/client.ts` | `https://linkcode.ai/sign-in` |
 | `VITE_LINKCODE_CLOUD_API_URL` | `apps/webview/src/cloud/auth.ts` | `https://api.linkcode.ai` (build-time inlined) |
-| `LINKCODE_HQ_URL` | `apps/daemon/src/hq/login.ts` | `DEFAULT_HQ_URL` in `apps/daemon/src/hq/api.ts` |
+| `LINKCODE_CLOUD_URL` | `apps/daemon/src/cloud/login.ts` | `DEFAULT_CLOUD_URL` in `apps/daemon/src/cloud/api.ts` |
 
-`LINKCODE_HQ_URL` falls back on an empty string (`||`); the desktop/webview overrides use `??`, so setting them to `''` yields an empty base URL rather than the default.
+`LINKCODE_CLOUD_URL` falls back on an empty string (`||`); the desktop/webview overrides use `??`, so setting them to `''` yields an empty base URL rather than the default.
 
 ## Observability
 

@@ -20,6 +20,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -39,10 +40,13 @@ import type {
   ScheduleRun,
   ScheduleSpec,
   ScheduleUpdate,
+  SessionChangeReason,
   SessionId,
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
@@ -66,6 +70,7 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
+import { MIN_COMPATIBLE_WIRE_VERSION, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
@@ -100,6 +105,12 @@ type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
+type SessionChangedCb = (sessionId: SessionId, reason: SessionChangeReason) => void;
+type ResourceEventCb = (
+  event:
+    | { type: 'changed'; resource: SessionResource }
+    | { type: 'removed'; resourceId: SessionResourceId; sessionId: SessionId },
+) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 type TerminalControllerCb = (canControl: boolean) => void;
@@ -173,6 +184,17 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
+/** The message to fail the handshake with, or null when the two builds overlap. */
+function wireIncompatibility(peerVersion: number, peerMinCompatible: number): string | null {
+  if (peerVersion < MIN_COMPATIBLE_WIRE_VERSION) {
+    return `LinkCodeClient: host speaks wire v${peerVersion}, older than the v${MIN_COMPATIBLE_WIRE_VERSION} this build needs — update the host`;
+  }
+  if (WIRE_PROTOCOL_VERSION < peerMinCompatible) {
+    return `LinkCodeClient: this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${peerMinCompatible} the host needs — update this app`;
+  }
+  return null;
+}
+
 export function isRequestFailureReportedInConversation(error: unknown): boolean {
   return (
     isErrorLikeObject(error) &&
@@ -199,6 +221,8 @@ export class LinkCodeClient {
   private readonly loopEventSubs = new Set<LoopEventCb>();
   private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
+  private readonly sessionChangedSubs = new Set<SessionChangedCb>();
+  private readonly resourceEventSubs = new Set<ResourceEventCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
@@ -215,6 +239,7 @@ export class LinkCodeClient {
   private connectionError: Error | null = null;
   private resolveHandshake: (() => void) | null = null;
   private rejectHandshake: ((error: Error) => void) | null = null;
+  private peerWire: { version: number; minCompatible: number } | null = null;
 
   constructor(
     private readonly transport: Transport,
@@ -259,6 +284,11 @@ export class LinkCodeClient {
   onClose(cb: ConnectionCloseCb): Unsubscribe {
     this.connectionCloseSubs.add(cb);
     return () => this.connectionCloseSubs.delete(cb);
+  }
+
+  /** What the host answered at handshake — for gating a frame an older host would drop. */
+  get peerWireVersion(): number | null {
+    return this.peerWire?.version ?? null;
   }
 
   private async handshake(): Promise<void> {
@@ -496,6 +526,23 @@ export class LinkCodeClient {
       case 'file.hosted':
         this.pending.resolve('fileHost', p.replyTo, p.hosted);
         break;
+      case 'resource.listed':
+        this.pending.resolve('resourceList', p.replyTo, p.resources);
+        break;
+      case 'resource.uploaded':
+        this.pending.resolve('resourceUpload', p.replyTo, p.resource);
+        break;
+      case 'resource.hosted':
+        this.pending.resolve('resourceHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.changed':
+        for (const cb of this.resourceEventSubs) cb({ type: 'changed', resource: p.resource });
+        break;
+      case 'resource.removed':
+        for (const cb of this.resourceEventSubs) {
+          cb({ type: 'removed', resourceId: p.resourceId, sessionId: p.sessionId });
+        }
+        break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
@@ -549,6 +596,9 @@ export class LinkCodeClient {
       case 'session.notification':
         for (const cb of this.sessionNotificationSubs) cb(p.notification);
         break;
+      case 'session.changed':
+        for (const cb of this.sessionChangedSubs) cb(p.sessionId, p.reason);
+        break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
         break;
@@ -587,9 +637,13 @@ export class LinkCodeClient {
       case 'agent-login.settled':
         this.agentLogin.handleMessage(p);
         break;
-      case 'pong':
-        this.resolveHandshake?.();
+      case 'pong': {
+        this.peerWire = { version: p.version, minCompatible: p.minCompatible };
+        const incompatible = wireIncompatibility(p.version, p.minCompatible);
+        if (incompatible) this.rejectHandshake?.(new Error(incompatible));
+        else this.resolveHandshake?.();
         break;
+      }
       default:
         break;
     }
@@ -1111,6 +1165,35 @@ export class LinkCodeClient {
   subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
     this.sessionNotificationSubs.add(cb);
     return () => this.sessionNotificationSubs.delete(cb);
+  }
+
+  /** Broadcast membership/identity changes to the persisted session list; the payload is a cue to
+   * revalidate through {@link listSessions}, not the change itself. */
+  subscribeSessionChanged(cb: SessionChangedCb): Unsubscribe {
+    this.sessionChangedSubs.add(cb);
+    return () => this.sessionChangedSubs.delete(cb);
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.control.listResources(sessionId);
+  }
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.control.uploadSource(sessionId, name, data, mimeType);
+  }
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.control.removeResource(resourceId);
+  }
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.control.hostResource(resourceId);
+  }
+  subscribeResources(cb: ResourceEventCb): Unsubscribe {
+    this.resourceEventSubs.add(cb);
+    return () => this.resourceEventSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */

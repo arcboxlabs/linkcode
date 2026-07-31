@@ -1,6 +1,7 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
 import type { Accounts, CustomMcpServer, ProvidersConfig } from '@linkcode/schema';
 import { saveAccounts, saveCustomMcpServers, saveProviders } from './config';
+import type { SecretVault } from './secrets';
 
 /**
  * Daemon-backed data-plane config store: in-memory providers + account pool + custom MCP servers
@@ -9,6 +10,7 @@ import { saveAccounts, saveCustomMcpServers, saveProviders } from './config';
  * persisted values.
  */
 export function createProviderConfigStore(
+  vault: SecretVault,
   initialProviders: ProvidersConfig,
   initialAccounts: Accounts,
   initialCustomMcpServers: CustomMcpServer[] = [],
@@ -19,12 +21,12 @@ export function createProviderConfigStore(
   return {
     get: () => providers,
     set(next) {
-      saveProviders(next);
+      saveProviders(vault, next);
       providers = next;
     },
     getAccounts: () => accounts,
     setAccounts(next) {
-      saveAccounts(next);
+      saveAccounts(vault, next);
       accounts = next;
     },
     getCustomMcpServers: () => customMcpServers,

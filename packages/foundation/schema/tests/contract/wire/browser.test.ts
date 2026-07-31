@@ -15,7 +15,7 @@ describe('browser wire schema', () => {
         hostSecret: 's'.repeat(32),
       }),
     );
-    expect(parsed.success).toBe(true);
+    expect(parsed.ok).toBe(true);
   });
 
   it('rejects a command with an op outside the closed set', () => {
@@ -27,7 +27,7 @@ describe('browser wire schema', () => {
         args: {},
       }),
     );
-    expect(parsed.success).toBe(false);
+    expect(parsed.ok).toBe(false);
   });
 
   it('round-trips a failed command settlement with a closed error code', () => {
@@ -41,9 +41,9 @@ describe('browser wire schema', () => {
         },
       }),
     );
-    expect(parsed.success).toBe(true);
-    if (!parsed.success || parsed.data.payload.kind !== 'browser.command.result') return;
-    expect(parsed.data.payload.result.ok).toBe(false);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok || parsed.message.payload.kind !== 'browser.command.result') return;
+    expect(parsed.message.payload.result.ok).toBe(false);
   });
 
   it('rejects a settlement with an unknown error code', () => {
@@ -54,7 +54,7 @@ describe('browser wire schema', () => {
         result: { ok: false, error: { code: 'mystery', message: 'x', retryable: false } },
       }),
     );
-    expect(parsed.success).toBe(false);
+    expect(parsed.ok).toBe(false);
   });
 
   it('accepts the client-side execute request and its data-carrying reply', () => {
@@ -66,7 +66,7 @@ describe('browser wire schema', () => {
         args: { tabId: 'right-browser-1' },
       }),
     );
-    expect(request.success).toBe(true);
+    expect(request.ok).toBe(true);
 
     const reply = parseWireMessage(
       envelope({
@@ -75,6 +75,6 @@ describe('browser wire schema', () => {
         result: { ok: true, data: { nodes: [] } },
       }),
     );
-    expect(reply.success).toBe(true);
+    expect(reply.ok).toBe(true);
   });
 });

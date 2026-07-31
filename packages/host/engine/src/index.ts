@@ -10,6 +10,7 @@ export type { AssetService } from './asset/service';
 export type { LoopStore, ScheduleStore } from './automation';
 export type { EngineDeps } from './deps';
 export { PreviewRouteRegistry } from './preview/route-registry';
+export type { ResourceStore } from './resource/resource-store';
 export {
   EngineInfrastructure,
   EngineLive,

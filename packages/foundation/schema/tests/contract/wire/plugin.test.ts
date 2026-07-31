@@ -26,12 +26,12 @@ const plugin = {
 describe('plugin wire schema', () => {
   it('round-trips a discovery request with an optional cwd', () => {
     expect(
-      parseWireMessage(envelope({ kind: 'plugin.list.get', clientReqId: 'request-1' })).success,
+      parseWireMessage(envelope({ kind: 'plugin.list.get', clientReqId: 'request-1' })).ok,
     ).toBe(true);
     expect(
       parseWireMessage(
         envelope({ kind: 'plugin.list.get', clientReqId: 'request-1', cwd: '/repo' }),
-      ).success,
+      ).ok,
     ).toBe(true);
   });
 
@@ -58,9 +58,9 @@ describe('plugin wire schema', () => {
         ],
       }),
     );
-    expect(parsed.success).toBe(true);
-    if (!parsed.success || parsed.data.payload.kind !== 'plugin.list.result') return;
-    expect(parsed.data.payload.providerStatus).toHaveLength(2);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok || parsed.message.payload.kind !== 'plugin.list.result') return;
+    expect(parsed.message.payload.providerStatus).toHaveLength(2);
   });
 
   it('accepts a plugin-level enable request with an explicit scope', () => {
@@ -74,7 +74,7 @@ describe('plugin wire schema', () => {
         scope: 'user',
       }),
     );
-    expect(parsed.success).toBe(true);
+    expect(parsed.ok).toBe(true);
   });
 
   it('rejects an enable request for an unknown provider', () => {
@@ -87,7 +87,7 @@ describe('plugin wire schema', () => {
         enabled: true,
       }),
     );
-    expect(parsed.success).toBe(false);
+    expect(parsed.ok).toBe(false);
   });
 
   it('round-trips a per-skill enablement request and its reply', () => {
@@ -102,7 +102,7 @@ describe('plugin wire schema', () => {
         enabled: false,
       }),
     );
-    expect(request.success).toBe(true);
+    expect(request.ok).toBe(true);
 
     const reply = parseWireMessage(
       envelope({
@@ -119,18 +119,18 @@ describe('plugin wire schema', () => {
         },
       }),
     );
-    expect(reply.success).toBe(true);
-    if (!reply.success || reply.data.payload.kind !== 'skill.updated') return;
-    expect(reply.data.payload.skill.enabled).toBe(false);
+    expect(reply.ok).toBe(true);
+    if (!reply.ok || reply.message.payload.kind !== 'skill.updated') return;
+    expect(reply.message.payload.skill.enabled).toBe(false);
   });
 
   it('round-trips the updated reply carrying the full plugin', () => {
     const parsed = parseWireMessage(
       envelope({ kind: 'plugin.updated', replyTo: 'request-1', plugin }),
     );
-    expect(parsed.success).toBe(true);
-    if (!parsed.success || parsed.data.payload.kind !== 'plugin.updated') return;
-    expect(parsed.data.payload.plugin.id).toBe('formatter@marketplace');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok || parsed.message.payload.kind !== 'plugin.updated') return;
+    expect(parsed.message.payload.plugin.id).toBe('formatter@marketplace');
   });
 
   it('round-trips install and uninstall requests', () => {
@@ -144,7 +144,7 @@ describe('plugin wire schema', () => {
             id: 'github@openai-curated-remote',
             cwd: '/repo',
           }),
-        ).success,
+        ).ok,
       ).toBe(true);
     }
   });
@@ -158,8 +158,8 @@ describe('plugin wire schema', () => {
         pendingAuthApps: ['GitHub'],
       }),
     );
-    expect(parsed.success).toBe(true);
-    if (!parsed.success || parsed.data.payload.kind !== 'plugin.updated') return;
-    expect(parsed.data.payload.pendingAuthApps).toEqual(['GitHub']);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok || parsed.message.payload.kind !== 'plugin.updated') return;
+    expect(parsed.message.payload.pendingAuthApps).toEqual(['GitHub']);
   });
 });

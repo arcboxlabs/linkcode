@@ -2,6 +2,7 @@ import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client';
 import { io } from 'socket.io-client';
+import { createFrameDropReporter } from './frame-drop';
 import { WireConnection } from './transport';
 
 const FRAME_EVENT = 'frame';
@@ -44,10 +45,12 @@ export class SocketIoTransport extends WireConnection {
     this.socket = socket;
     this.armClosedListener();
 
+    const reportDrop = createFrameDropReporter('socket.io client');
     socket.on(FRAME_EVENT, (raw: unknown) => {
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
     socket.on('disconnect', () => {
       const wasConnecting = this.state === 'connecting';

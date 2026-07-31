@@ -1,7 +1,7 @@
 import { LinkCodeClient, LinkCodeProvider } from '@linkcode/client-core';
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { expect, vi } from 'vitest';
 
 /** Drives a real `LinkCodeClient` so the assertions are on wire payloads, not on a faked client. */
@@ -50,7 +50,7 @@ export async function connectClient(): Promise<{
   const client = new LinkCodeClient(transport);
   const connecting = client.connect();
   await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-  transport.receive({ kind: 'pong' });
+  transport.receive(pong());
   await connecting;
   transport.sent.length = 0;
   return { transport, client };

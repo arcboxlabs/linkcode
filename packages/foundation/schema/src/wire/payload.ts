@@ -14,6 +14,7 @@ import { loopWireVariants } from './loop';
 import { managedAssetWireVariants } from './managed-asset';
 import { pluginWireVariants } from './plugin';
 import { requestWireVariants } from './request';
+import { resourceWireVariants } from './resource';
 import { scheduleWireVariants } from './schedule';
 import { scriptWireVariants } from './script';
 import { sessionWireVariants } from './session';
@@ -21,11 +22,11 @@ import { simulatorWireVariants } from './simulator';
 import { terminalWireVariants } from './terminal';
 import { workspaceWireVariants } from './workspace';
 
-/** Envelope payload: every wire variant, discriminated by `kind`. */
-export const WirePayloadSchema = z.discriminatedUnion('kind', [
+const wirePayloadVariants = [
   ...sessionWireVariants,
   ...historyWireVariants,
   ...requestWireVariants,
+  ...resourceWireVariants,
   ...configWireVariants,
   ...agentRuntimeWireVariants,
   ...agentCatalogWireVariants,
@@ -44,5 +45,14 @@ export const WirePayloadSchema = z.discriminatedUnion('kind', [
   ...terminalWireVariants,
   ...simulatorWireVariants,
   ...keepAliveWireVariants,
-]);
+] as const;
+
+/** Envelope payload: every wire variant, discriminated by `kind`. */
+export const WirePayloadSchema = z.discriminatedUnion('kind', wirePayloadVariants);
 export type WirePayload = z.infer<typeof WirePayloadSchema>;
+
+/** Every `kind` this build knows. A frame carrying anything else comes from a newer peer and is
+ * dropped on its own, rather than failing the whole envelope. */
+export const WIRE_PAYLOAD_KINDS: ReadonlySet<string> = new Set(
+  wirePayloadVariants.map((variant) => variant.shape.kind.value),
+);
