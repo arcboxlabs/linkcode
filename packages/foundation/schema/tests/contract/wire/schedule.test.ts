@@ -55,7 +55,7 @@ describe('schedule wire variants', () => {
       { kind: 'schedule.run', run },
     ];
     for (const payload of payloads) {
-      expect(parseWireMessage(envelope(payload)).success, payload.kind).toBe(true);
+      expect(parseWireMessage(envelope(payload)).ok, payload.kind).toBe(true);
     }
   });
 
@@ -65,6 +65,6 @@ describe('schedule wire variants', () => {
       clientReqId: 'c1',
       spec: { ...spec, cadence: { type: 'interval', everyMs: 1000 } },
     };
-    expect(parseWireMessage(envelope(payload)).success).toBe(false);
+    expect(parseWireMessage(envelope(payload)).ok).toBe(false);
   });
 });
