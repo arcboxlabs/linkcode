@@ -1,6 +1,7 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentHistoryEvent,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -13,8 +14,9 @@ import type {
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
+import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 
-export const HISTORY_CONVERSION_CACHE_VERSION = 3;
+export const HISTORY_CONVERSION_CACHE_VERSION = 4;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
@@ -131,6 +133,7 @@ export class HistoryService {
     return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
       adapter.readHistory({ historyId: opts.historyId, ...(cwd && { cwd }), limit: 1000 }),
     ).pipe(
+      Effect.map(sanitizeHistoryResult),
       Effect.flatMap((fullResult) => {
         const entry: EventCacheEntry = {
           expiresAt: now + this.ttlMs,
@@ -146,7 +149,7 @@ export class HistoryService {
         }
         return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
           adapter.readHistory({ ...stripForceRefresh(opts), ...(cwd && { cwd }) }),
-        );
+        ).pipe(Effect.map(sanitizeHistoryResult));
       }),
     );
   }
@@ -182,6 +185,30 @@ export class HistoryService {
       if (cached && cached.fingerprint !== sessionFingerprint(session)) this.eventCache.delete(key);
     }
   }
+}
+
+function sanitizeHistoryResult(result: AgentHistoryReadResult): AgentHistoryReadResult {
+  return {
+    ...result,
+    events: result.events.map((entry) => ({ ...entry, event: stripResourceContext(entry.event) })),
+  };
+}
+
+function stripResourceContext(event: AgentEvent): AgentEvent {
+  if (event.type !== 'user-message') return event;
+  const content = [...event.content];
+  const last = content.at(-1);
+  if (last?.type !== 'text') return event;
+  const marker = last.text.lastIndexOf(RESOURCE_CONTEXT_SENTINEL);
+  if (marker < 0 || last.text.slice(marker + RESOURCE_CONTEXT_SENTINEL.length)[0] !== '\n') {
+    return event;
+  }
+  let visibleText = last.text.slice(0, marker);
+  if (visibleText.endsWith('\n\n')) visibleText = visibleText.slice(0, -2);
+  else if (visibleText.endsWith('\n')) visibleText = visibleText.slice(0, -1);
+  if (visibleText.length === 0) content.pop();
+  else content[content.length - 1] = { type: 'text', text: visibleText };
+  return { ...event, content };
 }
 
 function agentHistoryOperation<A>(

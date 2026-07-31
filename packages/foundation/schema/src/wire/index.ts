@@ -16,6 +16,8 @@ export {
 } from './message';
 export { type WirePayload, WirePayloadSchema } from './payload';
 export {
+  type SessionChangeReason,
+  SessionChangeReasonSchema,
   type SessionSubscriptionMode,
   SessionSubscriptionModeSchema,
 } from './session';

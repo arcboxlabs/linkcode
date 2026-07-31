@@ -2,6 +2,7 @@ import type {
   AgentHistoryId,
   AgentKind,
   ContentBlock,
+  SessionChangeReason,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -18,7 +19,12 @@ export class SessionRecordRegistry {
   private readonly records = new Map<SessionId, SessionRecord>();
   private runTask: RunTask | undefined;
 
-  constructor(private readonly store: SessionStore) {}
+  /** `onChanged` fires for membership and identity only — never for recency, which would turn a
+   * per-turn signal into a list refetch on every client. */
+  constructor(
+    private readonly store: SessionStore,
+    private readonly onChanged: (sessionId: SessionId, reason: SessionChangeReason) => void,
+  ) {}
 
   start(runTask: RunTask): Effect.Effect<void, OperationError> {
     return Effect.sync(() => {
@@ -83,20 +89,35 @@ export class SessionRecordRegistry {
   register(record: SessionRecord): void {
     this.records.set(record.sessionId, record);
     this.persist(record);
+    this.onChanged(record.sessionId, 'created');
   }
 
   /** Imported records have no live adapter, so a store failure remains request-fatal. */
   importRecord(record: SessionRecord): Effect.Effect<void, OperationError> {
     return storeOperation('session-records.save', 'Failed to persist session record', () =>
       this.store.save(record),
-    ).pipe(Effect.tap(() => Effect.sync(() => this.records.set(record.sessionId, record))));
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.records.set(record.sessionId, record);
+          this.onChanged(record.sessionId, 'created');
+        }),
+      ),
+    );
   }
 
   /** Delete from durable storage first so a failed delete leaves the in-memory record retryable. */
   delete(sessionId: SessionId): Effect.Effect<void, OperationError> {
     return storeOperation('session-records.delete', 'Failed to delete session record', () =>
       this.store.delete(sessionId),
-    ).pipe(Effect.tap(() => Effect.sync(() => this.records.delete(sessionId))));
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.records.delete(sessionId);
+          this.onChanged(sessionId, 'removed');
+        }),
+      ),
+    );
   }
 
   bindHistoryId(sessionId: SessionId, historyId: AgentHistoryId): void {
@@ -105,6 +126,7 @@ export class SessionRecordRegistry {
     if (!record || !run || run.historyId === historyId) return;
     run.historyId = historyId;
     this.persist(record);
+    this.onChanged(sessionId, 'updated');
   }
 
   sealCurrentRun(sessionId: SessionId): void {
@@ -122,6 +144,7 @@ export class SessionRecordRegistry {
     if (title === undefined) return;
     record.title = title;
     this.persist(record);
+    this.onChanged(sessionId, 'updated');
   }
 
   historyId(sessionId: SessionId): AgentHistoryId | undefined {
