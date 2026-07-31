@@ -6,6 +6,7 @@ import type {
   ValidatedWireMessage,
 } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
+import { pong } from './pong';
 import type { Transport, Unsubscribe } from './transport';
 import { createWireMessage, Listeners } from './transport';
 
@@ -121,7 +122,7 @@ export class Hub implements Transport {
         return;
       }
       if (p.kind === 'ping') {
-        bestEffort(() => conn.send(createWireMessage({ kind: 'pong' })));
+        bestEffort(() => conn.send(createWireMessage(pong())));
         return;
       }
       if (p.kind === 'session.attach') subscription.attached.add(p.sessionId);

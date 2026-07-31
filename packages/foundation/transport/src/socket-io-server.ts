@@ -3,6 +3,7 @@ import type { DaemonIdentity, WireMessage } from '@linkcode/schema';
 import { MAX_ATTACHMENT_TOTAL_BASE64_LENGTH, parseWireMessage } from '@linkcode/schema';
 import type { Socket } from 'socket.io';
 import { Server as SocketIoServerImpl } from 'socket.io';
+import { createFrameDropReporter } from './frame-drop';
 import {
   boundPort,
   closeServerPair,
@@ -36,10 +37,12 @@ class SocketIoServerConnection extends WireConnection {
     // The Socket.IO connection is already live when handed to us, so emitClosed is armed up front.
     this.armClosedListener();
 
+    const reportDrop = createFrameDropReporter('socket.io server');
     socket.on(FRAME_EVENT, (raw: unknown) => {
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
     socket.on('disconnect', () => this.emitClosed());
   }

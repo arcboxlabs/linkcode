@@ -16,10 +16,10 @@ function sessionStart(effort: unknown) {
 
 describe('session wire variants', () => {
   it('accepts a supported initial effort level', () => {
-    expect(parseWireMessage(sessionStart('high')).success).toBe(true);
+    expect(parseWireMessage(sessionStart('high')).ok).toBe(true);
   });
 
   it('rejects an unknown initial effort level', () => {
-    expect(parseWireMessage(sessionStart('extreme')).success).toBe(false);
+    expect(parseWireMessage(sessionStart('extreme')).ok).toBe(false);
   });
 });

@@ -64,6 +64,7 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
+import { MIN_COMPATIBLE_WIRE_VERSION, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
@@ -170,6 +171,17 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
+/** The message to fail the handshake with, or null when the two builds overlap. */
+function wireIncompatibility(peerVersion: number, peerMinCompatible: number): string | null {
+  if (peerVersion < MIN_COMPATIBLE_WIRE_VERSION) {
+    return `LinkCodeClient: host speaks wire v${peerVersion}, older than the v${MIN_COMPATIBLE_WIRE_VERSION} this build needs — update the host`;
+  }
+  if (WIRE_PROTOCOL_VERSION < peerMinCompatible) {
+    return `LinkCodeClient: this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${peerMinCompatible} the host needs — update this app`;
+  }
+  return null;
+}
+
 export function isRequestFailureReportedInConversation(error: unknown): boolean {
   return (
     isErrorLikeObject(error) &&
@@ -214,6 +226,7 @@ export class LinkCodeClient {
   private connectionError: Error | null = null;
   private resolveHandshake: (() => void) | null = null;
   private rejectHandshake: ((error: Error) => void) | null = null;
+  private peerWire: { version: number; minCompatible: number } | null = null;
 
   constructor(
     private readonly transport: Transport,
@@ -258,6 +271,11 @@ export class LinkCodeClient {
   onClose(cb: ConnectionCloseCb): Unsubscribe {
     this.connectionCloseSubs.add(cb);
     return () => this.connectionCloseSubs.delete(cb);
+  }
+
+  /** What the host answered at handshake — for gating a frame an older host would drop. */
+  get peerWireVersion(): number | null {
+    return this.peerWire?.version ?? null;
   }
 
   private async handshake(): Promise<void> {
@@ -586,9 +604,13 @@ export class LinkCodeClient {
       case 'agent-login.settled':
         this.agentLogin.handleMessage(p);
         break;
-      case 'pong':
-        this.resolveHandshake?.();
+      case 'pong': {
+        this.peerWire = { version: p.version, minCompatible: p.minCompatible };
+        const incompatible = wireIncompatibility(p.version, p.minCompatible);
+        if (incompatible) this.rejectHandshake?.(new Error(incompatible));
+        else this.resolveHandshake?.();
         break;
+      }
       default:
         break;
     }

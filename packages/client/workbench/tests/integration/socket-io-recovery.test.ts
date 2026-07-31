@@ -1,7 +1,7 @@
 import type { SessionId, SessionNotification, WireMessage } from '@linkcode/schema';
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage, SocketIoTransport } from '@linkcode/transport';
+import { createWireMessage, pong, SocketIoTransport } from '@linkcode/transport';
 import type { SocketIoServer } from '@linkcode/transport/server';
 import { createSocketIoServer } from '@linkcode/transport/server';
 import { nullthrow } from 'foxts/guard';
@@ -51,7 +51,7 @@ async function startHost(port = 0): Promise<TestHost> {
 function respond(connection: Transport, message: WireMessage): void {
   const payload = message.payload;
   if (payload.kind === 'ping') {
-    connection.send(createWireMessage({ kind: 'pong' }));
+    connection.send(createWireMessage(pong()));
   } else if (payload.kind === 'session.list') {
     connection.send(
       createWireMessage({ kind: 'session.listed', replyTo: payload.clientReqId, sessions: [] }),

@@ -40,7 +40,7 @@ import {
   textBlock,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
@@ -596,7 +596,7 @@ export class DevMockHost {
         break;
       }
       case 'ping':
-        this.send({ kind: 'pong' });
+        this.send(pong());
         break;
       default:
         break;

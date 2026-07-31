@@ -27,13 +27,13 @@ export class LocalTransport implements Transport {
     invariant(this.peer, 'LocalTransport: not linked to a peer');
     // The one transport that still parses on send: tests and the dev-mock host run on
     // LocalTransport, so schema drift behind the ValidatedWireMessage brand fails loudly here.
-    const parsed = parseWireMessage(msg);
-    if (!parsed.success) {
-      throw new Error(`LocalTransport: invalid WireMessage: ${parsed.error.message}`);
+    const result = parseWireMessage(msg);
+    if (!result.ok) {
+      throw new Error(`LocalTransport: invalid WireMessage: ${result.reason}`);
     }
-    const { data } = parsed;
+    const { message } = result;
     // Deliver asynchronously to simulate the transport boundary and avoid synchronous reentrancy.
-    queueMicrotask(() => this.peer?.inbound.emit(data));
+    queueMicrotask(() => this.peer?.inbound.emit(message));
   }
 
   onMessage(cb: (msg: ValidatedWireMessage) => void): Unsubscribe {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { SessionId, SessionInfo, ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { noop } from 'foxact/noop';
 import type * as React from 'react';
@@ -77,7 +77,7 @@ async function connectedHook(transport: ListingTransport) {
   const connecting = client.connect();
   // The pong only counts once the client is listening — it sends its ping from inside `connect`.
   await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-  transport.receive({ kind: 'pong' });
+  transport.receive(pong());
   await connecting;
 
   const wrapper = ({ children }: React.PropsWithChildren): React.ReactNode => (
