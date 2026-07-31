@@ -36,6 +36,7 @@ import type {
   ScheduleRun,
   ScheduleSpec,
   ScheduleUpdate,
+  SessionChangeReason,
   SessionId,
   SessionInfo,
   SessionNotification,
@@ -90,6 +91,7 @@ type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
+type SessionChangedCb = (sessionId: SessionId, reason: SessionChangeReason) => void;
 type ResourceEventCb = (
   event:
     | { type: 'changed'; resource: SessionResource }
@@ -194,6 +196,7 @@ export class LinkCodeClient {
   private readonly loopEventSubs = new Set<LoopEventCb>();
   private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
+  private readonly sessionChangedSubs = new Set<SessionChangedCb>();
   private readonly resourceEventSubs = new Set<ResourceEventCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
@@ -541,6 +544,9 @@ export class LinkCodeClient {
         break;
       case 'session.notification':
         for (const cb of this.sessionNotificationSubs) cb(p.notification);
+        break;
+      case 'session.changed':
+        for (const cb of this.sessionChangedSubs) cb(p.sessionId, p.reason);
         break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
@@ -1030,6 +1036,13 @@ export class LinkCodeClient {
   subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
     this.sessionNotificationSubs.add(cb);
     return () => this.sessionNotificationSubs.delete(cb);
+  }
+
+  /** Broadcast membership/identity changes to the persisted session list; the payload is a cue to
+   * revalidate through {@link listSessions}, not the change itself. */
+  subscribeSessionChanged(cb: SessionChangedCb): Unsubscribe {
+    this.sessionChangedSubs.add(cb);
+    return () => this.sessionChangedSubs.delete(cb);
   }
 
   listResources(sessionId: SessionId): Promise<SessionResource[]> {

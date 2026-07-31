@@ -81,7 +81,12 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const runEffect = yield* FiberSet.runtimePromise(taskSet)();
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
-  const records = new SessionRecordRegistry(deps.sessionStore ?? new InMemorySessionStore());
+  const records = new SessionRecordRegistry(
+    deps.sessionStore ?? new InMemorySessionStore(),
+    (sessionId, reason) => {
+      transport.send(createWireMessage({ kind: 'session.changed', sessionId, reason }));
+    },
+  );
   const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
   const fileHost = new FileHostService(routes);
   const resources = new ResourceService(

@@ -43,9 +43,18 @@ export default function SessionScreen(): React.ReactNode {
   const autoResumeSuppressed = autoResume === 'false';
   const parsed = SessionIdSchema.safeParse(rawSessionId);
   const sessionId: SessionId | null = parsed.success ? parsed.data : null;
-  const { sessions } = useSessions();
+  const { sessions, refresh } = useSessions();
 
   const session = sessions.find((entry) => entry.sessionId === sessionId);
+  // A deep link or a notification can open a thread the snapshot has never listed. Without its
+  // record there is no `kind`/`historyId`, so the seed reads nothing and the past renders as empty
+  // rather than as loading. Deduped per id so a genuinely gone session doesn't spin.
+  const refreshedForRef = useRef<SessionId | null>(null);
+  useEffect(() => {
+    if (session || !sessionId || refreshedForRef.current === sessionId) return;
+    refreshedForRef.current = sessionId;
+    void refresh().catch(noop);
+  }, [session, sessionId, refresh]);
   const conversation = useSeededConversation(sessionId, session ?? null);
   const actions = useSessionActions(sessionId, conversation.status);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
