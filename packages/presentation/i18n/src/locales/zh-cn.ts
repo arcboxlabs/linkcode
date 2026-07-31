@@ -342,6 +342,8 @@ export const zhCN = {
     },
     resources: {
       sources: '来源',
+      plan: '计划',
+      planProgress: '计划步骤 {current}/{total}',
       outputs: '输出',
       emptySources: '附加文件或连接应用',
       emptyOutputs: '创建文件或网站',

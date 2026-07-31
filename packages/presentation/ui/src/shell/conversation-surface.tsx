@@ -58,6 +58,8 @@ export interface ConversationSurfaceProps {
   mentionItems?: MentionItem[];
   /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
   onMentionQueryChange?: (query: string | null) => void;
+  /** Keeps the compact plan above the composer when another visible surface does not own it. */
+  showPlanInPromptDock?: boolean;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Opens a produced-file artifact in the shell's viewer (desktop right panel). Absent
@@ -98,6 +100,7 @@ export function ConversationSurface({
   TerminalBlockComponent,
   mentionItems,
   onMentionQueryChange,
+  showPlanInPromptDock = true,
   onRespondPermission,
   onRespondQuestion,
   onOpenFileArtifact,
@@ -142,6 +145,7 @@ export function ConversationSurface({
       </div>
       <ConversationPromptDock
         conversation={conversation}
+        showPlan={showPlanInPromptDock}
         respondingRequestIds={respondingRequestIds}
         responseErrors={responseErrors}
         onRespondPermission={onRespondPermission}

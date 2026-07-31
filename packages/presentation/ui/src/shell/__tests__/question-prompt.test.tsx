@@ -562,6 +562,33 @@ describe('ConversationPromptDock', () => {
     ).toBe(true);
   });
 
+  it('keeps actionable prompts when another surface presents the plan', () => {
+    const currentPlan: ConversationViewModel['items'][number] = {
+      kind: 'plan',
+      id: 'plan-1',
+      turnId: null,
+      plan: {
+        planId: 'plan-1',
+        entries: [{ content: 'Shown in Resources', priority: 'high', status: 'in_progress' }],
+      },
+    };
+
+    render(
+      <ConversationPromptDock
+        conversation={conversation([currentPlan, ITEM], {
+          pendingQuestionIds: [ITEM.requestId],
+        })}
+        showPlan={false}
+        respondingRequestIds={new Set()}
+        onRespondPermission={vi.fn()}
+        onRespondQuestion={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Shown in Resources')).toBeNull();
+    expect(screen.getByText('Pick features')).toBeDefined();
+  });
+
   it('shows an authoritative busy state without a local response snapshot', () => {
     render(
       <ConversationPromptDock

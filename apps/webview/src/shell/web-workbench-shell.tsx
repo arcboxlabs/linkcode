@@ -37,6 +37,7 @@ export function WebWorkbenchShell({
     floatingSpaceAvailable,
   });
   const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
+  const resourcesSurfaceOpen = resourcesPresentation !== 'hidden' && resourcesOpen;
   const resourcesButton = (
     <ShellIconButton
       label={tPanel('resources')}
@@ -56,6 +57,7 @@ export function WebWorkbenchShell({
       <div className="h-full min-w-0">
         <ShellFrame
           {...props}
+          showPlanInPromptDock={!resourcesSurfaceOpen}
           onOpenAutomations={() => {
             void navigate('/automations');
           }}
