@@ -2,6 +2,9 @@ import { useSessions } from '@linkcode/client-core';
 import { SessionIdSchema } from '@linkcode/schema';
 import { AGENT_LABELS, EmptyState, repositoryLabel } from '@linkcode/ui/native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { noop } from 'foxact/noop';
+import { useEffect } from 'foxact/use-abortable-effect';
+import { useRef } from 'react';
 import { FlatList, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,9 +23,18 @@ export default function SessionScreen(): React.ReactNode {
   const insets = useSafeAreaInsets();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const parsed = SessionIdSchema.safeParse(sessionId);
-  const { sessions } = useSessions();
+  const { sessions, refresh } = useSessions();
 
   const session = sessions.find((entry) => entry.sessionId === sessionId);
+  // A deep link or a notification can open a thread the snapshot has never listed. Without its
+  // record there is no `kind`/`historyId`, so the seed reads nothing and the past renders as empty
+  // rather than as loading. Deduped per id so a genuinely gone session doesn't spin.
+  const refreshedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (session || !sessionId || refreshedForRef.current === sessionId) return;
+    refreshedForRef.current = sessionId;
+    void refresh().catch(noop);
+  }, [session, sessionId, refresh]);
   const conversation = useSeededConversation(parsed.success ? parsed.data : null, session ?? null);
   const { send, stop, isRunning, canCompose, failure } = useSessionActions(
     parsed.success ? parsed.data : null,
