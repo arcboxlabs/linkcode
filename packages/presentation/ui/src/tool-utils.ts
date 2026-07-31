@@ -9,7 +9,6 @@ import {
   toolCallExecuteText,
   toolCallFetchStatus,
   toolCallFetchUrl,
-  toolCallSearchQuery,
 } from './chat/tool-result-content';
 
 export { toolCallDisplayContent } from './chat/tool-result-content';
@@ -93,16 +92,10 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
     case 'delete':
     case 'move':
       return [];
-    case 'search': {
-      const metadata: ToolMetadata[] = [];
-      const query = toolCallSearchQuery(toolCall);
-      if (query) metadata.push({ key: 'query', value: query });
-      const matches = countValue(output?.matches);
-      if (matches !== undefined) metadata.push({ key: 'matches', value: String(matches) });
-      const files = countValue(output?.files);
-      if (files !== undefined) metadata.push({ key: 'files', value: String(files) });
-      return metadata;
-    }
+    // Search rows carry no badges: the header summary owns the counts, and the raw query lives
+    // only in the expanded result card.
+    case 'search':
+      return [];
     case 'fetch': {
       const metadata: ToolMetadata[] = [];
       const url = toolCallFetchUrl(toolCall);
@@ -159,6 +152,23 @@ function toolCallParamMetadata(toolCall: ToolCall): ToolMetadata[] {
   return metadata;
 }
 
+export interface ToolCallSearchCounts {
+  matches?: number;
+  files?: number;
+}
+
+/** Settle counts for a search call's header. Claude's Grep envelope uses `numMatches`/`numFiles`
+ * scalars; mock and other adapters may carry `matches`/`files` arrays or numbers. */
+export function toolCallSearchCounts(toolCall: ToolCall): ToolCallSearchCounts | undefined {
+  if (toolCall.kind !== 'search') return undefined;
+  const output = recordValue(toolCall.rawOutput);
+  if (!output) return undefined;
+  const matches = countValue(output.numMatches) ?? countValue(output.matches);
+  const files = countValue(output.numFiles) ?? countValue(output.files);
+  if (matches === undefined && files === undefined) return undefined;
+  return { matches, files };
+}
+
 export interface ToolCallHeaderSummary {
   label: string;
   tooltip?: string;
@@ -179,8 +189,9 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
       if (file) return { label: file.label, tooltip: file.tooltip };
       break;
     }
+    // Search queries are raw machine strings (regexes, select: lists) — the localized header
+    // composes counts via toolCallSearchCounts instead, and the query stays in the body card.
     case 'search':
-      label = toolCallSearchQuery(toolCall);
       break;
     case 'fetch':
       label = toolCallFetchUrl(toolCall);

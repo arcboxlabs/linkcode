@@ -9,9 +9,10 @@ import {
   toolCallContextSummary,
   toolCallFailureMessage,
   toolCallMetadata,
+  toolCallSearchCounts,
 } from '../tool-utils';
 import { Tool, ToolContent, ToolHeader } from './tool';
-import { toolCallDisplayText } from './tool-result-content';
+import { toolCallDisplayText, toolSearchPresentation } from './tool-result-content';
 import { ToolResultPreview } from './tool-result-preview';
 
 function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.ReactNode {
@@ -88,10 +89,39 @@ export function ToolCallItem({
   const tt = useTranslations('workbench.tool');
 
   const hasBody = hasToolBody(toolCall);
-  const summary = toolCallContextSummary(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
   const mcp = mcpToolName(toolCall.title);
-  const title = mcp?.tool ?? toolCall.title;
+  const running = toolCall.status === 'pending' || toolCall.status === 'in_progress';
+
+  // Search headers are humanized: ToolSearch gets a localized verb (never its raw select: query),
+  // and other search calls summarize settle counts — raw patterns live only in the body card.
+  const toolSearch = toolSearchPresentation(toolCall);
+  const searchCounts = toolSearch ? undefined : toolCallSearchCounts(toolCall);
+  let title = mcp?.tool ?? toolCall.title;
+  let summary = toolCallContextSummary(toolCall);
+  if (toolSearch) {
+    title =
+      toolSearch.mode === 'select'
+        ? running
+          ? tt('toolSearch.selecting')
+          : tt('toolSearch.selected', { count: toolSearch.names.length })
+        : running
+          ? tt('toolSearch.searching')
+          : tt('toolSearch.searched');
+    summary = toolSearch.mode === 'search' ? { label: toolSearch.query } : undefined;
+  } else if (searchCounts) {
+    const label = [
+      searchCounts.matches === undefined
+        ? undefined
+        : tt('searchSummary.matches', { count: searchCounts.matches }),
+      searchCounts.files === undefined
+        ? undefined
+        : tt('searchSummary.files', { count: searchCounts.files }),
+    ]
+      .filter((part) => part !== undefined)
+      .join(' · ');
+    summary = { label };
+  }
 
   return (
     <Tool>

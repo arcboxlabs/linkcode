@@ -152,6 +152,16 @@ export const zhCN = {
       failed: '失败',
       expand: '展开',
       collapse: '收起',
+      toolSearch: {
+        selecting: '正在选择工具',
+        selected: '{count, plural, =1 {已选择一个工具} other {已选择 # 个工具}}',
+        searching: '正在搜索工具',
+        searched: '已搜索工具',
+      },
+      searchSummary: {
+        matches: '{count, plural, =1 {一个匹配} other {# 个匹配}}',
+        files: '{count, plural, =1 {一个文件} other {# 个文件}}',
+      },
     },
     subagent: {
       label: '子代理',

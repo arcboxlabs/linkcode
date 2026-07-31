@@ -5,6 +5,7 @@ import {
   toolCallDisplayText,
   toolCallExecuteText,
   toolCallReadPreviewText,
+  toolSearchPresentation,
 } from '../tool-result-content';
 
 function call(overrides: Partial<ToolCall>): ToolCall {
@@ -121,5 +122,67 @@ describe('tool result content policy', () => {
         reminder,
       ),
     ).toBe(reminder);
+  });
+});
+
+describe('tool search presentation', () => {
+  function toolSearch(overrides: Partial<ToolCall>): ToolCall {
+    return call({
+      title: 'ToolSearch',
+      kind: 'search',
+      rawInput: { query: 'select:WebSearch' },
+      ...overrides,
+    });
+  }
+
+  it('splits a settled name-per-line result into deduplicated rows', () => {
+    const toolCall = toolSearch({
+      content: [
+        {
+          type: 'content',
+          content: {
+            type: 'text',
+            text: 'WebSearch\nmcp__linear__get_issue\nWebSearch',
+          },
+        },
+      ],
+    });
+
+    expect(toolSearchPresentation(toolCall)).toEqual({
+      query: 'select:WebSearch',
+      mode: 'select',
+      names: ['WebSearch', 'mcp__linear__get_issue'],
+    });
+  });
+
+  it('keeps prose settles as a message instead of rows', () => {
+    const toolCall = toolSearch({
+      rawInput: { query: '+jupyter notebook edit' },
+      content: [
+        { type: 'content', content: { type: 'text', text: 'No matching deferred tools found' } },
+      ],
+    });
+
+    expect(toolSearchPresentation(toolCall)).toEqual({
+      query: '+jupyter notebook edit',
+      mode: 'search',
+      names: [],
+      message: 'No matching deferred tools found',
+    });
+  });
+
+  it('presents a running call with neither rows nor message', () => {
+    expect(toolSearchPresentation(toolSearch({ status: 'in_progress' }))).toEqual({
+      query: 'select:WebSearch',
+      mode: 'select',
+      names: [],
+      message: undefined,
+    });
+  });
+
+  it('matches only the exact Claude title and input shape', () => {
+    expect(toolSearchPresentation(toolSearch({ title: 'Grep' }))).toBeUndefined();
+    expect(toolSearchPresentation(toolSearch({ kind: 'other' }))).toBeUndefined();
+    expect(toolSearchPresentation(toolSearch({ rawInput: { pattern: 'x' } }))).toBeUndefined();
   });
 });
