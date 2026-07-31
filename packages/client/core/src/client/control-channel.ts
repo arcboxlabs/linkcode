@@ -19,6 +19,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -36,6 +37,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
@@ -270,6 +273,46 @@ export class ControlChannel {
       kind: 'session.delete',
       clientReqId,
       sessionId,
+    }));
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.sendCorrelated('resourceList', (clientReqId) => ({
+      kind: 'resource.list',
+      clientReqId,
+      sessionId,
+    }));
+  }
+
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.sendCorrelated('resourceUpload', (clientReqId) => ({
+      kind: 'resource.source.upload',
+      clientReqId,
+      sessionId,
+      name,
+      mimeType,
+      data,
+    }));
+  }
+
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'resource.remove',
+      clientReqId,
+      resourceId,
+    }));
+  }
+
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.sendCorrelated('resourceHost', (clientReqId) => ({
+      kind: 'resource.host',
+      clientReqId,
+      resourceId,
     }));
   }
 

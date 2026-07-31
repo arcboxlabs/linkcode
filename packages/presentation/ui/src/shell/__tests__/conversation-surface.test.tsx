@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { nullthrow } from 'foxts/guard';
 import type { LexicalEditor } from 'lexical';
 import { getNearestEditorFromDOMNode } from 'lexical';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PermissionConversationItem } from '../../chat/conversation-prompts';
 import type { ConversationViewModel } from '../../chat/types';
 import type { AgentRuntimeCues } from '../agent-onboarding-card';
@@ -20,8 +20,19 @@ vi.mock('use-intl', () => ({
   useTranslations: () => translateKey,
 }));
 
+const { scrollToBottom } = vi.hoisted(() => ({ scrollToBottom: vi.fn() }));
+
 vi.mock('../../chat/conversation-view', () => ({
-  ConversationView: () => null,
+  ConversationView({
+    scrollContextRef,
+  }: {
+    scrollContextRef?: React.Ref<{ scrollToBottom: typeof scrollToBottom }>;
+  }) {
+    const context = { scrollToBottom };
+    if (typeof scrollContextRef === 'function') scrollContextRef(context);
+    else if (scrollContextRef) scrollContextRef.current = context;
+    return null;
+  },
 }));
 
 const EMPTY_CONVERSATION: ConversationViewModel = {
@@ -57,13 +68,14 @@ const RE_MAX_EFFORT = /Max/;
 function surface(
   runtimeCues?: AgentRuntimeCues,
   conversation: ConversationViewModel = EMPTY_CONVERSATION,
+  onSend = vi.fn(),
 ): React.ReactNode {
   return (
     <ConversationSurface
       conversation={conversation}
       composer={{
         directiveControls: UNSUPPORTED_COMPOSER_DIRECTIVES,
-        onSend: vi.fn(),
+        onSend,
         onStop: vi.fn(),
       }}
       agentKind="claude-code"
@@ -78,6 +90,7 @@ function surface(
 }
 
 afterEach(cleanup);
+beforeEach(() => scrollToBottom.mockClear());
 
 function composerEditor(): LexicalEditor {
   return nullthrow(
@@ -97,6 +110,21 @@ function composerText(): string {
 }
 
 describe('ConversationSurface prompt card', () => {
+  it('scrolls to the latest message once when the composer submits', () => {
+    const onSend = vi.fn();
+    render(surface(undefined, EMPTY_CONVERSATION, onSend));
+    typeInComposer('Take me back to the latest message');
+
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+
+    expect(onSend).toHaveBeenCalledExactlyOnceWith([
+      { type: 'text', text: 'Take me back to the latest message' },
+    ]);
+    // The no-options call keeps the library's default escape behavior: a later upward user scroll
+    // cancels sticky following instead of being forced back to the bottom.
+    expect(scrollToBottom).toHaveBeenCalledExactlyOnceWith();
+  });
+
   it('keeps the model unresolved until the adapter reports its concrete value', () => {
     const { rerender } = render(surface());
     expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();

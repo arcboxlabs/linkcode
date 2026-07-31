@@ -1,5 +1,6 @@
 import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
+import type { StickToBottomContext } from 'use-stick-to-bottom';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { selectPendingPromptItems } from '../chat/conversation-prompts';
@@ -107,6 +108,7 @@ export function ConversationSurface({
   onPickAttachmentFiles,
 }: ConversationSurfaceProps): React.ReactNode {
   const composerRef = useRef<ComposerHandle | null>(null);
+  const conversationScrollRef = useRef<StickToBottomContext | null>(null);
   // Only the signed-out cue matters mid-session (the next turn would fail on auth); a missing or
   // unverified CLI stays a new-session concern — this session's process is already running.
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
@@ -132,6 +134,7 @@ export function ConversationSurface({
             agentKind={agentKind}
             cwd={cwd}
             modelName={modelName ?? conversation.currentModel ?? undefined}
+            scrollContextRef={conversationScrollRef}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
           />
@@ -177,6 +180,11 @@ export function ConversationSurface({
           agentModels={conversation.availableModels}
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
+          // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a
+          // rare rejection isn't worth delaying it on the round-trip.
+          onSubmit={() => {
+            void conversationScrollRef.current?.scrollToBottom();
+          }}
           onStop={composer.onStop}
           onPickAttachmentFiles={onPickAttachmentFiles}
           onModeChange={composer.onModeChange}

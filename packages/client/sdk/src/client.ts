@@ -23,6 +23,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -41,6 +42,8 @@ import type {
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -121,6 +124,27 @@ export class LinkCodeSdkClient {
   /** Stop the session if live and remove its persisted record; provider-local history stays re-importable. */
   deleteSession(sessionId: SessionId): RequestResult<{ ok: true }> {
     return toResult(this.raw.deleteSession(sessionId));
+  }
+
+  listResources(sessionId: SessionId): RequestResult<SessionResource[]> {
+    return toResult(this.raw.listResources(sessionId));
+  }
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): RequestResult<SessionResource> {
+    return toResult(this.raw.uploadSource(sessionId, name, data, mimeType));
+  }
+  removeResource(resourceId: SessionResourceId): RequestResult<{ ok: true }> {
+    return toResult(this.raw.removeResource(resourceId));
+  }
+  hostResource(resourceId: SessionResourceId): RequestResult<HostedSessionResource> {
+    return toResult(this.raw.hostResource(resourceId));
+  }
+  subscribeResources(cb: Parameters<LinkCodeClient['subscribeResources']>[0]): () => void {
+    return this.raw.subscribeResources(cb);
   }
 
   /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */

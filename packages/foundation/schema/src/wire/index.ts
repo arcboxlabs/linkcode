@@ -17,6 +17,8 @@ export {
 } from './message';
 export { WIRE_PAYLOAD_KINDS, type WirePayload, WirePayloadSchema } from './payload';
 export {
+  type SessionChangeReason,
+  SessionChangeReasonSchema,
   type SessionSubscriptionMode,
   SessionSubscriptionModeSchema,
 } from './session';

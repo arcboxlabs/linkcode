@@ -5,7 +5,7 @@ import { ShieldAlertIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { PermissionConversationItem, PermissionDecision } from '../chat/conversation-prompts';
-import { mcpToolName } from '../chat/tool-utils';
+import { mcpToolName } from '../tool-utils';
 import { PromptCard } from './prompt-card';
 
 export function PermissionPrompt({

@@ -1,5 +1,5 @@
 import type { ConversationItem } from '@linkcode/client-core';
-import type { ContentBlock } from '@linkcode/schema';
+import type { ContentBlock, ToolCall } from '@linkcode/schema';
 import { NativeMarkdown } from '@linkcode/ui/native';
 import { Spinner, useThemeColor } from 'heroui-native';
 import { ChevronDownIcon, ChevronRightIcon, CircleAlertIcon } from 'lucide-react-native';
@@ -29,7 +29,14 @@ function formatTokens(count: number): string {
 
 /** One timeline item: user turns as right-aligned bubbles, agent output full-width markdown,
  * tools and reasoning as compact collapsible rows. Rendered per-row by the screen's list. */
-export function TimelineItem({ item }: { item: ConversationItem }): React.ReactNode {
+export function TimelineItem({
+  item,
+  onPressTool,
+}: {
+  item: ConversationItem;
+  /** Opens the tool-detail sheet; tool rows stay inert when absent. */
+  onPressTool?: (toolCall: ToolCall) => void;
+}): React.ReactNode {
   const t = useTranslations('mobile.conversation');
 
   switch (item.kind) {
@@ -58,7 +65,13 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
     case 'reasoning':
       return <ReasoningRow text={blocksToText(item.blocks)} streaming={item.isStreaming} />;
     case 'tool':
-      return <ToolRow title={item.toolCall.title} status={item.toolCall.status} />;
+      return (
+        <ToolRow
+          title={item.toolCall.title}
+          status={item.toolCall.status}
+          onPress={onPressTool ? () => onPressTool(item.toolCall) : undefined}
+        />
+      );
     case 'plan':
       return (
         <View className="gap-1.5 rounded-lg bg-surface-secondary px-3 py-2.5">
@@ -79,16 +92,16 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
         </View>
       );
     case 'approval':
+      // Pending asks are answered from the prompt dock; the timeline records only resolved ones.
+      if (!item.resolution) return null;
       return (
         <View className="gap-1 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5">
           <Text className="font-semibold text-caption text-warning">{t('approval')}</Text>
           <Text className="text-foreground text-subhead">{item.toolCall.title ?? ''}</Text>
-          {item.resolution ? null : (
-            <Text className="text-footnote text-muted">{t('approvalPending')}</Text>
-          )}
         </View>
       );
     case 'question':
+      if (!item.resolution) return null;
       return (
         <View className="gap-1 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2.5">
           <Text className="font-semibold text-accent text-caption">{t('question')}</Text>
@@ -97,9 +110,6 @@ export function TimelineItem({ item }: { item: ConversationItem }): React.ReactN
               {question.prompt}
             </Text>
           ))}
-          {item.resolution ? null : (
-            <Text className="text-footnote text-muted">{t('approvalPending')}</Text>
-          )}
         </View>
       );
     case 'error':
@@ -163,14 +173,21 @@ function ReasoningRow({ text, streaming }: { text: string; streaming: boolean })
 function ToolRow({
   title,
   status,
+  onPress,
 }: {
   title: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  onPress?: () => void;
 }): React.ReactNode {
   const [muted, danger] = useThemeColor(['muted', 'danger']);
 
   return (
-    <View className="flex-row items-center gap-1">
+    <Pressable
+      accessibilityRole={onPress ? 'button' : undefined}
+      disabled={!onPress}
+      onPress={onPress}
+      className="flex-row items-center gap-1"
+    >
       <Text className="shrink text-muted text-subhead" numberOfLines={1}>
         {title}
       </Text>
@@ -180,6 +197,6 @@ function ToolRow({
       ) : (
         <ChevronRightIcon size={14} color={muted} />
       )}
-    </View>
+    </Pressable>
   );
 }
