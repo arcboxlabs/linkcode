@@ -46,6 +46,7 @@ import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
+import { createLongThreadScript } from './data/long-thread';
 import { SEED_MODEL_CATALOGS } from './data/models';
 import {
   CHUNK_LATENCY_MS,
@@ -120,6 +121,8 @@ interface MockSession extends SessionInfo {
   epoch: number;
   showcase?: boolean;
   showcaseSeeded?: boolean;
+  longThread?: boolean;
+  longThreadSeeded?: boolean;
   terminalId?: string;
 }
 
@@ -310,6 +313,7 @@ export class DevMockHost {
         });
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
+        this.seedLongThreads();
         break;
       case 'session.attach':
         this.attachSession(p.sessionId);
@@ -1156,6 +1160,17 @@ export class DevMockHost {
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
     this.sendSuccess(replyTo);
+  }
+
+  /** Emitted in one burst, not streamed: this transcript exists to be long, not to look live. */
+  private seedLongThreads(): void {
+    for (const session of this.sessions.values()) {
+      if (!session.longThread || session.longThreadSeeded) continue;
+      session.longThreadSeeded = true;
+      for (const event of createLongThreadScript((slug) => this.nextMessageId(slug))) {
+        this.emit(session.sessionId, event);
+      }
+    }
   }
 
   private startShowcase(): void {
