@@ -135,6 +135,7 @@ export type UpdaterStatus = z.infer<typeof UpdaterStatusSchema>;
 export const UpdaterStateSchema = z.object({
   status: UpdaterStatusSchema,
   version: z.string().nullable(),
+  progress: z.number().min(0).max(100).nullable(),
 });
 export type UpdaterState = z.infer<typeof UpdaterStateSchema>;
 

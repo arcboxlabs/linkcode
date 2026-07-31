@@ -17,7 +17,7 @@ const updatesDisabled = (): boolean => CHANNEL === 'development';
 
 type UpdaterStateListener = (state: UpdaterState) => void;
 const stateListeners = new Set<UpdaterStateListener>();
-let updaterState: UpdaterState = { status: 'idle', version: null };
+let updaterState: UpdaterState = { status: 'idle', version: null, progress: null };
 
 /** Subscribe to auto-update lifecycle state; the IPC layer forwards these to the renderer. */
 export function onUpdaterState(listener: UpdaterStateListener): () => void {
@@ -29,8 +29,12 @@ export function getUpdaterState(): UpdaterState {
   return updaterState;
 }
 
-function emitState(status: UpdaterStatus, version = updaterState.version): void {
-  updaterState = { status, version };
+function emitState(
+  status: UpdaterStatus,
+  version = updaterState.version,
+  progress: number | null = null,
+): void {
+  updaterState = { status, version, progress };
   for (const listener of stateListeners) listener(updaterState);
 }
 
@@ -43,7 +47,9 @@ export function initAutoUpdates(): void {
   autoUpdater.on('checking-for-update', () => emitState('checking', null));
   autoUpdater.on('update-available', ({ version }) => emitState('available', version));
   autoUpdater.on('update-not-available', () => emitState('not-available', null));
-  autoUpdater.on('download-progress', () => emitState('downloading'));
+  autoUpdater.on('download-progress', ({ percent }) => {
+    emitState('downloading', updaterState.version, percent);
+  });
   autoUpdater.on('update-downloaded', ({ version }) => {
     emitState('downloaded', version);
   });

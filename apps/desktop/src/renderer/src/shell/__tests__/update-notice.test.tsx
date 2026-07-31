@@ -9,7 +9,7 @@ import { UpdateNotice } from '../update-notice';
 const mocks = vi.hoisted(() => ({
   stateListener: undefined as ((state: UpdaterState) => void) | undefined,
   updaterState: vi.fn(() =>
-    Promise.resolve({ status: 'idle', version: null } satisfies UpdaterState),
+    Promise.resolve({ status: 'idle', version: null, progress: null } satisfies UpdaterState),
   ),
   installUpdate: vi.fn(),
   unsubscribe: vi.fn(),
@@ -55,7 +55,7 @@ describe('UpdateNotice', () => {
     expect(screen.queryByText('Update ready')).toBeNull();
 
     act(() => {
-      mocks.stateListener?.({ status: 'downloaded', version: '0.13.0' });
+      mocks.stateListener?.({ status: 'downloaded', version: '0.13.0', progress: null });
     });
 
     expect(screen.getByText('v0.13.0')).toBeTruthy();

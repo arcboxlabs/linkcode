@@ -1,6 +1,7 @@
 import type { UpdaterStatus } from '@linkcode/ipc';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
+import { Progress, ProgressIndicator, ProgressTrack } from 'coss-ui/components/progress';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -19,7 +20,7 @@ const STATUS_KEYS = {
 export function AboutTab(): React.ReactNode {
   const t = useTranslations('settings.about');
   const [version, setVersion] = useState('');
-  const { status } = useUpdaterState();
+  const { progress, status } = useUpdaterState();
 
   useEffect((signal) => {
     void systemBridge.app.version().then((value) => {
@@ -28,6 +29,7 @@ export function AboutTab(): React.ReactNode {
   }, []);
 
   const statusKey = status === 'idle' ? null : STATUS_KEYS[status];
+  const progressPercent = progress === null ? null : Math.round(progress);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,17 +39,37 @@ export function AboutTab(): React.ReactNode {
           {version ? `v${version}` : '—'}
         </span>
       </Field>
-      <div className="flex items-center gap-3">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void systemBridge.app.checkForUpdates();
-          }}
-        >
-          {t('checkForUpdates')}
-        </Button>
-        {statusKey ? <span className="text-muted-foreground text-xs">{t(statusKey)}</span> : null}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void systemBridge.app.checkForUpdates();
+            }}
+          >
+            {t('checkForUpdates')}
+          </Button>
+          {statusKey && progressPercent === null ? (
+            <span className="text-muted-foreground text-xs">{t(statusKey)}</span>
+          ) : null}
+        </div>
+        {status === 'downloading' && progressPercent !== null ? (
+          <Progress
+            aria-label={t('status.downloading')}
+            className="max-w-sm gap-1.5"
+            max={100}
+            value={progressPercent}
+          >
+            <div className="flex items-center justify-between text-muted-foreground text-xs">
+              <span>{t('status.downloading')}</span>
+              <span className="tabular-nums">{progressPercent}%</span>
+            </div>
+            <ProgressTrack>
+              <ProgressIndicator className="transition-none" />
+            </ProgressTrack>
+          </Progress>
+        ) : null}
       </div>
     </div>
   );
