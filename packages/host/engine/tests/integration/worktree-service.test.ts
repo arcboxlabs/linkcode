@@ -12,11 +12,8 @@ import { InMemoryWorktreeStore } from '../../src/worktree/worktree-store';
 
 const roots: string[] = [];
 
-/**
- * `realpathSync` because macOS `tmpdir()` is `/var/folders/…` behind a `/private` symlink (and
- * `/tmp` → `/private/tmp`). The service records the resolved path git reports, so a test comparing
- * against the unresolved one fails on macOS and passes on Linux, where nothing is symlinked.
- */
+// Resolved because macOS puts tmpdir() behind a /private symlink, while the service records the
+// path git reports — comparing the two unresolved fails on macOS and passes on Linux.
 function temp(): string {
   const path = realpathSync(mkdtempSync(join(tmpdir(), 'linkcode-worktree-test-')));
   roots.push(path);
