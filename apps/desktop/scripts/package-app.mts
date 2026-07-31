@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Package the desktop app from a materialized, single-importer staging directory (CODE-107):
+ * Package the desktop app from one materialized, single-importer staging directory per arch:
  * `node scripts/package-app.mts [mac|win|linux] [--x64|--arm64] [--devshell] [builder args]`.
  *
  * Packing apps/desktop in place fails silently twice under pnpm's hoisted layout: on Windows the
@@ -15,11 +15,20 @@
  * better-sqlite3 and the collector sees exactly one importer. The .pnpmfile.cjs
  * drizzle-orm↔expo-sqlite sever stays — it keeps the expo tree out of this deploy closure.
  */
-import { cpSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import crossSpawn from 'cross-spawn';
+import { mergeUpdateFeeds } from './update-feed.mts';
 
 const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
   darwin: 'mac',
@@ -29,6 +38,7 @@ const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
 const BUILDER_PLATFORMS = ['mac', 'win', 'linux'] as const;
 type BuilderPlatform = (typeof BUILDER_PLATFORMS)[number];
 const BUILDER_ARCHES = ['x64', 'arm64'] as const;
+type BuilderArch = (typeof BUILDER_ARCHES)[number];
 
 const desktopDir = join(import.meta.dirname, '..');
 const repoRoot = join(desktopDir, '..', '..');
@@ -39,7 +49,9 @@ const releaseDir = join(desktopDir, 'release');
  * OUTSIDE the workspace on purpose: a staging dir under the repo would be rediscovered as a
  * workspace member, reintroducing the multi-importer collection this flow exists to avoid.
  */
-const stagingDir = join(tmpdir(), 'linkcode-desktop-staging');
+function stagingDir(arch: BuilderArch): string {
+  return join(tmpdir(), `linkcode-desktop-staging-${arch}`);
+}
 
 /**
  * Run a command, inheriting stdio, throwing on failure. cross-spawn is required on Windows: a bare
@@ -69,22 +81,24 @@ const passthrough = args.filter(
     !BUILDER_ARCHES.some((arch) => arg === `--${arch}`),
 );
 
-/** Deploy the production closure into a fresh staging dir, then sync the build outputs into it. */
-function materializeStaging(): void {
-  rmSync(stagingDir, { recursive: true, force: true });
+/** Deploy one arch's production closure, then sync the build outputs into it. */
+function materializeStaging(arch: BuilderArch): string {
+  const target = stagingDir(arch);
+  rmSync(target, { recursive: true, force: true });
   // --legacy: deploy without pnpm's inject-workspace-packages requirement (v10+ default refusal).
   run(
     'pnpm',
-    ['--filter', '@linkcode/desktop', '--prod', 'deploy', '--legacy', stagingDir],
+    ['--filter', '@linkcode/desktop', '--prod', 'deploy', '--legacy', `--cpu=${arch}`, target],
     repoRoot,
   );
   // deploy's file selection skips .gitignore'd paths inconsistently across pnpm versions; sync the
   // build outputs in explicitly so `files: out/**` and `extraResources: sidecar/${arch}` resolve.
   for (const dir of ['out', 'sidecar']) {
-    const dest = join(stagingDir, dir);
+    const dest = join(target, dir);
     rmSync(dest, { recursive: true, force: true });
     cpSync(join(desktopDir, dir), dest, { recursive: true });
   }
+  return target;
 }
 
 /** Doc files that must survive the prune: license/attribution texts we redistribute. */
@@ -100,10 +114,10 @@ const MARKDOWN_RE = /\.(?:md|markdown)$/i;
  * `files` globs in electron-builder.yml instead; notably better-sqlite3/deps must stay HERE in
  * staging because @electron/rebuild compiles from it before collection.
  */
-function pruneStaging(): void {
+function pruneStaging(target: string): void {
   let files = 0;
   let bytes = 0;
-  for (const entry of readdirSync(join(stagingDir, 'node_modules'), {
+  for (const entry of readdirSync(join(target, 'node_modules'), {
     recursive: true,
     withFileTypes: true,
   })) {
@@ -128,10 +142,9 @@ function pruneStaging(): void {
  * resolve an arch that wasn't (CI stages both via `stage-sidecar --all`; a local
  * `stage:host-runtime` stages just the host).
  */
-function stagedArches(): string[] {
-  const staged = readdirSync(join(desktopDir, 'sidecar')).filter((name) =>
-    BUILDER_ARCHES.some((arch) => arch === name),
-  );
+function stagedArches(): BuilderArch[] {
+  const stagedNames = new Set(readdirSync(join(desktopDir, 'sidecar')));
+  const staged = BUILDER_ARCHES.filter((arch) => stagedNames.has(arch));
   if (staged.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
   const arches = requestedArches.length === 0 ? staged : requestedArches;
   for (const arch of arches) {
@@ -140,33 +153,54 @@ function stagedArches(): string[] {
   return arches;
 }
 
+function updateFeedName(arch: BuilderArch): string {
+  if (platform === 'mac') return 'latest-mac.yml';
+  if (platform === 'win') return 'latest.yml';
+  return arch === 'arm64' ? 'latest-linux-arm64.yml' : 'latest-linux.yml';
+}
+
 function build(): void {
   // Both extend the shared electron-builder.yml base; each adds its own deep-link scheme (release
   // `linkcode://`, dev shell `linkcode-dev://`). The base is never passed directly — it has none.
   const config = devshell ? 'electron-builder.devshell.yml' : 'electron-builder.release.yml';
-  const builderArgs = [
-    'exec',
-    'electron-builder',
-    `--${platform}`,
-    ...stagedArches().map((arch) => `--${arch}`),
-    '--projectDir',
-    stagingDir,
-    '--config',
-    join(desktopDir, config),
-    // projectDir is the staging dir, so config-relative paths would resolve under it; redirect
-    // output back to where CI/verify-artifacts expect it and icons to the shared repo-root assets.
-    `-c.directories.output=${releaseDir}`,
-    `-c.mac.icon=${join(assetsDir, 'linkcode.icon')}`,
-    `-c.win.icon=${join(assetsDir, 'icon.png')}`,
-    // A directory of per-size PNGs — app-builder-lib 26+ won't expand a single PNG into a size set,
-    // so a lone raster installs only hicolor/1024x1024 (unindexed → GNOME fallback icon).
-    `-c.linux.icon=${join(assetsDir, 'linux-icons')}`,
-    ...(devshell ? ['--dir'] : []),
-    ...passthrough,
-  ];
-  run('pnpm', builderArgs, desktopDir);
+  const feeds = new Map<string, string>();
+  for (const arch of stagedArches()) {
+    const target = materializeStaging(arch);
+    pruneStaging(target);
+    const feedName = updateFeedName(arch);
+    const feedPath = join(releaseDir, feedName);
+    rmSync(feedPath, { force: true });
+    run(
+      'pnpm',
+      [
+        'exec',
+        'electron-builder',
+        `--${platform}`,
+        `--${arch}`,
+        '--projectDir',
+        target,
+        '--config',
+        join(desktopDir, config),
+        // projectDir is the staging dir, so config-relative paths would resolve under it; redirect
+        // output back to where CI/verify-artifacts expect it and icons to the shared repo-root assets.
+        `-c.directories.output=${releaseDir}`,
+        `-c.mac.icon=${join(assetsDir, 'linkcode.icon')}`,
+        `-c.win.icon=${join(assetsDir, 'icon.png')}`,
+        // A directory of per-size PNGs — app-builder-lib 26+ won't expand a single PNG into a size
+        // set, so a lone raster installs only hicolor/1024x1024 (unindexed → GNOME fallback icon).
+        `-c.linux.icon=${join(assetsDir, 'linux-icons')}`,
+        ...(devshell ? ['--dir'] : []),
+        ...passthrough,
+      ],
+      desktopDir,
+    );
+    if (existsSync(feedPath)) {
+      const text = readFileSync(feedPath, 'utf8');
+      const existing = feeds.get(feedName);
+      feeds.set(feedName, existing === undefined ? text : mergeUpdateFeeds(existing, text));
+    }
+  }
+  for (const [name, text] of feeds) writeFileSync(join(releaseDir, name), text);
 }
 
-materializeStaging();
-pruneStaging();
 build();
