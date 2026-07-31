@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Account } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import {
   hqCredentialsPath,
   loadConfig,
   runtimeFilePath,
+  saveProviderConfiguration,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
@@ -49,7 +51,7 @@ const validAccount = {
   label: 'Personal key',
   credential: { type: 'api-key', key: 'sk-test' },
   createdAt: 0,
-};
+} satisfies Account;
 
 describe('loadConfig providers', () => {
   it('keeps valid provider entries and drops an invalid one, logging the error', () => {
@@ -239,5 +241,25 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([]);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveProviderConfiguration', () => {
+  it('atomically persists providers and accounts while preserving unrelated fields', () => {
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'config.json');
+    writeFileSync(path, JSON.stringify({ hostname: '127.0.0.1' }));
+
+    saveProviderConfiguration({ codex: { enabled: true, activeAccountId: 'acc_1' } }, [
+      validAccount,
+    ]);
+
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      hostname: '127.0.0.1',
+      providers: { codex: { enabled: true, activeAccountId: 'acc_1' } },
+      accounts: [validAccount],
+    });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });

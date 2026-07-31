@@ -1,5 +1,6 @@
 import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
 import type {
+  Account,
   AccountEndpoint,
   AccountModel,
   AccountSecret,
@@ -177,6 +178,12 @@ export function setProviderConfig(
   options: Options<{ providers: ProvidersConfig }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).setProviderConfig(options.providers);
+}
+
+export function createAndBindAccount(
+  options: Options<{ agent: AgentKind; account: Account }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).createAndBindAccount(options.agent, options.account);
 }
 
 export function getAccounts(options?: Options): RequestResult<Accounts> {

@@ -7,6 +7,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { OperationError, RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { AgentLoginService } from './login-service';
+import type { ModelProbe } from './model-probe';
 import { probeEndpointModels } from './model-probe';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults } from './provider-config';
@@ -20,6 +21,7 @@ type AgentRequest = Extract<
       | 'agent.catalog'
       | 'config.get'
       | 'config.set'
+      | 'config.account.create-and-bind'
       | 'config.probe-models'
       | 'agent-login.start'
       | 'agent-login.submit-code'
@@ -36,6 +38,7 @@ export class AgentRequestHandler {
     private readonly logins: AgentLoginService | undefined,
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
+    private readonly probeModels: ModelProbe = probeEndpointModels,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
@@ -126,12 +129,21 @@ export class AgentRequestHandler {
           ),
         );
       }
+      case 'config.account.create-and-bind':
+        return this.responder.reply(
+          payload.clientReqId,
+          updateProviderConfig('config.account.create-and-bind', () =>
+            this.providers.createAndBindAccount(payload.agent, payload.account),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
       case 'config.probe-models':
         return this.responder.reply(
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const models = await probeEndpointModels(payload.endpoint, payload.secret);
+              const models = await this.probeModels(payload.endpoint, payload.secret);
               this.transport.send(
                 createWireMessage({
                   kind: 'config.probe-models.result',

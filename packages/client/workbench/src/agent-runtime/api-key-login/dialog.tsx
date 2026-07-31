@@ -2,11 +2,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { Account, AccountModel, AccountSecret, AgentKind } from '@linkcode/schema';
 import { AccountProtocolSchema } from '@linkcode/schema';
 import {
+  createAndBindAccount,
   getAccounts,
   getProviderConfig,
   probeAccountModels,
-  setAccounts,
-  setProviderConfig,
 } from '@linkcode/sdk';
 import { AGENT_LABELS } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
@@ -30,14 +29,13 @@ import {
 } from 'coss-ui/components/select';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { Loader2Icon } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { rhfErrorsToFormErrors } from '../../lib/form';
 import { useData, useMutation } from '../../runtime/tayori';
 import { nativeAccountProtocol } from '../../settings/providers/capability';
-import { withBinding } from '../../settings/providers/view';
 import { useAgentApiKeyLoginStore } from './store';
 
 const DraftSchema = z.object({
@@ -56,10 +54,21 @@ function draftSecret(draft: Pick<Draft, 'credentialType' | 'secret'>): AccountSe
     : { type: 'api-key', key: draft.secret.trim() };
 }
 
+function detectionKey(
+  draft: Pick<Draft, 'baseUrl' | 'credentialType' | 'protocol' | 'secret'>,
+): string {
+  return JSON.stringify([
+    draft.baseUrl.trim(),
+    draft.credentialType,
+    draft.protocol,
+    draft.secret.trim(),
+  ]);
+}
+
 /** Account constructor at module scope: `Date.now` may not run in a component body. */
-function accountFromDraft(draft: Draft): Account {
+function accountFromDraft(id: string, draft: Draft): Account {
   return {
-    id: `acc_${crypto.randomUUID()}`,
+    id,
     label: draft.label.trim(),
     credential: draftSecret(draft),
     endpoint: { baseUrl: draft.baseUrl.trim(), protocol: draft.protocol },
@@ -76,6 +85,7 @@ function accountFromDraft(draft: Draft): Account {
  */
 export function AgentApiKeyLoginDialog(): React.ReactNode {
   const kind = useAgentApiKeyLoginStore((state) => state.kind);
+  const accountId = useAgentApiKeyLoginStore((state) => state.accountId);
   const close = useAgentApiKeyLoginStore((state) => state.close);
   const t = useTranslations('workbench.apiKeyLogin');
 
@@ -88,7 +98,9 @@ export function AgentApiKeyLoginDialog(): React.ReactNode {
         </DialogHeader>
         <DialogPanel>
           {/* Keyed per agent so switching agents starts from that agent's own defaults. */}
-          {kind !== null && <ApiKeyLoginForm key={kind} kind={kind} onDone={close} />}
+          {kind !== null && accountId !== null && (
+            <ApiKeyLoginForm key={accountId} kind={kind} accountId={accountId} onDone={close} />
+          )}
         </DialogPanel>
       </DialogPopup>
     </Dialog>
@@ -97,20 +109,22 @@ export function AgentApiKeyLoginDialog(): React.ReactNode {
 
 function ApiKeyLoginForm({
   kind,
+  accountId,
   onDone,
 }: {
   kind: AgentKind;
+  accountId: string;
   onDone: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.apiKeyLogin');
-  const { data: accounts, mutate: mutateAccounts } = useData(getAccounts, {});
-  const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
-  const saveAccounts = useMutation(setAccounts);
-  const saveProviders = useMutation(setProviderConfig);
+  const { mutate: mutateAccounts } = useData(getAccounts, {});
+  const { mutate: mutateProviders } = useData(getProviderConfig, {});
+  const save = useMutation(createAndBindAccount);
   const probe = useMutation(probeAccountModels);
   // Detection result and its failure are transient UI state, not part of the submitted draft.
   const [detected, setDetected] = useState<AccountModel[] | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
+  const probeGenerationRef = useRef(0);
 
   const {
     control,
@@ -118,6 +132,7 @@ function ApiKeyLoginForm({
     handleSubmit,
     getValues,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<Draft>({
     resolver: zodResolver(DraftSchema),
@@ -130,12 +145,13 @@ function ApiKeyLoginForm({
       model: '',
     },
   });
+  const baseUrlField = register('baseUrl');
+  const secretField = register('secret');
 
   const onSubmit = handleSubmit(async (draft) => {
     try {
-      const account = accountFromDraft(draft);
-      await saveAccounts.trigger({ accounts: [...(accounts ?? []), account] });
-      await saveProviders.trigger({ providers: withBinding(providers ?? {}, kind, account.id) });
+      const account = accountFromDraft(accountId, draft);
+      await save.trigger({ agent: kind, account });
       await Promise.all([mutateAccounts(), mutateProviders()]);
       onDone();
     } catch (error) {
@@ -143,9 +159,18 @@ function ApiKeyLoginForm({
     }
   });
 
+  function invalidateDetection(): void {
+    probeGenerationRef.current += 1;
+    if (detected !== null) setValue('model', '');
+    setDetected(null);
+    setDetectError(null);
+  }
+
   // Imperative read: detection is an action on the current values, not a field subscription.
   async function detect(): Promise<void> {
+    const generation = ++probeGenerationRef.current;
     const draft = getValues();
+    const key = detectionKey(draft);
     setDetectError(null);
     const endpoint = z
       .object({ baseUrl: z.url(), protocol: AccountProtocolSchema })
@@ -156,9 +181,11 @@ function ApiKeyLoginForm({
     }
     try {
       const models = await probe.trigger({ endpoint: endpoint.data, secret: draftSecret(draft) });
+      if (generation !== probeGenerationRef.current || key !== detectionKey(getValues())) return;
       setDetected(models);
       if (models.length === 0) setDetectError(t('detectEmpty'));
     } catch (error) {
+      if (generation !== probeGenerationRef.current || key !== detectionKey(getValues())) return;
       setDetected(null);
       setDetectError(extractErrorMessage(error, false) ?? t('detectFailed'));
     }
@@ -190,7 +217,11 @@ function ApiKeyLoginForm({
           className="w-full"
           autoComplete="off"
           placeholder={t('baseUrlPlaceholder')}
-          {...register('baseUrl')}
+          {...baseUrlField}
+          onChange={(event) => {
+            void baseUrlField.onChange(event);
+            invalidateDetection();
+          }}
         />
         <FieldError />
       </Field>
@@ -205,7 +236,10 @@ function ApiKeyLoginForm({
                 <DraftSelect
                   items={credentialItems}
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    invalidateDetection();
+                  }}
                 />
               )}
             />
@@ -221,7 +255,10 @@ function ApiKeyLoginForm({
                 <DraftSelect
                   items={protocolItems}
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    invalidateDetection();
+                  }}
                 />
               )}
             />
@@ -230,7 +267,16 @@ function ApiKeyLoginForm({
       </div>
       <Field name="secret">
         <FieldLabel>{t('secret')}</FieldLabel>
-        <Input type="password" className="w-full" autoComplete="off" {...register('secret')} />
+        <Input
+          type="password"
+          className="w-full"
+          autoComplete="off"
+          {...secretField}
+          onChange={(event) => {
+            void secretField.onChange(event);
+            invalidateDetection();
+          }}
+        />
         <FieldError />
       </Field>
       <Field name="model">
@@ -283,7 +329,7 @@ function ApiKeyLoginForm({
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           {t('cancel')}
         </Button>
-        <Button type="submit" size="sm" disabled={isSubmitting}>
+        <Button type="submit" size="sm" disabled={isSubmitting || save.isMutating}>
           {t('save')}
         </Button>
       </div>

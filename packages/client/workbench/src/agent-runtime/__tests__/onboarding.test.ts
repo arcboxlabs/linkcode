@@ -203,6 +203,16 @@ describe('deriveAgentRuntimeCues', () => {
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {})).toEqual({
       'claude-code': { state: 'needs-login', phase: 'idle' },
     });
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        {},
+        { 'claude-code': { enabled: true, apiKey: '   ' } },
+      ),
+    ).toEqual({ 'claude-code': { state: 'needs-login', phase: 'idle' } });
   });
 
   it('suppresses the login cue for a bound key account, but not for a bound oauth one', () => {

@@ -362,6 +362,23 @@ export class DevMockHost {
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
         this.sendSuccess(p.clientReqId);
         break;
+      case 'config.account.create-and-bind': {
+        await wait(CONTROL_LATENCY_MS);
+        const account = structuredClone(p.account);
+        const exists = this.accounts.some((candidate) => candidate.id === account.id);
+        this.accounts = exists
+          ? this.accounts.map((candidate) => (candidate.id === account.id ? account : candidate))
+          : [...this.accounts, account];
+        this.providers = {
+          ...this.providers,
+          [p.agent]: {
+            ...(this.providers[p.agent] ?? { enabled: true }),
+            activeAccountId: account.id,
+          },
+        };
+        this.sendSuccess(p.clientReqId);
+        break;
+      }
       case 'workspace.list':
         await wait(CONTROL_LATENCY_MS);
         this.send({

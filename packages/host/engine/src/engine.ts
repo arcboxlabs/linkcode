@@ -208,6 +208,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     logins,
     responder,
     factory,
+    deps.modelProbe,
   );
   const browserRequests = new BrowserRequestHandler(transport, browserBroker);
   const requests = new WireRequestRouter(transport, {

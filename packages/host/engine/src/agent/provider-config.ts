@@ -1,6 +1,7 @@
 import type {
   Account,
   Accounts,
+  AgentKind,
   ProviderConfig,
   ProvidersConfig,
   StartOptions,
@@ -17,6 +18,7 @@ export interface ProviderConfigStore {
   /** The global account pool bound by `providers[kind].activeAccountId`. */
   getAccounts(): Accounts;
   setAccounts(next: Accounts): void | Promise<void>;
+  createAndBindAccount(agent: AgentKind, account: Account): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
@@ -38,6 +40,28 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
   setAccounts(next: Accounts): void {
     this.accounts = next;
   }
+
+  createAndBindAccount(agent: AgentKind, account: Account): void {
+    const next = accountBinding(this.providers, this.accounts, agent, account);
+    this.providers = next.providers;
+    this.accounts = next.accounts;
+  }
+}
+
+export function accountBinding(
+  providers: ProvidersConfig,
+  accounts: Accounts,
+  agent: AgentKind,
+  account: Account,
+): { providers: ProvidersConfig; accounts: Accounts } {
+  const entry = providers[agent] ?? { enabled: true };
+  const exists = accounts.some((candidate) => candidate.id === account.id);
+  return {
+    providers: { ...providers, [agent]: { ...entry, activeAccountId: account.id } },
+    accounts: exists
+      ? accounts.map((candidate) => (candidate.id === account.id ? account : candidate))
+      : [...accounts, account],
+  };
 }
 
 /**

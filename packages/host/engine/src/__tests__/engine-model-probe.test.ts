@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { WirePayload } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { probeEndpointModels, requestModelListAtAddress } from '../agent/model-probe';
 import { createSessionHarness } from './fixtures/session-harness';
 
 /** The probe is a real HTTP round-trip, so its reply lands after `inject`'s task settle. */
@@ -33,6 +34,17 @@ function baseUrl(server: Server): string {
   return `http://127.0.0.1:${port}`;
 }
 
+const localModelProbe: typeof probeEndpointModels = (endpoint, secret) =>
+  probeEndpointModels(endpoint, secret, (url, headers) =>
+    requestModelListAtAddress(url, headers, { address: '127.0.0.1', family: 4 }),
+  );
+
+function createHarness() {
+  return createSessionHarness(undefined, undefined, undefined, undefined, undefined, undefined, {
+    modelProbe: localModelProbe,
+  });
+}
+
 let relay: Server | undefined;
 
 afterEach(async () => {
@@ -54,7 +66,7 @@ describe('config.probe-models', () => {
         ? { status: 200, body: JSON.stringify({ data: [{ id: 'gpt-5' }, { id: 'gpt-5-mini' }] }) }
         : { status: 404, body: '{}' };
     });
-    const h = createSessionHarness();
+    const h = createHarness();
     await h.engine.start();
 
     await h.inject({
@@ -77,7 +89,7 @@ describe('config.probe-models', () => {
       status: 401,
       body: JSON.stringify({ error: 'invalid api key' }),
     }));
-    const h = createSessionHarness();
+    const h = createHarness();
     await h.engine.start();
 
     await h.inject({

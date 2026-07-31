@@ -1,4 +1,14 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
@@ -195,12 +205,21 @@ export function saveAccounts(accounts: Accounts): void {
   writeConfigField('accounts', accounts);
 }
 
+export function saveProviderConfiguration(providers: ProvidersConfig, accounts: Accounts): void {
+  writeConfigFields({ providers, accounts });
+}
+
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
 function writeConfigField(
   key: 'providers' | 'accounts' | 'simulatorConsent',
   value: unknown,
 ): void {
+  writeConfigFields({ [key]: value });
+}
+
+function writeConfigFields(fields: Partial<Record<keyof ConfigFile, unknown>>): void {
   const path = configPath();
+  const directory = dirname(path);
   let file: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
@@ -208,9 +227,35 @@ function writeConfigField(
   } catch {
     // Start from an empty document if the file is missing or malformed.
   }
-  file[key] = value;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+  Object.assign(file, fields);
+  mkdirSync(directory, { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(temporaryPath, 'wx', 0o600);
+    writeFileSync(descriptor, `${JSON.stringify(file, null, 2)}\n`);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(temporaryPath, path);
+    try {
+      const directoryDescriptor = openSync(directory, 'r');
+      try {
+        fsyncSync(directoryDescriptor);
+      } finally {
+        closeSync(directoryDescriptor);
+      }
+    } catch {
+      // Directory fsync is unsupported on some platforms; rename still preserves atomicity.
+    }
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+    try {
+      unlinkSync(temporaryPath);
+    } catch {
+      // The temporary file is absent after a successful rename or an early open failure.
+    }
+  }
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {

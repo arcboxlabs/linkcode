@@ -8,12 +8,14 @@ import { create } from 'zustand';
  */
 interface AgentApiKeyLoginState {
   kind: AgentKind | null;
+  accountId: string | null;
   open: (kind: AgentKind) => void;
   close: () => void;
 }
 
 export const useAgentApiKeyLoginStore = create<AgentApiKeyLoginState>()((set) => ({
   kind: null,
-  open: (kind) => set({ kind }),
-  close: () => set({ kind: null }),
+  accountId: null,
+  open: (kind) => set({ kind, accountId: `acc_${crypto.randomUUID()}` }),
+  close: () => set({ kind: null, accountId: null }),
 }));

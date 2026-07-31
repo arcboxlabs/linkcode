@@ -1,6 +1,7 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
+import { accountBinding } from '@linkcode/engine';
 import type { Accounts, ProvidersConfig } from '@linkcode/schema';
-import { saveAccounts, saveProviders } from './config';
+import { saveAccounts, saveProviderConfiguration, saveProviders } from './config';
 
 /**
  * Daemon-backed data-plane config store: in-memory providers + account pool seeded at boot, each
@@ -23,6 +24,12 @@ export function createProviderConfigStore(
     setAccounts(next) {
       accounts = next;
       saveAccounts(next);
+    },
+    createAndBindAccount(agent, account) {
+      const next = accountBinding(providers, accounts, agent, account);
+      saveProviderConfiguration(next.providers, next.accounts);
+      providers = next.providers;
+      accounts = next.accounts;
     },
   };
 }

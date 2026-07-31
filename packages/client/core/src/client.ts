@@ -1,4 +1,5 @@
 import type {
+  Account,
   AccountEndpoint,
   AccountModel,
   AccountSecret,
@@ -952,6 +953,10 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
+  }
+
+  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
+    return this.control.createAndBindAccount(agent, account);
   }
 
   setAccounts(accounts: Accounts): Promise<RequestAck> {

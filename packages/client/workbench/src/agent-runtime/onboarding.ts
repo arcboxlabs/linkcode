@@ -133,7 +133,7 @@ export function hasInjectedCredential(
   providers: ProvidersConfig,
   accounts: Accounts,
 ): boolean {
-  if (providers[kind]?.apiKey !== undefined) return true;
+  if (providers[kind]?.apiKey?.trim()) return true;
   const boundId = providers[kind]?.activeAccountId;
   if (boundId === undefined) return false;
   const bound = accounts.find((account) => account.id === boundId);
