@@ -51,8 +51,13 @@ function newAttachmentId(): string {
   return crypto.randomUUID();
 }
 
-/** Reads a `File` into a `data:` URL, used as both the wire payload's base64 `data` and the
- * `ChatAttachment` preview `url` — one read serves both, so there's no object-URL to revoke. */
+/** Reads a browser-picked file as base64 without adding a `data:` URL prefix. */
+export async function readFileAsBase64(file: File): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file);
+  return dataUrl.slice(dataUrl.indexOf(',') + 1);
+}
+
+/** Reads a `File` into a `data:` URL, used by composer image previews. */
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -77,13 +82,12 @@ export async function readImageFileAsComposerAttachment(
   } catch {
     throw new Error(readFailed);
   }
-  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
 
   return {
     ...pending,
     status: 'ready',
     url: dataUrl,
-    block: { type: 'image', data: base64, mimeType: file.type },
+    block: { type: 'image', data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: file.type },
   };
 }
 

@@ -220,6 +220,24 @@ describe('desktop shell state persistence', () => {
     expect(state.rightPanel.activeSection).toBe('diff');
   });
 
+  it('restores resources as a fixed right panel section without changing v3 state', () => {
+    const state = parsePersistedDesktopShellState({
+      version: 3,
+      sidebarOpen: true,
+      layout: DEFAULT_LAYOUT,
+      expansionStack: [],
+      rightPanel: {
+        open: true,
+        activeSection: 'resources',
+        terminalTabCount: 0,
+        activeTerminalTabIndex: 0,
+      },
+      bottomPanel: { open: false, tabs: ['terminal'], activeTabIndex: 0 },
+    });
+
+    expect(state.rightPanel.activeSection).toBe('resources');
+  });
+
   it('falls the active section back to diff when the simulator section lost its membership', () => {
     const payload = {
       version: 3,

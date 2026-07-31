@@ -18,6 +18,7 @@ export function DesktopRightPanelRegion({
   cwd,
   activeSessionId,
   themeType,
+  resourcesPanel,
   maximized,
   chromeVisible,
   contentHidden,
@@ -42,6 +43,7 @@ export function DesktopRightPanelRegion({
   /** The active thread — simulator interactions ride its session claim. */
   activeSessionId: SessionId | null;
   themeType: ThemePreference;
+  resourcesPanel?: React.ReactNode;
   maximized: boolean;
   chromeVisible: boolean;
   contentHidden: boolean;
@@ -85,6 +87,7 @@ export function DesktopRightPanelRegion({
             onOpenFile={onOpenFileTab}
           />
         ),
+        resources: resourcesPanel,
         simulator: <SimulatorPanel sessionId={activeSessionId} />,
       }}
       terminalContentTargetRef={terminalContentTargetRef}
