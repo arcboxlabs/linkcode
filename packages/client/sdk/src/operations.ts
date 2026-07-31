@@ -17,6 +17,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -34,6 +35,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -68,6 +71,32 @@ export function deleteSession(
   options: Options<{ sessionId: SessionId }>,
 ): RequestResult<{ ok: true }> {
   return resolveClient(options).deleteSession(options.sessionId);
+}
+
+export function listResources(
+  options: Options<{ sessionId: SessionId }>,
+): RequestResult<SessionResource[]> {
+  return resolveClient(options).listResources(options.sessionId);
+}
+export function uploadSource(
+  options: Options<{ sessionId: SessionId; name: string; data: string; mimeType?: string }>,
+): RequestResult<SessionResource> {
+  return resolveClient(options).uploadSource(
+    options.sessionId,
+    options.name,
+    options.data,
+    options.mimeType,
+  );
+}
+export function removeResource(
+  options: Options<{ resourceId: SessionResourceId }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).removeResource(options.resourceId);
+}
+export function hostResource(
+  options: Options<{ resourceId: SessionResourceId }>,
+): RequestResult<HostedSessionResource> {
+  return resolveClient(options).hostResource(options.resourceId);
 }
 
 export function resumeSession(

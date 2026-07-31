@@ -1278,14 +1278,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     let calledTool = false;
     for (const block of message.content) {
       if (block.type === 'tool_use') {
-        const diff = editDiffContent(block.name, block.input);
+        const content = toolInputContent(block.name, block.input);
         // Announce the tool the moment Claude requests it; the matching tool_result settles it.
         this.emitTool({
           toolCallId: block.id,
           title: block.name,
           kind: claudeToolKind(block.name),
           status: 'in_progress',
-          content: diff,
+          content,
           rawInput: block.input,
           locations: hostLocationsFromToolInput(block.input),
         });
@@ -1307,14 +1307,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     for (const block of message.content) {
       // eslint-disable-next-line sukka/unicorn/prefer-switch -- deliberately non-exhaustive (other block variants are ignored); the switch autofix then trips the error-level default-case rule
       if (block.type === 'tool_use') {
-        const diff = editDiffContent(block.name, block.input);
+        const content = toolInputContent(block.name, block.input);
         this.emitTool({
           toolCallId: block.id,
           parentToolCallId: parent,
           title: block.name,
           kind: claudeToolKind(block.name),
           status: 'in_progress',
-          content: diff,
+          content,
           rawInput: block.input,
           locations: hostLocationsFromToolInput(block.input),
         });
@@ -1427,6 +1427,25 @@ function editDiffContent(toolName: string, input: unknown): ToolCallContent[] | 
     return [{ type: 'diff', change: 'add', path: toHostPath(path), newText }];
   }
   return undefined;
+}
+
+function toolInputContent(toolName: string, input: unknown): ToolCallContent[] | undefined {
+  const diff = editDiffContent(toolName, input);
+  if (diff || toolName !== 'WebFetch' || !isRecord(input) || typeof input.url !== 'string') {
+    return diff;
+  }
+  try {
+    const url = new URL(input.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+    return [
+      {
+        type: 'content',
+        content: { type: 'resource_link', uri: url.href, name: url.hostname },
+      },
+    ];
+  } catch {
+    return undefined;
+  }
 }
 
 function isUnifiedDiffHunk(value: unknown): value is UnifiedDiffHunk {
@@ -1862,7 +1881,7 @@ export function createClaudeHistoryEventMapper(
             title: block.name,
             kind: claudeToolKind(block.name),
             status: 'in_progress',
-            content: editDiffContent(block.name, block.input) ?? [],
+            content: toolInputContent(block.name, block.input) ?? [],
             rawInput: block.input,
           }),
         );
