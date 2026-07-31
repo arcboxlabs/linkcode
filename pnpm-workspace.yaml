@@ -8,13 +8,6 @@ packages:
 nodeLinker: hoisted
 autoInstallPeers: true
 strictPeerDependencies: false
-# Desktop releases cross-pack both CPU architectures and need both native optional dependencies.
-supportedArchitectures:
-  os:
-    - current
-  cpu:
-    - x64
-    - arm64
 # Turbo runs each package's script via `pnpm run`, which otherwise triggers a per-package deps check.
 # With hoisted layout, dependency-less packages (schema/ipc) have no local node_modules, so that check
 # falsely reports "node_modules missing". Turbo already orders/builds deps, so disable the per-run check.

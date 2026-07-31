@@ -145,10 +145,9 @@ jobs:
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
-        # package-app.mts materializes a single-importer staging dir and points electron-builder's
-        # --projectDir at it (see the script header): fixes the Windows native-rebuild miss and the
-        # module-collector drops without the app-builder-lib patch. azureSignOptions is forwarded via
-        # -c only on signed Windows builds so unsigned builds skip signing instead of failing.
+        # package-app.mts materializes one CPU-scoped staging dir per target arch and points
+        # electron-builder's --projectDir at it (see the script header). azureSignOptions is
+        # forwarded via -c only on signed Windows builds so unsigned builds skip signing.
         run: |
           # electron-builder treats a *set but empty* CSC_LINK as a certificate path and dies on
           # "<projectDir> not a file". Actions cannot conditionally unset an env key, so the cert
