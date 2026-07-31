@@ -327,6 +327,14 @@ refused for its version. The handshake `pong` carries the answering build's `ver
 would drop; it also names the one skew both sides can still read (the host's floor moved past
 the client) instead of leaving it to the handshake timeout.
 
+Who receives a host frame is declared in `wire/delivery.ts`, not decided in the transport: a
+correlated reply follows its `replyTo` to the connection that asked, and everything else fans out
+to every connection unless the table scopes it to one terminal's attachments, to the sessions a
+connection attached to, or to the registered browser host. A new host→client frame carrying a
+resource id belongs in that table; omitting it costs bytes on every connection, not correctness.
+The Hub still owns the state behind those scopes — attach/detach bookkeeping, attachment secrets,
+and host registration.
+
 Interactive permission and question requests have a host-authoritative lifecycle. The Engine
 records each advertised request as open, validates responses against that exact request, emits a
 responding status while the adapter call is in flight, and emits one terminal resolved outcome.

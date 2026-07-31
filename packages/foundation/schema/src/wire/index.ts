@@ -1,3 +1,4 @@
+export { deliveryOf, WIRE_DELIVERY, type WireDelivery } from './delivery';
 export {
   type AgentHistoryListWireOptions,
   AgentHistoryListWireOptionsSchema,
@@ -14,7 +15,7 @@ export {
   type WireParseFailure,
   type WireParseResult,
 } from './message';
-export { type WirePayload, WirePayloadSchema } from './payload';
+export { WIRE_PAYLOAD_KINDS, type WirePayload, WirePayloadSchema } from './payload';
 export {
   type SessionSubscriptionMode,
   SessionSubscriptionModeSchema,
