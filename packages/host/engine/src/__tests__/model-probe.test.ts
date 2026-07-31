@@ -1,5 +1,6 @@
 import type { AccountEndpoint } from '@linkcode/schema';
 import { describe, expect, it, vi } from 'vitest';
+import type { ModelListRequest } from '../agent/model-probe';
 import { modelListHeaders, modelListUrl, probeEndpointModels } from '../agent/model-probe';
 
 const anthropic: AccountEndpoint = { baseUrl: 'https://relay.test/', protocol: 'anthropic' };
@@ -7,11 +8,8 @@ const openai: AccountEndpoint = { baseUrl: 'https://relay.test/v1', protocol: 'o
 const REJECTION_PATTERN = /401.*invalid api key/;
 const NOT_A_LIST_PATTERN = /did not answer a model list/;
 
-function jsonResponse(body: unknown): Response {
-  return Response.json(body, {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
+function jsonResponse(body: unknown): Awaited<ReturnType<ModelListRequest>> {
+  return { status: 200, statusText: 'OK', body: JSON.stringify(body) };
 }
 
 describe('endpoint model list addressing', () => {
@@ -35,38 +33,40 @@ describe('endpoint model list addressing', () => {
 
 describe('probeEndpointModels', () => {
   it("reads the vendors' {data} envelope, keeping display names and order", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
+    const request = vi.fn<ModelListRequest>().mockResolvedValue(
       jsonResponse({
         data: [{ id: 'claude-opus-4', display_name: 'Claude Opus 4' }, { id: 'claude-haiku-4' }],
       }),
     );
     await expect(
-      probeEndpointModels(anthropic, { type: 'api-key', key: 'k' }, fetchImpl),
+      probeEndpointModels(anthropic, { type: 'api-key', key: 'k' }, request),
     ).resolves.toEqual([{ id: 'claude-opus-4', label: 'Claude Opus 4' }, { id: 'claude-haiku-4' }]);
   });
 
   it('accepts a bare array and drops duplicate ids', async () => {
-    const fetchImpl = vi
-      .fn()
+    const request = vi
+      .fn<ModelListRequest>()
       .mockResolvedValue(jsonResponse([{ id: 'gpt-5' }, { id: 'gpt-5' }, { id: 'gpt-5-mini' }]));
     await expect(
-      probeEndpointModels(openai, { type: 'api-key', key: 'k' }, fetchImpl),
+      probeEndpointModels(openai, { type: 'api-key', key: 'k' }, request),
     ).resolves.toEqual([{ id: 'gpt-5' }, { id: 'gpt-5-mini' }]);
   });
 
   it("surfaces the endpoint's own rejection so the user can act on it", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(new Response('{"error":"invalid api key"}', { status: 401 }));
+    const request = vi.fn<ModelListRequest>().mockResolvedValue({
+      status: 401,
+      statusText: 'Unauthorized',
+      body: '{"error":"invalid api key"}',
+    });
     await expect(
-      probeEndpointModels(openai, { type: 'api-key', key: 'bad' }, fetchImpl),
+      probeEndpointModels(openai, { type: 'api-key', key: 'bad' }, request),
     ).rejects.toThrow(REJECTION_PATTERN);
   });
 
   it('rejects a response that is not a model list', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    const request = vi.fn<ModelListRequest>().mockResolvedValue(jsonResponse({ ok: true }));
     await expect(
-      probeEndpointModels(openai, { type: 'api-key', key: 'k' }, fetchImpl),
+      probeEndpointModels(openai, { type: 'api-key', key: 'k' }, request),
     ).rejects.toThrow(NOT_A_LIST_PATTERN);
   });
 });
