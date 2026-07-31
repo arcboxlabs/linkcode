@@ -1,6 +1,7 @@
 import { mergeRegister } from '@lexical/utils';
 import type { LexicalEditor } from 'lexical';
 import {
+  $createTextNode,
   $getRoot,
   $hasUpdateTag,
   $isElementNode,
@@ -15,6 +16,10 @@ import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } fr
 
 const WHITESPACE_RE = /\s/;
 const SHELL_DIRECTIVE_BODY_RE = /^[\t ]+\S/;
+
+export function isShellDirectiveText(text: string): boolean {
+  return text[0] === '$' && SHELL_DIRECTIVE_BODY_RE.test(text.slice(1));
+}
 
 type TokenizerState = Pick<ComposerDirectiveState, 'suppressed'>;
 
@@ -48,7 +53,7 @@ function $findDirectiveCandidate(
   if (!$isDocumentStart(node, 0) || state.suppressed.has(node.getKey())) return null;
 
   if (content[0] === '$') {
-    return SHELL_DIRECTIVE_BODY_RE.test($getRoot().getTextContent().slice(1))
+    return isShellDirectiveText($getRoot().getTextContent())
       ? { end: 1, kind: 'shell', start: 0 }
       : null;
   }
@@ -64,6 +69,10 @@ function $hasLeadingDirective(): boolean {
   const firstBlock = $getRoot().getFirstChild();
   if (!$isElementNode(firstBlock)) return false;
   const first = firstBlock.getFirstChild();
+  if ($isShellNode(first) && !isShellDirectiveText($getRoot().getTextContent())) {
+    first.replace($createTextNode('$'));
+    return false;
+  }
   return $isCommandNode(first) || $isShellNode(first);
 }
 
