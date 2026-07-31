@@ -143,22 +143,12 @@ export function useSessions(): SessionsApi {
   const [activeId, setActiveId] = useState<SessionId | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // `create` inserts before the daemon can list the session. Anything else the snapshot omits is
-  // gone — closed on another client — so only ids still awaiting their first snapshot survive a
-  // merge; keeping every local entry made a removal impossible to observe.
-  const awaitingFirstSnapshotRef = useRef(new Set<SessionId>());
-
+  // The daemon is the authority and now announces its own changes, so the snapshot replaces the
+  // list outright. Merging local entries over it — the shape this hook used to protect an
+  // optimistic create — is what made a removal impossible to observe.
   const refresh = useCallback(async () => {
     const list = await client.listSessions();
-    const pending = awaitingFirstSnapshotRef.current;
-    for (const session of list) pending.delete(session.sessionId);
-    setSessions((local) => {
-      const byId = new Map(list.map((session) => [session.sessionId, session] as const));
-      for (const s of local) {
-        if (!byId.has(s.sessionId) && pending.has(s.sessionId)) byId.set(s.sessionId, s);
-      }
-      return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
-    });
+    setSessions([...list].sort((a, b) => a.createdAt - b.createdAt));
     setLoading(false);
   }, [client]);
 
@@ -206,21 +196,13 @@ export function useSessions(): SessionsApi {
   const create = useCallback(
     async (opts: StartOptions): Promise<SessionId> => {
       const id = await client.startSession(opts);
-      const now = Date.now();
-      const optimistic: SessionInfo = {
-        sessionId: id,
-        kind: opts.kind,
-        cwd: opts.cwd,
-        status: 'starting',
-        createdAt: now,
-        updatedAt: now,
-      };
-      awaitingFirstSnapshotRef.current.add(id);
-      setSessions((prev) => (prev.some((s) => s.sessionId === id) ? prev : [...prev, optimistic]));
+      // The daemon announces the create before it answers, so its snapshot already holds the
+      // session; revalidating is both the insert and the confirmation.
+      await refresh().catch(noop);
       setActiveId(id);
       return id;
     },
-    [client],
+    [client, refresh],
   );
 
   const stop = useCallback(
