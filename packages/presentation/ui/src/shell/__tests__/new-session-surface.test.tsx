@@ -709,12 +709,12 @@ describe('NewSessionSurface', () => {
 
     await user.click(screen.getByRole('button', { name: RE_SONNET_5 }));
     await user.click(await screen.findByRole('menuitem', { name: 'Sonnet 5' }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Opus 4.8' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Opus 5' }));
     typeInComposer('hello');
     await pressInComposer('Enter');
 
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5' })),
     );
   });
 
