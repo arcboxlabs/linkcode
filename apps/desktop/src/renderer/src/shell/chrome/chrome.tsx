@@ -7,10 +7,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   FileTextIcon,
-  PackageOpenIcon,
   PanelBottomIcon,
   PanelLeftIcon,
   PanelRightIcon,
+  Settings2Icon,
 } from 'lucide-react';
 import { createContext, use, useCallback, useRef, useState, ViewTransition } from 'react';
 import { createPortal } from 'react-dom';
@@ -667,7 +667,7 @@ function ResourcesChromeControl({
       data-pressed={open ? '' : undefined}
       onClick={panel === undefined ? onToggle : undefined}
     >
-      <PackageOpenIcon className="size-4" />
+      <Settings2Icon className="size-4" />
     </ShellIconButton>
   );
 

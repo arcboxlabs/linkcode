@@ -11,7 +11,7 @@ import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
-import { ChevronLeftIcon, ChevronRightIcon, PackageOpenIcon, SettingsIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, Settings2Icon, SettingsIcon } from 'lucide-react';
 import { ViewTransition } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
@@ -46,7 +46,7 @@ export function WebWorkbenchShell({
         resourcesPresentation === 'popover' ? undefined : () => setResourcesOpen(!resourcesOpen)
       }
     >
-      <PackageOpenIcon />
+      <Settings2Icon />
     </ShellIconButton>
   );
   const hasUsage =

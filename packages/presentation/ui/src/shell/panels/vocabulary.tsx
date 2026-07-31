@@ -2,7 +2,7 @@ import {
   CompassIcon,
   FileDiffIcon,
   FolderCodeIcon,
-  PackageOpenIcon,
+  Settings2Icon,
   SmartphoneIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
@@ -55,7 +55,7 @@ export const PANEL_WINDOW_ICONS: Record<PanelSection, React.ReactNode> = {
   terminal: <SquareTerminalIcon />,
   browser: <CompassIcon />,
   files: <FolderCodeIcon />,
-  resources: <PackageOpenIcon />,
+  resources: <Settings2Icon />,
   simulator: <SmartphoneIcon />,
 };
 
