@@ -169,19 +169,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         cwds: opts.cwd ? [opts.cwd] : undefined,
       });
       const catalog = CodexPluginListSchema.parse(value);
-      // The remote curated catalog can list one id twice (observed live: `metabase` among 2321
-      // entries). Ids are the model's identity, so collapse to the installed copy, else the first.
-      const entries = new Map<
-        string,
-        { marketplace: CodexMarketplace; summary: CodexPluginSummary }
-      >();
-      for (const marketplace of catalog.marketplaces) {
-        for (const summary of marketplace.plugins) {
-          const seen = entries.get(summary.id);
-          if (seen && !summary.installed) continue;
-          entries.set(summary.id, { marketplace, summary });
-        }
-      }
+      const entries = codexCatalogEntries(catalog);
       // Detail is read for INSTALLED plugins only. `plugin/read` costs ~160ms and the live remote
       // catalog is 2300+ entries, so reading every one blows the discovery deadline (measured on
       // 0.144.1: list 3.3s, one read ~160ms). Market entries keep the summary's own metadata and
@@ -198,6 +186,27 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         ),
       );
       return plugins.sort((left, right) => left.id.localeCompare(right.id));
+    });
+  }
+
+  async listEnabledMcpServerNames(opts: PluginDiscoveryOptions = {}): Promise<string[]> {
+    return this.withDiscoveryServer(async (server) => {
+      const catalog = CodexPluginListSchema.parse(
+        await server.request('plugin/list', { cwds: opts.cwd ? [opts.cwd] : undefined }),
+      );
+      const enabled = [...codexCatalogEntries(catalog).values()].filter(
+        ({ summary }) => summary.installed && summary.enabled,
+      );
+      const details = await Promise.all(
+        enabled.map(({ marketplace, summary }) =>
+          readCodexPluginDetailStrict(server, marketplace, summary),
+        ),
+      );
+      const names = new Set<string>();
+      for (const detail of details) {
+        for (const name of detail.mcpServers) names.add(name);
+      }
+      return [...names];
     });
   }
 
@@ -342,6 +351,29 @@ async function readCodexPluginDetail(
   } catch {
     return undefined;
   }
+}
+
+async function readCodexPluginDetailStrict(
+  server: CodexPluginServer,
+  marketplace: CodexMarketplace,
+  summary: CodexPluginSummary,
+): Promise<CodexPluginDetail> {
+  const address = codexPluginAddress(marketplace, summary);
+  if (!address) throw new Error(`codex: cannot address installed plugin ${summary.id}`);
+  return CodexPluginReadSchema.parse(await server.request('plugin/read', address)).plugin;
+}
+
+function codexCatalogEntries(catalog: z.infer<typeof CodexPluginListSchema>) {
+  // The remote curated catalog can list one id twice; retain the installed copy, else the first.
+  const entries = new Map<string, { marketplace: CodexMarketplace; summary: CodexPluginSummary }>();
+  for (const marketplace of catalog.marketplaces) {
+    for (const summary of marketplace.plugins) {
+      const seen = entries.get(summary.id);
+      if (seen && !summary.installed) continue;
+      entries.set(summary.id, { marketplace, summary });
+    }
+  }
+  return entries;
 }
 
 function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {

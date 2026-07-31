@@ -4,6 +4,10 @@ export const zhCN = {
   },
   workbench: {
     pageTitle: '工作台',
+    mcpWarnings: {
+      title: '部分 MCP 服务未加载',
+      description: '{warnings}',
+    },
     automations: {
       title: '自动化',
       pageTitle: '自动化',
@@ -678,6 +682,7 @@ export const zhCN = {
       marketCount: '{count} 个可安装',
       marketTruncated: '显示前 {shown} 个，共 {total} 个 · 用搜索缩小范围',
       noSearchResults: '没有匹配的插件。',
+      updateFailed: '更新失败',
       notInstalled: '未安装',
       cancel: '取消',
       install: '安装',
@@ -715,7 +720,8 @@ export const zhCN = {
       skills: {
         pluginSkillsTitle: '插件技能',
         standaloneTitle: '独立技能',
-        standaloneHint: '直接放在技能目录中的技能，可单独启用或禁用（写入所在智能体自己的配置）。',
+        standaloneHint:
+          '此处仅管理用户级技能；项目级与本地配置不会隐式使用当前工作区，请在对应项目或智能体中管理。',
         empty: '还没有发现任何技能。',
         noSearchResults: '没有匹配的技能。',
         groupToggleNote: '此插件共有 {count} 个技能，启用/禁用时会一起生效。',

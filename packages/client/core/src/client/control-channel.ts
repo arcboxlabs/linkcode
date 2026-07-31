@@ -69,6 +69,7 @@ import type {
   PluginList,
   PluginMutation,
   RequestAck,
+  SessionStartResult,
 } from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
@@ -90,7 +91,7 @@ export class ControlChannel {
     private readonly pending: PendingRegistry,
   ) {}
 
-  startSession(opts: StartOptions): Promise<SessionId> {
+  startSession(opts: StartOptions): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'session.start',
       clientReqId,
@@ -112,7 +113,7 @@ export class ControlChannel {
   }
 
   /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
-  resumeSession(sessionId: SessionId): Promise<SessionId> {
+  resumeSession(sessionId: SessionId): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'session.resume',
       clientReqId,
@@ -158,7 +159,7 @@ export class ControlChannel {
     agentKind: AgentKind,
     historyId: AgentHistoryId,
     startOpts: StartOptions,
-  ): Promise<SessionId> {
+  ): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'history.resume',
       clientReqId,

@@ -15,6 +15,7 @@ import type {
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
+  McpWarning,
   Plugin,
   PluginProviderStatus,
   ProvidersConfig,
@@ -48,6 +49,11 @@ interface Pending<T> {
 
 export interface RequestAck {
   ok: true;
+}
+
+export interface SessionStartResult {
+  sessionId: SessionId;
+  mcpWarnings: McpWarning[];
 }
 
 /** The `plugin.list.result` payload as one value: catalogs, standalone skills, and per-provider
@@ -84,7 +90,7 @@ export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
  * kind — several kinds (e.g. `session.start`/`session.resume`/`history.resume`) share one tag.
  */
 export interface PendingValueMap {
-  start: SessionId;
+  start: SessionStartResult;
   list: SessionInfo[];
   import: SessionRecord;
   historyList: AgentHistoryListResult;

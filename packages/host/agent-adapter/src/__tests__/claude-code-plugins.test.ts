@@ -255,7 +255,7 @@ describe('ClaudeCodePluginAdapter', () => {
     await expect(adapter.listStandaloneSkills()).resolves.toEqual([]);
   });
 
-  it('toggles a plugin with an explicit CLI scope and omits untoggleable scopes', async () => {
+  it('toggles a plugin with an explicit CLI scope and refuses managed scope', async () => {
     const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
     const action = vi.fn(asyncNoop);
     const adapter = new ClaudeCodePluginAdapter(command, '/nonexistent', action);
@@ -264,12 +264,13 @@ describe('ClaudeCodePluginAdapter', () => {
       scope: 'project',
       cwd: '/workspace/demo',
     });
-    await adapter.setPluginEnabled('latex@team-tools', false, { scope: 'managed' });
+    await expect(
+      adapter.setPluginEnabled('latex@team-tools', false, { scope: 'managed' }),
+    ).rejects.toThrow('managed plugins cannot be toggled');
     await adapter.setPluginEnabled('latex@team-tools', false);
 
     expect(action.mock.calls).toEqual([
       [['plugin', 'enable', 'latex@team-tools', '-s', 'project'], { cwd: '/workspace/demo' }],
-      [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
       [['plugin', 'disable', 'latex@team-tools'], { cwd: undefined }],
     ]);
   });
@@ -342,6 +343,55 @@ describe('ClaudeCodePluginAdapter', () => {
 
     await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, true);
     expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({});
+  });
+
+  it.each([
+    ['malformed JSON', '{broken'],
+    ['non-object JSON', '[]'],
+  ])('rejects %s without replacing the settings file', async (_label, original) => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-invalid-'));
+    tempRoots.push(home);
+    const settingsFile = join(home, 'settings.json');
+    await writeFile(settingsFile, original);
+    const adapter = new ClaudeCodePluginAdapter(
+      () => Promise.reject(new Error('not used')),
+      join(home, 'skills'),
+      asyncNoop,
+      settingsFile,
+    );
+
+    await expect(
+      adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false),
+    ).rejects.toThrow();
+    expect(await readFile(settingsFile, 'utf8')).toBe(original);
+  });
+
+  it('serializes concurrent skill toggles across adapter instances', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-concurrent-'));
+    tempRoots.push(home);
+    const settingsFile = join(home, 'settings.json');
+    const command: ClaudePluginCommand = () => Promise.reject(new Error('not used'));
+    const first = new ClaudeCodePluginAdapter(
+      command,
+      join(home, 'skills'),
+      asyncNoop,
+      settingsFile,
+    );
+    const second = new ClaudeCodePluginAdapter(
+      command,
+      join(home, 'skills'),
+      asyncNoop,
+      settingsFile,
+    );
+
+    await Promise.all([
+      first.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false),
+      second.setSkillEnabled({ id: 'pptx', path: '', scope: 'user' }, false),
+    ]);
+
+    expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({
+      skillOverrides: { docx: 'off', pptx: 'off' },
+    });
   });
 
   it('targets the project settings file for a project-scoped skill', async () => {

@@ -15,6 +15,9 @@ export interface PluginToggleOptions extends PluginDiscoveryOptions {
 export interface PluginProviderAdapter {
   readonly provider: PluginProvider;
   list(opts?: PluginDiscoveryOptions): Promise<Plugin[]>;
+  /** Strict preflight for providers whose native plugin and custom MCP namespaces overlap.
+   * Rejects rather than returning an incomplete set when installed plugin detail cannot be read. */
+  listEnabledMcpServerNames?(opts?: PluginDiscoveryOptions): Promise<string[]>;
   /** Skills living outside any plugin package (e.g. `~/.claude/skills/*`). Plugin-bundled
    * skills stay on `Plugin.components` and never appear here. */
   listStandaloneSkills(opts?: PluginDiscoveryOptions): Promise<StandaloneSkill[]>;

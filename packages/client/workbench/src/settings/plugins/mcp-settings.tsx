@@ -14,6 +14,7 @@ import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
 import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
 import { Textarea } from 'coss-ui/components/textarea';
+import { noop } from 'foxts/noop';
 import { Trash2Icon, UndoIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
@@ -73,7 +74,7 @@ export function McpTab({ pluginRows }: McpTabProps): React.ReactNode {
   const apply = async (patches: ReturnType<typeof buildCustomMcpPatch>): Promise<void> => {
     if (patches.length > 0) {
       await save.trigger({ patches });
-      void mutate();
+      await mutate();
     }
     setDialog({ mode: 'closed' });
   };
@@ -86,10 +87,10 @@ export function McpTab({ pluginRows }: McpTabProps): React.ReactNode {
         onAdd={() => setDialog({ mode: 'add' })}
         onEdit={(id) => setDialog({ mode: 'edit', id })}
         onRemove={(id) => {
-          void apply([{ op: 'remove', id }]);
+          void apply([{ op: 'remove', id }]).catch(noop);
         }}
         onToggle={(id, enabled) => {
-          void apply([{ op: 'update', id, enabled }]);
+          void apply([{ op: 'update', id, enabled }]).catch(noop);
         }}
       />
       <PluginProvidedServers rows={pluginRows} />
@@ -100,7 +101,7 @@ export function McpTab({ pluginRows }: McpTabProps): React.ReactNode {
           busy={save.isMutating}
           onClose={() => setDialog({ mode: 'closed' })}
           onSubmit={(draft) => {
-            void apply(buildCustomMcpPatch(maskOf(editing), draft, mintCustomServer()));
+            void apply(buildCustomMcpPatch(maskOf(editing), draft, mintCustomServer())).catch(noop);
           }}
         />
       )}

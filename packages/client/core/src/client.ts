@@ -79,7 +79,13 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { PluginList, PluginMutation, RandomUUID, RequestAck } from './client/pending-registry';
+import type {
+  PluginList,
+  PluginMutation,
+  RandomUUID,
+  RequestAck,
+  SessionStartResult,
+} from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
@@ -87,7 +93,7 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
-export type { PluginList, PluginMutation } from './client/pending-registry';
+export type { PluginList, PluginMutation, SessionStartResult } from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
@@ -340,7 +346,10 @@ export class LinkCodeClient {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.started':
-        this.pending.resolve('start', p.replyTo, p.sessionId);
+        this.pending.resolve('start', p.replyTo, {
+          sessionId: p.sessionId,
+          mcpWarnings: p.mcpWarnings ?? [],
+        });
         break;
       case 'session.listed':
         this.pending.resolve('list', p.replyTo, p.sessions);
@@ -587,6 +596,10 @@ export class LinkCodeClient {
   }
 
   startSession(opts: StartOptions): Promise<SessionId> {
+    return this.startSessionWithWarnings(opts).then((result) => result.sessionId);
+  }
+
+  startSessionWithWarnings(opts: StartOptions): Promise<SessionStartResult> {
     return this.control.startSession(opts);
   }
 
@@ -599,6 +612,10 @@ export class LinkCodeClient {
   }
 
   resumeSession(sessionId: SessionId): Promise<SessionId> {
+    return this.resumeSessionWithWarnings(sessionId).then((result) => result.sessionId);
+  }
+
+  resumeSessionWithWarnings(sessionId: SessionId): Promise<SessionStartResult> {
     return this.control.resumeSession(sessionId);
   }
 
@@ -625,6 +642,16 @@ export class LinkCodeClient {
     historyId: AgentHistoryId,
     startOpts: StartOptions,
   ): Promise<SessionId> {
+    return this.resumeHistoryWithWarnings(agentKind, historyId, startOpts).then(
+      (result) => result.sessionId,
+    );
+  }
+
+  resumeHistoryWithWarnings(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): Promise<SessionStartResult> {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
   }
 

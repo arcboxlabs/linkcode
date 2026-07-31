@@ -92,7 +92,12 @@ export const CustomMcpServerPatchOpSchema = z.discriminatedUnion('op', [
 export type CustomMcpServerPatchOp = z.infer<typeof CustomMcpServerPatchOpSchema>;
 
 /** Session-start advisory about custom MCP injection, carried on `session.started`. */
-export const McpWarningReasonSchema = z.enum(['agent-unsupported', 'name-conflict']);
+export const McpWarningReasonSchema = z.enum([
+  'agent-unsupported',
+  'name-conflict',
+  'provider-unsupported',
+  'provider-preflight-failed',
+]);
 export type McpWarningReason = z.infer<typeof McpWarningReasonSchema>;
 
 export const McpWarningSchema = z.object({

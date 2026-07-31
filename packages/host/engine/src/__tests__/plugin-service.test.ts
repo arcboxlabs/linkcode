@@ -228,6 +228,30 @@ describe('PluginService', () => {
     expect(outcome).toMatchObject({ _tag: 'RequestError', code: 'not_found' });
   });
 
+  it('rejects managed plugin toggles before invoking the provider', async () => {
+    const setPluginEnabled = vi.fn(asyncNoop);
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () =>
+        Promise.resolve([
+          { ...plugin(provider, 'managed'), installations: [{ enabled: true, scope: 'managed' }] },
+        ]),
+      listStandaloneSkills: () => Promise.resolve([]),
+      setPluginEnabled,
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.flip(
+        new PluginService(factory).setPluginEnabled('claude-code', 'managed', false, {
+          scope: 'managed',
+        }),
+      ),
+    );
+
+    expect(outcome).toMatchObject({ _tag: 'RequestError', code: 'unsupported' });
+    expect(setPluginEnabled).not.toHaveBeenCalled();
+  });
+
   it('toggles a skill through the adapter and returns the re-read skill', async () => {
     const setSkillEnabled = vi.fn(asyncNoop);
     const factory: PluginProviderAdapterFactory = (provider) => ({
@@ -244,6 +268,38 @@ describe('PluginService', () => {
 
     expect(setSkillEnabled).toHaveBeenCalledWith(target, false, { cwd: '/repo' });
     expect(updated).toMatchObject({ id: 'docx', enabled: false });
+  });
+
+  it('targets and reads back a standalone skill by exact path when ids collide', async () => {
+    const setSkillEnabled = vi.fn(asyncNoop);
+    let reads = 0;
+    const user = skill('claude-code', 'deploy');
+    const project = { ...user, scope: 'project' as const, path: '/repo/.claude/skills/deploy' };
+    const factory: PluginProviderAdapterFactory = (provider) => ({
+      provider,
+      list: () => Promise.resolve([]),
+      listStandaloneSkills() {
+        reads += 1;
+        return Promise.resolve([user, { ...project, enabled: reads === 1 }]);
+      },
+      setSkillEnabled,
+    });
+
+    const updated = await Effect.runPromise(
+      new PluginService(factory).setSkillEnabled(
+        'claude-code',
+        { id: 'deploy', path: project.path, scope: 'project' },
+        false,
+        { cwd: '/repo' },
+      ),
+    );
+
+    expect(setSkillEnabled).toHaveBeenCalledWith(
+      { id: 'deploy', path: project.path, scope: 'project' },
+      false,
+      { cwd: '/repo' },
+    );
+    expect(updated).toMatchObject({ path: project.path, scope: 'project', enabled: false });
   });
 
   it('fails skill toggles with unsupported when the adapter has no mechanism', async () => {

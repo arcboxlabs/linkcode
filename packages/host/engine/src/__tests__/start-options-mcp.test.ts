@@ -1,9 +1,12 @@
-import type { CustomMcpServer, McpServer, SessionId } from '@linkcode/schema';
+import type { PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
+import type { CustomMcpServer, McpServer, PluginProvider, SessionId } from '@linkcode/schema';
+import { PluginSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { CustomMcpServerService } from '../agent/custom-mcp-service';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
+import { PluginService } from '../plugin/service';
 import { SessionStartOptionsResolver } from '../session/start-options-resolver';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
 
@@ -34,6 +37,50 @@ function customEntry(name: string, enabled = true): CustomMcpServer {
     server: { type: 'stdio', name, command: `${name}-mcp`, env: { TOKEN: 'secret' } },
     createdAt: 1,
   };
+}
+
+function pluginServiceWithMcp(name: string): PluginService {
+  const factory: PluginProviderAdapterFactory = (provider: PluginProvider) => ({
+    provider,
+    list: () =>
+      Promise.resolve(
+        provider === 'codex'
+          ? [
+              PluginSchema.parse({
+                provider,
+                id: 'tools@market',
+                name: 'tools',
+                keywords: [],
+                availability: 'available',
+                installations: [{ enabled: true }],
+                components: [{ kind: 'mcp-server', name }],
+                assets: [],
+                managementCapabilities: {
+                  install: true,
+                  uninstall: true,
+                  update: false,
+                  enable: true,
+                  disable: true,
+                },
+              }),
+            ]
+          : [],
+      ),
+    listEnabledMcpServerNames: () => Promise.resolve(provider === 'codex' ? [name] : []),
+    listStandaloneSkills: () => Promise.resolve([]),
+  });
+  return new PluginService(factory);
+}
+
+const failingMcpPreflightFactory: PluginProviderAdapterFactory = (provider) => ({
+  provider,
+  list: () => Promise.resolve([]),
+  listEnabledMcpServerNames: () => Promise.reject(new Error('plugin detail unavailable')),
+  listStandaloneSkills: () => Promise.resolve([]),
+});
+
+function pluginServiceWithFailedMcpPreflight(): PluginService {
+  return new PluginService(failingMcpPreflightFactory);
 }
 
 describe('simulator MCP injection at session start', () => {
@@ -160,5 +207,53 @@ describe('custom MCP injection at session start', () => {
     );
     expect(resolved.mcpServers).toEqual([customEntry('github').server, ENDPOINT]);
     expect(warnings).toEqual([]);
+  });
+
+  it('skips Codex-incompatible headers and enabled plugin MCP name conflicts', async () => {
+    const headered: CustomMcpServer = {
+      id: 'custom-headered',
+      enabled: true,
+      createdAt: 1,
+      server: {
+        type: 'http',
+        name: 'private-api',
+        url: 'https://example.com/mcp',
+        headers: { Authorization: 'secret' },
+      },
+    };
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(headered, customEntry('plugin-tools'), customEntry('safe')),
+      pluginServiceWithMcp('plugin-tools'),
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    expect(options.mcpServers).toEqual([customEntry('safe').server]);
+    expect(warnings).toEqual([
+      { serverName: 'private-api', reason: 'provider-unsupported' },
+      { serverName: 'plugin-tools', reason: 'name-conflict' },
+    ]);
+  });
+
+  it('skips custom MCPs when strict Codex plugin preflight is incomplete', async () => {
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(customEntry('github')),
+      pluginServiceWithFailedMcpPreflight(),
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    expect(options.mcpServers).toEqual([]);
+    expect(warnings).toEqual([{ serverName: 'github', reason: 'provider-preflight-failed' }]);
   });
 });

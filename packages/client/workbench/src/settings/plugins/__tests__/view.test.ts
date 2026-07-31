@@ -81,6 +81,22 @@ describe('pluginCardView', () => {
 
     expect(card.installations[0].canToggle).toBe(false);
   });
+
+  it('does not offer Settings toggles for project or managed installations', () => {
+    const card = pluginCardView(
+      plugin({
+        installations: [
+          { enabled: true, scope: 'project' },
+          { enabled: true, scope: 'managed' },
+        ],
+      }),
+    );
+
+    expect(card.installations.map((installation) => installation.canToggle)).toEqual([
+      false,
+      false,
+    ]);
+  });
 });
 
 describe('pluginProviderGroups', () => {
@@ -164,6 +180,60 @@ describe('skillRows', () => {
     const rows = skillRows(list({ plugins: [plugin({ installations: [] })] }));
 
     expect(rows).toEqual([]);
+  });
+
+  it('only toggles a bundled skill with exactly one mutable global installation', () => {
+    const multiScope = skillRows(
+      list({
+        plugins: [
+          plugin({
+            installations: [
+              { enabled: true, scope: 'user' },
+              { enabled: false, scope: 'project' },
+            ],
+          }),
+        ],
+      }),
+    );
+    const managed = skillRows(
+      list({ plugins: [plugin({ installations: [{ enabled: true, scope: 'managed' }] })] }),
+    );
+
+    expect(multiScope.every((row) => !row.canToggle && row.pluginScope === undefined)).toBe(true);
+    expect(managed.every((row) => !row.canToggle && row.pluginScope === 'managed')).toBe(true);
+  });
+
+  it('uses provider and exact path as a standalone skill identity', () => {
+    const rows = skillRows(
+      list({
+        plugins: [],
+        standaloneSkills: [
+          {
+            provider: 'claude-code',
+            id: 'review',
+            name: 'review',
+            scope: 'user',
+            path: '/home/user/.claude/skills/review',
+            enabled: true,
+            toggleable: true,
+          },
+          {
+            provider: 'claude-code',
+            id: 'review',
+            name: 'review',
+            scope: 'project',
+            path: '/repo/.claude/skills/review',
+            enabled: false,
+            toggleable: true,
+          },
+        ],
+      }),
+    );
+
+    expect(rows.map((row) => row.key)).toEqual([
+      'claude-code:standalone:/home/user/.claude/skills/review',
+      'claude-code:standalone:/repo/.claude/skills/review',
+    ]);
   });
 });
 

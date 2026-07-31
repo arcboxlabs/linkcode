@@ -3,6 +3,7 @@ import type {
   HistoryReadClientOptions,
   PluginList,
   PluginMutation,
+  SessionStartResult,
 } from '@linkcode/client-core';
 import type {
   Accounts,
@@ -63,6 +64,12 @@ export function startSession(options: Options<{ opts: StartOptions }>): RequestR
   return resolveClient(options).startSession(options.opts);
 }
 
+export function startSessionWithWarnings(
+  options: Options<{ opts: StartOptions }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).startSessionWithWarnings(options.opts);
+}
+
 export function getAgentCatalog(
   options: Options<{ agentKind: AgentKind; cwd?: string }>,
 ): RequestResult<AgentStartCatalog> {
@@ -87,6 +94,12 @@ export function resumeSession(
   return resolveClient(options).resumeSession(options.sessionId);
 }
 
+export function resumeSessionWithWarnings(
+  options: Options<{ sessionId: SessionId }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).resumeSessionWithWarnings(options.sessionId);
+}
+
 export function importSession(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId }>,
 ): RequestResult<SessionRecord> {
@@ -109,6 +122,16 @@ export function resumeHistory(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; startOpts: StartOptions }>,
 ): RequestResult<SessionId> {
   return resolveClient(options).resumeHistory(
+    options.agentKind,
+    options.historyId,
+    options.startOpts,
+  );
+}
+
+export function resumeHistoryWithWarnings(
+  options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; startOpts: StartOptions }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).resumeHistoryWithWarnings(
     options.agentKind,
     options.historyId,
     options.startOpts,

@@ -6,6 +6,10 @@ export const en = {
   },
   workbench: {
     pageTitle: 'Workbench',
+    mcpWarnings: {
+      title: 'Some MCP servers were not loaded',
+      description: '{warnings}',
+    },
     automations: {
       title: 'Automations',
       pageTitle: 'Automations',
@@ -690,6 +694,7 @@ export const en = {
       marketCount: '{count} available',
       marketTruncated: 'Showing {shown} of {total} · narrow it down with search',
       noSearchResults: 'No matching plugins.',
+      updateFailed: 'Update failed',
       notInstalled: 'Not installed',
       cancel: 'Cancel',
       install: 'Install',
@@ -729,7 +734,7 @@ export const en = {
         pluginSkillsTitle: 'Plugin skills',
         standaloneTitle: 'Standalone skills',
         standaloneHint:
-          'Skills that live directly in a skills directory can be enabled or disabled individually; the change is written to the agent’s own config.',
+          'Only user-level skills are managed here. Project and local configuration never infer the current workspace; manage them in that project or agent.',
         empty: 'No skills discovered yet.',
         noSearchResults: 'No matching skills.',
         groupToggleNote: 'This plugin bundles {count} skills; toggling affects all of them.',

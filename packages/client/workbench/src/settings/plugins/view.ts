@@ -34,7 +34,7 @@ export function pluginCardView(plugin: Plugin): PluginCardView {
       scope: entry.scope,
       enabled: entry.enabled,
       version: entry.version,
-      canToggle,
+      canToggle: canToggle && (entry.scope === undefined || entry.scope === 'user'),
     })),
     componentCounts,
     searchText: [
@@ -92,7 +92,14 @@ export function skillRows(list: PluginList): SkillRowView[] {
     if (plugin.installations.length === 0) continue;
     const card = pluginCardView(plugin);
     const skills = plugin.components.filter((component) => component.kind === 'skill');
-    const pluginEnabled = plugin.installations.some((entry) => entry.enabled);
+    const installation = plugin.installations.length === 1 ? plugin.installations[0] : undefined;
+    const pluginEnabled =
+      installation?.enabled ?? plugin.installations.some((entry) => entry.enabled);
+    const canTogglePlugin =
+      installation !== undefined &&
+      (installation.scope === undefined || installation.scope === 'user') &&
+      plugin.managementCapabilities.enable &&
+      plugin.managementCapabilities.disable;
     for (const skill of skills) {
       rows.push({
         key: `${card.key}:${skill.name}`,
@@ -104,9 +111,10 @@ export function skillRows(list: PluginList): SkillRowView[] {
         name: skill.name,
         description: skill.description,
         enabled: skill.enabled ?? pluginEnabled,
-        canToggle: plugin.managementCapabilities.enable && plugin.managementCapabilities.disable,
+        canToggle: canTogglePlugin,
         siblingSkillCount: skills.length,
         standaloneScope: undefined,
+        pluginScope: installation?.scope,
         searchText: `${skill.name}\n${skill.description ?? ''}\n${card.title}`.toLowerCase(),
       });
     }
@@ -119,7 +127,7 @@ export function skillRows(list: PluginList): SkillRowView[] {
 
 function standaloneSkillRow(skill: StandaloneSkill): SkillRowView {
   return {
-    key: `${skill.provider}:standalone:${skill.scope}:${skill.id}`,
+    key: `${skill.provider}:standalone:${skill.path}`,
     provider: skill.provider,
     skillId: skill.id,
     path: skill.path,
@@ -131,6 +139,7 @@ function standaloneSkillRow(skill: StandaloneSkill): SkillRowView {
     canToggle: skill.toggleable,
     siblingSkillCount: 1,
     standaloneScope: skill.scope,
+    pluginScope: undefined,
     searchText: `${skill.name}\n${skill.description ?? ''}`.toLowerCase(),
   };
 }

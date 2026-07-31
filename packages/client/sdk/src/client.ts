@@ -5,6 +5,7 @@ import type {
   HistoryReadClientOptions,
   PluginList,
   PluginMutation,
+  SessionStartResult,
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
@@ -118,6 +119,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.startSession(opts));
   }
 
+  startSessionWithWarnings(opts: StartOptions): RequestResult<SessionStartResult> {
+    return toResult(this.raw.startSessionWithWarnings(opts));
+  }
+
   getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
     return toResult(this.raw.getAgentCatalog(agentKind, cwd));
   }
@@ -134,6 +139,10 @@ export class LinkCodeSdkClient {
   /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
   resumeSession(sessionId: SessionId): RequestResult<SessionId> {
     return toResult(this.raw.resumeSession(sessionId));
+  }
+
+  resumeSessionWithWarnings(sessionId: SessionId): RequestResult<SessionStartResult> {
+    return toResult(this.raw.resumeSessionWithWarnings(sessionId));
   }
 
   /** Import a provider-local history session as a cold record (listed, not started). */
@@ -161,6 +170,14 @@ export class LinkCodeSdkClient {
     startOpts: StartOptions,
   ): RequestResult<SessionId> {
     return toResult(this.raw.resumeHistory(agentKind, historyId, startOpts));
+  }
+
+  resumeHistoryWithWarnings(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): RequestResult<SessionStartResult> {
+    return toResult(this.raw.resumeHistoryWithWarnings(agentKind, historyId, startOpts));
   }
 
   sendInput(sessionId: SessionId, input: AgentInput): RequestResult<{ ok: true }> {

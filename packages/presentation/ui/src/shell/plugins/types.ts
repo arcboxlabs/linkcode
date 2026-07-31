@@ -62,6 +62,8 @@ export interface SkillRowView {
   /** How many skills the owning plugin bundles — >1 shows the "toggles together" note. */
   siblingSkillCount: number;
   standaloneScope: StandaloneSkillScope | undefined;
+  /** Exact owning installation for a bundled-skill plugin toggle. */
+  pluginScope: PluginScope | undefined;
   searchText: string;
 }
 

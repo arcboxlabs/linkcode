@@ -19,18 +19,18 @@ export function createProviderConfigStore(
   return {
     get: () => providers,
     set(next) {
-      providers = next;
       saveProviders(next);
+      providers = next;
     },
     getAccounts: () => accounts,
     setAccounts(next) {
-      accounts = next;
       saveAccounts(next);
+      accounts = next;
     },
     getCustomMcpServers: () => customMcpServers,
     setCustomMcpServers(next) {
-      customMcpServers = next;
       saveCustomMcpServers(next);
+      customMcpServers = next;
     },
   };
 }

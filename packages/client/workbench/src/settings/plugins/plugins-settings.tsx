@@ -2,6 +2,7 @@ import type { Plugin, PluginScope } from '@linkcode/schema';
 import type { PluginCardView, SkillRowView } from '@linkcode/ui';
 import { PluginsShell, PluginsTab, SkillsTab } from '@linkcode/ui';
 import { toastManager } from 'coss-ui/components/toast';
+import { noop } from 'foxts/noop';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
@@ -78,7 +79,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
           current && {
             ...current,
             standaloneSkills: current.standaloneSkills.map((skill) =>
-              skill.provider === updated.provider && skill.id === updated.id ? updated : skill,
+              skill.provider === updated.provider && skill.path === updated.path ? updated : skill,
             ),
           },
         { revalidate: false },
@@ -92,6 +93,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
       provider,
       id: row.pluginKey.slice(separator + 1),
       enabled,
+      scope: row.pluginScope,
     });
     patchPlugin(updated?.plugin);
   };
@@ -139,13 +141,13 @@ export function PluginsSettingsPanel(): React.ReactNode {
           searchQuery={searchQuery}
           variant="installed"
           onToggleInstallation={(card, scope, enabled) => {
-            void onToggleInstallation(card, scope, enabled);
+            void onToggleInstallation(card, scope, enabled).catch(noop);
           }}
           onInstall={(card) => {
-            void onInstall(card);
+            void onInstall(card).catch(noop);
           }}
           onUninstall={(card) => {
-            void onUninstall(card);
+            void onUninstall(card).catch(noop);
           }}
         />
       }
@@ -157,13 +159,13 @@ export function PluginsSettingsPanel(): React.ReactNode {
           searchQuery={searchQuery}
           variant="market"
           onToggleInstallation={(card, scope, enabled) => {
-            void onToggleInstallation(card, scope, enabled);
+            void onToggleInstallation(card, scope, enabled).catch(noop);
           }}
           onInstall={(card) => {
-            void onInstall(card);
+            void onInstall(card).catch(noop);
           }}
           onUninstall={(card) => {
-            void onUninstall(card);
+            void onUninstall(card).catch(noop);
           }}
         />
       }
@@ -174,7 +176,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
           rows={data === undefined ? undefined : skillRows(data)}
           searchQuery={searchQuery}
           onToggle={(row, enabled) => {
-            void onToggleSkill(row, enabled);
+            void onToggleSkill(row, enabled).catch(noop);
           }}
         />
       }

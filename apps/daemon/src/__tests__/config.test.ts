@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CustomMcpServer } from '@linkcode/schema';
+import type { Accounts, CustomMcpServer } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ import {
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
+import { createProviderConfigStore } from '../provider-store';
 
 let savedHome: string | undefined;
 
@@ -51,7 +52,7 @@ const validAccount = {
   label: 'Personal key',
   credential: { type: 'api-key', key: 'sk-test' },
   createdAt: 0,
-};
+} satisfies Accounts[number];
 
 describe('loadConfig providers', () => {
   it('keeps valid provider entries and drops an invalid one, logging the error', () => {
@@ -284,5 +285,32 @@ describe('loadConfig custom MCP servers', () => {
     expect(written).toEqual({ providers: {}, customMcpServers: [validServer] });
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(loadConfig().customMcpServers).toEqual([validServer]);
+  });
+});
+
+describe('createProviderConfigStore', () => {
+  it('does not publish provider, account, or custom MCP state when persistence fails', () => {
+    const oldProviders = { codex: { enabled: true } } as const;
+    const oldAccounts: Accounts = [validAccount];
+    const oldCustomMcpServers: CustomMcpServer[] = [];
+    const store = createProviderConfigStore(oldProviders, oldAccounts, oldCustomMcpServers);
+    writeFileSync(join(process.env.HOME ?? '', '.linkcode'), 'not a directory');
+
+    expect(() => store.set({ 'claude-code': { enabled: true } })).toThrow();
+    expect(() => store.setAccounts([])).toThrow();
+    expect(() =>
+      store.setCustomMcpServers([
+        {
+          id: 'custom-1',
+          enabled: true,
+          server: { type: 'stdio', name: 'test', command: 'test' },
+          createdAt: 1,
+        },
+      ]),
+    ).toThrow();
+
+    expect(store.get()).toBe(oldProviders);
+    expect(store.getAccounts()).toBe(oldAccounts);
+    expect(store.getCustomMcpServers()).toBe(oldCustomMcpServers);
   });
 });

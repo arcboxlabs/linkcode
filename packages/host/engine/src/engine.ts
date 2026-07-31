@@ -161,6 +161,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     translator,
     deps.simulatorMcp,
     customMcp,
+    plugins,
   );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,

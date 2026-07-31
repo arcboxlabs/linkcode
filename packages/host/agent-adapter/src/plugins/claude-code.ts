@@ -1,11 +1,14 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { Plugin, PluginComponent, PluginSource, StandaloneSkill } from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
+import { isErrorLikeObject } from 'foxts/extract-error-message';
 import { isObjectEmpty } from 'foxts/is-object-empty';
+import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { agentRuntimeProber, ClaudeCodeProbe } from '../probe';
 import type {
@@ -17,6 +20,7 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const GIT_SOURCE_RE = /^(?:https?:\/\/|git@)/;
+const settingsWrites = new Map<string, Promise<void>>();
 
 const ClaudeMarketplaceSchema = z.object({
   name: z.string().min(1),
@@ -145,6 +149,7 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     enabled: boolean,
     opts: PluginToggleOptions = {},
   ): Promise<void> {
+    if (opts.scope === 'managed') throw new Error('claude-code: managed plugins cannot be toggled');
     const args = ['plugin', enabled ? 'enable' : 'disable', id];
     if (opts.scope && CLAUDE_TOGGLE_SCOPES.has(opts.scope)) args.push('-s', opts.scope);
     await this.action(args, { cwd: opts.cwd });
@@ -188,22 +193,23 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     enabled: boolean,
     opts: PluginDiscoveryOptions = {},
   ): Promise<void> {
-    const file = this.settingsFileFor(skill.scope, opts.cwd);
-    const settings = await readJsonRecord(file);
-    const overrides = isRecord(settings.skillOverrides) ? { ...settings.skillOverrides } : {};
-    if (enabled) {
-      // Absent means on; drop the key instead of writing "on" so the file stays minimal, but keep
-      // a finer-grained tier the user set in the TUI rather than coarsening it to plain on.
-      const current = overrides[skill.id];
-      if (current === 'off' || current === undefined) delete overrides[skill.id];
-    } else {
-      overrides[skill.id] = 'off';
-    }
-    const next: Record<string, unknown> = { ...settings };
-    if (isObjectEmpty(overrides)) delete next.skillOverrides;
-    else next.skillOverrides = overrides;
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    const file = resolve(this.settingsFileFor(skill.scope, opts.cwd));
+    await serializeSettingsWrite(file, async () => {
+      const settings = await readJsonRecord(file);
+      const overrides = isRecord(settings.skillOverrides) ? { ...settings.skillOverrides } : {};
+      if (enabled) {
+        // Absent means on; drop the key instead of writing "on" so the file stays minimal, but keep
+        // a finer-grained tier the user set in the TUI rather than coarsening it to plain on.
+        const current = overrides[skill.id];
+        if (current === 'off' || current === undefined) delete overrides[skill.id];
+      } else {
+        overrides[skill.id] = 'off';
+      }
+      const next: Record<string, unknown> = { ...settings };
+      if (isObjectEmpty(overrides)) delete next.skillOverrides;
+      else next.skillOverrides = overrides;
+      await writeJsonRecordAtomic(file, next);
+    });
   }
 
   /** Merged in claude's own precedence order: project-local beats project beats user. */
@@ -235,9 +241,34 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
 async function readJsonRecord(file: string): Promise<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
+    if (!isRecord(parsed)) throw new TypeError(`Expected JSON object in ${file}`);
+    return parsed;
+  } catch (error) {
+    if (isErrorLikeObject(error) && 'code' in error && error.code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
+async function serializeSettingsWrite(file: string, write: () => Promise<void>): Promise<void> {
+  const previous = settingsWrites.get(file) ?? Promise.resolve();
+  const current = previous.catch(noop).then(write);
+  settingsWrites.set(file, current);
+  try {
+    await current;
+  } finally {
+    if (settingsWrites.get(file) === current) settingsWrites.delete(file);
+  }
+}
+
+async function writeJsonRecordAtomic(file: string, value: Record<string, unknown>): Promise<void> {
+  const temporaryFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(temporaryFile, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    await rename(temporaryFile, file);
+  } catch (error) {
+    await unlink(temporaryFile).catch(noop);
+    throw error;
   }
 }
 

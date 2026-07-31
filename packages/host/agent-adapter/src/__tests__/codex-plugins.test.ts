@@ -166,6 +166,35 @@ describe('CodexPluginAdapter', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('fails strict MCP preflight when an enabled plugin detail cannot be read', async () => {
+    const request = vi.fn((method: string) =>
+      method === 'plugin/list'
+        ? Promise.resolve({
+            marketplaces: [
+              {
+                name: 'local-tools',
+                path: '/marketplaces/local-tools',
+                plugins: [
+                  {
+                    id: 'broken@local-tools',
+                    name: 'broken',
+                    source: { type: 'local', path: '/plugins/broken' },
+                    installed: true,
+                    enabled: true,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          })
+        : Promise.reject(new Error('detail unavailable')),
+    );
+    const adapter = new CodexPluginAdapter(() => Promise.resolve({ request, close: vi.fn() }));
+
+    await expect(adapter.listEnabledMcpServerNames()).rejects.toThrow('detail unavailable');
+  });
+
   it('accepts a marketplace plugin whose optional keys are absent', async () => {
     // codex 0.144.1 omits `version` entirely rather than sending null (CODE-505).
     const request = vi.fn(() =>
