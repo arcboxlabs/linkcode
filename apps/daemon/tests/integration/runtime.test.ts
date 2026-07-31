@@ -18,17 +18,13 @@ import {
 
 const servers: Server[] = [];
 
-/**
- * The hunt walks upward from the requested port, so what a "hunted past it" case can assert is that
- * it landed above the occupant and inside the span — not the exact neighbour. `port` here is an
- * ephemeral port the OS handed out, and nothing reserves `port + 1`: asserting adjacency made these
- * cases fail whenever another process (a parallel vitest worker, most often) held it.
- */
+// Ports are shared with the rest of the machine, so the exact landing port is not ours to predict.
 function expectHuntedPast(url: string, occupied: number): void {
   const hunted = Number(new URL(url).port);
   expect(hunted).toBeGreaterThan(occupied);
   expect(hunted).toBeLessThan(occupied + DAEMON_PORT_HUNT_SPAN);
 }
+
 let savedHome: string | undefined;
 
 // The runtime file lives under os.homedir(); point HOME at a fresh temp dir per test.
@@ -75,7 +71,6 @@ function serveIdentity(id: DaemonIdentity): Promise<number> {
   });
 }
 
-/** Occupy one specific port; resolves to it, or rejects if something else already holds it. */
 function listenOn(port: number): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer((_req, res) => {
@@ -88,6 +83,20 @@ function listenOn(port: number): Promise<number> {
       resolve(port);
     });
   });
+}
+
+/**
+ * Two adjacent ports we hold ourselves. Retried because the neighbour of an ephemeral port belongs
+ * to the machine, not to us — assuming it is free is the very flake these cases exist to rule out.
+ */
+async function occupyAdjacentPair(attempt = 0): Promise<{ port: number; neighbour: number }> {
+  const port = await serveForeign();
+  try {
+    return { port, neighbour: await listenOn(port + 1) };
+  } catch (err) {
+    if (attempt >= 20) throw err;
+    return occupyAdjacentPair(attempt + 1);
+  }
 }
 
 function serveForeign(): Promise<number> {
@@ -157,11 +166,9 @@ describe('listenWithPortHunt', () => {
     await server.close();
   });
 
-  // The scenario the adjacency assertions used to fail on, made deterministic: the neighbour is
-  // occupied too, so the hunt has to keep walking rather than settle on `port + 1`.
+  // Occupying the neighbour too is what forces the hunt to keep walking rather than settle on +1.
   it('keeps walking when the neighbouring port is taken as well', async () => {
-    const port = await serveForeign();
-    const neighbour = await listenOn(port + 1);
+    const { port, neighbour } = await occupyAdjacentPair();
     const { server, url } = await listenWithPortHunt(
       { type: 'ws', port, host: '127.0.0.1' },
       identity(process.pid),
