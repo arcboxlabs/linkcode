@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/arcboxlabs/linkcode/compare/v0.14.0...v0.15.0) (2026-07-31)
+
+
+### Features
+
+* **chat:** add conversation minimap geometry ([ab99e29](https://github.com/arcboxlabs/linkcode/commit/ab99e29f3909b98c2aa9224712934ff4465d610f))
+* **chat:** add the conversation minimap rail ([5553c1c](https://github.com/arcboxlabs/linkcode/commit/5553c1c5f6ca964564b1ea9f1fc0d04ab0cd343c))
+* **chat:** expose the conversation virtualizer handle ([8c9aa77](https://github.com/arcboxlabs/linkcode/commit/8c9aa777e990e28fd16261b8486f02786496a39b))
+* **mock:** seed a long thread in the dev mock host ([d72b564](https://github.com/arcboxlabs/linkcode/commit/d72b564be88109985a8446d99d341166aad2d470))
+
+
+### Bug Fixes
+
+* **chat:** steady the minimap rail and its keyboard path ([6e27750](https://github.com/arcboxlabs/linkcode/commit/6e27750824e828afe40b5baedba4aa4358ed04c2))
+* **chat:** tune the minimap rail down to its quiet form ([4726df8](https://github.com/arcboxlabs/linkcode/commit/4726df8b56f9d5a19c8ec9e42ef9e56d4b6b46a5))
+* **desktop:** keep the sidebar translucent over the native backdrop ([#360](https://github.com/arcboxlabs/linkcode/issues/360)) ([70b50b6](https://github.com/arcboxlabs/linkcode/commit/70b50b626b55bfca3bc8c61064ed1864de55b41c))
+
 ## [0.14.0](https://github.com/arcboxlabs/linkcode/compare/v0.13.0...v0.14.0) (2026-07-31)
 
 
