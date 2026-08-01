@@ -23,12 +23,15 @@ import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SearchField, useThemeColor } from 'heroui-native';
 import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback, useState } from 'react';
+import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
+
+/** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
+type SearchBarChangeEvent = Parameters<
+  NonNullable<React.ComponentProps<typeof Stack.SearchBar>['onChangeText']>
+>[0];
 
 /** The title a thread is listed and searched under — the same fallback the row renders. */
 function threadTitle(session: SessionInfo): string {
@@ -36,8 +39,8 @@ function threadTitle(session: SessionInfo): string {
 }
 
 /** Threads inbox: sessions grouped by workspace (project) under collapsible headers, the
- * connected host as a subtitle, and a search + new-thread footer. Empty workspace groups are
- * hidden — the sheet is where they surface. */
+ * connected host as a subtitle, and the native search bar stacked under the large title. Empty
+ * workspace groups are hidden — the sheet is where they surface. */
 export default function ThreadsScreen(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
@@ -45,12 +48,16 @@ export default function ThreadsScreen(): React.ReactNode {
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
   const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
-  const [background, foreground] = useThemeColor(['background', 'foreground']);
-  const insets = useSafeAreaInsets();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
+
+  // Stable so the search bar's options object survives a keystroke without re-registering.
+  const onSearchChange = useCallback(
+    (event: SearchBarChangeEvent) => setQuery(event.nativeEvent.text),
+    [],
+  );
 
   const needle = query.trim().toLowerCase();
   const groups = groupThreadsByWorkspace(withoutAutomationSessions(sessions), workspaces).reduce<
@@ -120,9 +127,24 @@ export default function ThreadsScreen(): React.ReactNode {
                 label={t('settings')}
                 onPress={() => router.push('/settings')}
               />
+              <HeaderIconButton
+                icon={SquarePenIcon}
+                label={t('newThread')}
+                onPress={() => setSheetOpen(true)}
+              />
             </View>
           ),
         }}
+      />
+      {/* `stacked` keeps the field under the large title instead of collapsing into the iOS 26
+          toolbar; the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
+      <Stack.SearchBar
+        placeholder={t('searchPlaceholder')}
+        placement="stacked"
+        hideWhenScrolling={false}
+        hideNavigationBar={false}
+        autoCapitalize="none"
+        onChangeText={onSearchChange}
       />
       {/* The connected host reads as a subtitle of the screen, the way the reference puts the
           machine under its title, rather than as a separate bar pinned to the bottom. */}
@@ -165,31 +187,6 @@ export default function ThreadsScreen(): React.ReactNode {
           />
         )}
       </Host>
-      <View
-        className="flex-row items-center gap-2 px-5 pt-2"
-        style={{ paddingBottom: Math.max(insets.bottom, 12) }}
-      >
-        <SearchField className="min-w-0 flex-1" value={query} onChange={setQuery}>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder={t('searchPlaceholder')} returnKeyType="search" />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
-        {/* Inverted rather than accent-tinted, matching the reference's near-black pill;
-            the token pair flips with the colour scheme so it stays legible in dark mode. */}
-        <Pressable
-          accessibilityRole="button"
-          className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5"
-          onPress={() => setSheetOpen(true)}
-          style={({ pressed }) => ({ backgroundColor: foreground, opacity: pressed ? 0.7 : 1 })}
-        >
-          <SquarePenIcon size={15} color={background} />
-          <Text className="font-medium text-subhead" style={{ color: background }}>
-            {t('newThread')}
-          </Text>
-        </Pressable>
-      </View>
       <NewThreadSheet
         isPresented={sheetOpen}
         onIsPresentedChange={setSheetOpen}
