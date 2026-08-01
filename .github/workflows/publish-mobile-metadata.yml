@@ -41,4 +41,7 @@ jobs:
         run: |
           EXPO_APPLE_TEAM_ID="$(jq -er '.submit.production.ios.appleTeamId | select(length > 0)' eas.json)"
           export EXPO_APPLE_TEAM_ID
-          eas metadata:push --profile production --non-interactive
+          set -o pipefail
+          eas metadata:push --profile production --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-metadata-push.log"
+          # EAS Metadata reports partial upload failures with exit code 0.
+          grep -Fq "Store configuration is synced with the app stores." "$RUNNER_TEMP/eas-metadata-push.log"

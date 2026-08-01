@@ -1,6 +1,7 @@
 {
   "configVersion": 0,
   "apple": {
+    "version": "1.0",
     "copyright": "2026 ArcBox, Inc.",
     "categories": ["DEVELOPER_TOOLS", "PRODUCTIVITY"],
     "info": {
