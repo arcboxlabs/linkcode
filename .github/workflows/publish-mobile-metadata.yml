@@ -38,4 +38,7 @@ jobs:
         working-directory: ${{ env.MOBILE_DIR }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas metadata:push --profile production --non-interactive
+        run: |
+          EXPO_APPLE_TEAM_ID="$(jq -er '.submit.production.ios.appleTeamId | select(length > 0)' eas.json)"
+          export EXPO_APPLE_TEAM_ID
+          eas metadata:push --profile production --non-interactive
