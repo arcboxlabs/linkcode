@@ -77,7 +77,9 @@ export class WireRequestRouter {
       case 'agent-runtime.list':
       case 'agent.catalog':
       case 'config.get':
-      case 'config.set': {
+      case 'config.set':
+      case 'config.account.create-and-bind':
+      case 'config.probe-models': {
         return this.handlers.agent.handle(p);
       }
       case 'asset.list':

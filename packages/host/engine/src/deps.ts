@@ -1,6 +1,7 @@
 import type { AdapterFactory, PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
 import type { AgentRuntimes } from '@linkcode/schema';
 import type { LoginBinaryResolver } from './agent/login-service';
+import type { ModelProbe } from './agent/model-probe';
 import type { ProviderConfigStore } from './agent/provider-config';
 import type { TranslatorService } from './agent/translator';
 import type { AssetService } from './asset/service';
@@ -39,6 +40,7 @@ export interface EngineDeps {
    * The default is volatile and never asks anyone, so an embedding without one is not gated. */
   simulatorConsent?: SimulatorConsentService;
   providerStore?: ProviderConfigStore;
+  modelProbe?: ModelProbe;
   git?: GitService;
   fileSuggest?: FileSuggestService;
   workspaceStore?: WorkspaceStore;

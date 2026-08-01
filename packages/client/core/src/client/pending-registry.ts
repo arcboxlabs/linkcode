@@ -1,4 +1,5 @@
 import type {
+  AccountModel,
   Accounts,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -99,6 +100,7 @@ export interface PendingValueMap {
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
   accountsGet: Accounts;
+  accountModels: AccountModel[];
   customMcpGet: CustomMcpServerPublic[];
   pluginList: PluginList;
   pluginMutation: PluginMutation;
@@ -159,6 +161,7 @@ export class PendingRegistry {
     historyRead: new Map(),
     configGet: new Map(),
     accountsGet: new Map(),
+    accountModels: new Map(),
     customMcpGet: new Map(),
     pluginList: new Map(),
     pluginMutation: new Map(),

@@ -101,6 +101,27 @@ function BranchPickerTest({ onSelect }: { onSelect: (branch: string) => void }) 
 }
 
 describe('NewSessionSurface', () => {
+  it('hands a signed-out provider to settings instead of logging in inline', () => {
+    const onOpenProviderSettings = vi.fn();
+    render(
+      <NewSessionSurface
+        chatWorkspace={null}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: null }}
+        mentionItems={[]}
+        runtimeCues={{ codex: { state: 'needs-login', phase: 'idle' } }}
+        onMentionQueryChange={vi.fn()}
+        onOpenProviderSettings={onOpenProviderSettings}
+        onRegisterWorkspace={vi.fn()}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    screen.getByRole('button', { name: 'goToSettings' }).click();
+    expect(onOpenProviderSettings).toHaveBeenCalledWith('codex');
+    expect(screen.queryByRole('button', { name: 'login' })).toBeNull();
+  });
+
   it.each([
     { chatWorkspace: CHAT_WORKSPACE, initialWorkspaceId: CHAT_WORKSPACE.workspaceId },
     { chatWorkspace: null, initialWorkspaceId: null },

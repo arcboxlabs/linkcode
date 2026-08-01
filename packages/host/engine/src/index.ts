@@ -4,7 +4,7 @@
  * feature implementations stay package-internal.
  */
 
-export type { ProviderConfigStore } from './agent/provider-config';
+export { accountBinding, type ProviderConfigStore } from './agent/provider-config';
 export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
 export type { LoopStore, ScheduleStore } from './automation';

@@ -43,12 +43,8 @@ export interface ConversationSurfaceProps {
    * surfaces here — the sign-in recovery after an auth-failed turn. Install/version cues never
    * block a session that is already running. */
   runtimeCues?: AgentRuntimeCues;
-  /** Starts (or retries) the interactive login for the signed-out agent. */
-  onLoginAgent?: (kind: AgentKind) => void;
-  /** Submits the authorization code pasted from the browser during a login. */
-  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
-  /** Aborts an in-flight login. */
-  onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens Providers settings at the signed-out agent's setup flow. */
+  onOpenProviderSettings?: (kind: AgentKind) => void;
   disabled?: boolean;
   isRunning: boolean;
   className?: string;
@@ -90,9 +86,7 @@ export function ConversationSurface({
   respondingRequestIds,
   responseErrors,
   runtimeCues,
-  onLoginAgent,
-  onSubmitLoginCode,
-  onCancelLogin,
+  onOpenProviderSettings,
   disabled = false,
   isRunning,
   className,
@@ -157,9 +151,7 @@ export function ConversationSurface({
             <AgentOnboardingCard
               cue={loginCue}
               kind={agentKind}
-              onCancelLogin={onCancelLogin}
-              onLogin={onLoginAgent}
-              onSubmitLoginCode={onSubmitLoginCode}
+              onOpenProviderSettings={onOpenProviderSettings}
             />
           </div>
         </div>

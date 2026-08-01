@@ -103,12 +103,8 @@ export interface NewSessionSurfaceProps {
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
   onContinueUnverified?: (kind: AgentKind) => void;
-  /** Starts (or retries) the interactive login for a signed-out agent. */
-  onLoginAgent?: (kind: AgentKind) => void;
-  /** Submits the authorization code pasted from the browser during a login. */
-  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
-  /** Aborts an in-flight login. */
-  onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens Providers settings at the signed-out agent's setup flow. */
+  onOpenProviderSettings?: (kind: AgentKind) => void;
   /** Starts the session and sends the prompt. A rejection keeps the page up — the caller's error
    * banner reports the failure, same contract as the conversation composer. */
   onSubmit: (submission: NewSessionSubmission) => Promise<void>;
@@ -155,9 +151,7 @@ export function NewSessionSurface({
   onMentionQueryChange,
   onDownloadAgent,
   onContinueUnverified,
-  onLoginAgent,
-  onSubmitLoginCode,
-  onCancelLogin,
+  onOpenProviderSettings,
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
@@ -333,11 +327,9 @@ export function NewSessionSurface({
                 <AgentOnboardingCard
                   cue={cue}
                   kind={provider}
-                  onCancelLogin={onCancelLogin}
                   onContinueUnverified={onContinueUnverified}
                   onDownload={onDownloadAgent}
-                  onLogin={onLoginAgent}
-                  onSubmitLoginCode={onSubmitLoginCode}
+                  onOpenProviderSettings={onOpenProviderSettings}
                 />
               </div>
             </div>
