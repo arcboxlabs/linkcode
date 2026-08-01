@@ -109,15 +109,11 @@ export class AgentRequestHandler {
         const accounts = payload.accounts;
         return this.responder.reply(
           payload.clientReqId,
-          Effect.andThen(
-            providers === undefined
-              ? Effect.void
-              : updateProviderConfig('config.set-providers', () => this.providers.set(providers)),
-            accounts === undefined
-              ? Effect.void
-              : updateProviderConfig('config.set-accounts', () =>
-                  this.providers.setAccounts(accounts),
-                ),
+          updateProviderConfig('config.set', () =>
+            this.providers.update({
+              ...(providers !== undefined && { providers }),
+              ...(accounts !== undefined && { accounts }),
+            }),
           ).pipe(
             Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
           ),
