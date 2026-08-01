@@ -8,6 +8,8 @@ export interface ModelOption {
   description?: string;
   /** Per-model effort capability from a dynamic adapter catalog. */
   effortLevels?: EffortLevel[];
+  /** The effort this model runs at unpicked, when the catalog advertises one. */
+  defaultEffort?: EffortLevel;
 }
 
 export interface ModelProviderGroups {
