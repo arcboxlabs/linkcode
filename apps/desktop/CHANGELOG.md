@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/arcboxlabs/linkcode/compare/v0.18.0...v0.18.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **webview:** restore conversation virtualization ([#380](https://github.com/arcboxlabs/linkcode/issues/380)) ([4833c3d](https://github.com/arcboxlabs/linkcode/commit/4833c3d75652c5ac92c1bef18505fe3dc679364b))
+
 ## [0.18.0](https://github.com/arcboxlabs/linkcode/compare/v0.17.0...v0.18.0) (2026-08-01)
 
 
