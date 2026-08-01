@@ -31,6 +31,7 @@
         "releaseStatus": "completed"
       },
       "ios": {
+        "ascAppId": "6791199804",
         "appleTeamId": "422ACSY6Y5",
         "bundleIdentifier": "com.arcboxlabs.linkcode.mobile"
       }
