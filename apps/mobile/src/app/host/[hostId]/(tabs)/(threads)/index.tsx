@@ -23,7 +23,7 @@ import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
+import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -116,23 +116,11 @@ export default function ThreadsScreen(): React.ReactNode {
           headerLargeTitle: true,
           title: t('title'),
           headerRight: () => (
-            <View className="flex-row items-center">
-              <HeaderIconButton
-                icon={SquareTerminalIcon}
-                label={t('terminals')}
-                onPress={() => router.push(`/host/${hostId}/terminal`)}
-              />
-              <HeaderIconButton
-                icon={SettingsIcon}
-                label={t('settings')}
-                onPress={() => router.push('/settings')}
-              />
-              <HeaderIconButton
-                icon={SquarePenIcon}
-                label={t('newThread')}
-                onPress={() => setSheetOpen(true)}
-              />
-            </View>
+            <HeaderIconButton
+              icon={SquarePenIcon}
+              label={t('newThread')}
+              onPress={() => setSheetOpen(true)}
+            />
           ),
         }}
       />

@@ -99,7 +99,7 @@ export default function TerminalsScreen(): React.ReactNode {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: t('title') }} />
+      <Stack.Screen options={{ headerShown: true, headerLargeTitle: true, title: t('title') }} />
       {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         <Form modifiers={[refreshable(onRefresh)]}>
