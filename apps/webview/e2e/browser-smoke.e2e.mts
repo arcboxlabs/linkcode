@@ -96,7 +96,65 @@ async function verifyLongThreadVirtualization(page: Page): Promise<void> {
     { flags: RE_LONG_THREAD_TURN.flags, source: RE_LONG_THREAD_TURN.source },
   );
 
-  await page.locator('[data-thread-title]', { hasText: longThreadTitle }).click();
+  const firstPaint = await page.evaluate(
+    ({ lastTurn, title }) =>
+      new Promise<{
+        bottomGap: number | null;
+        conversationTitle: string | null;
+        tailMounted: boolean;
+      }>((resolve, reject) => {
+        const frameId = requestAnimationFrame(() => {
+          try {
+            const thread = [...document.querySelectorAll('[data-thread-title]')].find((element) =>
+              element.textContent.includes(title),
+            );
+            if (!(thread instanceof HTMLElement)) throw new Error(`Missing thread: ${title}`);
+            thread.click();
+            queueMicrotask(() => {
+              try {
+                const conversationTitle =
+                  document.querySelector('[data-conversation-title]')?.textContent ?? null;
+                const scroll = document.querySelector('[role="log"]')?.firstElementChild;
+                const content = scroll?.firstElementChild;
+                if (!(scroll instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                  throw new TypeError('Missing long-thread scroll surface');
+                }
+
+                const observer = new IntersectionObserver(
+                  ([entry]) => {
+                    observer.disconnect();
+                    resolve({
+                      bottomGap: entry.rootBounds
+                        ? entry.boundingClientRect.bottom - entry.rootBounds.bottom
+                        : null,
+                      conversationTitle,
+                      tailMounted: content.textContent.includes(`Turn ${lastTurn} —`),
+                    });
+                  },
+                  { root: scroll },
+                );
+                observer.observe(content);
+              } catch (error) {
+                reject(new Error('Could not observe first conversation paint', { cause: error }));
+              }
+            });
+          } catch (error) {
+            reject(new Error('Could not select the long thread', { cause: error }));
+          }
+        });
+        void frameId;
+      }),
+    { lastTurn: longThreadTurns, title: longThreadTitle },
+  );
+  assert.ok(
+    firstPaint.conversationTitle?.includes(longThreadTitle),
+    `First paint still showed ${JSON.stringify(firstPaint.conversationTitle)}`,
+  );
+  assert.ok(firstPaint.tailMounted, 'First paint did not show the long-thread tail');
+  assert.ok(
+    firstPaint.bottomGap !== null && Math.abs(firstPaint.bottomGap) <= 2,
+    `First paint opened ${String(firstPaint.bottomGap)}px above bottom`,
+  );
   await page.locator('[data-conversation-title]', { hasText: longThreadTitle }).waitFor();
   await page.waitForFunction((lastTurn) => {
     const scroll = document.querySelector('[role="log"]')?.firstElementChild;
