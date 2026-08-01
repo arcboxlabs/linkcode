@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.1](https://github.com/arcboxlabs/linkcode/compare/v0.15.0...v0.15.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **composer:** enforce shell directive grammar ([35a3a05](https://github.com/arcboxlabs/linkcode/commit/35a3a0577f35c32c4832af265b8cdb366fdfe514))
+* **composer:** require shell directive separator ([d6bd22d](https://github.com/arcboxlabs/linkcode/commit/d6bd22d4120b5bc93a1022f919199941bfbd4c0b))
+* **ui:** align inline code position ([05a91ec](https://github.com/arcboxlabs/linkcode/commit/05a91ecd03bb7d984a99ad43cf32eaf4c709818e))
+* **ui:** tolerate generic keydown events ([24ca677](https://github.com/arcboxlabs/linkcode/commit/24ca67770ded46f048b6ee944d669291f2857aa6))
+
 ## [0.15.0](https://github.com/arcboxlabs/linkcode/compare/v0.14.0...v0.15.0) (2026-07-31)
 
 
