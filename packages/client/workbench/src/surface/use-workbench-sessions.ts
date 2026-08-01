@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  BranchSelection,
   EffortLevel,
   SessionId,
   SessionInfo,
@@ -44,7 +45,7 @@ export interface WorkbenchSessions {
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;
-    branch?: { name: string };
+    branch?: BranchSelection;
   }) => Promise<SessionId>;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   close: (id: SessionId) => void;
@@ -188,7 +189,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;
-    branch?: { name: string };
+    branch?: BranchSelection;
   }): Promise<SessionId> {
     const startedAt = Date.now();
     // Captured now: by resolve time the surface still shows the draft, and the recorded

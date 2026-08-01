@@ -368,7 +368,7 @@ function WorkbenchSessionSurface({
       submission.kind,
       submission.workspaceId,
       startupSelection,
-      submission.branch?.name,
+      submission.branch,
     );
     // The first input rides behind the started session, like any conversation send.
     void turnInputMutation

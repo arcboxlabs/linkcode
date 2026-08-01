@@ -6,6 +6,7 @@ import type {
   AgentStartCatalog,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
@@ -79,6 +80,7 @@ export interface PendingValueMap {
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
   gitBranchList: GitBranchList;
+  gitBranchSwitchCheck: GitBranchSwitchCheck;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
@@ -135,6 +137,7 @@ export class PendingRegistry {
     assetEnsure: new Map(),
     gitStatus: new Map(),
     gitBranchList: new Map(),
+    gitBranchSwitchCheck: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),

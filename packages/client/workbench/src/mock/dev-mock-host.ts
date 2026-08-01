@@ -194,6 +194,8 @@ export class DevMockHost {
   private resourceSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
   private readonly installedAssets = new Set<ManagedAssetKey>();
+  private readonly cleanGitWorkspaces = new Set<string>();
+  private readonly createdGitBranches = new Map<string, Set<string>>();
 
   constructor(private readonly transport: Transport) {
     this.terminals.set(
@@ -421,19 +423,78 @@ export class DevMockHost {
         break;
       case 'git.status.get':
         await wait(CONTROL_LATENCY_MS);
-        this.send({
-          kind: 'git.status.get.result',
-          replyTo: p.clientReqId,
-          status: gitFixtureFor(p.cwd).status,
-        });
+        {
+          const status = gitFixtureFor(p.cwd).status;
+          const clean = this.cleanGitWorkspaces.has(normalizeCwdKey(p.cwd));
+          this.send({
+            kind: 'git.status.get.result',
+            replyTo: p.clientReqId,
+            status: clean && status.isRepo ? { ...status, dirtyFileCount: 0 } : status,
+          });
+        }
         break;
       case 'git.branch.list':
         await wait(CONTROL_LATENCY_MS);
+        {
+          const branchList = gitFixtureFor(p.cwd).branchList;
+          const created = this.createdGitBranches.get(normalizeCwdKey(p.cwd)) ?? [];
+          this.send({
+            kind: 'git.branch.list.result',
+            replyTo: p.clientReqId,
+            branchList: branchList.isRepo
+              ? {
+                  ...branchList,
+                  branches: [
+                    ...branchList.branches,
+                    ...[...created].map((name) => ({
+                      name,
+                      isCurrent: false,
+                      lastCommitAt: Date.now(),
+                    })),
+                  ],
+                }
+              : branchList,
+          });
+        }
+        break;
+      case 'git.branch.switch.check': {
+        await wait(CONTROL_LATENCY_MS);
+        const status = gitFixtureFor(p.cwd).status;
+        const hasConflicts =
+          status.isRepo &&
+          status.dirtyFileCount > 0 &&
+          status.branch !== p.branch &&
+          !this.createdGitBranches.get(normalizeCwdKey(p.cwd))?.has(p.branch) &&
+          !this.cleanGitWorkspaces.has(normalizeCwdKey(p.cwd));
         this.send({
-          kind: 'git.branch.list.result',
+          kind: 'git.branch.switch.check.result',
           replyTo: p.clientReqId,
-          branchList: gitFixtureFor(p.cwd).branchList,
+          check: hasConflicts
+            ? {
+                status: 'conflict',
+                files: [
+                  { path: 'packages/client/workbench/src/mock.ts', additions: 12, deletions: 4 },
+                  { path: 'packages/presentation/ui/src/shell.tsx', additions: 3, deletions: 1 },
+                ],
+              }
+            : { status: 'ready' },
         });
+        break;
+      }
+      case 'git.branch.create':
+        await wait(CONTROL_LATENCY_MS);
+        {
+          const cwd = normalizeCwdKey(p.cwd);
+          const branches = this.createdGitBranches.get(cwd) ?? new Set<string>();
+          branches.add(p.branch);
+          this.createdGitBranches.set(cwd, branches);
+        }
+        this.sendSuccess(p.clientReqId);
+        break;
+      case 'git.commit':
+        await wait(CONTROL_LATENCY_MS);
+        this.cleanGitWorkspaces.add(normalizeCwdKey(p.cwd));
+        this.sendSuccess(p.clientReqId);
         break;
       case 'git.pr_status.get':
         await wait(CONTROL_LATENCY_MS);

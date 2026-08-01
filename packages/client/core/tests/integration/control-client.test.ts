@@ -16,6 +16,34 @@ import { createConnectedLocalClient } from '../support/local-client';
 const sessionId = 'sess-control' as SessionId;
 
 describe('LinkCodeClient control API', () => {
+  it('routes git branch switch checks and mutation acknowledgements', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    serverTransport.onMessage((msg) => {
+      const p = msg.payload;
+      if (p.kind === 'git.branch.switch.check') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'git.branch.switch.check.result',
+            replyTo: p.clientReqId,
+            check: { status: 'ready' },
+          }),
+        );
+      } else if (p.kind === 'git.branch.create' || p.kind === 'git.commit') {
+        serverTransport.send(
+          createWireMessage({ kind: 'request.succeeded', replyTo: p.clientReqId }),
+        );
+      }
+    });
+
+    await expect(client.checkGitBranchSwitch('/repo', 'main')).resolves.toEqual({
+      status: 'ready',
+    });
+    await expect(client.createGitBranch('/repo', 'feature')).resolves.toEqual({ ok: true });
+    await expect(client.commitGitChanges('/repo', 'save')).resolves.toEqual({ ok: true });
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('gets the matching pre-session agent catalog with agent kind and cwd', async () => {
     const { client, serverTransport } = await createConnectedLocalClient({
       randomUUID: () => 'catalog-request',

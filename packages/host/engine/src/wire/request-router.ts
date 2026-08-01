@@ -90,6 +90,9 @@ export class WireRequestRouter {
       }
       case 'git.status.get':
       case 'git.branch.list':
+      case 'git.branch.switch.check':
+      case 'git.branch.create':
+      case 'git.commit':
       case 'git.pr_status.get':
       case 'git.diff.get': {
         return this.handlers.git.handle(p);
