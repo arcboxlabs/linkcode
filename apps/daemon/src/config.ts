@@ -220,15 +220,16 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
  * never blanking the rest.
  */
 function parseCustomMcpServers(store: SecretStore, raw: unknown): Parsed<CustomMcpServer[]> {
-  if (raw === undefined) return { value: [], migrated: false };
-  if (!Array.isArray(raw)) {
+  const snapshot = parseCustomMcpSnapshot(raw);
+  if (snapshot.servers === undefined) return { value: [], migrated: false };
+  if (!Array.isArray(snapshot.servers)) {
     logger.warn({ operation: 'config.load' }, 'Invalid custom MCP config: expected an array');
     return { value: [], migrated: false };
   }
   const servers: CustomMcpServer[] = [];
   let migrated = false;
-  for (const value of raw) {
-    const attached = withCustomMcpSecrets(store, value);
+  for (const value of snapshot.servers) {
+    const attached = withCustomMcpSecrets(store, value, snapshot.generation);
     migrated ||= attached.migrated;
     const server = CustomMcpServerSchema.safeParse(attached.value);
     if (!server.success) {
@@ -289,20 +290,9 @@ export function saveCustomMcpServers(
   servers: CustomMcpServer[],
   previous: CustomMcpServer[],
 ): void {
-  const store = customMcpSecrets(vault);
-  const stripped = detachCustomMcpSecrets(store, servers);
-  try {
-    writeConfigField('customMcpServers', stripped);
-  } catch (error) {
-    try {
-      detachCustomMcpSecrets(store, previous);
-    } catch (rollbackError) {
-      throw new AggregateError([error, rollbackError], 'Failed to persist or restore custom MCP', {
-        cause: rollbackError,
-      });
-    }
-    throw error;
-  }
+  persistCustomMcpSnapshot(vault, servers, previous, (value) =>
+    writeConfigField('customMcpServers', value),
+  );
 }
 
 export function saveConfigSnapshot(
@@ -311,11 +301,74 @@ export function saveConfigSnapshot(
   accounts: Accounts,
   customMcpServers: CustomMcpServer[],
 ): void {
-  writeConfigFields({
-    providers: detachProviderSecrets(providerSecrets(vault), providers),
-    accounts: detachAccountSecrets(accountSecrets(vault), accounts),
-    customMcpServers: detachCustomMcpSecrets(customMcpSecrets(vault), customMcpServers),
-  });
+  persistCustomMcpSnapshot(vault, customMcpServers, customMcpServers, (value) =>
+    writeConfigFields({
+      providers: detachProviderSecrets(providerSecrets(vault), providers),
+      accounts: detachAccountSecrets(accountSecrets(vault), accounts),
+      customMcpServers: value,
+    }),
+  );
+}
+
+interface CustomMcpSnapshot {
+  generation: number | undefined;
+  servers: unknown;
+}
+
+function parseCustomMcpSnapshot(raw: unknown): CustomMcpSnapshot {
+  if (raw === undefined || Array.isArray(raw)) return { generation: undefined, servers: raw };
+  if (
+    isRecord(raw) &&
+    raw.v === 1 &&
+    typeof raw.generation === 'number' &&
+    Number.isSafeInteger(raw.generation) &&
+    raw.generation > 0 &&
+    Array.isArray(raw.servers)
+  ) {
+    return { generation: raw.generation, servers: raw.servers };
+  }
+  return { generation: undefined, servers: raw };
+}
+
+function persistCustomMcpSnapshot(
+  vault: SecretVault,
+  servers: CustomMcpServer[],
+  previous: CustomMcpServer[],
+  writeConfig: (value: unknown) => void,
+): void {
+  const store = customMcpSecrets(vault);
+  const previousGeneration = parseCustomMcpSnapshot(
+    readConfigDocument().customMcpServers,
+  ).generation;
+  const generation =
+    previousGeneration === undefined || previousGeneration === Number.MAX_SAFE_INTEGER
+      ? 1
+      : previousGeneration + 1;
+  const before = detachCustomMcpSecrets(previous, previousGeneration);
+  const after = detachCustomMcpSecrets(servers, generation);
+  const combined = new Map(before.secrets);
+  for (const [key, secret] of after.secrets) combined.set(key, secret);
+  store.replaceAll(combined);
+  try {
+    writeConfig({ v: 1, generation, servers: after.servers });
+  } catch (error) {
+    try {
+      store.replaceAll(before.secrets);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'Failed to persist or restore custom MCP', {
+        cause: rollbackError,
+      });
+    }
+    throw error;
+  }
+  try {
+    store.replaceAll(after.secrets);
+  } catch (err) {
+    logger.warn(
+      { err, operation: 'config.save-custom-mcp' },
+      'Custom MCP state committed but stale secret cleanup failed',
+    );
+  }
 }
 
 /** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
@@ -332,13 +385,7 @@ function writeConfigFields(
   >,
 ): void {
   const path = configPath();
-  let file: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    if (isRecord(parsed)) file = parsed;
-  } catch {
-    // Start from an empty document if the file is missing or malformed.
-  }
+  const file = readConfigDocument();
   Object.assign(file, values);
   mkdirSync(dirname(path), { recursive: true });
   const temporaryFile = `${path}.${process.pid}.${randomUUID()}.tmp`;
@@ -351,6 +398,16 @@ function writeConfigFields(
     } catch {}
     throw error;
   }
+}
+
+function readConfigDocument(): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(configPath(), 'utf8'));
+    if (isRecord(parsed)) return parsed;
+  } catch {
+    // Start from an empty document if the file is missing or malformed.
+  }
+  return {};
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {

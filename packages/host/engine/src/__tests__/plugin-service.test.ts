@@ -2,7 +2,7 @@ import type { PluginDiscoveryOptions, PluginProviderAdapterFactory } from '@link
 import type { PluginProvider, StandaloneSkill } from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { Effect } from 'effect';
+import { Effect, Fiber } from 'effect';
 import { asyncNoop, noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -148,7 +148,10 @@ describe('PluginService', () => {
       new PluginService(factory).installPlugin('codex', 'github@curated', { cwd: '/workspace' }),
     );
 
-    expect(installPlugin).toHaveBeenCalledWith('github@curated', { cwd: '/workspace' });
+    expect(installPlugin).toHaveBeenCalledWith('github@curated', {
+      cwd: '/workspace',
+      signal: expect.any(AbortSignal),
+    });
     expect(result).toMatchObject({
       plugin: { id: 'github@curated' },
       pendingAuthApps: ['GitHub'],
@@ -170,10 +173,53 @@ describe('PluginService', () => {
       new PluginService(factory).uninstallPlugin('codex', 'chrome@bundled'),
     );
 
-    expect(uninstallPlugin).toHaveBeenCalledWith('chrome@bundled', {});
+    expect(uninstallPlugin).toHaveBeenCalledWith('chrome@bundled', {
+      signal: expect.any(AbortSignal),
+    });
     expect(result.plugin.installations).toEqual([]);
     expect(result.pendingAuthApps).toBeUndefined();
   });
+
+  it.each(['install', 'uninstall'] as const)(
+    'propagates Effect interruption to plugin %s',
+    async (operation) => {
+      let receivedSignal: AbortSignal | undefined;
+      let markStarted: () => void = noop;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const waitForAbort = (opts: PluginDiscoveryOptions | undefined): Promise<void> => {
+        if (!opts?.signal) return Promise.reject(new Error('missing signal'));
+        receivedSignal = opts.signal;
+        markStarted();
+        return new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener(
+            'abort',
+            () => reject(new Error('effect interrupted', { cause: opts.signal?.reason })),
+            { once: true },
+          );
+        });
+      };
+      const factory: PluginProviderAdapterFactory = (provider) => ({
+        provider,
+        list: () => Promise.resolve([]),
+        listStandaloneSkills: () => Promise.resolve([]),
+        installPlugin: (id, opts) => waitForAbort(opts).then(() => ({ pendingAuthApps: [id] })),
+        uninstallPlugin: (_id, opts) => waitForAbort(opts),
+      });
+      const service = new PluginService(factory);
+      const effect =
+        operation === 'install'
+          ? service.installPlugin('codex', 'review')
+          : service.uninstallPlugin('codex', 'review');
+      const fiber = Effect.runFork(effect);
+      await started;
+
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
+      expect(receivedSignal?.aborted).toBe(true);
+    },
+  );
 
   it('refuses install and uninstall on a provider whose adapter implements neither', async () => {
     const factory: PluginProviderAdapterFactory = (provider) => ({

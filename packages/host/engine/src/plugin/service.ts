@@ -163,7 +163,7 @@ export class PluginService {
     const install = adapter.installPlugin?.bind(adapter);
     if (!install) return unsupported(provider, 'plugin installation');
     return Effect.tryPromise({
-      try: () => install(id, opts),
+      try: (signal) => install(id, { ...opts, signal }),
       catch: (cause) =>
         new OperationError({
           subsystem: 'plugin',
@@ -203,7 +203,7 @@ export class PluginService {
     const uninstall = adapter.uninstallPlugin?.bind(adapter);
     if (!uninstall) return unsupported(provider, 'plugin removal');
     return Effect.tryPromise({
-      try: () => uninstall(id, opts),
+      try: (signal) => uninstall(id, { ...opts, signal }),
       catch: (cause) =>
         new OperationError({
           subsystem: 'plugin',
@@ -310,7 +310,7 @@ export class PluginService {
     opts: PluginDiscoveryOptions,
   ): Effect.Effect<Plugin, RequestError | OperationError> {
     return Effect.tryPromise({
-      try: () => this.factory(provider).list(opts),
+      try: (signal) => this.factory(provider).list({ ...opts, signal }),
       catch: (cause) =>
         new OperationError({
           subsystem: 'plugin',

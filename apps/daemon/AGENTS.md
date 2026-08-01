@@ -36,10 +36,12 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   (`@napi-rs/keyring`, service = `keyringServiceName(channel, profile)` so a development daemon cannot
   read the release one's), and the file is ciphertext.
   - **`vault.namespace(name)` is the only way in** — there is no whole-store handle. That is what
-    makes `SecretStore.replaceAll` safe to hand out: a `save*` replaces its own namespace in one
-    write, so pruning a deleted account is implicit and cannot reach a neighbour's secrets. Adding a
-    subsystem is one entry in the `SecretNamespace` union plus its own key names; custom MCP values
-    use the `custom-mcp` namespace. The vault stays
+    makes `SecretStore.replaceAll` safe to hand out: a normal `save*` replaces its own namespace in
+    one write, so pruning a deleted account is implicit and cannot reach a neighbour's secrets.
+    Custom MCP is the cross-file exception: refs include a config generation; save writes old+new
+    refs, atomically points `config.json` at the new generation, then prunes the old refs. Either side
+    of a process crash therefore names a complete snapshot. Adding a subsystem is one entry in the
+    `SecretNamespace` union plus its own key names; custom MCP values use the `custom-mcp` namespace. The vault stays
     ignorant of what any of them mean.
   - **The vault is constructed once, in `main()`, and passed down.** Every consumer takes a
     `SecretVault` parameter and opens its own namespace — nothing reaches `secretVault()` by import.

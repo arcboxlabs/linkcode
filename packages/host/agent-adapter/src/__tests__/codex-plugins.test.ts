@@ -352,6 +352,62 @@ describe('CodexPluginAdapter', () => {
     },
   );
 
+  it.each(['install', 'uninstall'] as const)(
+    'cancels plugin %s and closes its app-server when the caller aborts',
+    async (operation) => {
+      let rejectMutation: (reason?: unknown) => void = noop;
+      let markMutationStarted: () => void = noop;
+      const mutationStarted = new Promise<void>((resolve) => {
+        markMutationStarted = resolve;
+      });
+      const request = vi.fn((method: string) => {
+        if (method === 'plugin/list') {
+          return Promise.resolve({
+            marketplaces: [
+              {
+                name: 'remote-tools',
+                plugins: [
+                  {
+                    id: 'review@remote-tools',
+                    remotePluginId: 'remote-review',
+                    name: 'review',
+                    source: { type: 'remote' },
+                    installed: false,
+                    enabled: false,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        markMutationStarted();
+        return new Promise<unknown>((_resolve, reject) => {
+          rejectMutation = reject;
+        });
+      });
+      const close = vi.fn(() => rejectMutation(new Error('app-server closed')));
+      let lifecycleSignal: AbortSignal | undefined;
+      const adapter = new CodexPluginAdapter((signal) => {
+        lifecycleSignal = signal;
+        return Promise.resolve({ request, close });
+      });
+      const controller = new AbortController();
+      const mutation =
+        operation === 'install'
+          ? adapter.installPlugin('review@remote-tools', { signal: controller.signal })
+          : adapter.uninstallPlugin('review@remote-tools', { signal: controller.signal });
+      await mutationStarted;
+
+      controller.abort(new Error('engine interrupted'));
+
+      await expect(mutation).rejects.toThrow('app-server closed');
+      expect(lifecycleSignal?.aborted).toBe(true);
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+
   it('lists bare-named skills as standalone and filters plugin-qualified ones', async () => {
     const close = vi.fn();
     const request = vi.fn((method: string, params: unknown) => {

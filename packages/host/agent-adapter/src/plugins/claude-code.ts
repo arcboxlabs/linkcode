@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -278,6 +278,7 @@ async function writeJsonRecordAtomic(file: string, value: Record<string, unknown
       encoding: 'utf8',
       mode,
     });
+    await chmod(temporaryFile, mode);
     await rename(temporaryFile, file);
   } catch (error) {
     await unlink(temporaryFile).catch(noop);

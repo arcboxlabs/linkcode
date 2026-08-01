@@ -186,7 +186,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         ),
       );
       return plugins.sort((left, right) => left.id.localeCompare(right.id));
-    });
+    }, opts.signal);
   }
 
   async listEnabledMcpServerNames(opts: PluginDiscoveryOptions = {}): Promise<string[]> {
@@ -207,7 +207,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         for (const name of detail.mcpServers) names.add(name);
       }
       return [...names];
-    });
+    }, opts.signal);
   }
 
   /** `skills/list` works pre-thread on a discovery-only app-server, accepts omitted `cwds`, and
@@ -221,7 +221,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         forceReload: false,
       });
       return normalizeCodexStandaloneSkills(value);
-    });
+    }, opts.signal);
   }
 
   /**
@@ -233,11 +233,11 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
   async setSkillEnabled(
     skill: SkillToggleTarget,
     enabled: boolean,
-    _opts: PluginDiscoveryOptions = {},
+    opts: PluginDiscoveryOptions = {},
   ): Promise<void> {
     await this.withDiscoveryServer(async (server) => {
       await server.request('skills/config/write', { path: skill.path, enabled });
-    });
+    }, opts.signal);
   }
 
   /**
@@ -260,37 +260,49 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         value: enabled,
         mergeStrategy: 'upsert',
       });
-    });
+    }, opts.signal);
   }
 
   async installPlugin(
     id: string,
     opts: PluginDiscoveryOptions = {},
   ): Promise<PluginInstallOutcome> {
-    return this.withServer(async (server) => {
-      const { marketplace, summary } = await findCodexPlugin(server, 'plugin/list', id, opts);
-      const address = codexPluginAddress(marketplace, summary);
-      if (!address) throw new Error(`codex: plugin has no installable address: ${id}`);
-      const parsed = CodexPluginInstallSchema.parse(
-        await server.request('plugin/install', address),
-      );
-      return { pendingAuthApps: parsed.appsNeedingAuth.map((app) => app.name) };
-    });
+    return this.withServer(
+      async (server) => {
+        const { marketplace, summary } = await findCodexPlugin(server, 'plugin/list', id, opts);
+        const address = codexPluginAddress(marketplace, summary);
+        if (!address) throw new Error(`codex: plugin has no installable address: ${id}`);
+        const parsed = CodexPluginInstallSchema.parse(
+          await server.request('plugin/install', address),
+        );
+        return { pendingAuthApps: parsed.appsNeedingAuth.map((app) => app.name) };
+      },
+      undefined,
+      opts.signal,
+    );
   }
 
-  async uninstallPlugin(id: string): Promise<void> {
-    await this.withServer(async (server) => {
-      await server.request('plugin/uninstall', { pluginId: id });
-    });
+  async uninstallPlugin(id: string, opts: PluginDiscoveryOptions = {}): Promise<void> {
+    await this.withServer(
+      async (server) => {
+        await server.request('plugin/uninstall', { pluginId: id });
+      },
+      undefined,
+      opts.signal,
+    );
   }
 
-  private async withDiscoveryServer<T>(run: (server: CodexPluginServer) => Promise<T>): Promise<T> {
-    return this.withServer(run, DISCOVERY_TIMEOUT_MS);
+  private async withDiscoveryServer<T>(
+    run: (server: CodexPluginServer) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.withServer(run, DISCOVERY_TIMEOUT_MS, signal);
   }
 
   private async withServer<T>(
     run: (server: CodexPluginServer) => Promise<T>,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ): Promise<T> {
     const controller = new AbortController();
     let server: CodexPluginServer | undefined;
@@ -300,6 +312,12 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
       closed = true;
       server.close();
     };
+    const abort = (): void => {
+      controller.abort(signal?.reason);
+      closeOnce();
+    };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
     if (timeoutMs !== undefined) {
       timeout = setTimeout(() => {
@@ -308,10 +326,13 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
       }, timeoutMs);
     }
     try {
+      controller.signal.throwIfAborted();
       const activeServer = await this.startServer(controller.signal);
       server = activeServer;
+      controller.signal.throwIfAborted();
       return await run(activeServer);
     } finally {
+      signal?.removeEventListener('abort', abort);
       if (timeout !== undefined) clearTimeout(timeout);
       closeOnce();
     }

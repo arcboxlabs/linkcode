@@ -3,6 +3,8 @@ import type { Plugin, PluginProvider, PluginScope, StandaloneSkill } from '@link
 export interface PluginDiscoveryOptions {
   /** Project root used by providers that expose repository-scoped marketplaces. */
   cwd?: string;
+  /** Cancels provider process startup and in-flight requests when the Engine operation stops. */
+  signal?: AbortSignal;
 }
 
 export interface PluginToggleOptions extends PluginDiscoveryOptions {

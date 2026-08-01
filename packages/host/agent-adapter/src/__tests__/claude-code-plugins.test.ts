@@ -402,7 +402,7 @@ describe('ClaudeCodePluginAdapter', () => {
     tempRoots.push(home);
     const settingsFile = join(home, 'settings.json');
     await writeFile(settingsFile, '{}');
-    await chmod(settingsFile, 0o640);
+    await chmod(settingsFile, 0o660);
     const adapter = new ClaudeCodePluginAdapter(
       () => Promise.reject(new Error('not used')),
       join(home, 'skills'),
@@ -410,9 +410,13 @@ describe('ClaudeCodePluginAdapter', () => {
       settingsFile,
     );
 
-    await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false);
-
-    expect((await stat(settingsFile)).mode & 0o777).toBe(0o640);
+    const previousUmask = process.umask(0o022);
+    try {
+      await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false);
+      expect((await stat(settingsFile)).mode & 0o777).toBe(0o660);
+    } finally {
+      process.umask(previousUmask);
+    }
   });
 
   it.each([
