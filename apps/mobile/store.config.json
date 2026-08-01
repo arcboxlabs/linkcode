@@ -1,0 +1,36 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "copyright": "2026 ArcBox, Inc.",
+    "categories": ["DEVELOPER_TOOLS", "PRODUCTIVITY"],
+    "info": {
+      "en-US": {
+        "title": "LinkCode",
+        "subtitle": "Your coding agents, anywhere",
+        "description": "LinkCode puts your coding agents on your iPhone and iPad.\n\nConnect to the LinkCode host on your computer to monitor active work, continue conversations, send prompts, review tool activity, and use terminal sessions without switching between separate agent interfaces.\n\nLinkCode provides one consistent workspace for Codex, Claude Code, OpenCode, Pi, and Grok Build. Your coding projects and agent history remain on the host machine.\n\nA LinkCode host is required.",
+        "keywords": [
+          "coding agent",
+          "developer tools",
+          "remote development",
+          "terminal",
+          "Codex",
+          "Claude Code"
+        ],
+        "promoText": "Control the coding agents running on your computer from your iPhone or iPad.",
+        "marketingUrl": "https://linkcode.ai",
+        "supportUrl": "https://linkcode.ai/support",
+        "privacyPolicyUrl": "https://linkcode.ai/privacy"
+      },
+      "zh-Hans": {
+        "title": "LinkCode",
+        "subtitle": "随时连接你的 Coding Agent",
+        "description": "LinkCode 将你的 Coding Agent 带到 iPhone 和 iPad。\n\n连接电脑上运行的 LinkCode Host，即可查看正在进行的任务、继续对话、发送提示词、检查工具调用，并使用终端会话，无需在不同 Agent 界面之间反复切换。\n\nLinkCode 为 Codex、Claude Code、OpenCode、Pi 和 Grok Build 提供统一工作台。项目文件和 Agent 历史记录仍保留在 Host 设备上。\n\n使用本 App 需要一台运行 LinkCode Host 的电脑。",
+        "keywords": ["编程", "代码", "开发工具", "远程开发", "终端", "AI", "Codex"],
+        "promoText": "在 iPhone 或 iPad 上随时查看和控制电脑中运行的 Coding Agent。",
+        "marketingUrl": "https://linkcode.ai/zh",
+        "supportUrl": "https://linkcode.ai/zh/support",
+        "privacyPolicyUrl": "https://linkcode.ai/zh/privacy"
+      }
+    }
+  }
+}
