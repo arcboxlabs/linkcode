@@ -158,21 +158,27 @@ thread rows and the new-thread picker name the agent in text instead.
 - **Dev builds, not Expo Go.** Cloud sign-in needs the real `linkcode://` scheme: production HQ
   trusts only `https://linkcode.ai,linkcode://` (`TRUSTED_ORIGINS`), and the `@better-auth/expo`
   server plugin auto-trusts `exp://` only under `NODE_ENV=development`, so "Sign in" from Expo Go
-  silently 403s. Build once with `pnpm -F @linkcode/mobile ios` (`expo run:ios`; generates the
+  silently 403s. Build once with `devenv shell -- mobile` (`expo run:ios`; generates the
   gitignored `ios/` via prebuild); daily dev is then `pnpm -F @linkcode/mobile start` — with
   `expo-dev-client` installed it targets the dev build, not Expo Go.
-- **Strip the nix toolchain env before `expo run:ios`.** The devenv shell exports
-  `DEVELOPER_DIR`/`SDKROOT` (nix apple-sdk) plus
-  `CC`/`CXX`/`LD`/`NIX_CFLAGS_COMPILE`/`NIX_LDFLAGS`/`MACOSX_DEPLOYMENT_TARGET`, which poison
-  xcodebuild with nix libc++ headers (hundreds of `FP_NORMAL`/`uint8_t` errors), and its PATH puts a
-  nix xcbuild `xcrun` shim before the real one (`xcrun is not configured correctly`). Build with:
+- **Never run `expo run:ios` straight from the devenv shell — use the `mobile` script.** The shell
+  exports a full C toolchain for the Rust sidecar, and xcodebuild honours the same variable names.
+  Two independent poisons, each fatal on its own:
+  - `DEVELOPER_DIR`/`SDKROOT` (devenv's `apple.sdk`, default `pkgs.apple-sdk`) point at a nix
+    macOS SDK, so Xcode resolves its toolchain there and compiles iOS pods with nix clang —
+    `clang: error: unknown argument: '-index-store-path'`, plus nix libc++ headers injected through
+    `NIX_CFLAGS_COMPILE` (`FP_NORMAL`/`uint8_t` errors). `xcrun -f clang` returns the nix clang for
+    the same reason — it is `DEVELOPER_DIR`, not PATH order, that redirects it.
+  - `LD=ld` makes Xcode link through `ld` instead of the clang driver, so nobody unwraps
+    `-Xlinker`: `ld: -objc_abi_version '-Xlinker' not supported (expected 2)`. Surviving this one
+    needs `LD` gone; dropping only the SDK variables still fails at the appex link.
 
-  ```sh
-  devenv shell -- sh -c 'export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer PATH="/usr/bin:$PATH" SENTRY_DISABLE_AUTO_UPLOAD=true; unset SDKROOT CC CXX LD NIX_CFLAGS_COMPILE NIX_LDFLAGS MACOSX_DEPLOYMENT_TARGET; pnpm -F @linkcode/mobile ios'
-  ```
+  `scripts.mobile` in `devenv.nix` unsets both groups (and sets `SENTRY_DISABLE_AUTO_UPLOAD`, since
+  the Sentry Xcode phase otherwise fails the build without org/project credentials). Outside devenv
+  the shell is already clean and `pnpm -F @linkcode/mobile ios` works as-is.
 
-  (`SENTRY_DISABLE_AUTO_UPLOAD` because the Sentry Xcode phase otherwise fails the build on machines
-  without org/project credentials.)
+  Symptoms are misleading: the first thing to fail is usually the `[RNDeps] Replace React Native
+  Dependencies` script phase, which is collateral — that script runs fine on its own.
 - **Sentry:** `Sentry.init({ dsn: process.env.EXPO_PUBLIC_SENTRY_DSN })` + `Sentry.wrap` on the root
   layout; the Expo plugin uploads source maps for org `arcbox` / project `linkcode-mobile`. Runtime
   reporting no-ops without a DSN. EAS profiles select Expo environments

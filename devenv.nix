@@ -81,6 +81,12 @@
   # --profile / LINKCODE_PROFILE yourself only to fork a second universe within this channel.
   scripts.daemon.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm run --filter @linkcode/daemon dev";
   scripts.desktop.exec = "pnpm run --filter @linkcode/desktop dev";
-  scripts.mobile.exec = "pnpm run --filter @linkcode/mobile ios";
+  # xcodebuild honours the same CC/LD/SDKROOT names this shell exports for the Rust toolchain, so it
+  # would compile iOS pods with nix clang and link with `ld` instead of the clang driver. Strip them.
+  scripts.mobile.exec = ''
+    export PATH="/usr/bin:$PATH" SENTRY_DISABLE_AUTO_UPLOAD=true
+    unset DEVELOPER_DIR SDKROOT CC CXX LD NIX_CFLAGS_COMPILE NIX_LDFLAGS MACOSX_DEPLOYMENT_TARGET
+    pnpm run --filter @linkcode/mobile ios
+  '';
   scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }
