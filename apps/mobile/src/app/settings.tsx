@@ -1,7 +1,7 @@
 import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
 import { font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
-import { NavigationRow } from '@mobile/components/form-row';
+import { NavigationRow } from '@mobile/components/form/form-row';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';

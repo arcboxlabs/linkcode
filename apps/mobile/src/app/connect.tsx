@@ -23,7 +23,7 @@ import {
   textContentType,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
-import { NavigationRow } from '@mobile/components/form-row';
+import { NavigationRow } from '@mobile/components/form/form-row';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { ensureDeviceRegistered } from '@mobile/runtime/cloud/devices';
 import type { OnlineHost } from '@mobile/runtime/cloud/hosts';

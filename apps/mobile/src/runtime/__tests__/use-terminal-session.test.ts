@@ -3,7 +3,7 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
-import type { TerminalRendererRef } from '@mobile/components/terminal-renderer.types';
+import type { TerminalRendererRef } from '@mobile/components/terminal/terminal-renderer.types';
 import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { noop } from 'foxts/noop';

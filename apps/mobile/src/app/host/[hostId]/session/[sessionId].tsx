@@ -8,11 +8,11 @@ import {
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '@linkcode/ui/native';
-import { Composer } from '@mobile/components/composer';
-import { TimelineItem } from '@mobile/components/conversation-timeline';
-import { PromptDock } from '@mobile/components/prompt-dock';
-import { SessionStatusChip } from '@mobile/components/session-status-chip';
-import { ToolDetailSheet } from '@mobile/components/tool-detail-sheet';
+import { Composer } from '@mobile/components/conversation/composer';
+import { TimelineItem } from '@mobile/components/conversation/conversation-timeline';
+import { PromptDock } from '@mobile/components/conversation/prompt-dock';
+import { SessionStatusChip } from '@mobile/components/conversation/session-status-chip';
+import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import * as Clipboard from 'expo-clipboard';

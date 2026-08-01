@@ -1,6 +1,6 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
-import { HostConnectionState } from '@mobile/components/host-connection-state';
-import { useStackScreenOptions } from '@mobile/components/use-stack-screen-options';
+import { HostConnectionState } from '@mobile/components/host/host-connection-state';
+import { useStackScreenOptions } from '@mobile/components/shell/use-stack-screen-options';
 import { useHostClient } from '@mobile/runtime/use-host-client';
 import type { HostProfile } from '@mobile/stores/host-store';
 import { useHostRegistryStore } from '@mobile/stores/host-store';

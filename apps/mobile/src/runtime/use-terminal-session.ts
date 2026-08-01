@@ -1,6 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
-import type { TerminalRendererRef } from '@mobile/components/terminal-renderer.types';
+import type { TerminalRendererRef } from '@mobile/components/terminal/terminal-renderer.types';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useRef, useState } from 'react';

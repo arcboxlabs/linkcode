@@ -1,5 +1,5 @@
 import { TerminalIdSchema } from '@linkcode/schema';
-import TerminalRenderer from '@mobile/components/terminal-renderer';
+import TerminalRenderer from '@mobile/components/terminal/terminal-renderer';
 import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { resolveTerminalTheme, useTerminalPrefsStore } from '@mobile/stores/terminal-prefs-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';

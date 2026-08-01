@@ -16,9 +16,9 @@ import {
   repositoryLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
-import { HeaderIconButton } from '@mobile/components/navigation';
-import { NewThreadSheet } from '@mobile/components/new-thread-sheet';
-import { ThreadList } from '@mobile/components/thread-list';
+import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
+import { ThreadList } from '@mobile/components/host/thread-list';
+import { HeaderIconButton } from '@mobile/components/shell/navigation';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { useHostRegistryStore } from '@mobile/stores/host-store';

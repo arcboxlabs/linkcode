@@ -1,4 +1,4 @@
-import { BrandMark } from '@mobile/components/brand-mark';
+import { BrandMark } from '@mobile/components/shell/brand-mark';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { resolveStartupTarget } from '@mobile/runtime/startup';
 import { useHostRegistryHydrated, useHostRegistryStore } from '@mobile/stores/host-store';

@@ -1,4 +1,4 @@
-import { BrandMark } from '@mobile/components/brand-mark';
+import { BrandMark } from '@mobile/components/shell/brand-mark';
 import { signInToCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { isAppleSignInCancel, signInWithApple } from '@mobile/runtime/cloud/idp';
 import * as AppleAuthentication from 'expo-apple-authentication';

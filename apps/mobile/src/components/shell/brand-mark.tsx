@@ -1,5 +1,5 @@
 import { Image, StyleSheet, View } from 'react-native';
-import icon from '../../assets/splash-icon.png';
+import icon from '../../../assets/splash-icon.png';
 
 /**
  * The app icon as an in-app brand mark: the transparent splash glyph on a

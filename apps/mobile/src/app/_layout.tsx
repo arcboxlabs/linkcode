@@ -9,10 +9,10 @@ import {
   AppIntlProvider,
   AppKeyboardProvider,
   AppThemeProvider,
-} from '@mobile/components/app-providers';
-import { RootNavigator } from '@mobile/components/navigation';
-import { MobileProductAnalyticsProvider } from '@mobile/components/product-analytics-provider';
-import { ThemeController } from '@mobile/components/theme-controller';
+} from '@mobile/components/shell/app-providers';
+import { RootNavigator } from '@mobile/components/shell/navigation';
+import { MobileProductAnalyticsProvider } from '@mobile/components/shell/product-analytics-provider';
+import { ThemeController } from '@mobile/components/shell/theme-controller';
 import * as Sentry from '@sentry/react-native';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useNavigationContainerRef } from 'expo-router';
