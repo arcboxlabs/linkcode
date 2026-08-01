@@ -15,6 +15,8 @@ export interface SeedSession {
   status: SessionStatus;
   ageMs: number;
   showcase?: boolean;
+  /** Seeds a long settled transcript instead of the scripted showcase (see `long-thread.ts`). */
+  longThread?: boolean;
   terminalId?: string;
   resources?: SeedSessionResource[];
 }
@@ -85,6 +87,14 @@ export const SEED_SESSIONS: SeedSession[] = [
         ageMs: 10000,
       },
     ],
+  },
+  {
+    kind: 'claude-code',
+    cwd: '/mock/linkcode',
+    title: 'Long thread · navigation testbed',
+    status: 'idle',
+    ageMs: 8 * 60000,
+    longThread: true,
   },
   {
     kind: 'claude-code',

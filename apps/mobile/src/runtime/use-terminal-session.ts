@@ -3,7 +3,12 @@ import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcod
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useRef, useState } from 'react';
-import type { TerminalRendererRef } from '../components/terminal-renderer.types';
+
+/** Imperative surface the runtime drives; the presentation layer implements this on the canvas. */
+export interface TerminalRendererRef {
+  events: (events: readonly TerminalReplayEvent[]) => void;
+  exit: (code: number | null) => void;
+}
 
 export type TerminalAttachStatus = 'attaching' | 'ready' | 'error';
 

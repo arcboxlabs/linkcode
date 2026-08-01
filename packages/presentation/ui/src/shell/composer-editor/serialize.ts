@@ -17,6 +17,7 @@ import type {
 } from './directive-state';
 import { commandStatus, shellStatus } from './directive-state';
 import { $isCommandNode, $isShellNode } from './nodes';
+import { isShellDirectiveText } from './tokenize';
 
 const WHITESPACE_RE = /\s/;
 const BLOCK_SEPARATOR_SIZE = 2;
@@ -353,7 +354,7 @@ export function $draftDirective(
       status: commandStatus(leading.name, state.directiveControls.slash),
     };
   }
-  if (leading?.kind === 'shell') {
+  if (leading?.kind === 'shell' && isShellDirectiveText(text)) {
     return {
       command: text.slice(1).trim(),
       kind: 'shell',

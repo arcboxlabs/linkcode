@@ -136,6 +136,10 @@ export const en = {
       compacting: 'Compacting context…',
       compacted: 'Context compacted',
       compactedTokens: '{pre} → {post} tokens',
+      minimap: {
+        label: 'Conversation navigation',
+        turn: 'Turn {index}',
+      },
     },
     tool: {
       input: 'Input',
@@ -356,6 +360,8 @@ export const en = {
     },
     resources: {
       sources: 'Sources',
+      plan: 'PLAN',
+      planProgress: 'Plan step {current} of {total}',
       outputs: 'Outputs',
       emptySources: 'Attach files or connect apps',
       emptyOutputs: 'Create a file or site',
@@ -551,6 +557,9 @@ export const en = {
       remoteSignedOut: 'Sign in to connect',
       remoteHostsLoading: 'Checking online hosts…',
       remoteHostsEmpty: 'No hosts online',
+      updateReady: 'Update ready',
+      updateNow: 'Restart to update',
+      changelog: 'Changelog',
       newThread: 'New thread',
       groupActions: 'Workspace actions',
       expandGroup: 'Expand',

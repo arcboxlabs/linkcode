@@ -9,6 +9,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from './conversation';
+import { ConversationMinimap, useConversationMinimap } from './conversation-minimap';
 import { SubagentViewer } from './subagent-viewer';
 import { partitionSubagentItems } from './subagents';
 import { TurnSegmentView } from './turn-segment-view';
@@ -53,6 +54,14 @@ export function ConversationView({
     awaitingAnswer,
     questionsByToolCall,
   } = useTimelineModel(conversation);
+  // Destructured, not held as a bag: React Compiler infers any object a ref is read off as a ref.
+  const {
+    virtualizerRef,
+    railRef,
+    visible: visibleTurns,
+    onScroll: onTimelineScroll,
+    onSelect: onSelectTurn,
+  } = useConversationMinimap(segments.length);
 
   if (items.length === 0) {
     return (
@@ -87,6 +96,8 @@ export function ConversationView({
     >
       <ConversationContent
         data={segments}
+        onScroll={onTimelineScroll}
+        virtualizerRef={virtualizerRef}
         trailing={
           isThinking && (
             <div className="flex items-center gap-2 pt-5 pb-1 text-muted-foreground text-sm">
@@ -116,6 +127,12 @@ export function ConversationView({
           />
         )}
       </ConversationContent>
+      <ConversationMinimap
+        onSelect={onSelectTurn}
+        railRef={railRef}
+        segments={segments}
+        visible={visibleTurns}
+      />
       <ConversationScrollButton />
       <SubagentViewer
         awaitingApproval={awaitingApproval}

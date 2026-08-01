@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
@@ -19,6 +29,7 @@ import {
 } from '@linkcode/schema';
 import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
+import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 import type { SecretStore, SecretVault } from './secrets';
@@ -122,12 +133,7 @@ const accountSecrets = (vault: SecretVault): SecretStore => vault.namespace('acc
 const customMcpSecrets = (vault: SecretVault): SecretStore => vault.namespace('custom-mcp');
 
 export function loadConfig(vault: SecretVault): DaemonConfig {
-  let file: ConfigFile = {};
-  try {
-    file = JSON.parse(readFileSync(configPath(), 'utf8')) as ConfigFile;
-  } catch {
-    // No config file (or unreadable) — fall back to defaults.
-  }
+  const file = readConfigFile();
   const fallbackListener = createDefaultSocketIoListener(file);
   const configuredListeners = Array.isArray(file.listeners)
     ? file.listeners.flatMap((value) => {
@@ -185,12 +191,12 @@ function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
 
 /** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
 export function saveSimulatorConsent(state: SimulatorConsentState): void {
-  writeConfigField('simulatorConsent', state);
+  writeConfigFields(readConfigFile(), { simulatorConsent: state });
 }
 
 /**
  * Parse element by element: an invalid account is dropped and logged, never blanking the pool —
- * `saveAccounts` would persist that loss on the next write. Mirrors {@link parseProviders}.
+ * a later save would persist that loss. Mirrors {@link parseProviders}.
  */
 function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
   if (raw === undefined) return { value: [], migrated: false };
@@ -243,7 +249,7 @@ function parseCustomMcpServers(store: SecretStore, raw: unknown): Parsed<CustomM
 
 /**
  * Parse field by field: an invalid entry is dropped and logged, never blanking the other entries —
- * `saveProviders` would persist that loss on the next write.
+ * a later save would persist that loss.
  */
 function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfig> {
   if (raw === undefined) return { value: {}, migrated: false };
@@ -274,14 +280,44 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
   return { value: providers, migrated };
 }
 
-/** Persist providers to config.json, preserving its other fields; api keys go to the vault instead. */
-export function saveProviders(vault: SecretVault, providers: ProvidersConfig): void {
-  writeConfigField('providers', detachProviderSecrets(providerSecrets(vault), providers));
+/** Persist providers and accounts in one config.json replacement; their secrets go to the vault. */
+export function saveProviderConfiguration(
+  vault: SecretVault,
+  providers: ProvidersConfig,
+  accounts: Accounts,
+): void {
+  const file = readConfigFile();
+  writeConfigFields(file, {
+    providers: detachProviderSecrets(providerSecrets(vault), providers),
+    accounts: detachAccountSecrets(accountSecrets(vault), accounts),
+  });
 }
 
-/** Persist the account pool to config.json; credential secrets go to the vault instead. */
-export function saveAccounts(vault: SecretVault, accounts: Accounts): void {
-  writeConfigField('accounts', detachAccountSecrets(accountSecrets(vault), accounts));
+function readConfigFile(): ConfigFile & Record<string, unknown> {
+  const path = configPath();
+  let contents: string;
+  try {
+    contents = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (isErrorLikeObject(err) && (err as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw new Error(`Could not read daemon config at ${path}: ${extractErrorMessage(err)}`, {
+      cause: err,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents);
+  } catch (err) {
+    throw new SyntaxError(`Invalid JSON in daemon config at ${path}: ${extractErrorMessage(err)}`, {
+      cause: err,
+    });
+  }
+
+  if (!isRecord(parsed)) {
+    throw new TypeError(`Invalid daemon config at ${path}: expected a JSON object`);
+  }
+  return parsed;
 }
 
 /** Persist custom MCP structure and key names; values go to the vault. */
@@ -291,7 +327,7 @@ export function saveCustomMcpServers(
   previous: CustomMcpServer[],
 ): void {
   persistCustomMcpSnapshot(vault, servers, previous, (value) =>
-    writeConfigField('customMcpServers', value),
+    writeConfigFields(readConfigFile(), { customMcpServers: value }),
   );
 }
 
@@ -302,7 +338,7 @@ export function saveConfigSnapshot(
   customMcpServers: CustomMcpServer[],
 ): void {
   persistCustomMcpSnapshot(vault, customMcpServers, customMcpServers, (value) =>
-    writeConfigFields({
+    writeConfigFields(readConfigFile(), {
       providers: detachProviderSecrets(providerSecrets(vault), providers),
       accounts: detachAccountSecrets(accountSecrets(vault), accounts),
       customMcpServers: value,
@@ -337,9 +373,7 @@ function persistCustomMcpSnapshot(
   writeConfig: (value: unknown) => void,
 ): void {
   const store = customMcpSecrets(vault);
-  const previousGeneration = parseCustomMcpSnapshot(
-    readConfigDocument().customMcpServers,
-  ).generation;
+  const previousGeneration = parseCustomMcpSnapshot(readConfigFile().customMcpServers).generation;
   const generation =
     previousGeneration === undefined || previousGeneration === Number.MAX_SAFE_INTEGER
       ? 1
@@ -371,43 +405,37 @@ function persistCustomMcpSnapshot(
   }
 }
 
-/** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(
-  key: 'providers' | 'accounts' | 'customMcpServers' | 'simulatorConsent',
-  value: unknown,
-): void {
-  writeConfigFields({ [key]: value });
+function fsyncPath(path: string): void {
+  const descriptor = openSync(path, 'r');
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function writeConfigFields(
-  values: Partial<
-    Record<'providers' | 'accounts' | 'customMcpServers' | 'simulatorConsent', unknown>
-  >,
+  file: Record<string, unknown>,
+  fields: Partial<Record<keyof ConfigFile, unknown>>,
 ): void {
   const path = configPath();
-  const file = readConfigDocument();
-  Object.assign(file, values);
-  mkdirSync(dirname(path), { recursive: true });
-  const temporaryFile = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  Object.assign(file, fields);
+  const directory = dirname(path);
+  mkdirSync(directory, { recursive: true });
+  const temporaryPath = join(directory, `.config.${process.pid}.${randomUUID()}.tmp`);
   try {
-    writeFileSync(temporaryFile, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temporaryFile, path);
-  } catch (error) {
-    try {
-      unlinkSync(temporaryFile);
-    } catch {}
-    throw error;
+    writeFileSync(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    chmodSync(temporaryPath, 0o600);
+    fsyncPath(temporaryPath);
+    renameSync(temporaryPath, path);
+    if (process.platform !== 'win32') fsyncPath(directory);
+  } finally {
+    rmSync(temporaryPath, { force: true });
   }
-}
-
-function readConfigDocument(): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(configPath(), 'utf8'));
-    if (isRecord(parsed)) return parsed;
-  } catch {
-    // Start from an empty document if the file is missing or malformed.
-  }
-  return {};
 }
 
 function createDefaultSocketIoListener(file: ConfigFile): DaemonListenerConfig {

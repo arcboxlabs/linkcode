@@ -96,6 +96,8 @@ export interface ShellFrameProps
   mentionItems: MentionItem[];
   /** Queries mentions against the cwd belonging to whichever composer is visible. */
   onMentionQueryChange: (cwd: string | undefined, query: string | null) => void;
+  /** Whether the compact current plan remains above the composer. */
+  showPlanInPromptDock?: boolean;
   /** Complete active-session composer behavior, forwarded atomically by every shell. */
   conversationComposer: ConversationComposerController;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
@@ -157,6 +159,7 @@ export function ShellFrame({
   onTogglePreviewExpanded,
   mentionItems,
   onMentionQueryChange,
+  showPlanInPromptDock,
   conversationComposer,
   onRespondPermission,
   onRespondQuestion,
@@ -253,6 +256,7 @@ export function ShellFrame({
             TerminalBlockComponent={TerminalBlockComponent}
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
+            showPlanInPromptDock={showPlanInPromptDock}
             onRespondPermission={onRespondPermission}
             onRespondQuestion={onRespondQuestion}
             onHostArtifact={onHostArtifact}

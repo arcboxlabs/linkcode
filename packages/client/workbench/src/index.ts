@@ -4,7 +4,6 @@ export * from './agent-runtime/unverified-store';
 export * from './analytics/product-analytics';
 export * from './app/app-providers';
 export * from './app/connection-state';
-export * from './app/workbench-app';
 export * from './app/workbench-providers';
 export * from './assets/hooks';
 export * from './automations/automations-view';

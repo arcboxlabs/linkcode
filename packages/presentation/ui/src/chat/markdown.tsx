@@ -25,7 +25,9 @@ import { LinkTargetIcon } from './link-icon';
 import { filePathTarget, linkTargetFor } from './link-target';
 import { useSmoothText } from './smooth-text-controller';
 
-const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]';
+/* Plex Mono's 0.275em metric descent bottom-weights the padded box against the prose optical
+ * center; the 0.04em raise re-centers it (measured against Plex Sans + PingFang at text-sm). */
+const INLINE_CODE_CLASS = 'rounded bg-muted px-1 py-0.5 align-[0.04em] font-mono text-[0.85em]';
 const NON_WORD_RE = /\W/g;
 /** Streamdown's bundled rehype-sanitize clobbers every id with this prefix; hrefs are not
  * clobbered, so scopeFragmentIdentifiers bakes it into rewritten fragment hrefs up front. */

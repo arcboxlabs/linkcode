@@ -9,6 +9,7 @@ import {
 import { ArrowDownIcon } from 'lucide-react';
 import { useCallback } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
+import type { VirtualizerHandle } from 'virtua';
 import { Virtualizer } from 'virtua';
 import { cn } from '../lib/cn';
 
@@ -17,7 +18,9 @@ export type ConversationProps = React.ComponentProps<typeof StickToBottom>;
 export function Conversation({ className, ...props }: ConversationProps): React.ReactNode {
   return (
     <StickToBottom
-      className={cn('relative h-full overflow-hidden', className)}
+      // Named container: viewport-pinned overlays (the minimap) size themselves against the pane,
+      // which is narrower than the window whenever the sidebar or a side panel is open.
+      className={cn('@container/conversation relative h-full overflow-hidden', className)}
       // Instant initial positioning: animating from the top would page the whole virtualized
       // history through the viewport.
       initial="instant"
@@ -37,6 +40,11 @@ export interface ConversationContentProps<T> {
   children: (item: T, index: number) => React.ReactElement;
   /** Rendered after the virtualized rows, inside the scrolled column (e.g. the thinking row). */
   trailing?: React.ReactNode;
+  /** Row offsets and imperative scrolling, for overlays that navigate the stream (the minimap). */
+  virtualizerRef?: React.Ref<VirtualizerHandle>;
+  /** Scroll offset of the virtualized column. This version of virtua has no range callback, so
+   * consumers resolve the visible range themselves via the handle. */
+  onScroll?: (offset: number) => void;
 }
 
 /**
@@ -49,6 +57,8 @@ export function ConversationContent<T>({
   data,
   children,
   trailing,
+  virtualizerRef,
+  onScroll,
 }: ConversationContentProps<T>): React.ReactNode {
   const { scrollRef } = useStickToBottomContext();
   return (
@@ -57,7 +67,7 @@ export function ConversationContent<T>({
       // The browser's own scroll anchoring fights both scroll owners.
       scrollClassName="[overflow-anchor:none]"
     >
-      <Virtualizer data={data} scrollRef={scrollRef}>
+      <Virtualizer data={data} onScroll={onScroll} ref={virtualizerRef} scrollRef={scrollRef}>
         {children}
       </Virtualizer>
       {trailing}

@@ -4,8 +4,7 @@
     "jsx": "react-jsx",
     "paths": {
       "@webview/*": ["./src/*"]
-    },
-    "types": ["react/canary"]
+    }
   },
   "include": ["src"]
 }

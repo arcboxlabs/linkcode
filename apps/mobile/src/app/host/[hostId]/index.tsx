@@ -6,7 +6,6 @@ import {
   Button as UIButton,
   Text as UIText,
 } from '@expo/ui/swift-ui';
-import { foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useSessions } from '@linkcode/client-core';
 import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
@@ -16,6 +15,13 @@ import {
   repositoryLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
+import { SECONDARY } from '@mobile/components/form/styles';
+import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
+import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
+import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
+import { useWorkspaces } from '@mobile/runtime/use-workspaces';
+import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SearchField, useThemeColor } from 'heroui-native';
 import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
@@ -23,14 +29,6 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { HeaderIconButton } from '../../../components/navigation';
-import { NewThreadSheet } from '../../../components/new-thread-sheet';
-import { ThreadList } from '../../../components/thread-list';
-import { captureMobileProductEvent } from '../../../runtime/product-analytics';
-import { useWorkspaces } from '../../../runtime/use-workspaces';
-import { useHostRegistryStore } from '../../../stores/host-store';
-
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 /** The title a thread is listed and searched under — the same fallback the row renders. */
 function threadTitle(session: SessionInfo): string {

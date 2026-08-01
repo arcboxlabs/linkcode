@@ -1,13 +1,13 @@
-import { useEffect } from 'react';
-import { cloudAuthClient } from '../runtime/cloud/client';
+import { cloudAuthClient } from '@mobile/runtime/cloud/client';
 import {
   applyMobileProductAnalyticsPreference,
   syncMobileProductAnalyticsIdentity,
-} from '../runtime/product-analytics';
+} from '@mobile/runtime/product-analytics';
 import {
   useAnalyticsPreferenceHydrated,
   useAnalyticsPreferenceStore,
-} from '../stores/analytics-store';
+} from '@mobile/stores/analytics-store';
+import { useEffect } from 'react';
 
 interface AnalyticsSessionState {
   data: { user: { id: string } } | null;

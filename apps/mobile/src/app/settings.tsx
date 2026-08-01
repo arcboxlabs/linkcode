@@ -1,14 +1,14 @@
 import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
 import { font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { useCloudAccount } from '@mobile/runtime/cloud/account';
+import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
+import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
+import type { ThemePreference } from '@mobile/stores/settings-store';
+import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslations } from 'use-intl';
-import { NavigationRow } from '../components/form-row';
-import { useCloudAccount } from '../runtime/cloud/account';
-import { setMobileProductAnalyticsEnabled } from '../runtime/product-analytics';
-import { useAnalyticsPreferenceStore } from '../stores/analytics-store';
-import type { ThemePreference } from '../stores/settings-store';
-import { useSettingsStore } from '../stores/settings-store';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 

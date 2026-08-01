@@ -139,20 +139,38 @@ describe('directive tokenizer', () => {
     expect(draftText(editor)).toBe('/usage');
   });
 
-  it('chips a leading $ only after it has a shell payload', () => {
+  it('chips a leading $ only with a horizontal separator and shell payload', () => {
     const editor = createEditor();
-    setDraft(editor, '$ls -la');
-    expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
-    expect(draftText(editor)).toBe('$ls -la');
 
-    setDraft(editor, '$');
-    expect(draftShape(editor)).toEqual(['text']);
+    for (const draft of ['$ ls -la', '$   pnpm test', '$\techo']) {
+      setDraft(editor, draft);
+      expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
+      expect(draftText(editor)).toBe(draft);
+    }
 
-    setDraft(editor, '$   ');
-    expect(draftShape(editor)).toEqual(['text']);
+    for (const draft of ['$ls', '$HOME', '$100', '$', '$   ']) {
+      setDraft(editor, draft);
+      expect(draftShape(editor)).toEqual(['text']);
+    }
+  });
 
+  it('dematerializes a shell chip when its separator is removed', () => {
+    const editor = createEditor();
     setDraft(editor, '$ ls');
-    expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
+
+    editor.update(
+      () => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
+        const payload = paragraph.getLastChild();
+        if (!$isTextNode(payload)) throw new Error('expected shell payload');
+        payload.setTextContent('ls');
+      },
+      { discrete: true },
+    );
+
+    expect(draftShape(editor)).toEqual(['text']);
+    expect(draftText(editor)).toBe('$ls');
   });
 
   it('chips a command when a line break supplies its boundary', () => {
@@ -415,7 +433,7 @@ describe('$draftDirective', () => {
 
   it('classifies shell drafts by capability', () => {
     const editor = createEditor();
-    setDraft(editor, '$ls -la');
+    setDraft(editor, '$ ls -la');
     expect(editor.read(() => $draftDirective(directiveState()))).toEqual({
       command: 'ls -la',
       kind: 'shell',
@@ -424,6 +442,23 @@ describe('$draftDirective', () => {
     expect(
       editor.read(() => $draftDirective(directiveState({ shell: { state: 'unsupported' } }))),
     ).toMatchObject({ status: 'unsupported' });
+  });
+
+  it('serializes a malformed restored shell chip as text', () => {
+    const editor = createEditor();
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        paragraph.append($createShellNode(), $createTextNode('HOME'));
+        $getRoot().clear().append(paragraph);
+      },
+      { discrete: true, tag: HISTORIC_TAG },
+    );
+
+    expect(editor.read(() => $draftDirective(directiveState()))).toEqual({
+      kind: 'text',
+      text: '$HOME',
+    });
   });
 
   it('serializes mention chips into command arguments', () => {
@@ -721,13 +756,13 @@ describe('$replaceTriggerWith', () => {
 describe('shell chip round-trip', () => {
   it('keeps the $ literal for clipboard/serialization', () => {
     const editor = createEditor();
-    setDraft(editor, '$echo hi');
+    setDraft(editor, '$ echo hi');
     editor.read(() => {
       const paragraph = $getRoot().getFirstChild();
       if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
       expect(paragraph.getFirstChildOrThrow().getTextContent()).toBe('$');
     });
-    expect(draftText(editor)).toBe('$echo hi');
+    expect(draftText(editor)).toBe('$ echo hi');
   });
 
   it('imports/exports chips through JSON round-trips', () => {

@@ -1,12 +1,7 @@
 import type { AgentEvent, MessageId } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
-import {
-  buildConversation,
-  contentPreview,
-  createConversationBuilder,
-  toolCallDiffs,
-} from '../conversation';
+import { buildConversation, createConversationBuilder, toolCallDiffs } from '../conversation';
 
 function text(t: string, messageId = 'm1'): AgentEvent {
   return {
@@ -932,16 +927,5 @@ describe('createConversationBuilder', () => {
       expect(item.endedAt).toBe(150);
       expect(item.receivedAt).toBe(120);
     }
-  });
-});
-
-describe('contentPreview', () => {
-  it('joins text and tags non-text blocks', () => {
-    expect(
-      contentPreview([
-        { type: 'text', text: 'hello' },
-        { type: 'image', data: 'x', mimeType: 'image/png' },
-      ]),
-    ).toBe('hello [image]');
   });
 });

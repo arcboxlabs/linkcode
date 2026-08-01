@@ -35,10 +35,12 @@ describe('engine agent catalog', () => {
       model: 'provider/model',
       createdAt: 0,
     };
-    providers.set({
-      'claude-code': { enabled: true, activeAccountId: account.id },
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: account.id },
+      },
+      accounts: [account],
     });
-    providers.setAccounts([account]);
     const h = createSessionHarness(
       undefined,
       () => adapter,

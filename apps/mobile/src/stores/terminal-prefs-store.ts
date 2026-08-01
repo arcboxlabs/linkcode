@@ -1,10 +1,10 @@
 import { zodPersist } from '@linkcode/common/zustand';
+import { TERMINAL_THEME_NAMES, TERMINAL_THEMES } from '@mobile/constants/terminal-themes.generated';
 import type { TerminalTheme } from 'expo-libghostty';
 import Storage from 'expo-sqlite/kv-store';
 import { z } from 'zod';
 import { create } from 'zustand';
 import { createJSONStorage } from 'zustand/middleware';
-import { TERMINAL_THEME_NAMES, TERMINAL_THEMES } from '../constants/terminal-themes.generated';
 
 export const TERMINAL_COLOR_SCHEMES = ['auto', ...TERMINAL_THEME_NAMES] as const;
 export type TerminalColorScheme = (typeof TERMINAL_COLOR_SCHEMES)[number];

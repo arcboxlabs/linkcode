@@ -2,7 +2,7 @@ import { useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SessionResource } from '@linkcode/schema';
 import { MAX_ATTACHMENT_BYTES, SessionResourceIdSchema } from '@linkcode/schema';
 import { hostResource, listResources, removeResource, uploadSource } from '@linkcode/sdk';
-import type { ResourceItem } from '@linkcode/ui';
+import type { CurrentPlan, ResourceItem } from '@linkcode/ui';
 import { readFileAsBase64, TaskResourcesPanel } from '@linkcode/ui';
 import { toastManager } from 'coss-ui/components/toast';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -51,8 +51,10 @@ function useSessionResources(sessionId: SessionId) {
 /** Runtime-backed adapter from the session resource data plane into the pure shared panel. */
 export function RuntimeTaskResourcesPanel({
   sessionId,
+  plan,
 }: {
   sessionId: SessionId;
+  plan?: CurrentPlan | null;
 }): React.ReactNode {
   const t = useTranslations('workbench.resources');
   const { data, mutate } = useSessionResources(sessionId);
@@ -121,6 +123,7 @@ export function RuntimeTaskResourcesPanel({
 
   return (
     <TaskResourcesPanel
+      plan={plan}
       resources={(data ?? []).map((resource) => resourceItem(resource, t('localFile')))}
       onAddSource={(files) => {
         void addSources(files);

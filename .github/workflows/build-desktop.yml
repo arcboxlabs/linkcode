@@ -145,10 +145,9 @@ jobs:
       - name: Package with electron-builder
         working-directory: ${{ env.DESKTOP_DIR }}
         shell: bash # unify quoting across runners for the conditional signing args below
-        # package-app.mts materializes a single-importer staging dir and points electron-builder's
-        # --projectDir at it (see the script header): fixes the Windows native-rebuild miss and the
-        # module-collector drops without the app-builder-lib patch. azureSignOptions is forwarded via
-        # -c only on signed Windows builds so unsigned builds skip signing instead of failing.
+        # package-app.mts materializes one CPU-scoped staging dir per target arch and points
+        # electron-builder's --projectDir at it (see the script header). azureSignOptions is
+        # forwarded via -c only on signed Windows builds so unsigned builds skip signing.
         run: |
           # electron-builder treats a *set but empty* CSC_LINK as a certificate path and dies on
           # "<projectDir> not a file". Actions cannot conditionally unset an env key, so the cert
@@ -160,13 +159,9 @@ jobs:
             # Electron 43 needs Clang 15; the arm64 rebuild also needs an explicit cross target.
             CC=clang-15 CXX=clang++-15 \
               node scripts/package-app.mts linux --x64 --publish never
-            mv release/linux-unpacked "$RUNNER_TEMP/linkcode-linux-x64-unpacked"
             CC='clang-15 --target=aarch64-linux-gnu' \
               CXX='clang++-15 --target=aarch64-linux-gnu' \
               node scripts/package-app.mts linux --arm64 --publish never
-            # Single-arch Linux builds both use linux-unpacked; preserve the verifier's arch layout.
-            mv release/linux-unpacked release/linux-arm64-unpacked
-            mv "$RUNNER_TEMP/linkcode-linux-x64-unpacked" release/linux-unpacked
           else
             node scripts/package-app.mts ${{ matrix.platform }} --publish never \
               ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}

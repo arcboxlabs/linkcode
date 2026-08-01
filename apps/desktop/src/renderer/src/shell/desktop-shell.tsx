@@ -59,6 +59,7 @@ import type { WorkspaceSide } from './layout/workspace';
 import { DesktopWorkspace } from './layout/workspace';
 import { getExpandedPanel } from './store/model';
 import { useDesktopShellStore } from './store/store';
+import { UpdateNotice } from './update-notice';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
 import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
 
@@ -309,6 +310,9 @@ export function DesktopShell({
     rightPanelOpen: rightPanel.open,
   });
   const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
+  const resourcesSurfaceOpen =
+    (resourcesPresentation !== 'hidden' && resourcesOpen) ||
+    (rightPanel.open && rightPanel.activeSection === 'resources');
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -465,6 +469,7 @@ export function DesktopShell({
           isRunning={isRunning}
           mentionItems={mentionItems}
           onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
+          showPlanInPromptDock={!resourcesSurfaceOpen}
           onRespondPermission={onRespondPermission}
           onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}
@@ -738,7 +743,9 @@ export function DesktopShell({
         onToggleResources={toggleResources}
         onResourcesOpenChange={setResourcesOpen}
       >
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
+        {/* Never paint this wrapper: it spans the sidebar column, whose translucent tint has to
+            reach the native backdrop. Only the floating rail needs its own opaque gutter. */}
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
           <DesktopWorkspace
             main={main}
             right={workspaceRight}
@@ -764,21 +771,24 @@ export function DesktopShell({
                   collapsedSections={collapsedSections}
                   topInsetClassName={DESKTOP_CHROME_SPACER_CLASS}
                   footer={
-                    <HostFooter
-                      state={tConnection('connected')}
-                      appVersion={appVersion}
-                      pendingPermissionCount={conversation.pendingPermissionIds.length}
-                      account={cloudAuth.account}
-                      authPending={cloudAuth.authenticating}
-                      onSignIn={cloudAuth.signIn}
-                      onSignOut={cloudAuth.signOut}
-                      onManageAccount={cloudAuth.manageAccount}
-                      remoteHosts={remoteHostItems}
-                      remoteHostsLoading={remoteHosts.isLoading}
-                      selectedHostId={selectedHostId}
-                      onSelectHost={selectHost}
-                      onOpenSettings={onOpenSettings}
-                    />
+                    <>
+                      <UpdateNotice />
+                      <HostFooter
+                        state={tConnection('connected')}
+                        appVersion={appVersion}
+                        pendingPermissionCount={conversation.pendingPermissionIds.length}
+                        account={cloudAuth.account}
+                        authPending={cloudAuth.authenticating}
+                        onSignIn={cloudAuth.signIn}
+                        onSignOut={cloudAuth.signOut}
+                        onManageAccount={cloudAuth.manageAccount}
+                        remoteHosts={remoteHostItems}
+                        remoteHostsLoading={remoteHosts.isLoading}
+                        selectedHostId={selectedHostId}
+                        onSelectHost={selectHost}
+                        onOpenSettings={onOpenSettings}
+                      />
+                    </>
                   }
                   onPickDirectory={pickDirectory}
                   onOpenSearch={onOpenSearch}
@@ -808,7 +818,7 @@ export function DesktopShell({
           <aside
             aria-hidden={!resourcesFloatingOpen}
             inert={!resourcesFloatingOpen}
-            className="min-h-0 min-w-0 shrink-0 overflow-hidden transition-[width] duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+            className="min-h-0 min-w-0 shrink-0 overflow-hidden bg-background transition-[width] duration-(--motion-normal) ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
             style={{ width: resourcesFloatingOpen ? RESOURCES_FLOATING_COLUMN_WIDTH : 0 }}
           >
             <div

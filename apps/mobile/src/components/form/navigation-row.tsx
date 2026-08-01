@@ -1,15 +1,7 @@
 import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
-import {
-  badge,
-  contentShape,
-  font,
-  foregroundStyle,
-  onTapGesture,
-  shapes,
-} from '@expo/ui/swift-ui/modifiers';
+import { badge, contentShape, onTapGesture, shapes } from '@expo/ui/swift-ui/modifiers';
+import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles';
 
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const TERTIARY = foregroundStyle({ type: 'hierarchical', style: 'tertiary' });
 // The stack only covers its text without this, so taps in the empty part of the row are lost.
 const WHOLE_ROW = contentShape(shapes.rectangle());
 
@@ -33,9 +25,7 @@ export function NavigationRow({
     <HStack spacing={8} modifiers={[WHOLE_ROW, onTapGesture(onPress), badge(badgeText)]}>
       <VStack alignment="leading" spacing={2}>
         <Text>{title}</Text>
-        {subtitle ? (
-          <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>{subtitle}</Text>
-        ) : null}
+        {subtitle ? <Text modifiers={[FOOTNOTE, SECONDARY]}>{subtitle}</Text> : null}
       </VStack>
       <Spacer />
       <Image systemName="chevron.right" size={13} modifiers={[TERTIARY]} />

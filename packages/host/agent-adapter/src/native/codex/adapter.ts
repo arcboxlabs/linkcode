@@ -47,7 +47,7 @@ import { resolveAgentShellEnvironment } from '../../shell-env';
 import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
-import { codexConfiguredSandbox } from './config';
+import { codexConfiguredModel, codexConfiguredSandbox } from './config';
 import {
   codexHome,
   codexIndexEntryToSession,
@@ -395,17 +395,33 @@ export class CodexAdapter extends BaseAgentAdapter {
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const processEnvironment = await resolveCodexEnvironment(opts.cwd);
     const credentialEnv = codexEnv(readAgentCredential(opts.config));
+    // One environment for both, like openThread: an account's `extraEnv` can carry CODEX_HOME, and
+    // reading config.toml from the unmerged env would report a different home than the server uses.
+    const serverEnvironment = credentialEnv
+      ? { ...processEnvironment, ...credentialEnv }
+      : processEnvironment;
     const server = await this.startAppServer({
-      env: credentialEnv ? { ...processEnvironment, ...credentialEnv } : processEnvironment,
+      env: serverEnvironment,
       onNotification: noop,
       onExit: noop,
     });
     try {
-      const catalog = codexModelCatalog(await server.request('model/list', {}));
+      const [catalog, configured] = await Promise.all([
+        server.request('model/list', {}).then(codexModelCatalog),
+        this.readConfiguredModel(serverEnvironment),
+      ]);
+      // config.toml outranks the served catalog default, mirroring codex's own resolution at
+      // thread/start; the effort falls back to whichever model that leaves selected.
+      const defaultModel = configured.model ?? catalog.defaultModel;
+      const defaultEffort =
+        configured.effort ??
+        catalog.models.find((model) => model.id === defaultModel)?.defaultEffort;
       return {
         models: catalog.models,
         policies: [...APPROVAL_POLICIES],
         defaultPolicyId: INITIAL_POLICY_ID,
+        ...(defaultModel !== undefined && { defaultModel }),
+        ...(defaultEffort !== undefined && { defaultEffort }),
       };
     } finally {
       server.close();
@@ -696,6 +712,13 @@ export class CodexAdapter extends BaseAgentAdapter {
     environment: NodeJS.ProcessEnv,
   ): Promise<CodexSandboxMode | undefined> {
     return codexConfiguredSandbox(environment);
+  }
+
+  /** Test seam — same config.toml, read for the pre-session catalog's declared defaults. */
+  protected readConfiguredModel(
+    environment: NodeJS.ProcessEnv,
+  ): Promise<{ model?: string; effort?: EffortLevel }> {
+    return codexConfiguredModel(environment);
   }
 
   private async openThread(): Promise<void> {

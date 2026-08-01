@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.16.0](https://github.com/arcboxlabs/linkcode/compare/v0.15.1...v0.16.0) (2026-08-01)
+
+
+### Features
+
+* **agent-adapter:** report each agent's configured default model and effort ([9aab5dc](https://github.com/arcboxlabs/linkcode/commit/9aab5dc240a188b5bc412c1bf20f04f7e58e0b13))
+* **desktop:** show update download progress ([#362](https://github.com/arcboxlabs/linkcode/issues/362)) ([9fe3aa8](https://github.com/arcboxlabs/linkcode/commit/9fe3aa8b3d954e65fbe417505749f0074e70d9af))
+* **resources:** show current plan in panel ([#358](https://github.com/arcboxlabs/linkcode/issues/358)) ([a0a7aab](https://github.com/arcboxlabs/linkcode/commit/a0a7aabe11c2c0648b2f832fbc1c9fae8ffb4ee5))
+* **schema:** carry the agent's own default model and effort in the start catalog ([0c6c7ee](https://github.com/arcboxlabs/linkcode/commit/0c6c7ee237e4ddce3cb3d2139c1c6456dd8e527b))
+* **ui:** prefer the agent's configured default over the built-in model guess ([b72a1aa](https://github.com/arcboxlabs/linkcode/commit/b72a1aa2a55b75ef3d1dafacf12100506f9642c7))
+
+
+### Bug Fixes
+
+* **agent-adapter:** read codex config.toml from the app-server environment ([9f3161d](https://github.com/arcboxlabs/linkcode/commit/9f3161da623341f81212222c76a121c97bee867e))
+* **daemon:** bound AI gateway startup ([00608da](https://github.com/arcboxlabs/linkcode/commit/00608da8cac6894a3b0383c103ad2fc530f5b53a))
+* **ui:** keep a catalog effort with the model it belongs to ([f8cf515](https://github.com/arcboxlabs/linkcode/commit/f8cf515a955e670326bc06d367f79c52943d6546))
+* **ui:** preserve local font query receiver ([b6a5faa](https://github.com/arcboxlabs/linkcode/commit/b6a5faaa69dbd4451fc65a0cbcff2b7cea401561))
+
+## [0.15.1](https://github.com/arcboxlabs/linkcode/compare/v0.15.0...v0.15.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **composer:** enforce shell directive grammar ([35a3a05](https://github.com/arcboxlabs/linkcode/commit/35a3a0577f35c32c4832af265b8cdb366fdfe514))
+* **composer:** require shell directive separator ([d6bd22d](https://github.com/arcboxlabs/linkcode/commit/d6bd22d4120b5bc93a1022f919199941bfbd4c0b))
+* **ui:** align inline code position ([05a91ec](https://github.com/arcboxlabs/linkcode/commit/05a91ecd03bb7d984a99ad43cf32eaf4c709818e))
+* **ui:** tolerate generic keydown events ([24ca677](https://github.com/arcboxlabs/linkcode/commit/24ca67770ded46f048b6ee944d669291f2857aa6))
+
+## [0.15.0](https://github.com/arcboxlabs/linkcode/compare/v0.14.0...v0.15.0) (2026-07-31)
+
+
+### Features
+
+* **chat:** add conversation minimap geometry ([ab99e29](https://github.com/arcboxlabs/linkcode/commit/ab99e29f3909b98c2aa9224712934ff4465d610f))
+* **chat:** add the conversation minimap rail ([5553c1c](https://github.com/arcboxlabs/linkcode/commit/5553c1c5f6ca964564b1ea9f1fc0d04ab0cd343c))
+* **chat:** expose the conversation virtualizer handle ([8c9aa77](https://github.com/arcboxlabs/linkcode/commit/8c9aa777e990e28fd16261b8486f02786496a39b))
+* **mock:** seed a long thread in the dev mock host ([d72b564](https://github.com/arcboxlabs/linkcode/commit/d72b564be88109985a8446d99d341166aad2d470))
+
+
+### Bug Fixes
+
+* **chat:** steady the minimap rail and its keyboard path ([6e27750](https://github.com/arcboxlabs/linkcode/commit/6e27750824e828afe40b5baedba4aa4358ed04c2))
+* **chat:** tune the minimap rail down to its quiet form ([4726df8](https://github.com/arcboxlabs/linkcode/commit/4726df8b56f9d5a19c8ec9e42ef9e56d4b6b46a5))
+* **desktop:** keep the sidebar translucent over the native backdrop ([#360](https://github.com/arcboxlabs/linkcode/issues/360)) ([70b50b6](https://github.com/arcboxlabs/linkcode/commit/70b50b626b55bfca3bc8c61064ed1864de55b41c))
+
+## [0.14.0](https://github.com/arcboxlabs/linkcode/compare/v0.13.0...v0.14.0) (2026-07-31)
+
+
+### Features
+
+* **desktop:** add update polling and sidebar prompt ([adda937](https://github.com/arcboxlabs/linkcode/commit/adda937f9d06acf59daa3121b1c587fc2b2e707c))
+
+
+### Bug Fixes
+
+* **desktop:** settle inactive update checks ([78a99d3](https://github.com/arcboxlabs/linkcode/commit/78a99d33cbacb339f7ba0739993f7390978c0f88))
+* **release:** install both CPU keyring bindings ([0bddfce](https://github.com/arcboxlabs/linkcode/commit/0bddfce101d5385d78413bf2210711bcdc8fb4df))
+* **release:** keep builder Linux output layouts ([524b76e](https://github.com/arcboxlabs/linkcode/commit/524b76ecd09f009c7f4833979a22c4bc661b23a7))
+* **release:** let staging select builder architecture ([24bd573](https://github.com/arcboxlabs/linkcode/commit/24bd573df48eb15273671e4ba1c9554d1dd4ee8b))
+* **release:** stage desktop dependencies per architecture ([735a232](https://github.com/arcboxlabs/linkcode/commit/735a232fdbb77cb97e8a05bd7873f5d6301c5350))
+* **ui,workbench,desktop,webview:** swap the thread-title view transition for a header enter animation ([#354](https://github.com/arcboxlabs/linkcode/issues/354)) ([fe034b7](https://github.com/arcboxlabs/linkcode/commit/fe034b71cff65e648d94a8bfb18b4f089e9e066a))
+
 ## [0.13.0](https://github.com/arcboxlabs/linkcode/compare/v0.12.0...v0.13.0) (2026-07-31)
 
 

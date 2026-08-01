@@ -12,8 +12,8 @@ import {
   databasePath,
   loadConfig,
   runtimeFilePath,
-  saveAccounts,
   saveCustomMcpServers,
+  saveProviderConfiguration,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
@@ -434,8 +434,8 @@ describe('createProviderConfigStore', () => {
     const store = createProviderConfigStore(vault, oldProviders, oldAccounts, oldCustomMcpServers);
     writeFileSync(join(process.env.HOME ?? '', '.linkcode'), 'not a directory');
 
-    expect(() => store.set({ 'claude-code': { enabled: true } })).toThrow();
-    expect(() => store.setAccounts([])).toThrow();
+    expect(() => store.update({ providers: { 'claude-code': { enabled: true } } })).toThrow();
+    expect(() => store.update({ accounts: [] })).toThrow();
     expect(() =>
       store.setCustomMcpServers([
         {
@@ -556,7 +556,7 @@ describe('credential storage', () => {
   });
 
   it('round-trips an account through the vault without ever writing the secret', () => {
-    saveAccounts(vault, [validAccount]);
+    saveProviderConfiguration(vault, {}, [validAccount]);
 
     const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
     expect(stored[0].credential).toEqual({ type: 'api-key' });
@@ -565,8 +565,8 @@ describe('credential storage', () => {
   });
 
   it('drops the stored secret when its account is removed', () => {
-    saveAccounts(vault, [validAccount]);
-    saveAccounts(vault, []);
+    saveProviderConfiguration(vault, {}, [validAccount]);
+    saveProviderConfiguration(vault, {}, []);
 
     // Otherwise a deleted account leaves a live credential behind in the OS keyring forever.
     expect(vault.refs.get('account:acc_1')).toBeUndefined();
@@ -579,7 +579,7 @@ describe('credential storage', () => {
       credential: { type: 'oauth', agent: 'claude-code' },
       createdAt: 0,
     };
-    saveAccounts(vault, [oauth]);
+    saveProviderConfiguration(vault, {}, [oauth]);
 
     const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
     expect(stored[0].credential).toEqual({ type: 'oauth', agent: 'claude-code' });

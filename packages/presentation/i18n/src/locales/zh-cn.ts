@@ -132,6 +132,10 @@ export const zhCN = {
       compacting: '正在压缩上下文…',
       compacted: '上下文已压缩',
       compactedTokens: '{pre} → {post} tokens',
+      minimap: {
+        label: '对话导航',
+        turn: '第 {index} 轮',
+      },
     },
     tool: {
       input: '输入',
@@ -346,6 +350,8 @@ export const zhCN = {
     },
     resources: {
       sources: '来源',
+      plan: '计划',
+      planProgress: '计划步骤 {current}/{total}',
       outputs: '输出',
       emptySources: '附加文件或连接应用',
       emptyOutputs: '创建文件或网站',
@@ -540,6 +546,9 @@ export const zhCN = {
       remoteSignedOut: '登录后可连接远程主机',
       remoteHostsLoading: '正在检查在线主机…',
       remoteHostsEmpty: '没有在线主机',
+      updateReady: '更新已就绪',
+      updateNow: '重启更新',
+      changelog: '更新日志',
       newThread: '新建线程',
       groupActions: '工作区操作',
       expandGroup: '展开',

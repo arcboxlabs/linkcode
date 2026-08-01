@@ -133,11 +133,9 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     const appErrors: string[] = [];
     const page = await browser.newPage();
     monitorApplicationErrors(page, server.origin, appErrors);
-    // This boundary verifies wire prompt/reload recovery, not animation timing. React's
-    // `<ViewTransition>` still runs `document.startViewTransition` under reduce-motion (the
-    // preference only collapses the snapshot animations to ~0ms via CSS), so selection is no
-    // longer synchronous — but near-instant finishes keep a throttled headless tab from holding
-    // transitions (and the assertions below) open across animation frames.
+    // This boundary verifies wire prompt/reload recovery, not animation timing: the product's
+    // reduce-motion fallback collapses the title animations so a throttled headless tab cannot
+    // hold the assertions below open across animation frames.
     await page.addInitScript(() => {
       localStorage.setItem(
         'linkcode.workbench.appearance:v1',

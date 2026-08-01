@@ -1,4 +1,4 @@
-import { useLinkCodeClient, useSessions } from '@linkcode/client-core';
+import { useSessions } from '@linkcode/client-core';
 import type { SessionId, ToolCall } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import {
@@ -8,23 +8,24 @@ import {
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '@linkcode/ui/native';
+import { Composer } from '@mobile/components/conversation/composer';
+import { PromptDock } from '@mobile/components/conversation/prompt-dock/prompt-dock';
+import { SessionStatusChip } from '@mobile/components/conversation/session-status-chip';
+import { TimelineItem } from '@mobile/components/conversation/timeline-item';
+import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
+import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
+import { useSessionActions } from '@mobile/runtime/use-session-actions';
+import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
 import * as Clipboard from 'expo-clipboard';
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useThemeColor } from 'heroui-native';
 import { EllipsisIcon } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { Composer } from '../../../../components/composer';
-import { TimelineItem } from '../../../../components/conversation-timeline';
-import { PromptDock } from '../../../../components/prompt-dock';
-import { SessionStatusChip } from '../../../../components/session-status-chip';
-import { ToolDetailSheet } from '../../../../components/tool-detail-sheet';
-import { useSeededConversation } from '../../../../runtime/use-seeded-conversation';
-import { useSessionActions } from '../../../../runtime/use-session-actions';
 
 /** Conversation view of one session running on the host, with the composer that drives it and
  * the prompt dock that answers its asks. The inverted list pins to the newest item and leaves
@@ -33,7 +34,6 @@ export default function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
   const tChat = useTranslations('mobile.chat');
   const insets = useSafeAreaInsets();
-  const client = useLinkCodeClient();
   const muted = useThemeColor('muted');
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
@@ -57,66 +57,8 @@ export default function SessionScreen(): React.ReactNode {
   }, [session, sessionId, refresh]);
   const conversation = useSeededConversation(sessionId, session ?? null);
   const actions = useSessionActions(sessionId, conversation.status);
+  const { stop } = useSessionAutoResume(sessionId, session?.status, autoResumeSuppressed);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
-  const observedSessionRef = useRef<SessionId | null>(null);
-  const resumeInFlightRef = useRef<SessionId | null>(null);
-  const resumePromiseRef = useRef<Promise<unknown> | null>(null);
-  const resumeFailedRef = useRef<SessionId | null>(null);
-
-  const resume = useCallback(
-    (id: SessionId) => {
-      if (autoResumeSuppressed || resumeInFlightRef.current === id) return;
-      resumeInFlightRef.current = id;
-      resumeFailedRef.current = null;
-      const promise = client
-        .resumeSession(id)
-        .catch(() => {
-          resumeFailedRef.current = id;
-        })
-        .finally(() => {
-          if (resumeInFlightRef.current === id) resumeInFlightRef.current = null;
-          if (resumePromiseRef.current === promise) resumePromiseRef.current = null;
-        });
-      resumePromiseRef.current = promise;
-    },
-    [autoResumeSuppressed, client],
-  );
-
-  const stop = useCallback(
-    (id: SessionId) => {
-      void client.stopSession(id).catch(noop);
-    },
-    [client],
-  );
-
-  useEffect(() => {
-    if (autoResumeSuppressed) resumeFailedRef.current = null;
-  }, [autoResumeSuppressed]);
-
-  // The daemon re-broadcasts open asks to attachers — a reopened app regains pending approvals.
-  // A failed cold resume retries when the screen next focuses or the client generation changes.
-  useFocusEffect(
-    useCallback(() => {
-      if (
-        sessionId &&
-        !autoResumeSuppressed &&
-        session?.status === 'stopped' &&
-        resumeFailedRef.current === sessionId
-      ) {
-        resume(sessionId);
-      }
-    }, [autoResumeSuppressed, resume, sessionId, session?.status]),
-  );
-
-  // Desktop parity (`applySelection`): opening a stopped session resumes it silently, once.
-  // Mark every opened session as observed, including running ones, so an explicit later Stop does
-  // not immediately wake it again. This also re-enables a cold session's disabled composer.
-  useEffect(() => {
-    if (!sessionId || !session || observedSessionRef.current === sessionId) return;
-    observedSessionRef.current = sessionId;
-    resumeFailedRef.current = null;
-    if (!autoResumeSuppressed && session.status === 'stopped') resume(sessionId);
-  }, [autoResumeSuppressed, resume, session, sessionId]);
 
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
@@ -137,11 +79,8 @@ export default function SessionScreen(): React.ReactNode {
         text: tChat('stopThread'),
         style: 'destructive',
         onPress() {
-          resumeFailedRef.current = null;
           router.setParams({ autoResume: 'false' });
-          stop(sessionId);
-          const pendingResume = resumePromiseRef.current;
-          if (pendingResume) void pendingResume.finally(() => stop(sessionId));
+          stop();
         },
       },
       {

@@ -1,7 +1,7 @@
+import { useSettingsStore } from '@mobile/stores/settings-store';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Uniwind, useUniwind } from 'uniwind';
-import { useSettingsStore } from '../stores/settings-store';
 
 /**
  * Applies the persisted theme preference to uniwind ('system' follows the OS adaptively)

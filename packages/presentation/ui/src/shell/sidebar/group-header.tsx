@@ -35,8 +35,8 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../../lib/cn';
 import { SPRING } from '../../motion';
+import { SidePreviewCardPopup } from '../../preview-card-popup';
 import type { BranchStatusComponentType } from './branch-status';
-import { SidebarPreviewCardPopup } from './preview-card';
 import { ROW_ACTION_CLASS, ROW_HOVER_PE_CLASS, RowActionsCluster } from './row-actions';
 
 export interface ThreadGroupHeaderProps {
@@ -192,7 +192,7 @@ export function ThreadGroupHeader({
             }
           />
           {workspace && (
-            <SidebarPreviewCardPopup>
+            <SidePreviewCardPopup>
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <span>{title}</span>
                 <div className="flex flex-col gap-1.5 text-muted-foreground text-xs">
@@ -206,7 +206,7 @@ export function ThreadGroupHeader({
                   </span>
                 </div>
               </div>
-            </SidebarPreviewCardPopup>
+            </SidePreviewCardPopup>
           )}
         </PreviewCard>
       )}

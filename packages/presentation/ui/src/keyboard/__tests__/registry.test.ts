@@ -212,6 +212,19 @@ describe('keyboard shortcut registry', () => {
     expect(altGraph).not.toHaveBeenCalled();
   });
 
+  it('dispatches keydown events without getModifierState', () => {
+    const registry = createKeyboardShortcutRegistry(false);
+    registry.register(binding());
+    registry.setPlatform('non-mac');
+
+    expect(
+      registry.dispatch(
+        keydown({ code: 'KeyK', ctrlKey: true, getModifierState: undefined }),
+        true,
+      ),
+    ).toBe(true);
+  });
+
   it('checks owners after matching and suppresses only a claimed collision', () => {
     const registry = createKeyboardShortcutRegistry(true);
     let currentOwner: Element | null = null;

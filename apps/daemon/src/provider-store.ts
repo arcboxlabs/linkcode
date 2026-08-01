@@ -1,6 +1,6 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
 import type { Accounts, CustomMcpServer, ProvidersConfig } from '@linkcode/schema';
-import { saveAccounts, saveCustomMcpServers, saveProviders } from './config';
+import { saveCustomMcpServers, saveProviderConfiguration } from './config';
 import type { SecretVault } from './secrets';
 
 /**
@@ -20,14 +20,13 @@ export function createProviderConfigStore(
   let customMcpServers = initialCustomMcpServers;
   return {
     get: () => providers,
-    set(next) {
-      saveProviders(vault, next);
-      providers = next;
-    },
     getAccounts: () => accounts,
-    setAccounts(next) {
-      saveAccounts(vault, next);
-      accounts = next;
+    update(next) {
+      const nextProviders = next.providers ?? providers;
+      const nextAccounts = next.accounts ?? accounts;
+      saveProviderConfiguration(vault, nextProviders, nextAccounts);
+      providers = nextProviders;
+      accounts = nextAccounts;
     },
     getCustomMcpServers: () => customMcpServers,
     setCustomMcpServers(next) {
