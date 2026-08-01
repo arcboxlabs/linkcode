@@ -7,7 +7,16 @@ import type { GitService } from './git-service';
 
 type GitRequest = Extract<
   WirePayload,
-  { kind: 'git.status.get' | 'git.branch.list' | 'git.pr_status.get' | 'git.diff.get' }
+  {
+    kind:
+      | 'git.status.get'
+      | 'git.branch.list'
+      | 'git.branch.switch.check'
+      | 'git.branch.create'
+      | 'git.commit'
+      | 'git.pr_status.get'
+      | 'git.diff.get';
+  }
 >;
 
 /** Translates inbound git requests into cached local and provider reads. */
@@ -53,6 +62,41 @@ export class GitRequestHandler {
               ),
             ),
           ),
+        );
+      case 'git.branch.switch.check':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.git.checkBranchSwitch(payload.cwd, payload.branch).pipe(
+            Effect.flatMap((check) =>
+              Effect.sync(() =>
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'git.branch.switch.check.result',
+                    replyTo: payload.clientReqId,
+                    check,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+      case 'git.branch.create':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.git
+            .createBranch(payload.cwd, payload.branch)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
+        );
+      case 'git.commit':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.git
+            .commitChanges(payload.cwd, payload.message)
+            .pipe(
+              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+            ),
         );
       case 'git.pr_status.get':
         return this.responder.reply(

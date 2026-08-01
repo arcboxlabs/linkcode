@@ -35,6 +35,17 @@ export const localBranchExists = Effect.fn('Git.localBranchExists')(function* (
   return result.exitCode === 0;
 });
 
+export const switchBranch = Effect.fn('Git.switchBranch')(function* (
+  repoRoot: string,
+  branch: string,
+) {
+  return yield* runCommand('git', ['switch', '--no-guess', '--', branch], {
+    cwd: repoRoot,
+    env: WRITE_ENV,
+    timeoutMs: MUTATION_TIMEOUT_MS,
+  });
+});
+
 export const addWorktree = Effect.fn('Git.addWorktree')(function* (
   repoRoot: string,
   worktreePath: string,

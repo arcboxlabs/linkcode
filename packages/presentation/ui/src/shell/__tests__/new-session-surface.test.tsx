@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { NewSessionBranchPickerComponentProps } from '../new-session-branch-picker';
 import type { NewSessionSurfaceProps } from '../new-session-surface';
 import { NewSessionSurface as ControlledNewSessionSurface } from '../new-session-surface';
 import {
@@ -92,15 +93,41 @@ function NewSessionSurface({ onWorkspaceChange, ...props }: StandaloneProps): Re
   );
 }
 
-function BranchPickerTest({ onSelect }: { onSelect: (branch: string) => void }) {
+function BranchPickerTest({ onSelect, onSelectMode }: NewSessionBranchPickerComponentProps) {
   return (
-    <button type="button" onClick={() => onSelect('feature/code-428')}>
-      Pick branch
-    </button>
+    <>
+      <button type="button" onClick={() => onSelect('feature/code-428')}>
+        Pick branch
+      </button>
+      <button aria-label="branchMode" type="button" onClick={() => onSelectMode('worktree')}>
+        Pick worktree
+      </button>
+    </>
   );
 }
 
 describe('NewSessionSurface', () => {
+  it('hands a signed-out provider to settings instead of logging in inline', () => {
+    const onOpenProviderSettings = vi.fn();
+    render(
+      <NewSessionSurface
+        chatWorkspace={null}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: null }}
+        mentionItems={[]}
+        runtimeCues={{ codex: { state: 'needs-login', phase: 'idle' } }}
+        onMentionQueryChange={vi.fn()}
+        onOpenProviderSettings={onOpenProviderSettings}
+        onRegisterWorkspace={vi.fn()}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    screen.getByRole('button', { name: 'goToSettings' }).click();
+    expect(onOpenProviderSettings).toHaveBeenCalledWith('codex');
+    expect(screen.queryByRole('button', { name: 'login' })).toBeNull();
+  });
+
   it.each([
     { chatWorkspace: CHAT_WORKSPACE, initialWorkspaceId: CHAT_WORKSPACE.workspaceId },
     { chatWorkspace: null, initialWorkspaceId: null },
@@ -143,7 +170,34 @@ describe('NewSessionSurface', () => {
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ branch: { name: 'feature/code-428' } }),
+        expect.objectContaining({ branch: { name: 'feature/code-428', mode: 'local' } }),
+      ),
+    );
+  });
+
+  it('submits worktree mode independently from the selected branch', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        NewSessionBranchPickerComponent={BranchPickerTest}
+        chatWorkspace={null}
+        draft={{ initialProvider: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn()}
+        onSubmit={onSubmit}
+        workspaces={[PROJECT_WORKSPACE]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'branchMode' }));
+    typeInComposer('start isolated');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ branch: { name: 'feature/code-428', mode: 'worktree' } }),
       ),
     );
   });

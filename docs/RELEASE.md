@@ -1,15 +1,16 @@
 # Desktop Release & Packaging Runbook
 
-How to cut, sign, notarize, and publish the Electron desktop app, plus the packaging trap catalog. Desktop-scoped packaging invariants (asar layout, preload, the `extraResources` runtime contract, `electron-builder.yml` structure) live in [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md); local dev/test/E2E in [`docs/DEVELOPMENT.md`](DEVELOPMENT.md). Only the desktop app has a delivery pipeline — release-please is manifest-based so mobile can become a separate release component later, but no webview, mobile, or daemon publish workflow exists yet.
+How to cut, sign, notarize, and publish the Electron desktop app, plus the packaging trap catalog. Desktop-scoped packaging invariants (asar layout, preload, the `extraResources` runtime contract, `electron-builder.yml` structure) live in [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md); local dev/test/E2E in [`docs/DEVELOPMENT.md`](DEVELOPMENT.md). Desktop has the automated tag-driven delivery pipeline. Mobile has a manually dispatched production build/submit workflow, but is not yet a release-please component; webview and daemon have no publish workflow.
 
 ## Release surface
 
-- Five GitHub Actions workflows, one script module, and one composite action own the release path:
+- Six GitHub Actions workflows, one script module, and one composite action own the release path:
   - `.github/workflows/ci.yml` ("CI") — runs on every PR.
   - `.github/workflows/release-please.yml` ("Release Please") — maintains release PRs after pushes to `master`; it never tags or publishes.
   - `.github/workflows/finalize-releases.yml` ("Finalize Releases") — after a successful `master` CI, turns a merged release PR into a draft Release and pushes its validated tag.
   - `.github/workflows/build-desktop.yml` ("Build Desktop") — reusable packaging workflow; **not** PR-triggered.
   - `.github/workflows/release-desktop.yml` ("Release Desktop") — tag-triggered publish.
+  - `.github/workflows/build-mobile.yml` ("Build Mobile") — manual Android/iOS production builds on GitHub runners, with optional EAS Submit.
   - `.github/scripts/release-automation.cjs` — tested Octokit policy for candidate resolution, recovery, and Release preflight checks.
   - `.github/actions/build-sidecar` — composite action that builds the PTY sidecar per arch.
 - All jobs run on **Blacksmith** runners, not stock GitHub: `blacksmith-2vcpu-ubuntu-2404` (CI + the publish job), and the `build-desktop` matrix uses `blacksmith-6vcpu-macos-26` (arm64/M4; Xcode 26 so `actool >= 26` compiles `mac.icon` into `Assets.car`), `blacksmith-4vcpu-windows-2025` (VS Build Tools, enough for NSIS), and `blacksmith-4vcpu-ubuntu-2204` (older glibc for broader AppImage compatibility).
@@ -28,15 +29,50 @@ How to cut, sign, notarize, and publish the Electron desktop app, plus the packa
 - **Package-manager bumps** close the release job, on stable `v*.*.*` tags only (no `-` prerelease suffix), each with a short-lived token minted from the org GitHub App (`BOT_APP_ID` / `BOT_APP_PRIVATE_KEY`) — absent secrets make them self-skip. **Homebrew**: token scoped to `arcboxlabs/homebrew-tap`, then that repo's `bump-cask` action for `linkcode` with the two DMG sha256s. **WinGet**: token scoped to the org fork `arcboxlabs/winget-pkgs`, then `vedantmgoyal9/winget-releaser` (`komac update --submit` underneath) opens a version PR on `microsoft/winget-pkgs` for `ArcBox.LinkCode` from the release's `.exe` assets. Both WinGet steps are `continue-on-error` so packaging never fails a release — check the step status in the release job, not the release itself. Two constraints: the package must **already exist** upstream (the action only updates; a from-scratch submission is `komac new`, no manifests are kept in this repo), and an App **installation** token only covers installed repos, so if the upstream PR comes back `resource not accessible by integration` the fallback is a classic PAT with `public_repo` for a bot user that can push to the fork.
 - electron-builder derives artifact names and the updater feed from **package.json, not the tag**, so `build-desktop.yml` independently fails unless `v${version}` equals `GITHUB_REF_NAME`. The **GitHub Release** is for human downloads only — the updater reads the R2 feed. Tags containing `-` (e.g. `v1.2.3-beta.1`) publish as prerelease. `release-desktop.yml` concurrency is `cancel-in-progress: false` — never cancel a release mid-flight.
 
+## Mobile production builds
+
+`build-mobile.yml` runs `eas build --local` once per platform: Android on
+`${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}` and iOS on
+`${{ vars.CI_RUNNER_MACOS || 'macos-26' }}`. Compilation and the resulting `.aab` / `.ipa` stay on
+GitHub infrastructure; EAS is still contacted to resolve the project, managed signing credentials,
+remote build numbers, the production Update channel, and optional store submission. Each signed
+artifact is retained in the workflow run for seven days.
+
+Dispatches default `submit` to `false`. Setting it to `true` uploads the exact artifacts just built
+with `eas submit --path --wait` after both platform builds succeed: iOS goes to App Store
+Connect/TestFlight, while Android goes to the Google Play internal track. This does not submit an
+iOS build to App Review or promote Android beyond internal testing.
+
+The jobs run in GitHub's `release` environment. Before adding mobile secrets, require a reviewer and
+restrict deployment branches/tags there; an unprotected environment does not isolate a robot token
+from a manually selected ref. Required GitHub inputs are documented in
+[`ENVIRONMENT.md`](ENVIRONMENT.md). Build certificates, provisioning profiles, the Android keystore,
+the App Store Connect API key, and the Google Play service-account key remain EAS-managed; do not
+duplicate them in GitHub. Before enabling `submit`, bootstrap those managed credentials
+interactively, confirm the App Store Connect/Play app records, and add the App Store Connect
+`ascAppId` to `submit.production.ios` once Apple assigns it. A `submit: true` dispatch fails
+preflight before either native build until that ID is present. The iOS main app, share extension,
+Live Activity target, and App Group must all have valid profiles.
+
+Production uses EAS remote build versions with `autoIncrement`, serialized by workflow concurrency
+so two releases cannot consume versions concurrently. The first build initializes from the local
+`ios.buildNumber` / `android.versionCode`; if either store already contains a build, sync its highest
+value with `eas build:version:set` before dispatching.
+
 ## Adding mobile releases
 
-Desktop deliberately remains the only active package in `release-please-config.json` until the EAS build/submit workflow and store credentials exist. Activating mobile is then a separate atomic change: add `apps/mobile` to the manifest at the current `expo.version`, configure release-please's `expo` strategy with component tags (`mobile-v*.*.*`), and teach `finalize-releases.yml` to start only the matching Mobile workflow. Keep `v*.*.*` unprefixed tags reserved for Desktop so existing updater and GitHub download links remain stable.
+Desktop deliberately remains the only active package in `release-please-config.json` until the
+manual mobile workflow has produced and submitted a validated store build. Activating mobile is then
+a separate atomic change: add `apps/mobile` to the manifest at the current `expo.version`, configure
+release-please's `expo` strategy with component tags (`mobile-v*.*.*`), and teach
+`finalize-releases.yml` to start only the matching Mobile workflow. Keep `v*.*.*` unprefixed tags
+reserved for Desktop so existing updater and GitHub download links remain stable.
 
 The Expo strategy updates both `apps/mobile/package.json` and `apps/mobile/app.json`: align their starting versions when activating it. Marketing SemVer belongs in `expo.version`; iOS `buildNumber` and Android `versionCode` are monotonically increasing store build identifiers and should be remote EAS-owned rather than release-please-owned. Native store builds and `expo-updates` production-channel OTA publishes remain separate delivery actions.
 
 ## Signing & notarization
 
-All signing and R2 secrets live in the repo's GitHub **`release` Environment** (scoped to that environment, not org-wide). `build-desktop.yml` sets `environment: ${{ inputs.sign && 'release' || '' }}`, so unsigned PR/dispatch builds see no secrets and skip signing instead of failing; `release-desktop.yml`'s publish job also runs `environment: release` or its R2 creds resolve empty.
+Desktop signing and R2 secrets live in the repo's GitHub **`release` Environment** (scoped to that environment, not org-wide). Protect it with required reviewers and deployment branch/tag rules before storing credentials. `build-desktop.yml` sets `environment: ${{ inputs.sign && 'release' || '' }}`, so unsigned PR/dispatch builds see no secrets and skip signing instead of failing; `release-desktop.yml`'s publish job also runs `environment: release` or its R2 creds resolve empty. Mobile production jobs always enter the same environment because every store build is signed; GitHub holds the Expo robot token and build-time telemetry values, while EAS holds the native signing and submit credentials.
 
 - **macOS** — team Developer ID cert (`MACOS_CSC_LINK` / `MACOS_CSC_KEY_PASSWORD`); notarization via `notarytool` with an App Store Connect API key. electron-builder passes `APPLE_API_KEY` as a `.p8` **file path, not content**, so a "Materialize App Store Connect API key (.p8)" step decodes `APPLE_API_KEY_BASE64` to `$RUNNER_TEMP/apple_api_key.p8`. Other env: `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_TEAM_ID`. `electron-builder.yml` sets `mac.notarize: true`, `hardenedRuntime: true`, `entitlements: build-resources/entitlements.mac.plist`.
 - **Windows** — Azure Trusted Signing, with **no client secret and no declaration in `electron-builder.yml`**: injected at package time via `-c.win.azureSignOptions.*` on signed Windows builds only. Auth is OIDC via `azure/login@v2` (federated subject `repo:arcboxlabs/linkcode:environment:release`, `allow-no-subscriptions: true`); the caller needs `permissions: id-token: write`, and there is deliberately **no `AZURE_*` credential env** so `DefaultAzureCredential` falls through to the Azure CLI. Identifiers (`release` secrets): `AZURE_PUBLISHER_NAME` (must equal the cert subject CN), `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERTIFICATE_PROFILE`. Debug it as OIDC + `-c` injection, not as a cert file.
@@ -64,6 +100,6 @@ All signing and R2 secrets live in the repo's GitHub **`release` Environment** (
 - **`EMFILE` during packaging (historical)** → electron-builder's node-module-collector used to exhaust file descriptors walking this whole monorepo's `node_modules`, and pnpm's cross-importer dedup could silently drop a uniquely-placed transitive dep out of the asar (js-yaml → boot crash). Both were multi-importer symptoms; the single-importer staging flow above eliminated them, so the macOS `ulimit` bump and the former `patches/app-builder-lib@26.15.3.patch` (with its `patchedDependencies` entry) are gone. The `.pnpmfile.cjs` drizzle-orm↔expo-sqlite peer sever stays — it keeps the expo tree out of the desktop `pnpm deploy` closure.
 - **Hunting for a `mac.binaries` option to sign the sidecar** → it doesn't exist in electron-builder v26; `osx-sign` discovers Mach-O binaries in `extraResources` by file header and deep-signs them automatically (the PTY sidecar gets LinkCode's Developer ID + notarization on signed builds). (Team ID observed via `codesign -dv` on artifacts, not stored in the tree: LinkCode `422ACSY6Y5`.)
 - **A new `MAIN_VITE_*` value doesn't reach the bundle / turbo serves a stale build** → turbo only threads through env declared in `apps/desktop/turbo.json` `build.env` → add it there. `MAIN_VITE_SENTRY_DSN` is inlined into the main bundle **only on signed builds** (`inputs.sign && secrets.SENTRY_DSN_DESKTOP || ''`; a DSN is a publishable id, not a secret). The packaged daemon supervisor forwards that same value as `LINKCODE_SENTRY_DSN` and preloads `out/daemon/instrument.mjs`.
-- **Webview / mobile Sentry DSNs** — repo secrets `SENTRY_DSN_WEBVIEW` / `SENTRY_DSN_MOBILE` map to `VITE_SENTRY_DSN` (webview turbo `build.env`) and `EXPO_PUBLIC_SENTRY_DSN` (Expo inlines `EXPO_PUBLIC_*` at bundle time). There is no webview/mobile release workflow yet; set the env when building, and for EAS put `EXPO_PUBLIC_SENTRY_DSN` on the Expo project environment (`preview` / `production`) that `eas.json` selects.
+- **Webview / mobile Sentry DSNs** — repo secrets `SENTRY_DSN_WEBVIEW` / `SENTRY_DSN_MOBILE` map to `VITE_SENTRY_DSN` (webview turbo `build.env`) and `EXPO_PUBLIC_SENTRY_DSN` (Expo inlines `EXPO_PUBLIC_*` at bundle time). `build-mobile.yml` injects the mobile value directly because EAS variables with Secret visibility are unavailable to local builds. Cloud EAS builds may instead read a plain-text or sensitive value from the project environment selected by `eas.json`.
 - **Packaged build exits 0 silently, or throws `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` at launch** (CODE-101; reproducible only when packaged) → the productName/userData lock-theft + workspace-TS-left-external pair — mechanism and fixes in [`apps/desktop/AGENTS.md`](../apps/desktop/AGENTS.md); `verify-artifacts` plus actually launching the packaged app are the guards.
 - **A yanked version keeps auto-updating / the R2 bucket grows unbounded** → the R2 sync runs without `--delete`, so prior artifacts persist (delta updates need them) → prune stale objects from `linkcode-releases` by hand; never add `--delete` (it breaks in-flight delta updates).

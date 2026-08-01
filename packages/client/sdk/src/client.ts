@@ -9,6 +9,10 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -22,6 +26,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -258,6 +263,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.setProviderConfig(providers));
   }
 
+  createAndBindAccount(agent: AgentKind, account: Account): RequestResult<{ ok: true }> {
+    return toResult(this.raw.createAndBindAccount(agent, account));
+  }
+
   /** Read the daemon-owned global account pool (data plane). */
   getAccounts(): RequestResult<Accounts> {
     return toResult(this.raw.getAccounts());
@@ -266,6 +275,14 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned global account pool (data plane). */
   setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
     return toResult(this.raw.setAccounts(accounts));
+  }
+
+  /** Enumerate what an endpoint serves, using a secret that is not saved yet. */
+  probeAccountModels(
+    endpoint: AccountEndpoint,
+    secret: AccountSecret,
+  ): RequestResult<AccountModel[]> {
+    return toResult(this.raw.probeAccountModels(endpoint, secret));
   }
 
   /** Masked custom MCP servers (data plane) — env/header keys only, never a secret value. */
@@ -362,6 +379,18 @@ export class LinkCodeSdkClient {
   /** Local branches for a directory, ordered current-first then by descending commit date. */
   listGitBranches(cwd: string): RequestResult<GitBranchList> {
     return toResult(this.raw.listGitBranches(cwd));
+  }
+
+  checkGitBranchSwitch(cwd: string, branch: string): RequestResult<GitBranchSwitchCheck> {
+    return toResult(this.raw.checkGitBranchSwitch(cwd, branch));
+  }
+
+  createGitBranch(cwd: string, branch: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.createGitBranch(cwd, branch));
+  }
+
+  commitGitChanges(cwd: string, message: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.commitGitChanges(cwd, message));
   }
 
   /** Hosting-provider PR state for a directory's current branch. */

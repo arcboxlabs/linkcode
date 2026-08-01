@@ -53,7 +53,7 @@ async function managedWorktree(store: WorktreeStore = new InMemoryWorktreeStore(
   await Effect.runPromise(service.start());
   const id = SessionIdSchema.parse('sess-cleanup');
   const worktree = await Effect.runPromise(
-    service.provision({ kind: 'pi', cwd, branch: { name: 'feature/a' } }, id),
+    service.provision({ kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } }, id),
   );
   return { cwd, root, service, id, worktree };
 }
@@ -75,7 +75,7 @@ describe('WorktreeService', () => {
 
     const result = await Effect.runPromise(
       service.provision(
-        { kind: 'pi', cwd, branch: { name: 'main' } },
+        { kind: 'pi', cwd, branch: { name: 'main', mode: 'local' } },
         SessionIdSchema.parse('sess-current'),
       ),
     );
@@ -83,7 +83,46 @@ describe('WorktreeService', () => {
     expect(await store.load()).toEqual([]);
   });
 
-  it('creates and persists a non-current local branch and rejects a duplicate', async () => {
+  it('rejects worktree mode when the branch is already checked out in the original cwd', async () => {
+    const cwd = repo();
+    const service = new WorktreeService(
+      new InMemoryWorktreeStore(),
+      temp(),
+      await Effect.runPromise(GitService.make([])),
+    );
+    await Effect.runPromise(service.start());
+
+    await expect(
+      Effect.runPromise(
+        service.provision(
+          { kind: 'pi', cwd, branch: { name: 'main', mode: 'worktree' } },
+          SessionIdSchema.parse('sess-current-worktree'),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('switches a non-current branch in the original cwd for local mode', async () => {
+    const cwd = repo();
+    const store = new InMemoryWorktreeStore();
+    const gitService = await Effect.runPromise(GitService.make([]));
+    const service = new WorktreeService(store, temp(), gitService);
+    await Effect.runPromise(service.start());
+
+    const result = await Effect.runPromise(
+      service.provision(
+        { kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'local' } },
+        SessionIdSchema.parse('sess-local-feature'),
+      ),
+    );
+
+    expect(result).toEqual({ kind: 'pi', cwd });
+    expect(await store.load()).toEqual([]);
+    const status = await Effect.runPromise(gitService.getStatus(cwd));
+    expect(status.isRepo && status.branch).toBe('feature/a');
+  });
+
+  it('creates and persists a worktree for a non-current branch and rejects a duplicate', async () => {
     const cwd = repo();
     const store = new InMemoryWorktreeStore();
     const gitService = await Effect.runPromise(GitService.make([]));
@@ -93,7 +132,7 @@ describe('WorktreeService', () => {
 
     const result = await Effect.runPromise(
       service.provision(
-        { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+        { kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } },
         SessionIdSchema.parse('sess-feature'),
       ),
     );
@@ -111,7 +150,7 @@ describe('WorktreeService', () => {
 
     const failure = await Effect.runPromiseExit(
       service.provision(
-        { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+        { kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } },
         SessionIdSchema.parse('sess-duplicate'),
       ),
     );
@@ -128,7 +167,7 @@ describe('WorktreeService', () => {
     await Effect.runPromise(service.start());
     const missing = await Effect.runPromiseExit(
       service.provision(
-        { kind: 'pi', cwd, branch: { name: 'missing' } },
+        { kind: 'pi', cwd, branch: { name: 'missing', mode: 'worktree' } },
         SessionIdSchema.parse('sess-missing-branch'),
       ),
     );
@@ -136,7 +175,7 @@ describe('WorktreeService', () => {
 
     const id = SessionIdSchema.parse('sess-vanished');
     const result = await Effect.runPromise(
-      service.provision({ kind: 'pi', cwd, branch: { name: 'feature/a' } }, id),
+      service.provision({ kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } }, id),
     );
     rmSync(result.cwd, { recursive: true, force: true });
     await expect(Effect.runPromise(service.verifyResume(id))).rejects.toMatchObject({
@@ -156,13 +195,13 @@ describe('WorktreeService', () => {
     const starts = await Promise.allSettled([
       Effect.runPromise(
         service.provision(
-          { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+          { kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } },
           SessionIdSchema.parse('sess-concurrent-a'),
         ),
       ),
       Effect.runPromise(
         service.provision(
-          { kind: 'pi', cwd, branch: { name: 'feature/a' } },
+          { kind: 'pi', cwd, branch: { name: 'feature/a', mode: 'worktree' } },
           SessionIdSchema.parse('sess-concurrent-b'),
         ),
       ),

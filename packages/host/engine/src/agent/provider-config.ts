@@ -1,6 +1,7 @@
 import type {
   Account,
   Accounts,
+  AgentKind,
   CustomMcpServer,
   ProviderConfig,
   ProvidersConfig,
@@ -20,6 +21,7 @@ export interface ProviderConfigStore {
   /** LinkCode-owned custom MCP servers (full plaintext — masking is the data plane's job). */
   getCustomMcpServers(): CustomMcpServer[];
   setCustomMcpServers(next: CustomMcpServer[]): void | Promise<void>;
+  createAndBindAccount(agent: AgentKind, account: Account): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
@@ -47,6 +49,28 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
   setCustomMcpServers(next: CustomMcpServer[]): void {
     this.customMcpServers = next;
   }
+
+  createAndBindAccount(agent: AgentKind, account: Account): void {
+    const next = accountBinding(this.providers, this.accounts, agent, account);
+    this.providers = next.providers;
+    this.accounts = next.accounts;
+  }
+}
+
+export function accountBinding(
+  providers: ProvidersConfig,
+  accounts: Accounts,
+  agent: AgentKind,
+  account: Account,
+): { providers: ProvidersConfig; accounts: Accounts } {
+  const entry = providers[agent] ?? { enabled: true };
+  const exists = accounts.some((candidate) => candidate.id === account.id);
+  return {
+    providers: { ...providers, [agent]: { ...entry, activeAccountId: account.id } },
+    accounts: exists
+      ? accounts.map((candidate) => (candidate.id === account.id ? account : candidate))
+      : [...accounts, account],
+  };
 }
 
 /**
