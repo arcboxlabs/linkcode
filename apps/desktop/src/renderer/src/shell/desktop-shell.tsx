@@ -310,6 +310,9 @@ export function DesktopShell({
     rightPanelOpen: rightPanel.open,
   });
   const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
+  const resourcesSurfaceOpen =
+    (resourcesPresentation !== 'hidden' && resourcesOpen) ||
+    (rightPanel.open && rightPanel.activeSection === 'resources');
   const titledSession = active?.title === undefined ? null : active;
   const hideMainTitle = draft !== null || (active === null ? false : titledSession === null);
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
@@ -466,6 +469,7 @@ export function DesktopShell({
           isRunning={isRunning}
           mentionItems={mentionItems}
           onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
+          showPlanInPromptDock={!resourcesSurfaceOpen}
           onRespondPermission={onRespondPermission}
           onRespondQuestion={onRespondQuestion}
           onOpenFileArtifact={openFileArtifact}

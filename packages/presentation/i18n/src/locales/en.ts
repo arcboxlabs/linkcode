@@ -356,6 +356,8 @@ export const en = {
     },
     resources: {
       sources: 'Sources',
+      plan: 'PLAN',
+      planProgress: 'Plan step {current} of {total}',
       outputs: 'Outputs',
       emptySources: 'Attach files or connect apps',
       emptyOutputs: 'Create a file or site',

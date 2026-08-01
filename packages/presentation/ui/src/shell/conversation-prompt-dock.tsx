@@ -21,18 +21,20 @@ const EMPTY_RESPONSE_ERRORS = new Map<string, string>();
 /** Actionable prompts pinned above the composer: the current plan and pending permission/question asks. */
 export function ConversationPromptDock({
   conversation,
+  showPlan = true,
   respondingRequestIds,
   responseErrors = EMPTY_RESPONSE_ERRORS,
   onRespondPermission,
   onRespondQuestion,
 }: {
   conversation: ConversationViewModel;
+  showPlan?: boolean;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
 }): React.ReactNode {
-  const plan = selectCurrentPlan(conversation);
+  const plan = showPlan ? selectCurrentPlan(conversation) : null;
   const pendingPrompts = selectPendingPromptItems(conversation);
   const currentPrompt = pendingPrompts.at(0);
 

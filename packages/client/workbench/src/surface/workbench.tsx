@@ -29,6 +29,7 @@ import type {
   ComposerAttachment,
   ComposerDirectiveControls,
   ConversationComposerController,
+  CurrentPlan,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
@@ -39,6 +40,7 @@ import {
   extractPinnedGroup,
   failedComposerAttachmentFromPath,
   groupThreadsByWorkspace,
+  selectCurrentPlan,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
@@ -234,6 +236,7 @@ function WorkbenchSessionSurface({
     if (message) visibleResponseErrors.set(requestId, message);
   }
   const active = sessions.active;
+  const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
   const sdkClient = useWorkbenchSdkClient();
@@ -614,7 +617,9 @@ function WorkbenchSessionSurface({
   return (
     <ShellComponent
       resourcesPanel={
-        activeSessionId ? <RuntimeTaskResourcesPanel sessionId={activeSessionId} /> : undefined
+        activeSessionId ? (
+          <RuntimeTaskResourcesPanel sessionId={activeSessionId} plan={currentPlan} />
+        ) : undefined
       }
       attachmentSupport={ATTACHMENT_SUPPORT}
       threadGroups={threadGroups}

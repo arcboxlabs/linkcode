@@ -18,6 +18,10 @@ import {
 } from 'lucide-react';
 import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
+import { CircularProgress } from '../chat/circular-progress';
+import type { CurrentPlan } from '../chat/conversation-prompts';
+import { StepItem } from '../chat/step';
+import { cn } from '../lib/cn';
 import { useRelativeTimeLabel } from './use-relative-time-label';
 
 export type ResourceDirection = 'source' | 'output';
@@ -40,6 +44,7 @@ export interface ResourceItem {
 
 export interface TaskResourcesPanelProps {
   resources: ResourceItem[];
+  plan?: CurrentPlan | null;
   onAddSource?: (files: File[]) => void;
   onCreateOutput?: (kind: OutputResourceKind) => void;
   onOpen?: (resource: ResourceItem) => void;
@@ -60,6 +65,7 @@ const KIND_ICONS: Record<ResourceKind, React.ReactNode> = {
 
 export function TaskResourcesPanel({
   resources,
+  plan,
   onAddSource,
   onCreateOutput,
   onOpen,
@@ -83,6 +89,7 @@ export function TaskResourcesPanel({
         onRemove={onRemove}
         onRetry={onRetry}
       />
+      {plan ? <TaskPlanSection plan={plan} /> : null}
       <ResourceSection
         direction="output"
         resources={outputs}
@@ -94,6 +101,46 @@ export function TaskResourcesPanel({
         onRetry={onRetry}
       />
     </div>
+  );
+}
+
+function TaskPlanSection({ plan }: { plan: CurrentPlan }): React.ReactNode {
+  const t = useTranslations('workbench.resources');
+  const progress = plan.currentIndex + 1;
+
+  return (
+    <section className="border-border border-b">
+      <div className="flex h-10 items-center gap-2 px-3">
+        <h2 className="font-medium text-sm">{t('plan')}</h2>
+        <div className="ml-auto flex items-center gap-1.5 text-label-tertiary text-xs tabular-nums">
+          <CircularProgress
+            aria-label={t('planProgress', { current: progress, total: plan.total })}
+            className="size-3.5"
+            value={progress}
+            max={plan.total}
+            strokeWidth={2}
+          />
+          <span aria-hidden>
+            {progress}/{plan.total}
+          </span>
+        </div>
+      </div>
+      <div className="px-3 pb-3">
+        {plan.item.plan.entries.map((entry, index) => (
+          <StepItem
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries have stable positions but no ids
+            key={index}
+            className={cn(
+              'items-start py-1 text-xs',
+              entry.status === 'pending' && 'text-muted-foreground',
+            )}
+            status={entry.status}
+          >
+            {entry.content}
+          </StepItem>
+        ))}
+      </div>
+    </section>
   );
 }
 
