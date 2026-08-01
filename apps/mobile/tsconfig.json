@@ -8,5 +8,5 @@
     },
     "strict": true
   },
-  "include": ["src", "vitest.config.ts"]
+  "include": ["src", "modules", "vitest.config.ts"]
 }
