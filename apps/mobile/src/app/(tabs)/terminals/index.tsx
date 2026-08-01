@@ -19,7 +19,7 @@ import {
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useState } from 'react';
@@ -33,7 +33,6 @@ const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 export default function TerminalsScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminals');
   const router = useRouter();
-  const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const client = useLinkCodeClient();
   const [terminals, setTerminals] = useState<TerminalMetadata[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +73,7 @@ export default function TerminalsScreen(): React.ReactNode {
 
   const openTerminal = (terminalId: string, takeControl = false) => {
     const query = takeControl ? '?takeover=1' : '';
-    router.push(`/host/${hostId}/terminal/${encodeURIComponent(terminalId)}${query}`);
+    router.push(`/terminal/${encodeURIComponent(terminalId)}${query}`);
   };
 
   const onCreate = async () => {

@@ -21,8 +21,8 @@ import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
-import { useHostRegistryStore } from '@mobile/stores/host-store';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSelectedHost } from '@mobile/stores/host-store';
+import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -44,10 +44,9 @@ function threadTitle(session: SessionInfo): string {
 export default function ThreadsScreen(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
-  const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
+  const host = useSelectedHost();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -102,7 +101,7 @@ export default function ThreadsScreen(): React.ReactNode {
       }
       await refreshWorkspaces();
       setSheetOpen(false);
-      router.push(`/host/${hostId}/session/${sessionId}`);
+      router.push(`/session/${sessionId}`);
     } finally {
       setCreating(false);
     }
@@ -170,7 +169,7 @@ export default function ThreadsScreen(): React.ReactNode {
           <ThreadList
             groups={groups}
             labelFor={groupLabel}
-            onOpenThread={(sessionId) => router.push(`/host/${hostId}/session/${sessionId}`)}
+            onOpenThread={(sessionId) => router.push(`/session/${sessionId}`)}
             onRefresh={onRefresh}
           />
         )}

@@ -34,5 +34,7 @@ export default function StartupScreen() {
   });
   if (target.kind === 'sign-in') return <Redirect href="/sign-in" />;
   if (target.kind === 'connect') return <Redirect href="/connect" />;
-  return <Redirect href={`/host/${target.hostId}`} />;
+  // Which host it is is a store read, not a route param — `useSelectedHost` resolves the same
+  // fallback this target did, so landing on the tabs needs no id in the path.
+  return <Redirect href="/threads" />;
 }

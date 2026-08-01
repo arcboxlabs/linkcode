@@ -1,5 +1,4 @@
 import type { HostProfile } from '@mobile/stores/host-store';
-import { nullthrow } from 'foxact/nullthrow';
 import { createContext, use } from 'react';
 import type { HostClientState } from './use-host-client';
 
@@ -11,16 +10,13 @@ export type HostConnection = HostClientState & {
   endpointLabel: string;
 };
 
-/** Carries the one connection the host layout owns. Tabs and the detail screens that push over the
- * tab bar are siblings in the route tree, so each would otherwise dial its own — three sockets to
- * the same daemon. Rendered directly as `<HostConnectionContext value={…}>`. */
+/** Carries the one connection {@link HostConnectionScope} owns, above the whole navigator.
+ * Rendered directly as `<HostConnectionContext value={…}>`. */
 export const HostConnectionContext = createContext<HostConnection | null>(null);
 
-export function useHostConnection(): HostConnection {
-  return nullthrow(
-    use(HostConnectionContext),
-    'useHostConnection must be used under the host layout',
-  );
+/** Null when no host is selected — the registry can be empty, or the selected host removed. */
+export function useHostConnection(): HostConnection | null {
+  return use(HostConnectionContext);
 }
 
 export function hostEndpointLabel(host: HostProfile): string {

@@ -48,7 +48,8 @@ type PersistedHostRegistry = z.infer<typeof PersistedHostRegistrySchema>;
 
 export interface HostRegistryState {
   hosts: HostProfile[];
-  /** Startup-redirect hint only; screens always resolve their host from the route param. */
+  /** The selected host. Read it through {@link useSelectedHost} — an id that no longer matches a
+   * saved host (removed, or never set) falls back to the first, so nothing has to repair it. */
   lastActiveHostId: string | null;
   addHost: (input: { name: string; url: string }) => HostProfile;
   /** Upserts by tunnel host id — re-discovering a known host reuses its entry. */
@@ -115,6 +116,15 @@ export const useHostRegistryStore = create<HostRegistryState>()(
     },
   ),
 );
+
+/** The host every surface is currently pointed at, or undefined when the registry is empty.
+ * Resolving the fallback here rather than repairing `lastActiveHostId` keeps the selection a single
+ * read: no screen has to write to the store just to agree with the others about which host it is. */
+export function useSelectedHost(): HostProfile | undefined {
+  return useHostRegistryStore(
+    (state) => state.hosts.find((host) => host.id === state.lastActiveHostId) ?? state.hosts[0],
+  );
+}
 
 /** True once the persisted registry has loaded; gate startup redirects on it to avoid flashing the empty state. */
 export function useHostRegistryHydrated(): boolean {
