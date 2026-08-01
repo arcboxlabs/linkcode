@@ -1,0 +1,36 @@
+name: Setup EAS
+description: Setup the repository Node and pnpm toolchain with a pinned EAS CLI
+
+inputs:
+  eas-version:
+    description: EAS CLI version
+    required: false
+    default: 21.4.0
+
+runs:
+  using: composite
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      with:
+        run_install: false
+        cache: true
+
+    - name: Setup Node
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version-file: .nvmrc
+        package-manager-cache: false
+
+    - name: Setup EAS CLI
+      shell: bash
+      env:
+        EAS_CLI_VERSION: ${{ inputs.eas-version }}
+      run: |
+        set -euo pipefail
+        eas_bin_dir="$RUNNER_TEMP/linkcode-eas/bin"
+        mkdir -p "$eas_bin_dir"
+        printf '#!/usr/bin/env bash\nexec pnpm dlx eas-cli@%s "$@"\n' "$EAS_CLI_VERSION" > "$eas_bin_dir/eas"
+        chmod +x "$eas_bin_dir/eas"
+        echo "$eas_bin_dir" >> "$GITHUB_PATH"
+        "$eas_bin_dir/eas" --version

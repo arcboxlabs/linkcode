@@ -20,7 +20,6 @@ permissions:
   contents: read
 
 env:
-  EAS_CLI_VERSION: 21.4.0
   MOBILE_DIR: apps/mobile
   NODE_OPTIONS: --max-old-space-size=4096
 
@@ -84,17 +83,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-        with:
-          run_install: false
-          cache: true
-
-      - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
+      - name: Setup EAS
+        uses: ./.github/actions/setup-eas
 
       - name: Setup Java
         if: ${{ matrix.platform == 'android' }}
@@ -102,13 +92,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
-        with:
-          eas-version: ${{ env.EAS_CLI_VERSION }}
-          packager: pnpm
-          token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Verify native toolchain
         shell: bash
@@ -138,6 +121,7 @@ jobs:
       - name: Build signed artifact locally
         working-directory: ${{ env.MOBILE_DIR }}
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_MOBILE }}
           EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
           EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
@@ -172,24 +156,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-        with:
-          run_install: false
-          cache: true
-
-      - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
       - name: Setup EAS
-        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
-        with:
-          eas-version: ${{ env.EAS_CLI_VERSION }}
-          packager: pnpm
-          token: ${{ secrets.EXPO_TOKEN }}
+        uses: ./.github/actions/setup-eas
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
