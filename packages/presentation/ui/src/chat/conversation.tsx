@@ -67,7 +67,13 @@ export function ConversationContent<T>({
       // The browser's own scroll anchoring fights both scroll owners.
       scrollClassName="[overflow-anchor:none]"
     >
-      <Virtualizer data={data} onScroll={onScroll} ref={virtualizerRef} scrollRef={scrollRef}>
+      <Virtualizer
+        data={data}
+        itemSize={300}
+        onScroll={onScroll}
+        ref={virtualizerRef}
+        scrollRef={scrollRef}
+      >
         {children}
       </Virtualizer>
       {trailing}

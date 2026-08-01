@@ -16,6 +16,7 @@ const webviewDir = fileURLToPath(new URL('..', import.meta.url));
 const daemonDir = fileURLToPath(new URL('../../daemon', import.meta.url));
 const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('vite')));
 const mockThreadTitle = 'Wire the workbench to the daemon';
+const longThreadTitle = 'Long thread · navigation testbed';
 
 interface ViteServer {
   child: ChildProcess;
@@ -61,6 +62,34 @@ async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Prom
   await page.getByRole('button', { name: 'Send' }).click();
   await page.getByText(`You said: ${prompt}`, { exact: false }).waitFor({ timeout: 15000 });
   assertNoApplicationErrors(appErrors);
+}
+
+async function verifyLongThreadVirtualization(page: Page): Promise<void> {
+  await page.locator('[data-thread-title]', { hasText: longThreadTitle }).click();
+  await page.locator('[data-conversation-title]', { hasText: longThreadTitle }).waitFor();
+  await page.waitForFunction(() => {
+    const scroll = document.querySelector('[role="log"]')?.firstElementChild;
+    const virtualizer = scroll?.firstElementChild?.firstElementChild;
+    return (
+      scroll instanceof HTMLElement &&
+      scroll.scrollHeight > scroll.clientHeight &&
+      (virtualizer?.childElementCount ?? Number.POSITIVE_INFINITY) < 10
+    );
+  });
+
+  const metrics = await page.getByRole('log').evaluate((root) => {
+    const scroll = root.firstElementChild as HTMLElement;
+    const virtualizer = scroll.firstElementChild?.firstElementChild;
+    return {
+      bottomDifference: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop,
+      mountedRows: virtualizer?.childElementCount,
+    };
+  });
+  assert.ok(
+    metrics.bottomDifference <= 2,
+    `Long thread opened ${metrics.bottomDifference}px above bottom`,
+  );
+  assert.ok((metrics.mountedRows ?? 0) < 10, `Long thread mounted ${metrics.mountedRows} rows`);
 }
 
 async function main(): Promise<void> {
@@ -159,6 +188,7 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     await selectMockThread(page);
     const recoveryPrompt = `${firstPrompt}-after-reload`;
     await sendPrompt(page, recoveryPrompt, appErrors);
+    await verifyLongThreadVirtualization(page);
     assertNoApplicationErrors(appErrors);
     await page.close();
 
