@@ -182,12 +182,15 @@ function deriveCue(
   accounts: Accounts,
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
-    case 'available':
+    case 'available': {
+      const currentLogin = loginActivity[kind];
+      if (currentLogin) return loginCue(currentLogin);
       // `auth` absent means unprobed or a fail-open probe — don't block. An injected credential
       // makes a signed-out CLI runnable, so it clears the cue (see hasInjectedCredential).
       return runtime.auth?.loggedIn === false && !hasInjectedCredential(kind, providers, accounts)
-        ? loginCue(loginActivity[kind])
+        ? loginCue(undefined)
         : undefined;
+    }
     case 'out-of-range': {
       // "Download paired version" is the same install as the missing flow — activity must win over
       // the probed status here too, or progress never shows and a settled install stays blocked.
@@ -217,14 +220,16 @@ function deriveCue(
  * The derived cue map plus the onboarding actions, per agent kind. Progress streams in via the
  * asset broadcasts; snapshots revalidate through the push-aware useAssets/useAgentRuntimes.
  */
-export function useAgentRuntimeOnboarding(): {
+export interface AgentRuntimeOnboarding {
   cues: AgentRuntimeCues;
   download: (kind: AgentKind) => void;
   acknowledgeUnverified: (kind: AgentKind) => void;
-  login: (kind: AgentKind) => void;
+  login: (kind: AgentKind, onSuccess?: () => void) => void;
   submitLoginCode: (kind: AgentKind, code: string) => void;
   cancelLogin: (kind: AgentKind) => void;
-} {
+}
+
+export function useAgentRuntimeOnboarding(): AgentRuntimeOnboarding {
   const client = useLinkCodeClient();
   const { data: runtimes } = useAgentRuntimes();
   const { data: assets } = useAssets();
@@ -281,6 +286,17 @@ export function useAgentRuntimeOnboarding(): {
     [client],
   );
 
+  useEffect(
+    () => () => {
+      for (const entry of activeLoginsRef.current.values()) {
+        entry.cancelled = true;
+        if (entry.loginId) client.cancelAgentLogin(entry.loginId);
+      }
+      activeLoginsRef.current.clear();
+    },
+    [client],
+  );
+
   function download(kind: AgentKind): void {
     const id = AGENT_ASSET_IDS[kind];
     if (!id) return;
@@ -312,8 +328,13 @@ export function useAgentRuntimeOnboarding(): {
     });
   }
 
-  function login(kind: AgentKind): void {
-    const entry = { loginId: undefined as string | undefined, cancelled: false };
+  function login(kind: AgentKind, onSuccess?: () => void): void {
+    const previous = activeLoginsRef.current.get(kind);
+    if (previous) {
+      previous.cancelled = true;
+      if (previous.loginId) client.cancelAgentLogin(previous.loginId);
+    }
+    const entry = { loginId: undefined as string | undefined, cancelled: false, onSuccess };
     activeLoginsRef.current.set(kind, entry);
     setLogin(kind, { kind: 'opening' });
     client
@@ -322,6 +343,7 @@ export function useAgentRuntimeOnboarding(): {
         entry.loginId = loginId;
         client.subscribeAgentLogin(loginId, {
           onUrl(url) {
+            if (activeLoginsRef.current.get(kind) !== entry || entry.cancelled) return;
             // Desktop routes `_blank` to the system browser; the card keeps `url` as a fallback
             // link. Self-opening CLIs already launched their own tab — don't race it in a second.
             if (!SELF_OPENING_LOGIN_KINDS.has(kind)) {
@@ -330,17 +352,24 @@ export function useAgentRuntimeOnboarding(): {
             setLogin(kind, { kind: 'awaiting-code', url });
           },
           onSettled({ ok, error }) {
+            if (activeLoginsRef.current.get(kind) !== entry) return;
             activeLoginsRef.current.delete(kind);
             // Success: the re-probe push flips the runtime to logged-in and drops the cue. Cancel:
             // back to the idle login button. Failure: show the error with a retry.
-            if (ok || entry.cancelled) setLogin(kind, undefined);
-            else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
+            if (entry.cancelled) setLogin(kind, undefined);
+            else if (ok) {
+              setLogin(kind, undefined);
+              entry.onSuccess?.();
+            } else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
           },
         });
+        if (entry.cancelled) client.cancelAgentLogin(loginId);
       })
       .catch((err: unknown) => {
+        if (activeLoginsRef.current.get(kind) !== entry) return;
         activeLoginsRef.current.delete(kind);
-        setLogin(kind, { kind: 'failed', error: extractErrorMessage(err) ?? 'login failed' });
+        if (entry.cancelled) setLogin(kind, undefined);
+        else setLogin(kind, { kind: 'failed', error: extractErrorMessage(err) ?? 'login failed' });
       });
   }
 

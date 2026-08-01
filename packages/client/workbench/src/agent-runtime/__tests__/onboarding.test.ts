@@ -215,6 +215,22 @@ describe('deriveAgentRuntimeCues', () => {
     ).toEqual({ 'claude-code': { state: 'needs-login', phase: 'idle' } });
   });
 
+  it('surfaces an explicitly started login even when an injected key suppresses the idle cue', () => {
+    const runtimes: AgentRuntimes = {
+      codex: { status: 'available', source: 'detected', auth: { loggedIn: false } },
+    };
+    expect(
+      deriveAgentRuntimeCues(
+        runtimes,
+        ASSETS,
+        {},
+        {},
+        { codex: { kind: 'opening' } },
+        { codex: { enabled: true, apiKey: 'sk-x' } },
+      ),
+    ).toEqual({ codex: { state: 'needs-login', phase: 'opening' } });
+  });
+
   it('suppresses the login cue for a bound key account, but not for a bound oauth one', () => {
     const runtimes: AgentRuntimes = {
       'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
