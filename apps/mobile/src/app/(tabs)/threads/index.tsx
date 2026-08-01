@@ -16,16 +16,18 @@ import {
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
 import { SECONDARY } from '@mobile/components/form/styles';
+import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
+import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
-import { useSelectedHost } from '@mobile/stores/host-store';
 import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
@@ -38,17 +40,57 @@ function threadTitle(session: SessionInfo): string {
   return session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
 }
 
-/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, the
- * connected host as a subtitle, and the native search bar stacked under the large title. Empty
- * workspace groups are hidden — the sheet is where they surface. */
-export default function ThreadsScreen(): React.ReactNode {
+/** The header outlives the connection: it carries the host switcher, which is the way out of a host
+ * that cannot be reached, so it is mounted above the gate rather than inside it. New-thread is the
+ * one part that needs a client, and it is dropped rather than left to fail. */
+export default function ThreadsRoute(): React.ReactNode {
+  const t = useTranslations('mobile.sessions');
+  const hostMenuItems = useHostMenuItems();
+  const connection = useHostConnection();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  return (
+    <View className="flex-1 bg-background">
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerLargeTitle: true,
+          title: t('title'),
+          unstable_headerLeftItems: () => hostMenuItems,
+          headerRight:
+            connection?.status === 'ready'
+              ? () => (
+                  <HeaderIconButton
+                    icon={SquarePenIcon}
+                    label={t('newThread')}
+                    onPress={() => setSheetOpen(true)}
+                  />
+                )
+              : undefined,
+        }}
+      />
+      <HostClientGate>
+        <ThreadsScreen sheetOpen={sheetOpen} onSheetOpenChange={setSheetOpen} />
+      </HostClientGate>
+    </View>
+  );
+}
+
+/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
+ * native search bar stacked under the large title. Empty workspace groups are hidden — the sheet
+ * is where they surface. */
+function ThreadsScreen({
+  sheetOpen,
+  onSheetOpenChange,
+}: {
+  sheetOpen: boolean;
+  onSheetOpenChange: (open: boolean) => void;
+}): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
-  const host = useSelectedHost();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -100,7 +142,7 @@ export default function ThreadsScreen(): React.ReactNode {
         throw error;
       }
       await refreshWorkspaces();
-      setSheetOpen(false);
+      onSheetOpenChange(false);
       router.push(`/session/${sessionId}`);
     } finally {
       setCreating(false);
@@ -108,21 +150,7 @@ export default function ThreadsScreen(): React.ReactNode {
   };
 
   return (
-    <View className="flex-1 bg-background">
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerLargeTitle: true,
-          title: t('title'),
-          headerRight: () => (
-            <HeaderIconButton
-              icon={SquarePenIcon}
-              label={t('newThread')}
-              onPress={() => setSheetOpen(true)}
-            />
-          ),
-        }}
-      />
+    <>
       {/* `stacked` keeps the field under the large title instead of collapsing into the iOS 26
           toolbar; the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
       <Stack.SearchBar
@@ -133,14 +161,6 @@ export default function ThreadsScreen(): React.ReactNode {
         autoCapitalize="none"
         onChangeText={onSearchChange}
       />
-      {/* The connected host reads as a subtitle of the screen, the way the reference puts the
-          machine under its title, rather than as a separate bar pinned to the bottom. */}
-      <View className="flex-row items-center gap-2 px-5 pb-2">
-        <View className="h-2 w-2 rounded-full bg-success" />
-        <Text className="min-w-0 flex-1 text-muted text-subhead" numberOfLines={1}>
-          {host?.name ?? ''}
-        </Text>
-      </View>
       {/* The list needs the viewport as its proposed size, otherwise SwiftUI collapses it. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         {loading ? (
@@ -157,7 +177,7 @@ export default function ThreadsScreen(): React.ReactNode {
             {needle === '' ? (
               <Section footer={<UIText>{t('emptyHint')}</UIText>}>
                 <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
-                <UIButton label={t('newThread')} onPress={() => setSheetOpen(true)} />
+                <UIButton label={t('newThread')} onPress={() => onSheetOpenChange(true)} />
               </Section>
             ) : (
               <Section>
@@ -176,11 +196,11 @@ export default function ThreadsScreen(): React.ReactNode {
       </Host>
       <NewThreadSheet
         isPresented={sheetOpen}
-        onIsPresentedChange={setSheetOpen}
+        onIsPresentedChange={onSheetOpenChange}
         workspaces={workspaces}
         creating={creating}
         onCreate={onCreate}
       />
-    </View>
+    </>
   );
 }
