@@ -1,14 +1,6 @@
-import { Stack } from 'expo-router';
 import { useThemeColor } from 'heroui-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable } from 'react-native';
-import { useStackScreenOptions } from './use-stack-screen-options';
-
-/** The app's root stack with theme-synced chrome; must sit under HeroUINativeProvider. */
-export function RootNavigator(): React.ReactNode {
-  const screenOptions = useStackScreenOptions();
-  return <Stack screenOptions={screenOptions} />;
-}
 
 /** Icon-only tap target for navigation headers. */
 export function HeaderIconButton({

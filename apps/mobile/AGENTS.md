@@ -49,7 +49,7 @@ other client.
     and give any hand-built tappable row `contentShape(shapes.rectangle())`.
   - **A `Button` filling a row swallows horizontal drags**, so a row inside `SwipeActions` opens its
     route instead of revealing its actions. Rows that navigate use `onTapGesture` instead
-    (`components/form/form-row.tsx`) — which is also the closer stand-in for the `NavigationLink`
+    (`components/form/navigation-row.tsx`) — which is also the closer stand-in for the `NavigationLink`
     `@expo/ui` does not expose.
   - **`TextField` has no `value` prop.** It is either uncontrolled or bound to `useNativeState`;
     prefer the latter and read it with `.get()` at submit time, so submitting never depends on a

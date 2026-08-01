@@ -17,8 +17,8 @@ import {
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
-import { ThreadList } from '@mobile/components/host/thread-list';
-import { HeaderIconButton } from '@mobile/components/shell/navigation';
+import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
+import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { useHostRegistryStore } from '@mobile/stores/host-store';

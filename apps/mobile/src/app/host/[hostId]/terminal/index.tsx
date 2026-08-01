@@ -18,7 +18,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
-import { NavigationRow } from '@mobile/components/form/form-row';
+import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
