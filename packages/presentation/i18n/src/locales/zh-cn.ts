@@ -741,6 +741,18 @@ export const zhCN = {
         app: '{count} 个应用',
         'app-template': '{count} 个应用模板',
       },
+      componentKind: {
+        skill: '技能',
+        command: '指令',
+        agent: '子智能体',
+        hook: '钩子',
+        'mcp-server': 'MCP 服务',
+        'lsp-server': 'LSP 服务',
+        'output-style': '输出风格',
+        channel: '渠道',
+        app: '应用',
+        'app-template': '应用模板',
+      },
       skills: {
         pluginSkillsTitle: '插件技能',
         standaloneTitle: '独立技能',

@@ -754,6 +754,18 @@ export const en = {
         app: '{count, plural, one {# app} other {# apps}}',
         'app-template': '{count, plural, one {# app template} other {# app templates}}',
       },
+      componentKind: {
+        skill: 'skill',
+        command: 'command',
+        agent: 'agent',
+        hook: 'hook',
+        'mcp-server': 'MCP server',
+        'lsp-server': 'LSP server',
+        'output-style': 'output style',
+        channel: 'channel',
+        app: 'app',
+        'app-template': 'app template',
+      },
       skills: {
         pluginSkillsTitle: 'Plugin skills',
         standaloneTitle: 'Standalone skills',
