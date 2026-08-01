@@ -1,6 +1,7 @@
 import type {
   Account,
   Accounts,
+  CustomMcpServer,
   ProviderConfig,
   ProvidersConfig,
   StartOptions,
@@ -16,11 +17,15 @@ export interface ProviderConfigStore {
   /** The global account pool bound by `providers[kind].activeAccountId`. */
   getAccounts(): Accounts;
   update(next: { providers?: ProvidersConfig; accounts?: Accounts }): void | Promise<void>;
+  /** LinkCode-owned custom MCP servers (full plaintext — masking is the data plane's job). */
+  getCustomMcpServers(): CustomMcpServer[];
+  setCustomMcpServers(next: CustomMcpServer[]): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  private customMcpServers: CustomMcpServer[] = [];
 
   get(): ProvidersConfig {
     return this.providers;
@@ -33,6 +38,14 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
   update(next: { providers?: ProvidersConfig; accounts?: Accounts }): void {
     if (next.providers !== undefined) this.providers = next.providers;
     if (next.accounts !== undefined) this.accounts = next.accounts;
+  }
+
+  getCustomMcpServers(): CustomMcpServer[] {
+    return this.customMcpServers;
+  }
+
+  setCustomMcpServers(next: CustomMcpServer[]): void {
+    this.customMcpServers = next;
   }
 }
 

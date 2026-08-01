@@ -179,7 +179,12 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(vault, config.providers ?? {}, config.accounts ?? []);
+      const store = createProviderConfigStore(
+        vault,
+        config.providers ?? {},
+        config.accounts ?? [],
+        config.customMcpServers ?? [],
+      );
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();

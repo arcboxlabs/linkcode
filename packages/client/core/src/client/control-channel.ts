@@ -10,6 +10,8 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   ContentBlock,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitBranchList,
@@ -27,6 +29,8 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -50,6 +54,8 @@ import type {
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WirePayload,
   WorkspaceFile,
@@ -60,7 +66,14 @@ import type {
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import type { PendingRegistry, PendingValueMap, RequestAck } from './pending-registry';
+import type {
+  PendingRegistry,
+  PendingValueMap,
+  PluginList,
+  PluginMutation,
+  RequestAck,
+  SessionStartResult,
+} from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
 export type HistoryListClientOptions = AgentHistoryListOptions & {
@@ -81,7 +94,7 @@ export class ControlChannel {
     private readonly pending: PendingRegistry,
   ) {}
 
-  startSession(opts: StartOptions): Promise<SessionId> {
+  startSession(opts: StartOptions): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'session.start',
       clientReqId,
@@ -103,7 +116,7 @@ export class ControlChannel {
   }
 
   /** Resume a persisted (cold) session by its Link Code id; resolves with the same id. */
-  resumeSession(sessionId: SessionId): Promise<SessionId> {
+  resumeSession(sessionId: SessionId): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'session.resume',
       clientReqId,
@@ -149,7 +162,7 @@ export class ControlChannel {
     agentKind: AgentKind,
     historyId: AgentHistoryId,
     startOpts: StartOptions,
-  ): Promise<SessionId> {
+  ): Promise<SessionStartResult> {
     return this.sendCorrelated('start', (clientReqId) => ({
       kind: 'history.resume',
       clientReqId,
@@ -409,6 +422,90 @@ export class ControlChannel {
     return this.sendCorrelated('accountsGet', (clientReqId) => ({
       kind: 'config.get',
       clientReqId,
+    }));
+  }
+
+  /** Read the daemon-owned custom MCP servers (masked projection — never carries a secret). */
+  getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
+    return this.sendCorrelated('customMcpGet', (clientReqId) => ({
+      kind: 'config.get',
+      clientReqId,
+    }));
+  }
+
+  /** Apply custom-MCP patch ops (add / per-key secret update / remove). Preserves other config. */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'config.set',
+      clientReqId,
+      customMcpServers: patches,
+    }));
+  }
+
+  /** Discover provider plugins and standalone skills (a real CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): Promise<PluginList> {
+    return this.sendCorrelated('pluginList', (clientReqId) => ({
+      kind: 'plugin.list.get',
+      clientReqId,
+      cwd,
+    }));
+  }
+
+  /** Toggle a plugin through its provider; resolves with the re-listed, updated plugin. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
+      kind: 'plugin.set-enabled',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Install a catalog entry. `pendingAuthApps` names provider apps the install left unauthorized —
+   * codex reports them for most of its catalog and LinkCode cannot complete those flows. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
+      kind: 'plugin.install',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Drop an installed plugin's local state; the marketplace entry itself survives. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.sendCorrelated('pluginMutation', (clientReqId) => ({
+      kind: 'plugin.uninstall',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): Promise<StandaloneSkill> {
+    return this.sendCorrelated('skillSetEnabled', (clientReqId) => ({
+      kind: 'skill.set-enabled',
+      clientReqId,
+      ...params,
     }));
   }
 

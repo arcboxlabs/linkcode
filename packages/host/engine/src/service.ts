@@ -1,16 +1,17 @@
 import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
-import type { Plugin, WorkspaceRecord } from '@linkcode/schema';
+import type { WorkspaceRecord } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Context, Effect, Layer } from 'effect';
 import type { EngineDeps } from './deps';
 import { createEngineRuntime } from './engine';
 import type { EngineFailure } from './failure';
+import type { PluginDiscoveryResult } from './plugin/service';
 
 export class EngineService extends Context.Service<
   EngineService,
   {
     readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
-    readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<Plugin[]>;
+    readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<PluginDiscoveryResult>;
   }
 >()('@linkcode/engine/Engine') {}
 

@@ -9,6 +9,8 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   ContentBlock,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitBranchList,
@@ -29,6 +31,8 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -54,6 +58,8 @@ import type {
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -78,7 +84,13 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { RandomUUID, RequestAck } from './client/pending-registry';
+import type {
+  PluginList,
+  PluginMutation,
+  RandomUUID,
+  RequestAck,
+  SessionStartResult,
+} from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
@@ -86,6 +98,7 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
+export type { PluginList, PluginMutation, SessionStartResult } from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
@@ -363,7 +376,10 @@ export class LinkCodeClient {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.started':
-        this.pending.resolve('start', p.replyTo, p.sessionId);
+        this.pending.resolve('start', p.replyTo, {
+          sessionId: p.sessionId,
+          mcpWarnings: p.mcpWarnings ?? [],
+        });
         break;
       case 'session.listed':
         this.pending.resolve('list', p.replyTo, p.sessions);
@@ -378,9 +394,26 @@ export class LinkCodeClient {
         this.pending.resolve('historyRead', p.replyTo, p.result);
         break;
       case 'config.get.result':
-        // One result carries both; each resolve is a no-op unless a request awaits that reply id.
+        // One result carries all three; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
         this.pending.resolve('accountsGet', p.replyTo, p.accounts);
+        this.pending.resolve('customMcpGet', p.replyTo, p.customMcpServers);
+        break;
+      case 'plugin.list.result':
+        this.pending.resolve('pluginList', p.replyTo, {
+          plugins: p.plugins,
+          standaloneSkills: p.standaloneSkills,
+          providerStatus: p.providerStatus,
+        });
+        break;
+      case 'plugin.updated':
+        this.pending.resolve('pluginMutation', p.replyTo, {
+          plugin: p.plugin,
+          pendingAuthApps: p.pendingAuthApps,
+        });
+        break;
+      case 'skill.updated':
+        this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
         break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
@@ -617,6 +650,10 @@ export class LinkCodeClient {
   }
 
   startSession(opts: StartOptions): Promise<SessionId> {
+    return this.startSessionWithWarnings(opts).then((result) => result.sessionId);
+  }
+
+  startSessionWithWarnings(opts: StartOptions): Promise<SessionStartResult> {
     return this.control.startSession(opts);
   }
 
@@ -629,6 +666,10 @@ export class LinkCodeClient {
   }
 
   resumeSession(sessionId: SessionId): Promise<SessionId> {
+    return this.resumeSessionWithWarnings(sessionId).then((result) => result.sessionId);
+  }
+
+  resumeSessionWithWarnings(sessionId: SessionId): Promise<SessionStartResult> {
     return this.control.resumeSession(sessionId);
   }
 
@@ -655,6 +696,16 @@ export class LinkCodeClient {
     historyId: AgentHistoryId,
     startOpts: StartOptions,
   ): Promise<SessionId> {
+    return this.resumeHistoryWithWarnings(agentKind, historyId, startOpts).then(
+      (result) => result.sessionId,
+    );
+  }
+
+  resumeHistoryWithWarnings(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): Promise<SessionStartResult> {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
   }
 
@@ -764,6 +815,62 @@ export class LinkCodeClient {
 
   getAccounts(): Promise<Accounts> {
     return this.control.getAccounts();
+  }
+
+  /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
+  getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
+    return this.control.getCustomMcpServers();
+  }
+
+  /** Apply custom-MCP patch ops; the masked read model makes whole-array writes unsound. */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): Promise<RequestAck> {
+    return this.control.setCustomMcpServers(patches);
+  }
+
+  /** Discover provider plugins + standalone skills (slow: a CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): Promise<PluginList> {
+    return this.control.listPlugins(cwd);
+  }
+
+  /** Toggle a plugin; resolves with the re-listed plugin for single-entry cache patching. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.setPluginEnabled(params);
+  }
+
+  /** Install a catalog entry the host does not have yet. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.installPlugin(params);
+  }
+
+  /** Remove an installed plugin; the marketplace entry survives with no installations. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.uninstallPlugin(params);
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): Promise<StandaloneSkill> {
+    return this.control.setSkillEnabled(params);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {

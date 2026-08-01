@@ -6,6 +6,7 @@ import type {
   SimulatorMcpProvider,
   SimulatorService,
 } from '@linkcode/engine';
+import { SIMULATOR_MCP_SERVER_NAME } from '@linkcode/engine';
 import type { McpServer as McpServerEntry, SessionId } from '@linkcode/schema';
 // eslint-disable-next-line import-x/no-unresolved -- the SDK's exports-map subpaths (./server/*.js) defeat the resolver; tsc resolves them fine
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -36,7 +37,7 @@ export interface SimulatorMcpNotifications {
   devicesChanged?: (devices: Awaited<ReturnType<SimulatorService['list']>>) => void;
 }
 
-const SERVER_NAME = 'linkcode-sim';
+const SERVER_NAME = SIMULATOR_MCP_SERVER_NAME;
 const RE_MCP_PATH = /^\/mcp\/([\w-]+)$/;
 
 /** HID keyboard usages (page 7) for the keys an agent cannot express as text. Decimal because

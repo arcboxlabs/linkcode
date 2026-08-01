@@ -158,3 +158,38 @@ export const PluginSchema = z.discriminatedUnion('provider', [
   z.object({ provider: z.literal('codex'), ...pluginFields }),
 ]);
 export type Plugin = z.infer<typeof PluginSchema>;
+
+export const StandaloneSkillScopeSchema = z.enum(['user', 'project']);
+export type StandaloneSkillScope = z.infer<typeof StandaloneSkillScopeSchema>;
+
+/**
+ * A skill directory that exists outside any plugin package (e.g. Claude's personal/project
+ * `.claude/skills/*`). Distinct from a `PluginComponent` because it has no owning plugin id,
+ * marketplace, or installation record.
+ */
+export const StandaloneSkillSchema = z.object({
+  provider: PluginProviderSchema,
+  /** Provider-stable within one scope (claude-code: the skill directory name). */
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  scope: StandaloneSkillScopeSchema,
+  /** Absolute path on the daemon host. Codex's toggle is keyed by this path. */
+  path: z.string().min(1),
+  /** Provider-reported enablement (claude: `skillOverrides` in settings.json; codex:
+   * `[[skills.config]]` in config.toml). */
+  enabled: z.boolean(),
+  /** Whether the owning adapter can toggle it. Clients gate the affordance on this flag,
+   * never on `provider`. */
+  toggleable: z.boolean(),
+});
+export type StandaloneSkill = z.infer<typeof StandaloneSkillSchema>;
+
+/** Per-provider discovery outcome, so an empty catalog is distinguishable from a failed CLI. */
+export const PluginProviderStatusSchema = z.object({
+  provider: PluginProviderSchema,
+  ok: z.boolean(),
+  /** Short human-readable failure cause; absent when `ok`. */
+  reason: z.string().min(1).optional(),
+});
+export type PluginProviderStatus = z.infer<typeof PluginProviderStatusSchema>;

@@ -13,10 +13,16 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
+import type {
+  Accounts,
+  CustomMcpServer,
+  ProvidersConfig,
+  SimulatorConsentState,
+} from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
+  CustomMcpServerSchema,
   daemonBasePort,
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
@@ -27,6 +33,7 @@ import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-mess
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 import type { SecretStore, SecretVault } from './secrets';
+import { detachCustomMcpSecrets, withCustomMcpSecrets } from './secrets/custom-mcp-credentials';
 import {
   detachAccountSecrets,
   detachProviderSecrets,
@@ -49,6 +56,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** LinkCode-owned custom MCP servers (data plane); undefined when nothing is configured. */
+  customMcpServers?: CustomMcpServer[];
   /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
   simulatorConsent: SimulatorConsentState;
 }
@@ -61,6 +70,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  customMcpServers?: unknown;
   simulatorConsent?: unknown;
 }
 
@@ -117,9 +127,10 @@ export function chatWorkspaceRoot(): string {
   return join(homedir(), workspacesDirName(daemonChannel()));
 }
 
-/** `config.json` owns two vault namespaces; it opens them itself rather than being handed refs. */
+/** `config.json` opens its vault namespaces itself rather than being handed refs. */
 const providerSecrets = (vault: SecretVault): SecretStore => vault.namespace('provider');
 const accountSecrets = (vault: SecretVault): SecretStore => vault.namespace('account');
+const customMcpSecrets = (vault: SecretVault): SecretStore => vault.namespace('custom-mcp');
 
 export function loadConfig(vault: SecretVault): DaemonConfig {
   const file = readConfigFile();
@@ -137,12 +148,13 @@ export function loadConfig(vault: SecretVault): DaemonConfig {
   // Parsing already moved every inline secret into the vault and told us so; rewriting is what takes
   // the exposed copies off disk. Done here, at the read that found them, so an upgrade needs no user
   // action.
-  if (parsedProviders.migrated || parsedAccounts.migrated) {
+  const parsedCustomMcp = parseCustomMcpServers(customMcpSecrets(vault), file.customMcpServers);
+  if (parsedProviders.migrated || parsedAccounts.migrated || parsedCustomMcp.migrated) {
     logger.warn(
       { operation: 'config.load' },
       'Moving credentials out of config.json into the secret vault',
     );
-    saveProviderConfiguration(vault, parsedProviders.value, parsedAccounts.value);
+    saveConfigSnapshot(vault, parsedProviders.value, parsedAccounts.value, parsedCustomMcp.value);
   }
 
   return {
@@ -151,6 +163,7 @@ export function loadConfig(vault: SecretVault): DaemonConfig {
     ),
     providers: parsedProviders.value,
     accounts: parsedAccounts.value,
+    customMcpServers: parsedCustomMcp.value,
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
 }
@@ -206,6 +219,32 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
     accounts.push(account.data);
   }
   return { value: accounts, migrated };
+}
+
+/**
+ * Parse element by element like {@link parseAccounts}: one invalid server is dropped and logged,
+ * never blanking the rest.
+ */
+function parseCustomMcpServers(store: SecretStore, raw: unknown): Parsed<CustomMcpServer[]> {
+  const snapshot = parseCustomMcpSnapshot(raw);
+  if (snapshot.servers === undefined) return { value: [], migrated: false };
+  if (!Array.isArray(snapshot.servers)) {
+    logger.warn({ operation: 'config.load' }, 'Invalid custom MCP config: expected an array');
+    return { value: [], migrated: false };
+  }
+  const servers: CustomMcpServer[] = [];
+  let migrated = false;
+  for (const value of snapshot.servers) {
+    const attached = withCustomMcpSecrets(store, value, snapshot.generation);
+    migrated ||= attached.migrated;
+    const server = CustomMcpServerSchema.safeParse(attached.value);
+    if (!server.success) {
+      logger.warn({ operation: 'config.load' }, 'Dropping invalid custom MCP server config');
+      continue;
+    }
+    servers.push(server.data);
+  }
+  return { value: servers, migrated };
 }
 
 /**
@@ -279,6 +318,91 @@ function readConfigFile(): ConfigFile & Record<string, unknown> {
     throw new TypeError(`Invalid daemon config at ${path}: expected a JSON object`);
   }
   return parsed;
+}
+
+/** Persist custom MCP structure and key names; values go to the vault. */
+export function saveCustomMcpServers(
+  vault: SecretVault,
+  servers: CustomMcpServer[],
+  previous: CustomMcpServer[],
+): void {
+  persistCustomMcpSnapshot(vault, servers, previous, (value) =>
+    writeConfigFields(readConfigFile(), { customMcpServers: value }),
+  );
+}
+
+export function saveConfigSnapshot(
+  vault: SecretVault,
+  providers: ProvidersConfig,
+  accounts: Accounts,
+  customMcpServers: CustomMcpServer[],
+): void {
+  persistCustomMcpSnapshot(vault, customMcpServers, customMcpServers, (value) =>
+    writeConfigFields(readConfigFile(), {
+      providers: detachProviderSecrets(providerSecrets(vault), providers),
+      accounts: detachAccountSecrets(accountSecrets(vault), accounts),
+      customMcpServers: value,
+    }),
+  );
+}
+
+interface CustomMcpSnapshot {
+  generation: number | undefined;
+  servers: unknown;
+}
+
+function parseCustomMcpSnapshot(raw: unknown): CustomMcpSnapshot {
+  if (raw === undefined || Array.isArray(raw)) return { generation: undefined, servers: raw };
+  if (
+    isRecord(raw) &&
+    raw.v === 1 &&
+    typeof raw.generation === 'number' &&
+    Number.isSafeInteger(raw.generation) &&
+    raw.generation > 0 &&
+    Array.isArray(raw.servers)
+  ) {
+    return { generation: raw.generation, servers: raw.servers };
+  }
+  return { generation: undefined, servers: raw };
+}
+
+function persistCustomMcpSnapshot(
+  vault: SecretVault,
+  servers: CustomMcpServer[],
+  previous: CustomMcpServer[],
+  writeConfig: (value: unknown) => void,
+): void {
+  const store = customMcpSecrets(vault);
+  const previousGeneration = parseCustomMcpSnapshot(readConfigFile().customMcpServers).generation;
+  const generation =
+    previousGeneration === undefined || previousGeneration === Number.MAX_SAFE_INTEGER
+      ? 1
+      : previousGeneration + 1;
+  const before = detachCustomMcpSecrets(previous, previousGeneration);
+  const after = detachCustomMcpSecrets(servers, generation);
+  const combined = new Map(before.secrets);
+  for (const [key, secret] of after.secrets) combined.set(key, secret);
+  store.replaceAll(combined);
+  try {
+    writeConfig({ v: 1, generation, servers: after.servers });
+  } catch (error) {
+    try {
+      store.replaceAll(before.secrets);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'Failed to persist or restore custom MCP', {
+        cause: rollbackError,
+      });
+    }
+    throw error;
+  }
+  try {
+    store.replaceAll(after.secrets);
+  } catch (err) {
+    logger.warn(
+      { err, operation: 'config.save-custom-mcp' },
+      'Custom MCP state committed but stale secret cleanup failed',
+    );
+  }
 }
 
 function fsyncPath(path: string): void {

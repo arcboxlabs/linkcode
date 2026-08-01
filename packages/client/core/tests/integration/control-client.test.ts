@@ -16,6 +16,31 @@ import { createConnectedLocalClient } from '../support/local-client';
 const sessionId = 'sess-control' as SessionId;
 
 describe('LinkCodeClient control API', () => {
+  it('preserves MCP warnings on detailed session-start results', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    serverTransport.onMessage((msg) => {
+      if (msg.payload.kind !== 'session.start') return;
+      serverTransport.send(
+        createWireMessage({
+          kind: 'session.started',
+          replyTo: msg.payload.clientReqId,
+          sessionId,
+          mcpWarnings: [{ serverName: 'github', reason: 'provider-unsupported' }],
+        }),
+      );
+    });
+
+    await expect(client.startSessionWithWarnings({ kind: 'codex', cwd: '/repo' })).resolves.toEqual(
+      {
+        sessionId,
+        mcpWarnings: [{ serverName: 'github', reason: 'provider-unsupported' }],
+      },
+    );
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('gets the matching pre-session agent catalog with agent kind and cwd', async () => {
     const { client, serverTransport } = await createConnectedLocalClient({
       randomUUID: () => 'catalog-request',

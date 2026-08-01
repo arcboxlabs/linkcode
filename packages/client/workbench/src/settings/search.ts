@@ -26,6 +26,7 @@ export interface SettingsSearchKeywords {
   about: readonly string[];
   agents: readonly string[];
   providers: readonly string[];
+  plugins: readonly string[];
   imChannel: readonly string[];
   historyImport: readonly string[];
 }
@@ -90,6 +91,15 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
     ],
     imChannel: [t('imChannel.connectTitle'), t('imChannel.bindings'), t('imChannel.autoMirror')],
+    plugins: [
+      t('plugins.title'),
+      t('plugins.tabPlugins'),
+      t('plugins.tabMarket'),
+      t('plugins.tabMcp'),
+      t('plugins.tabSkills'),
+      t('plugins.componentKind.mcp-server'),
+      t('plugins.componentKind.skill'),
+    ],
     historyImport: [t('historyImport.portalLabel')],
   };
 }
