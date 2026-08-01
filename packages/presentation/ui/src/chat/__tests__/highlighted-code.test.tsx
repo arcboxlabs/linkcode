@@ -52,7 +52,11 @@ it('ignores a stale asynchronous highlight after the theme changes', () => {
   const code = '<main>Hello</main>';
   const { container, rerender } = render(
     <RenderPrefsProvider
-      prefs={{ reduceMotion: false, codeTheme: ['github-light', 'github-dark'] }}
+      prefs={{
+        reduceMotion: false,
+        smoothConversationScrolling: false,
+        codeTheme: ['github-light', 'github-dark'],
+      }}
     >
       <HighlightedCode code={code} language="html" />
     </RenderPrefsProvider>,
@@ -60,7 +64,13 @@ it('ignores a stale asynchronous highlight after the theme changes', () => {
   const staleCallback = mocks.callbacks.get(code);
 
   rerender(
-    <RenderPrefsProvider prefs={{ reduceMotion: false, codeTheme: ['min-light', 'min-dark'] }}>
+    <RenderPrefsProvider
+      prefs={{
+        reduceMotion: false,
+        smoothConversationScrolling: false,
+        codeTheme: ['min-light', 'min-dark'],
+      }}
+    >
       <HighlightedCode code={code} language="html" />
     </RenderPrefsProvider>,
   );

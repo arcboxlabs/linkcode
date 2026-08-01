@@ -8,12 +8,15 @@ import { DEFAULT_CODE_THEME } from './code-themes';
 export interface RenderPrefs {
   /** When true, skip non-essential JS-driven motion. */
   reduceMotion: boolean;
+  /** Whether conversation content growth follows the bottom with animation. */
+  smoothConversationScrolling: boolean;
   /** [light, dark] shiki themes for chat code blocks. */
   codeTheme: CodeThemePair;
 }
 
 const DEFAULT_RENDER_PREFS: RenderPrefs = {
   reduceMotion: false,
+  smoothConversationScrolling: false,
   codeTheme: DEFAULT_CODE_THEME,
 };
 

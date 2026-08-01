@@ -21,6 +21,12 @@ export function AppearanceSettingsContainer({
   const setTextSize = useAppearancePrefsStore((state) => state.setTextSize);
   const reduceMotion = useAppearancePrefsStore((state) => state.reduceMotion);
   const setReduceMotion = useAppearancePrefsStore((state) => state.setReduceMotion);
+  const smoothConversationScrolling = useAppearancePrefsStore(
+    (state) => state.smoothConversationScrolling,
+  );
+  const setSmoothConversationScrolling = useAppearancePrefsStore(
+    (state) => state.setSmoothConversationScrolling,
+  );
   const codeThemeLight = useAppearancePrefsStore((state) => state.codeThemeLight);
   const setCodeThemeLight = useAppearancePrefsStore((state) => state.setCodeThemeLight);
   const codeThemeDark = useAppearancePrefsStore((state) => state.codeThemeDark);
@@ -42,6 +48,8 @@ export function AppearanceSettingsContainer({
       onTextSizeChange={setTextSize}
       reduceMotion={reduceMotion}
       onReduceMotionChange={setReduceMotion}
+      smoothConversationScrolling={smoothConversationScrolling}
+      onSmoothConversationScrollingChange={setSmoothConversationScrolling}
       codeThemeLight={codeThemeLight}
       onCodeThemeLightChange={setCodeThemeLight}
       codeThemeDark={codeThemeDark}

@@ -108,6 +108,12 @@ async function verifyLongThreadVirtualization(page: Page): Promise<void> {
       virtualizer?.textContent.includes(`Turn ${lastTurn} —`)
     );
   }, longThreadTurns);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 
   const metrics = await page.getByRole('log').evaluate((root) => {
     const scroll = root.firstElementChild as HTMLElement;
@@ -211,13 +217,14 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     const appErrors: string[] = [];
     const page = await browser.newPage();
     monitorApplicationErrors(page, server.origin, appErrors);
-    // This boundary verifies wire prompt/reload recovery, not animation timing: the product's
-    // reduce-motion fallback collapses the title animations so a throttled headless tab cannot
-    // hold the assertions below open across animation frames.
     await page.addInitScript(() => {
+      if (localStorage.getItem('linkcode.workbench.appearance:v2') !== null) return;
       localStorage.setItem(
-        'linkcode.workbench.appearance:v1',
-        JSON.stringify({ state: { reduceMotion: true }, version: 0 }),
+        'linkcode.workbench.appearance:v2',
+        JSON.stringify({
+          state: { reduceMotion: false, smoothConversationScrolling: false },
+          version: 0,
+        }),
       );
     });
     await page.goto(server.origin, { waitUntil: 'domcontentloaded' });
@@ -225,6 +232,16 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
 
     await page.getByRole('link', { name: 'Open settings' }).click();
     await page.waitForURL(`${server.origin}/settings`);
+    await page.getByRole('link', { name: 'Appearance' }).click();
+    await page.waitForURL(`${server.origin}/settings/appearance`);
+    const smoothConversationSwitch = page.getByRole('switch', {
+      name: 'Smooth conversation follow',
+    });
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'false');
+    await smoothConversationSwitch.click();
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'true');
+    await smoothConversationSwitch.click();
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'false');
     await page.getByRole('link', { name: 'Back' }).click();
     await page.waitForURL(`${server.origin}/`);
 
