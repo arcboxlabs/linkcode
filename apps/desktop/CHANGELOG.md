@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.18.2](https://github.com/arcboxlabs/linkcode/compare/v0.18.1...v0.18.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* **chat:** make smooth conversation follow opt-in ([#385](https://github.com/arcboxlabs/linkcode/issues/385)) ([4cac29e](https://github.com/arcboxlabs/linkcode/commit/4cac29e49b670a161cc0083344174b3a985a51bd))
+* **mobile:** install dependencies before metadata push ([771933c](https://github.com/arcboxlabs/linkcode/commit/771933c6491d7b9653e1b514a8384adabdb1e355))
+* **mobile:** provide Apple team to metadata push ([6c6f67d](https://github.com/arcboxlabs/linkcode/commit/6c6f67dfd146c074f171404908cf39381fbab410))
+* **mobile:** reuse pnpm EAS setup ([f0c0549](https://github.com/arcboxlabs/linkcode/commit/f0c05495ba22afafb2ae35ffeb024491d1eee781))
+
 ## [0.18.1](https://github.com/arcboxlabs/linkcode/compare/v0.18.0...v0.18.1) (2026-08-01)
 
 
