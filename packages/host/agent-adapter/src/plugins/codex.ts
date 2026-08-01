@@ -267,7 +267,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
     id: string,
     opts: PluginDiscoveryOptions = {},
   ): Promise<PluginInstallOutcome> {
-    return this.withDiscoveryServer(async (server) => {
+    return this.withServer(async (server) => {
       const { marketplace, summary } = await findCodexPlugin(server, 'plugin/list', id, opts);
       const address = codexPluginAddress(marketplace, summary);
       if (!address) throw new Error(`codex: plugin has no installable address: ${id}`);
@@ -279,12 +279,19 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
   }
 
   async uninstallPlugin(id: string): Promise<void> {
-    await this.withDiscoveryServer(async (server) => {
+    await this.withServer(async (server) => {
       await server.request('plugin/uninstall', { pluginId: id });
     });
   }
 
   private async withDiscoveryServer<T>(run: (server: CodexPluginServer) => Promise<T>): Promise<T> {
+    return this.withServer(run, DISCOVERY_TIMEOUT_MS);
+  }
+
+  private async withServer<T>(
+    run: (server: CodexPluginServer) => Promise<T>,
+    timeoutMs?: number,
+  ): Promise<T> {
     const controller = new AbortController();
     let server: CodexPluginServer | undefined;
     let closed = false;
@@ -293,16 +300,19 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
       closed = true;
       server.close();
     };
-    const timeout = setTimeout(() => {
-      controller.abort(new Error('codex: plugin discovery timed out'));
-      closeOnce();
-    }, DISCOVERY_TIMEOUT_MS);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (timeoutMs !== undefined) {
+      timeout = setTimeout(() => {
+        controller.abort(new Error('codex: plugin discovery timed out'));
+        closeOnce();
+      }, timeoutMs);
+    }
     try {
       const activeServer = await this.startServer(controller.signal);
       server = activeServer;
       return await run(activeServer);
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== undefined) clearTimeout(timeout);
       closeOnce();
     }
   }

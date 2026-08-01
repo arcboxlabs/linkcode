@@ -65,6 +65,18 @@ describe('config wire schema — custom MCP servers', () => {
     expect(parsed.ok).toBe(true);
   });
 
+  it('rejects a config.set that updates more than one resource', () => {
+    const parsed = parseWireMessage(
+      envelope({
+        kind: 'config.set',
+        clientReqId: 'request-1',
+        providers: {},
+        customMcpServers: [],
+      }),
+    );
+    expect(parsed.ok).toBe(false);
+  });
+
   it('carries optional mcp warnings on session.started', () => {
     const parsed = parseWireMessage(
       envelope({

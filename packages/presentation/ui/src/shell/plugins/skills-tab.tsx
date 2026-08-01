@@ -15,7 +15,7 @@ export interface SkillsTabProps {
   rows: SkillRowView[] | undefined;
   busy: boolean;
   searchQuery: string;
-  /** Per-skill for standalone skills; plugin-granularity for plugin-bundled ones. */
+  /** Per-skill mutation for standalone skills. */
   onToggle: (row: SkillRowView, enabled: boolean) => void;
 }
 
@@ -78,7 +78,7 @@ function SkillRow({
   busy: boolean;
   onToggle: (row: SkillRowView, enabled: boolean) => void;
 }): React.ReactNode {
-  const t = useTranslations('settings.plugins.skills');
+  const t = useTranslations('settings.plugins');
   const tScope = useTranslations('settings.plugins.scope');
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -96,13 +96,6 @@ function SkillRow({
         {row.description === undefined ? null : (
           <p className="line-clamp-1 text-muted-foreground text-xs">{row.description}</p>
         )}
-        {/* Standalone skills toggle individually; a plugin-bundled skill has no per-skill
-            mechanism, so its switch acts on the whole plugin and says so. */}
-        {row.canToggle && row.pluginKey !== undefined && row.siblingSkillCount > 1 ? (
-          <p className="text-2xs text-label-tertiary">
-            {t('groupToggleNote', { count: row.siblingSkillCount })}
-          </p>
-        ) : null}
       </div>
       {row.canToggle ? (
         <Switch
@@ -110,7 +103,11 @@ function SkillRow({
           disabled={busy}
           onCheckedChange={(checked) => onToggle(row, checked)}
         />
-      ) : null}
+      ) : row.pluginKey === undefined ? null : (
+        <span className="shrink-0 text-label-tertiary text-xs">
+          {row.enabled ? t('enabledReadOnly') : t('disabledReadOnly')}
+        </span>
+      )}
     </div>
   );
 }

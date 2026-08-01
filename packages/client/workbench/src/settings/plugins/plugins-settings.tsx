@@ -84,18 +84,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
           },
         { revalidate: false },
       );
-      return;
     }
-    const separator = row.pluginKey.indexOf(':');
-    const provider = row.pluginKey.slice(0, separator);
-    if (provider !== 'claude-code' && provider !== 'codex') return;
-    const updated = await toggle.trigger({
-      provider,
-      id: row.pluginKey.slice(separator + 1),
-      enabled,
-      scope: row.pluginScope,
-    });
-    patchPlugin(updated?.plugin);
   };
 
   const onToggleInstallation = async (

@@ -749,7 +749,6 @@ export const zhCN = {
           '此处仅管理用户级技能；项目级与本地配置不会隐式使用当前工作区，请在对应项目或智能体中管理。',
         empty: '还没有发现任何技能。',
         noSearchResults: '没有匹配的技能。',
-        groupToggleNote: '此插件共有 {count} 个技能，启用/禁用时会一起生效。',
       },
       mcp: {
         customTitle: '自定义 MCP 服务',

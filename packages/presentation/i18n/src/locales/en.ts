@@ -762,7 +762,6 @@ export const en = {
           'Only user-level skills are managed here. Project and local configuration never infer the current workspace; manage them in that project or agent.',
         empty: 'No skills discovered yet.',
         noSearchResults: 'No matching skills.',
-        groupToggleNote: 'This plugin bundles {count} skills; toggling affects all of them.',
       },
       mcp: {
         customTitle: 'Custom MCP servers',

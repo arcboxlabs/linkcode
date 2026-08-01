@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -194,14 +194,18 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     opts: PluginDiscoveryOptions = {},
   ): Promise<void> {
     const file = resolve(this.settingsFileFor(skill.scope, opts.cwd));
+    const projectLocal = skill.scope === 'project' && opts.cwd !== undefined;
     await serializeSettingsWrite(file, async () => {
       const settings = await readJsonRecord(file);
       const overrides = isRecord(settings.skillOverrides) ? { ...settings.skillOverrides } : {};
       if (enabled) {
-        // Absent means on; drop the key instead of writing "on" so the file stays minimal, but keep
-        // a finer-grained tier the user set in the TUI rather than coarsening it to plain on.
         const current = overrides[skill.id];
-        if (current === 'off' || current === undefined) delete overrides[skill.id];
+        if (current === 'off' || current === undefined) {
+          // Project-local absence can inherit shared `off`, so it needs explicit `on`; user
+          // settings have no lower layer and stay minimal by deleting the key.
+          if (projectLocal) overrides[skill.id] = 'on';
+          else delete overrides[skill.id];
+        }
       } else {
         overrides[skill.id] = 'off';
       }
@@ -233,7 +237,7 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
   }
 
   private settingsFileFor(scope: StandaloneSkill['scope'], cwd: string | undefined): string {
-    if (scope === 'project' && cwd) return join(cwd, '.claude', 'settings.json');
+    if (scope === 'project' && cwd) return join(cwd, '.claude', 'settings.local.json');
     return this.userSettingsFile;
   }
 }
@@ -263,8 +267,17 @@ async function serializeSettingsWrite(file: string, write: () => Promise<void>):
 async function writeJsonRecordAtomic(file: string, value: Record<string, unknown>): Promise<void> {
   const temporaryFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
+    let mode = 0o600;
+    try {
+      mode = (await stat(file)).mode & 0o777;
+    } catch (error) {
+      if (!isErrorLikeObject(error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+    }
     await mkdir(dirname(file), { recursive: true });
-    await writeFile(temporaryFile, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    await writeFile(temporaryFile, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode,
+    });
     await rename(temporaryFile, file);
   } catch (error) {
     await unlink(temporaryFile).catch(noop);

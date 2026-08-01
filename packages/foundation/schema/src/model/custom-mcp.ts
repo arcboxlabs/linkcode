@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { McpServerSchema } from './agent';
 import { TimestampSchema } from './primitives';
 
+const CustomMcpNameSchema = z.string().trim().min(1);
+
 /**
  * A LinkCode-owned ("bring your own") MCP server, independent of any provider plugin. It is
  * persisted in the daemon config and injected into MCP-capable sessions' StartOptions at start —
@@ -11,7 +13,10 @@ export const CustomMcpServerSchema = z.object({
   /** Client-minted, stable across edits (mirrors the Account.id precedent). */
   id: z.string().min(1),
   enabled: z.boolean(),
-  server: McpServerSchema,
+  server: z.discriminatedUnion('type', [
+    McpServerSchema.options[0].extend({ name: CustomMcpNameSchema }),
+    McpServerSchema.options[1].extend({ name: CustomMcpNameSchema }),
+  ]),
   createdAt: TimestampSchema,
 });
 export type CustomMcpServer = z.infer<typeof CustomMcpServerSchema>;
@@ -23,14 +28,14 @@ export type CustomMcpServer = z.infer<typeof CustomMcpServerSchema>;
 export const McpServerPublicSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('stdio'),
-    name: z.string(),
+    name: CustomMcpNameSchema,
     command: z.string(),
     args: z.array(z.string()).optional(),
     envKeys: z.array(z.string()),
   }),
   z.object({
     type: z.literal('http'),
-    name: z.string(),
+    name: CustomMcpNameSchema,
     url: z.string(),
     headerKeys: z.array(z.string()),
   }),
@@ -63,14 +68,14 @@ export type McpSecretPatch = z.infer<typeof McpSecretPatchSchema>;
 export const McpServerUpdateSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('stdio'),
-    name: z.string(),
+    name: CustomMcpNameSchema,
     command: z.string(),
     args: z.array(z.string()).optional(),
     env: McpSecretPatchSchema.optional(),
   }),
   z.object({
     type: z.literal('http'),
-    name: z.string(),
+    name: CustomMcpNameSchema,
     url: z.string(),
     headers: McpSecretPatchSchema.optional(),
   }),

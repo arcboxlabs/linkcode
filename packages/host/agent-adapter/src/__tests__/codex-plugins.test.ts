@@ -306,6 +306,52 @@ describe('CodexPluginAdapter', () => {
     await rejection;
   });
 
+  it.each(['install', 'uninstall'] as const)(
+    'lets plugin %s run past the discovery deadline and closes after completion',
+    async (operation) => {
+      vi.useFakeTimers();
+      let completeMutation: (value: unknown) => void = noop;
+      const request = vi.fn((method: string) => {
+        if (method === 'plugin/list') {
+          return Promise.resolve({
+            marketplaces: [
+              {
+                name: 'remote-tools',
+                plugins: [
+                  {
+                    id: 'review@remote-tools',
+                    remotePluginId: 'remote-review',
+                    name: 'review',
+                    source: { type: 'remote' },
+                    installed: false,
+                    enabled: false,
+                    availability: 'AVAILABLE',
+                    keywords: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        return new Promise((resolve) => {
+          completeMutation = resolve;
+        });
+      });
+      const close = vi.fn();
+      const adapter = new CodexPluginAdapter(() => Promise.resolve({ request, close }));
+      const mutation =
+        operation === 'install'
+          ? adapter.installPlugin('review@remote-tools')
+          : adapter.uninstallPlugin('review@remote-tools');
+      await vi.advanceTimersByTimeAsync(30001);
+
+      expect(close).not.toHaveBeenCalled();
+      completeMutation(operation === 'install' ? { appsNeedingAuth: [] } : {});
+      await mutation;
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+
   it('lists bare-named skills as standalone and filters plugin-qualified ones', async () => {
     const close = vi.fn();
     const request = vi.fn((method: string, params: unknown) => {

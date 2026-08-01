@@ -82,6 +82,25 @@ describe('pluginCardView', () => {
     expect(card.installations[0].canToggle).toBe(false);
   });
 
+  it('allows install and toggles only when availability is available', () => {
+    const card = pluginCardView(
+      plugin({
+        availability: 'blocked',
+        managementCapabilities: {
+          install: true,
+          uninstall: true,
+          update: false,
+          enable: true,
+          disable: true,
+        },
+      }),
+    );
+
+    expect(card.canInstall).toBe(false);
+    expect(card.canUninstall).toBe(true);
+    expect(card.installations[0].canToggle).toBe(false);
+  });
+
   it('does not offer Settings toggles for project or managed installations', () => {
     const card = pluginCardView(
       plugin({
@@ -161,8 +180,7 @@ describe('skillRows', () => {
     expect(rows.map((row) => row.name)).toEqual(['compile-latex', 'bibtex-cleanup', 'linear']);
     expect(rows[0]).toMatchObject({
       pluginTitle: 'LaTeX Toolkit',
-      canToggle: true,
-      siblingSkillCount: 2,
+      canToggle: false,
       standaloneScope: undefined,
     });
     expect(rows[2]).toMatchObject({
@@ -182,7 +200,8 @@ describe('skillRows', () => {
     expect(rows).toEqual([]);
   });
 
-  it('only toggles a bundled skill with exactly one mutable global installation', () => {
+  it('keeps bundled skills read-only regardless of plugin installation mutability', () => {
+    const mutable = skillRows(list());
     const multiScope = skillRows(
       list({
         plugins: [
@@ -199,8 +218,9 @@ describe('skillRows', () => {
       list({ plugins: [plugin({ installations: [{ enabled: true, scope: 'managed' }] })] }),
     );
 
-    expect(multiScope.every((row) => !row.canToggle && row.pluginScope === undefined)).toBe(true);
-    expect(managed.every((row) => !row.canToggle && row.pluginScope === 'managed')).toBe(true);
+    expect(mutable.every((row) => !row.canToggle)).toBe(true);
+    expect(multiScope.every((row) => !row.canToggle)).toBe(true);
+    expect(managed.every((row) => !row.canToggle)).toBe(true);
   });
 
   it('uses provider and exact path as a standalone skill identity', () => {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { asyncNoop } from 'foxts/noop';
@@ -343,6 +343,76 @@ describe('ClaudeCodePluginAdapter', () => {
 
     await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, true);
     expect(JSON.parse(await readFile(settingsFile, 'utf8'))).toEqual({});
+    expect((await stat(settingsFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it('writes project overrides locally without changing shared settings', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'linkcode-claude-project-skill-'));
+    tempRoots.push(cwd);
+    const sharedFile = join(cwd, '.claude', 'settings.json');
+    const localFile = join(cwd, '.claude', 'settings.local.json');
+    const shared = '{"permissions":{"defaultMode":"plan"}}\n';
+    await mkdir(join(cwd, '.claude'), { recursive: true });
+    await writeFile(sharedFile, shared);
+    const adapter = new ClaudeCodePluginAdapter(
+      () => Promise.reject(new Error('not used')),
+      join(cwd, 'user-skills'),
+    );
+
+    await adapter.setSkillEnabled({ id: 'deploy', path: '', scope: 'project' }, false, { cwd });
+
+    expect(await readFile(sharedFile, 'utf8')).toBe(shared);
+    expect(JSON.parse(await readFile(localFile, 'utf8'))).toEqual({
+      skillOverrides: { deploy: 'off' },
+    });
+    expect((await stat(localFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it('writes an explicit local on tier over a shared project off tier', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'linkcode-claude-project-skill-on-'));
+    tempRoots.push(cwd);
+    const skillDir = join(cwd, '.claude', 'skills', 'deploy');
+    await mkdir(skillDir, { recursive: true });
+    await Promise.all([
+      writeFile(join(skillDir, 'SKILL.md'), '---\nname: deploy\n---'),
+      writeFile(
+        join(cwd, '.claude', 'settings.json'),
+        JSON.stringify({ skillOverrides: { deploy: 'off' } }),
+      ),
+    ]);
+    const adapter = new ClaudeCodePluginAdapter(
+      () => Promise.reject(new Error('not used')),
+      join(cwd, 'user-skills'),
+    );
+
+    await adapter.setSkillEnabled({ id: 'deploy', path: skillDir, scope: 'project' }, true, {
+      cwd,
+    });
+
+    expect(JSON.parse(await readFile(join(cwd, '.claude', 'settings.local.json'), 'utf8'))).toEqual(
+      { skillOverrides: { deploy: 'on' } },
+    );
+    await expect(adapter.listStandaloneSkills({ cwd })).resolves.toEqual([
+      expect.objectContaining({ id: 'deploy', enabled: true }),
+    ]);
+  });
+
+  it('preserves destination permissions across an atomic settings write', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-mode-'));
+    tempRoots.push(home);
+    const settingsFile = join(home, 'settings.json');
+    await writeFile(settingsFile, '{}');
+    await chmod(settingsFile, 0o640);
+    const adapter = new ClaudeCodePluginAdapter(
+      () => Promise.reject(new Error('not used')),
+      join(home, 'skills'),
+      asyncNoop,
+      settingsFile,
+    );
+
+    await adapter.setSkillEnabled({ id: 'docx', path: '', scope: 'user' }, false);
+
+    expect((await stat(settingsFile)).mode & 0o777).toBe(0o640);
   });
 
   it.each([
@@ -394,7 +464,7 @@ describe('ClaudeCodePluginAdapter', () => {
     });
   });
 
-  it('targets the project settings file for a project-scoped skill', async () => {
+  it('targets the project-local settings file for a project-scoped skill', async () => {
     const home = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-project-'));
     const projectRoot = await mkdtemp(join(tmpdir(), 'linkcode-claude-skill-repo-'));
     tempRoots.push(home, projectRoot);
@@ -412,7 +482,7 @@ describe('ClaudeCodePluginAdapter', () => {
     });
 
     expect(
-      JSON.parse(await readFile(join(projectRoot, '.claude', 'settings.json'), 'utf8')),
+      JSON.parse(await readFile(join(projectRoot, '.claude', 'settings.local.json'), 'utf8')),
     ).toEqual({ skillOverrides: { deploy: 'off' } });
     await expect(readFile(userSettings, 'utf8')).rejects.toThrow();
   });

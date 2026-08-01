@@ -4,10 +4,8 @@ import { CustomMcpServerPatchOpSchema, CustomMcpServerPublicSchema } from '../mo
 import { ProvidersConfigSchema } from '../model/provider-config';
 import { WireRequestIdSchema } from './request';
 
-/** Host configuration wire variants — per-agent provider settings (provider-config.ts) plus the
- * global account pool (account.ts); both travel together so a single `config.get`/`config.set`
- * round-trips the whole editable config. Custom MCP servers ride the same pair but read as a
- * masked projection and write as patch ops (custom-mcp.ts). */
+/** Host configuration wire variants. Reads return the whole editable config; each write changes
+ * one resource so validation or persistence failure cannot partially commit another resource. */
 export const configWireVariants = [
   z.object({ kind: z.literal('config.get'), clientReqId: WireRequestIdSchema }),
   z.object({

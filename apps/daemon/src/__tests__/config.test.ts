@@ -303,12 +303,40 @@ describe('loadConfig custom MCP servers', () => {
     const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
     writeFileSync(path, JSON.stringify({ providers: {}, customMcpServers: [] }));
 
-    saveCustomMcpServers([validServer]);
+    saveCustomMcpServers(vault, [validServer], []);
 
     const written: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    expect(written).toEqual({ providers: {}, customMcpServers: [validServer] });
+    expect(written).toEqual({
+      providers: {},
+      customMcpServers: [
+        {
+          ...validServer,
+          server: { ...validServer.server, env: { GITHUB_TOKEN: null } },
+        },
+      ],
+    });
+    expect(vault.refs.get('custom-mcp:["custom-1","env","GITHUB_TOKEN"]')).toBe('secret');
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(loadConfig(vault).customMcpServers).toEqual([validServer]);
+  });
+
+  it('keeps secrets distinct when server ids and keys contain delimiters', () => {
+    const servers: CustomMcpServer[] = [
+      {
+        ...validServer,
+        id: 'a',
+        server: { ...validServer.server, env: { 'b:env:c': 'first' } },
+      },
+      {
+        ...validServer,
+        id: 'a:env:b',
+        server: { ...validServer.server, name: 'second', env: { c: 'second' } },
+      },
+    ];
+
+    saveCustomMcpServers(vault, servers, []);
+
+    expect(loadConfig(vault).customMcpServers).toEqual(servers);
   });
 });
 
@@ -332,10 +360,10 @@ describe('createProviderConfigStore', () => {
         },
       ]),
     ).toThrow();
-
     expect(store.get()).toBe(oldProviders);
     expect(store.getAccounts()).toBe(oldAccounts);
     expect(store.getCustomMcpServers()).toBe(oldCustomMcpServers);
+    expect([...vault.refs.keys()].some((ref) => ref.startsWith('custom-mcp:'))).toBe(false);
   });
 });
 
@@ -365,6 +393,33 @@ describe('credential storage', () => {
     const raw = readFileSync(join(process.env.HOME ?? '', '.linkcode', 'config.json'), 'utf8');
     expect(raw).not.toContain('sk-legacy');
     expect(raw).not.toContain('sk-test');
+  });
+
+  it('lazily moves inline custom MCP values while preserving their keys', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(noop);
+    const server: CustomMcpServer = {
+      id: 'custom-http',
+      enabled: true,
+      server: {
+        type: 'http',
+        name: 'search',
+        url: 'https://mcp.example',
+        headers: { Authorization: 'Bearer legacy' },
+      },
+      createdAt: 1,
+    };
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers: [server] }));
+
+    expect(loadConfig(vault).customMcpServers).toEqual([server]);
+    expect(vault.refs.get('custom-mcp:["custom-http","headers","Authorization"]')).toBe(
+      'Bearer legacy',
+    );
+    expect(readConfigFile().customMcpServers).toEqual([
+      { ...server, server: { ...server.server, headers: { Authorization: null } } },
+    ]);
+    expect(loadConfig(vault).customMcpServers).toEqual([server]);
   });
 
   it('round-trips an account through the vault without ever writing the secret', () => {

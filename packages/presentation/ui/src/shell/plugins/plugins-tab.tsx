@@ -74,48 +74,51 @@ export function PluginsTab({
               </span>
             }
           >
-            {group.discoveryFailed ? (
-              <EmptyRow
-                text={t('discoveryFailed', {
-                  provider: label,
-                  reason: group.failureReason ?? t('discoveryFailedUnknown'),
-                })}
-              />
-            ) : group.plugins.length === 0 ? (
-              <EmptyRow
-                text={
-                  filtering
-                    ? t('noSearchResults')
-                    : missingRuntimes.has(group.provider)
-                      ? t('runtimeMissing', { provider: label })
-                      : market
-                        ? t('marketEmptyHint')
-                        : t('installedEmptyHint')
-                }
-              />
-            ) : (
-              <div className="flex flex-col gap-3">
-                {visible.map((card) => (
-                  <PluginCard
-                    key={card.key}
-                    busy={busy}
-                    card={card}
-                    showInstallState={!market}
-                    onToggleInstallation={onToggleInstallation}
-                    onInstall={onInstall}
-                    onUninstall={onUninstall}
-                  />
-                ))}
-                {visible.length < group.plugins.length ? (
-                  <p className="px-1 text-muted-foreground text-xs">
-                    {t('marketTruncated', {
-                      shown: visible.length,
-                      total: group.plugins.length,
-                    })}
-                  </p>
-                ) : null}
-              </div>
-            )}
+            <div className="flex flex-col gap-3">
+              {group.discoveryFailed ? (
+                <EmptyRow
+                  text={t('discoveryFailed', {
+                    provider: label,
+                    reason: group.failureReason ?? t('discoveryFailedUnknown'),
+                  })}
+                />
+              ) : null}
+              {group.plugins.length === 0 && !group.discoveryFailed ? (
+                <EmptyRow
+                  text={
+                    filtering
+                      ? t('noSearchResults')
+                      : missingRuntimes.has(group.provider)
+                        ? t('runtimeMissing', { provider: label })
+                        : market
+                          ? t('marketEmptyHint')
+                          : t('installedEmptyHint')
+                  }
+                />
+              ) : (
+                <>
+                  {visible.map((card) => (
+                    <PluginCard
+                      key={card.key}
+                      busy={busy}
+                      card={card}
+                      showInstallState={!market}
+                      onToggleInstallation={onToggleInstallation}
+                      onInstall={onInstall}
+                      onUninstall={onUninstall}
+                    />
+                  ))}
+                  {visible.length < group.plugins.length ? (
+                    <p className="px-1 text-muted-foreground text-xs">
+                      {t('marketTruncated', {
+                        shown: visible.length,
+                        total: group.plugins.length,
+                      })}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
           </SettingsSection>
         );
       })}

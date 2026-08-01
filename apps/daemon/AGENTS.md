@@ -23,21 +23,23 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 - **Paths are owned by `src/config.ts`** (`configPath` / `databasePath` / `runtimeFilePath`) — never
   scatter `homedir()` joins elsewhere. `os.homedir()` is read at call time, so a fake `$HOME` fully
   redirects config/db/runtime (this is what isolates an E2E daemon).
-- **`config.json`** (optional, `0600`): the daemon writes back only `providers` via `saveProviders`,
+- **`config.json`** (optional, `0600`): the daemon writes back only structure via the config helpers,
   re-reading and preserving other fields. `loadConfig` validates providers **field-by-field** — one
   bad entry is dropped and logged, never blanks the rest. It holds **no secrets** since CODE-371 —
-  `providers[kind].apiKey` and each account's credential secret live in `secrets.json` below, and
+  `providers[kind].apiKey`, each account's credential secret, and custom MCP env/header values live
+  in `secrets.json` below, and
   `withAccountSecret` merges them back *before* zod validation, so a secret that is gone fails
   `AccountSchema` and drops through that same per-entry path.
-- **`secrets.json`** (`0600`) — every long-lived credential, keyed `namespace:key` where the key is
-  the id the owning record already carries: `cloud:session`, `provider:<kind>`, `account:<id>`,
-  `device:software-key`. Custody is a 32-byte AES-256-GCM master key in the OS keyring
+- **`secrets.json`** (`0600`) — every long-lived credential, keyed `namespace:key`: `cloud:session`,
+  `provider:<kind>`, `account:<id>`, custom MCP server/field tuples, `device:software-key`. Custody
+  is a 32-byte AES-256-GCM master key in the OS keyring
   (`@napi-rs/keyring`, service = `keyringServiceName(channel, profile)` so a development daemon cannot
   read the release one's), and the file is ciphertext.
   - **`vault.namespace(name)` is the only way in** — there is no whole-store handle. That is what
     makes `SecretStore.replaceAll` safe to hand out: a `save*` replaces its own namespace in one
     write, so pruning a deleted account is implicit and cannot reach a neighbour's secrets. Adding a
-    subsystem is one entry in the `SecretNamespace` union plus its own key names; the vault stays
+    subsystem is one entry in the `SecretNamespace` union plus its own key names; custom MCP values
+    use the `custom-mcp` namespace. The vault stays
     ignorant of what any of them mean.
   - **The vault is constructed once, in `main()`, and passed down.** Every consumer takes a
     `SecretVault` parameter and opens its own namespace — nothing reaches `secretVault()` by import.

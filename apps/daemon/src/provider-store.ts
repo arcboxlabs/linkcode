@@ -31,7 +31,7 @@ export function createProviderConfigStore(
     },
     getCustomMcpServers: () => customMcpServers,
     setCustomMcpServers(next) {
-      saveCustomMcpServers(next);
+      saveCustomMcpServers(vault, next, customMcpServers);
       customMcpServers = next;
     },
   };

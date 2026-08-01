@@ -17,7 +17,9 @@ export function pluginCardView(plugin: Plugin): PluginCardView {
   for (const component of plugin.components) {
     componentCounts[component.kind] = (componentCounts[component.kind] ?? 0) + 1;
   }
-  const canToggle = plugin.managementCapabilities.enable && plugin.managementCapabilities.disable;
+  const available = plugin.availability === 'available';
+  const canToggle =
+    available && plugin.managementCapabilities.enable && plugin.managementCapabilities.disable;
   return {
     key: `${plugin.provider}:${plugin.id}`,
     provider: plugin.provider,
@@ -28,7 +30,7 @@ export function pluginCardView(plugin: Plugin): PluginCardView {
     marketplaceLabel: plugin.marketplace?.displayName ?? plugin.marketplace?.name,
     availability: plugin.availability,
     installed: plugin.installations.length > 0,
-    canInstall: plugin.managementCapabilities.install,
+    canInstall: available && plugin.managementCapabilities.install,
     canUninstall: plugin.managementCapabilities.uninstall,
     installations: plugin.installations.map((entry) => ({
       scope: entry.scope,
@@ -92,14 +94,10 @@ export function skillRows(list: PluginList): SkillRowView[] {
     if (plugin.installations.length === 0) continue;
     const card = pluginCardView(plugin);
     const skills = plugin.components.filter((component) => component.kind === 'skill');
-    const installation = plugin.installations.length === 1 ? plugin.installations[0] : undefined;
     const pluginEnabled =
-      installation?.enabled ?? plugin.installations.some((entry) => entry.enabled);
-    const canTogglePlugin =
-      installation !== undefined &&
-      (installation.scope === undefined || installation.scope === 'user') &&
-      plugin.managementCapabilities.enable &&
-      plugin.managementCapabilities.disable;
+      plugin.installations.length === 1
+        ? plugin.installations[0].enabled
+        : plugin.installations.some((entry) => entry.enabled);
     for (const skill of skills) {
       rows.push({
         key: `${card.key}:${skill.name}`,
@@ -111,10 +109,8 @@ export function skillRows(list: PluginList): SkillRowView[] {
         name: skill.name,
         description: skill.description,
         enabled: skill.enabled ?? pluginEnabled,
-        canToggle: canTogglePlugin,
-        siblingSkillCount: skills.length,
+        canToggle: false,
         standaloneScope: undefined,
-        pluginScope: installation?.scope,
         searchText: `${skill.name}\n${skill.description ?? ''}\n${card.title}`.toLowerCase(),
       });
     }
@@ -137,9 +133,7 @@ function standaloneSkillRow(skill: StandaloneSkill): SkillRowView {
     description: skill.description,
     enabled: skill.enabled,
     canToggle: skill.toggleable,
-    siblingSkillCount: 1,
     standaloneScope: skill.scope,
-    pluginScope: undefined,
     searchText: `${skill.name}\n${skill.description ?? ''}`.toLowerCase(),
   };
 }
