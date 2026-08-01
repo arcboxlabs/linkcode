@@ -60,20 +60,20 @@ jobs:
             os: ${{ vars.CI_RUNNER_MACOS || 'macos-26' }}
 
     steps:
-      - name: Check release secrets
+      - name: Check release configuration
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_DSN_MOBILE: ${{ secrets.SENTRY_DSN_MOBILE }}
           POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
-          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: |
           set -euo pipefail
           missing=false
           for variable in EXPO_TOKEN SENTRY_AUTH_TOKEN SENTRY_DSN_MOBILE POSTHOG_PROJECT_TOKEN POSTHOG_HOST; do
             if [ -z "${!variable}" ]; then
-              echo "::error::Missing GitHub secret: ${variable}"
+              echo "::error::Missing GitHub Actions secret or variable: ${variable}"
               missing=true
             fi
           done
@@ -140,7 +140,7 @@ jobs:
         env:
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_MOBILE }}
           EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
-          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: eas build --local --platform "${{ matrix.platform }}" --profile production --output "$RUNNER_TEMP/linkcode-${{ matrix.platform }}.${{ matrix.extension }}" --non-interactive
 
