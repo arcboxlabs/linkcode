@@ -33,7 +33,8 @@
       "ios": {
         "ascAppId": "6791199804",
         "appleTeamId": "422ACSY6Y5",
-        "bundleIdentifier": "com.arcboxlabs.linkcode.mobile"
+        "bundleIdentifier": "com.arcboxlabs.linkcode.mobile",
+        "metadataPath": "./store.config.json"
       }
     }
   }
