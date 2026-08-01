@@ -13,6 +13,7 @@ import { PromptDock } from '@mobile/components/conversation/prompt-dock/prompt-d
 import { SessionStatusChip } from '@mobile/components/conversation/session-status-chip';
 import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
+import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
@@ -27,10 +28,21 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 
+/** A thread is a screen of the host stack, not of a tab, so it covers the tab bar and the composer
+ * owns the bottom edge. The gate lives here rather than in a `session/_layout` because another
+ * navigator there would make this the root of its own stack and strip its back button. */
+export default function SessionRoute(): React.ReactNode {
+  return (
+    <HostClientGate>
+      <SessionScreen />
+    </HostClientGate>
+  );
+}
+
 /** Conversation view of one session running on the host, with the composer that drives it and
  * the prompt dock that answers its asks. The inverted list pins to the newest item and leaves
  * the user's scroll position alone while output streams. */
-export default function SessionScreen(): React.ReactNode {
+function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
   const tChat = useTranslations('mobile.chat');
   const insets = useSafeAreaInsets();
