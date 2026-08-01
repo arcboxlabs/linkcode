@@ -922,6 +922,7 @@ export const en = {
     about: {
       version: 'Version',
       checkForUpdates: 'Check for updates',
+      restartToInstall: 'Restart to update',
       status: {
         checking: 'Checking for updates…',
         available: 'Update available — downloading…',
