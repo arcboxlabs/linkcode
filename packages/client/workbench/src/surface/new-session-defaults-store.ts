@@ -1,6 +1,11 @@
 import { zodPersist } from '@linkcode/common/zustand';
-import type { AgentKind, EffortLevel, WorkspaceId } from '@linkcode/schema';
-import { AgentKindSchema, EffortLevelSchema, WorkspaceIdSchema } from '@linkcode/schema';
+import type { AgentKind, BranchSelection, EffortLevel, WorkspaceId } from '@linkcode/schema';
+import {
+  AgentKindSchema,
+  BranchSelectionSchema,
+  EffortLevelSchema,
+  WorkspaceIdSchema,
+} from '@linkcode/schema';
 import { z } from 'zod';
 import { create } from 'zustand';
 
@@ -10,7 +15,7 @@ const PersistedNewSessionDefaultsSchema = z
     lastWorkspaceId: WorkspaceIdSchema.nullable(),
     modelsByProvider: z.partialRecord(AgentKindSchema, z.string().min(1)),
     effortsByProvider: z.partialRecord(AgentKindSchema, EffortLevelSchema),
-    branchesByWorkspace: z.record(z.string(), z.string().min(1)),
+    branchesByWorkspace: z.record(z.string(), BranchSelectionSchema),
   })
   .partial();
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
@@ -32,12 +37,12 @@ export interface NewSessionDefaultsState {
   /** Last effort accepted by LinkCode per provider; absent means defer to the provider default. */
   effortsByProvider: Partial<Record<AgentKind, EffortLevel>>;
   /** Last explicitly selected branch per workspace. */
-  branchesByWorkspace: Record<string, string>;
+  branchesByWorkspace: Record<string, BranchSelection>;
   remember: (
     provider: AgentKind,
     workspaceId: WorkspaceId,
     selection: NewSessionSelection,
-    branch?: string,
+    branch?: BranchSelection,
   ) => void;
   rememberSelection: (provider: AgentKind, selection: NewSessionSelection) => void;
 }
@@ -96,7 +101,7 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
         set((state) => selectionPatch(state, provider, selection)),
     }),
     {
-      name: 'linkcode.workbench.new-session-defaults:v4',
+      name: 'linkcode.workbench.new-session-defaults:v5',
       schema: PersistedNewSessionDefaultsSchema,
       partialize: (state) => ({
         lastProvider: state.lastProvider,

@@ -83,6 +83,8 @@ export interface AppearanceSettingsPanelProps {
   onTextSizeChange: (textSize: TextSize) => void;
   reduceMotion: boolean;
   onReduceMotionChange: (reduceMotion: boolean) => void;
+  smoothConversationScrolling: boolean;
+  onSmoothConversationScrollingChange: (smoothConversationScrolling: boolean) => void;
   codeThemeLight: CodeThemeLightId;
   onCodeThemeLightChange: (codeThemeLight: CodeThemeLightId) => void;
   codeThemeDark: CodeThemeDarkId;
@@ -108,6 +110,8 @@ export function AppearanceSettingsPanel({
   onTextSizeChange,
   reduceMotion,
   onReduceMotionChange,
+  smoothConversationScrolling,
+  onSmoothConversationScrollingChange,
   codeThemeLight,
   onCodeThemeLightChange,
   codeThemeDark,
@@ -206,6 +210,17 @@ export function AppearanceSettingsPanel({
         </SettingsRow>
         <SettingsRow title={t('reduceMotion')} description={t('reduceMotionHint')}>
           <Switch checked={reduceMotion} onCheckedChange={onReduceMotionChange} />
+        </SettingsRow>
+        <SettingsRow
+          title={t('smoothConversationScrolling')}
+          description={t('smoothConversationScrollingHint')}
+        >
+          <Switch
+            aria-label={t('smoothConversationScrolling')}
+            checked={smoothConversationScrolling}
+            disabled={reduceMotion}
+            onCheckedChange={onSmoothConversationScrollingChange}
+          />
         </SettingsRow>
         <SettingsRow title={t('filesTreeSide')} description={t('filesTreeSideHint')}>
           <Select

@@ -1,5 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type {
+  Accounts,
   AgentKind,
   AgentRuntimeAvailability,
   AgentRuntimes,
@@ -9,7 +10,7 @@ import type {
   ProvidersConfig,
 } from '@linkcode/schema';
 import { managedAgentAssetId, managedAssetIdEquals, managedAssetKey } from '@linkcode/schema';
-import { ensureAsset, getProviderConfig } from '@linkcode/sdk';
+import { ensureAsset, getAccounts, getProviderConfig } from '@linkcode/sdk';
 import type { AgentRuntimeCue, AgentRuntimeCues } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -100,16 +101,43 @@ export function deriveAgentRuntimeCues(
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap = {},
   providers: ProvidersConfig = {},
+  accounts: Accounts = [],
 ): AgentRuntimeCues {
   const cues: AgentRuntimeCues = {};
   if (!runtimes) return cues;
   for (const [kind, runtime] of Object.entries(runtimes) as Array<
     [AgentKind, AgentRuntimeAvailability]
   >) {
-    const cue = deriveCue(kind, runtime, assets, activity, acknowledged, loginActivity, providers);
+    const cue = deriveCue(
+      kind,
+      runtime,
+      assets,
+      activity,
+      acknowledged,
+      loginActivity,
+      providers,
+      accounts,
+    );
     if (cue) cues[kind] = cue;
   }
   return cues;
+}
+
+/**
+ * Whether LinkCode injects a secret for this agent at spawn, which makes a signed-out CLI runnable
+ * (`applyProviderDefaults`): the bound account's own key/token, or the legacy per-agent api key. An
+ * `oauth` account delegates back to the CLI's login store, so it does not count.
+ */
+export function hasInjectedCredential(
+  kind: AgentKind,
+  providers: ProvidersConfig,
+  accounts: Accounts,
+): boolean {
+  if (providers[kind]?.apiKey?.trim()) return true;
+  const boundId = providers[kind]?.activeAccountId;
+  if (boundId === undefined) return false;
+  const bound = accounts.find((account) => account.id === boundId);
+  return bound?.credential.type === 'api-key' || bound?.credential.type === 'auth-token';
 }
 
 /** The login cue for a signed-out runtime, its phase driven by any in-flight login activity. */
@@ -151,14 +179,18 @@ function deriveCue(
   acknowledged: Partial<Record<AgentKind, string>>,
   loginActivity: LoginActivityMap,
   providers: ProvidersConfig,
+  accounts: Accounts,
 ): AgentRuntimeCue | undefined {
   switch (runtime.status) {
-    case 'available':
-      // `auth` absent means unprobed or a fail-open probe — don't block. A configured API key is
-      // injected at spawn (applyProviderDefaults), making a signed-out CLI runnable — no cue then.
-      return runtime.auth?.loggedIn === false && !providers[kind]?.apiKey
-        ? loginCue(loginActivity[kind])
+    case 'available': {
+      const currentLogin = loginActivity[kind];
+      if (currentLogin && runtime.auth?.loggedIn !== true) return loginCue(currentLogin);
+      // `auth` absent means unprobed or a fail-open probe — don't block. An injected credential
+      // makes a signed-out CLI runnable, so it clears the cue (see hasInjectedCredential).
+      return runtime.auth?.loggedIn === false && !hasInjectedCredential(kind, providers, accounts)
+        ? loginCue(undefined)
         : undefined;
+    }
     case 'out-of-range': {
       // "Download paired version" is the same install as the missing flow — activity must win over
       // the probed status here too, or progress never shows and a settled install stays blocked.
@@ -188,19 +220,22 @@ function deriveCue(
  * The derived cue map plus the onboarding actions, per agent kind. Progress streams in via the
  * asset broadcasts; snapshots revalidate through the push-aware useAssets/useAgentRuntimes.
  */
-export function useAgentRuntimeOnboarding(): {
+export interface AgentRuntimeOnboarding {
   cues: AgentRuntimeCues;
   download: (kind: AgentKind) => void;
   acknowledgeUnverified: (kind: AgentKind) => void;
-  login: (kind: AgentKind) => void;
+  login: (kind: AgentKind, onSuccess?: () => void) => void;
   submitLoginCode: (kind: AgentKind, code: string) => void;
   cancelLogin: (kind: AgentKind) => void;
-} {
+}
+
+export function useAgentRuntimeOnboarding(): AgentRuntimeOnboarding {
   const client = useLinkCodeClient();
   const { data: runtimes } = useAgentRuntimes();
   const { data: assets } = useAssets();
-  // A saved API key makes a signed-out CLI runnable, so it suppresses the login cue.
+  // An injected credential makes a signed-out CLI runnable, so it suppresses the login cue.
   const { data: providers } = useData(getProviderConfig, {});
+  const { data: accounts } = useData(getAccounts, {});
   const [activity, setActivity] = useState<AssetActivityMap>({});
   const [loginActivity, setLoginActivity] = useState<LoginActivityMap>({});
   // The in-flight loginId per kind (+ a cancel flag so a user-aborted login settles to idle, not
@@ -251,6 +286,17 @@ export function useAgentRuntimeOnboarding(): {
     [client],
   );
 
+  useEffect(
+    () => () => {
+      for (const entry of activeLoginsRef.current.values()) {
+        entry.cancelled = true;
+        if (entry.loginId) client.cancelAgentLogin(entry.loginId);
+      }
+      activeLoginsRef.current.clear();
+    },
+    [client],
+  );
+
   function download(kind: AgentKind): void {
     const id = AGENT_ASSET_IDS[kind];
     if (!id) return;
@@ -282,8 +328,13 @@ export function useAgentRuntimeOnboarding(): {
     });
   }
 
-  function login(kind: AgentKind): void {
-    const entry = { loginId: undefined as string | undefined, cancelled: false };
+  function login(kind: AgentKind, onSuccess?: () => void): void {
+    const previous = activeLoginsRef.current.get(kind);
+    if (previous) {
+      previous.cancelled = true;
+      if (previous.loginId) client.cancelAgentLogin(previous.loginId);
+    }
+    const entry = { loginId: undefined as string | undefined, cancelled: false, onSuccess };
     activeLoginsRef.current.set(kind, entry);
     setLogin(kind, { kind: 'opening' });
     client
@@ -292,6 +343,7 @@ export function useAgentRuntimeOnboarding(): {
         entry.loginId = loginId;
         client.subscribeAgentLogin(loginId, {
           onUrl(url) {
+            if (activeLoginsRef.current.get(kind) !== entry || entry.cancelled) return;
             // Desktop routes `_blank` to the system browser; the card keeps `url` as a fallback
             // link. Self-opening CLIs already launched their own tab — don't race it in a second.
             if (!SELF_OPENING_LOGIN_KINDS.has(kind)) {
@@ -300,17 +352,24 @@ export function useAgentRuntimeOnboarding(): {
             setLogin(kind, { kind: 'awaiting-code', url });
           },
           onSettled({ ok, error }) {
+            if (activeLoginsRef.current.get(kind) !== entry) return;
             activeLoginsRef.current.delete(kind);
             // Success: the re-probe push flips the runtime to logged-in and drops the cue. Cancel:
             // back to the idle login button. Failure: show the error with a retry.
-            if (ok || entry.cancelled) setLogin(kind, undefined);
-            else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
+            if (entry.cancelled) setLogin(kind, undefined);
+            else if (ok) {
+              setLogin(kind, undefined);
+              entry.onSuccess?.();
+            } else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
           },
         });
+        if (entry.cancelled) client.cancelAgentLogin(loginId);
       })
       .catch((err: unknown) => {
+        if (activeLoginsRef.current.get(kind) !== entry) return;
         activeLoginsRef.current.delete(kind);
-        setLogin(kind, { kind: 'failed', error: extractErrorMessage(err) ?? 'login failed' });
+        if (entry.cancelled) setLogin(kind, undefined);
+        else setLogin(kind, { kind: 'failed', error: extractErrorMessage(err) ?? 'login failed' });
       });
   }
 
@@ -336,6 +395,7 @@ export function useAgentRuntimeOnboarding(): {
       acknowledged,
       loginActivity,
       providers,
+      accounts,
     ),
     download,
     acknowledgeUnverified,

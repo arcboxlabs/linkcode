@@ -134,6 +134,22 @@ describe('dev mock transport', () => {
     // Independent fields: writing accounts preserved the provider config.
     expect(await client.getProviderConfig()).toEqual(providers);
 
+    const boundAccount = {
+      id: 'acc_2',
+      label: 'Relay',
+      credential: { type: 'api-key', key: 'sk-relay' },
+      createdAt: 1,
+    } satisfies Accounts[number];
+    await client.createAndBindAccount('codex', boundAccount);
+    await client.createAndBindAccount('codex', { ...boundAccount, label: 'Updated relay' });
+    expect(await client.getAccounts()).toEqual([
+      accounts[0],
+      { ...boundAccount, label: 'Updated relay' },
+    ]);
+    expect(await client.getProviderConfig()).toEqual({
+      codex: { enabled: true, defaultModel: 'mock-model', activeAccountId: 'acc_2' },
+    });
+
     client.dispose();
   });
 

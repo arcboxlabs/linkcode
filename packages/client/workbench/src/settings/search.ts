@@ -62,6 +62,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('appearance.listDensityComfortable'),
       t('appearance.listDensityCompact'),
       t('appearance.reduceMotion'),
+      t('appearance.smoothConversationScrolling'),
       t('appearance.codeThemeLight'),
       t('appearance.codeThemeDark'),
       t('appearance.uiFont'),

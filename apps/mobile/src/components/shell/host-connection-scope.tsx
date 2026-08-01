@@ -5,13 +5,7 @@ import { useHostRegistryStore, useSelectedHost } from '@mobile/stores/host-store
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { useEffect, useMemo } from 'react';
 
-/** Publishes the selected host's connection above the whole navigator: the tabs and the screens
- * that push over them are siblings in the route tree, so anything lower would dial once per
- * surface. Selecting a host is a store write, not a navigation — nothing re-routes to switch.
- *
- * Which connections survive a switch is the user's call. Off (the default), only the selected host
- * stays dialed. On, every saved host does, so switching back is a subscription rather than a
- * handshake — paid for in sockets. */
+/** Must wrap the navigator so tabs and pushed routes share one selected-host connection. */
 export function HostConnectionScope({ children }: React.PropsWithChildren): React.ReactNode {
   const host = useSelectedHost();
   const hosts = useHostRegistryStore((state) => state.hosts);

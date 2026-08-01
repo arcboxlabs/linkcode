@@ -6,16 +6,20 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from 'coss-ui/components/empty';
+import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { ArrowDownIcon } from 'lucide-react';
 import { useCallback } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import type { VirtualizerHandle } from 'virtua';
 import { Virtualizer } from 'virtua';
 import { cn } from '../lib/cn';
+import { useRenderPrefs } from '../render-prefs';
 
 export type ConversationProps = React.ComponentProps<typeof StickToBottom>;
 
 export function Conversation({ className, ...props }: ConversationProps): React.ReactNode {
+  const { reduceMotion, smoothConversationScrolling } = useRenderPrefs();
+
   return (
     <StickToBottom
       // Named container: viewport-pinned overlays (the minimap) size themselves against the pane,
@@ -24,7 +28,7 @@ export function Conversation({ className, ...props }: ConversationProps): React.
       // Instant initial positioning: animating from the top would page the whole virtualized
       // history through the viewport.
       initial="instant"
-      resize="smooth"
+      resize={smoothConversationScrolling && !reduceMotion ? 'smooth' : 'instant'}
       role="log"
       {...props}
     />
@@ -60,14 +64,43 @@ export function ConversationContent<T>({
   virtualizerRef,
   onScroll,
 }: ConversationContentProps<T>): React.ReactNode {
-  const { scrollRef } = useStickToBottomContext();
+  const { contentRef, scrollRef, state } = useStickToBottomContext();
+  const { reduceMotion, smoothConversationScrolling } = useRenderPrefs();
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    const scroll = scrollRef.current;
+    if (
+      !content ||
+      !scroll ||
+      typeof ResizeObserver === 'undefined' ||
+      (smoothConversationScrolling && !reduceMotion)
+    ) {
+      return;
+    }
+
+    // The library's instant path still waits for rAF; snap before paint while virtua settles.
+    const snapToBottom = (): void => {
+      if (state.isAtBottom) scroll.scrollTop = scroll.scrollHeight;
+    };
+    snapToBottom();
+    const observer = new ResizeObserver(snapToBottom);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [contentRef, reduceMotion, scrollRef, smoothConversationScrolling, state]);
+
   return (
     <StickToBottom.Content
       className={cn('mx-auto max-w-3xl px-7 pb-6', className)}
       // The browser's own scroll anchoring fights both scroll owners.
       scrollClassName="[overflow-anchor:none]"
     >
-      <Virtualizer data={data} onScroll={onScroll} ref={virtualizerRef} scrollRef={scrollRef}>
+      <Virtualizer
+        data={data}
+        itemSize={300}
+        onScroll={onScroll}
+        ref={virtualizerRef}
+        scrollRef={scrollRef}
+      >
         {children}
       </Virtualizer>
       {trailing}

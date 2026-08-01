@@ -6,6 +6,10 @@ import type {
   SessionStartResult,
 } from '@linkcode/client-core';
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -19,6 +23,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -239,12 +244,24 @@ export function setProviderConfig(
   return resolveClient(options).setProviderConfig(options.providers);
 }
 
+export function createAndBindAccount(
+  options: Options<{ agent: AgentKind; account: Account }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).createAndBindAccount(options.agent, options.account);
+}
+
 export function getAccounts(options?: Options): RequestResult<Accounts> {
   return resolveClient(options).getAccounts();
 }
 
 export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
   return resolveClient(options).setAccounts(options.accounts);
+}
+
+export function probeAccountModels(
+  options: Options<{ endpoint: AccountEndpoint; secret: AccountSecret }>,
+): RequestResult<AccountModel[]> {
+  return resolveClient(options).probeAccountModels(options.endpoint, options.secret);
 }
 
 /** Masked custom MCP servers — env/header keys only, never a secret value. */
@@ -335,6 +352,24 @@ export function getGitStatus(options: Options<{ cwd: string }>): RequestResult<G
 /** Local branches for a directory, ordered current-first then by descending commit date. */
 export function listGitBranches(options: Options<{ cwd: string }>): RequestResult<GitBranchList> {
   return resolveClient(options).listGitBranches(options.cwd);
+}
+
+export function checkGitBranchSwitch(
+  options: Options<{ cwd: string; branch: string }>,
+): RequestResult<GitBranchSwitchCheck> {
+  return resolveClient(options).checkGitBranchSwitch(options.cwd, options.branch);
+}
+
+export function createGitBranch(
+  options: Options<{ cwd: string; branch: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).createGitBranch(options.cwd, options.branch);
+}
+
+export function commitGitChanges(
+  options: Options<{ cwd: string; message: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).commitGitChanges(options.cwd, options.message);
 }
 
 /** Hosting-provider PR state for a directory's current branch. */

@@ -18,6 +18,7 @@ const PersistedAppearanceSchema = z
   .object({
     textSize: TextSizeSchema,
     reduceMotion: z.boolean(),
+    smoothConversationScrolling: z.boolean(),
     codeThemeLight: z.enum(CODE_THEME_LIGHT_IDS),
     codeThemeDark: z.enum(CODE_THEME_DARK_IDS),
     uiFont: z.string(),
@@ -38,6 +39,8 @@ export interface AppearancePrefsState {
   textSize: TextSize;
   /** When on, the UI suppresses non-essential motion (transitions, spinners, the streaming shimmer). */
   reduceMotion: boolean;
+  /** Whether content growth follows the conversation bottom with animation. */
+  smoothConversationScrolling: boolean;
   /** Shiki theme for chat code blocks under a light background. */
   codeThemeLight: CodeThemeLightId;
   /** Shiki theme for chat code blocks under a dark background. */
@@ -52,6 +55,7 @@ export interface AppearancePrefsState {
   listDensity: ListDensity;
   setTextSize: (textSize: TextSize) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
+  setSmoothConversationScrolling: (smoothConversationScrolling: boolean) => void;
   setCodeThemeLight: (codeThemeLight: CodeThemeLightId) => void;
   setCodeThemeDark: (codeThemeDark: CodeThemeDarkId) => void;
   setUiFont: (uiFont: string) => void;
@@ -65,6 +69,7 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
     (set) => ({
       textSize: 'default',
       reduceMotion: false,
+      smoothConversationScrolling: false,
       codeThemeLight: 'github-light',
       codeThemeDark: 'github-dark',
       uiFont: '',
@@ -73,6 +78,8 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       listDensity: 'comfortable',
       setTextSize: (textSize) => set({ textSize }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
+      setSmoothConversationScrolling: (smoothConversationScrolling) =>
+        set({ smoothConversationScrolling }),
       setCodeThemeLight: (codeThemeLight) => set({ codeThemeLight }),
       setCodeThemeDark: (codeThemeDark) => set({ codeThemeDark }),
       setUiFont: (uiFont) => set({ uiFont }),
@@ -81,11 +88,12 @@ export const useAppearancePrefsStore = create<AppearancePrefsState>()(
       setListDensity: (listDensity) => set({ listDensity }),
     }),
     {
-      name: 'linkcode.workbench.appearance:v1',
+      name: 'linkcode.workbench.appearance:v2',
       schema: PersistedAppearanceSchema,
       partialize: (state) => ({
         textSize: state.textSize,
         reduceMotion: state.reduceMotion,
+        smoothConversationScrolling: state.smoothConversationScrolling,
         codeThemeLight: state.codeThemeLight,
         codeThemeDark: state.codeThemeDark,
         uiFont: state.uiFont,

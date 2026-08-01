@@ -22,6 +22,7 @@
       "backgroundColor": "#FFFFFF"
     },
     "ios": {
+      "appleTeamId": "422ACSY6Y5",
       "bundleIdentifier": "com.arcboxlabs.linkcode.mobile",
       "buildNumber": "1",
       "supportsTablet": true,

@@ -1,6 +1,6 @@
 import type { Account, ProvidersConfig, StartOptions } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { applyProviderDefaults } from '../agent/provider-config';
+import { accountBinding, applyProviderDefaults } from '../agent/provider-config';
 
 const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 
@@ -108,5 +108,44 @@ describe('applyProviderDefaults account pool', () => {
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
     expect(applyProviderDefaults(baseOpts, providers, [oauth]).config).toEqual({});
+  });
+});
+
+describe('accountBinding', () => {
+  const account: Account = {
+    id: 'acc_1',
+    label: 'Relay',
+    credential: { type: 'api-key', key: 'sk-new' },
+    createdAt: 1,
+  };
+
+  it('preserves unrelated providers and accounts while binding the selected agent', () => {
+    const providers: ProvidersConfig = {
+      codex: { enabled: true, defaultModel: 'gpt-5' },
+      opencode: { enabled: false, activeAccountId: 'acc_2' },
+    };
+    const other: Account = {
+      id: 'acc_2',
+      label: 'Other',
+      credential: { type: 'api-key', key: 'sk-other' },
+      createdAt: 0,
+    };
+
+    expect(accountBinding(providers, [other], 'codex', account)).toEqual({
+      providers: {
+        codex: { enabled: true, defaultModel: 'gpt-5', activeAccountId: 'acc_1' },
+        opencode: { enabled: false, activeAccountId: 'acc_2' },
+      },
+      accounts: [other, account],
+    });
+  });
+
+  it('upserts by account id so retrying the same request is idempotent', () => {
+    const first = accountBinding({}, [], 'codex', account);
+    const updated = { ...account, label: 'Updated relay' };
+    const retry = accountBinding(first.providers, first.accounts, 'codex', updated);
+
+    expect(retry.accounts).toEqual([updated]);
+    expect(retry.providers.codex?.activeAccountId).toBe(account.id);
   });
 });

@@ -9,10 +9,19 @@ export function AppearanceRenderPrefsProvider({
   children,
 }: React.PropsWithChildren): React.ReactNode {
   const reduceMotion = useAppearancePrefsStore((state) => state.reduceMotion);
+  const smoothConversationScrolling = useAppearancePrefsStore(
+    (state) => state.smoothConversationScrolling,
+  );
   const codeThemeLight = useAppearancePrefsStore((state) => state.codeThemeLight);
   const codeThemeDark = useAppearancePrefsStore((state) => state.codeThemeDark);
   return (
-    <RenderPrefsProvider prefs={{ reduceMotion, codeTheme: [codeThemeLight, codeThemeDark] }}>
+    <RenderPrefsProvider
+      prefs={{
+        reduceMotion,
+        smoothConversationScrolling,
+        codeTheme: [codeThemeLight, codeThemeDark],
+      }}
+    >
       {children}
     </RenderPrefsProvider>
   );

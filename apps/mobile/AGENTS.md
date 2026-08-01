@@ -188,6 +188,6 @@ thread rows and the new-thread picker name the agent in text instead.
 - **Sentry:** `Sentry.init({ dsn: process.env.EXPO_PUBLIC_SENTRY_DSN })` + `Sentry.wrap` on the root
   layout; the Expo plugin uploads source maps for org `arcbox` / project `linkcode-mobile`. Runtime
   reporting no-ops without a DSN. EAS profiles select Expo environments
-  (`development`/`preview`/`production`) — set `EXPO_PUBLIC_SENTRY_DSN` there (repo secret
-  `SENTRY_DSN_MOBILE` is the source of truth for the value). Local iOS builds keep
-  `SENTRY_DISABLE_AUTO_UPLOAD=true` unless `SENTRY_AUTH_TOKEN` is available.
+  (`development`/`preview`/`production`); cloud builds can read the DSN there, while
+  `build-mobile.yml` injects repo secret `SENTRY_DSN_MOBILE` directly for local production builds.
+  Local iOS builds keep `SENTRY_DISABLE_AUTO_UPLOAD=true` unless `SENTRY_AUTH_TOKEN` is available.

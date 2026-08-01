@@ -269,6 +269,30 @@ describe('loadConfig accounts', () => {
   });
 });
 
+describe('saveProviderConfiguration', () => {
+  it('atomically persists providers and accounts without exposing their secrets', () => {
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'config.json');
+    writeFileSync(path, JSON.stringify({ hostname: '127.0.0.1' }));
+
+    saveProviderConfiguration(
+      vault,
+      { codex: { enabled: true, activeAccountId: 'acc_1', apiKey: 'sk-provider' } },
+      [validAccount],
+    );
+
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      hostname: '127.0.0.1',
+      providers: { codex: { enabled: true, activeAccountId: 'acc_1' } },
+      accounts: [{ ...validAccount, credential: { type: 'api-key' } }],
+    });
+    expect(vault.refs.get('provider:codex')).toBe('sk-provider');
+    expect(vault.refs.get('account:acc_1')).toBe('sk-test');
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+});
+
 describe('loadConfig custom MCP servers', () => {
   const validServer = {
     id: 'custom-1',

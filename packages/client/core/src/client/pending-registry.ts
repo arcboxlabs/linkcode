@@ -1,4 +1,5 @@
 import type {
+  AccountModel,
   Accounts,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -7,6 +8,7 @@ import type {
   CustomMcpServerPublic,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitPullRequestStatus,
   GitStatus,
@@ -99,6 +101,7 @@ export interface PendingValueMap {
   historyRead: AgentHistoryReadResult;
   configGet: ProvidersConfig;
   accountsGet: Accounts;
+  accountModels: AccountModel[];
   customMcpGet: CustomMcpServerPublic[];
   pluginList: PluginList;
   pluginMutation: PluginMutation;
@@ -109,6 +112,7 @@ export interface PendingValueMap {
   assetEnsure: ManagedAssetStatus;
   gitStatus: GitStatus;
   gitBranchList: GitBranchList;
+  gitBranchSwitchCheck: GitBranchSwitchCheck;
   gitPrStatus: GitPullRequestStatus;
   gitDiff: GitDiff;
   fileRead: WorkspaceFile;
@@ -159,6 +163,7 @@ export class PendingRegistry {
     historyRead: new Map(),
     configGet: new Map(),
     accountsGet: new Map(),
+    accountModels: new Map(),
     customMcpGet: new Map(),
     pluginList: new Map(),
     pluginMutation: new Map(),
@@ -169,6 +174,7 @@ export class PendingRegistry {
     assetEnsure: new Map(),
     gitStatus: new Map(),
     gitBranchList: new Map(),
+    gitBranchSwitchCheck: new Map(),
     gitPrStatus: new Map(),
     gitDiff: new Map(),
     fileRead: new Map(),

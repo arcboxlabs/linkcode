@@ -1,0 +1,47 @@
+name: Publish Mobile Metadata
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publish-mobile-metadata
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  MOBILE_DIR: apps/mobile
+
+jobs:
+  publish:
+    name: Publish App Store metadata
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    environment: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup EAS
+        uses: ./.github/actions/setup-eas
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate metadata
+        working-directory: ${{ env.MOBILE_DIR }}
+        run: eas metadata:lint --profile production
+
+      - name: Publish metadata
+        working-directory: ${{ env.MOBILE_DIR }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          EXPO_APPLE_TEAM_ID="$(jq -er '.submit.production.ios.appleTeamId | select(length > 0)' eas.json)"
+          export EXPO_APPLE_TEAM_ID
+          set -o pipefail
+          eas metadata:push --profile production --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-metadata-push.log"
+          # EAS Metadata reports partial upload failures with exit code 0.
+          grep -Fq "Store configuration is synced with the app stores." "$RUNNER_TEMP/eas-metadata-push.log"

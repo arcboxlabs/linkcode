@@ -61,6 +61,19 @@ export const GitBranchListSchema = z.discriminatedUnion('isRepo', [
 ]);
 export type GitBranchList = z.infer<typeof GitBranchListSchema>;
 
+export const GitChangedFileSchema = z.object({
+  path: z.string().min(1),
+  additions: z.number().int().nonnegative().nullable(),
+  deletions: z.number().int().nonnegative().nullable(),
+});
+export type GitChangedFile = z.infer<typeof GitChangedFileSchema>;
+
+export const GitBranchSwitchCheckSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ready') }),
+  z.object({ status: z.literal('conflict'), files: z.array(GitChangedFileSchema) }),
+]);
+export type GitBranchSwitchCheck = z.infer<typeof GitBranchSwitchCheckSchema>;
+
 /** Which base a diff is computed against. `base` compares HEAD against the merge-base with the
  * remote's default branch; `uncommitted` compares the working tree (tracked + untracked) against HEAD. */
 export const GitDiffModeSchema = z.enum(['uncommitted', 'base']);
