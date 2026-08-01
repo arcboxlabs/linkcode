@@ -11,8 +11,8 @@ const platforms = ['android', 'ios'];
 const requiredRouteModules = [
   '/apps/mobile/src/app/_layout.tsx',
   '/apps/mobile/src/app/index.tsx',
-  '/apps/mobile/src/app/host/[hostId]/index.tsx',
-  '/apps/mobile/src/app/host/[hostId]/terminal/index.tsx',
+  '/apps/mobile/src/app/(tabs)/threads/index.tsx',
+  '/apps/mobile/src/app/(tabs)/terminals/index.tsx',
 ];
 
 async function runExpoExport(platform, outputDirectory) {
