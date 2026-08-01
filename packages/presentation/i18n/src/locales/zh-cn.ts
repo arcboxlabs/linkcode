@@ -289,6 +289,7 @@ export const zhCN = {
       loginReopenUrl: '没有自动打开？点此打开登录页',
       loginCancel: '取消',
       loginFailedTitle: '{agent} 登录失败',
+      goToSettings: '前往设置',
     },
     composer: {
       placeholder: '描述想让 {agent} 做什么，或用 @ 引用文件 / 终端输出…',
@@ -935,6 +936,7 @@ export const zhCN = {
     about: {
       version: '版本',
       checkForUpdates: '检查更新',
+      restartToInstall: '重启更新',
       status: {
         checking: '正在检查更新…',
         available: '发现更新，正在下载…',
@@ -1048,8 +1050,6 @@ export const zhCN = {
         'openai-chat': 'Codex / OpenCode 原生;Claude Code 经本地转换',
         'openai-responses': 'Codex 原生',
       },
-      oauthLoggedOutHint: '未检测到 CLI 登录——仍可添加,会话启动时会提示登录。',
-      oauthUnprobedHint: '登录状态未知——以 CLI 自身的登录态为准。',
       oauthEditHint: '订阅凭证跟随 CLI 登录;这里只能修改账号名称。',
       form: {
         label: '名称',

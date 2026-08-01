@@ -9,6 +9,10 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -259,6 +263,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.setProviderConfig(providers));
   }
 
+  createAndBindAccount(agent: AgentKind, account: Account): RequestResult<{ ok: true }> {
+    return toResult(this.raw.createAndBindAccount(agent, account));
+  }
+
   /** Read the daemon-owned global account pool (data plane). */
   getAccounts(): RequestResult<Accounts> {
     return toResult(this.raw.getAccounts());
@@ -267,6 +275,14 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned global account pool (data plane). */
   setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
     return toResult(this.raw.setAccounts(accounts));
+  }
+
+  /** Enumerate what an endpoint serves, using a secret that is not saved yet. */
+  probeAccountModels(
+    endpoint: AccountEndpoint,
+    secret: AccountSecret,
+  ): RequestResult<AccountModel[]> {
+    return toResult(this.raw.probeAccountModels(endpoint, secret));
   }
 
   /** Masked custom MCP servers (data plane) — env/header keys only, never a secret value. */

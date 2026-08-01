@@ -1,4 +1,8 @@
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentEvent,
   AgentHistoryId,
@@ -416,6 +420,9 @@ export class LinkCodeClient {
       case 'skill.updated':
         this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
         break;
+      case 'config.probe-models.result':
+        this.pending.resolve('accountModels', p.replyTo, p.models);
+        break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
@@ -821,6 +828,11 @@ export class LinkCodeClient {
     return this.control.getAccounts();
   }
 
+  /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
+  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+    return this.control.probeAccountModels(endpoint, secret);
+  }
+
   /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
   getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
     return this.control.getCustomMcpServers();
@@ -1106,6 +1118,10 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
+  }
+
+  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
+    return this.control.createAndBindAccount(agent, account);
   }
 
   setAccounts(accounts: Accounts): Promise<RequestAck> {

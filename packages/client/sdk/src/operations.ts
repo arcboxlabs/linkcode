@@ -6,6 +6,10 @@ import type {
   SessionStartResult,
 } from '@linkcode/client-core';
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -240,12 +244,24 @@ export function setProviderConfig(
   return resolveClient(options).setProviderConfig(options.providers);
 }
 
+export function createAndBindAccount(
+  options: Options<{ agent: AgentKind; account: Account }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).createAndBindAccount(options.agent, options.account);
+}
+
 export function getAccounts(options?: Options): RequestResult<Accounts> {
   return resolveClient(options).getAccounts();
 }
 
 export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
   return resolveClient(options).setAccounts(options.accounts);
+}
+
+export function probeAccountModels(
+  options: Options<{ endpoint: AccountEndpoint; secret: AccountSecret }>,
+): RequestResult<AccountModel[]> {
+  return resolveClient(options).probeAccountModels(options.endpoint, options.secret);
 }
 
 /** Masked custom MCP servers — env/header keys only, never a secret value. */

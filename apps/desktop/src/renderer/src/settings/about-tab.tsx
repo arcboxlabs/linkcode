@@ -41,15 +41,27 @@ export function AboutTab(): React.ReactNode {
       </Field>
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void systemBridge.app.checkForUpdates();
-            }}
-          >
-            {t('checkForUpdates')}
-          </Button>
+          {/* Main refuses a re-check once an update is downloaded, so offer the install instead of a dead button. */}
+          {status === 'downloaded' ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                void systemBridge.app.installUpdate();
+              }}
+            >
+              {t('restartToInstall')}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void systemBridge.app.checkForUpdates();
+              }}
+            >
+              {t('checkForUpdates')}
+            </Button>
+          )}
           {statusKey && progressPercent === null ? (
             <span className="text-muted-foreground text-xs">{t(statusKey)}</span>
           ) : null}

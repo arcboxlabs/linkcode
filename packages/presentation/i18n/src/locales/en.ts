@@ -298,6 +298,7 @@ export const en = {
       loginReopenUrl: "Didn't open? Open the sign-in page",
       loginCancel: 'Cancel',
       loginFailedTitle: '{agent} sign-in failed',
+      goToSettings: 'Go to settings',
     },
     composer: {
       placeholder: 'Describe what you want {agent} to do, or @-reference a file / terminal output…',
@@ -960,6 +961,7 @@ export const en = {
     about: {
       version: 'Version',
       checkForUpdates: 'Check for updates',
+      restartToInstall: 'Restart to update',
       status: {
         checking: 'Checking for updates…',
         available: 'Update available — downloading…',
@@ -1073,9 +1075,6 @@ export const en = {
         'openai-chat': 'Native for Codex / OpenCode; Claude Code via local translation',
         'openai-responses': 'Native for Codex',
       },
-      oauthLoggedOutHint:
-        'No CLI login detected — you can still add it; sessions will prompt for login.',
-      oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
       oauthEditHint:
         'Subscription credentials follow the CLI login; only the account name can be changed here.',
       form: {

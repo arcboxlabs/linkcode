@@ -1,4 +1,8 @@
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -545,6 +549,26 @@ export class ControlChannel {
       kind: 'config.set',
       clientReqId,
       providers,
+    }));
+  }
+
+  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'config.account.create-and-bind',
+      clientReqId,
+      agent,
+      account,
+    }));
+  }
+
+  /** Ask the daemon what an endpoint serves, using a not-yet-saved secret: the account forms offer
+   * the answer as the model picker. The daemon must do it — the renderer's CSP blocks the fetch. */
+  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+    return this.sendCorrelated('accountModels', (clientReqId) => ({
+      kind: 'config.probe-models',
+      clientReqId,
+      endpoint,
+      secret,
     }));
   }
 
