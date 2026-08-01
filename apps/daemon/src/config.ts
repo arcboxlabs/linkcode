@@ -281,6 +281,15 @@ function readConfigFile(): ConfigFile & Record<string, unknown> {
   return parsed;
 }
 
+function fsyncPath(path: string): void {
+  const descriptor = openSync(path, 'r');
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function writeConfigFields(
   file: Record<string, unknown>,
   fields: Partial<Record<keyof ConfigFile, unknown>>,
@@ -296,14 +305,10 @@ function writeConfigFields(
       flag: 'wx',
       mode: 0o600,
     });
-    const descriptor = openSync(temporaryPath, 'r');
-    try {
-      fsyncSync(descriptor);
-    } finally {
-      closeSync(descriptor);
-    }
     chmodSync(temporaryPath, 0o600);
+    fsyncPath(temporaryPath);
     renameSync(temporaryPath, path);
+    if (process.platform !== 'win32') fsyncPath(directory);
   } finally {
     rmSync(temporaryPath, { force: true });
   }
