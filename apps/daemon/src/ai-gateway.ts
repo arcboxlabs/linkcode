@@ -35,13 +35,14 @@ export interface AiGatewaySidecarOptions {
   ensureBinary?: () => Promise<string | undefined>;
 }
 
-interface Sidecar {
-  url: string;
-  child: SidecarChildProcess;
-  dir: string;
+interface SidecarEntry {
+  ready: Promise<string>;
+  start: () => void;
+  close: () => void;
 }
 
 const LISTENING_RE = /listening on (http:\/\/127\.0\.0\.1:\d+)/;
+const STARTUP_TIMEOUT_MS = 10000;
 
 /** Serialize an upstream to the aigateway config.toml (only the fields the sidecar reads). */
 export function upstreamToToml(upstream: TranslatorUpstream): string {
@@ -57,88 +58,122 @@ export function upstreamToToml(upstream: TranslatorUpstream): string {
 
 export function createAiGatewaySidecar(options: AiGatewaySidecarOptions = {}): TranslatorService {
   const { spawn = defaultSpawn, ensureBinary } = options;
-  const running = new Map<string, Promise<Sidecar>>();
+  const running = new Map<string, SidecarEntry>();
 
-  const start = async (upstream: TranslatorUpstream, key: string): Promise<Sidecar> => {
-    // Env override (dev / standalone) wins; otherwise install-on-demand from the managed-asset store.
-    const binary = process.env.LINKCODE_AIGATEWAY_PATH ?? (await ensureBinary?.());
-    if (!binary) {
-      throw new Error(
-        'translation sidecar unavailable: no aigateway binary (set LINKCODE_AIGATEWAY_PATH or install the managed asset)',
-      );
-    }
-    const dir = mkdtempSync(join(tmpdir(), 'linkcode-aigw-'));
-    const configPath = join(dir, 'config.toml');
-    writeFileSync(configPath, upstreamToToml(upstream), { mode: 0o600 });
+  const createEntry = (upstream: TranslatorUpstream, key: string): SidecarEntry => {
+    let child: SidecarChildProcess | undefined;
+    let dir: string | undefined;
+    let timer: NodeJS.Timeout | undefined;
+    let buffer = '';
+    let stderrTail = '';
+    let closed = false;
+    let readySettled = false;
+    let resolveReady!: (url: string) => void;
+    let rejectReady!: (error: Error) => void;
+    const ready = new Promise<string>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
 
-    const child = spawn(binary, [
-      'serve',
-      '--host',
-      '127.0.0.1',
-      '--port',
-      '0',
-      '--config',
-      configPath,
-    ]);
+    let entry: SidecarEntry;
+    const cleanup = (error?: Error, terminate = false): void => {
+      if (closed) return;
+      closed = true;
+      if (timer) clearTimeout(timer);
+      if (running.get(key) === entry) running.delete(key);
+      if (terminate) child?.kill('SIGTERM');
+      if (dir) rmSync(dir, { recursive: true, force: true });
+      if (!readySettled) {
+        readySettled = true;
+        rejectReady(error ?? new Error('aigateway stopped before listening'));
+      }
+    };
 
-    return new Promise<Sidecar>((resolve, reject) => {
-      let buffer = '';
-      let settled = false;
-      let stderrTail = '';
-      child.stdout?.on('data', (chunk) => {
-        if (settled) return;
-        buffer += String(chunk);
-        const match = LISTENING_RE.exec(buffer);
-        if (match) {
-          settled = true;
-          resolve({ url: match[1], child, dir });
-        }
-      });
-      child.stderr?.on('data', (chunk) => {
-        stderrTail = String(chunk);
-      });
-      child.on('exit', (code) => {
-        running.delete(key);
-        rmSync(dir, { recursive: true, force: true });
-        if (!settled) {
-          settled = true;
-          reject(
-            new Error(
-              `aigateway exited (code ${code ?? 'signal'}) before listening: ${stderrTail.trim()}`,
-            ),
+    const start = async (): Promise<void> => {
+      try {
+        // Env override (dev / standalone) wins; otherwise install-on-demand from the managed store.
+        const binary = process.env.LINKCODE_AIGATEWAY_PATH ?? (await ensureBinary?.());
+        if (closed) return;
+        if (!binary) {
+          throw new Error(
+            'translation sidecar unavailable: no aigateway binary (set LINKCODE_AIGATEWAY_PATH or install the managed asset)',
           );
         }
-      });
-      child.on('error', (err) => {
-        if (!settled) {
-          settled = true;
-          reject(
+        dir = mkdtempSync(join(tmpdir(), 'linkcode-aigw-'));
+        const configPath = join(dir, 'config.toml');
+        writeFileSync(configPath, upstreamToToml(upstream), { mode: 0o600 });
+        child = spawn(binary, [
+          'serve',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '0',
+          '--config',
+          configPath,
+        ]);
+        child.stdout?.on('data', (chunk) => {
+          if (readySettled || closed) return;
+          buffer += String(chunk);
+          const match = LISTENING_RE.exec(buffer);
+          if (match) {
+            readySettled = true;
+            if (timer) clearTimeout(timer);
+            resolveReady(match[1]);
+          }
+        });
+        child.stderr?.on('data', (chunk) => {
+          stderrTail = String(chunk);
+        });
+        child.on('exit', (code) => {
+          cleanup(
+            readySettled
+              ? undefined
+              : new Error(
+                  `aigateway exited (code ${code ?? 'signal'}) before listening: ${stderrTail.trim()}`,
+                ),
+          );
+        });
+        child.on('error', (err) => {
+          cleanup(
             new Error(`aigateway failed to start: ${extractErrorMessage(err) ?? 'spawn error'}`),
           );
-        }
-      });
-    });
+        });
+        timer = setTimeout(() => {
+          cleanup(new Error(`aigateway did not become ready within ${STARTUP_TIMEOUT_MS}ms`), true);
+        }, STARTUP_TIMEOUT_MS);
+        timer.unref();
+      } catch (err) {
+        cleanup(
+          new Error(`aigateway failed to start: ${extractErrorMessage(err) ?? 'unknown error'}`),
+        );
+      }
+    };
+
+    entry = {
+      ready,
+      start() {
+        void start();
+      },
+      close: () => cleanup(undefined, true),
+    };
+    return entry;
   };
 
   return {
     ensure(upstream) {
       const key = hashUpstream(upstream);
-      let pending = running.get(key);
-      if (!pending) {
-        pending = start(upstream, key);
-        running.set(key, pending);
-        // A failed start must not stick: drop it so the next session can respawn.
-        pending.catch(() => running.delete(key));
+      let entry = running.get(key);
+      if (!entry) {
+        entry = createEntry(upstream, key);
+        running.set(key, entry);
+        entry.start();
       }
-      return pending.then((sidecar) => sidecar.url);
+      return entry.ready;
     },
     async closeAll() {
-      const pending = [...running.values()];
-      running.clear();
-      const settled = await Promise.allSettled(pending);
-      for (const result of settled) {
-        if (result.status === 'fulfilled') result.value.child.kill('SIGTERM');
-      }
+      const entries = [...running.values()];
+      for (const entry of entries) entry.close();
+      await Promise.allSettled(entries.map((entry) => entry.ready));
     },
   };
 }
