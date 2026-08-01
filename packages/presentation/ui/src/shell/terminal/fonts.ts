@@ -69,7 +69,7 @@ async function queryLocalFontsSafe(): Promise<readonly LocalFontData[]> {
   const query = (window as { queryLocalFonts?: () => Promise<LocalFontData[]> }).queryLocalFonts;
   if (!query) return [];
   try {
-    return await query();
+    return await query.call(window);
   } catch {
     // Local Font Access denied or unavailable — bundled fonts still cover latin + mono emoji.
     return [];
