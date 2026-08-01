@@ -68,6 +68,12 @@ only by driving the simulator:
   view, but mounting it directly red-boxes). Give that host `style={{ position: 'absolute' }}` +
   `pointerEvents="box-none"` so it claims no layout, and set `fitToContents` or SwiftUI presents a
   short sheet at a near-full-screen detent.
+- **Keep navigation chrome in UIKit end to end.** Expo Router's native-stack header is UIKit; when
+  it needs an unexposed blur/material/mask, register the smallest `UIView`/`UIVisualEffectView`
+  through a direct RN view manager (Expo may autolink the pod) and pass it to `headerBackground`.
+  Do not insert an `ExpoSwiftUI.View`/`UIHostingController`: a hosted `.bar` rendered here but did
+  not blur scrolling rows across that boundary, while `UIVisualEffectView` did. This rule is for
+  UIKit-owned chrome, not SwiftUI forms.
 
 ## What deliberately stays React Native
 
