@@ -17,7 +17,6 @@ export interface PluginsShellProps {
   skillsTab: React.ReactNode;
 }
 
-/** The plugins/MCP/skills settings page frame: title, search, manual refresh, three tabs. */
 export function PluginsShell({
   searchQuery,
   onSearchChange,

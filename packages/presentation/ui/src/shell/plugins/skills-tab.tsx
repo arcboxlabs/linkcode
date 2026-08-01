@@ -19,7 +19,6 @@ export interface SkillsTabProps {
   onToggle: (row: SkillRowView, enabled: boolean) => void;
 }
 
-/** Plugin-bundled skills grouped by plugin, then standalone skills (display-only). */
 export function SkillsTab({ rows, busy, searchQuery, onToggle }: SkillsTabProps): React.ReactNode {
   const t = useTranslations('settings.plugins.skills');
   if (rows === undefined) {

@@ -18,7 +18,6 @@ export interface CustomServerListProps {
   onToggle: (id: string, enabled: boolean) => void;
 }
 
-/** LinkCode-owned custom MCP servers: the editable top section of the MCP tab. */
 export function CustomServerList({
   rows,
   busy,

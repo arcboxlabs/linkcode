@@ -190,7 +190,7 @@ function ComponentSummary({
   for (const kind of COMPONENT_KIND_ORDER) {
     const count = counts[kind];
     if (count !== undefined && count > 0) {
-      parts.push(t('componentCount', { count, kind: t(`componentKind.${kind}`) }));
+      parts.push(t(`componentCount.${kind}`, { count }));
     }
   }
   if (parts.length === 0) return null;
