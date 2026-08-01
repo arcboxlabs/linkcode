@@ -176,6 +176,7 @@ function TerminalsScreen({
               title={t('emptyTitle')}
               systemImage="terminal"
               description={t('emptyHint')}
+              modifiers={[refreshable(onRefresh)]}
             />
           ) : (
             <Form modifiers={[refreshable(onRefresh)]}>

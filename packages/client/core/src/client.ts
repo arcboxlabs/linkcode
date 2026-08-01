@@ -1,4 +1,8 @@
 import type {
+  Account,
+  AccountEndpoint,
+  AccountModel,
+  AccountSecret,
   Accounts,
   AgentEvent,
   AgentHistoryId,
@@ -14,6 +18,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -415,6 +420,9 @@ export class LinkCodeClient {
       case 'skill.updated':
         this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
         break;
+      case 'config.probe-models.result':
+        this.pending.resolve('accountModels', p.replyTo, p.models);
+        break;
       case 'agent-runtime.listed':
         this.pending.resolve('agentRuntimeList', p.replyTo, p.runtimes);
         break;
@@ -501,6 +509,9 @@ export class LinkCodeClient {
         break;
       case 'git.branch.list.result':
         this.pending.resolve('gitBranchList', p.replyTo, p.branchList);
+        break;
+      case 'git.branch.switch.check.result':
+        this.pending.resolve('gitBranchSwitchCheck', p.replyTo, p.check);
         break;
       case 'git.pr_status.get.result':
         this.pending.resolve('gitPrStatus', p.replyTo, p.prStatus);
@@ -817,6 +828,11 @@ export class LinkCodeClient {
     return this.control.getAccounts();
   }
 
+  /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
+  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+    return this.control.probeAccountModels(endpoint, secret);
+  }
+
   /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
   getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
     return this.control.getCustomMcpServers();
@@ -1104,6 +1120,10 @@ export class LinkCodeClient {
     return this.control.setProviderConfig(providers);
   }
 
+  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
+    return this.control.createAndBindAccount(agent, account);
+  }
+
   setAccounts(accounts: Accounts): Promise<RequestAck> {
     return this.control.setAccounts(accounts);
   }
@@ -1114,6 +1134,18 @@ export class LinkCodeClient {
 
   listGitBranches(cwd: string): Promise<GitBranchList> {
     return this.control.listGitBranches(cwd);
+  }
+
+  checkGitBranchSwitch(cwd: string, branch: string): Promise<GitBranchSwitchCheck> {
+    return this.control.checkGitBranchSwitch(cwd, branch);
+  }
+
+  createGitBranch(cwd: string, branch: string): Promise<RequestAck> {
+    return this.control.createGitBranch(cwd, branch);
+  }
+
+  commitGitChanges(cwd: string, message: string): Promise<RequestAck> {
+    return this.control.commitGitChanges(cwd, message);
   }
 
   getGitPullRequestStatus(cwd: string): Promise<GitPullRequestStatus> {

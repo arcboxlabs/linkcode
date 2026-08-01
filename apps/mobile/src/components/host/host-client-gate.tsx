@@ -23,5 +23,9 @@ export function HostClientGate({ children }: React.PropsWithChildren): React.Rea
     );
   }
 
-  return <LinkCodeProvider client={connection.client}>{children}</LinkCodeProvider>;
+  return (
+    <LinkCodeProvider key={connection.host.id} client={connection.client}>
+      {children}
+    </LinkCodeProvider>
+  );
 }

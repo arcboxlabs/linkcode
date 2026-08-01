@@ -31,13 +31,15 @@ const WHOLE_ROW = contentShape(shapes.rectangle());
  * SwiftUI. */
 export function ThreadRow({
   session,
+  now,
   onPress,
 }: {
   session: SessionInfo;
+  now: number;
   onPress: () => void;
 }): React.ReactNode {
   const title = session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
-  const subtitle = `${AGENT_LABELS[session.kind]} · ${formatRelativeShort(session.updatedAt)}`;
+  const subtitle = `${AGENT_LABELS[session.kind]} · ${formatRelativeShort(session.updatedAt, now)}`;
 
   return (
     <HStack spacing={10} modifiers={[WHOLE_ROW, onTapGesture(onPress)]}>

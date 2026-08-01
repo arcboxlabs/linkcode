@@ -1,7 +1,6 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
 import type { HostProfile } from '@mobile/stores/host-store';
 import NetInfo from '@react-native-community/netinfo';
-import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
@@ -64,15 +63,6 @@ export function useHostClient(host: HostProfile): HostClientState {
   const retry = useCallback(() => controller.retry(), [controller]);
   const client = snapshot.contextGeneration?.client ?? null;
   const readyClient = client && snapshot.status === 'ready' ? client : null;
-
-  // A phone pays for bytes and battery, so it takes only the sessions it opened rather than every
-  // session on the host. Re-sent per generation: a recovered connection starts back at `all`.
-  // Failing leaves the daemon broadcasting everything, which is wasteful but not broken.
-  useEffect(() => {
-    if (!readyClient) return;
-    // eslint-disable-next-line sukka/react-no-use-effect-watching -- a request to the daemon, not a useState setter the `set` prefix suggests
-    readyClient.setSubscriptionMode('attached').catch(noop);
-  }, [readyClient]);
 
   return readyClient
     ? { attempt: snapshot.attempt, client: readyClient, retry, status: 'ready' }

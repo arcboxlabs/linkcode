@@ -78,6 +78,9 @@ extraResources:
 publish:
   provider: generic
   url: https://releases.linkcode.ai/desktop
+  # electron-updater's DifferentialDownloader wires its progress callback only on the sequential
+  # range path, so leaving this at its default true means a differential update reports no progress.
+  useMultipleRangeRequest: false
 
 # Per-arch artifacts on every platform (half the download of a universal binary). The explicit
 # ${arch} suffix is load-bearing: electron-updater picks the feed entry whose filename contains

@@ -12,12 +12,19 @@ import { AgentKindSchema, TimestampSchema } from './primitives';
 export const AccountProtocolSchema = z.enum(['anthropic', 'openai-chat', 'openai-responses']);
 export type AccountProtocol = z.infer<typeof AccountProtocolSchema>;
 
-/** How an account's secret authenticates. */
-export const AccountCredentialSchema = z.discriminatedUnion('type', [
+/** The secret shapes LinkCode itself holds — the only ones that can authenticate a direct request
+ * to an endpoint (an `oauth` account has no secret here, so it cannot). */
+export const AccountSecretSchema = z.discriminatedUnion('type', [
   /** `x-api-key`-style provider key. */
   z.object({ type: z.literal('api-key'), key: z.string().min(1) }),
   /** Bearer token (e.g. `ANTHROPIC_AUTH_TOKEN`, or a gateway token). */
   z.object({ type: z.literal('auth-token'), token: z.string().min(1) }),
+]);
+export type AccountSecret = z.infer<typeof AccountSecretSchema>;
+
+/** How an account's secret authenticates. */
+export const AccountCredentialSchema = z.discriminatedUnion('type', [
+  ...AccountSecretSchema.options,
   /** Delegates to the agent CLI's own login store — LinkCode stores no secret. An OAuth login is
    * specific to one CLI, so the account names its agent. */
   z.object({ type: z.literal('oauth'), agent: AgentKindSchema }),
@@ -49,6 +56,14 @@ export const AccountSchema = z.object({
   createdAt: TimestampSchema,
 });
 export type Account = z.infer<typeof AccountSchema>;
+
+/** A model an endpoint advertises on its own model list, as read by the daemon's probe. `label` is
+ * the provider's display name when it ships one; relays usually ship the bare id only. */
+export const AccountModelSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().optional(),
+});
+export type AccountModel = z.infer<typeof AccountModelSchema>;
 
 /** The global account pool, keyed by position; account ids are unique within it. */
 export const AccountsSchema = z.array(AccountSchema);

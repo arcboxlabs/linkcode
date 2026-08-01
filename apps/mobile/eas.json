@@ -1,7 +1,7 @@
 {
   "cli": {
-    "version": ">= 21.0.0",
-    "appVersionSource": "local"
+    "version": ">= 21.4.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -19,11 +19,23 @@
       }
     },
     "production": {
+      "autoIncrement": true,
       "channel": "production",
       "environment": "production"
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      },
+      "ios": {
+        "ascAppId": "6791199804",
+        "appleTeamId": "422ACSY6Y5",
+        "bundleIdentifier": "com.arcboxlabs.linkcode.mobile",
+        "metadataPath": "./store.config.json"
+      }
+    }
   }
 }

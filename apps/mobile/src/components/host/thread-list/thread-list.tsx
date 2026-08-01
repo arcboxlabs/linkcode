@@ -2,8 +2,10 @@ import { List, Section } from '@expo/ui/swift-ui';
 import { listStyle, refreshable } from '@expo/ui/swift-ui/modifiers';
 import type { SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ThreadRow } from './thread-row';
+
+const MINUTE = 60_000;
 
 /** The thread inbox body: one collapsible section per group. Grouping is decided by the
  *  caller — this only renders it. Collapsed keys live here because the state is presentational:
@@ -24,6 +26,12 @@ export function ThreadList({
   onRefresh: () => Promise<void>;
 }): React.ReactNode {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), MINUTE);
+    return () => clearInterval(timer);
+  }, []);
 
   const setGroupExpanded = (key: string, expanded: boolean) =>
     setCollapsed((current) => {
@@ -46,6 +54,7 @@ export function ThreadList({
             <ThreadRow
               key={session.sessionId}
               session={session}
+              now={now}
               onPress={() => onOpenThread(session.sessionId)}
             />
           ))}

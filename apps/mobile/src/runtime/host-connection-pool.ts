@@ -2,6 +2,7 @@ import type { ConnectionSource } from '@linkcode/client-core';
 import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
 import type { HostProfile } from '@mobile/stores/host-store';
 import { randomUUID } from 'expo-crypto';
+import { noop } from 'foxact/noop';
 import { createHostTransport } from './create-host-transport';
 import { captureMobileProductEvent } from './product-analytics';
 
@@ -44,6 +45,8 @@ function createController(host: HostProfile): ConnectionController<LinkCodeClien
   };
   return new ConnectionController(source, {
     createClient: (transport) => new LinkCodeClient(transport, { randomUUID }),
+    // Every generation starts in the daemon's default `all` mode, including background hosts.
+    onPromote: (client) => client?.setSubscriptionMode('attached').catch(noop),
     onOutcome(outcome) {
       captureMobileProductEvent(
         outcome.status === 'ready' ? 'host connection ready' : 'host connection failed',

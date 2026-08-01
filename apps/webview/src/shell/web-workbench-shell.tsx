@@ -4,6 +4,7 @@ import {
   getResourcesPanelPresentation,
   RESOURCES_FLOATING_COLUMN_WIDTH,
   RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
+  useProvidersSettingsStore,
   useResourcesPanelStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
@@ -54,10 +55,14 @@ export function WebWorkbenchShell({
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden bg-background">
-      <div className="h-full min-w-0">
+      <div className="h-full min-h-0 min-w-0">
         <ShellFrame
           {...props}
           showPlanInPromptDock={!resourcesSurfaceOpen}
+          onOpenProviderSettings={() => {
+            useProvidersSettingsStore.getState().startAdd();
+            void navigate('/settings/providers');
+          }}
           onOpenAutomations={() => {
             void navigate('/automations');
           }}
