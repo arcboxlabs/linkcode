@@ -1228,6 +1228,7 @@ export const zhCN = {
     },
     connection: {
       connecting: '正在连接 host…',
+      unavailableTitle: '无法连接 host',
       error: '无法连接 host（{url}）。',
       retry: '重试',
     },
