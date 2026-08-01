@@ -18,9 +18,8 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
 
 `src/` is grouped by concern — place new code by which concern owns it:
 
-- `app/` — the composition layer apps mount: the `WorkbenchApp` root, global UI providers
-  (toast + i18n), the data-plane providers + connection gate, and the default connection-state
-  fallback.
+- `app/` — the composition layer apps mount: global UI providers (toast + i18n), the data-plane
+  providers + connection gate, and the default connection-state fallback.
 - `runtime/` — the connection layer, `WorkbenchRuntimeProvider` and its hooks, the typed
   tayori instance, and the debug toggles. The controller mechanics (endpoint resolution,
   client generations, close recovery, retry) live in `@linkcode/client-core`'s
