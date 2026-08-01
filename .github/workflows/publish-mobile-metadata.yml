@@ -27,6 +27,9 @@ jobs:
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Validate metadata
         working-directory: ${{ env.MOBILE_DIR }}
         run: eas metadata:lint --profile production
