@@ -182,25 +182,37 @@ export function NewSessionSurface({
   const selectedBranch = selected
     ? (selectedBranches[selected.workspaceId] ?? preferredBranches?.[selected.workspaceId])
     : undefined;
+  const catalog = agentCatalogs?.[provider];
   const localModel = selectedModels[provider];
   const selectedModel =
     localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
+  // The catalog default is what the agent's own config would start on, so it outranks the built-in
+  // guess but yields to anything the user expressed through LinkCode.
   const displayedModel =
     selectedModel ??
     (defaultModels === null
       ? null
-      : (defaultModels?.[provider] ?? AGENT_DEFAULT_MODELS[provider] ?? null));
+      : (defaultModels?.[provider] ??
+        catalog?.defaultModel ??
+        AGENT_DEFAULT_MODELS[provider] ??
+        null));
   const localEffort = selectedEfforts[provider];
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
-  const catalog = agentCatalogs?.[provider];
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
   const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
-  // Only a real pick travels to the adapter. The catalog default is a display value: submitting it
-  // would read as an explicit choice and override the agent's own startup resolution — claude's
-  // `permissions.defaultMode`, codex's configured `config.toml` sandbox.
+  const catalogEffort = catalog?.defaultEffort;
+  const displayedEffort =
+    constrainedEffort ??
+    (catalogEffort !== undefined &&
+    (effortLevels === undefined || effortLevels.includes(catalogEffort))
+      ? catalogEffort
+      : null);
+  // Only a real pick travels to the adapter. Every catalog default — policy, model, effort — is a
+  // display value: submitting one would read as an explicit choice and override the agent's own
+  // startup resolution — claude's `permissions.defaultMode`, codex's configured `config.toml`.
   const pickedPolicyId = selectedPolicies[provider];
   const currentPolicyId =
     pickedPolicyId ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
@@ -338,7 +350,7 @@ export function NewSessionSurface({
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
             currentModel={displayedModel}
-            currentEffort={constrainedEffort}
+            currentEffort={displayedEffort}
             agentModels={dynamicModels}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
