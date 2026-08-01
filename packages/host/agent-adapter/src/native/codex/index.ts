@@ -5,5 +5,5 @@ export {
   mapCodexItemStatus,
   mapCodexTokenUsage,
 } from './adapter';
-export { codexConfiguredSandbox } from './config';
+export { codexConfiguredModel, codexConfiguredSandbox } from './config';
 export { diffContentFromUnified } from './unified-diff';

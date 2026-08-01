@@ -576,7 +576,31 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       policies: [...APPROVAL_POLICIES],
       defaultPolicyId:
         (opts.cwd === undefined ? undefined : await settingsDefaultMode(opts.cwd)) ?? 'default',
+      ...(await this.settingsDefaults(opts.cwd)),
     };
+  }
+
+  /** The model/effort a session would adopt from settings, via the same `resolveSettings` the
+   * start path uses — it applies the managed and remote policy tiers a raw settings.json walk
+   * would miss. A load failure leaves the axes absent rather than sinking the whole catalog: the
+   * approval tiers above are readable without the SDK. */
+  private async settingsDefaults(
+    cwd: string | undefined,
+  ): Promise<{ defaultModel?: string; defaultEffort?: EffortLevel }> {
+    try {
+      const sdk = await this.loadSdk(
+        '@anthropic-ai/claude-agent-sdk',
+        () => import('@anthropic-ai/claude-agent-sdk'),
+      );
+      const { effective } = await sdk.resolveSettings(cwd === undefined ? {} : { cwd });
+      const effort = effective.ultracode === true ? 'ultracode' : effective.effortLevel;
+      return {
+        ...(effective.model !== undefined && { defaultModel: effective.model }),
+        ...(effort !== undefined && { defaultEffort: effort }),
+      };
+    } catch {
+      return {};
+    }
   }
 
   override async resumeHistory(
