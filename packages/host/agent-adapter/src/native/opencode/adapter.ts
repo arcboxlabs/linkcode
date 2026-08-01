@@ -688,6 +688,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         client.app.agents(scope),
       ]);
       const catalog = agents.error === undefined ? opencodeAgentPolicies(agents.data) : null;
+      // No `defaultModel`: `provider.list` carries a per-provider default map, but which of them a
+      // fresh session actually adopts is unverified against a live server.
       return {
         models: providers.error === undefined ? opencodeModelOptions(providers.data, null) : [],
         policies: catalog?.policies ?? [],

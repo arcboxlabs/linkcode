@@ -1,4 +1,4 @@
-import type { AgentEvent, StartOptions } from '@linkcode/schema';
+import type { AgentEvent, EffortLevel, StartOptions } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { asHistoryId } from '../history-util';
@@ -105,6 +105,8 @@ class FakeCodexServer {
 class TestCodex extends CodexAdapter {
   fakeServers: FakeCodexServer[] = [];
   configuredSandboxEnvironment: NodeJS.ProcessEnv | undefined;
+  configuredModelEnvironment: NodeJS.ProcessEnv | undefined;
+  configuredModel: { model?: string; effort?: EffortLevel } = {};
   emptyModelList = false;
   rejectMethod: string | undefined;
   threadResponse: unknown;
@@ -121,6 +123,12 @@ class TestCodex extends CodexAdapter {
   protected override readConfiguredSandbox(environment: NodeJS.ProcessEnv) {
     this.configuredSandboxEnvironment = environment;
     return Promise.resolve(undefined);
+  }
+  // Stubbed for the same reason as the sandbox above: the real read would reach the developer's
+  // own ~/.codex/config.toml and make the catalog assertions machine-dependent.
+  protected override readConfiguredModel(environment: NodeJS.ProcessEnv) {
+    this.configuredModelEnvironment = environment;
+    return Promise.resolve(this.configuredModel);
   }
 }
 
@@ -195,8 +203,32 @@ describe('CodexAdapter shell-command passthrough', () => {
         },
       ],
       defaultPolicyId: 'acceptEdits',
+      // No config.toml value, so the served catalog's own default stands, with the effort that
+      // model advertises.
+      defaultModel: 'gpt-5.6-sol',
+      defaultEffort: 'low',
     });
     expect(adapter.fakeServers[0].closed).toBe(true);
+  });
+
+  it('lets config.toml outrank the served catalog default before session start', async () => {
+    const adapter = new TestCodex();
+    adapter.configuredModel = { model: 'gpt-5.6-luna', effort: 'xhigh' };
+
+    await expect(adapter.startCatalog()).resolves.toMatchObject({
+      defaultModel: 'gpt-5.6-luna',
+      defaultEffort: 'xhigh',
+    });
+  });
+
+  it('falls back to the effort advertised for the model config.toml names', async () => {
+    const adapter = new TestCodex();
+    adapter.configuredModel = { model: 'gpt-5.6-luna' };
+
+    await expect(adapter.startCatalog()).resolves.toMatchObject({
+      defaultModel: 'gpt-5.6-luna',
+      defaultEffort: 'medium',
+    });
   });
 
   it('loads the project environment and lets account variables override it', async () => {
