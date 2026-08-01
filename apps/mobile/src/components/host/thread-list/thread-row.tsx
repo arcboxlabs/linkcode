@@ -1,4 +1,4 @@
-import { HStack, Image, Spacer, Text } from '@expo/ui/swift-ui';
+import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
   contentShape,
   foregroundStyle,
@@ -8,6 +8,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
 import { AGENT_LABELS, repositoryLabel } from '@linkcode/ui/native';
+import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles';
+import { formatRelativeShort } from '@mobile/utils/relative-time';
 
 /** SwiftUI's semantic colours standing in for the `bg-*` tokens the RN dot used. */
 const STATUS_COLOR = {
@@ -20,10 +22,13 @@ const STATUS_COLOR = {
 
 const WHOLE_ROW = contentShape(shapes.rectangle());
 
-/** One thread row: title (desktop-matching fallback) and a status dot. Deliberately plain — the
- * reference lists threads as bare lines, so the row carries no timestamp and no agent glyph;
- * recency is implied by the order within a group, and the fallback title already names the agent.
- * (An agent glyph would have to be an SF Symbol here: the brand marks are RN SVG components.) */
+/** One thread row: title (desktop-matching fallback), which agent is driving it and how long ago it
+ * moved, then a status dot and the chevron `NavigationLink` would have drawn.
+ *
+ * The subtitle names the agent rather than the project because the list is already grouped by
+ * project — repeating it there would spend the line on something the section header already says.
+ * The agent is text, not a glyph: the brand marks are RN SVG components and cannot cross into
+ * SwiftUI. */
 export function ThreadRow({
   session,
   onPress,
@@ -32,16 +37,21 @@ export function ThreadRow({
   onPress: () => void;
 }): React.ReactNode {
   const title = session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
+  const subtitle = `${AGENT_LABELS[session.kind]} · ${formatRelativeShort(session.updatedAt)}`;
 
   return (
     <HStack spacing={10} modifiers={[WHOLE_ROW, onTapGesture(onPress)]}>
-      <Text modifiers={[lineLimit(1)]}>{title}</Text>
+      <VStack alignment="leading" spacing={2}>
+        <Text modifiers={[lineLimit(1)]}>{title}</Text>
+        <Text modifiers={[FOOTNOTE, SECONDARY, lineLimit(1)]}>{subtitle}</Text>
+      </VStack>
       <Spacer />
       <Image
         systemName="circle.fill"
         size={8}
         modifiers={[foregroundStyle(STATUS_COLOR[session.status])]}
       />
+      <Image systemName="chevron.right" size={13} modifiers={[TERTIARY]} />
     </HStack>
   );
 }
