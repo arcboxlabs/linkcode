@@ -15,14 +15,36 @@ import { createProviderConfigStore } from '../provider-store';
 import { createInMemoryVault } from './fixtures/in-memory-vault';
 
 const fsMocks = vi.hoisted(() => ({
+  openTargets: new Map<number, string>(),
   renameTarget: null as string | null,
   renameTargets: [] as string[],
+  syncTargets: [] as string[],
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
+    closeSync(descriptor: number) {
+      try {
+        actual.closeSync(descriptor);
+      } finally {
+        fsMocks.openTargets.delete(descriptor);
+      }
+    },
+    fsyncSync(descriptor: number) {
+      fsMocks.syncTargets.push(fsMocks.openTargets.get(descriptor) ?? '');
+      actual.fsyncSync(descriptor);
+    },
+    openSync(
+      path: Parameters<typeof actual.openSync>[0],
+      flags: Parameters<typeof actual.openSync>[1],
+      mode?: Parameters<typeof actual.openSync>[2],
+    ) {
+      const descriptor = actual.openSync(path, flags, mode);
+      fsMocks.openTargets.set(descriptor, String(path));
+      return descriptor;
+    },
     renameSync(
       oldPath: Parameters<typeof actual.renameSync>[0],
       newPath: Parameters<typeof actual.renameSync>[1],
@@ -55,6 +77,8 @@ afterEach(() => {
   delete process.env.LINKCODE_CHANNEL;
   fsMocks.renameTarget = null;
   fsMocks.renameTargets = [];
+  fsMocks.openTargets.clear();
+  fsMocks.syncTargets = [];
   vi.restoreAllMocks();
 });
 
@@ -91,6 +115,9 @@ describe('provider config persistence', () => {
     expect(store.getAccounts()).toEqual([oauthAccount]);
     expect(statSync(config).mode & 0o777).toBe(0o600);
     expect(fsMocks.renameTargets).toEqual([config]);
+    expect(fsMocks.syncTargets[0]).toContain(join(dir, '.config.'));
+    expect(fsMocks.syncTargets[0]?.endsWith('.tmp')).toBe(true);
+    expect(fsMocks.syncTargets.slice(1)).toEqual(process.platform === 'win32' ? [] : [dir]);
   });
 
   it('rejects corrupt JSON without replacing the file or publishing memory', () => {
