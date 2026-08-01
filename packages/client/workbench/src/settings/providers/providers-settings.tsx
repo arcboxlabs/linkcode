@@ -1,5 +1,11 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
+import {
+  createAndBindAccount,
+  getAccounts,
+  getProviderConfig,
+  setAccounts,
+  setProviderConfig,
+} from '@linkcode/sdk';
 import { AccountDetail, AccountList } from '@linkcode/ui';
 import {
   Dialog,
@@ -11,6 +17,7 @@ import {
 import { Skeleton } from 'coss-ui/components/skeleton';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
+import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
@@ -37,6 +44,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   } = useData(getAccounts, {});
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
+  const onboarding = useAgentRuntimeOnboarding();
+  const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
 
@@ -52,7 +61,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const pool = accounts ?? [];
   const accountsById = new Map(pool.map((account) => [account.id, account]));
   const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
-  const busy = saveAccounts.isMutating || saveProviders.isMutating;
+  const busy = bindAccount.isMutating || saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
       ? undefined
@@ -73,8 +82,13 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   };
 
   const handleAdd = async (account: Account): Promise<void> => {
-    await saveAccounts.trigger({ accounts: [...pool, account] });
-    await mutateAccounts();
+    if (account.credential.type === 'oauth') {
+      await bindAccount.trigger({ agent: account.credential.agent, account });
+      await Promise.all([mutateAccounts(), mutateProviders()]);
+    } else {
+      await saveAccounts.trigger({ accounts: [...pool, account] });
+      await mutateAccounts();
+    }
     closeDialog();
   };
 
@@ -106,6 +120,12 @@ export function ProvidersSettingsPanel(): React.ReactNode {
 
   const dialogOpen = view.kind !== 'browse';
 
+  const cancelSubscriptionLogin = (): void => {
+    if (view.kind !== 'add-form') return;
+    const service = serviceById(view.service);
+    if (service?.kind === 'oauth') onboarding.cancelLogin(service.agent);
+  };
+
   return (
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
@@ -119,14 +139,17 @@ export function ProvidersSettingsPanel(): React.ReactNode {
       />
       <Dialog
         open={dialogOpen}
-        disablePointerDismissal={saveAccounts.isMutating}
+        disablePointerDismissal={busy}
         onOpenChange={(open) => {
-          if (!open && !saveAccounts.isMutating) closeDialog();
+          if (!open && !busy) {
+            cancelSubscriptionLogin();
+            closeDialog();
+          }
         }}
       >
         <DialogPopup
           className={view.kind === 'add-catalog' ? 'max-w-3xl' : 'max-w-2xl'}
-          closeProps={{ disabled: saveAccounts.isMutating }}
+          closeProps={{ disabled: busy }}
         >
           {view.kind === 'add-catalog' ? (
             <>
@@ -147,8 +170,12 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                   <AddAccountForm
                     serviceId={view.service}
                     runtimes={runtimes}
-                    busy={saveAccounts.isMutating}
-                    onBack={backToCatalog}
+                    onboarding={onboarding}
+                    busy={busy}
+                    onBack={() => {
+                      cancelSubscriptionLogin();
+                      backToCatalog();
+                    }}
                     onSubmit={(account) => {
                       void handleAdd(account);
                     }}

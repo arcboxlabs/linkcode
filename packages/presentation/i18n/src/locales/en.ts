@@ -1035,9 +1035,6 @@ export const en = {
         'openai-chat': 'Native for Codex / OpenCode; Claude Code via local translation',
         'openai-responses': 'Native for Codex',
       },
-      oauthLoggedOutHint:
-        'No CLI login detected — you can still add it; sessions will prompt for login.',
-      oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
       oauthEditHint:
         'Subscription credentials follow the CLI login; only the account name can be changed here.',
       form: {
