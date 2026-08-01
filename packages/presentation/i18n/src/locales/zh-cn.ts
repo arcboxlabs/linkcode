@@ -899,6 +899,7 @@ export const zhCN = {
     about: {
       version: '版本',
       checkForUpdates: '检查更新',
+      restartToInstall: '重启更新',
       status: {
         checking: '正在检查更新…',
         available: '发现更新，正在下载…',
