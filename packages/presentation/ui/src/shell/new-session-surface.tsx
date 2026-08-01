@@ -203,7 +203,13 @@ export function NewSessionSurface({
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
-  const catalogEffort = catalog?.defaultEffort;
+  // A catalog effort paired with a default model belongs to that model: once something else picks
+  // the model, that model's own advertised default is the honest value. A catalog that names no
+  // default model (claude-code, whose effort setting is model-independent) keeps applying.
+  const catalogEffort =
+    catalog?.defaultModel === undefined || catalog.defaultModel === displayedModel
+      ? catalog?.defaultEffort
+      : modelOption?.defaultEffort;
   const displayedEffort =
     constrainedEffort ??
     (catalogEffort !== undefined &&

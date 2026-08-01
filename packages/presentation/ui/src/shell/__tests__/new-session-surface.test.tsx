@@ -49,7 +49,9 @@ const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
 const RE_PI_SONNET = /Pi Sonnet/;
 const RE_PI_BASIC = /Pi Basic/;
+const RE_PI_WIDE = /Pi Wide/;
 const RE_HIGH_EFFORT = /High/;
+const RE_LOW_EFFORT = /Low/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
 const RE_APPROVAL_DEFAULT = /Default/;
 const RE_ACCEPT_EDITS = /Accept edits/;
@@ -61,6 +63,8 @@ const PI_CONFIGURED_CATALOG: AgentStartCatalog = {
   models: [
     { id: 'pi/sonnet', label: 'Pi Sonnet', effortLevels: ['low', 'high'] },
     { id: 'pi/basic', label: 'Pi Basic', effortLevels: [] },
+    // Shares `high` with the catalog default so a leaked effort would still look plausible.
+    { id: 'pi/wide', label: 'Pi Wide', effortLevels: ['low', 'high'], defaultEffort: 'low' },
   ],
   policies: [{ policyId: 'default', name: 'Default' }],
   defaultPolicyId: 'default',
@@ -873,6 +877,49 @@ describe('NewSessionSurface', () => {
 
     expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
     expect(screen.queryByRole('button', { name: RE_HIGH_EFFORT })).toBeNull();
+  });
+
+  it('does not lend the catalog effort to a model the catalog did not default to', () => {
+    render(
+      <NewSessionSurface
+        agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ pi: 'pi/wide' }}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    // `pi/wide` accepts `high`, so a leaked catalog effort would render — the session would still
+    // start on this model's own default, leaving the chip advertising an effort nobody selected.
+    expect(screen.getByRole('button', { name: RE_PI_WIDE })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: RE_HIGH_EFFORT })).toBeNull();
+    expect(screen.getByRole('button', { name: RE_LOW_EFFORT })).toBeTruthy();
+  });
+
+  it('keeps a model-independent configured effort when the catalog names no model', () => {
+    const { defaultModel: _unset, ...modelless } = PI_CONFIGURED_CATALOG;
+    render(
+      <NewSessionSurface
+        agentCatalogs={{ pi: modelless }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ pi: 'pi/wide' }}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    // This is claude-code's shape: settings declare an effort but no model, so the effort is not
+    // tied to whichever model ends up selected.
+    expect(screen.getByRole('button', { name: RE_HIGH_EFFORT })).toBeTruthy();
   });
 
   it("lets a LinkCode-configured default outrank the agent's own", () => {
