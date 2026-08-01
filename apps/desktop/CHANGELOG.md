@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/arcboxlabs/linkcode/compare/v0.16.0...v0.17.0) (2026-08-01)
+
+
+### Features
+
+* **plugins:** plugins, MCP, and skills management on the provider-plugin model ([#344](https://github.com/arcboxlabs/linkcode/issues/344)) ([cc7ca6c](https://github.com/arcboxlabs/linkcode/commit/cc7ca6c786574295ed30150c4225d47a540d6696))
+
 ## [0.16.0](https://github.com/arcboxlabs/linkcode/compare/v0.15.1...v0.16.0) (2026-08-01)
 
 
