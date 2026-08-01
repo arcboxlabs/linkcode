@@ -286,6 +286,8 @@ function OauthCreateForm({
   const auth = runtimes?.[service.agent]?.auth;
   const loggedIn = auth?.loggedIn === true;
   const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
+  const loginInProgress =
+    cue.state === 'needs-login' && (cue.phase === 'opening' || cue.phase === 'awaiting-code');
 
   return (
     <div className="flex flex-col gap-3">
@@ -294,6 +296,7 @@ function OauthCreateForm({
         <Input
           className="w-full"
           autoComplete="off"
+          disabled={busy || loginInProgress}
           value={label}
           onChange={(event) => setLabel(event.target.value)}
         />

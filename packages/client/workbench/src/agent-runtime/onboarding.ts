@@ -184,7 +184,7 @@ function deriveCue(
   switch (runtime.status) {
     case 'available': {
       const currentLogin = loginActivity[kind];
-      if (currentLogin) return loginCue(currentLogin);
+      if (currentLogin && runtime.auth?.loggedIn !== true) return loginCue(currentLogin);
       // `auth` absent means unprobed or a fail-open probe — don't block. An injected credential
       // makes a signed-out CLI runnable, so it clears the cue (see hasInjectedCredential).
       return runtime.auth?.loggedIn === false && !hasInjectedCredential(kind, providers, accounts)

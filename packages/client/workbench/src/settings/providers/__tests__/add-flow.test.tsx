@@ -98,6 +98,7 @@ describe('subscription account creation', () => {
     fireEvent.change(screen.getByPlaceholderText('loginCodePlaceholder'), {
       target: { value: ' pasted-code ' },
     });
+    expect(screen.getByRole('textbox', { name: 'form.label' })).toHaveProperty('disabled', true);
     fireEvent.click(screen.getByRole('button', { name: 'loginSubmit' }));
     expect(submitLoginCode).toHaveBeenCalledWith('claude-code', 'pasted-code');
     fireEvent.click(screen.getByRole('button', { name: 'loginCancel' }));

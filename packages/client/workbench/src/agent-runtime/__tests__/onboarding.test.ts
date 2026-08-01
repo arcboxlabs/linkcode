@@ -229,6 +229,19 @@ describe('deriveAgentRuntimeCues', () => {
         { codex: { enabled: true, apiKey: 'sk-x' } },
       ),
     ).toEqual({ codex: { state: 'needs-login', phase: 'opening' } });
+
+    const loggedIn: AgentRuntimes = {
+      codex: { status: 'available', source: 'detected', auth: { loggedIn: true } },
+    };
+    expect(
+      deriveAgentRuntimeCues(
+        loggedIn,
+        ASSETS,
+        {},
+        {},
+        { codex: { kind: 'failed', error: 'stale failure' } },
+      ),
+    ).toEqual({});
   });
 
   it('suppresses the login cue for a bound key account, but not for a bound oauth one', () => {
