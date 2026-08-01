@@ -10,6 +10,7 @@ import {
   AppKeyboardProvider,
   AppThemeProvider,
 } from '@mobile/components/shell/app-providers';
+import { NotificationObserver } from '@mobile/components/shell/notification-observer';
 import { MobileProductAnalyticsProvider } from '@mobile/components/shell/product-analytics-provider';
 import { RootNavigator } from '@mobile/components/shell/root-navigator';
 import { ThemeController } from '@mobile/components/shell/theme-controller';
@@ -78,6 +79,7 @@ function RootLayout() {
         ]}
       >
         <ThemeController />
+        <NotificationObserver />
         <RootNavigator />
       </ComposeContextProvider>
     </GestureHandlerRootView>
