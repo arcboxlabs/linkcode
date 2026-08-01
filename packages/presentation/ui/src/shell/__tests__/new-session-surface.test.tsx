@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { AgentStartCatalog } from '@linkcode/schema';
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -47,10 +48,25 @@ const RE_MEDIUM_EFFORT = /Medium/;
 const RE_CUSTOM_CLAUDE_MODEL = /custom\/claude-model/;
 const RE_DYNAMIC_CLAUDE_MODEL = /anthropic\/claude-sonnet-4-6/;
 const RE_PI_SONNET = /Pi Sonnet/;
+const RE_PI_BASIC = /Pi Basic/;
+const RE_HIGH_EFFORT = /High/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
 const RE_APPROVAL_DEFAULT = /Default/;
 const RE_ACCEPT_EDITS = /Accept edits/;
 const RE_PROJECT_WORKSPACE = /app/;
+
+/** A catalog carrying what the agent's own configuration would start on. `pi/basic` has no effort
+ * axis, so it doubles as the case where a configured effort cannot apply. */
+const PI_CONFIGURED_CATALOG: AgentStartCatalog = {
+  models: [
+    { id: 'pi/sonnet', label: 'Pi Sonnet', effortLevels: ['low', 'high'] },
+    { id: 'pi/basic', label: 'Pi Basic', effortLevels: [] },
+  ],
+  policies: [{ policyId: 'default', name: 'Default' }],
+  defaultPolicyId: 'default',
+  defaultModel: 'pi/sonnet',
+  defaultEffort: 'high',
+};
 
 type StandaloneProps = Omit<NewSessionSurfaceProps, 'workspaceId' | 'onWorkspaceChange'> &
   Partial<Pick<NewSessionSurfaceProps, 'onWorkspaceChange'>>;
@@ -811,6 +827,95 @@ describe('NewSessionSurface', () => {
     // …but an untouched picker is not a choice: sending it would override the agent's own startup
     // resolution (claude's settings defaultMode, codex's configured sandbox).
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('approvalPolicyId');
+  });
+
+  it("shows the agent's own configured model and effort without submitting them", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: RE_PI_SONNET })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_HIGH_EFFORT })).toBeTruthy();
+
+    typeInComposer('untouched pickers');
+    await pressInComposer('Enter');
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    // Same rule as the approval tier above: the agent resolves these itself at start.
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ model: undefined }));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
+  });
+
+  it('drops a configured effort the displayed model cannot take', () => {
+    render(
+      <NewSessionSurface
+        agentCatalogs={{
+          pi: { ...PI_CONFIGURED_CATALOG, defaultModel: 'pi/basic' },
+        }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: RE_HIGH_EFFORT })).toBeNull();
+  });
+
+  it("lets a LinkCode-configured default outrank the agent's own", () => {
+    render(
+      <NewSessionSurface
+        agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ pi: 'pi/basic' }}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn()}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
+  });
+
+  it("lets a remembered pick outrank the agent's own default", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        preferredModels={{ pi: 'pi/basic' }}
+        workspaces={[]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
+    typeInComposer('use my last model');
+    await pressInComposer('Enter');
+    // A remembered pick is an explicit choice, so unlike the catalog default it does travel.
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'pi/basic' })),
+    );
   });
 
   it('submits compatible Pi catalog choices and suppresses stale effort for models without it', async () => {
