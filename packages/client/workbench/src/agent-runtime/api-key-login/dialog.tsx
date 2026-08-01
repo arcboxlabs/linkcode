@@ -78,10 +78,8 @@ function accountFromDraft(id: string, draft: Draft): Account {
 }
 
 /**
- * The API-key alternative to a CLI's OAuth login, reachable from the signed-out onboarding card:
- * a relay/gateway key plus its base URL, saved as a normal pool account and bound as the agent's
- * active one — the same contract session start already injects. Mounted once beside the shell; the
- * card only opens it (see {@link useAgentApiKeyLoginStore}).
+ * The API-key branch of the Providers settings setup flow: a relay/gateway key plus its base URL,
+ * saved as a normal pool account and bound as the agent's active one.
  */
 export function AgentApiKeyLoginDialog(): React.ReactNode {
   const kind = useAgentApiKeyLoginStore((state) => state.kind);

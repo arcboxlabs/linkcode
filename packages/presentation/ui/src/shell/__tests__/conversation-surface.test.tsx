@@ -82,7 +82,7 @@ function surface(
       respondingRequestIds={new Set()}
       isRunning={false}
       runtimeCues={runtimeCues}
-      onLoginAgent={vi.fn()}
+      onOpenProviderSettings={vi.fn()}
       onRespondPermission={vi.fn()}
       onRespondQuestion={vi.fn()}
     />
@@ -161,9 +161,9 @@ describe('ConversationSurface prompt card', () => {
 describe('ConversationSurface needs-login recovery (CODE-172)', () => {
   it('renders the sign-in card and blocks send for a needs-login cue', () => {
     render(surface({ 'claude-code': { state: 'needs-login', phase: 'idle' } }));
-    // The AgentLoginCard idle phase: title + sign-in button (mocked i18n returns raw keys).
+    // The AgentLoginCard idle phase: title + settings button (mocked i18n returns raw keys).
     expect(screen.getByText('needsLoginTitle')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'login' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'goToSettings' })).toBeTruthy();
     // Send stays gated by sendBlocked even once text is present (an empty composer disables the
     // button on its own, which would mask a missing sendBlocked wiring).
     typeInComposer('hello');

@@ -1,16 +1,22 @@
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
-import { AccountDetail, AccountList } from '@linkcode/ui';
+import { AccountDetail, AccountList, AGENT_LABELS, AgentOnboardingCard } from '@linkcode/ui';
+import { Button } from 'coss-ui/components/button';
 import {
   Dialog,
+  DialogDescription,
   DialogHeader,
   DialogPanel,
   DialogPopup,
   DialogTitle,
 } from 'coss-ui/components/dialog';
 import { Skeleton } from 'coss-ui/components/skeleton';
+import { ChevronLeftIcon, KeyRoundIcon, LogInIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { AgentApiKeyLoginDialog } from '../../agent-runtime/api-key-login/dialog';
+import { useAgentApiKeyLoginStore } from '../../agent-runtime/api-key-login/store';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
+import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
 import { serviceById } from './catalog';
@@ -37,6 +43,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   } = useData(getAccounts, {});
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
+  const onboarding = useAgentRuntimeOnboarding();
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
 
@@ -45,6 +52,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const startEdit = useProvidersSettingsStore((state) => state.startEdit);
   const backToAccount = useProvidersSettingsStore((state) => state.backToAccount);
   const startAdd = useProvidersSettingsStore((state) => state.startAdd);
+  const startAgentSetup = useProvidersSettingsStore((state) => state.startAgentSetup);
+  const startAgentLogin = useProvidersSettingsStore((state) => state.startAgentLogin);
   const pickService = useProvidersSettingsStore((state) => state.pickService);
   const backToCatalog = useProvidersSettingsStore((state) => state.backToCatalog);
   const closeDialog = useProvidersSettingsStore((state) => state.closeDialog);
@@ -104,6 +113,21 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     closeDialog();
   };
 
+  const handleSubscriptionLogin = (kind: AgentKind): void => {
+    startAgentLogin(kind);
+    onboarding.login(kind, closeDialog);
+  };
+
+  const handleCancelLogin = (kind: AgentKind): void => {
+    onboarding.cancelLogin(kind);
+    startAgentSetup(kind);
+  };
+
+  const handleApiKeySetup = (kind: AgentKind): void => {
+    closeDialog();
+    useAgentApiKeyLoginStore.getState().open(kind);
+  };
+
   const dialogOpen = view.kind !== 'browse';
 
   return (
@@ -121,14 +145,53 @@ export function ProvidersSettingsPanel(): React.ReactNode {
         open={dialogOpen}
         disablePointerDismissal={saveAccounts.isMutating}
         onOpenChange={(open) => {
-          if (!open && !saveAccounts.isMutating) closeDialog();
+          if (!open && !saveAccounts.isMutating) {
+            if (view.kind === 'agent-login') onboarding.cancelLogin(view.agent);
+            closeDialog();
+          }
         }}
       >
         <DialogPopup
           className={view.kind === 'add-catalog' ? 'max-w-3xl' : 'max-w-2xl'}
           closeProps={{ disabled: saveAccounts.isMutating }}
         >
-          {view.kind === 'add-catalog' ? (
+          {view.kind === 'agent-setup' ? (
+            <AgentProviderSetupChoices
+              kind={view.agent}
+              onLogin={handleSubscriptionLogin}
+              onApiKey={handleApiKeySetup}
+            />
+          ) : view.kind === 'agent-login' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {t('setup.subscriptionTitle', { agent: AGENT_LABELS[view.agent] })}
+                </DialogTitle>
+              </DialogHeader>
+              <DialogPanel className="flex flex-col gap-3">
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleCancelLogin(view.agent)}
+                  >
+                    <ChevronLeftIcon className="size-4" />
+                    {t('setup.chooseMethod')}
+                  </Button>
+                </div>
+                <AgentOnboardingCard
+                  kind={view.agent}
+                  cue={
+                    onboarding.cues[view.agent] ?? { state: 'needs-login', phase: 'idle' as const }
+                  }
+                  onLogin={handleSubscriptionLogin}
+                  onSubmitLoginCode={onboarding.submitLoginCode}
+                  onCancelLogin={handleCancelLogin}
+                />
+              </DialogPanel>
+            </>
+          ) : view.kind === 'add-catalog' ? (
             <>
               <DialogHeader>
                 <DialogTitle>{t('chooseService')}</DialogTitle>
@@ -188,6 +251,58 @@ export function ProvidersSettingsPanel(): React.ReactNode {
           )}
         </DialogPopup>
       </Dialog>
+      <AgentApiKeyLoginDialog />
     </div>
+  );
+}
+
+function AgentProviderSetupChoices({
+  kind,
+  onLogin,
+  onApiKey,
+}: {
+  kind: AgentKind;
+  onLogin: (kind: AgentKind) => void;
+  onApiKey: (kind: AgentKind) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const agent = AGENT_LABELS[kind];
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{t('setup.title', { agent })}</DialogTitle>
+        <DialogDescription>{t('setup.hint')}</DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            className="flex min-h-28 flex-col items-start gap-2 rounded-lg border border-border p-4 text-left transition-colors hover:bg-muted/50"
+            onClick={() => onLogin(kind)}
+          >
+            <LogInIcon className="size-5" />
+            <span>
+              <span className="block font-medium text-sm">{t('setup.subscription')}</span>
+              <span className="mt-1 block text-muted-foreground text-xs">
+                {t('setup.subscriptionHint', { agent })}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="flex min-h-28 flex-col items-start gap-2 rounded-lg border border-border p-4 text-left transition-colors hover:bg-muted/50"
+            onClick={() => onApiKey(kind)}
+          >
+            <KeyRoundIcon className="size-5" />
+            <span>
+              <span className="block font-medium text-sm">{t('setup.apiKey')}</span>
+              <span className="mt-1 block text-muted-foreground text-xs">
+                {t('setup.apiKeyHint')}
+              </span>
+            </span>
+          </button>
+        </div>
+      </DialogPanel>
+    </>
   );
 }

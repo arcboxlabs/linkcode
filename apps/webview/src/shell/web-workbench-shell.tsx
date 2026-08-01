@@ -4,6 +4,7 @@ import {
   getResourcesPanelPresentation,
   RESOURCES_FLOATING_COLUMN_WIDTH,
   RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
+  useProvidersSettingsStore,
   useResourcesPanelStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
@@ -58,6 +59,10 @@ export function WebWorkbenchShell({
         <ShellFrame
           {...props}
           showPlanInPromptDock={!resourcesSurfaceOpen}
+          onOpenProviderSettings={(kind) => {
+            useProvidersSettingsStore.getState().startAgentSetup(kind);
+            void navigate('/settings/providers');
+          }}
           onOpenAutomations={() => {
             void navigate('/automations');
           }}

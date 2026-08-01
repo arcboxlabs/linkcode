@@ -86,10 +86,7 @@ export function DesktopShell({
   NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
-  onLoginAgent,
-  onSubmitLoginCode,
-  onCancelLogin,
-  onUseApiKey,
+  onOpenProviderSettings,
   conversation,
   respondingRequestIds,
   responseErrors,
@@ -439,10 +436,7 @@ export function DesktopShell({
           topContent={<ErrorBanner errorMessage={errorMessage} onDismissError={onDismissError} />}
           onContinueUnverified={onContinueUnverified}
           onDownloadAgent={onDownloadAgent}
-          onLoginAgent={onLoginAgent}
-          onSubmitLoginCode={onSubmitLoginCode}
-          onCancelLogin={onCancelLogin}
-          onUseApiKey={onUseApiKey}
+          onOpenProviderSettings={onOpenProviderSettings}
           onMentionQueryChange={onMentionQueryChange}
           onSubmit={onSubmitDraft}
           onPickDirectory={pickDirectory}
@@ -461,10 +455,7 @@ export function DesktopShell({
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}
-          onLoginAgent={onLoginAgent}
-          onSubmitLoginCode={onSubmitLoginCode}
-          onCancelLogin={onCancelLogin}
-          onUseApiKey={onUseApiKey}
+          onOpenProviderSettings={onOpenProviderSettings}
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}
