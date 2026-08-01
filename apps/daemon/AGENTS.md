@@ -23,9 +23,10 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
 - **Paths are owned by `src/config.ts`** (`configPath` / `databasePath` / `runtimeFilePath`) — never
   scatter `homedir()` joins elsewhere. `os.homedir()` is read at call time, so a fake `$HOME` fully
   redirects config/db/runtime (this is what isolates an E2E daemon).
-- **`config.json`** (optional, `0600`): the daemon writes back only `providers` via `saveProviders`,
-  re-reading and preserving other fields. `loadConfig` validates providers **field-by-field** — one
-  bad entry is dropped and logged, never blanks the rest. It holds **no secrets** since CODE-371 —
+- **`config.json`** (optional, `0600`): provider and account updates persist together through one
+  fsynced same-directory temporary file and atomic rename, preserving other fields; malformed or
+  unreadable input fails closed. `loadConfig` validates entries **field-by-field** — one bad entry is
+  dropped and logged, never blanks the rest. It holds **no secrets** since CODE-371 —
   `providers[kind].apiKey` and each account's credential secret live in `secrets.json` below, and
   `withAccountSecret` merges them back *before* zod validation, so a secret that is gone fails
   `AccountSchema` and drops through that same per-entry path.

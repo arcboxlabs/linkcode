@@ -1,6 +1,6 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
 import type { Accounts, ProvidersConfig } from '@linkcode/schema';
-import { saveAccounts, saveProviders } from './config';
+import { saveProviderConfiguration } from './config';
 import type { SecretVault } from './secrets';
 
 /**
@@ -17,14 +17,13 @@ export function createProviderConfigStore(
   let accounts = initialAccounts;
   return {
     get: () => providers,
-    set(next) {
-      providers = next;
-      saveProviders(vault, next);
-    },
     getAccounts: () => accounts,
-    setAccounts(next) {
-      accounts = next;
-      saveAccounts(vault, next);
+    update(next) {
+      const nextProviders = next.providers ?? providers;
+      const nextAccounts = next.accounts ?? accounts;
+      saveProviderConfiguration(vault, nextProviders, nextAccounts);
+      providers = nextProviders;
+      accounts = nextAccounts;
     },
   };
 }

@@ -13,10 +13,9 @@ import type {
  */
 export interface ProviderConfigStore {
   get(): ProvidersConfig;
-  set(next: ProvidersConfig): void | Promise<void>;
   /** The global account pool bound by `providers[kind].activeAccountId`. */
   getAccounts(): Accounts;
-  setAccounts(next: Accounts): void | Promise<void>;
+  update(next: { providers?: ProvidersConfig; accounts?: Accounts }): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
@@ -27,16 +26,13 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
     return this.providers;
   }
 
-  set(next: ProvidersConfig): void {
-    this.providers = next;
-  }
-
   getAccounts(): Accounts {
     return this.accounts;
   }
 
-  setAccounts(next: Accounts): void {
-    this.accounts = next;
+  update(next: { providers?: ProvidersConfig; accounts?: Accounts }): void {
+    if (next.providers !== undefined) this.providers = next.providers;
+    if (next.accounts !== undefined) this.accounts = next.accounts;
   }
 }
 
