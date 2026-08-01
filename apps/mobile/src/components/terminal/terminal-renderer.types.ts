@@ -1,10 +1,7 @@
-import type { TerminalReplayEvent } from '@linkcode/schema';
+import type { TerminalRendererRef } from '@mobile/runtime/use-terminal-session';
 import type { TerminalTheme } from 'expo-libghostty';
 
-export interface TerminalRendererRef {
-  events: (events: readonly TerminalReplayEvent[]) => void;
-  exit: (code: number | null) => void;
-}
+export type { TerminalRendererRef };
 
 export interface TerminalRendererProps {
   ref: React.Ref<TerminalRendererRef>;

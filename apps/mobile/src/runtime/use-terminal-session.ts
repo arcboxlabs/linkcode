@@ -1,9 +1,14 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
-import type { TerminalRendererRef } from '@mobile/components/terminal/terminal-renderer.types';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useRef, useState } from 'react';
+
+/** Imperative surface the runtime drives; the presentation layer implements this on the canvas. */
+export interface TerminalRendererRef {
+  events: (events: readonly TerminalReplayEvent[]) => void;
+  exit: (code: number | null) => void;
+}
 
 export type TerminalAttachStatus = 'attaching' | 'ready' | 'error';
 
