@@ -1,0 +1,207 @@
+# Production mobile binaries are compiled on GitHub runners with EAS Build's local engine.
+# EAS remains the credential store and, when requested, uploads the signed artifacts to the stores.
+
+name: Build Mobile
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: Upload the completed builds to TestFlight and Google Play internal testing
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: build-mobile-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  EAS_CLI_VERSION: 21.4.0
+  MOBILE_DIR: apps/mobile
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  preflight:
+    name: Validate release request
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check submit configuration
+        if: ${{ inputs.submit }}
+        run: |
+          asc_app_id="$(jq -r '.submit.production.ios.ascAppId // empty' apps/mobile/eas.json)"
+          if [ -z "$asc_app_id" ]; then
+            echo "::error::Set submit.production.ios.ascAppId in apps/mobile/eas.json before enabling submit"
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            extension: aab
+            os: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+          - platform: ios
+            extension: ipa
+            os: ${{ vars.CI_RUNNER_MACOS || 'macos-26' }}
+
+    steps:
+      - name: Check release secrets
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN_MOBILE: ${{ secrets.SENTRY_DSN_MOBILE }}
+          POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        run: |
+          set -euo pipefail
+          missing=false
+          for variable in EXPO_TOKEN SENTRY_AUTH_TOKEN SENTRY_DSN_MOBILE POSTHOG_PROJECT_TOKEN POSTHOG_HOST; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing GitHub secret: ${variable}"
+              missing=true
+            fi
+          done
+          if [ "$missing" = true ]; then
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup Java
+        if: ${{ matrix.platform == 'android' }}
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: ${{ env.EAS_CLI_VERSION }}
+          packager: pnpm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Verify native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.platform }}" = ios ]; then
+            xcodebuild -version
+            pod --version
+            fastlane --version
+            read -r _ xcode_version < <(xcodebuild -version)
+            xcode_major="${xcode_version%%.*}"
+            if [ "$xcode_major" -lt 26 ]; then
+              echo "::error::Xcode 26 or newer is required; found ${xcode_version}"
+              exit 1
+            fi
+          else
+            java -version
+            if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
+              echo "::error::ANDROID_HOME does not point to an installed Android SDK"
+              exit 1
+            fi
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build signed artifact locally
+        working-directory: ${{ env.MOBILE_DIR }}
+        env:
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_MOBILE }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: eas build --local --platform "${{ matrix.platform }}" --profile production --output "$RUNNER_TEMP/linkcode-${{ matrix.platform }}.${{ matrix.extension }}" --non-interactive
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-${{ matrix.platform }}
+          path: ${{ runner.temp }}/linkcode-${{ matrix.platform }}.${{ matrix.extension }}
+          if-no-files-found: error
+          retention-days: 7
+
+  submit:
+    name: Submit ${{ matrix.platform }}
+    if: ${{ inputs.submit }}
+    needs: build
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            extension: aab
+          - platform: ios
+            extension: ipa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e # v8
+        with:
+          eas-version: ${{ env.EAS_CLI_VERSION }}
+          packager: pnpm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: mobile-${{ matrix.platform }}
+          path: ${{ runner.temp }}
+
+      - name: Submit artifact
+        working-directory: ${{ env.MOBILE_DIR }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas submit --platform "${{ matrix.platform }}" --profile production --path "$RUNNER_TEMP/linkcode-${{ matrix.platform }}.${{ matrix.extension }}" --non-interactive --wait
