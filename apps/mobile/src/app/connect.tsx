@@ -23,16 +23,16 @@ import {
   textContentType,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
+import { NavigationRow } from '@mobile/components/form-row';
+import { useCloudAccount } from '@mobile/runtime/cloud/account';
+import { ensureDeviceRegistered } from '@mobile/runtime/cloud/devices';
+import type { OnlineHost } from '@mobile/runtime/cloud/hosts';
+import { fetchOnlineHosts } from '@mobile/runtime/cloud/hosts';
+import { HostUrlSchema, useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { NavigationRow } from '../components/form-row';
-import { useCloudAccount } from '../runtime/cloud/account';
-import { ensureDeviceRegistered } from '../runtime/cloud/devices';
-import type { OnlineHost } from '../runtime/cloud/hosts';
-import { fetchOnlineHosts } from '../runtime/cloud/hosts';
-import { HostUrlSchema, useHostRegistryStore } from '../stores/host-store';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 const FOOTNOTE = font({ textStyle: 'footnote' });

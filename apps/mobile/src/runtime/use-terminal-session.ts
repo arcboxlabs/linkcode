@@ -1,9 +1,9 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
+import type { TerminalRendererRef } from '@mobile/components/terminal-renderer.types';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useRef, useState } from 'react';
-import type { TerminalRendererRef } from '../components/terminal-renderer.types';
 
 export type TerminalAttachStatus = 'attaching' | 'ready' | 'error';
 

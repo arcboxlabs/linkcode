@@ -1,15 +1,12 @@
 import { TerminalIdSchema } from '@linkcode/schema';
+import TerminalRenderer from '@mobile/components/terminal-renderer';
+import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
+import { resolveTerminalTheme, useTerminalPrefsStore } from '@mobile/stores/terminal-prefs-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button, Chip, Spinner } from 'heroui-native';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import TerminalRenderer from '../../../../components/terminal-renderer';
-import { useTerminalSession } from '../../../../runtime/use-terminal-session';
-import {
-  resolveTerminalTheme,
-  useTerminalPrefsStore,
-} from '../../../../stores/terminal-prefs-store';
 
 /** Interactive mobile view of one host-owned PTY. Attachment and all network I/O live in
  * {@link useTerminalSession}; this route only renders and navigates. */

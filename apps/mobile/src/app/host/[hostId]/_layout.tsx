@@ -1,11 +1,11 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
+import { HostConnectionState } from '@mobile/components/host-connection-state';
+import { useStackScreenOptions } from '@mobile/components/use-stack-screen-options';
+import { useHostClient } from '@mobile/runtime/use-host-client';
+import type { HostProfile } from '@mobile/stores/host-store';
+import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
-import { HostConnectionState } from '../../../components/host-connection-state';
-import { useStackScreenOptions } from '../../../components/use-stack-screen-options';
-import { useHostClient } from '../../../runtime/use-host-client';
-import type { HostProfile } from '../../../stores/host-store';
-import { useHostRegistryStore } from '../../../stores/host-store';
 
 /** Guard: resolve the host from the route param before any connection hooks run. */
 export default function HostLayout(): React.ReactNode {

@@ -8,6 +8,13 @@ import {
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '@linkcode/ui/native';
+import { Composer } from '@mobile/components/composer';
+import { TimelineItem } from '@mobile/components/conversation-timeline';
+import { PromptDock } from '@mobile/components/prompt-dock';
+import { SessionStatusChip } from '@mobile/components/session-status-chip';
+import { ToolDetailSheet } from '@mobile/components/tool-detail-sheet';
+import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
+import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
@@ -18,13 +25,6 @@ import { Alert, FlatList, Pressable, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { Composer } from '../../../../components/composer';
-import { TimelineItem } from '../../../../components/conversation-timeline';
-import { PromptDock } from '../../../../components/prompt-dock';
-import { SessionStatusChip } from '../../../../components/session-status-chip';
-import { ToolDetailSheet } from '../../../../components/tool-detail-sheet';
-import { useSeededConversation } from '../../../../runtime/use-seeded-conversation';
-import { useSessionActions } from '../../../../runtime/use-session-actions';
 
 /** Conversation view of one session running on the host, with the composer that drives it and
  * the prompt dock that answers its asks. The inverted list pins to the newest item and leaves

@@ -18,12 +18,12 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
+import { NavigationRow } from '@mobile/components/form-row';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { NavigationRow } from '../../../../components/form-row';
 
 const INITIAL_TERMINAL_SIZE = { cols: 80, rows: 24 };
 

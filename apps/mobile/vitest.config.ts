@@ -15,6 +15,7 @@ function hoisted(specifier: string): string {
 export default defineConfig({
   resolve: {
     alias: {
+      '@mobile': join(import.meta.dirname, 'src'),
       react: hoisted('react'),
       'react-dom': hoisted('react-dom'),
     },

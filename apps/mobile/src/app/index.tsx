@@ -1,10 +1,10 @@
+import { BrandMark } from '@mobile/components/brand-mark';
+import { useCloudAccount } from '@mobile/runtime/cloud/account';
+import { resolveStartupTarget } from '@mobile/runtime/startup';
+import { useHostRegistryHydrated, useHostRegistryStore } from '@mobile/stores/host-store';
 import { Redirect } from 'expo-router';
 import { Spinner } from 'heroui-native';
 import { View } from 'react-native';
-import { BrandMark } from '../components/brand-mark';
-import { useCloudAccount } from '../runtime/cloud/account';
-import { resolveStartupTarget } from '../runtime/startup';
-import { useHostRegistryHydrated, useHostRegistryStore } from '../stores/host-store';
 
 /**
  * Startup router: waits for the persisted registry and the account state,

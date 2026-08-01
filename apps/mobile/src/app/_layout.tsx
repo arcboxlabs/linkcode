@@ -1,10 +1,18 @@
 // First import in the app: patches the AbortSignal gaps everything below assumes (see the module).
-import '../polyfills';
+import '@mobile/polyfills';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { sanitizeSentryTransaction } from '@linkcode/common/sentry';
 import type { TelemetryConfig } from '@linkcode/common/telemetry-config';
 import { DEFAULT_TELEMETRY_CONFIG, fetchTelemetryConfig } from '@linkcode/common/telemetry-config';
 import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
+import {
+  AppIntlProvider,
+  AppKeyboardProvider,
+  AppThemeProvider,
+} from '@mobile/components/app-providers';
+import { RootNavigator } from '@mobile/components/navigation';
+import { MobileProductAnalyticsProvider } from '@mobile/components/product-analytics-provider';
+import { ThemeController } from '@mobile/components/theme-controller';
 import * as Sentry from '@sentry/react-native';
 import { fetch as expoFetch } from 'expo/fetch';
 import { useNavigationContainerRef } from 'expo-router';
@@ -13,15 +21,7 @@ import { useSingleton } from 'foxact/use-singleton';
 import { useEffect, useMemo } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import {
-  AppIntlProvider,
-  AppKeyboardProvider,
-  AppThemeProvider,
-} from '../components/app-providers';
-import { RootNavigator } from '../components/navigation';
-import { MobileProductAnalyticsProvider } from '../components/product-analytics-provider';
-import { ThemeController } from '../components/theme-controller';
-import '../global.css';
+import '@mobile/global.css';
 
 // The DSN is a publishable identifier (not a secret); Expo inlines EXPO_PUBLIC_* env vars at build time.
 // With no DSN the SDK no-ops, so local dev reports nothing unless EXPO_PUBLIC_SENTRY_DSN is set.

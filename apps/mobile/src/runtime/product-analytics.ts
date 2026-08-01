@@ -1,8 +1,8 @@
 import type { AgentKind } from '@linkcode/schema';
+import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
 import { noop } from 'foxts/noop';
 import PostHog, { PostHogPersistedProperty } from 'posthog-react-native';
 import { Platform } from 'react-native';
-import { useAnalyticsPreferenceStore } from '../stores/analytics-store';
 
 interface MobileProductAnalyticsEvents {
   'app opened': Record<string, never>;

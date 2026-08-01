@@ -1,3 +1,6 @@
+import { BrandMark } from '@mobile/components/brand-mark';
+import { signInToCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
+import { isAppleSignInCancel, signInWithApple } from '@mobile/runtime/cloud/idp';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Redirect, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
@@ -6,9 +9,6 @@ import { useEffect, useState } from 'react';
 import { Text, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { BrandMark } from '../components/brand-mark';
-import { signInToCloud, useCloudAccount } from '../runtime/cloud/account';
-import { isAppleSignInCancel, signInWithApple } from '../runtime/cloud/idp';
 
 /**
  * First-run welcome: native Apple sign-in when available, browser OAuth otherwise,

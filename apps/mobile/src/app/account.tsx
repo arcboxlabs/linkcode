@@ -12,21 +12,21 @@ import {
   VStack,
 } from '@expo/ui/swift-ui';
 import { badge, buttonStyle, disabled, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
-import { Redirect, Stack } from 'expo-router';
-import { noop } from 'foxact/noop';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-import { useTranslations } from 'use-intl';
-import type { CloudUser } from '../runtime/cloud/account';
-import { signOutOfCloud, useCloudAccount } from '../runtime/cloud/account';
-import type { CloudDevice } from '../runtime/cloud/devices';
+import type { CloudUser } from '@mobile/runtime/cloud/account';
+import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
+import type { CloudDevice } from '@mobile/runtime/cloud/devices';
 import {
   clearDeviceEnrollment,
   fetchDevices,
   getEnrolledDeviceId,
   revokeDevice,
-} from '../runtime/cloud/devices';
-import { formatRelativeShort } from '../utils/relative-time';
+} from '@mobile/runtime/cloud/devices';
+import { formatRelativeShort } from '@mobile/utils/relative-time';
+import { Redirect, Stack } from 'expo-router';
+import { noop } from 'foxact/noop';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
+import { useTranslations } from 'use-intl';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 const FOOTNOTE = font({ textStyle: 'footnote' });

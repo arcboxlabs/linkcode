@@ -1,12 +1,12 @@
 import type { ConnectionSource } from '@linkcode/client-core';
 import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
+import type { HostProfile } from '@mobile/stores/host-store';
 import NetInfo from '@react-native-community/netinfo';
 import { randomUUID } from 'expo-crypto';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
-import type { HostProfile } from '../stores/host-store';
 import { createHostTransport } from './create-host-transport';
 import { captureMobileProductEvent } from './product-analytics';
 

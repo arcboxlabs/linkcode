@@ -16,6 +16,12 @@ import {
   repositoryLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
+import { HeaderIconButton } from '@mobile/components/navigation';
+import { NewThreadSheet } from '@mobile/components/new-thread-sheet';
+import { ThreadList } from '@mobile/components/thread-list';
+import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
+import { useWorkspaces } from '@mobile/runtime/use-workspaces';
+import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SearchField, useThemeColor } from 'heroui-native';
 import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
@@ -23,12 +29,6 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-import { HeaderIconButton } from '../../../components/navigation';
-import { NewThreadSheet } from '../../../components/new-thread-sheet';
-import { ThreadList } from '../../../components/thread-list';
-import { captureMobileProductEvent } from '../../../runtime/product-analytics';
-import { useWorkspaces } from '../../../runtime/use-workspaces';
-import { useHostRegistryStore } from '../../../stores/host-store';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
