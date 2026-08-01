@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  BranchSelection,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -59,7 +60,7 @@ export interface ShellFrameProps
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
-  newSessionPreferredBranches: Readonly<Record<string, string>>;
+  newSessionPreferredBranches: Readonly<Record<string, BranchSelection>>;
   NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;

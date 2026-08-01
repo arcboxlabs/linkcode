@@ -26,6 +26,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -378,6 +379,18 @@ export class LinkCodeSdkClient {
   /** Local branches for a directory, ordered current-first then by descending commit date. */
   listGitBranches(cwd: string): RequestResult<GitBranchList> {
     return toResult(this.raw.listGitBranches(cwd));
+  }
+
+  checkGitBranchSwitch(cwd: string, branch: string): RequestResult<GitBranchSwitchCheck> {
+    return toResult(this.raw.checkGitBranchSwitch(cwd, branch));
+  }
+
+  createGitBranch(cwd: string, branch: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.createGitBranch(cwd, branch));
+  }
+
+  commitGitChanges(cwd: string, message: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.commitGitChanges(cwd, message));
   }
 
   /** Hosting-provider PR state for a directory's current branch. */

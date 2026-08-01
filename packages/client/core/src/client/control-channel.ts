@@ -19,6 +19,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -595,6 +596,33 @@ export class ControlChannel {
       kind: 'git.branch.list',
       clientReqId,
       cwd,
+    }));
+  }
+
+  checkGitBranchSwitch(cwd: string, branch: string): Promise<GitBranchSwitchCheck> {
+    return this.sendCorrelated('gitBranchSwitchCheck', (clientReqId) => ({
+      kind: 'git.branch.switch.check',
+      clientReqId,
+      cwd,
+      branch,
+    }));
+  }
+
+  createGitBranch(cwd: string, branch: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'git.branch.create',
+      clientReqId,
+      cwd,
+      branch,
+    }));
+  }
+
+  commitGitChanges(cwd: string, message: string): Promise<RequestAck> {
+    return this.sendCorrelated('ack', (clientReqId) => ({
+      kind: 'git.commit',
+      clientReqId,
+      cwd,
+      message,
     }));
   }
 

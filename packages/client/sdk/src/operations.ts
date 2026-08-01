@@ -23,6 +23,7 @@ import type {
   EffortLevel,
   FileSuggestion,
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -351,6 +352,24 @@ export function getGitStatus(options: Options<{ cwd: string }>): RequestResult<G
 /** Local branches for a directory, ordered current-first then by descending commit date. */
 export function listGitBranches(options: Options<{ cwd: string }>): RequestResult<GitBranchList> {
   return resolveClient(options).listGitBranches(options.cwd);
+}
+
+export function checkGitBranchSwitch(
+  options: Options<{ cwd: string; branch: string }>,
+): RequestResult<GitBranchSwitchCheck> {
+  return resolveClient(options).checkGitBranchSwitch(options.cwd, options.branch);
+}
+
+export function createGitBranch(
+  options: Options<{ cwd: string; branch: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).createGitBranch(options.cwd, options.branch);
+}
+
+export function commitGitChanges(
+  options: Options<{ cwd: string; message: string }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).commitGitChanges(options.cwd, options.message);
 }
 
 /** Hosting-provider PR state for a directory's current branch. */
