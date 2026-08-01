@@ -117,7 +117,13 @@ export class SessionStartOptionsResolver {
           }
           servers.push(entry.server);
         }
-        return { options: { ...options, mcpServers: servers }, warnings };
+        return {
+          options:
+            servers.length === 0 && options.mcpServers === undefined
+              ? options
+              : { ...options, mcpServers: servers },
+          warnings,
+        };
       }),
     );
   }

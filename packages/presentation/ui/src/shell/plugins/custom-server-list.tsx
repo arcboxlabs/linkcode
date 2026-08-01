@@ -1,6 +1,7 @@
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
+import { Skeleton } from 'coss-ui/components/skeleton';
 import { Switch } from 'coss-ui/components/switch';
 import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
@@ -40,7 +41,11 @@ export function CustomServerList({
       }
     >
       <p className="-mt-1 px-1 text-muted-foreground text-xs">{t('customHint')}</p>
-      {rows === undefined || rows.length === 0 ? (
+      {rows === undefined ? (
+        <Card className="px-4 py-4">
+          <Skeleton className="h-10 w-full rounded-lg" />
+        </Card>
+      ) : rows.length === 0 ? (
         <Card className="px-4 py-4">
           <p className="text-muted-foreground text-sm">{t('empty')}</p>
         </Card>

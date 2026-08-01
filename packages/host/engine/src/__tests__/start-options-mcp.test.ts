@@ -240,7 +240,7 @@ describe('custom MCP injection at session start', () => {
     ]);
   });
 
-  it('skips custom MCPs when strict Codex plugin preflight is incomplete', async () => {
+  it('preserves absent MCP config when strict Codex plugin preflight is incomplete', async () => {
     const resolver = new SessionStartOptionsResolver(
       new InMemoryProviderConfigStore(),
       undefined,
@@ -253,7 +253,7 @@ describe('custom MCP injection at session start', () => {
       resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
     );
 
-    expect(options.mcpServers).toEqual([]);
+    expect(options.mcpServers).toBeUndefined();
     expect(warnings).toEqual([{ serverName: 'github', reason: 'provider-preflight-failed' }]);
   });
 });
