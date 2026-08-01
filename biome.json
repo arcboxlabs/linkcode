@@ -10,6 +10,7 @@
     "includes": [
       "**",
       "!.claude",
+      "!.agents/skills",
       "!**/dist",
       "!**/out",
       "!**/build",

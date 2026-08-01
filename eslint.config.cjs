@@ -5,6 +5,7 @@ module.exports = require('eslint-config-sukka').sukka(
     ignores: {
       customGlobs: [
         '.claude/**',
+        '.agents/skills/**', // sync from upstream, tracked by skills-lock.json
         'assets/**',
         '**/dist/**',
         '**/out/**',
