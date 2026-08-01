@@ -1,3 +1,5 @@
+import { revokeDevicePushToken } from '@mobile/runtime/notifications';
+import { useSettingsStore } from '@mobile/stores/settings-store';
 import { noop } from 'foxact/noop';
 import { cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
@@ -39,6 +41,11 @@ export async function signInToCloud(): Promise<void> {
 }
 
 export async function signOutOfCloud(): Promise<void> {
+  const settings = useSettingsStore.getState();
+  if (settings.notificationsEnabled) {
+    await revokeDevicePushToken();
+    settings.setNotificationsEnabled(false);
+  }
   await cloudAuthClient.signOut();
   // Forget the enrollment so a different account signing in on this phone
   // registers the device under itself instead of silently skipping.
