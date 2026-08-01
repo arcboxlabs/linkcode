@@ -17,14 +17,14 @@ import {
   strokeBorder,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
-import { Stack } from 'expo-router';
-import { useTranslations } from 'use-intl';
 import {
   resolveTerminalTheme,
   TERMINAL_COLOR_SCHEMES,
   TERMINAL_FONT_SIZES,
   useTerminalPrefsStore,
-} from '../stores/terminal-prefs-store';
+} from '@mobile/stores/terminal-prefs-store';
+import { Stack } from 'expo-router';
+import { useTranslations } from 'use-intl';
 
 const SWATCH = 24;
 

@@ -1,10 +1,11 @@
 import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
 import { createAdapter, createPluginProviderAdapter } from '@linkcode/agent-adapter';
-import type { Plugin, WorkspaceRecord } from '@linkcode/schema';
+import type { WorkspaceRecord } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
 import { Cause, Effect, FiberSet } from 'effect';
+import { CustomMcpServerService } from './agent/custom-mcp-service';
 import { AgentLoginService } from './agent/login-service';
 import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
@@ -25,6 +26,8 @@ import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
+import { PluginRequestHandler } from './plugin/request-handler';
+import type { PluginDiscoveryResult } from './plugin/service';
 import { PluginService } from './plugin/service';
 import { ArtifactHostService } from './preview/artifact-host-service';
 import { FileHostService } from './preview/file-host-service';
@@ -66,7 +69,7 @@ import { InMemoryWorktreeStore } from './worktree/worktree-store';
 export interface EngineRuntime {
   readonly start: Effect.Effect<void, EngineFailure, Scope.Scope>;
   readonly ensureChatWorkspace: (cwd: string) => Effect.Effect<WorkspaceRecord, EngineFailure>;
-  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<Plugin[]>;
+  readonly listPlugins: (opts?: PluginDiscoveryOptions) => Effect.Effect<PluginDiscoveryResult>;
   readonly stop: Effect.Effect<void>;
 }
 
@@ -81,6 +84,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const runEffect = yield* FiberSet.runtimePromise(taskSet)();
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
+  const customMcp = new CustomMcpServerService(providerStore);
   const records = new SessionRecordRegistry(
     deps.sessionStore ?? new InMemorySessionStore(),
     (sessionId, reason) => {
@@ -173,6 +177,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     providerStore,
     translator,
     deps.simulatorMcp,
+    customMcp,
+    plugins,
   );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,
@@ -222,11 +228,13 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     transport,
     runtimes,
     providerStore,
+    customMcp,
     logins,
     responder,
     factory,
   );
   const browserRequests = new BrowserRequestHandler(transport, browserBroker);
+  const pluginRequests = new PluginRequestHandler(transport, plugins, responder);
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
@@ -234,6 +242,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     asset: assets,
     workspace: workspaceRequests,
     git: gitRequests,
+    plugin: pluginRequests,
     file: fileRequests,
     script: scriptRequests,
     artifact: artifactRequests,

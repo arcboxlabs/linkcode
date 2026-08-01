@@ -28,7 +28,7 @@ async function installOnRuntimeWithoutAbortApi(): Promise<void> {
   // @ts-expect-error -- same as above: the DOM types declare `reason` as always present
   delete AbortSignal.prototype.reason;
   vi.resetModules();
-  await import('../polyfills');
+  await import('@mobile/polyfills');
 }
 
 it('installs throwIfAborted on a runtime that lacks it (CODE-462)', async () => {
@@ -70,7 +70,7 @@ it('falls back to an AbortError when nothing recorded a reason', async () => {
 
 it('leaves a runtime that already has the Abort API untouched', async () => {
   vi.resetModules();
-  await import('../polyfills');
+  await import('@mobile/polyfills');
 
   // Whole descriptors: `toEqual` compares the held functions by reference, and reading `.get` off
   // one would trip @typescript-eslint/unbound-method.

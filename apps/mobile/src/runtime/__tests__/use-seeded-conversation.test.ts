@@ -7,9 +7,9 @@ import type {
   SessionInfo,
   WirePayload,
 } from '@linkcode/schema';
+import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { renderHook, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import { useSeededConversation } from '../use-seeded-conversation';
 import { clientWrapper, connectClient } from './client-test-helpers';
 
 const SESSION = 'session-1' as SessionId;

@@ -28,6 +28,7 @@ export type OperationSubsystem =
   | 'asset'
   | 'filesystem'
   | 'git'
+  | 'plugin'
   | 'preview'
   | 'pty'
   | 'runtime-probe'

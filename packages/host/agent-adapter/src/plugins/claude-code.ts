@@ -1,15 +1,26 @@
 import { execFile } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { chmod, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import type { Plugin, PluginComponent, PluginSource } from '@linkcode/schema';
+import type { Plugin, PluginComponent, PluginSource, StandaloneSkill } from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
+import { isErrorLikeObject } from 'foxts/extract-error-message';
+import { isObjectEmpty } from 'foxts/is-object-empty';
+import { noop } from 'foxts/noop';
 import { z } from 'zod';
 import { agentRuntimeProber, ClaudeCodeProbe } from '../probe';
-import type { PluginDiscoveryOptions, PluginProviderAdapter } from './adapter';
+import type {
+  PluginDiscoveryOptions,
+  PluginProviderAdapter,
+  PluginToggleOptions,
+  SkillToggleTarget,
+} from './adapter';
 
 const execFileAsync = promisify(execFile);
 const GIT_SOURCE_RE = /^(?:https?:\/\/|git@)/;
+const settingsWrites = new Map<string, Promise<void>>();
 
 const ClaudeMarketplaceSchema = z.object({
   name: z.string().min(1),
@@ -26,13 +37,32 @@ const ClaudeInstalledPluginSchema = z.object({
   installPath: z.string().min(1).optional(),
 });
 
+/**
+ * `available[].source` is a union on 2.1.220: a bare path string (`"./external_plugins/asana"`)
+ * or an object carrying its own `source` discriminator. Verified live across 275 entries:
+ * `git-subdir` (url+path+ref+sha), `url` (url+sha), `github` (repo+sha). A stricter shape empties
+ * the whole catalog, since one bad entry fails the array parse.
+ */
+const ClaudeSourceSchema = z.union([
+  z.string().min(1),
+  z.object({
+    source: z.string().min(1),
+    url: z.string().min(1).nullish(),
+    repo: z.string().min(1).nullish(),
+    path: z.string().min(1).nullish(),
+    ref: z.string().min(1).nullish(),
+    sha: z.string().min(1).nullish(),
+  }),
+]);
+
 const ClaudeAvailablePluginSchema = z.object({
   pluginId: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
   marketplaceName: z.string().min(1),
-  version: z.string().min(1).optional(),
-  source: z.string().min(1),
+  // Null for 262 of 275 entries on 2.1.220 — marketplace listings usually carry no version.
+  version: z.string().min(1).nullish(),
+  source: ClaudeSourceSchema,
 });
 
 const ClaudePluginListSchema = z.object({
@@ -59,11 +89,16 @@ type ClaudeMarketplace = z.infer<typeof ClaudeMarketplaceSchema>;
 type ClaudeInstalledPlugin = z.infer<typeof ClaudeInstalledPluginSchema>;
 type ClaudeAvailablePlugin = z.infer<typeof ClaudeAvailablePluginSchema>;
 type ClaudePluginManifest = z.infer<typeof ClaudePluginManifestSchema>;
+type ClaudeSource = z.infer<typeof ClaudeSourceSchema>;
 
 export type ClaudePluginCommand = (
   args: string[],
   opts: PluginDiscoveryOptions,
 ) => Promise<unknown>;
+
+/** Runner for `claude plugin` subcommands with human-text output (no `--json` exists on
+ * enable/disable) — success is exit 0, stdout is discarded. */
+export type ClaudePluginAction = (args: string[], opts: PluginDiscoveryOptions) => Promise<void>;
 
 interface ClaudePluginRecord {
   id: string;
@@ -76,13 +111,18 @@ interface ClaudePackageMetadata {
   components: PluginComponent[];
 }
 
+/** enable/disable verified live on CLI 2.1.220 (`claude plugin enable|disable [-s scope]`);
+ * install/uninstall/update stay unimplemented by this adapter, not unsupported by the CLI. */
 const CLAUDE_MANAGEMENT_CAPABILITIES = {
   install: false,
   uninstall: false,
   update: false,
-  enable: false,
-  disable: false,
+  enable: true,
+  disable: true,
 } as const;
+
+/** `-s` values the CLI accepts (2.1.220); `managed` installs have no toggle flag. */
+const CLAUDE_TOGGLE_SCOPES = new Set<string>(['user', 'project', 'local']);
 
 /**
  * Claude's verified machine-readable plugin surface (CLI 2.1.212): `plugin list --available
@@ -92,7 +132,28 @@ const CLAUDE_MANAGEMENT_CAPABILITIES = {
 export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
   readonly provider = 'claude-code' as const;
 
-  constructor(private readonly command: ClaudePluginCommand = runClaudePluginCommand) {}
+  constructor(
+    private readonly command: ClaudePluginCommand = runClaudePluginCommand,
+    private readonly userSkillsDir: string = join(homedir(), '.claude', 'skills'),
+    private readonly action: ClaudePluginAction = runClaudePluginAction,
+    private readonly userSettingsFile: string = join(homedir(), '.claude', 'settings.json'),
+  ) {}
+
+  /**
+   * Trap verified live on 2.1.220: enable/disable exit 0 even for a plugin that does not exist
+   * (the CLI blind-writes `enabledPlugins`), so exit code alone never proves the toggle landed on
+   * a real install — the engine re-lists after this call and that readback is the success check.
+   */
+  async setPluginEnabled(
+    id: string,
+    enabled: boolean,
+    opts: PluginToggleOptions = {},
+  ): Promise<void> {
+    if (opts.scope === 'managed') throw new Error('claude-code: managed plugins cannot be toggled');
+    const args = ['plugin', enabled ? 'enable' : 'disable', id];
+    if (opts.scope && CLAUDE_TOGGLE_SCOPES.has(opts.scope)) args.push('-s', opts.scope);
+    await this.action(args, { cwd: opts.cwd });
+  }
 
   async list(opts: PluginDiscoveryOptions = {}): Promise<Plugin[]> {
     const [pluginsValue, marketplacesValue] = await Promise.all([
@@ -103,24 +164,225 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     const marketplaces = z.array(ClaudeMarketplaceSchema).parse(marketplacesValue);
     return normalizeClaudePlugins(catalog, marketplaces);
   }
+
+  /** Personal/project Agent Skills are bare `SKILL.md` directories that `claude plugin list`
+   * never surfaces (verified on CLI 2.1.220) — a plain filesystem read is the only source.
+   * Enablement comes from the merged `skillOverrides` map, keyed by skill name. */
+  async listStandaloneSkills(opts: PluginDiscoveryOptions = {}): Promise<StandaloneSkill[]> {
+    const roots: { dir: string; scope: StandaloneSkill['scope'] }[] = [
+      { dir: this.userSkillsDir, scope: 'user' },
+    ];
+    if (opts.cwd) roots.push({ dir: join(opts.cwd, '.claude', 'skills'), scope: 'project' });
+    const [overrides, ...groups] = await Promise.all([
+      this.readSkillOverrides(opts.cwd),
+      ...roots.map(({ dir, scope }) => readClaudeSkillsDirectory(dir, scope)),
+    ]);
+    return groups
+      .flat()
+      .map((skill) => ({ ...skill, enabled: overrides[skill.id] !== 'off', toggleable: true }));
+  }
+
+  /**
+   * The TUI `/skills` dialog persists per-skill state as `skillOverrides` in settings.json; there
+   * is no CLI subcommand, so read-modify-write of that file is the write path. Only the `off`
+   * tier is used here — claude's `name-only`/`user-invocable-only` tiers have no wire
+   * representation yet and are preserved untouched when already present.
+   */
+  async setSkillEnabled(
+    skill: SkillToggleTarget,
+    enabled: boolean,
+    opts: PluginDiscoveryOptions = {},
+  ): Promise<void> {
+    const file = resolve(this.settingsFileFor(skill.scope, opts.cwd));
+    const projectLocal = skill.scope === 'project' && opts.cwd !== undefined;
+    await serializeSettingsWrite(file, async () => {
+      const settings = await readJsonRecord(file);
+      const overrides = isRecord(settings.skillOverrides) ? { ...settings.skillOverrides } : {};
+      if (enabled) {
+        const current = overrides[skill.id];
+        if (current === 'off' || current === undefined) {
+          // Project-local absence can inherit shared `off`, so it needs explicit `on`; user
+          // settings have no lower layer and stay minimal by deleting the key.
+          if (projectLocal) overrides[skill.id] = 'on';
+          else delete overrides[skill.id];
+        }
+      } else {
+        overrides[skill.id] = 'off';
+      }
+      const next: Record<string, unknown> = { ...settings };
+      if (isObjectEmpty(overrides)) delete next.skillOverrides;
+      else next.skillOverrides = overrides;
+      await writeJsonRecordAtomic(file, next);
+    });
+  }
+
+  /** Merged in claude's own precedence order: project-local beats project beats user. */
+  private async readSkillOverrides(cwd: string | undefined): Promise<Record<string, string>> {
+    const files = [this.userSettingsFile];
+    if (cwd) {
+      files.push(
+        join(cwd, '.claude', 'settings.json'),
+        join(cwd, '.claude', 'settings.local.json'),
+      );
+    }
+    const documents = await Promise.all(files.map((file) => readJsonRecord(file)));
+    const merged: Record<string, string> = {};
+    for (const document of documents) {
+      if (!isRecord(document.skillOverrides)) continue;
+      for (const [name, tier] of Object.entries(document.skillOverrides)) {
+        if (typeof tier === 'string') merged[name] = tier;
+      }
+    }
+    return merged;
+  }
+
+  private settingsFileFor(scope: StandaloneSkill['scope'], cwd: string | undefined): string {
+    if (scope === 'project' && cwd) return join(cwd, '.claude', 'settings.local.json');
+    return this.userSettingsFile;
+  }
+}
+
+async function readJsonRecord(file: string): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+    if (!isRecord(parsed)) throw new TypeError(`Expected JSON object in ${file}`);
+    return parsed;
+  } catch (error) {
+    if (isErrorLikeObject(error) && 'code' in error && error.code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
+async function serializeSettingsWrite(file: string, write: () => Promise<void>): Promise<void> {
+  const previous = settingsWrites.get(file) ?? Promise.resolve();
+  const current = previous.catch(noop).then(write);
+  settingsWrites.set(file, current);
+  try {
+    await current;
+  } finally {
+    if (settingsWrites.get(file) === current) settingsWrites.delete(file);
+  }
+}
+
+async function writeJsonRecordAtomic(file: string, value: Record<string, unknown>): Promise<void> {
+  const temporaryFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    let mode = 0o600;
+    try {
+      mode = (await stat(file)).mode & 0o777;
+    } catch (error) {
+      if (!isErrorLikeObject(error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+    }
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(temporaryFile, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode,
+    });
+    await chmod(temporaryFile, mode);
+    await rename(temporaryFile, file);
+  } catch (error) {
+    await unlink(temporaryFile).catch(noop);
+    throw error;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function readClaudeSkillsDirectory(
+  dir: string,
+  scope: StandaloneSkill['scope'],
+): Promise<StandaloneSkill[]> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const reads: Array<Promise<StandaloneSkill | undefined>> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    reads.push(readClaudeSkill(dir, entry.name, scope));
+  }
+  const skills = await Promise.all(reads);
+  return skills
+    .filter((skill) => skill !== undefined)
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function readClaudeSkill(
+  dir: string,
+  id: string,
+  scope: StandaloneSkill['scope'],
+): Promise<StandaloneSkill | undefined> {
+  const path = join(dir, id);
+  let frontmatter;
+  try {
+    frontmatter = parseSkillFrontmatter(await readFile(join(path, 'SKILL.md'), 'utf8'));
+  } catch {
+    return undefined;
+  }
+  return {
+    provider: 'claude-code',
+    id,
+    name: frontmatter.name ?? id,
+    description: frontmatter.description,
+    scope,
+    // Both overwritten by listStandaloneSkills once the merged overrides are known.
+    enabled: true,
+    path,
+    toggleable: false,
+  };
+}
+
+const RE_SKILL_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
+const RE_LINE_BREAK = /\r?\n/;
+
+/** SKILL.md frontmatter is a flat two-key block (name/description, optionally quoted) — a full
+ * YAML parser is unwarranted and would be a new dependency. */
+function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
+  const match = RE_SKILL_FRONTMATTER.exec(content);
+  if (!match) return {};
+  const fields: { name?: string; description?: string } = {};
+  for (const line of match[1].split(RE_LINE_BREAK)) {
+    const separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    if (key !== 'name' && key !== 'description') continue;
+    const raw = line.slice(separator + 1).trim();
+    const unquoted =
+      (raw[0] === '"' && raw.endsWith('"')) || (raw[0] === "'" && raw.endsWith("'"))
+        ? raw.slice(1, -1)
+        : raw;
+    if (unquoted) fields[key] = unquoted;
+  }
+  return fields;
 }
 
 async function runClaudePluginCommand(
   args: string[],
   opts: PluginDiscoveryOptions,
 ): Promise<unknown> {
+  const { stdout } = await execClaudeCli(args, opts);
+  return JSON.parse(stdout) as unknown;
+}
+
+async function runClaudePluginAction(args: string[], opts: PluginDiscoveryOptions): Promise<void> {
+  await execClaudeCli(args, opts);
+}
+
+function execClaudeCli(args: string[], opts: PluginDiscoveryOptions) {
   const binaryPath =
     agentRuntimeProber.resolveBinary('claude-code') ??
     new ClaudeCodeProbe().sdkPlatformBinaryPath();
   if (!binaryPath) throw new Error('claude-code: CLI is not available');
-  const { stdout } = await execFileAsync(binaryPath, args, {
+  return execFileAsync(binaryPath, args, {
     cwd: opts.cwd,
     maxBuffer: 10 * 1024 * 1024,
     timeout: 30000,
     windowsHide: true,
   });
-
-  return JSON.parse(stdout) as unknown;
 }
 
 async function normalizeClaudePlugins(
@@ -172,7 +434,7 @@ async function normalizeClaudePlugin(
     provider: 'claude-code',
     id: record.id,
     name: record.available?.name ?? manifest?.name ?? identity.name,
-    version: record.available?.version ?? manifest?.version,
+    version: record.available?.version ?? manifest?.version ?? undefined,
     description: record.available?.description ?? manifest?.description,
     author: authorName ? { name: authorName } : undefined,
     category: manifest?.category,
@@ -204,9 +466,11 @@ function claudePluginIdentity(id: string): { name: string; marketplaceName?: str
 }
 
 function claudePackagePath(
-  source: string,
+  source: ClaudeSource | undefined,
   marketplace: ClaudeMarketplace | undefined,
 ): string | undefined {
+  // Only a path-shaped string resolves to a local package root; object sources are remote.
+  if (typeof source !== 'string') return undefined;
   if (isAbsolute(source)) return source;
   const marketplacePath = marketplace?.installLocation ?? marketplace?.path;
   if (marketplacePath && (source.startsWith('./') || source.startsWith('../'))) {
@@ -221,6 +485,19 @@ function claudePluginSource(
   packagePath: string | undefined,
 ): PluginSource | undefined {
   const source = record.available?.source;
+  if (source !== undefined && typeof source !== 'string') {
+    const url = source.url ?? (source.repo ? `https://github.com/${source.repo}.git` : undefined);
+    if (url) {
+      return {
+        type: 'git',
+        url,
+        path: source.path ?? undefined,
+        ref: source.ref ?? undefined,
+        commit: source.sha ?? undefined,
+      };
+    }
+    return { type: 'remote' };
+  }
   const availablePath = source ? claudePackagePath(source, marketplace) : undefined;
   if (availablePath) return { type: 'local', path: availablePath };
   if (source && GIT_SOURCE_RE.test(source)) return { type: 'git', url: source };

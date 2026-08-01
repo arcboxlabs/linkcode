@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.17.0](https://github.com/arcboxlabs/linkcode/compare/v0.16.0...v0.17.0) (2026-08-01)
+
+
+### Features
+
+* **plugins:** plugins, MCP, and skills management on the provider-plugin model ([#344](https://github.com/arcboxlabs/linkcode/issues/344)) ([cc7ca6c](https://github.com/arcboxlabs/linkcode/commit/cc7ca6c786574295ed30150c4225d47a540d6696))
+
+## [0.16.0](https://github.com/arcboxlabs/linkcode/compare/v0.15.1...v0.16.0) (2026-08-01)
+
+
+### Features
+
+* **agent-adapter:** report each agent's configured default model and effort ([9aab5dc](https://github.com/arcboxlabs/linkcode/commit/9aab5dc240a188b5bc412c1bf20f04f7e58e0b13))
+* **desktop:** show update download progress ([#362](https://github.com/arcboxlabs/linkcode/issues/362)) ([9fe3aa8](https://github.com/arcboxlabs/linkcode/commit/9fe3aa8b3d954e65fbe417505749f0074e70d9af))
+* **resources:** show current plan in panel ([#358](https://github.com/arcboxlabs/linkcode/issues/358)) ([a0a7aab](https://github.com/arcboxlabs/linkcode/commit/a0a7aabe11c2c0648b2f832fbc1c9fae8ffb4ee5))
+* **schema:** carry the agent's own default model and effort in the start catalog ([0c6c7ee](https://github.com/arcboxlabs/linkcode/commit/0c6c7ee237e4ddce3cb3d2139c1c6456dd8e527b))
+* **ui:** prefer the agent's configured default over the built-in model guess ([b72a1aa](https://github.com/arcboxlabs/linkcode/commit/b72a1aa2a55b75ef3d1dafacf12100506f9642c7))
+
+
+### Bug Fixes
+
+* **agent-adapter:** read codex config.toml from the app-server environment ([9f3161d](https://github.com/arcboxlabs/linkcode/commit/9f3161da623341f81212222c76a121c97bee867e))
+* **daemon:** bound AI gateway startup ([00608da](https://github.com/arcboxlabs/linkcode/commit/00608da8cac6894a3b0383c103ad2fc530f5b53a))
+* **ui:** keep a catalog effort with the model it belongs to ([f8cf515](https://github.com/arcboxlabs/linkcode/commit/f8cf515a955e670326bc06d367f79c52943d6546))
+* **ui:** preserve local font query receiver ([b6a5faa](https://github.com/arcboxlabs/linkcode/commit/b6a5faaa69dbd4451fc65a0cbcff2b7cea401561))
+
 ## [0.15.1](https://github.com/arcboxlabs/linkcode/compare/v0.15.0...v0.15.1) (2026-08-01)
 
 

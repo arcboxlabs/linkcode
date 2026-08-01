@@ -3,6 +3,7 @@ import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentInput,
   ContentBlock,
+  McpWarning,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -165,6 +166,7 @@ export class SessionOrchestrator {
     replyTo: string | undefined,
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+    mcpWarnings: readonly McpWarning[] = [],
   ): Effect.Effect<void, EngineFailure> {
     const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
     const { browserTools } = this;
@@ -190,7 +192,14 @@ export class SessionOrchestrator {
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           if (replyTo !== undefined) {
-            transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+            transport.send(
+              createWireMessage({
+                kind: 'session.started',
+                replyTo,
+                sessionId,
+                ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
+              }),
+            );
           }
         });
         yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));

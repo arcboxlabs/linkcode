@@ -1,4 +1,10 @@
-import type { HistoryListClientOptions, HistoryReadClientOptions } from '@linkcode/client-core';
+import type {
+  HistoryListClientOptions,
+  HistoryReadClientOptions,
+  PluginList,
+  PluginMutation,
+  SessionStartResult,
+} from '@linkcode/client-core';
 import type {
   Accounts,
   AgentHistoryId,
@@ -8,6 +14,8 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitBranchList,
@@ -26,6 +34,8 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -38,6 +48,8 @@ import type {
   SessionRecord,
   SessionResource,
   SessionResourceId,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -54,6 +66,12 @@ export function listSessions(options?: Options): RequestResult<SessionInfo[]> {
 
 export function startSession(options: Options<{ opts: StartOptions }>): RequestResult<SessionId> {
   return resolveClient(options).startSession(options.opts);
+}
+
+export function startSessionWithWarnings(
+  options: Options<{ opts: StartOptions }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).startSessionWithWarnings(options.opts);
 }
 
 export function getAgentCatalog(
@@ -106,6 +124,12 @@ export function resumeSession(
   return resolveClient(options).resumeSession(options.sessionId);
 }
 
+export function resumeSessionWithWarnings(
+  options: Options<{ sessionId: SessionId }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).resumeSessionWithWarnings(options.sessionId);
+}
+
 export function importSession(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId }>,
 ): RequestResult<SessionRecord> {
@@ -128,6 +152,16 @@ export function resumeHistory(
   options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; startOpts: StartOptions }>,
 ): RequestResult<SessionId> {
   return resolveClient(options).resumeHistory(
+    options.agentKind,
+    options.historyId,
+    options.startOpts,
+  );
+}
+
+export function resumeHistoryWithWarnings(
+  options: Options<{ agentKind: AgentKind; historyId: AgentHistoryId; startOpts: StartOptions }>,
+): RequestResult<SessionStartResult> {
+  return resolveClient(options).resumeHistoryWithWarnings(
     options.agentKind,
     options.historyId,
     options.startOpts,
@@ -212,6 +246,69 @@ export function getAccounts(options?: Options): RequestResult<Accounts> {
 
 export function setAccounts(options: Options<{ accounts: Accounts }>): RequestResult<{ ok: true }> {
   return resolveClient(options).setAccounts(options.accounts);
+}
+
+/** Masked custom MCP servers — env/header keys only, never a secret value. */
+export function getCustomMcpServers(options?: Options): RequestResult<CustomMcpServerPublic[]> {
+  return resolveClient(options).getCustomMcpServers();
+}
+
+export function setCustomMcpServers(
+  options: Options<{ patches: CustomMcpServerPatchOp[] }>,
+): RequestResult<{ ok: true }> {
+  return resolveClient(options).setCustomMcpServers(options.patches);
+}
+
+/** Discover provider plugins + standalone skills. Slow (a CLI shell-out on the daemon) —
+ * consumers refresh manually, never on focus. */
+export function getPlugins(options?: Options<{ cwd?: string }>): RequestResult<PluginList> {
+  return resolveClient(options).listPlugins(options?.cwd);
+}
+
+/** Toggle a plugin; resolves with the re-listed plugin so callers patch one cache entry. */
+export function setPluginEnabled(
+  options: Options<{
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }>,
+): RequestResult<PluginMutation> {
+  const { provider, id, enabled, scope, cwd } = options;
+  return resolveClient(options).setPluginEnabled({ provider, id, enabled, scope, cwd });
+}
+
+/** Install a catalog entry. Only providers reporting `managementCapabilities.install` accept it;
+ * the result names any provider apps the install left unauthorized. */
+export function installPlugin(
+  options: Options<{ provider: PluginProvider; id: string; cwd?: string }>,
+): RequestResult<PluginMutation> {
+  const { provider, id, cwd } = options;
+  return resolveClient(options).installPlugin({ provider, id, cwd });
+}
+
+/** Uninstall a plugin; resolves with the marketplace entry that survives, now uninstalled. */
+export function uninstallPlugin(
+  options: Options<{ provider: PluginProvider; id: string; cwd?: string }>,
+): RequestResult<PluginMutation> {
+  const { provider, id, cwd } = options;
+  return resolveClient(options).uninstallPlugin({ provider, id, cwd });
+}
+
+/** Toggle one skill; resolves with the re-read skill so callers patch one cache entry. */
+export function setSkillEnabled(
+  options: Options<{
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }>,
+): RequestResult<StandaloneSkill> {
+  const { provider, skillId, path, scope, enabled, cwd } = options;
+  return resolveClient(options).setSkillEnabled({ provider, skillId, path, scope, enabled, cwd });
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

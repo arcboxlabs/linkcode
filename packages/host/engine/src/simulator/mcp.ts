@@ -1,15 +1,4 @@
-import type { AgentKind, McpServer, SessionId } from '@linkcode/schema';
-
-/**
- * Agent kinds whose SDKs accept MCP server configuration. pi runs in-process with no MCP support
- * at all, and grok-build's headless CLI exposes none — the engine never injects for those, and
- * their adapters loudly reject explicit `mcpServers` rather than silently dropping them.
- */
-export const MCP_CAPABLE_AGENT_KINDS: ReadonlySet<AgentKind> = new Set([
-  'claude-code',
-  'codex',
-  'opencode',
-]);
+import type { McpServer, SessionId } from '@linkcode/schema';
 
 /**
  * Daemon-owned provider of the per-session simulator MCP endpoint (CODE-395). The daemon mints a

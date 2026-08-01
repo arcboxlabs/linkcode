@@ -40,6 +40,32 @@ describe('LinkCodeClient control API', () => {
     });
     await expect(client.createGitBranch('/repo', 'feature')).resolves.toEqual({ ok: true });
     await expect(client.commitGitChanges('/repo', 'save')).resolves.toEqual({ ok: true });
+
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('preserves MCP warnings on detailed session-start results', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    serverTransport.onMessage((msg) => {
+      if (msg.payload.kind !== 'session.start') return;
+      serverTransport.send(
+        createWireMessage({
+          kind: 'session.started',
+          replyTo: msg.payload.clientReqId,
+          sessionId,
+          mcpWarnings: [{ serverName: 'github', reason: 'provider-unsupported' }],
+        }),
+      );
+    });
+
+    await expect(client.startSessionWithWarnings({ kind: 'codex', cwd: '/repo' })).resolves.toEqual(
+      {
+        sessionId,
+        mcpWarnings: [{ serverName: 'github', reason: 'provider-unsupported' }],
+      },
+    );
+
     client.dispose();
     serverTransport.close();
   });

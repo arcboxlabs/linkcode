@@ -3,12 +3,12 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { TerminalId, TerminalMetadata, TerminalReplayEvent } from '@linkcode/schema';
+import type { TerminalRendererRef } from '@mobile/runtime/use-terminal-session';
+import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { noop } from 'foxts/noop';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TerminalRendererRef } from '../../components/terminal-renderer.types';
-import { useTerminalSession } from '../use-terminal-session';
 import { stubClient } from './stub-client';
 
 const TERMINAL_ID = 'term-1' as TerminalId;

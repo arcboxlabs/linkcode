@@ -21,6 +21,7 @@ import {
   HistoryIcon,
   InfoIcon,
   KeyRoundIcon,
+  PuzzleIcon,
   SendIcon,
   SettingsIcon,
   SunMoonIcon,
@@ -41,6 +42,7 @@ import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
 import { ImChannelTab } from './im-channel-tab';
 import { NotificationsTab } from './notifications-tab';
+import { PluginsTab } from './plugins-tab';
 import { ProvidersTab } from './providers-tab';
 import type { SettingsCategory } from './store';
 import { useDesktopSettingsStore } from './store';
@@ -146,6 +148,14 @@ export function SettingsView(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: category === 'providers',
           onClick: () => setCategory('providers'),
+        },
+        {
+          key: 'plugins',
+          icon: <PuzzleIcon className="size-4" />,
+          label: t('tabs.plugins'),
+          keywords: searchKeywords.plugins,
+          active: category === 'plugins',
+          onClick: () => setCategory('plugins'),
         },
         {
           key: 'imChannel',
@@ -299,6 +309,8 @@ function renderSettingsPanel(
       return <AboutTab />;
     case 'providers':
       return <ProvidersTab />;
+    case 'plugins':
+      return <PluginsTab />;
     case 'agents':
       return <AgentsTab />;
     case 'imChannel':

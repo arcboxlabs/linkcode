@@ -3,6 +3,9 @@ import type {
   AssetSettledEvent,
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  PluginList,
+  PluginMutation,
+  SessionStartResult,
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
@@ -14,6 +17,8 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitBranchList,
@@ -32,6 +37,8 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -45,6 +52,8 @@ import type {
   SessionRecord,
   SessionResource,
   SessionResourceId,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   WorkspaceFile,
   WorkspaceId,
@@ -114,6 +123,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.startSession(opts));
   }
 
+  startSessionWithWarnings(opts: StartOptions): RequestResult<SessionStartResult> {
+    return toResult(this.raw.startSessionWithWarnings(opts));
+  }
+
   getAgentCatalog(agentKind: AgentKind, cwd?: string): RequestResult<AgentStartCatalog> {
     return toResult(this.raw.getAgentCatalog(agentKind, cwd));
   }
@@ -153,6 +166,10 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.resumeSession(sessionId));
   }
 
+  resumeSessionWithWarnings(sessionId: SessionId): RequestResult<SessionStartResult> {
+    return toResult(this.raw.resumeSessionWithWarnings(sessionId));
+  }
+
   /** Import a provider-local history session as a cold record (listed, not started). */
   importSession(agentKind: AgentKind, historyId: AgentHistoryId): RequestResult<SessionRecord> {
     return toResult(this.raw.importSession(agentKind, historyId));
@@ -178,6 +195,14 @@ export class LinkCodeSdkClient {
     startOpts: StartOptions,
   ): RequestResult<SessionId> {
     return toResult(this.raw.resumeHistory(agentKind, historyId, startOpts));
+  }
+
+  resumeHistoryWithWarnings(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): RequestResult<SessionStartResult> {
+    return toResult(this.raw.resumeHistoryWithWarnings(agentKind, historyId, startOpts));
   }
 
   sendInput(sessionId: SessionId, input: AgentInput): RequestResult<{ ok: true }> {
@@ -242,6 +267,62 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned global account pool (data plane). */
   setAccounts(accounts: Accounts): RequestResult<{ ok: true }> {
     return toResult(this.raw.setAccounts(accounts));
+  }
+
+  /** Masked custom MCP servers (data plane) — env/header keys only, never a secret value. */
+  getCustomMcpServers(): RequestResult<CustomMcpServerPublic[]> {
+    return toResult(this.raw.getCustomMcpServers());
+  }
+
+  /** Apply custom-MCP patch ops (add / per-key secret update / remove). */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setCustomMcpServers(patches));
+  }
+
+  /** Discover provider plugins + standalone skills (slow: a CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): RequestResult<PluginList> {
+    return toResult(this.raw.listPlugins(cwd));
+  }
+
+  /** Toggle a plugin; resolves with the re-listed plugin for single-entry cache patching. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): RequestResult<PluginMutation> {
+    return toResult(this.raw.setPluginEnabled(params));
+  }
+
+  /** Install a catalog entry the host does not have yet. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): RequestResult<PluginMutation> {
+    return toResult(this.raw.installPlugin(params));
+  }
+
+  /** Uninstall a plugin; the marketplace entry survives with no installations. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): RequestResult<PluginMutation> {
+    return toResult(this.raw.uninstallPlugin(params));
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): RequestResult<StandaloneSkill> {
+    return toResult(this.raw.setSkillEnabled(params));
   }
 
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

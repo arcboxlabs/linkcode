@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import process from 'node:process';
 import { logger } from '../logger';
@@ -51,7 +51,7 @@ export interface SecretStore {
  * impossible. Domain knowledge (which keys exist, what they mean) belongs to the owning module, not
  * here — this is only the list of who has a slice.
  */
-export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'device';
+export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'custom-mcp' | 'device';
 
 export type SecretProtection = 'os-keyring' | 'plaintext';
 
@@ -104,7 +104,16 @@ export function createSecretVault(file: string, loadKey: () => MasterKey | null)
       data: encrypted ? encrypt(key, JSON.stringify(map)) : map,
       ...(distrusted && { keyringDistrusted: true }),
     };
-    writeFileSync(file, `${JSON.stringify({ v: 1, ...document })}\n`, { mode: 0o600 });
+    const temporaryFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temporaryFile, `${JSON.stringify({ v: 1, ...document })}\n`, { mode: 0o600 });
+      renameSync(temporaryFile, file);
+    } catch (error) {
+      try {
+        unlinkSync(temporaryFile);
+      } catch {}
+      throw error;
+    }
   };
 
   // Either transition must land without waiting for a write from the caller: an upgrade (plaintext
@@ -131,19 +140,48 @@ export function createSecretVault(file: string, loadKey: () => MasterKey | null)
         protection,
         get: (key) => secrets.get(prefix + key) ?? null,
         set(key, secret) {
-          secrets.set(prefix + key, secret);
-          persist();
+          const ref = prefix + key;
+          const previous = secrets.get(ref);
+          secrets.set(ref, secret);
+          try {
+            persist();
+          } catch (error) {
+            if (previous === undefined) secrets.delete(ref);
+            else secrets.set(ref, previous);
+            throw error;
+          }
         },
         delete(key) {
-          if (!secrets.delete(prefix + key)) return;
-          persist();
+          const ref = prefix + key;
+          const previous = secrets.get(ref);
+          if (previous === undefined) return;
+          secrets.delete(ref);
+          try {
+            persist();
+          } catch (error) {
+            secrets.set(ref, previous);
+            throw error;
+          }
         },
         replaceAll(entries) {
+          const previous = new Map<string, string>();
           for (const ref of secrets.keys()) {
-            if (ref.startsWith(prefix)) secrets.delete(ref);
+            if (ref.startsWith(prefix)) {
+              const value = secrets.get(ref);
+              if (value !== undefined) previous.set(ref, value);
+              secrets.delete(ref);
+            }
           }
           for (const [key, secret] of entries) secrets.set(prefix + key, secret);
-          persist();
+          try {
+            persist();
+          } catch (error) {
+            for (const ref of secrets.keys()) {
+              if (ref.startsWith(prefix)) secrets.delete(ref);
+            }
+            for (const [ref, secret] of previous) secrets.set(ref, secret);
+            throw error;
+          }
         },
       };
     },

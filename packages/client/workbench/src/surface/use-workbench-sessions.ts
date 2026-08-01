@@ -7,11 +7,18 @@ import type {
   SessionModeId,
   WorkspaceId,
 } from '@linkcode/schema';
-import { deleteSession, listSessions, resumeSession, startSession } from '@linkcode/sdk';
+import {
+  deleteSession,
+  listSessions,
+  resumeSessionWithWarnings,
+  startSessionWithWarnings,
+} from '@linkcode/sdk';
 import { withoutAutomationSessions } from '@linkcode/ui';
+import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useDeferredValue, useMemo, useRef } from 'react';
+import { useTranslations } from 'use-intl';
 import { captureProductEvent } from '../analytics/product-analytics';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
@@ -63,10 +70,11 @@ const LANDING_DRAFT: WorkbenchSessionDraft = { workspaceId: null };
  * cold session resumes it in place (same id).
  */
 export function useWorkbenchSessions(onError: (err: unknown) => void): WorkbenchSessions {
+  const tMcpWarnings = useTranslations('workbench.mcpWarnings');
   const { data: remoteSessions, isLoading, mutate } = useData(listSessions, {});
-  const createMutation = useMutation(startSession, { onError });
+  const createMutation = useMutation(startSessionWithWarnings, { onError });
   const closeMutation = useMutation(deleteSession, { onError });
-  const resumeMutation = useMutation(resumeSession, { onError });
+  const resumeMutation = useMutation(resumeSessionWithWarnings, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
   const setSelectedId = useSessionSelectionStore((state) => state.setSelectedId);
   // Shared, not hook-local: a selection applied from another instance must clear the draft the
@@ -140,7 +148,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     if (sessionById(sessions, id)?.status === 'stopped') {
       void resumeMutation
         .trigger({ sessionId: id })
-        .then(() => mutate())
+        .then((result) => {
+          showMcpWarnings(result.mcpWarnings, tMcpWarnings);
+          return mutate();
+        })
         .catch(noop);
     }
   }
@@ -199,7 +210,9 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     // reports them via the error banner.
     let sessionId: SessionId;
     try {
-      sessionId = await createMutation.trigger({ opts });
+      const result = await createMutation.trigger({ opts });
+      sessionId = result.sessionId;
+      showMcpWarnings(result.mcpWarnings, tMcpWarnings);
     } catch (error) {
       captureProductEvent('thread create failed', {
         agent_kind: opts.kind,
@@ -253,6 +266,20 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     close,
     refresh,
   };
+}
+
+function showMcpWarnings(
+  warnings: ReadonlyArray<{ serverName: string; reason: string }>,
+  translate: (key: 'title' | 'description', values?: Record<string, string>) => string,
+): void {
+  if (warnings.length === 0) return;
+  toastManager.add({
+    type: 'warning',
+    title: translate('title'),
+    description: translate('description', {
+      warnings: warnings.map(({ serverName, reason }) => `${serverName}: ${reason}`).join(' · '),
+    }),
+  });
 }
 
 function sessionById(

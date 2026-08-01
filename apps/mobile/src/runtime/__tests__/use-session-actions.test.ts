@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import type { SessionId } from '@linkcode/schema';
+import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import { useSessionActions } from '../use-session-actions';
 import { clientWrapper, connectClient } from './client-test-helpers';
 
 const SESSION = 'session-1' as SessionId;
