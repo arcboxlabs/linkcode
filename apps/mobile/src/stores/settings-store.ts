@@ -8,25 +8,36 @@ export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark']);
 export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
 
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
-const PersistedSettingsSchema = z.object({ themePreference: ThemePreferenceSchema }).partial();
+const PersistedSettingsSchema = z
+  .object({ themePreference: ThemePreferenceSchema, keepHostsConnected: z.boolean() })
+  .partial();
 type PersistedSettings = z.infer<typeof PersistedSettingsSchema>;
 
 export interface SettingsState {
   themePreference: ThemePreference;
+  /** Hold every saved host's connection open, not just the selected one. Off by default: a phone
+   * pays for each socket in bytes and battery, and only one host is on screen at a time. */
+  keepHostsConnected: boolean;
   setThemePreference: (preference: ThemePreference) => void;
+  setKeepHostsConnected: (keep: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   zodPersist<SettingsState, [], [], PersistedSettings, PersistedSettings>(
     (set) => ({
       themePreference: 'system',
+      keepHostsConnected: false,
       setThemePreference: (preference) => set({ themePreference: preference }),
+      setKeepHostsConnected: (keep) => set({ keepHostsConnected: keep }),
     }),
     {
-      name: 'linkcode.mobile.settings:v1',
+      name: 'linkcode.mobile.settings:v2',
       schema: PersistedSettingsSchema,
       storage: createJSONStorage(() => Storage),
-      partialize: (state) => ({ themePreference: state.themePreference }),
+      partialize: (state) => ({
+        themePreference: state.themePreference,
+        keepHostsConnected: state.keepHostsConnected,
+      }),
     },
   ),
 );

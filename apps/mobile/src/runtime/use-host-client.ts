@@ -1,14 +1,11 @@
-import type { ConnectionSource } from '@linkcode/client-core';
-import { ConnectionController, LinkCodeClient } from '@linkcode/client-core';
+import type { LinkCodeClient } from '@linkcode/client-core';
 import type { HostProfile } from '@mobile/stores/host-store';
 import NetInfo from '@react-native-community/netinfo';
-import { randomUUID } from 'expo-crypto';
 import { noop } from 'foxact/noop';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
-import { createHostTransport } from './create-host-transport';
-import { captureMobileProductEvent } from './product-analytics';
+import { connectionFor } from './host-connection-pool';
 
 export type HostConnectionStatus = 'connecting' | 'ready' | 'error';
 
@@ -36,29 +33,16 @@ interface HostClientPending extends HostClientBase {
 export type HostClientState = HostClientReady | HostClientPending;
 
 /**
- * One host's connection lifecycle, on the shared {@link ConnectionController}: a dropped socket
- * recovers on its own with capped backoff, and regaining the network or returning to the foreground
- * cuts the remaining wait short instead of letting the user stare at a stale screen.
+ * One host's connection lifecycle. The connection itself belongs to the pool, so switching to a
+ * host that is already warm costs a subscription rather than a handshake, and this hook never
+ * disposes anything — {@link pruneConnections} decides what survives.
  *
  * `retrying` is reported as `connecting` — the distinction is in `attempt`, so a caller that only
- * branches on the three statuses needs no change. Callers must key this hook's component by
- * `host.id`; the render-time reset below is only a backstop.
+ * branches on the three statuses needs no change.
  */
 export function useHostClient(host: HostProfile): HostClientState {
-  const [controller, setController] = useState(() => createController(host));
-
-  const [trackedId, setTrackedId] = useState(host.id);
-  if (trackedId !== host.id) {
-    setTrackedId(host.id);
-    setController(createController(host));
-  }
-
+  const controller = connectionFor(host);
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-
-  useEffect(() => {
-    controller.start();
-    return () => controller.dispose();
-  }, [controller]);
 
   // Both triggers only ever hurry a stalled connection along; neither tears down a healthy one.
   useEffect(() => {
@@ -99,27 +83,4 @@ export function useHostClient(host: HostProfile): HostClientState {
         retry,
         status: snapshot.status === 'error' ? 'error' : 'connecting',
       };
-}
-
-function createController(host: HostProfile): ConnectionController<LinkCodeClient> {
-  const source: ConnectionSource = {
-    resolve: () => ({
-      endpoint: 'url' in host ? host.url : host.tunnelHostId,
-      transport: createHostTransport(host),
-    }),
-  };
-  return new ConnectionController(source, {
-    createClient: (transport) => new LinkCodeClient(transport, { randomUUID }),
-    onOutcome(outcome) {
-      captureMobileProductEvent(
-        outcome.status === 'ready' ? 'host connection ready' : 'host connection failed',
-        { duration_ms: outcome.durationMs },
-      );
-    },
-    // ~13s of dialing (250·2ⁿ capped at 5s), then stop and surface `error`. Unbounded retries
-    // would drain a phone in someone's pocket and never give up on a permanent failure — a wire
-    // version mismatch cannot heal. The AppState/NetInfo triggers restart a run when something
-    // actually changed, which is the only time another attempt can succeed.
-    retry: { retries: 6 },
-  });
 }

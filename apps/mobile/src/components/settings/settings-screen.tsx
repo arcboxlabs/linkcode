@@ -38,6 +38,8 @@ export function SettingsScreen(): React.ReactNode {
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const themePreference = useSettingsStore((state) => state.themePreference);
   const setThemePreference = useSettingsStore((state) => state.setThemePreference);
+  const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
+  const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
 
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
   // proposed the whole window and paints straight over the large title.
@@ -68,6 +70,14 @@ export function SettingsScreen(): React.ReactNode {
             <NavigationRow
               title={t('terminalAppearance')}
               onPress={() => router.push('/terminal-appearance')}
+            />
+          </Section>
+
+          <Section title={t('connections')} footer={<Text>{t('keepHostsConnectedHint')}</Text>}>
+            <Toggle
+              isOn={keepHostsConnected}
+              onIsOnChange={setKeepHostsConnected}
+              label={t('keepHostsConnected')}
             />
           </Section>
 
