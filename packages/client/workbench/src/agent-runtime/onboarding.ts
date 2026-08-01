@@ -221,7 +221,7 @@ export function useAgentRuntimeOnboarding(): {
   cues: AgentRuntimeCues;
   download: (kind: AgentKind) => void;
   acknowledgeUnverified: (kind: AgentKind) => void;
-  login: (kind: AgentKind, onSuccess?: () => void) => void;
+  login: (kind: AgentKind) => void;
   submitLoginCode: (kind: AgentKind, code: string) => void;
   cancelLogin: (kind: AgentKind) => void;
 } {
@@ -312,7 +312,7 @@ export function useAgentRuntimeOnboarding(): {
     });
   }
 
-  function login(kind: AgentKind, onSuccess?: () => void): void {
+  function login(kind: AgentKind): void {
     const entry = { loginId: undefined as string | undefined, cancelled: false };
     activeLoginsRef.current.set(kind, entry);
     setLogin(kind, { kind: 'opening' });
@@ -333,10 +333,8 @@ export function useAgentRuntimeOnboarding(): {
             activeLoginsRef.current.delete(kind);
             // Success: the re-probe push flips the runtime to logged-in and drops the cue. Cancel:
             // back to the idle login button. Failure: show the error with a retry.
-            if (ok || entry.cancelled) {
-              setLogin(kind, undefined);
-              if (ok) onSuccess?.();
-            } else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
+            if (ok || entry.cancelled) setLogin(kind, undefined);
+            else setLogin(kind, { kind: 'failed', error: error ?? 'login failed' });
           },
         });
       })

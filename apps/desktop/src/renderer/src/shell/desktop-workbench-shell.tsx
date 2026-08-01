@@ -12,8 +12,8 @@ export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps)
       systemBridge={systemBridge}
       header={header}
       onOpenSettings={() => openDesktopSettings()}
-      onOpenProviderSettings={(kind) => {
-        useProvidersSettingsStore.getState().startAgentSetup(kind);
+      onOpenProviderSettings={() => {
+        useProvidersSettingsStore.getState().startAdd();
         openDesktopSettings('providers');
       }}
       onOpenAutomations={() => useNavigationHistoryStore.getState().openOverlay('automations')}

@@ -1,4 +1,3 @@
-import type { AgentKind } from '@linkcode/schema';
 import { create } from 'zustand';
 
 /**
@@ -10,8 +9,6 @@ export type ProvidersSettingsView =
   | { kind: 'browse' }
   | { kind: 'add-catalog' }
   | { kind: 'add-form'; service: string }
-  | { kind: 'agent-setup'; agent: AgentKind }
-  | { kind: 'agent-login'; agent: AgentKind }
   | { kind: 'account'; accountId: string; editing: boolean };
 
 interface ProvidersSettingsState {
@@ -21,8 +18,6 @@ interface ProvidersSettingsState {
   startEdit: () => void;
   backToAccount: () => void;
   startAdd: () => void;
-  startAgentSetup: (agent: AgentKind) => void;
-  startAgentLogin: (agent: AgentKind) => void;
   pickService: (service: string) => void;
   backToCatalog: () => void;
   closeDialog: () => void;
@@ -44,8 +39,6 @@ export const useProvidersSettingsStore = create<ProvidersSettingsState>()((set) 
         : { view: state.view },
     ),
   startAdd: () => set({ view: { kind: 'add-catalog' } }),
-  startAgentSetup: (agent) => set({ view: { kind: 'agent-setup', agent } }),
-  startAgentLogin: (agent) => set({ view: { kind: 'agent-login', agent } }),
   pickService: (service) => set({ view: { kind: 'add-form', service } }),
   backToCatalog: () => set({ view: { kind: 'add-catalog' } }),
   closeDialog: () => set({ view: { kind: 'browse' } }),

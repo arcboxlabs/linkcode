@@ -59,8 +59,8 @@ export function WebWorkbenchShell({
         <ShellFrame
           {...props}
           showPlanInPromptDock={!resourcesSurfaceOpen}
-          onOpenProviderSettings={(kind) => {
-            useProvidersSettingsStore.getState().startAgentSetup(kind);
+          onOpenProviderSettings={() => {
+            useProvidersSettingsStore.getState().startAdd();
             void navigate('/settings/providers');
           }}
           onOpenAutomations={() => {
