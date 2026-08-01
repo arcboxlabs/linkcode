@@ -2,7 +2,7 @@ import type { UpdaterState } from '@linkcode/ipc';
 import { useSyncExternalStore } from 'react';
 import { systemBridge } from './ipc';
 
-let snapshot: UpdaterState = { status: 'idle', version: null };
+let snapshot: UpdaterState = { status: 'idle', version: null, progress: null };
 const listeners = new Set<() => void>();
 let unsubscribe: (() => void) | undefined;
 
@@ -22,7 +22,9 @@ function subscribe(listener: () => void): () => void {
         if (snapshot === pendingSnapshot) publish(state);
       })
       .catch(() => {
-        if (snapshot === pendingSnapshot) publish({ status: 'error', version: null });
+        if (snapshot === pendingSnapshot) {
+          publish({ status: 'error', version: null, progress: null });
+        }
       });
   }
 

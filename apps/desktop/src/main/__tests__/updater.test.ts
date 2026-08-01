@@ -46,10 +46,18 @@ describe('desktop updater', () => {
     const updater = await import('../updater');
 
     updater.checkForUpdates();
-    expect(updater.getUpdaterState()).toEqual({ status: 'checking', version: null });
+    expect(updater.getUpdaterState()).toEqual({
+      status: 'checking',
+      version: null,
+      progress: null,
+    });
 
     await mocks.autoUpdater.checkForUpdates.mock.results[0]?.value;
-    expect(updater.getUpdaterState()).toEqual({ status: 'not-available', version: null });
+    expect(updater.getUpdaterState()).toEqual({
+      status: 'not-available',
+      version: null,
+      progress: null,
+    });
   });
 
   it('polls every four hours and preserves a downloaded update until installation', async () => {
@@ -66,11 +74,24 @@ describe('desktop updater', () => {
 
     emit('update-available', { version: '0.13.0' });
     emit('download-progress', { percent: 50 });
+    expect(updater.getUpdaterState()).toEqual({
+      status: 'downloading',
+      version: '0.13.0',
+      progress: 50,
+    });
     emit('update-downloaded', { version: '0.13.0' });
 
-    expect(updater.getUpdaterState()).toEqual({ status: 'downloaded', version: '0.13.0' });
-    expect(states).toContainEqual({ status: 'available', version: '0.13.0' });
-    expect(states).toContainEqual({ status: 'downloading', version: '0.13.0' });
+    expect(updater.getUpdaterState()).toEqual({
+      status: 'downloaded',
+      version: '0.13.0',
+      progress: null,
+    });
+    expect(states).toContainEqual({ status: 'available', version: '0.13.0', progress: null });
+    expect(states).toContainEqual({
+      status: 'downloading',
+      version: '0.13.0',
+      progress: 50,
+    });
 
     await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
