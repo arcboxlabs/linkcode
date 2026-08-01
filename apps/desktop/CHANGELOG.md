@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.18.0](https://github.com/arcboxlabs/linkcode/compare/v0.17.0...v0.18.0) (2026-08-01)
+
+
+### Features
+
+* **desktop,agent-adapter:** API-key / relay login on the signed-out agent card ([#350](https://github.com/arcboxlabs/linkcode/issues/350)) ([39298ae](https://github.com/arcboxlabs/linkcode/commit/39298ae05a8e819da6cf7ef4548efd2e886816c6))
+* **git:** add local branch workflows to new sessions ([7a023ef](https://github.com/arcboxlabs/linkcode/commit/7a023ef818bf621e62e99507de82182a6450dcc2))
+* **git:** add local branch workflows to new sessions ([#376](https://github.com/arcboxlabs/linkcode/issues/376)) ([200753c](https://github.com/arcboxlabs/linkcode/commit/200753c604c6a6d96ff6d66f500035cf1681bde2))
+
+
+### Bug Fixes
+
+* **desktop:** offer the install when an update is already downloaded ([#377](https://github.com/arcboxlabs/linkcode/issues/377)) ([870e1c5](https://github.com/arcboxlabs/linkcode/commit/870e1c5dedd4d92e942f613393cd3c83c5862461))
+* **devenv:** strip nix toolchain env from the mobile script ([d0c4894](https://github.com/arcboxlabs/linkcode/commit/d0c4894ef55934898991bc27623bf9c7355c998b))
+* **providers:** authenticate subscription accounts ([8f6a3ab](https://github.com/arcboxlabs/linkcode/commit/8f6a3abba0a337900586c83499b126a5c5a13220))
+* **settings:** open provider service catalog directly ([6a43d51](https://github.com/arcboxlabs/linkcode/commit/6a43d517e5b3f7fb988abfadb06b60c1b26a63b9))
+* **ui:** prevent branch search text overlap ([91ccfb5](https://github.com/arcboxlabs/linkcode/commit/91ccfb5ef60bed43fb1dc3c84af4a25a5532b6fa))
+* **workbench:** preserve subscription login state ([9f88a5c](https://github.com/arcboxlabs/linkcode/commit/9f88a5c0929a72b504552ba6a225b6c993554d9f))
+* **workbench:** route signed-out setup through providers ([f1839d1](https://github.com/arcboxlabs/linkcode/commit/f1839d151f765f4e0f2909cf1033ef362d4f48c1))
+* **workbench:** support completable agent logins ([3cbd825](https://github.com/arcboxlabs/linkcode/commit/3cbd825e8128f7913f79015e4be9c9b6d788d149))
+
 ## [0.17.0](https://github.com/arcboxlabs/linkcode/compare/v0.16.0...v0.17.0) (2026-08-01)
 
 
