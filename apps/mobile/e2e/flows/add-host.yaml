@@ -49,6 +49,9 @@ appId: com.arcboxlabs.linkcode.mobile
 # Naming the URL back is the assertion that matters: it can only come from text that made it
 # out of the field, into the store, and back onto a screen.
 - assertVisible: 'Unable to reach the host at http://127.0.0.1:19599.'
+- assertVisible: 'Host unavailable'
+- tapOn: 'Retry'
+- assertVisible: 'Connecting to the host…'
 
 # Best-effort tidy-up, deliberately `optional`. Removal is a list swipe action, and revealing one
 # needs a drag longer than Maestro's element-relative swipe produces — an element swipe either does

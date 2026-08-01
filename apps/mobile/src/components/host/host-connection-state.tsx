@@ -1,9 +1,15 @@
-import { Button, Host, ProgressView, Text, VStack } from '@expo/ui/swift-ui';
-import { font, foregroundStyle, multilineTextAlignment } from '@expo/ui/swift-ui/modifiers';
+import { Button, Host, Image, ProgressView, Text, VStack } from '@expo/ui/swift-ui';
+import {
+  buttonStyle,
+  font,
+  multilineTextAlignment,
+  textSelection,
+} from '@expo/ui/swift-ui/modifiers';
+import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
 import { useTranslations } from 'use-intl';
 
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const FOOTNOTE = font({ textStyle: 'footnote' });
+const CENTERED = multilineTextAlignment('center');
+const TITLE = font({ textStyle: 'title2', weight: 'semibold' });
 
 export interface HostConnectionStateProps {
   status: 'connecting' | 'error';
@@ -32,13 +38,24 @@ export function HostConnectionState({
           </>
         ) : (
           <>
-            <Text modifiers={[multilineTextAlignment('center')]}>{t('error', { url })}</Text>
+            <Image systemName="wifi.exclamationmark" size={44} modifiers={[SECONDARY]} />
+            <VStack spacing={6}>
+              <Text modifiers={[TITLE, CENTERED]}>{t('unavailableTitle')}</Text>
+              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>
+                {t('error', { url })}
+              </Text>
+            </VStack>
+            <Button
+              label={t('retry')}
+              systemImage="arrow.clockwise"
+              modifiers={[buttonStyle('borderedProminent')]}
+              onPress={onRetry}
+            />
             {failure ? (
-              <Text modifiers={[FOOTNOTE, SECONDARY, multilineTextAlignment('center')]}>
+              <Text modifiers={[FOOTNOTE, SECONDARY, CENTERED, textSelection(true)]}>
                 {failure}
               </Text>
             ) : null}
-            <Button label={t('retry')} onPress={onRetry} />
           </>
         )}
       </VStack>
