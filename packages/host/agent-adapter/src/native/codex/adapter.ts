@@ -395,15 +395,20 @@ export class CodexAdapter extends BaseAgentAdapter {
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const processEnvironment = await resolveCodexEnvironment(opts.cwd);
     const credentialEnv = codexEnv(readAgentCredential(opts.config));
+    // One environment for both, like openThread: an account's `extraEnv` can carry CODEX_HOME, and
+    // reading config.toml from the unmerged env would report a different home than the server uses.
+    const serverEnvironment = credentialEnv
+      ? { ...processEnvironment, ...credentialEnv }
+      : processEnvironment;
     const server = await this.startAppServer({
-      env: credentialEnv ? { ...processEnvironment, ...credentialEnv } : processEnvironment,
+      env: serverEnvironment,
       onNotification: noop,
       onExit: noop,
     });
     try {
       const [catalog, configured] = await Promise.all([
         server.request('model/list', {}).then(codexModelCatalog),
-        this.readConfiguredModel(processEnvironment),
+        this.readConfiguredModel(serverEnvironment),
       ]);
       // config.toml outranks the served catalog default, mirroring codex's own resolution at
       // thread/start; the effort falls back to whichever model that leaves selected.
