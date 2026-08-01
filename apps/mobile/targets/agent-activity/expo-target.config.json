@@ -1,6 +1,7 @@
 {
   "type": "widget",
-  "name": "LinkCode Agent Activity",
+  "name": "LinkCodeAgentActivity",
+  "displayName": "LinkCode Agent Activity",
   "frameworks": ["SwiftUI", "WidgetKit", "ActivityKit"],
   "deploymentTarget": "16.2"
 }
