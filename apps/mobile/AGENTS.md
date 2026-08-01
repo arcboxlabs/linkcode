@@ -9,13 +9,16 @@ other client.
 - **The web renderer conventions do NOT apply here.** [`.claude/rules/frontend.md`](../../.claude/rules/frontend.md) (coss-ui, `createBrowserRouter`, `sdk`+`tayori`+SWR data-table, `react-hook-form`+`zodResolver`) targets the Vite / DOM renderers — none of it holds for React Native. Use the Expo / RN + HeroUI idioms instead.
 - **Shared code:** mobile consumes `@linkcode/ui` only through its **native** components (`packages/presentation/ui/src/native/**`), never its coss-ui web parts.
 - **Where code goes:** `src/runtime/**` + `src/stores/**` own transport, connection, and data-plane
-  wiring; `src/app/**` + `src/components/**` are presentation only. The hooks exported from
-  `runtime/` are the seam — extend a return value, never reshape one, so UI and runtime work can
-  land in parallel. A `runtime/` hook must **not** hand out a `RefObject`: `react-hooks/refs` then
-  taints every property read of that result at the call site ("Cannot access refs during render").
-  Expose a callback ref instead — `setRenderer` in `use-terminal-session.ts`. Destructure a hook's
-  result at the top of the component rather than reading `hook.x` inside JSX; the same rule fires on
-  member reads it cannot prove.
+  wiring; `src/app/**` is route shells only; `src/components/**` holds presentation grouped by
+  surface (`shell/`, `form/`, `account/`, `connect/`, `host/`, `conversation/`, `terminal/`). Private
+  children of one parent live under that parent (e.g. `conversation/prompt-dock/*`). The hooks
+  exported from `runtime/` are the seam — extend a return value, never reshape one, so UI and
+  runtime work can land in parallel. Runtime must not import presentation: a type both sides share
+  (e.g. `TerminalRendererRef`) is owned by the hook that drives it. A `runtime/` hook must **not**
+  hand out a `RefObject`: `react-hooks/refs` then taints every property read of that result at the
+  call site ("Cannot access refs during render"). Expose a callback ref instead — `setRenderer` in
+  `use-terminal-session.ts`. Destructure a hook's result at the top of the component rather than
+  reading `hook.x` inside JSX; the same rule fires on member reads it cannot prove.
 - **Hooks are unit-testable through this app's own vitest project** (`vitest.config.ts`, declared in
   the root config's `projects`). The app pins react/react-dom to RN's bundled version, so its copies
   are nested while `@testing-library/react` is hoisted; left alone the two sides load different React
