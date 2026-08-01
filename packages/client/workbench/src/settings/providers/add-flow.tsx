@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Account, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
-import { ServiceIcon } from '@linkcode/ui';
+import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
@@ -18,6 +18,7 @@ import type { Control, FieldValues, Path } from 'react-hook-form';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
+import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
 import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
 
@@ -144,12 +145,14 @@ export function ServiceCatalogView({
 export function AddAccountForm({
   serviceId,
   runtimes,
+  onboarding,
   busy,
   onBack,
   onSubmit,
 }: {
   serviceId: string;
   runtimes: AgentRuntimes | undefined;
+  onboarding: AgentRuntimeOnboarding;
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
@@ -170,7 +173,13 @@ export function AddAccountForm({
         <h3 className="font-semibold text-sm">{t(`serviceName.${service.id}`)}</h3>
       </div>
       {service.kind === 'oauth' ? (
-        <OauthCreateForm service={service} runtimes={runtimes} busy={busy} onSubmit={onSubmit} />
+        <OauthCreateForm
+          service={service}
+          runtimes={runtimes}
+          onboarding={onboarding}
+          busy={busy}
+          onSubmit={onSubmit}
+        />
       ) : service.kind === 'endpoint' ? (
         <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
       ) : (
@@ -257,17 +266,17 @@ function OauthEditForm({
   );
 }
 
-/** A subscription account delegates to the agent CLI's own login — no secret to collect. A
- * signed-out CLI is still accepted; sessions surface the login error, and in-app login lives on
- * the workbench onboarding card. */
+/** Subscription accounts are persisted only after the agent CLI login succeeds. */
 function OauthCreateForm({
   service,
   runtimes,
+  onboarding,
   busy,
   onSubmit,
 }: {
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>;
   runtimes: AgentRuntimes | undefined;
+  onboarding: AgentRuntimeOnboarding;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -275,6 +284,10 @@ function OauthCreateForm({
   const serviceName = t(`serviceName.${service.id}`);
   const [label, setLabel] = useState(serviceName);
   const auth = runtimes?.[service.agent]?.auth;
+  const loggedIn = auth?.loggedIn === true;
+  const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
+  const loginInProgress =
+    cue.state === 'needs-login' && (cue.phase === 'opening' || cue.phase === 'awaiting-code');
 
   return (
     <div className="flex flex-col gap-3">
@@ -283,29 +296,46 @@ function OauthCreateForm({
         <Input
           className="w-full"
           autoComplete="off"
+          disabled={busy || loginInProgress}
           value={label}
           onChange={(event) => setLabel(event.target.value)}
         />
       </Field>
-      <p className="text-muted-foreground text-xs">
-        {auth
-          ? auth.loggedIn
-            ? [t('loggedIn'), auth.email, auth.method, auth.subscriptionType]
-                .filter(Boolean)
-                .join(' · ')
-            : t('oauthLoggedOutHint')
-          : t('oauthUnprobedHint')}
-      </p>
-      <div className="flex justify-end pt-1">
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy || label.trim() === ''}
-          onClick={() => onSubmit(oauthAccount(service, label))}
-        >
-          {t('form.submit')}
-        </Button>
-      </div>
+      {loggedIn ? (
+        <>
+          <p className="text-muted-foreground text-xs">
+            {[t('loggedIn'), auth.email, auth.method, auth.subscriptionType]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <div className="flex justify-end pt-1">
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || label.trim() === ''}
+              onClick={() => onSubmit(oauthAccount(service, label))}
+            >
+              {t('form.submit')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <AgentOnboardingCard
+          kind={service.agent}
+          cue={cue}
+          onDownload={onboarding.download}
+          onContinueUnverified={onboarding.acknowledgeUnverified}
+          onLogin={
+            busy || label.trim() === ''
+              ? undefined
+              : (kind) => {
+                  onboarding.login(kind, () => onSubmit(oauthAccount(service, label)));
+                }
+          }
+          onSubmitLoginCode={onboarding.submitLoginCode}
+          onCancelLogin={onboarding.cancelLogin}
+        />
+      )}
     </div>
   );
 }

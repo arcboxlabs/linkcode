@@ -298,6 +298,7 @@ export const en = {
       loginReopenUrl: "Didn't open? Open the sign-in page",
       loginCancel: 'Cancel',
       loginFailedTitle: '{agent} sign-in failed',
+      goToSettings: 'Go to settings',
     },
     composer: {
       placeholder: 'Describe what you want {agent} to do, or @-reference a file / terminal output…',
@@ -351,12 +352,51 @@ export const en = {
       chooseWorkspace: 'Choose a workspace',
       chat: 'Chat',
       noProject: "Don't work in a project",
-      workLocally: 'Work locally',
+      branchMode: 'Working directory mode',
+      local: 'Local',
+      localDescription: 'Switch this directory to the selected branch',
+      worktree: 'Worktree',
+      worktreeDescription: 'Create an isolated worktree for the selected branch',
+      worktreeRequiresBranch: 'Select a branch first',
       branch: 'Branch',
+      branches: 'Branches',
+      branchSearch: 'Search branches',
       branchLoading: 'Loading local branches…',
       branchEmpty: 'No local branches',
+      branchNoMatches: 'No matching branches',
       branchError: 'Could not load local branches',
+      branchActionError: 'Git operation failed: {message}',
+      branchLocalHint: 'Will switch this directory to this branch',
       branchWorktreeHint: 'Will start in an isolated worktree',
+      branchUncommitted: '{count, plural, =1 {1 uncommitted file} other {# uncommitted files}}',
+      branchCreate: 'Create new branch…',
+      branchCreateTitle: 'Create branch',
+      branchCreateDescription: 'The branch will be created from HEAD and selected for this task.',
+      branchName: 'Branch name',
+      branchNamePlaceholder: 'For example, feature/new-session',
+      branchNameError: {
+        required: 'Enter a branch name.',
+        trailingSlash: 'Branch name cannot end with “/”.',
+        exists: 'This branch already exists.',
+        invalid: 'Enter a valid Git branch name.',
+      },
+      branchCreateAction: 'Create branch',
+      branchCreating: 'Creating…',
+      branchConflictTitle: 'Commit changes to switch branch',
+      branchConflictDescription:
+        'Your local changes to the following files would be overwritten by checkout:',
+      branchConflictInstruction:
+        'Cancel to resolve them yourself, or commit all current changes to continue.',
+      branchConflictCommitAction: 'Commit and continue…',
+      branchCommitTitle: 'Commit changes',
+      branchCommitDescription:
+        'All changes in this workspace will be committed to the current branch.',
+      branchCommitMessage: 'Commit message',
+      branchCommitDefaultMessage: 'Save changes before switching branches',
+      branchCommitAction: 'Commit and select branch',
+      branchCommitting: 'Committing…',
+      cancel: 'Cancel',
+      back: 'Back',
     },
     resources: {
       sources: 'Sources',
@@ -921,6 +961,7 @@ export const en = {
     about: {
       version: 'Version',
       checkForUpdates: 'Check for updates',
+      restartToInstall: 'Restart to update',
       status: {
         checking: 'Checking for updates…',
         available: 'Update available — downloading…',
@@ -1034,9 +1075,6 @@ export const en = {
         'openai-chat': 'Native for Codex / OpenCode; Claude Code via local translation',
         'openai-responses': 'Native for Codex',
       },
-      oauthLoggedOutHint:
-        'No CLI login detected — you can still add it; sessions will prompt for login.',
-      oauthUnprobedHint: 'Login state unknown — the CLI’s own login decides.',
       oauthEditHint:
         'Subscription credentials follow the CLI login; only the account name can be changed here.',
       form: {

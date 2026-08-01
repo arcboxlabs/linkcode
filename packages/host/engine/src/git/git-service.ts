@@ -1,5 +1,6 @@
 import type {
   GitBranchList,
+  GitBranchSwitchCheck,
   GitDiff,
   GitDiffMode,
   GitPullRequestStatus,
@@ -11,6 +12,7 @@ import { OperationError, toOperationFailure } from '../failure';
 import { readGitBranches } from './branches';
 import { readGitDiff } from './diff';
 import { GhCliGitHubClient } from './github';
+import { checkGitBranchSwitch, commitGitChanges, createGitBranch } from './mutations';
 import type { GitProviderClient } from './provider';
 import { readGitStatus } from './status';
 
@@ -139,12 +141,29 @@ export class GitService {
     return Cache.get(this.prStatusCache, cwd);
   }
 
+  checkBranchSwitch(
+    cwd: string,
+    branch: string,
+  ): Effect.Effect<GitBranchSwitchCheck, EngineFailure> {
+    return checkGitBranchSwitch(cwd, branch);
+  }
+
+  createBranch(cwd: string, branch: string): Effect.Effect<void, EngineFailure> {
+    return createGitBranch(cwd, branch).pipe(Effect.andThen(this.invalidate(cwd)));
+  }
+
+  commitChanges(cwd: string, message: string): Effect.Effect<void, EngineFailure> {
+    return commitGitChanges(cwd, message).pipe(Effect.andThen(this.invalidate(cwd)));
+  }
+
   /** Drop cwd-scoped reads after a git mutation so the next poll observes it immediately. */
   invalidate(cwd: string): Effect.Effect<void> {
     return Effect.all([
       Cache.invalidate(this.statusCache, cwd),
       Cache.invalidate(this.branchListCache, cwd),
       Cache.invalidate(this.prStatusCache, cwd),
+      Cache.invalidate(this.diffCache, [cwd, 'uncommitted']),
+      Cache.invalidate(this.diffCache, [cwd, 'base']),
     ]).pipe(Effect.asVoid);
   }
 }

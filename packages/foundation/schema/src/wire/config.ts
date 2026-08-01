@@ -1,6 +1,13 @@
 import { z } from 'zod';
-import { AccountsSchema } from '../model/account';
+import {
+  AccountEndpointSchema,
+  AccountModelSchema,
+  AccountSchema,
+  AccountSecretSchema,
+  AccountsSchema,
+} from '../model/account';
 import { CustomMcpServerPatchOpSchema, CustomMcpServerPublicSchema } from '../model/custom-mcp';
+import { AgentKindSchema } from '../model/primitives';
 import { ProvidersConfigSchema } from '../model/provider-config';
 import { WireRequestIdSchema } from './request';
 
@@ -24,5 +31,25 @@ export const configWireVariants = [
     accounts: AccountsSchema.optional(),
     /** Patch ops against the stored custom MCP servers; omitted when untouched. */
     customMcpServers: z.array(CustomMcpServerPatchOpSchema).optional(),
+  }),
+  z.object({
+    kind: z.literal('config.account.create-and-bind'),
+    clientReqId: WireRequestIdSchema,
+    agent: AgentKindSchema,
+    account: AccountSchema,
+  }),
+  /** Enumerate what an endpoint serves, before the account is saved: the daemon reads the
+   * endpoint's own model list with the given secret. The client cannot do this itself — the
+   * renderer's CSP blocks remote fetches, and only the daemon may hold the secret. */
+  z.object({
+    kind: z.literal('config.probe-models'),
+    clientReqId: WireRequestIdSchema,
+    endpoint: AccountEndpointSchema,
+    secret: AccountSecretSchema,
+  }),
+  z.object({
+    kind: z.literal('config.probe-models.result'),
+    replyTo: WireRequestIdSchema,
+    models: z.array(AccountModelSchema),
   }),
 ] as const;

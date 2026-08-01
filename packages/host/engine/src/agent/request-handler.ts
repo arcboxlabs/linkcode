@@ -3,10 +3,13 @@ import type { WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { OperationError, RequestError } from '../failure';
 import type { WireResponder } from '../wire/responder';
 import type { CustomMcpServerService } from './custom-mcp-service';
 import type { AgentLoginService } from './login-service';
+import type { ModelProbe } from './model-probe';
+import { probeEndpointModels } from './model-probe';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults } from './provider-config';
 import type { AgentRuntimeService } from './runtime-service';
@@ -19,6 +22,8 @@ type AgentRequest = Extract<
       | 'agent.catalog'
       | 'config.get'
       | 'config.set'
+      | 'config.account.create-and-bind'
+      | 'config.probe-models'
       | 'agent-login.start'
       | 'agent-login.submit-code'
       | 'agent-login.cancel';
@@ -35,6 +40,7 @@ export class AgentRequestHandler {
     private readonly logins: AgentLoginService | undefined,
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
+    private readonly probeModels: ModelProbe = probeEndpointModels,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
@@ -128,6 +134,40 @@ export class AgentRequestHandler {
           ),
         );
       }
+      case 'config.account.create-and-bind':
+        return this.responder.reply(
+          payload.clientReqId,
+          updateProviderConfig('config.account.create-and-bind', () =>
+            this.providers.createAndBindAccount(payload.agent, payload.account),
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
+        );
+      case 'config.probe-models':
+        return this.responder.reply(
+          payload.clientReqId,
+          Effect.tryPromise({
+            try: async () => {
+              const models = await this.probeModels(payload.endpoint, payload.secret);
+              this.transport.send(
+                createWireMessage({
+                  kind: 'config.probe-models.result',
+                  replyTo: payload.clientReqId,
+                  models,
+                }),
+              );
+            },
+            // The vendor's own reason (bad key, unreachable host) is the whole value of the probe,
+            // so it rides publicMessage — the only field that reaches the client.
+            catch: (cause) =>
+              new OperationError({
+                subsystem: 'store',
+                operation: 'config.probe-models',
+                publicMessage: `Model detection failed: ${extractErrorMessage(cause, false) ?? 'unknown error'}`,
+                cause,
+              }),
+          }),
+        );
       case 'agent-login.start': {
         const logins = this.logins;
         if (logins) {

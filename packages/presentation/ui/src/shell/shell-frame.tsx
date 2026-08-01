@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  BranchSelection,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -59,18 +60,14 @@ export interface ShellFrameProps
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
-  newSessionPreferredBranches: Readonly<Record<string, string>>;
+  newSessionPreferredBranches: Readonly<Record<string, BranchSelection>>;
   NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Triggers (or retries) the managed download for an agent whose CLI is missing. */
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version for the current pick. */
   onContinueUnverified?: (kind: AgentKind) => void;
-  /** Starts (or retries) the interactive login for a signed-out agent. */
-  onLoginAgent?: (kind: AgentKind) => void;
-  /** Submits the authorization code pasted from the browser during a login. */
-  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
-  /** Aborts an in-flight login. */
-  onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens Providers settings at the signed-out agent's setup flow. */
+  onOpenProviderSettings?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
@@ -134,9 +131,7 @@ export function ShellFrame({
   NewSessionBranchPickerComponent,
   onDownloadAgent,
   onContinueUnverified,
-  onLoginAgent,
-  onSubmitLoginCode,
-  onCancelLogin,
+  onOpenProviderSettings,
   conversation,
   respondingRequestIds,
   responseErrors,
@@ -227,9 +222,7 @@ export function ShellFrame({
             mentionItems={mentionItems}
             onContinueUnverified={onContinueUnverified}
             onDownloadAgent={onDownloadAgent}
-            onLoginAgent={onLoginAgent}
-            onSubmitLoginCode={onSubmitLoginCode}
-            onCancelLogin={onCancelLogin}
+            onOpenProviderSettings={onOpenProviderSettings}
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
@@ -248,9 +241,7 @@ export function ShellFrame({
             isRunning={isRunning}
             cwd={active?.cwd}
             runtimeCues={runtimeCues}
-            onLoginAgent={onLoginAgent}
-            onSubmitLoginCode={onSubmitLoginCode}
-            onCancelLogin={onCancelLogin}
+            onOpenProviderSettings={onOpenProviderSettings}
             respondingRequestIds={respondingRequestIds}
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}

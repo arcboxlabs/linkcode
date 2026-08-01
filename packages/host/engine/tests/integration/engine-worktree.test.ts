@@ -82,7 +82,7 @@ describe('engine managed worktree sessions', () => {
         opts: {
           kind: 'claude-code',
           cwd: repo,
-          branch: { name: 'feature' },
+          branch: { name: 'feature', mode: 'worktree' },
         },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-delete'));
@@ -124,7 +124,11 @@ describe('engine managed worktree sessions', () => {
       await h.inject({
         kind: 'session.start',
         clientReqId: 'start-delete-failure',
-        opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature' } },
+        opts: {
+          kind: 'claude-code',
+          cwd: repo,
+          branch: { name: 'feature', mode: 'worktree' },
+        },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-delete-failure'));
       const [record] = await worktreeStore.load();
@@ -165,7 +169,11 @@ describe('engine managed worktree sessions', () => {
       await h.inject({
         kind: 'session.start',
         clientReqId: 'start-retry',
-        opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature' } },
+        opts: {
+          kind: 'claude-code',
+          cwd: repo,
+          branch: { name: 'feature', mode: 'worktree' },
+        },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-retry'));
       const [record] = await worktreeStore.load();
@@ -220,7 +228,11 @@ describe('engine managed worktree sessions', () => {
       await h.inject({
         kind: 'session.start',
         clientReqId: 'start',
-        opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature' } },
+        opts: {
+          kind: 'claude-code',
+          cwd: repo,
+          branch: { name: 'feature', mode: 'worktree' },
+        },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start'));
       const [worktree] = await worktreeStore.load();
@@ -288,7 +300,11 @@ describe('engine managed worktree sessions', () => {
       await h.inject({
         kind: 'session.start',
         clientReqId: 'start',
-        opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature' } },
+        opts: {
+          kind: 'claude-code',
+          cwd: repo,
+          branch: { name: 'feature', mode: 'worktree' },
+        },
       });
       await vi.waitFor(() =>
         expect(h.sent).toContainEqual({

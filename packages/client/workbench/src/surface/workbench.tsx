@@ -368,7 +368,7 @@ function WorkbenchSessionSurface({
       submission.kind,
       submission.workspaceId,
       startupSelection,
-      submission.branch?.name,
+      submission.branch,
     );
     // The first input rides behind the started session, like any conversation send.
     void turnInputMutation
@@ -640,9 +640,6 @@ function WorkbenchSessionSurface({
       runtimeCues={onboarding.cues}
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
-      onLoginAgent={onboarding.login}
-      onSubmitLoginCode={onboarding.submitLoginCode}
-      onCancelLogin={onboarding.cancelLogin}
       conversation={conversation}
       respondingRequestIds={respondingRequestIds}
       responseErrors={visibleResponseErrors}

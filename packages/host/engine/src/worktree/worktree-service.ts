@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { basename, join, normalize, resolve } from 'node:path';
-import type { SessionId, StartOptions, WorktreeRecord } from '@linkcode/schema';
+import type { BranchMode, SessionId, StartOptions, WorktreeRecord } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import { Effect, Exit, Semaphore } from 'effect';
 import type { EngineFailure } from '../failure';
@@ -17,12 +17,14 @@ import {
   removeWorktree,
   removeWorktreeBestEffort,
   resolveRepoRoot,
+  switchBranch,
 } from '../git/worktrees';
 import type { WorktreeStore } from './worktree-store';
 
 const RE_UNSAFE_SLUG = /[^\w.-]+/g;
 const RE_EDGE_DASHES = /^-+|-+$/g;
 const RE_CHECKED_OUT = /already checked out|already used by worktree/i;
+const RE_SWITCH_BLOCKED = /would be overwritten|please commit your changes or stash/i;
 
 export class WorktreeService {
   private readonly bySession = new Map<SessionId, WorktreeRecord>();
@@ -58,7 +60,7 @@ export class WorktreeService {
     sessionId: SessionId,
   ): Effect.Effect<StartOptions, EngineFailure> {
     if (!options.branch) return Effect.succeed(options);
-    const branch = options.branch.name;
+    const { mode, name: branch } = options.branch;
     return Effect.gen({ self: this }, function* () {
       const rawRoot = yield* resolveRepoRoot(options.cwd).pipe(
         Effect.mapError((cause) =>
@@ -73,7 +75,7 @@ export class WorktreeService {
       }
       const repoRoot = normalizeRepoRoot(rawRoot);
       return yield* this.semaphore(repoRoot).withPermit(
-        this.provisionLocked(options, sessionId, repoRoot, branch),
+        this.provisionLocked(options, sessionId, repoRoot, branch, mode),
       );
     });
   }
@@ -113,6 +115,7 @@ export class WorktreeService {
     sessionId: SessionId,
     repoRoot: string,
     branch: string,
+    mode: BranchMode,
   ): Effect.Effect<StartOptions, EngineFailure> {
     return Effect.gen({ self: this }, function* () {
       const exists = yield* localBranchExists(repoRoot, branch).pipe(
@@ -131,7 +134,16 @@ export class WorktreeService {
           gitFailure('git.branch.current', 'Failed to inspect current branch', cause),
         ),
       );
-      if (current === branch) return withoutBranch(options, options.cwd);
+      if (mode === 'local') {
+        return yield* this.provisionLocal(options, repoRoot, branch, current);
+      }
+      if (current === branch) {
+        return yield* new RequestError({
+          code: 'conflict',
+          message:
+            'The selected branch is already checked out in this workspace; choose Local or another branch',
+        });
+      }
       if (this.byRepoBranch.has(repoBranchKey(repoRoot, branch))) {
         return yield* new RequestError({
           code: 'conflict',
@@ -185,6 +197,43 @@ export class WorktreeService {
       yield* this.git.invalidate(options.cwd);
       yield* this.git.invalidate(worktreePath);
       return withoutBranch(options, worktreePath);
+    });
+  }
+
+  provisionLocal(
+    options: StartOptions,
+    repoRoot: string,
+    branch: string,
+    current: string | undefined,
+  ): Effect.Effect<StartOptions, EngineFailure> {
+    if (current === branch) return Effect.succeed(withoutBranch(options, options.cwd));
+    return Effect.gen({ self: this }, function* () {
+      const switched = yield* switchBranch(repoRoot, branch).pipe(
+        Effect.mapError((cause) =>
+          gitFailure('git.branch.switch', 'Failed to switch workspace branch', cause),
+        ),
+      );
+      if (switched.exitCode !== 0) {
+        if (RE_CHECKED_OUT.test(switched.stderr)) {
+          return yield* new RequestError({
+            code: 'conflict',
+            message: 'The selected branch is already checked out in another worktree',
+          });
+        }
+        if (RE_SWITCH_BLOCKED.test(switched.stderr)) {
+          return yield* new RequestError({
+            code: 'conflict',
+            message: 'Workspace changes prevent switching to the selected branch',
+          });
+        }
+        return yield* gitFailure(
+          'git.branch.switch',
+          'Failed to switch workspace branch',
+          new Error(switched.stderr.trim() || `git switch exited ${switched.exitCode}`),
+        );
+      }
+      yield* this.git.invalidate(options.cwd);
+      return withoutBranch(options, options.cwd);
     });
   }
 

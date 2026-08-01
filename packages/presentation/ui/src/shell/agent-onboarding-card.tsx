@@ -40,6 +40,7 @@ export function AgentOnboardingCard({
   onLogin,
   onSubmitLoginCode,
   onCancelLogin,
+  onOpenProviderSettings,
 }: {
   kind: AgentKind;
   cue: AgentRuntimeCue;
@@ -48,6 +49,8 @@ export function AgentOnboardingCard({
   onLogin?: (kind: AgentKind) => void;
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens Providers settings at the signed-out agent's setup flow. */
+  onOpenProviderSettings?: (kind: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
 
@@ -59,6 +62,7 @@ export function AgentOnboardingCard({
         onLogin={onLogin}
         onSubmitLoginCode={onSubmitLoginCode}
         onCancelLogin={onCancelLogin}
+        onOpenProviderSettings={onOpenProviderSettings}
       />
     );
   }
@@ -163,12 +167,14 @@ function AgentLoginCard({
   onLogin,
   onSubmitLoginCode,
   onCancelLogin,
+  onOpenProviderSettings,
 }: {
   kind: AgentKind;
   cue: Extract<AgentRuntimeCue, { state: 'needs-login' }>;
   onLogin?: (kind: AgentKind) => void;
   onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
   onCancelLogin?: (kind: AgentKind) => void;
+  onOpenProviderSettings?: (kind: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
   const agent = AGENT_LABELS[kind];
@@ -263,13 +269,19 @@ function AgentLoginCard({
         <TriangleAlertIcon />
         <AlertTitle>{t('loginFailedTitle', { agent })}</AlertTitle>
         {cue.error && <AlertDescription>{cue.error}</AlertDescription>}
-        {onLogin && (
-          <AlertAction>
-            <Button size="sm" variant="outline" onClick={() => onLogin(kind)}>
-              {t('retry')}
+        <AlertAction>
+          {onOpenProviderSettings ? (
+            <Button size="sm" onClick={() => onOpenProviderSettings(kind)}>
+              {t('goToSettings')}
             </Button>
-          </AlertAction>
-        )}
+          ) : (
+            onLogin && (
+              <Button size="sm" variant="outline" onClick={() => onLogin(kind)}>
+                {t('retry')}
+              </Button>
+            )
+          )}
+        </AlertAction>
       </Alert>
     );
   }
@@ -279,13 +291,19 @@ function AgentLoginCard({
       <LogInIcon />
       <AlertTitle>{t('needsLoginTitle', { agent })}</AlertTitle>
       <AlertDescription>{t('needsLoginBody', { agent })}</AlertDescription>
-      {onLogin && (
-        <AlertAction>
-          <Button size="sm" onClick={() => onLogin(kind)}>
-            {t('login', { agent })}
+      <AlertAction>
+        {onOpenProviderSettings ? (
+          <Button size="sm" onClick={() => onOpenProviderSettings(kind)}>
+            {t('goToSettings')}
           </Button>
-        </AlertAction>
-      )}
+        ) : (
+          onLogin && (
+            <Button size="sm" onClick={() => onLogin(kind)}>
+              {t('login', { agent })}
+            </Button>
+          )
+        )}
+      </AlertAction>
     </Alert>
   );
 }

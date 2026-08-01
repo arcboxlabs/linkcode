@@ -2,6 +2,8 @@ import type {
   AgentInput,
   AgentKind,
   AgentStartCatalog,
+  BranchMode,
+  BranchSelection,
   ContentBlock,
   EffortLevel,
   SessionModeId,
@@ -25,7 +27,6 @@ import {
   ChevronDownIcon,
   FolderIcon,
   FolderPlusIcon,
-  LaptopMinimalIcon,
   MessagesSquareIcon,
   XIcon,
 } from 'lucide-react';
@@ -60,7 +61,7 @@ export interface NewSessionSubmission {
   effort?: EffortLevel | null;
   approvalPolicyId?: string;
   modeId?: SessionModeId;
-  branch?: { name: string };
+  branch?: BranchSelection;
   input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
 
@@ -92,8 +93,8 @@ export interface NewSessionSurfaceProps {
   preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
-  /** Last successfully used branch per workspace. */
-  preferredBranches?: Readonly<Record<string, string>>;
+  /** Last successfully used branch and checkout mode per workspace. */
+  preferredBranches?: Readonly<Record<string, BranchSelection>>;
   NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
   /** Ranked files for the active draft workspace's `@` query. */
   mentionItems: MentionItem[];
@@ -103,12 +104,8 @@ export interface NewSessionSurfaceProps {
   onDownloadAgent?: (kind: AgentKind) => void;
   /** Accepts an out-of-range detected version — the workbench remembers the (agent, version) pick. */
   onContinueUnverified?: (kind: AgentKind) => void;
-  /** Starts (or retries) the interactive login for a signed-out agent. */
-  onLoginAgent?: (kind: AgentKind) => void;
-  /** Submits the authorization code pasted from the browser during a login. */
-  onSubmitLoginCode?: (kind: AgentKind, code: string) => void;
-  /** Aborts an in-flight login. */
-  onCancelLogin?: (kind: AgentKind) => void;
+  /** Opens Providers settings at the signed-out agent's setup flow. */
+  onOpenProviderSettings?: (kind: AgentKind) => void;
   /** Starts the session and sends the prompt. A rejection keeps the page up — the caller's error
    * banner reports the failure, same contract as the conversation composer. */
   onSubmit: (submission: NewSessionSubmission) => Promise<void>;
@@ -155,9 +152,7 @@ export function NewSessionSurface({
   onMentionQueryChange,
   onDownloadAgent,
   onContinueUnverified,
-  onLoginAgent,
-  onSubmitLoginCode,
-  onCancelLogin,
+  onOpenProviderSettings,
   onSubmit,
   onPickDirectory,
   onRegisterWorkspace,
@@ -174,7 +169,7 @@ export function NewSessionSurface({
   const [modeId, setModeId] = useState<string>(DEFAULT_MODE_ID);
   const [selectedPolicies, setSelectedPolicies] = useState<Partial<Record<AgentKind, string>>>({});
   const [pending, setPending] = useState(false);
-  const [selectedBranches, setSelectedBranches] = useState<Record<string, string>>({});
+  const [selectedBranches, setSelectedBranches] = useState<Record<string, BranchSelection>>({});
 
   const selectableWorkspaces = chatWorkspace ? [chatWorkspace, ...workspaces] : workspaces;
   const selected = workspaceById(selectableWorkspaces, workspaceId);
@@ -182,6 +177,7 @@ export function NewSessionSurface({
   const selectedBranch = selected
     ? (selectedBranches[selected.workspaceId] ?? preferredBranches?.[selected.workspaceId])
     : undefined;
+  const branchMode = selectedBranch?.mode ?? 'local';
   const catalog = agentCatalogs?.[provider];
   const localModel = selectedModels[provider];
   const selectedModel =
@@ -241,7 +237,7 @@ export function NewSessionSurface({
           : constrainedEffort !== null && { effort: constrainedEffort }),
         ...(pickedPolicyId && { approvalPolicyId: pickedPolicyId }),
         modeId: modeId === DEFAULT_MODE_ID ? undefined : modeId,
-        ...(selectedBranch && { branch: { name: selectedBranch } }),
+        ...(selectedBranch && { branch: selectedBranch }),
         input,
       });
     } finally {
@@ -316,7 +312,18 @@ export function NewSessionSurface({
 
   function handleBranchChange(branch: string): void {
     if (!selected) return;
-    setSelectedBranches((current) => ({ ...current, [selected.workspaceId]: branch }));
+    setSelectedBranches((current) => ({
+      ...current,
+      [selected.workspaceId]: { name: branch, mode: selectedBranch?.mode ?? 'local' },
+    }));
+  }
+
+  function handleBranchModeChange(mode: BranchMode): void {
+    if (!selected || !selectedBranch) return;
+    setSelectedBranches((current) => ({
+      ...current,
+      [selected.workspaceId]: { ...selectedBranch, mode },
+    }));
   }
 
   return (
@@ -333,11 +340,9 @@ export function NewSessionSurface({
                 <AgentOnboardingCard
                   cue={cue}
                   kind={provider}
-                  onCancelLogin={onCancelLogin}
                   onContinueUnverified={onContinueUnverified}
                   onDownload={onDownloadAgent}
-                  onLogin={onLoginAgent}
-                  onSubmitLoginCode={onSubmitLoginCode}
+                  onOpenProviderSettings={onOpenProviderSettings}
                 />
               </div>
             </div>
@@ -381,8 +386,10 @@ export function NewSessionSurface({
                 onSelect={handleWorkspaceChange}
                 onPickDirectory={onPickDirectory}
                 onRegisterWorkspace={onRegisterWorkspace}
-                selectedBranch={selectedBranch}
+                selectedBranch={selectedBranch?.name}
+                branchMode={branchMode}
                 onSelectBranch={handleBranchChange}
+                onSelectBranchMode={handleBranchModeChange}
                 NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
               />
             }
@@ -403,7 +410,9 @@ function NewSessionContextBar({
   onPickDirectory,
   onRegisterWorkspace,
   selectedBranch,
+  branchMode,
   onSelectBranch,
+  onSelectBranchMode,
   NewSessionBranchPickerComponent,
 }: {
   workspaces: WorkspaceRecord[];
@@ -415,7 +424,9 @@ function NewSessionContextBar({
   onPickDirectory?: () => Promise<string | null>;
   onRegisterWorkspace: (cwd: string) => Promise<WorkspaceRecord>;
   selectedBranch?: string;
+  branchMode: BranchMode;
   onSelectBranch: (branch: string) => void;
+  onSelectBranchMode: (mode: BranchMode) => void;
   NewSessionBranchPickerComponent?: NewSessionBranchPickerComponent;
 }): React.ReactNode {
   const t = useTranslations('workbench.newSession');
@@ -508,18 +519,14 @@ function NewSessionContextBar({
           </MenuItem>
         </MenuPopup>
       </Menu>
-      {/* TODO(backend): execution-target selection (local host vs remote) — stub until remote hosts exist. */}
-      <Button className="text-muted-foreground" disabled size="sm" type="button" variant="ghost">
-        <LaptopMinimalIcon />
-        {t('workLocally')}
-        <ChevronDownIcon className="size-3 text-label-tertiary" />
-      </Button>
       {selected && !isChatSelected && NewSessionBranchPickerComponent && (
         <NewSessionBranchPickerComponent
+          branchMode={branchMode}
           cwd={selected.cwd}
           disabled={disabled}
           selectedBranch={selectedBranch}
           onSelect={onSelectBranch}
+          onSelectMode={onSelectBranchMode}
         />
       )}
       {registerError != null && (
