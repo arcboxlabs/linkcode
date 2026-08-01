@@ -44,8 +44,10 @@ import {
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
+import { daemonStateDir } from './paths';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
+import { createResourceStore } from './resource-store';
 import {
   DaemonAlreadyRunningError,
   findRunningDaemon,
@@ -177,7 +179,12 @@ async function main(): Promise<void> {
   const EngineSubsystemLive = Layer.unwrap(
     Effect.gen(function* () {
       const { config, hub, previewRoutes } = yield* Shared;
-      const store = createProviderConfigStore(vault, config.providers ?? {}, config.accounts ?? []);
+      const store = createProviderConfigStore(
+        vault,
+        config.providers ?? {},
+        config.accounts ?? [],
+        config.customMcpServers ?? [],
+      );
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
@@ -248,6 +255,8 @@ async function main(): Promise<void> {
         simulatorMcp,
         simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
+        resourceStore: createResourceStore(databasePath()),
+        stateDir: daemonStateDir(),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),

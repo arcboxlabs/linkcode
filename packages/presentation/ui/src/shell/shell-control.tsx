@@ -1,6 +1,8 @@
+import type { SessionId } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { Kbd } from 'coss-ui/components/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
+import { useInputModality } from '../input-modality';
 import { cn } from '../lib/cn';
 
 export type ShellIconButtonProps = React.ComponentProps<typeof Button> & {
@@ -68,6 +70,26 @@ export function PanelControlButton({
     >
       {children}
     </ShellIconButton>
+  );
+}
+
+export type ThreadTitleProps = React.ComponentProps<'div'> & {
+  /** The open thread; keys the element internally so a switch remounts it and replays the
+   * entrance. A rename inside the same thread keeps the key and stays put. */
+  sessionId?: SessionId | null;
+};
+
+/** The header's thread title. The entrance plays only for pointer-driven switches — the history
+ * chords and the palette repeat far too often to animate. */
+export function ThreadTitle({ sessionId, className, ...props }: ThreadTitleProps): React.ReactNode {
+  const pointerDriven = useInputModality() === 'pointer';
+
+  return (
+    <div
+      key={sessionId ?? 'none'}
+      className={cn('truncate', pointerDriven && 'thread-title-enter', className)}
+      {...props}
+    />
   );
 }
 

@@ -3,6 +3,9 @@
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "${configDir}/node_modules/.cache/tsconfig.tsbuildinfo",
+    "paths": {
+      "@mobile/*": ["./src/*"]
+    },
     "strict": true
   },
   "include": ["src", "vitest.config.ts"]

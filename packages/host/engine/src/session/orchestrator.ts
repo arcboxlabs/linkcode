@@ -3,6 +3,7 @@ import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentInput,
   ContentBlock,
+  McpWarning,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -16,6 +17,7 @@ import { watchTurn } from '../automation/turn-watcher';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
+import type { ResourceService } from '../resource/service';
 import { LiveSession } from './live-session';
 import { SessionEventProcessor } from './session-event-processor';
 import { SessionInputDispatcher } from './session-input-dispatcher';
@@ -34,10 +36,11 @@ export class SessionOrchestrator {
     private readonly scope: Scope.Scope,
     reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
+    private readonly resources: ResourceService,
     private readonly browserTools?: BrowserToolsetFactory,
   ) {
-    this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure);
-    this.inputs = new SessionInputDispatcher(records, this.events);
+    this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure, resources);
+    this.inputs = new SessionInputDispatcher(records, this.events, resources);
   }
 
   private get(sessionId: SessionId): LiveSession | undefined {
@@ -82,11 +85,13 @@ export class SessionOrchestrator {
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
+    const { resources } = this;
     return Effect.gen({ self: this }, function* () {
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
       }
+      yield* resources.deleteSession(sessionId);
       yield* this.records.delete(sessionId);
     });
   }
@@ -161,6 +166,7 @@ export class SessionOrchestrator {
     replyTo: string | undefined,
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+    mcpWarnings: readonly McpWarning[] = [],
   ): Effect.Effect<void, EngineFailure> {
     const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
     const { browserTools } = this;
@@ -186,7 +192,14 @@ export class SessionOrchestrator {
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           if (replyTo !== undefined) {
-            transport.send(createWireMessage({ kind: 'session.started', replyTo, sessionId }));
+            transport.send(
+              createWireMessage({
+                kind: 'session.started',
+                replyTo,
+                sessionId,
+                ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
+              }),
+            );
           }
         });
         yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));

@@ -1,7 +1,7 @@
 import { nullthrow } from 'foxact/nullthrow';
 import { describe, expect, it } from 'vitest';
+import type { DiffToolCallContent } from '../../diff-utils';
 import { chatFileDiff, hasAuthoritativeLineNumbers } from '../diff-block';
-import type { DiffToolCallContent } from '../diff-utils';
 
 function diff(content: Omit<DiffToolCallContent, 'type'>): DiffToolCallContent {
   return { type: 'diff', ...content };

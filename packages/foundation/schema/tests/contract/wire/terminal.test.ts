@@ -16,13 +16,13 @@ describe('terminal wire schema', () => {
       },
     });
 
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) throw new Error(parsed.error.message);
-    expect(parsed.data.payload.kind).toBe('terminal.open');
-    if (parsed.data.payload.kind !== 'terminal.open') {
-      throw new Error(`expected terminal.open, received ${parsed.data.payload.kind}`);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    expect(parsed.message.payload.kind).toBe('terminal.open');
+    if (parsed.message.payload.kind !== 'terminal.open') {
+      throw new Error(`expected terminal.open, received ${parsed.message.payload.kind}`);
     }
-    expect(parsed.data.payload.opts).not.toHaveProperty('sessionId');
+    expect(parsed.message.payload.opts).not.toHaveProperty('sessionId');
   });
 
   it('requires attachment credentials and a nonnegative cumulative count on terminal.ack', () => {
@@ -36,9 +36,9 @@ describe('terminal wire schema', () => {
       attachmentSecret: 's'.repeat(32),
     };
 
-    expect(ack(valid).success).toBe(true);
-    expect(ack({ ...valid, acked: -1 }).success).toBe(false);
-    expect(ack({ ...valid, acked: 1.5 }).success).toBe(false);
-    expect(ack({ ...valid, attachmentSecret: undefined }).success).toBe(false);
+    expect(ack(valid).ok).toBe(true);
+    expect(ack({ ...valid, acked: -1 }).ok).toBe(false);
+    expect(ack({ ...valid, acked: 1.5 }).ok).toBe(false);
+    expect(ack({ ...valid, attachmentSecret: undefined }).ok).toBe(false);
   });
 });

@@ -15,7 +15,7 @@
     "orientation": "portrait",
     "icon": "../../assets/icon.png",
     "primaryColor": "#000000",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",

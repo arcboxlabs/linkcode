@@ -7,17 +7,24 @@ import type {
   AgentKind,
   AgentRuntimes,
   ContentBlock,
+  CustomMcpServer,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   ManagedAssetId,
   ManagedAssetKey,
   ManagedAssetStatus,
   MessageId,
   PermissionOutcome,
+  Plugin,
   ProvidersConfig,
   QuestionOutcome,
   SessionId,
   SessionInfo,
+  SessionResource,
+  SessionResourceId,
   SessionStatus,
+  StandaloneSkill,
   TerminalMetadata,
   TerminalReplayEvent,
   ToolCall,
@@ -34,16 +41,19 @@ import {
   managedAssetKey,
   managedToolAssetId,
   normalizeCwdKey,
+  SessionResourceIdSchema,
   textBlock,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
+import { createLongThreadScript } from './data/long-thread';
 import { SEED_MODEL_CATALOGS } from './data/models';
+import { SEED_PLUGIN_PROVIDER_STATUS, SEED_PLUGINS, SEED_STANDALONE_SKILLS } from './data/plugins';
 import {
   CHUNK_LATENCY_MS,
   CONTROL_LATENCY_MS,
@@ -53,6 +63,7 @@ import {
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
+import type { SeedSessionResource } from './data/sessions';
 import { SEED_SESSIONS, SHOWCASE_TERMINAL_ID } from './data/sessions';
 import {
   createShowcaseToolBursts,
@@ -116,6 +127,8 @@ interface MockSession extends SessionInfo {
   epoch: number;
   showcase?: boolean;
   showcaseSeeded?: boolean;
+  longThread?: boolean;
+  longThreadSeeded?: boolean;
   terminalId?: string;
 }
 
@@ -171,9 +184,14 @@ interface PendingQuestion {
 
 export class DevMockHost {
   private readonly sessions = new Map<SessionId, MockSession>();
+  private readonly resources = new Map<SessionResourceId, SessionResource>();
   private readonly workspaces = new Map<WorkspaceId, WorkspaceRecord>();
   private providers: ProvidersConfig = {};
   private accounts: Accounts = [];
+  /** Stored with full secrets like the daemon; config.get serves the masked projection. */
+  private customMcpServers: CustomMcpServer[] = [];
+  private readonly plugins: Plugin[] = structuredClone(SEED_PLUGINS);
+  private readonly standaloneSkills: StandaloneSkill[] = structuredClone(SEED_STANDALONE_SKILLS);
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -183,6 +201,7 @@ export class DevMockHost {
   private messageSeq = 0;
   private workspaceSeq = 0;
   private terminalSeq = 0;
+  private resourceSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
   private readonly installedAssets = new Set<ManagedAssetKey>();
 
@@ -279,9 +298,10 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, ...seed } of SEED_SESSIONS) {
+    for (const { ageMs, resources, ...seed } of SEED_SESSIONS) {
       const createdAt = now - ageMs;
-      this.addSession({ ...seed, createdAt, updatedAt: createdAt });
+      const session = this.addSession({ ...seed, createdAt, updatedAt: createdAt });
+      this.seedResources(session.sessionId, now, resources ?? []);
       this.touchWorkspace(seed.cwd, createdAt);
     }
     this.history = SEED_HISTORY.map(({ ageMs, ...entry }) => ({
@@ -303,6 +323,7 @@ export class DevMockHost {
         });
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
+        this.seedLongThreads();
         break;
       case 'session.attach':
         this.attachSession(p.sessionId);
@@ -328,6 +349,27 @@ export class DevMockHost {
       case 'agent.input':
         await this.handleInput(p.clientReqId, p.sessionId, p.input);
         break;
+      case 'resource.list':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'resource.listed',
+          replyTo: p.clientReqId,
+          resources: [...this.resources.values()].filter(
+            (resource) => resource.sessionId === p.sessionId,
+          ),
+        });
+        break;
+      case 'resource.source.upload':
+        await this.uploadSource(p);
+        break;
+      case 'resource.remove':
+        await wait(CONTROL_LATENCY_MS);
+        this.removeResource(p.clientReqId, p.resourceId);
+        break;
+      case 'resource.host':
+        await wait(CONTROL_LATENCY_MS);
+        this.hostResource(p.clientReqId, p.resourceId);
+        break;
       case 'config.get':
         await wait(CONTROL_LATENCY_MS);
         this.send({
@@ -335,6 +377,7 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           providers: this.providers,
           accounts: this.accounts,
+          customMcpServers: this.customMcpServers.map((entry) => maskCustomMcpServer(entry)),
         });
         break;
       case 'agent-runtime.list':
@@ -360,6 +403,9 @@ export class DevMockHost {
         await wait(CONTROL_LATENCY_MS);
         if (p.providers !== undefined) this.providers = structuredClone(p.providers);
         if (p.accounts !== undefined) this.accounts = structuredClone(p.accounts);
+        if (p.customMcpServers !== undefined) {
+          this.customMcpServers = applyCustomMcpPatches(this.customMcpServers, p.customMcpServers);
+        }
         this.sendSuccess(p.clientReqId);
         break;
       case 'config.account.create-and-bind': {
@@ -377,6 +423,75 @@ export class DevMockHost {
           },
         };
         this.sendSuccess(p.clientReqId);
+        break;
+      }
+      case 'plugin.list.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin.list.result',
+          replyTo: p.clientReqId,
+          plugins: this.plugins,
+          standaloneSkills: this.standaloneSkills,
+          providerStatus: SEED_PLUGIN_PROVIDER_STATUS,
+        });
+        break;
+      case 'skill.set-enabled': {
+        await wait(CONTROL_LATENCY_MS);
+        const skill = this.standaloneSkills.find(
+          (entry) => entry.provider === p.provider && entry.id === p.skillId,
+        );
+        if (!skill?.toggleable) {
+          this.sendFailure(p.clientReqId, 'skill management is not supported');
+          break;
+        }
+        skill.enabled = p.enabled;
+        this.send({ kind: 'skill.updated', replyTo: p.clientReqId, skill });
+        break;
+      }
+      case 'plugin.set-enabled': {
+        await wait(CONTROL_LATENCY_MS);
+        const plugin = this.plugins.find(
+          (entry) => entry.provider === p.provider && entry.id === p.id,
+        );
+        if (!plugin?.managementCapabilities.enable) {
+          this.sendFailure(p.clientReqId, 'plugin management is not supported');
+          break;
+        }
+        for (const installation of plugin.installations) {
+          if (p.scope === undefined || installation.scope === p.scope) {
+            installation.enabled = p.enabled;
+          }
+        }
+        this.send({ kind: 'plugin.updated', replyTo: p.clientReqId, plugin });
+        break;
+      }
+      case 'plugin.install':
+      case 'plugin.uninstall': {
+        await wait(CONTROL_LATENCY_MS);
+        const installing = p.kind === 'plugin.install';
+        const plugin = this.plugins.find(
+          (entry) => entry.provider === p.provider && entry.id === p.id,
+        );
+        const capable = installing
+          ? plugin?.managementCapabilities.install
+          : plugin?.managementCapabilities.uninstall;
+        if (!plugin || !capable) {
+          this.sendFailure(p.clientReqId, `${p.provider}: plugin ${p.kind} is not supported`);
+          break;
+        }
+        // Mirrors the daemon: the marketplace entry survives an uninstall with no installations.
+        plugin.installations = installing
+          ? [{ enabled: true, version: plugin.version, scope: 'user' }]
+          : [];
+        this.send({
+          kind: 'plugin.updated',
+          replyTo: p.clientReqId,
+          plugin,
+          ...(installing &&
+            plugin.components.some((component) => component.kind === 'app') && {
+              pendingAuthApps: ['Mock Connector'],
+            }),
+        });
         break;
       }
       case 'workspace.list':
@@ -585,7 +700,7 @@ export class DevMockHost {
         break;
       }
       case 'ping':
-        this.send({ kind: 'pong' });
+        this.send(pong());
         break;
       default:
         break;
@@ -613,6 +728,81 @@ export class DevMockHost {
     };
     this.sessions.set(session.sessionId, session);
     return session;
+  }
+
+  private seedResources(
+    sessionId: SessionId,
+    now: number,
+    seeds: readonly SeedSessionResource[],
+  ): void {
+    for (const { ageMs, ...seed } of seeds) {
+      const timestamp = now - ageMs;
+      const resource: SessionResource = {
+        ...seed,
+        resourceId: this.nextResourceId(),
+        sessionId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      this.resources.set(resource.resourceId, resource);
+    }
+  }
+
+  private async uploadSource(
+    payload: Extract<WirePayload, { kind: 'resource.source.upload' }>,
+  ): Promise<void> {
+    if (!this.sessions.has(payload.sessionId)) {
+      await wait(CONTROL_LATENCY_MS);
+      this.sendFailure(payload.clientReqId, `Unknown session: ${payload.sessionId}`);
+      return;
+    }
+    const resourceId = this.nextResourceId();
+    const now = Date.now();
+    const processing: SessionResource = {
+      resourceId,
+      sessionId: payload.sessionId,
+      direction: 'source',
+      name: payload.name,
+      kind: payload.mimeType?.startsWith('image/') ? 'image' : 'file',
+      status: 'processing',
+      locator: { type: 'managed-file', path: `/mock/resources/${resourceId}` },
+      mimeType: payload.mimeType,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.resources.set(resourceId, processing);
+    this.send({ kind: 'resource.changed', resource: processing });
+    await wait(CONTROL_LATENCY_MS);
+    const ready: SessionResource = { ...processing, status: 'ready', updatedAt: Date.now() };
+    this.resources.set(resourceId, ready);
+    this.send({ kind: 'resource.changed', resource: ready });
+    this.send({ kind: 'resource.uploaded', replyTo: payload.clientReqId, resource: ready });
+  }
+
+  private removeResource(replyTo: string, resourceId: SessionResourceId): void {
+    const resource = this.resources.get(resourceId);
+    if (resource) {
+      this.resources.delete(resourceId);
+      this.send({ kind: 'resource.removed', resourceId, sessionId: resource.sessionId });
+    }
+    this.sendSuccess(replyTo);
+  }
+
+  private hostResource(replyTo: string, resourceId: SessionResourceId): void {
+    const resource = this.resources.get(resourceId);
+    if (resource?.status !== 'ready') {
+      this.sendFailure(replyTo, `Ready mock resource not found: ${resourceId}`);
+      return;
+    }
+    const url =
+      resource.locator.type === 'url'
+        ? resource.locator.url
+        : URL.createObjectURL(
+            new Blob([`Mock resource: ${resource.name}\n`], {
+              type: resource.mimeType ?? 'text/plain',
+            }),
+          );
+    this.send({ kind: 'resource.hosted', replyTo, hosted: { url } });
   }
 
   private listWorkspaces(): WorkspaceRecord[] {
@@ -1072,6 +1262,17 @@ export class DevMockHost {
     this.sendSuccess(replyTo);
   }
 
+  /** Emitted in one burst, not streamed: this transcript exists to be long, not to look live. */
+  private seedLongThreads(): void {
+    for (const session of this.sessions.values()) {
+      if (!session.longThread || session.longThreadSeeded) continue;
+      session.longThreadSeeded = true;
+      for (const event of createLongThreadScript((slug) => this.nextMessageId(slug))) {
+        this.emit(session.sessionId, event);
+      }
+    }
+  }
+
   private startShowcase(): void {
     for (const session of this.sessions.values()) {
       if (!session.showcase) continue;
@@ -1435,6 +1636,13 @@ export class DevMockHost {
     this.workspaceSeq += 1;
     return `mock-ws-${Date.now().toString(36)}-${this.workspaceSeq.toString(36)}` as WorkspaceId;
   }
+
+  private nextResourceId(): SessionResourceId {
+    this.resourceSeq += 1;
+    return SessionResourceIdSchema.parse(
+      `mock-resource-${Date.now().toString(36)}-${this.resourceSeq.toString(36)}`,
+    );
+  }
 }
 
 function promptText(content: readonly ContentBlock[]): string {
@@ -1472,4 +1680,80 @@ const PATH_SEPARATORS_RE = /[/\\]+/;
 
 function lastPathSegment(cwd: string): string {
   return cwd.split(PATH_SEPARATORS_RE).findLast((part) => part.length > 0) ?? cwd;
+}
+
+/** Mirror of the daemon's masked projection: env/header values never reach the client. */
+function maskCustomMcpServer(entry: CustomMcpServer): CustomMcpServerPublic {
+  const { server } = entry;
+  return {
+    id: entry.id,
+    enabled: entry.enabled,
+    createdAt: entry.createdAt,
+    server:
+      server.type === 'stdio'
+        ? {
+            type: 'stdio',
+            name: server.name,
+            command: server.command,
+            args: server.args,
+            envKeys: Object.keys(server.env ?? {}),
+          }
+        : {
+            type: 'http',
+            name: server.name,
+            url: server.url,
+            headerKeys: Object.keys(server.headers ?? {}),
+          },
+  };
+}
+
+/** Mirror of the daemon's patch semantics: add / enabled flip / per-key secret set-remove /
+ * remove. Validation (name uniqueness etc.) is deliberately not replicated in the mock. */
+function applyCustomMcpPatches(
+  current: CustomMcpServer[],
+  ops: readonly CustomMcpServerPatchOp[],
+): CustomMcpServer[] {
+  let next = structuredClone(current);
+  for (const op of ops) {
+    switch (op.op) {
+      case 'add':
+        next.push(structuredClone(op.server));
+        break;
+      case 'update': {
+        const entry = next.find((candidate) => candidate.id === op.id);
+        if (!entry) break;
+        if (op.enabled !== undefined) entry.enabled = op.enabled;
+        if (op.server?.type !== entry.server.type) break;
+        entry.server.name = op.server.name;
+        if (entry.server.type === 'stdio' && op.server.type === 'stdio') {
+          entry.server.command = op.server.command;
+          entry.server.args = op.server.args;
+          entry.server.env = applyMockSecretPatch(entry.server.env, op.server.env);
+        } else if (entry.server.type === 'http' && op.server.type === 'http') {
+          entry.server.url = op.server.url;
+          entry.server.headers = applyMockSecretPatch(entry.server.headers, op.server.headers);
+        }
+        break;
+      }
+      case 'remove':
+        next = next.filter((candidate) => candidate.id !== op.id);
+        break;
+      default:
+        break;
+    }
+  }
+  return next;
+}
+
+function applyMockSecretPatch(
+  current: Record<string, string> | undefined,
+  patch: { set?: Record<string, string>; remove?: string[] } | undefined,
+): Record<string, string> | undefined {
+  if (!patch) return current;
+  const removed = new Set(patch.remove);
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ ...current, ...patch.set })) {
+    if (!removed.has(key)) next[key] = value;
+  }
+  return next;
 }

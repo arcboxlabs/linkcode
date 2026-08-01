@@ -5,6 +5,7 @@ import type {
   AgentHistoryReadResult,
   AgentRuntimes,
   AgentStartCatalog,
+  CustomMcpServerPublic,
   FileSuggestion,
   GitBranchList,
   GitDiff,
@@ -12,21 +13,27 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
+  McpWarning,
+  Plugin,
+  PluginProviderStatus,
   ProvidersConfig,
   Schedule,
   ScheduleRun,
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionResource,
   SimulatorAxNode,
   SimulatorConsentState,
   SimulatorDevice,
   SimulatorImageFormat,
   SimulatorStatus,
   SimulatorStreamCodec,
+  StandaloneSkill,
   TerminalMetadata,
   WirePayload,
   WorkspaceFile,
@@ -47,6 +54,27 @@ export interface RequestAck {
   ok: true;
 }
 
+export interface SessionStartResult {
+  sessionId: SessionId;
+  mcpWarnings: McpWarning[];
+}
+
+/** The `plugin.list.result` payload as one value: catalogs, standalone skills, and per-provider
+ * discovery outcomes travel together so the UI can tell "empty" from "provider CLI failed". */
+export interface PluginList {
+  plugins: Plugin[];
+  standaloneSkills: StandaloneSkill[];
+  providerStatus: PluginProviderStatus[];
+}
+
+/** The `plugin.updated` payload: every plugin mutation (toggle, install, uninstall) answers with
+ * the re-listed plugin, so they share one pending tag. */
+export interface PluginMutation {
+  plugin: Plugin;
+  /** Install only: provider apps the install left unauthorized. */
+  pendingAuthApps?: string[];
+}
+
 export type RandomUUID = () => string;
 
 export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
@@ -65,7 +93,7 @@ export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
  * kind — several kinds (e.g. `session.start`/`session.resume`/`history.resume`) share one tag.
  */
 export interface PendingValueMap {
-  start: SessionId;
+  start: SessionStartResult;
   list: SessionInfo[];
   import: SessionRecord;
   historyList: AgentHistoryListResult;
@@ -73,6 +101,10 @@ export interface PendingValueMap {
   configGet: ProvidersConfig;
   accountsGet: Accounts;
   accountModels: AccountModel[];
+  customMcpGet: CustomMcpServerPublic[];
+  pluginList: PluginList;
+  pluginMutation: PluginMutation;
+  skillSetEnabled: StandaloneSkill;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
@@ -87,6 +119,9 @@ export interface PendingValueMap {
   scriptList: WorkspaceScript[];
   artifactHost: HostedArtifact;
   fileHost: HostedFile;
+  resourceList: SessionResource[];
+  resourceUpload: SessionResource;
+  resourceHost: HostedSessionResource;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -127,6 +162,10 @@ export class PendingRegistry {
     configGet: new Map(),
     accountsGet: new Map(),
     accountModels: new Map(),
+    customMcpGet: new Map(),
+    pluginList: new Map(),
+    pluginMutation: new Map(),
+    skillSetEnabled: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),
     assetList: new Map(),
@@ -141,6 +180,9 @@ export class PendingRegistry {
     scriptList: new Map(),
     artifactHost: new Map(),
     fileHost: new Map(),
+    resourceList: new Map(),
+    resourceUpload: new Map(),
+    resourceHost: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),

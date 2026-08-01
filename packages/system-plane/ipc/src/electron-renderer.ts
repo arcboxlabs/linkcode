@@ -3,7 +3,7 @@ import { defineInvokes } from '@moeru/eventa';
 import { createContext as createRendererContext } from '@moeru/eventa/adapters/electron/renderer';
 import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
-import type { BrowserDownloadDone, DesktopSettings, UpdaterStatus } from './context';
+import type { BrowserDownloadDone, DesktopSettings, UpdaterState } from './context';
 import {
   BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
@@ -14,7 +14,7 @@ import {
   SETTINGS_OPEN_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
   systemIpcEvents,
-  UPDATER_STATUS_CHANNEL,
+  UPDATER_STATE_CHANNEL,
   WINDOW_MAXIMIZED_CHANGED_CHANNEL,
 } from './events';
 
@@ -63,12 +63,21 @@ export function createElectronSystemBridge(
       version: () => invoke.appVersion(),
       platform,
       checkForUpdates: () => invoke.appCheckForUpdates(),
-      onUpdaterStatus(cb) {
+      updaterState: () => invoke.appUpdaterState(),
+      installUpdate: () => invoke.appInstallUpdate(),
+      onUpdaterState(cb) {
         const handler: IpcRendererListener = (_event, value: unknown) => {
-          if (typeof value === 'string') cb(value as UpdaterStatus);
+          if (
+            typeof value === 'object' &&
+            value !== null &&
+            'status' in value &&
+            'version' in value
+          ) {
+            cb(value as UpdaterState);
+          }
         };
-        ipcRenderer.on(UPDATER_STATUS_CHANNEL, handler);
-        return () => ipcRenderer.removeListener(UPDATER_STATUS_CHANNEL, handler);
+        ipcRenderer.on(UPDATER_STATE_CHANNEL, handler);
+        return () => ipcRenderer.removeListener(UPDATER_STATE_CHANNEL, handler);
       },
       onOpenSettings(cb) {
         const handler: IpcRendererListener = () => cb();

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Account } from '@linkcode/schema';
+import type { Account, Accounts, CustomMcpServer } from '@linkcode/schema';
 import { DAEMON_DEFAULT_PORT, DAEMON_PORT_HUNT_SPAN, daemonBasePort } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,11 +12,12 @@ import {
   databasePath,
   loadConfig,
   runtimeFilePath,
-  saveAccounts,
+  saveCustomMcpServers,
   saveProviderConfiguration,
 } from '../config';
 import { logger } from '../logger';
 import { daemonChannel, telemetryConfigCachePath } from '../paths';
+import { createProviderConfigStore } from '../provider-store';
 import type { InMemoryVault } from './fixtures/in-memory-vault';
 import { createInMemoryVault } from './fixtures/in-memory-vault';
 
@@ -63,7 +64,7 @@ const validAccount: Account = {
   label: 'Personal key',
   credential: { type: 'api-key', key: 'sk-test' },
   createdAt: 0,
-} satisfies Account;
+} satisfies Accounts[number];
 
 describe('loadConfig providers', () => {
   it('keeps valid provider entries and drops an invalid one, logging the error', () => {
@@ -292,6 +293,190 @@ describe('saveProviderConfiguration', () => {
   });
 });
 
+describe('loadConfig custom MCP servers', () => {
+  const validServer = {
+    id: 'custom-1',
+    enabled: true,
+    server: {
+      type: 'stdio',
+      name: 'github',
+      command: 'gh-mcp',
+      env: { GITHUB_TOKEN: 'secret' },
+    },
+    createdAt: 1,
+  } as const satisfies CustomMcpServer;
+
+  function writeCustomMcpConfig(customMcpServers: unknown): void {
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers }));
+  }
+
+  it('keeps valid servers and drops an invalid one without blanking the rest', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeCustomMcpConfig([validServer, { id: 'broken', server: { type: 'stdio' } }]);
+
+    const config = loadConfig(vault);
+
+    expect(config.customMcpServers).toEqual([validServer]);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('round-trips through saveCustomMcpServers preserving other fields at mode 0600', () => {
+    writeCustomMcpConfig([]);
+    const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
+    writeFileSync(path, JSON.stringify({ providers: {}, customMcpServers: [] }));
+
+    saveCustomMcpServers(vault, [validServer], []);
+
+    const written: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    expect(written).toEqual({
+      providers: {},
+      customMcpServers: {
+        v: 1,
+        generation: 1,
+        servers: [
+          {
+            ...validServer,
+            server: { ...validServer.server, env: { GITHUB_TOKEN: null } },
+          },
+        ],
+      },
+    });
+    expect(vault.refs.get('custom-mcp:[1,"custom-1","env","GITHUB_TOKEN"]')).toBe('secret');
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(loadConfig(vault).customMcpServers).toEqual([validServer]);
+  });
+
+  it('keeps secrets distinct when server ids and keys contain delimiters', () => {
+    const servers: CustomMcpServer[] = [
+      {
+        ...validServer,
+        id: 'a',
+        server: { ...validServer.server, env: { 'b:env:c': 'first' } },
+      },
+      {
+        ...validServer,
+        id: 'a:env:b',
+        server: { ...validServer.server, name: 'second', env: { c: 'second' } },
+      },
+    ];
+
+    saveCustomMcpServers(vault, servers, []);
+
+    expect(loadConfig(vault).customMcpServers).toEqual(servers);
+  });
+
+  it('loads a complete snapshot on either side of the config commit point', () => {
+    const nextServer: CustomMcpServer = {
+      ...validServer,
+      server: { ...validServer.server, env: { NEXT_TOKEN: 'next-secret' } },
+    };
+    saveCustomMcpServers(vault, [validServer], []);
+    const previousConfig = readConfigFile();
+    const previousRefs = new Map(vault.refs);
+    saveCustomMcpServers(vault, [nextServer], [validServer]);
+    const nextConfig = readConfigFile();
+    const nextRefs = new Map(vault.refs);
+    const union = new Map([...previousRefs, ...nextRefs]);
+    const path = join(process.env.HOME ?? '', '.linkcode', 'config.json');
+
+    writeFileSync(path, JSON.stringify(previousConfig));
+    vault.refs.clear();
+    for (const [key, secret] of union) vault.refs.set(key, secret);
+    expect(loadConfig(vault).customMcpServers).toEqual([validServer]);
+
+    writeFileSync(path, JSON.stringify(nextConfig));
+    vault.refs.clear();
+    for (const [key, secret] of union) vault.refs.set(key, secret);
+    expect(loadConfig(vault).customMcpServers).toEqual([nextServer]);
+  });
+
+  it('replaces orphaned entries when reusing an interrupted generation', () => {
+    saveCustomMcpServers(vault, [validServer], []);
+    vault.refs.set('custom-mcp:[2,"custom-1","env","STALE_TOKEN"]', 'stale');
+    const nextServer: CustomMcpServer = {
+      ...validServer,
+      server: { ...validServer.server, env: { GITHUB_TOKEN: 'next' } },
+    };
+
+    saveCustomMcpServers(vault, [nextServer], [validServer]);
+
+    expect([...vault.refs]).toEqual([['custom-mcp:[2,"custom-1","env","GITHUB_TOKEN"]', 'next']]);
+    expect(loadConfig(vault).customMcpServers).toEqual([nextServer]);
+  });
+
+  it('keeps a committed snapshot usable when stale-secret pruning fails', () => {
+    saveCustomMcpServers(vault, [validServer], []);
+    const nextServer: CustomMcpServer = {
+      ...validServer,
+      server: { ...validServer.server, env: { GITHUB_TOKEN: 'next' } },
+    };
+    const baseVault = vault;
+    let replacements = 0;
+    const pruneFailure = new Error('prune failed');
+    const flakyVault: InMemoryVault = {
+      ...baseVault,
+      namespace(name) {
+        const store = baseVault.namespace(name);
+        if (name !== 'custom-mcp') return store;
+        return {
+          ...store,
+          replaceAll(entries) {
+            replacements += 1;
+            if (replacements === 2) throw pruneFailure;
+            store.replaceAll(entries);
+          },
+        };
+      },
+    };
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(noop);
+
+    expect(() => saveCustomMcpServers(flakyVault, [nextServer], [validServer])).not.toThrow();
+
+    expect(loadConfig(flakyVault).customMcpServers).toEqual([nextServer]);
+    expect(warning).toHaveBeenCalledWith(
+      { err: pruneFailure, operation: 'config.save-custom-mcp' },
+      'Custom MCP state committed but stale secret cleanup failed',
+    );
+  });
+
+  it('rejects a malformed versioned snapshot instead of guessing its generation', () => {
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeCustomMcpConfig({ v: 1, generation: '1', servers: [validServer] });
+
+    expect(loadConfig(vault).customMcpServers).toEqual([]);
+    expect(warning).toHaveBeenCalled();
+  });
+});
+
+describe('createProviderConfigStore', () => {
+  it('does not publish provider, account, or custom MCP state when persistence fails', () => {
+    const oldProviders = { codex: { enabled: true } } as const;
+    const oldAccounts: Accounts = [validAccount];
+    const oldCustomMcpServers: CustomMcpServer[] = [];
+    const store = createProviderConfigStore(vault, oldProviders, oldAccounts, oldCustomMcpServers);
+    writeFileSync(join(process.env.HOME ?? '', '.linkcode'), 'not a directory');
+
+    expect(() => store.update({ providers: { 'claude-code': { enabled: true } } })).toThrow();
+    expect(() => store.update({ accounts: [] })).toThrow();
+    expect(() =>
+      store.setCustomMcpServers([
+        {
+          id: 'custom-1',
+          enabled: true,
+          server: { type: 'stdio', name: 'test', command: 'test' },
+          createdAt: 1,
+        },
+      ]),
+    ).toThrow();
+    expect(store.get()).toBe(oldProviders);
+    expect(store.getAccounts()).toBe(oldAccounts);
+    expect(store.getCustomMcpServers()).toBe(oldCustomMcpServers);
+    expect([...vault.refs.keys()].some((ref) => ref.startsWith('custom-mcp:'))).toBe(false);
+  });
+});
+
 // CODE-371: config.json used to hold provider api keys and account credentials in the clear. The
 // vault owns them now, and an upgrade has to move them without the user re-entering anything.
 describe('credential storage', () => {
@@ -320,8 +505,82 @@ describe('credential storage', () => {
     expect(raw).not.toContain('sk-test');
   });
 
+  it('lazily moves inline custom MCP values while preserving their keys', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(noop);
+    const server: CustomMcpServer = {
+      id: 'custom-http',
+      enabled: true,
+      server: {
+        type: 'http',
+        name: 'search',
+        url: 'https://mcp.example',
+        headers: { Authorization: 'Bearer legacy' },
+      },
+      createdAt: 1,
+    };
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers: [server] }));
+
+    expect(loadConfig(vault).customMcpServers).toEqual([server]);
+    expect(vault.refs.get('custom-mcp:[1,"custom-http","headers","Authorization"]')).toBe(
+      'Bearer legacy',
+    );
+    expect(readConfigFile().customMcpServers).toEqual({
+      v: 1,
+      generation: 1,
+      servers: [{ ...server, server: { ...server.server, headers: { Authorization: null } } }],
+    });
+    expect(loadConfig(vault).customMcpServers).toEqual([server]);
+  });
+
+  it('migrates a legacy mix of inline and placeholder secrets as one snapshot', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(noop);
+    const inline: CustomMcpServer = {
+      id: 'inline',
+      enabled: true,
+      server: {
+        type: 'stdio',
+        name: 'inline',
+        command: 'inline',
+        env: { INLINE_TOKEN: 'inline-secret' },
+      },
+      createdAt: 1,
+    };
+    const referenced: CustomMcpServer = {
+      id: 'referenced',
+      enabled: true,
+      server: {
+        type: 'stdio',
+        name: 'referenced',
+        command: 'referenced',
+        env: { STORED_TOKEN: 'stored-secret' },
+      },
+      createdAt: 2,
+    };
+    const dir = join(process.env.HOME ?? '', '.linkcode');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'config.json'),
+      JSON.stringify({
+        customMcpServers: [
+          inline,
+          {
+            ...referenced,
+            server: { ...referenced.server, env: { STORED_TOKEN: null } },
+          },
+        ],
+      }),
+    );
+    vault.refs.set('custom-mcp:["referenced","env","STORED_TOKEN"]', 'stored-secret');
+
+    expect(loadConfig(vault).customMcpServers).toEqual([inline, referenced]);
+    expect(readConfigFile().customMcpServers).toMatchObject({ v: 1, generation: 1 });
+    expect(loadConfig(vault).customMcpServers).toEqual([inline, referenced]);
+  });
+
   it('round-trips an account through the vault without ever writing the secret', () => {
-    saveAccounts(vault, [validAccount]);
+    saveProviderConfiguration(vault, {}, [validAccount]);
 
     const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
     expect(stored[0].credential).toEqual({ type: 'api-key' });
@@ -330,8 +589,8 @@ describe('credential storage', () => {
   });
 
   it('drops the stored secret when its account is removed', () => {
-    saveAccounts(vault, [validAccount]);
-    saveAccounts(vault, []);
+    saveProviderConfiguration(vault, {}, [validAccount]);
+    saveProviderConfiguration(vault, {}, []);
 
     // Otherwise a deleted account leaves a live credential behind in the OS keyring forever.
     expect(vault.refs.get('account:acc_1')).toBeUndefined();
@@ -344,7 +603,7 @@ describe('credential storage', () => {
       credential: { type: 'oauth', agent: 'claude-code' },
       createdAt: 0,
     };
-    saveAccounts(vault, [oauth]);
+    saveProviderConfiguration(vault, {}, [oauth]);
 
     const stored = readConfigFile().accounts as Array<Record<string, unknown>>;
     expect(stored[0].credential).toEqual({ type: 'oauth', agent: 'claude-code' });

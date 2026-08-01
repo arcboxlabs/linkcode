@@ -20,6 +20,7 @@ export {
   TunnelCloseCode,
 } from '@linkcode/tunnel';
 export * from './local';
+export * from './pong';
 export * from './preview-routes';
 export * from './socket-io';
 export * from './transport';

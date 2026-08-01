@@ -1,8 +1,10 @@
-import type { UpdaterStatus } from '@linkcode/ipc';
-import { dialog } from 'electron';
+import type { UpdaterState, UpdaterStatus } from '@linkcode/ipc';
 import log from 'electron-log';
 import { autoUpdater } from 'electron-updater';
+import { noop } from 'foxts/noop';
 import { CHANNEL } from './constants';
+
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /** A dev shell must never pull the production feed and replace itself with the release build. */
 const updatesDisabled = (): boolean => CHANNEL === 'development';
@@ -13,17 +15,27 @@ const updatesDisabled = (): boolean => CHANNEL === 'development';
  * packaged app.
  */
 
-type UpdaterStatusListener = (status: UpdaterStatus) => void;
-const statusListeners = new Set<UpdaterStatusListener>();
+type UpdaterStateListener = (state: UpdaterState) => void;
+const stateListeners = new Set<UpdaterStateListener>();
+let updaterState: UpdaterState = { status: 'idle', version: null, progress: null };
 
-/** Subscribe to auto-update lifecycle status; the IPC layer forwards these to the renderer. */
-export function onUpdaterStatus(listener: UpdaterStatusListener): () => void {
-  statusListeners.add(listener);
-  return () => statusListeners.delete(listener);
+/** Subscribe to auto-update lifecycle state; the IPC layer forwards these to the renderer. */
+export function onUpdaterState(listener: UpdaterStateListener): () => void {
+  stateListeners.add(listener);
+  return () => stateListeners.delete(listener);
 }
 
-function emitStatus(status: UpdaterStatus): void {
-  for (const listener of statusListeners) listener(status);
+export function getUpdaterState(): UpdaterState {
+  return updaterState;
+}
+
+function emitState(
+  status: UpdaterStatus,
+  version = updaterState.version,
+  progress: number | null = null,
+): void {
+  updaterState = { status, version, progress };
+  for (const listener of stateListeners) listener(updaterState);
 }
 
 export function initAutoUpdates(): void {
@@ -32,43 +44,45 @@ export function initAutoUpdates(): void {
   autoUpdater.logger = log;
   log.transports.file.level = 'info';
 
-  autoUpdater.on('checking-for-update', () => emitStatus('checking'));
-  autoUpdater.on('update-available', () => emitStatus('available'));
-  autoUpdater.on('update-not-available', () => emitStatus('not-available'));
-  autoUpdater.on('download-progress', () => emitStatus('downloading'));
+  autoUpdater.on('checking-for-update', () => emitState('checking', null));
+  autoUpdater.on('update-available', ({ version }) => emitState('available', version));
+  autoUpdater.on('update-not-available', () => emitState('not-available', null));
+  autoUpdater.on('download-progress', ({ percent }) => {
+    emitState('downloading', updaterState.version, percent);
+  });
   autoUpdater.on('update-downloaded', ({ version }) => {
-    emitStatus('downloaded');
-    void promptInstall(version);
+    emitState('downloaded', version);
   });
   autoUpdater.on('error', (err) => {
-    emitStatus('error');
+    emitState('error');
     log.error('[link-code/desktop] auto-update failed:', err);
   });
 
   // autoDownload defaults to true, so a found update downloads and fires `update-downloaded`.
-  void autoUpdater.checkForUpdates();
+  checkForUpdates();
+  const timer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+  timer.unref();
 }
 
 /** Manual update check triggered from Settings → About. */
 export function checkForUpdates(): void {
   if (updatesDisabled()) {
     // Dev shells have no feed of their own; report a stable result.
-    emitStatus('not-available');
+    emitState('not-available', null);
     return;
   }
-  emitStatus('checking');
-  void autoUpdater.checkForUpdates().catch(() => emitStatus('error'));
+  if (updaterState.status === 'downloaded') return;
+  emitState('checking', null);
+  // electron-updater emits `error` before rejecting; that listener owns status and logging.
+  void autoUpdater
+    .checkForUpdates()
+    .then((result) => {
+      if (result === null) emitState('not-available', null);
+    })
+    .catch(noop);
 }
 
-async function promptInstall(version: string): Promise<void> {
-  const { response } = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['Restart now', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-    title: 'Update ready',
-    message: `LinkCode ${version} has been downloaded.`,
-    detail: 'Restart to finish installing the update.',
-  });
-  if (response === 0) autoUpdater.quitAndInstall();
+export function installUpdate(): void {
+  if (updaterState.status !== 'downloaded') throw new Error('No downloaded update to install');
+  autoUpdater.quitAndInstall();
 }

@@ -8,6 +8,8 @@ export interface ModelOption {
   description?: string;
   /** Per-model effort capability from a dynamic adapter catalog. */
   effortLevels?: EffortLevel[];
+  /** The effort this model runs at unpicked, when the catalog advertises one. */
+  defaultEffort?: EffortLevel;
 }
 
 export interface ModelProviderGroups {
@@ -68,10 +70,13 @@ const CODEX_BASE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] satisfies EffortLe
  * Curated model choices, keyed by adapter — only adapters with a *verified* live model switch get
  * an entry, and every id was confirmed by reading the served model back off a live stream (source
  * reading is not enough: claude-code's first design silently ignored the override). Legacy models
- * are included deliberately — the choice belongs to the user.
- * claude-opus-4-1 is deliberately excluded: setModel() accepts it but claude-opus-4-8 is silently
+ * are included deliberately — the choice belongs to the user. Anthropic ids and lifecycle come from
+ * https://platform.claude.com/docs/en/about-claude/models/overview.
+ * claude-opus-4-1 is deliberately excluded: setModel() accepts it but claude-opus-5 is silently
  * served instead. Offering claude-fable-5 to everyone is safe: accounts without access get a hard
  * CLI error and the picker keeps the previous model (confirm-then-reflect).
+ * `[1m]` ids (`claude-opus-5[1m]`) are a claude-code-side context tier, not Anthropic model ids;
+ * none are listed, and resolveModel() cannot fold one back onto its base entry.
  * Keeping this table static is a deliberate CODE-104 decision (the dynamic reference
  * implementation lives in closed PR #52); refresh it by hand under the discipline above.
  * codex ids/labels are the app-server's `model/list` verbatim; switches apply from the next turn,
@@ -80,6 +85,7 @@ const CODEX_BASE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] satisfies EffortLe
 export const AGENT_MODEL_OPTIONS: Partial<Record<AgentKind, ModelOption[]>> = {
   'claude-code': [
     { id: 'claude-fable-5', label: 'Fable 5' },
+    { id: 'claude-opus-5', label: 'Opus 5' },
     { id: 'claude-opus-4-8', label: 'Opus 4.8' },
     { id: 'claude-opus-4-7', label: 'Opus 4.7 (Legacy)' },
     { id: 'claude-opus-4-6', label: 'Opus 4.6 (Legacy)' },

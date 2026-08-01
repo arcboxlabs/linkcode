@@ -81,7 +81,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolvedIntent = yield* startOptions.resolve(options, sessionId);
+      const { options: resolvedIntent, warnings } = yield* startOptions.resolve(options, sessionId);
       const resolved = yield* worktrees.provision(resolvedIntent, sessionId);
       if (options.cwd) {
         const parent = yield* workspaceTouch(workspaces, options.cwd);
@@ -99,8 +99,11 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ startedAt: now }],
       };
-      yield* sessions.startLive(replyTo, record, (adapter) =>
-        sessions.startAdapter(adapter, resolved),
+      yield* sessions.startLive(
+        replyTo,
+        record,
+        (adapter) => sessions.startAdapter(adapter, resolved),
+        warnings,
       );
     });
   }
@@ -151,7 +154,10 @@ export class SessionLifecycleService {
     const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const resolvedIntent = yield* resolver.resolve({ ...options, kind }, sessionId);
+      const { options: resolvedIntent, warnings } = yield* resolver.resolve(
+        { ...options, kind },
+        sessionId,
+      );
       const startOptions = yield* worktrees.provision(resolvedIntent, sessionId);
       if (options.cwd) {
         const parent = yield* workspaceTouch(workspaces, options.cwd);
@@ -168,8 +174,11 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ historyId, startedAt: now }],
       };
-      yield* sessions.startLive(replyTo, record, (adapter) =>
-        history.resume(adapter, historyId, startOptions),
+      yield* sessions.startLive(
+        replyTo,
+        record,
+        (adapter) => history.resume(adapter, historyId, startOptions),
+        warnings,
       );
     });
   }
@@ -200,7 +209,7 @@ export class SessionLifecycleService {
       const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
       return Effect.gen(function* () {
         yield* worktrees.verifyResume(sessionId);
-        const startOptions = yield* resolver.resolve(
+        const { options: startOptions, warnings } = yield* resolver.resolve(
           { kind: record.kind, cwd: record.cwd },
           sessionId,
         );
@@ -214,10 +223,14 @@ export class SessionLifecycleService {
           yield* workspaceTouch(workspaces, record.cwd);
         }
         record.runs.push({ historyId, startedAt: Date.now() });
-        yield* sessions.startLive(replyTo, record, (adapter) =>
-          historyId === undefined
-            ? sessions.startAdapter(adapter, startOptions)
-            : history.resume(adapter, historyId, startOptions),
+        yield* sessions.startLive(
+          replyTo,
+          record,
+          (adapter) =>
+            historyId === undefined
+              ? sessions.startAdapter(adapter, startOptions)
+              : history.resume(adapter, historyId, startOptions),
+          warnings,
         );
       });
     });
@@ -233,7 +246,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const startOptions = yield* resolver.resolve(
+      const { options: startOptions } = yield* resolver.resolve(
         { kind: options.kind, cwd: options.cwd, model: options.model },
         sessionId,
       );

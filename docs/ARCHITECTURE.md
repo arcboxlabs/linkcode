@@ -316,9 +316,24 @@ the branded `ValidatedWireMessage`, minted only by `createWireMessage` (typed co
 and `parseWireMessage` (boundary validation), so an unchecked object cannot reach a send path
 without an explicit cast. `LocalTransport` alone keeps a send-side parse so tests and the
 dev-mock host catch schema drift behind the brand.
-Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`; the version is a validated
-literal, so a stale peer rejects every message — after a bump, restart the daemon and all
-clients together.
+Any change to the payload union bumps `WIRE_PROTOCOL_VERSION`, the number a build stamps.
+`MIN_COMPATIBLE_WIRE_VERSION` is separate and moves only when a change is genuinely breaking —
+a variant or field removed, renamed, or given a new meaning — so an additive frame costs older
+peers nothing. Receivers validate the envelope first and the payload second: a frame stamped
+at or above the floor whose `kind` this build has never heard of is dropped on its own (reported
+once per connection) while its neighbours are delivered, and only a frame below the floor is
+refused for its version. The handshake `pong` carries the answering build's `version` and
+`minCompatible`, which a client reads through `peerWireVersion` to skip frames an older host
+would drop; it also names the one skew both sides can still read (the host's floor moved past
+the client) instead of leaving it to the handshake timeout.
+
+Who receives a host frame is declared in `wire/delivery.ts`, not decided in the transport: a
+correlated reply follows its `replyTo` to the connection that asked, and everything else fans out
+to every connection unless the table scopes it to one terminal's attachments, to the sessions a
+connection attached to, or to the registered browser host. A new host→client frame carrying a
+resource id belongs in that table; omitting it costs bytes on every connection, not correctness.
+The Hub still owns the state behind those scopes — attach/detach bookkeeping, attachment secrets,
+and host registration.
 
 Interactive permission and question requests have a host-authoritative lifecycle. The Engine
 records each advertised request as open, validates responses against that exact request, emits a

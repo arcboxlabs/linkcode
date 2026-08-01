@@ -13,6 +13,8 @@ import type {
   AgentRuntimes,
   AgentStartCatalog,
   ContentBlock,
+  CustomMcpServerPatchOp,
+  CustomMcpServerPublic,
   EffortLevel,
   FileSuggestion,
   GitBranchList,
@@ -22,6 +24,7 @@ import type {
   GitStatus,
   HostedArtifact,
   HostedFile,
+  HostedSessionResource,
   InstalledAsset,
   LoopId,
   LoopInspection,
@@ -32,6 +35,8 @@ import type {
   ManagedAssetId,
   ManagedAssetStatus,
   PermissionOutcome,
+  PluginProvider,
+  PluginScope,
   ProvidersConfig,
   QuestionOutcome,
   Schedule,
@@ -39,10 +44,13 @@ import type {
   ScheduleRun,
   ScheduleSpec,
   ScheduleUpdate,
+  SessionChangeReason,
   SessionId,
   SessionInfo,
   SessionNotification,
   SessionRecord,
+  SessionResource,
+  SessionResourceId,
   SessionSubscriptionMode,
   SimulatorAxNode,
   SimulatorButton,
@@ -54,6 +62,8 @@ import type {
   SimulatorStatus,
   SimulatorStreamCodec,
   SimulatorTouchPhase,
+  StandaloneSkill,
+  StandaloneSkillScope,
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
@@ -64,6 +74,7 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
+import { MIN_COMPATIBLE_WIRE_VERSION, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
@@ -77,7 +88,13 @@ import { ControlChannel } from './client/control-channel';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
-import type { RandomUUID, RequestAck } from './client/pending-registry';
+import type {
+  PluginList,
+  PluginMutation,
+  RandomUUID,
+  RequestAck,
+  SessionStartResult,
+} from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
@@ -85,12 +102,19 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
+export type { PluginList, PluginMutation, SessionStartResult } from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
 type SessionNotificationCb = (notification: SessionNotification) => void;
+type SessionChangedCb = (sessionId: SessionId, reason: SessionChangeReason) => void;
+type ResourceEventCb = (
+  event:
+    | { type: 'changed'; resource: SessionResource }
+    | { type: 'removed'; resourceId: SessionResourceId; sessionId: SessionId },
+) => void;
 type TerminalExitCb = (exitCode: number | null) => void;
 type TerminalErrorCb = (err: Error) => void;
 type TerminalControllerCb = (canControl: boolean) => void;
@@ -164,6 +188,17 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
+/** The message to fail the handshake with, or null when the two builds overlap. */
+function wireIncompatibility(peerVersion: number, peerMinCompatible: number): string | null {
+  if (peerVersion < MIN_COMPATIBLE_WIRE_VERSION) {
+    return `LinkCodeClient: host speaks wire v${peerVersion}, older than the v${MIN_COMPATIBLE_WIRE_VERSION} this build needs — update the host`;
+  }
+  if (WIRE_PROTOCOL_VERSION < peerMinCompatible) {
+    return `LinkCodeClient: this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${peerMinCompatible} the host needs — update this app`;
+  }
+  return null;
+}
+
 export function isRequestFailureReportedInConversation(error: unknown): boolean {
   return (
     isErrorLikeObject(error) &&
@@ -190,6 +225,8 @@ export class LinkCodeClient {
   private readonly loopEventSubs = new Set<LoopEventCb>();
   private readonly loopLogs = new LoopLogBuffer();
   private readonly sessionNotificationSubs = new Set<SessionNotificationCb>();
+  private readonly sessionChangedSubs = new Set<SessionChangedCb>();
+  private readonly resourceEventSubs = new Set<ResourceEventCb>();
   private readonly assetProgressSubs = new Set<AssetProgressCb>();
   private readonly assetSettledSubs = new Set<AssetSettledCb>();
   private readonly agentRuntimesChangedSubs = new Set<AgentRuntimesChangedCb>();
@@ -206,6 +243,7 @@ export class LinkCodeClient {
   private connectionError: Error | null = null;
   private resolveHandshake: (() => void) | null = null;
   private rejectHandshake: ((error: Error) => void) | null = null;
+  private peerWire: { version: number; minCompatible: number } | null = null;
 
   constructor(
     private readonly transport: Transport,
@@ -250,6 +288,11 @@ export class LinkCodeClient {
   onClose(cb: ConnectionCloseCb): Unsubscribe {
     this.connectionCloseSubs.add(cb);
     return () => this.connectionCloseSubs.delete(cb);
+  }
+
+  /** What the host answered at handshake — for gating a frame an older host would drop. */
+  get peerWireVersion(): number | null {
+    return this.peerWire?.version ?? null;
   }
 
   private async handshake(): Promise<void> {
@@ -337,7 +380,10 @@ export class LinkCodeClient {
     const p = msg.payload;
     switch (p.kind) {
       case 'session.started':
-        this.pending.resolve('start', p.replyTo, p.sessionId);
+        this.pending.resolve('start', p.replyTo, {
+          sessionId: p.sessionId,
+          mcpWarnings: p.mcpWarnings ?? [],
+        });
         break;
       case 'session.listed':
         this.pending.resolve('list', p.replyTo, p.sessions);
@@ -352,9 +398,26 @@ export class LinkCodeClient {
         this.pending.resolve('historyRead', p.replyTo, p.result);
         break;
       case 'config.get.result':
-        // One result carries both; each resolve is a no-op unless a request awaits that reply id.
+        // One result carries all three; each resolve is a no-op unless a request awaits that reply id.
         this.pending.resolve('configGet', p.replyTo, p.providers);
         this.pending.resolve('accountsGet', p.replyTo, p.accounts);
+        this.pending.resolve('customMcpGet', p.replyTo, p.customMcpServers);
+        break;
+      case 'plugin.list.result':
+        this.pending.resolve('pluginList', p.replyTo, {
+          plugins: p.plugins,
+          standaloneSkills: p.standaloneSkills,
+          providerStatus: p.providerStatus,
+        });
+        break;
+      case 'plugin.updated':
+        this.pending.resolve('pluginMutation', p.replyTo, {
+          plugin: p.plugin,
+          pendingAuthApps: p.pendingAuthApps,
+        });
+        break;
+      case 'skill.updated':
+        this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
         break;
       case 'config.probe-models.result':
         this.pending.resolve('accountModels', p.replyTo, p.models);
@@ -470,6 +533,23 @@ export class LinkCodeClient {
       case 'file.hosted':
         this.pending.resolve('fileHost', p.replyTo, p.hosted);
         break;
+      case 'resource.listed':
+        this.pending.resolve('resourceList', p.replyTo, p.resources);
+        break;
+      case 'resource.uploaded':
+        this.pending.resolve('resourceUpload', p.replyTo, p.resource);
+        break;
+      case 'resource.hosted':
+        this.pending.resolve('resourceHost', p.replyTo, p.hosted);
+        break;
+      case 'resource.changed':
+        for (const cb of this.resourceEventSubs) cb({ type: 'changed', resource: p.resource });
+        break;
+      case 'resource.removed':
+        for (const cb of this.resourceEventSubs) {
+          cb({ type: 'removed', resourceId: p.resourceId, sessionId: p.sessionId });
+        }
+        break;
       case 'script.status':
         for (const cb of this.scriptStatusSubs) cb(p.cwd, p.script);
         break;
@@ -523,6 +603,9 @@ export class LinkCodeClient {
       case 'session.notification':
         for (const cb of this.sessionNotificationSubs) cb(p.notification);
         break;
+      case 'session.changed':
+        for (const cb of this.sessionChangedSubs) cb(p.sessionId, p.reason);
+        break;
       case 'workspace.listed':
         this.pending.resolve('workspaceList', p.replyTo, p.workspaces);
         break;
@@ -561,15 +644,23 @@ export class LinkCodeClient {
       case 'agent-login.settled':
         this.agentLogin.handleMessage(p);
         break;
-      case 'pong':
-        this.resolveHandshake?.();
+      case 'pong': {
+        this.peerWire = { version: p.version, minCompatible: p.minCompatible };
+        const incompatible = wireIncompatibility(p.version, p.minCompatible);
+        if (incompatible) this.rejectHandshake?.(new Error(incompatible));
+        else this.resolveHandshake?.();
         break;
+      }
       default:
         break;
     }
   }
 
   startSession(opts: StartOptions): Promise<SessionId> {
+    return this.startSessionWithWarnings(opts).then((result) => result.sessionId);
+  }
+
+  startSessionWithWarnings(opts: StartOptions): Promise<SessionStartResult> {
     return this.control.startSession(opts);
   }
 
@@ -582,6 +673,10 @@ export class LinkCodeClient {
   }
 
   resumeSession(sessionId: SessionId): Promise<SessionId> {
+    return this.resumeSessionWithWarnings(sessionId).then((result) => result.sessionId);
+  }
+
+  resumeSessionWithWarnings(sessionId: SessionId): Promise<SessionStartResult> {
     return this.control.resumeSession(sessionId);
   }
 
@@ -608,6 +703,16 @@ export class LinkCodeClient {
     historyId: AgentHistoryId,
     startOpts: StartOptions,
   ): Promise<SessionId> {
+    return this.resumeHistoryWithWarnings(agentKind, historyId, startOpts).then(
+      (result) => result.sessionId,
+    );
+  }
+
+  resumeHistoryWithWarnings(
+    agentKind: AgentKind,
+    historyId: AgentHistoryId,
+    startOpts: StartOptions,
+  ): Promise<SessionStartResult> {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
   }
 
@@ -722,6 +827,62 @@ export class LinkCodeClient {
   /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
   probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
     return this.control.probeAccountModels(endpoint, secret);
+  }
+
+  /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
+  getCustomMcpServers(): Promise<CustomMcpServerPublic[]> {
+    return this.control.getCustomMcpServers();
+  }
+
+  /** Apply custom-MCP patch ops; the masked read model makes whole-array writes unsound. */
+  setCustomMcpServers(patches: CustomMcpServerPatchOp[]): Promise<RequestAck> {
+    return this.control.setCustomMcpServers(patches);
+  }
+
+  /** Discover provider plugins + standalone skills (slow: a CLI shell-out on the daemon). */
+  listPlugins(cwd?: string): Promise<PluginList> {
+    return this.control.listPlugins(cwd);
+  }
+
+  /** Toggle a plugin; resolves with the re-listed plugin for single-entry cache patching. */
+  setPluginEnabled(params: {
+    provider: PluginProvider;
+    id: string;
+    enabled: boolean;
+    scope?: PluginScope;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.setPluginEnabled(params);
+  }
+
+  /** Install a catalog entry the host does not have yet. */
+  installPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.installPlugin(params);
+  }
+
+  /** Remove an installed plugin; the marketplace entry survives with no installations. */
+  uninstallPlugin(params: {
+    provider: PluginProvider;
+    id: string;
+    cwd?: string;
+  }): Promise<PluginMutation> {
+    return this.control.uninstallPlugin(params);
+  }
+
+  /** Toggle one skill through its provider; resolves with the re-read skill. */
+  setSkillEnabled(params: {
+    provider: PluginProvider;
+    skillId: string;
+    path: string;
+    scope?: StandaloneSkillScope;
+    enabled: boolean;
+    cwd?: string;
+  }): Promise<StandaloneSkill> {
+    return this.control.setSkillEnabled(params);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {
@@ -1020,6 +1181,35 @@ export class LinkCodeClient {
   subscribeSessionNotification(cb: SessionNotificationCb): Unsubscribe {
     this.sessionNotificationSubs.add(cb);
     return () => this.sessionNotificationSubs.delete(cb);
+  }
+
+  /** Broadcast membership/identity changes to the persisted session list; the payload is a cue to
+   * revalidate through {@link listSessions}, not the change itself. */
+  subscribeSessionChanged(cb: SessionChangedCb): Unsubscribe {
+    this.sessionChangedSubs.add(cb);
+    return () => this.sessionChangedSubs.delete(cb);
+  }
+
+  listResources(sessionId: SessionId): Promise<SessionResource[]> {
+    return this.control.listResources(sessionId);
+  }
+  uploadSource(
+    sessionId: SessionId,
+    name: string,
+    data: string,
+    mimeType?: string,
+  ): Promise<SessionResource> {
+    return this.control.uploadSource(sessionId, name, data, mimeType);
+  }
+  removeResource(resourceId: SessionResourceId): Promise<RequestAck> {
+    return this.control.removeResource(resourceId);
+  }
+  hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
+    return this.control.hostResource(resourceId);
+  }
+  subscribeResources(cb: ResourceEventCb): Unsubscribe {
+    this.resourceEventSubs.add(cb);
+    return () => this.resourceEventSubs.delete(cb);
   }
 
   /** Host inline artifact content on the daemon's ephemeral per-artifact origin. */

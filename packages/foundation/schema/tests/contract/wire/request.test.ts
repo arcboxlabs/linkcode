@@ -18,11 +18,11 @@ function requestFailure(metadata: Record<string, unknown> = {}): unknown {
 
 describe('request failure wire schema', () => {
   it('accepts a failure already reported in the conversation', () => {
-    expect(parseWireMessage(requestFailure({ reportedInConversation: true })).success).toBe(true);
+    expect(parseWireMessage(requestFailure({ reportedInConversation: true })).ok).toBe(true);
   });
 
   it('uses absence, not false, for a failure without a conversation event', () => {
-    expect(parseWireMessage(requestFailure()).success).toBe(true);
-    expect(parseWireMessage(requestFailure({ reportedInConversation: false })).success).toBe(false);
+    expect(parseWireMessage(requestFailure()).ok).toBe(true);
+    expect(parseWireMessage(requestFailure({ reportedInConversation: false })).ok).toBe(false);
   });
 });

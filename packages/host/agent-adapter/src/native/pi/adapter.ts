@@ -199,10 +199,13 @@ export class PiAdapter extends BaseAgentAdapter {
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const pi = await this.importSdk();
     const { modelRegistry } = createConfiguredRegistry(pi, opts);
+    const models = modelOptions(modelRegistry.getAvailable());
     return {
-      models: modelOptions(modelRegistry.getAvailable()),
+      models,
       policies: [...POLICIES],
       defaultPolicyId: 'default',
+      // The registry's first entry is exactly what an unpicked session falls back to (see onStart).
+      ...(models[0] && { defaultModel: models[0].id }),
     };
   }
   override async listHistory(opts?: AgentHistoryListOptions) {

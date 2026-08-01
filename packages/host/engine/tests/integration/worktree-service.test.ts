@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionIdSchema } from '@linkcode/schema';
@@ -12,8 +12,10 @@ import { InMemoryWorktreeStore } from '../../src/worktree/worktree-store';
 
 const roots: string[] = [];
 
+// Resolved because macOS puts tmpdir() behind a /private symlink, while the service records the
+// path git reports — comparing the two unresolved fails on macOS and passes on Linux.
 function temp(): string {
-  const path = mkdtempSync(join(tmpdir(), 'linkcode-worktree-test-'));
+  const path = realpathSync(mkdtempSync(join(tmpdir(), 'linkcode-worktree-test-')));
   roots.push(path);
   return path;
 }

@@ -5,6 +5,7 @@ import {
   BrowserHostCredentialsSchema,
   BrowserOpSchema,
 } from '../model/browser';
+import { WireRequestIdSchema } from './request';
 
 /** Browser-broker wire variants (CODE-267): a desktop client registers as THE single active
  * browser host (last registration wins); the daemon dispatches commands to that connection only
@@ -14,7 +15,7 @@ export const browserWireVariants = [
   // request.succeeded / request.failed; the Hub starts targeting on the success reply).
   z.object({
     kind: z.literal('browser.host.register'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     ...BrowserHostCredentialsSchema.shape,
   }),
   // Synthesized by the Hub when the registered host's connection closes (mirrors the
@@ -38,13 +39,13 @@ export const browserWireVariants = [
   // Any client → daemon (the B-2 stdio bridge): run one op through the broker.
   z.object({
     kind: z.literal('browser.execute'),
-    clientReqId: z.string().min(1),
+    clientReqId: WireRequestIdSchema,
     op: BrowserOpSchema,
     args: BrowserCommandArgsSchema,
   }),
   z.object({
     kind: z.literal('browser.executed'),
-    replyTo: z.string().min(1),
+    replyTo: WireRequestIdSchema,
     result: BrowserCommandResultSchema,
   }),
 ] as const;

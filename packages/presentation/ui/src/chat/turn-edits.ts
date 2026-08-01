@@ -1,4 +1,4 @@
-import { diffContentStats } from './diff-utils';
+import { diffContentStats } from '../diff-utils';
 import type { ConversationItem, ConversationTurnId } from './types';
 
 export interface TurnSegment<T extends ConversationItem = ConversationItem> {

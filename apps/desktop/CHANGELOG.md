@@ -1,5 +1,111 @@
 # Changelog
 
+## [0.16.0](https://github.com/arcboxlabs/linkcode/compare/v0.15.1...v0.16.0) (2026-08-01)
+
+
+### Features
+
+* **agent-adapter:** report each agent's configured default model and effort ([9aab5dc](https://github.com/arcboxlabs/linkcode/commit/9aab5dc240a188b5bc412c1bf20f04f7e58e0b13))
+* **desktop:** show update download progress ([#362](https://github.com/arcboxlabs/linkcode/issues/362)) ([9fe3aa8](https://github.com/arcboxlabs/linkcode/commit/9fe3aa8b3d954e65fbe417505749f0074e70d9af))
+* **resources:** show current plan in panel ([#358](https://github.com/arcboxlabs/linkcode/issues/358)) ([a0a7aab](https://github.com/arcboxlabs/linkcode/commit/a0a7aabe11c2c0648b2f832fbc1c9fae8ffb4ee5))
+* **schema:** carry the agent's own default model and effort in the start catalog ([0c6c7ee](https://github.com/arcboxlabs/linkcode/commit/0c6c7ee237e4ddce3cb3d2139c1c6456dd8e527b))
+* **ui:** prefer the agent's configured default over the built-in model guess ([b72a1aa](https://github.com/arcboxlabs/linkcode/commit/b72a1aa2a55b75ef3d1dafacf12100506f9642c7))
+
+
+### Bug Fixes
+
+* **agent-adapter:** read codex config.toml from the app-server environment ([9f3161d](https://github.com/arcboxlabs/linkcode/commit/9f3161da623341f81212222c76a121c97bee867e))
+* **daemon:** bound AI gateway startup ([00608da](https://github.com/arcboxlabs/linkcode/commit/00608da8cac6894a3b0383c103ad2fc530f5b53a))
+* **ui:** keep a catalog effort with the model it belongs to ([f8cf515](https://github.com/arcboxlabs/linkcode/commit/f8cf515a955e670326bc06d367f79c52943d6546))
+* **ui:** preserve local font query receiver ([b6a5faa](https://github.com/arcboxlabs/linkcode/commit/b6a5faaa69dbd4451fc65a0cbcff2b7cea401561))
+
+## [0.15.1](https://github.com/arcboxlabs/linkcode/compare/v0.15.0...v0.15.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **composer:** enforce shell directive grammar ([35a3a05](https://github.com/arcboxlabs/linkcode/commit/35a3a0577f35c32c4832af265b8cdb366fdfe514))
+* **composer:** require shell directive separator ([d6bd22d](https://github.com/arcboxlabs/linkcode/commit/d6bd22d4120b5bc93a1022f919199941bfbd4c0b))
+* **ui:** align inline code position ([05a91ec](https://github.com/arcboxlabs/linkcode/commit/05a91ecd03bb7d984a99ad43cf32eaf4c709818e))
+* **ui:** tolerate generic keydown events ([24ca677](https://github.com/arcboxlabs/linkcode/commit/24ca67770ded46f048b6ee944d669291f2857aa6))
+
+## [0.15.0](https://github.com/arcboxlabs/linkcode/compare/v0.14.0...v0.15.0) (2026-07-31)
+
+
+### Features
+
+* **chat:** add conversation minimap geometry ([ab99e29](https://github.com/arcboxlabs/linkcode/commit/ab99e29f3909b98c2aa9224712934ff4465d610f))
+* **chat:** add the conversation minimap rail ([5553c1c](https://github.com/arcboxlabs/linkcode/commit/5553c1c5f6ca964564b1ea9f1fc0d04ab0cd343c))
+* **chat:** expose the conversation virtualizer handle ([8c9aa77](https://github.com/arcboxlabs/linkcode/commit/8c9aa777e990e28fd16261b8486f02786496a39b))
+* **mock:** seed a long thread in the dev mock host ([d72b564](https://github.com/arcboxlabs/linkcode/commit/d72b564be88109985a8446d99d341166aad2d470))
+
+
+### Bug Fixes
+
+* **chat:** steady the minimap rail and its keyboard path ([6e27750](https://github.com/arcboxlabs/linkcode/commit/6e27750824e828afe40b5baedba4aa4358ed04c2))
+* **chat:** tune the minimap rail down to its quiet form ([4726df8](https://github.com/arcboxlabs/linkcode/commit/4726df8b56f9d5a19c8ec9e42ef9e56d4b6b46a5))
+* **desktop:** keep the sidebar translucent over the native backdrop ([#360](https://github.com/arcboxlabs/linkcode/issues/360)) ([70b50b6](https://github.com/arcboxlabs/linkcode/commit/70b50b626b55bfca3bc8c61064ed1864de55b41c))
+
+## [0.14.0](https://github.com/arcboxlabs/linkcode/compare/v0.13.0...v0.14.0) (2026-07-31)
+
+
+### Features
+
+* **desktop:** add update polling and sidebar prompt ([adda937](https://github.com/arcboxlabs/linkcode/commit/adda937f9d06acf59daa3121b1c587fc2b2e707c))
+
+
+### Bug Fixes
+
+* **desktop:** settle inactive update checks ([78a99d3](https://github.com/arcboxlabs/linkcode/commit/78a99d33cbacb339f7ba0739993f7390978c0f88))
+* **release:** install both CPU keyring bindings ([0bddfce](https://github.com/arcboxlabs/linkcode/commit/0bddfce101d5385d78413bf2210711bcdc8fb4df))
+* **release:** keep builder Linux output layouts ([524b76e](https://github.com/arcboxlabs/linkcode/commit/524b76ecd09f009c7f4833979a22c4bc661b23a7))
+* **release:** let staging select builder architecture ([24bd573](https://github.com/arcboxlabs/linkcode/commit/24bd573df48eb15273671e4ba1c9554d1dd4ee8b))
+* **release:** stage desktop dependencies per architecture ([735a232](https://github.com/arcboxlabs/linkcode/commit/735a232fdbb77cb97e8a05bd7873f5d6301c5350))
+* **ui,workbench,desktop,webview:** swap the thread-title view transition for a header enter animation ([#354](https://github.com/arcboxlabs/linkcode/issues/354)) ([fe034b7](https://github.com/arcboxlabs/linkcode/commit/fe034b71cff65e648d94a8bfb18b4f089e9e066a))
+
+## [0.13.0](https://github.com/arcboxlabs/linkcode/compare/v0.12.0...v0.13.0) (2026-07-31)
+
+
+### Features
+
+* **daemon:** add an OS-keyring-backed secret vault ([0f8d73c](https://github.com/arcboxlabs/linkcode/commit/0f8d73cc160789489859facdf95d35c70c782d63))
+* **daemon:** hold the software device key in the secret vault ([9a54fb4](https://github.com/arcboxlabs/linkcode/commit/9a54fb4a21608bdfe1f5c42250def654193626ab))
+* **daemon:** move provider and account credentials into the secret vault ([b0046e9](https://github.com/arcboxlabs/linkcode/commit/b0046e98561a4282ae784430bbbf04ddc64932b4))
+* **daemon:** move the HQ session token into the secret vault ([c37d656](https://github.com/arcboxlabs/linkcode/commit/c37d656e7056eb6eb58c3692abe59eac6cc4afec))
+* **daemon:** treat a non-durable keyring as no keyring ([7cea81d](https://github.com/arcboxlabs/linkcode/commit/7cea81d83fe0062af7fb56c06eff0378dab2942a))
+* **mobile:** conversation interaction on @expo/ui — prompt dock, tool-detail sheet, theming (CODE-196) ([#315](https://github.com/arcboxlabs/linkcode/issues/315)) ([d094e68](https://github.com/arcboxlabs/linkcode/commit/d094e6878f60ff2f0439e2c92e0a58c8b7529576))
+* **resources:** add resource service ([db6349f](https://github.com/arcboxlabs/linkcode/commit/db6349fbb2774ddeaac42ef7b9d7c4aea4a527b6))
+* **resources:** add resource wire operations ([66e942a](https://github.com/arcboxlabs/linkcode/commit/66e942ae0698b583004d53fb16d335e7d696c12a))
+* **resources:** add shared resources panel ([93bb9f6](https://github.com/arcboxlabs/linkcode/commit/93bb9f65bd7cc36fb95092da0a613fd1dd10631d))
+* **resources:** add task resources panel ([#339](https://github.com/arcboxlabs/linkcode/issues/339)) ([61dcf83](https://github.com/arcboxlabs/linkcode/commit/61dcf833a6f3c51bfa66c652f283b100f4adc0f3))
+* **resources:** bind panel to session resources ([75f8756](https://github.com/arcboxlabs/linkcode/commit/75f87565973b26e683b6859b280f4295456bb044))
+* **resources:** connect session resource flow ([f684d34](https://github.com/arcboxlabs/linkcode/commit/f684d34b092d7085fad58a9bcb9d74cde41da012))
+* **resources:** integrate desktop and web panels ([80c97ae](https://github.com/arcboxlabs/linkcode/commit/80c97ae614b7c28f291797263aaeeb85ee6982a2))
+* **resources:** persist daemon resources ([f87f346](https://github.com/arcboxlabs/linkcode/commit/f87f3466f45df75c4331e887647a0bf2ae9ef5bb))
+* **resources:** register agent-used web sources ([60a64b2](https://github.com/arcboxlabs/linkcode/commit/60a64b2c4decd4334a981aa5ab5c35340130b460))
+* **schema,engine:** announce persisted session list changes ([d4bc835](https://github.com/arcboxlabs/linkcode/commit/d4bc8358908d72b907ff8d9a1c22f808d1e8a1df))
+* **schema,transport,client-core:** exchange wire version ranges at handshake ([3ed7ca9](https://github.com/arcboxlabs/linkcode/commit/3ed7ca903377a93d2beb5de7caadccc806441318))
+* **schema,transport:** drop an unknown frame instead of the whole connection ([cd14463](https://github.com/arcboxlabs/linkcode/commit/cd1446362caba8184622d77ef966e11040cf45b5))
+
+
+### Bug Fixes
+
+* **client-core,mobile:** pick up session list changes from other clients ([13e354f](https://github.com/arcboxlabs/linkcode/commit/13e354f221eca6895218d1c967c5203be32fc4d8))
+* **client-core:** let the daemon snapshot replace the session list outright ([619cd61](https://github.com/arcboxlabs/linkcode/commit/619cd611ebdc9a758f1f292e97d8cc61b1d6c679))
+* **code-282:** ensure scroll to bottom ([7c8c627](https://github.com/arcboxlabs/linkcode/commit/7c8c627bc3862aab02d667b6d60ab4da552d4f84))
+* **daemon:** distinguish a missing device-key binding from absent hardware ([cfe44de](https://github.com/arcboxlabs/linkcode/commit/cfe44de97ecf325a83cc8ab0884e34f146224c66))
+* **daemon:** sweep the legacy device key at boot, not on the uplink path ([636035f](https://github.com/arcboxlabs/linkcode/commit/636035f93f7ec685651ac7d8fd9db1538252ba87))
+* **desktop:** fail closed when the OS cannot protect the cloud session ([72efdb5](https://github.com/arcboxlabs/linkcode/commit/72efdb594c8c55f69a011fdbbf60e76d6d5a2b3b))
+* **resources:** anchor constrained panel to trigger ([07fcedc](https://github.com/arcboxlabs/linkcode/commit/07fcedc60dddb37081cc81f08f06baa8c5ea6b48))
+* **resources:** keep composer aligned ([df5256d](https://github.com/arcboxlabs/linkcode/commit/df5256d7c284ea4268cfc43be0f89e584d8f9d41))
+* **resources:** preserve balanced conversation layout ([2167c67](https://github.com/arcboxlabs/linkcode/commit/2167c67f9ea95dd91c1a200b88e3e4767c68839c))
+* **resources:** preserve content width in floating mode ([d7fbce8](https://github.com/arcboxlabs/linkcode/commit/d7fbce8b49129ea315121bf1fe52062daf97ac5f))
+* **resources:** reserve space for wide panel ([6038e71](https://github.com/arcboxlabs/linkcode/commit/6038e71bbdf3a9c6ec33f75865e3d2d7901e07e1))
+* **resources:** sanitize injected source history ([5984456](https://github.com/arcboxlabs/linkcode/commit/59844567e3cd551813d6ddb6d2b2c509d69cd110))
+* **resources:** size floating card to content ([d241562](https://github.com/arcboxlabs/linkcode/commit/d241562ea1220889240e24c51bb27db2f16aa51a))
+* **resources:** unify floating rail background ([b389a67](https://github.com/arcboxlabs/linkcode/commit/b389a670f1fcf136785b837735faaf4d8c5d5188))
+* **resources:** use dialog when side space is constrained ([db8fc41](https://github.com/arcboxlabs/linkcode/commit/db8fc41e49be13c8bdccaf60c36603ca52041750))
+
 ## [0.12.0](https://github.com/arcboxlabs/linkcode/compare/v0.11.0...v0.12.0) (2026-07-30)
 
 

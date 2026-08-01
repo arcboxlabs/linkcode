@@ -49,6 +49,36 @@ export const sessionRuns = sqliteTable(
   (table) => [index('session_runs_session_id_idx').on(table.sessionId)],
 );
 
+export const sessionResources = sqliteTable(
+  'session_resources',
+  {
+    resourceId: text('resource_id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.sessionId, { onDelete: 'cascade' }),
+    direction: text('direction', { enum: ['source', 'output'] }).notNull(),
+    name: text('name').notNull(),
+    kind: text('kind', { enum: ['file', 'image', 'document', 'site', 'link'] }).notNull(),
+    status: text('status', {
+      enum: ['processing', 'generating', 'ready', 'failed', 'unavailable'],
+    }).notNull(),
+    locatorType: text('locator_type', {
+      enum: ['managed-file', 'workspace-file', 'url'],
+    }).notNull(),
+    locator: text('locator').notNull(),
+    normalizedLocatorKey: text('normalized_locator_key'),
+    mimeType: text('mime_type'),
+    sizeBytes: integer('size_bytes'),
+    error: text('error'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    index('session_resources_session_idx').on(table.sessionId),
+    uniqueIndex('session_resources_locator_idx').on(table.sessionId, table.normalizedLocatorKey),
+  ],
+);
+
 /**
  * Recurring automations; mirrors `Schedule` from `@linkcode/schema` (spec fields flattened into
  * columns). `target_session_id` deliberately has no foreign key — a deleted target is the signal the

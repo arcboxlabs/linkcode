@@ -41,8 +41,10 @@ export const systemBridge: SystemBridge = {
     platform: source.app.platform,
     checkForUpdates: () =>
       traceRendererIpc('app.check-for-updates', () => source.app.checkForUpdates()),
-    onUpdaterStatus: (callback) =>
-      traceRendererIpc('app.on-updater-status', () => source.app.onUpdaterStatus(callback)),
+    updaterState: () => traceRendererIpc('app.updater-state', () => source.app.updaterState()),
+    installUpdate: () => traceRendererIpc('app.install-update', () => source.app.installUpdate()),
+    onUpdaterState: (callback) =>
+      traceRendererIpc('app.on-updater-state', () => source.app.onUpdaterState(callback)),
     onOpenSettings: (callback) =>
       traceRendererIpc('app.on-open-settings', () => source.app.onOpenSettings(callback)),
   },

@@ -4,6 +4,7 @@
 export * from './brand/animated-mark';
 export * from './chat';
 export * from './code-themes';
+export * from './input-modality';
 export * from './keyboard';
 export { cn } from './lib/cn';
 export * from './motion';

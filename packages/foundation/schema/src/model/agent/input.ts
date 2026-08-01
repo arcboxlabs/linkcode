@@ -110,6 +110,11 @@ export const AgentStartCatalogSchema = z.object({
   models: z.array(AgentModelOptionSchema),
   policies: z.array(ApprovalPolicySchema),
   defaultPolicyId: ApprovalPolicyIdSchema.optional(),
+  /** What the agent's OWN configuration would start on, read before any session exists — display
+   * only, on the same terms as `defaultPolicyId`: sending either back would read as an explicit
+   * pick and override the resolution the agent does for itself. Absent when unreadable. */
+  defaultModel: z.string().min(1).optional(),
+  defaultEffort: EffortLevelSchema.optional(),
 });
 export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 

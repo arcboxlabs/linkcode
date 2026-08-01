@@ -1,6 +1,6 @@
 import type { Transport } from '@linkcode/transport';
 import { SocketIoTransport, TunnelTransport, WsTransport } from '@linkcode/transport';
-import type { HostProfile } from '../stores/host-store';
+import type { HostProfile } from '@mobile/stores/host-store';
 import { CLOUD_URL, fetchTunnelJwt } from './cloud/client';
 
 /**

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../model/agent';
+import { McpWarningSchema } from '../model/custom-mcp';
 import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../model/primitives';
 import {
   SessionInfoSchema,
@@ -14,6 +15,11 @@ import { WireRequestIdSchema } from './request';
 export const SessionSubscriptionModeSchema = z.enum(['all', 'attached']);
 export type SessionSubscriptionMode = z.infer<typeof SessionSubscriptionModeSchema>;
 
+/** What changed about a session's place in the persisted list. `updated` covers the identity fields
+ * a listed session can still gain — its title and its provider history binding. */
+export const SessionChangeReasonSchema = z.enum(['created', 'removed', 'updated']);
+export type SessionChangeReason = z.infer<typeof SessionChangeReasonSchema>;
+
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [
   z.object({
@@ -25,6 +31,9 @@ export const sessionWireVariants = [
     kind: z.literal('session.started'),
     replyTo: WireRequestIdSchema,
     sessionId: SessionIdSchema,
+    /** Custom-MCP injection advisories for this start/resume. Delivered only in this reply (the
+     * one client that acted); deliberately not an agent event and not replayed on attach. */
+    mcpWarnings: z.array(McpWarningSchema).optional(),
   }),
   z.object({
     kind: z.literal('session.stop'),
@@ -70,6 +79,14 @@ export const sessionWireVariants = [
     kind: z.literal('session.imported'),
     replyTo: WireRequestIdSchema,
     record: SessionRecordSchema,
+  }),
+  /** Broadcast when the persisted list changes membership or identity, so a client holding a stale
+   * snapshot knows to revalidate. Deliberately carries no record: `session.listed` stays the one
+   * authority for the list's shape, and status rides `agent.event` for attached sessions only. */
+  z.object({
+    kind: z.literal('session.changed'),
+    sessionId: SessionIdSchema,
+    reason: SessionChangeReasonSchema,
   }),
   /** Broadcast on a notification-worthy session moment: no replyTo, fanned out to every client.
    * Must stay a broadcast even once per-connection subscription modes exist (CODE-72) —

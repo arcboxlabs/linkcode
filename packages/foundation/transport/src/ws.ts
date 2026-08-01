@@ -1,6 +1,7 @@
 import type { WireMessage } from '@linkcode/schema';
 import { parseWireMessage } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { createFrameDropReporter } from './frame-drop';
 import { WireConnection } from './transport';
 
 export interface WsReconnectOptions {
@@ -100,6 +101,7 @@ export class WsTransport extends WireConnection {
       this.settle?.resolve();
       this.settle = null;
     });
+    const reportDrop = createFrameDropReporter('websocket client');
     ws.addEventListener('message', (ev: MessageEvent) => {
       let raw: unknown;
       try {
@@ -107,9 +109,10 @@ export class WsTransport extends WireConnection {
       } catch {
         return; // Not JSON, discard
       }
-      const parsed = parseWireMessage(raw);
-      if (parsed.success) this.inbound.emit(parsed.data);
       // Per the contract, discard on validation failure; never leak unvalidated data to upper layers.
+      const result = parseWireMessage(raw);
+      if (result.ok) this.inbound.emit(result.message);
+      else reportDrop(result);
     });
 
     // `error` is followed by `close` in browsers/undici, but not on every runtime; route both through

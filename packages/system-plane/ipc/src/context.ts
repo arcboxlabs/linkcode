@@ -29,6 +29,8 @@ export interface SystemContext {
     getVersion(): string;
     /** Trigger a manual update check (no-op when the app is not packaged). */
     checkForUpdates(): void;
+    getUpdaterState(): UpdaterState;
+    installUpdate(): void;
   };
   settings: {
     get(): DesktopSettings;
@@ -129,6 +131,13 @@ export const UpdaterStatusSchema = z.enum([
   'error',
 ]);
 export type UpdaterStatus = z.infer<typeof UpdaterStatusSchema>;
+
+export const UpdaterStateSchema = z.object({
+  status: UpdaterStatusSchema,
+  version: z.string().nullable(),
+  progress: z.number().min(0).max(100).nullable(),
+});
+export type UpdaterState = z.infer<typeof UpdaterStateSchema>;
 
 /** Terminal state of a Browser-pane download, pushed main → renderer for a toast. */
 export interface BrowserDownloadDone {

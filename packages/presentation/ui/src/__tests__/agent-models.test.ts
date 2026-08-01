@@ -7,7 +7,7 @@ const codex = AGENT_MODEL_OPTIONS.codex;
 
 describe('resolveModel', () => {
   it('resolves an exact catalog id', () => {
-    expect(resolveModel(claude, 'claude-opus-4-8')?.label).toBe('Opus 4.8');
+    expect(resolveModel(claude, 'claude-opus-5')?.label).toBe('Opus 5');
   });
 
   it('resolves a served snapshot id back to its alias by prefix', () => {

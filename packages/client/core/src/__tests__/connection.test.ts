@@ -1,6 +1,7 @@
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
+import { SessionIdSchema, SessionResourceSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 
@@ -62,11 +63,30 @@ describe('LinkCodeClient connection lifetime', () => {
     await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
     expect(ready).toBe(false);
 
-    transport.receive({ kind: 'pong' });
+    transport.receive(pong());
     await connecting;
     expect(ready).toBe(true);
+    expect(client.peerWireVersion).toBe(WIRE_PROTOCOL_VERSION);
     await expect(client.connect()).rejects.toThrow('already started');
 
+    client.dispose();
+  });
+
+  it('names the skew when the host has moved its floor past this build', async () => {
+    const transport = new ControlledTransport();
+    const client = new LinkCodeClient(transport);
+    const connecting = expect(client.connect()).rejects.toThrow(
+      `this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${WIRE_PROTOCOL_VERSION + 3} the host needs`,
+    );
+
+    await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
+    transport.receive({
+      kind: 'pong',
+      version: WIRE_PROTOCOL_VERSION + 5,
+      minCompatible: WIRE_PROTOCOL_VERSION + 3,
+    });
+
+    await connecting;
     client.dispose();
   });
 
@@ -106,7 +126,7 @@ describe('LinkCodeClient connection lifetime', () => {
     client.onClose(onClose);
     const connecting = client.connect();
     await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-    transport.receive({ kind: 'pong' });
+    transport.receive(pong());
     await connecting;
     const pending = client.listSessions();
 
@@ -142,5 +162,52 @@ describe('LinkCodeClient connection lifetime', () => {
 
     await expect(connecting).rejects.toThrow('client disposed');
     expect(onDisposedClose).not.toHaveBeenCalled();
+  });
+
+  it('correlates resource lists and forwards resource broadcasts', async () => {
+    const transport = new ControlledTransport();
+    const client = new LinkCodeClient(transport);
+    const connecting = client.connect();
+    await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
+    transport.receive(pong());
+    await connecting;
+    const sessionId = SessionIdSchema.parse('session-resources');
+    const resource = SessionResourceSchema.parse({
+      resourceId: 'resource-client-test',
+      sessionId,
+      direction: 'source',
+      name: 'brief.txt',
+      kind: 'document',
+      status: 'ready',
+      locator: { type: 'managed-file', path: '/state/brief.txt' },
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    const listed = client.listResources(sessionId);
+    const request = transport.sent.find((payload) => payload.kind === 'resource.list');
+    if (request?.kind !== 'resource.list') throw new Error('missing resource.list request');
+    transport.receive({
+      kind: 'resource.listed',
+      replyTo: request.clientReqId,
+      resources: [resource],
+    });
+    await expect(listed).resolves.toEqual([resource]);
+
+    const onResource = vi.fn();
+    client.subscribeResources(onResource);
+    transport.receive({ kind: 'resource.changed', resource });
+    transport.receive({
+      kind: 'resource.removed',
+      resourceId: resource.resourceId,
+      sessionId,
+    });
+    expect(onResource).toHaveBeenNthCalledWith(1, { type: 'changed', resource });
+    expect(onResource).toHaveBeenNthCalledWith(2, {
+      type: 'removed',
+      resourceId: resource.resourceId,
+      sessionId,
+    });
+    client.dispose();
   });
 });

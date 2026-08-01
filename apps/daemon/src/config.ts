@@ -1,30 +1,39 @@
 import { randomUUID } from 'node:crypto';
 import {
+  chmodSync,
   closeSync,
   fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
-  unlinkSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
-import type { Accounts, ProvidersConfig, SimulatorConsentState } from '@linkcode/schema';
+import type {
+  Accounts,
+  CustomMcpServer,
+  ProvidersConfig,
+  SimulatorConsentState,
+} from '@linkcode/schema';
 import {
   AccountSchema,
   AgentKindSchema,
+  CustomMcpServerSchema,
   daemonBasePort,
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
 } from '@linkcode/schema';
 import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
+import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 import type { SecretStore, SecretVault } from './secrets';
+import { detachCustomMcpSecrets, withCustomMcpSecrets } from './secrets/custom-mcp-credentials';
 import {
   detachAccountSecrets,
   detachProviderSecrets,
@@ -47,6 +56,8 @@ export interface DaemonConfig {
   providers?: ProvidersConfig;
   /** Global account pool (data plane); undefined when nothing is configured. */
   accounts?: Accounts;
+  /** LinkCode-owned custom MCP servers (data plane); undefined when nothing is configured. */
+  customMcpServers?: CustomMcpServer[];
   /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
   simulatorConsent: SimulatorConsentState;
 }
@@ -59,6 +70,7 @@ interface ConfigFile {
   listeners?: unknown;
   providers?: unknown;
   accounts?: unknown;
+  customMcpServers?: unknown;
   simulatorConsent?: unknown;
 }
 
@@ -115,17 +127,13 @@ export function chatWorkspaceRoot(): string {
   return join(homedir(), workspacesDirName(daemonChannel()));
 }
 
-/** `config.json` owns two vault namespaces; it opens them itself rather than being handed refs. */
+/** `config.json` opens its vault namespaces itself rather than being handed refs. */
 const providerSecrets = (vault: SecretVault): SecretStore => vault.namespace('provider');
 const accountSecrets = (vault: SecretVault): SecretStore => vault.namespace('account');
+const customMcpSecrets = (vault: SecretVault): SecretStore => vault.namespace('custom-mcp');
 
 export function loadConfig(vault: SecretVault): DaemonConfig {
-  let file: ConfigFile = {};
-  try {
-    file = JSON.parse(readFileSync(configPath(), 'utf8')) as ConfigFile;
-  } catch {
-    // No config file (or unreadable) — fall back to defaults.
-  }
+  const file = readConfigFile();
   const fallbackListener = createDefaultSocketIoListener(file);
   const configuredListeners = Array.isArray(file.listeners)
     ? file.listeners.flatMap((value) => {
@@ -140,13 +148,13 @@ export function loadConfig(vault: SecretVault): DaemonConfig {
   // Parsing already moved every inline secret into the vault and told us so; rewriting is what takes
   // the exposed copies off disk. Done here, at the read that found them, so an upgrade needs no user
   // action.
-  if (parsedProviders.migrated || parsedAccounts.migrated) {
+  const parsedCustomMcp = parseCustomMcpServers(customMcpSecrets(vault), file.customMcpServers);
+  if (parsedProviders.migrated || parsedAccounts.migrated || parsedCustomMcp.migrated) {
     logger.warn(
       { operation: 'config.load' },
       'Moving credentials out of config.json into the secret vault',
     );
-    saveProviders(vault, parsedProviders.value);
-    saveAccounts(vault, parsedAccounts.value);
+    saveConfigSnapshot(vault, parsedProviders.value, parsedAccounts.value, parsedCustomMcp.value);
   }
 
   return {
@@ -155,6 +163,7 @@ export function loadConfig(vault: SecretVault): DaemonConfig {
     ),
     providers: parsedProviders.value,
     accounts: parsedAccounts.value,
+    customMcpServers: parsedCustomMcp.value,
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
 }
@@ -182,12 +191,12 @@ function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
 
 /** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
 export function saveSimulatorConsent(state: SimulatorConsentState): void {
-  writeConfigField('simulatorConsent', state);
+  writeConfigFields(readConfigFile(), { simulatorConsent: state });
 }
 
 /**
  * Parse element by element: an invalid account is dropped and logged, never blanking the pool —
- * `saveAccounts` would persist that loss on the next write. Mirrors {@link parseProviders}.
+ * a later save would persist that loss. Mirrors {@link parseProviders}.
  */
 function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
   if (raw === undefined) return { value: [], migrated: false };
@@ -213,8 +222,34 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
 }
 
 /**
+ * Parse element by element like {@link parseAccounts}: one invalid server is dropped and logged,
+ * never blanking the rest.
+ */
+function parseCustomMcpServers(store: SecretStore, raw: unknown): Parsed<CustomMcpServer[]> {
+  const snapshot = parseCustomMcpSnapshot(raw);
+  if (snapshot.servers === undefined) return { value: [], migrated: false };
+  if (!Array.isArray(snapshot.servers)) {
+    logger.warn({ operation: 'config.load' }, 'Invalid custom MCP config: expected an array');
+    return { value: [], migrated: false };
+  }
+  const servers: CustomMcpServer[] = [];
+  let migrated = false;
+  for (const value of snapshot.servers) {
+    const attached = withCustomMcpSecrets(store, value, snapshot.generation);
+    migrated ||= attached.migrated;
+    const server = CustomMcpServerSchema.safeParse(attached.value);
+    if (!server.success) {
+      logger.warn({ operation: 'config.load' }, 'Dropping invalid custom MCP server config');
+      continue;
+    }
+    servers.push(server.data);
+  }
+  return { value: servers, migrated };
+}
+
+/**
  * Parse field by field: an invalid entry is dropped and logged, never blanking the other entries —
- * `saveProviders` would persist that loss on the next write.
+ * a later save would persist that loss.
  */
 function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfig> {
   if (raw === undefined) return { value: {}, migrated: false };
@@ -245,72 +280,161 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
   return { value: providers, migrated };
 }
 
-/** Persist providers to config.json, preserving its other fields; api keys go to the vault instead. */
-export function saveProviders(vault: SecretVault, providers: ProvidersConfig): void {
-  writeConfigField('providers', detachProviderSecrets(providerSecrets(vault), providers));
-}
-
-/** Persist the account pool to config.json; credential secrets go to the vault instead. */
-export function saveAccounts(vault: SecretVault, accounts: Accounts): void {
-  writeConfigField('accounts', detachAccountSecrets(accountSecrets(vault), accounts));
-}
-
+/** Persist providers and accounts in one config.json replacement; their secrets go to the vault. */
 export function saveProviderConfiguration(
   vault: SecretVault,
   providers: ProvidersConfig,
   accounts: Accounts,
 ): void {
-  const detachedProviders = detachProviderSecrets(providerSecrets(vault), providers);
-  const detachedAccounts = detachAccountSecrets(accountSecrets(vault), accounts);
-  writeConfigFields({ providers: detachedProviders, accounts: detachedAccounts });
+  const file = readConfigFile();
+  writeConfigFields(file, {
+    providers: detachProviderSecrets(providerSecrets(vault), providers),
+    accounts: detachAccountSecrets(accountSecrets(vault), accounts),
+  });
 }
 
-/** Read-modify-write a single top-level field of config.json, preserving the rest; `0600`. */
-function writeConfigField(
-  key: 'providers' | 'accounts' | 'simulatorConsent',
-  value: unknown,
-): void {
-  writeConfigFields({ [key]: value });
-}
-
-function writeConfigFields(fields: Partial<Record<keyof ConfigFile, unknown>>): void {
+function readConfigFile(): ConfigFile & Record<string, unknown> {
   const path = configPath();
-  const directory = dirname(path);
-  let file: Record<string, unknown> = {};
+  let contents: string;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-    if (isRecord(parsed)) file = parsed;
-  } catch {
-    // Start from an empty document if the file is missing or malformed.
+    contents = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (isErrorLikeObject(err) && (err as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw new Error(`Could not read daemon config at ${path}: ${extractErrorMessage(err)}`, {
+      cause: err,
+    });
   }
-  Object.assign(file, fields);
-  mkdirSync(directory, { recursive: true });
-  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  let descriptor: number | undefined;
+
+  let parsed: unknown;
   try {
-    descriptor = openSync(temporaryPath, 'wx', 0o600);
-    writeFileSync(descriptor, `${JSON.stringify(file, null, 2)}\n`);
+    parsed = JSON.parse(contents);
+  } catch (err) {
+    throw new SyntaxError(`Invalid JSON in daemon config at ${path}: ${extractErrorMessage(err)}`, {
+      cause: err,
+    });
+  }
+
+  if (!isRecord(parsed)) {
+    throw new TypeError(`Invalid daemon config at ${path}: expected a JSON object`);
+  }
+  return parsed;
+}
+
+/** Persist custom MCP structure and key names; values go to the vault. */
+export function saveCustomMcpServers(
+  vault: SecretVault,
+  servers: CustomMcpServer[],
+  previous: CustomMcpServer[],
+): void {
+  persistCustomMcpSnapshot(vault, servers, previous, (value) =>
+    writeConfigFields(readConfigFile(), { customMcpServers: value }),
+  );
+}
+
+export function saveConfigSnapshot(
+  vault: SecretVault,
+  providers: ProvidersConfig,
+  accounts: Accounts,
+  customMcpServers: CustomMcpServer[],
+): void {
+  persistCustomMcpSnapshot(vault, customMcpServers, customMcpServers, (value) =>
+    writeConfigFields(readConfigFile(), {
+      providers: detachProviderSecrets(providerSecrets(vault), providers),
+      accounts: detachAccountSecrets(accountSecrets(vault), accounts),
+      customMcpServers: value,
+    }),
+  );
+}
+
+interface CustomMcpSnapshot {
+  generation: number | undefined;
+  servers: unknown;
+}
+
+function parseCustomMcpSnapshot(raw: unknown): CustomMcpSnapshot {
+  if (raw === undefined || Array.isArray(raw)) return { generation: undefined, servers: raw };
+  if (
+    isRecord(raw) &&
+    raw.v === 1 &&
+    typeof raw.generation === 'number' &&
+    Number.isSafeInteger(raw.generation) &&
+    raw.generation > 0 &&
+    Array.isArray(raw.servers)
+  ) {
+    return { generation: raw.generation, servers: raw.servers };
+  }
+  return { generation: undefined, servers: raw };
+}
+
+function persistCustomMcpSnapshot(
+  vault: SecretVault,
+  servers: CustomMcpServer[],
+  previous: CustomMcpServer[],
+  writeConfig: (value: unknown) => void,
+): void {
+  const store = customMcpSecrets(vault);
+  const previousGeneration = parseCustomMcpSnapshot(readConfigFile().customMcpServers).generation;
+  const generation =
+    previousGeneration === undefined || previousGeneration === Number.MAX_SAFE_INTEGER
+      ? 1
+      : previousGeneration + 1;
+  const before = detachCustomMcpSecrets(previous, previousGeneration);
+  const after = detachCustomMcpSecrets(servers, generation);
+  const combined = new Map(before.secrets);
+  for (const [key, secret] of after.secrets) combined.set(key, secret);
+  store.replaceAll(combined);
+  try {
+    writeConfig({ v: 1, generation, servers: after.servers });
+  } catch (error) {
+    try {
+      store.replaceAll(before.secrets);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'Failed to persist or restore custom MCP', {
+        cause: rollbackError,
+      });
+    }
+    throw error;
+  }
+  try {
+    store.replaceAll(after.secrets);
+  } catch (err) {
+    logger.warn(
+      { err, operation: 'config.save-custom-mcp' },
+      'Custom MCP state committed but stale secret cleanup failed',
+    );
+  }
+}
+
+function fsyncPath(path: string): void {
+  const descriptor = openSync(path, 'r');
+  try {
     fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    renameSync(temporaryPath, path);
-    try {
-      const directoryDescriptor = openSync(directory, 'r');
-      try {
-        fsyncSync(directoryDescriptor);
-      } finally {
-        closeSync(directoryDescriptor);
-      }
-    } catch {
-      // Directory fsync is unsupported on some platforms; rename still preserves atomicity.
-    }
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-    try {
-      unlinkSync(temporaryPath);
-    } catch {
-      // The temporary file is absent after a successful rename or an early open failure.
-    }
+    closeSync(descriptor);
+  }
+}
+
+function writeConfigFields(
+  file: Record<string, unknown>,
+  fields: Partial<Record<keyof ConfigFile, unknown>>,
+): void {
+  const path = configPath();
+  Object.assign(file, fields);
+  const directory = dirname(path);
+  mkdirSync(directory, { recursive: true });
+  const temporaryPath = join(directory, `.config.${process.pid}.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    chmodSync(temporaryPath, 0o600);
+    fsyncPath(temporaryPath);
+    renameSync(temporaryPath, path);
+    if (process.platform !== 'win32') fsyncPath(directory);
+  } finally {
+    rmSync(temporaryPath, { force: true });
   }
 }
 

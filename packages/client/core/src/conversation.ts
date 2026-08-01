@@ -731,14 +731,6 @@ export interface ConversationSeed {
   uptoSeq: number;
 }
 
-/** Extract a flat preview string from content blocks (used for list previews / titles). */
-export function contentPreview(blocks: readonly ContentBlock[]): string {
-  return blocks
-    .map((b) => (b.type === 'text' ? b.text : `[${b.type}]`))
-    .join(' ')
-    .trim();
-}
-
 /** Pull the file diffs out of a tool call's content (for diff-aware rendering). */
 export function toolCallDiffs(
   toolCall: ToolCall,

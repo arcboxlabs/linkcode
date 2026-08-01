@@ -1,6 +1,7 @@
 import { mergeRegister } from '@lexical/utils';
 import type { LexicalEditor } from 'lexical';
 import {
+  $createTextNode,
   $getRoot,
   $hasUpdateTag,
   $isElementNode,
@@ -14,6 +15,11 @@ import type { ComposerDirectiveState } from './directive-state';
 import { $createCommandNode, $createShellNode, $isCommandNode, $isShellNode } from './nodes';
 
 const WHITESPACE_RE = /\s/;
+const SHELL_DIRECTIVE_BODY_RE = /^[\t ]+\S/;
+
+export function isShellDirectiveText(text: string): boolean {
+  return text[0] === '$' && SHELL_DIRECTIVE_BODY_RE.test(text.slice(1));
+}
 
 type TokenizerState = Pick<ComposerDirectiveState, 'suppressed'>;
 
@@ -47,9 +53,9 @@ function $findDirectiveCandidate(
   if (!$isDocumentStart(node, 0) || state.suppressed.has(node.getKey())) return null;
 
   if (content[0] === '$') {
-    // A bare marker is ordinary prose. Shell intent becomes unambiguous only after the user
-    // supplies a non-whitespace payload, including when that payload is in a following node.
-    return $getRoot().getTextContent().slice(1).trim() ? { end: 1, kind: 'shell', start: 0 } : null;
+    return isShellDirectiveText($getRoot().getTextContent())
+      ? { end: 1, kind: 'shell', start: 0 }
+      : null;
   }
   if (content[0] !== '/') return null;
   let end = 1;
@@ -63,6 +69,10 @@ function $hasLeadingDirective(): boolean {
   const firstBlock = $getRoot().getFirstChild();
   if (!$isElementNode(firstBlock)) return false;
   const first = firstBlock.getFirstChild();
+  if ($isShellNode(first) && !isShellDirectiveText($getRoot().getTextContent())) {
+    first.replace($createTextNode('$'));
+    return false;
+  }
   return $isCommandNode(first) || $isShellNode(first);
 }
 

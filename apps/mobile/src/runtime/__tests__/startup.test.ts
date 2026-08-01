@@ -1,5 +1,5 @@
+import { resolveStartupTarget } from '@mobile/runtime/startup';
 import { describe, expect, it } from 'vitest';
-import { resolveStartupTarget } from '../startup';
 
 describe('resolveStartupTarget', () => {
   it('sends a signed-out first run to sign-in', () => {

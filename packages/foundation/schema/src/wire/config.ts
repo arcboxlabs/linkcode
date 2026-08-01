@@ -6,13 +6,13 @@ import {
   AccountSecretSchema,
   AccountsSchema,
 } from '../model/account';
+import { CustomMcpServerPatchOpSchema, CustomMcpServerPublicSchema } from '../model/custom-mcp';
 import { AgentKindSchema } from '../model/primitives';
 import { ProvidersConfigSchema } from '../model/provider-config';
 import { WireRequestIdSchema } from './request';
 
-/** Host configuration wire variants — per-agent provider settings (provider-config.ts) plus the
- * global account pool (account.ts); both travel together so a single `config.get`/`config.set`
- * round-trips the whole editable config. */
+/** Host configuration wire variants. Reads return the whole editable config; each write changes
+ * one resource so validation or persistence failure cannot partially commit another resource. */
 export const configWireVariants = [
   z.object({ kind: z.literal('config.get'), clientReqId: WireRequestIdSchema }),
   z.object({
@@ -20,6 +20,7 @@ export const configWireVariants = [
     replyTo: WireRequestIdSchema,
     providers: ProvidersConfigSchema,
     accounts: AccountsSchema,
+    customMcpServers: z.array(CustomMcpServerPublicSchema),
   }),
   z.object({
     kind: z.literal('config.set'),
@@ -28,6 +29,8 @@ export const configWireVariants = [
     providers: ProvidersConfigSchema.optional(),
     /** The global account pool; omitted by a client editing only provider settings. */
     accounts: AccountsSchema.optional(),
+    /** Patch ops against the stored custom MCP servers; omitted when untouched. */
+    customMcpServers: z.array(CustomMcpServerPatchOpSchema).optional(),
   }),
   z.object({
     kind: z.literal('config.account.create-and-bind'),

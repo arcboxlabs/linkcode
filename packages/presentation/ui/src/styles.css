@@ -40,6 +40,10 @@
   --motion-fast: 150ms;
   --motion-normal: 250ms;
   --motion-emphasis: 350ms;
+  /* Entrances and exits, consumed as `ease-(--motion-ease-out)`. Strong on purpose — the built-in
+     `ease-out` is too weak to read at 150ms. Do NOT reuse the shell's `cubic-bezier(0.2, 0, 0, 1)`
+     here: that is an emphasized in-out (zero initial slope) and belongs on things that morph. */
+  --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
   /* List density (data-density on the root, synced from the appearance store): long-list rows
      read these instead of fixed paddings; skeletons must track the same vars. */
@@ -148,22 +152,37 @@
   }
 }
 
-/* View transitions (React `<ViewTransition>`, CODE-457): pace every group on the motion scale. */
-::view-transition-group(*),
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: var(--motion-normal);
-}
-
-/* The app-level reduce-motion preference must silence snapshot animations too — the global
-   `.reduce-motion *` reset cannot reach these root-attached pseudo-elements. */
-.reduce-motion::view-transition-group(*),
-.reduce-motion::view-transition-old(*),
-.reduce-motion::view-transition-new(*) {
-  animation-duration: 0.01ms !important;
-}
-
 @layer components {
+  /* The incoming header thread title (`ThreadTitle` gates it to pointer-driven switches).
+     Deliberately not a matched-geometry morph with the sidebar row: one shared name pairs both
+     directions at once and reads as the two titles swapping. */
+  .thread-title-enter {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity var(--motion-fast) var(--motion-ease-out),
+      transform var(--motion-fast) var(--motion-ease-out);
+
+    /* Not from 0: this replaces a title rather than adding one, and a fully transparent first
+       frame leaves the header unlabeled exactly as the user arrives. */
+    @starting-style {
+      opacity: 0.35;
+      transform: translateY(0.25rem);
+    }
+  }
+
+  /* Keep the fade (it bridges the two titles); drop the movement. Reduced motion means gentler,
+     not zero — the app-level `.reduce-motion` reset above is the one that silences it outright. */
+  @media (prefers-reduced-motion: reduce) {
+    .thread-title-enter {
+      transition-property: opacity;
+
+      @starting-style {
+        transform: translateY(0);
+      }
+    }
+  }
+
   /* Read-only chat terminals mirror LiveTerminal's auto pair: GitHub Light Default / Dark+.
      Scope the palette so ANSI class names from other libraries cannot inherit it accidentally. */
   .chat-terminal-output {

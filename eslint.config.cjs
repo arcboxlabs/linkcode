@@ -5,6 +5,7 @@ module.exports = require('eslint-config-sukka').sukka(
     ignores: {
       customGlobs: [
         '.claude/**',
+        '.agents/skills/**', // sync from upstream, tracked by skills-lock.json
         'assets/**',
         '**/dist/**',
         '**/out/**',
@@ -133,7 +134,7 @@ module.exports = require('eslint-config-sukka').sukka(
     // element are exempted back, so the checks still cover the shrinking non-SwiftUI set.
     name: 'linkcode/expo-ui-props-are-not-dom-props',
     files: ['apps/mobile/src/**/*.tsx'],
-    ignores: ['apps/mobile/src/components/brand-mark.tsx'],
+    ignores: ['apps/mobile/src/components/shell/brand-mark.tsx'],
     rules: {
       'jsx-a11y/alt-text': 'off',
       'jsx-a11y/aria-role': 'off',
