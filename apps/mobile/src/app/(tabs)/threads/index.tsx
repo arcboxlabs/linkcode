@@ -16,41 +16,89 @@ import {
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
 import { SECONDARY } from '@mobile/components/form/styles';
+import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
+import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
-import { useHostRegistryStore } from '@mobile/stores/host-store';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SearchField, useThemeColor } from 'heroui-native';
-import { SettingsIcon, SquarePenIcon, SquareTerminalIcon } from 'lucide-react-native';
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Stack, useRouter } from 'expo-router';
+import { SquarePenIcon } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
+
+/** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
+type SearchBarChangeEvent = Parameters<
+  NonNullable<React.ComponentProps<typeof Stack.SearchBar>['onChangeText']>
+>[0];
 
 /** The title a thread is listed and searched under — the same fallback the row renders. */
 function threadTitle(session: SessionInfo): string {
   return session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
 }
 
-/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, the
- * connected host as a subtitle, and a search + new-thread footer. Empty workspace groups are
- * hidden — the sheet is where they surface. */
-export default function ThreadsScreen(): React.ReactNode {
+/** The header outlives the connection: it carries the host switcher, which is the way out of a host
+ * that cannot be reached, so it is mounted above the gate rather than inside it. New-thread is the
+ * one part that needs a client, and it is dropped rather than left to fail. */
+export default function ThreadsRoute(): React.ReactNode {
+  const t = useTranslations('mobile.sessions');
+  const hostMenuItems = useHostMenuItems();
+  const connection = useHostConnection();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  return (
+    <View className="flex-1 bg-background">
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerLargeTitle: true,
+          title: t('title'),
+          unstable_headerLeftItems: () => hostMenuItems,
+          headerRight:
+            connection?.status === 'ready'
+              ? () => (
+                  <HeaderIconButton
+                    icon={SquarePenIcon}
+                    label={t('newThread')}
+                    onPress={() => setSheetOpen(true)}
+                  />
+                )
+              : undefined,
+        }}
+      />
+      <HostClientGate>
+        <ThreadsScreen sheetOpen={sheetOpen} onSheetOpenChange={setSheetOpen} />
+      </HostClientGate>
+    </View>
+  );
+}
+
+/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
+ * native search bar stacked under the large title. Empty workspace groups are hidden — the sheet
+ * is where they surface. */
+function ThreadsScreen({
+  sheetOpen,
+  onSheetOpenChange,
+}: {
+  sheetOpen: boolean;
+  onSheetOpenChange: (open: boolean) => void;
+}): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const { sessions, create, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
-  const host = useHostRegistryStore((state) => state.hosts.find((entry) => entry.id === hostId));
-  const [background, foreground] = useThemeColor(['background', 'foreground']);
-  const insets = useSafeAreaInsets();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
+
+  // Stable so the search bar's options object survives a keystroke without re-registering.
+  const onSearchChange = useCallback(
+    (event: SearchBarChangeEvent) => setQuery(event.nativeEvent.text),
+    [],
+  );
 
   const needle = query.trim().toLowerCase();
   const groups = groupThreadsByWorkspace(withoutAutomationSessions(sessions), workspaces).reduce<
@@ -94,44 +142,25 @@ export default function ThreadsScreen(): React.ReactNode {
         throw error;
       }
       await refreshWorkspaces();
-      setSheetOpen(false);
-      router.push(`/host/${hostId}/session/${sessionId}`);
+      onSheetOpenChange(false);
+      router.push(`/session/${sessionId}`);
     } finally {
       setCreating(false);
     }
   };
 
   return (
-    <View className="flex-1 bg-background">
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerLargeTitle: true,
-          title: t('title'),
-          headerRight: () => (
-            <View className="flex-row items-center">
-              <HeaderIconButton
-                icon={SquareTerminalIcon}
-                label={t('terminals')}
-                onPress={() => router.push(`/host/${hostId}/terminal`)}
-              />
-              <HeaderIconButton
-                icon={SettingsIcon}
-                label={t('settings')}
-                onPress={() => router.push('/settings')}
-              />
-            </View>
-          ),
-        }}
+    <>
+      {/* `stacked` keeps the field under the large title instead of collapsing into the iOS 26
+          toolbar; the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
+      <Stack.SearchBar
+        placeholder={t('searchPlaceholder')}
+        placement="stacked"
+        hideWhenScrolling={false}
+        hideNavigationBar={false}
+        autoCapitalize="none"
+        onChangeText={onSearchChange}
       />
-      {/* The connected host reads as a subtitle of the screen, the way the reference puts the
-          machine under its title, rather than as a separate bar pinned to the bottom. */}
-      <View className="flex-row items-center gap-2 px-5 pb-2">
-        <View className="h-2 w-2 rounded-full bg-success" />
-        <Text className="min-w-0 flex-1 text-muted text-subhead" numberOfLines={1}>
-          {host?.name ?? ''}
-        </Text>
-      </View>
       {/* The list needs the viewport as its proposed size, otherwise SwiftUI collapses it. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         {loading ? (
@@ -148,7 +177,7 @@ export default function ThreadsScreen(): React.ReactNode {
             {needle === '' ? (
               <Section footer={<UIText>{t('emptyHint')}</UIText>}>
                 <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
-                <UIButton label={t('newThread')} onPress={() => setSheetOpen(true)} />
+                <UIButton label={t('newThread')} onPress={() => onSheetOpenChange(true)} />
               </Section>
             ) : (
               <Section>
@@ -160,43 +189,18 @@ export default function ThreadsScreen(): React.ReactNode {
           <ThreadList
             groups={groups}
             labelFor={groupLabel}
-            onOpenThread={(sessionId) => router.push(`/host/${hostId}/session/${sessionId}`)}
+            onOpenThread={(sessionId) => router.push(`/session/${sessionId}`)}
             onRefresh={onRefresh}
           />
         )}
       </Host>
-      <View
-        className="flex-row items-center gap-2 px-5 pt-2"
-        style={{ paddingBottom: Math.max(insets.bottom, 12) }}
-      >
-        <SearchField className="min-w-0 flex-1" value={query} onChange={setQuery}>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder={t('searchPlaceholder')} returnKeyType="search" />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
-        {/* Inverted rather than accent-tinted, matching the reference's near-black pill;
-            the token pair flips with the colour scheme so it stays legible in dark mode. */}
-        <Pressable
-          accessibilityRole="button"
-          className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5"
-          onPress={() => setSheetOpen(true)}
-          style={({ pressed }) => ({ backgroundColor: foreground, opacity: pressed ? 0.7 : 1 })}
-        >
-          <SquarePenIcon size={15} color={background} />
-          <Text className="font-medium text-subhead" style={{ color: background }}>
-            {t('newThread')}
-          </Text>
-        </Pressable>
-      </View>
       <NewThreadSheet
         isPresented={sheetOpen}
-        onIsPresentedChange={setSheetOpen}
+        onIsPresentedChange={onSheetOpenChange}
         workspaces={workspaces}
         creating={creating}
         onCreate={onCreate}
       />
-    </View>
+    </>
   );
 }

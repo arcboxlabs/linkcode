@@ -9,12 +9,14 @@ appId: com.arcboxlabs.linkcode.mobile
 - launchApp
 # A cold start redirects once the persisted host registry hydrates, which can land after the deep
 # link and replace the screen it opened; retrying re-issues the link past that window.
+# The guard has to be a row, not the title: a host screen carries a Settings *tab*, so "Settings"
+# alone is satisfied by the very redirect this retry exists to outlast.
 - retry:
     maxRetries: 3
     commands:
       - openLink: linkcode://settings
       - waitForAnimationToEnd
-      - assertVisible: 'Settings'
+      - assertVisible: 'Manage hosts'
 
 - assertVisible: 'Settings'
 - assertVisible: 'Manage hosts'

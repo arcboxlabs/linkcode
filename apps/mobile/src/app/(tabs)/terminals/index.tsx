@@ -19,21 +19,48 @@ import {
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type { TerminalMetadata } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HostClientGate } from '@mobile/components/host/host-client-gate';
+import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useCallback, useState } from 'react';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 const INITIAL_TERMINAL_SIZE = { cols: 80, rows: 24 };
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
+/** Header above the gate, for the same reason as the threads tab: the host switcher has to stay
+ * reachable when the host is not. */
+export default function TerminalsRoute(): React.ReactNode {
+  const t = useTranslations('mobile.terminals');
+  const hostMenuItems = useHostMenuItems();
+
+  // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
+  // proposed the whole window and paints straight over the large title.
+  return (
+    <View className="flex-1 bg-background">
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerLargeTitle: true,
+          title: t('title'),
+          unstable_headerLeftItems: () => hostMenuItems,
+        }}
+      />
+      <HostClientGate>
+        <TerminalsScreen />
+      </HostClientGate>
+    </View>
+  );
+}
+
 /** Host terminal inbox: attach to a running PTY or start a new one on the host. */
-export default function TerminalsScreen(): React.ReactNode {
+function TerminalsScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminals');
   const router = useRouter();
-  const { hostId } = useLocalSearchParams<{ hostId: string }>();
   const client = useLinkCodeClient();
   const [terminals, setTerminals] = useState<TerminalMetadata[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +101,7 @@ export default function TerminalsScreen(): React.ReactNode {
 
   const openTerminal = (terminalId: string, takeControl = false) => {
     const query = takeControl ? '?takeover=1' : '';
-    router.push(`/host/${hostId}/terminal/${encodeURIComponent(terminalId)}${query}`);
+    router.push(`/terminal/${encodeURIComponent(terminalId)}${query}`);
   };
 
   const onCreate = async () => {
@@ -98,53 +125,50 @@ export default function TerminalsScreen(): React.ReactNode {
   };
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: true, title: t('title') }} />
-      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        <Form modifiers={[refreshable(onRefresh)]}>
-          {error ? (
-            <Section>
-              <Text modifiers={[foregroundStyle('red')]}>{t('error', { error })}</Text>
-            </Section>
-          ) : null}
-
+    // Form needs the viewport as its proposed size, otherwise it collapses to its content.
+    <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+      <Form modifiers={[refreshable(onRefresh)]}>
+        {error ? (
           <Section>
-            {loading ? (
-              <ProgressView />
-            ) : terminals.length === 0 ? (
-              <Text modifiers={[SECONDARY]}>{t('emptyHint')}</Text>
-            ) : (
-              terminals.map((terminal) => (
-                <NavigationRow
-                  key={terminal.terminalId}
-                  title={terminal.shell ?? terminal.terminalId.slice(0, 8)}
-                  subtitle={`${terminal.cwd ?? t('unknownCwd')} · ${terminal.cols}×${terminal.rows}`}
-                  badgeText={terminal.controllerAttachmentId ? t('controlled') : undefined}
-                  onPress={() => openTerminal(terminal.terminalId)}
-                />
-              ))
-            )}
+            <Text modifiers={[foregroundStyle('red')]}>{t('error', { error })}</Text>
           </Section>
+        ) : null}
 
-          <Section title={t('newTerminal')}>
-            <HStack spacing={12}>
-              <Text>{t('cwdLabel')}</Text>
-              <TextField
-                testID="terminal-cwd-input"
-                text={cwd}
-                placeholder={t('cwdPlaceholder')}
-                modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled()]}
+        <Section>
+          {loading ? (
+            <ProgressView />
+          ) : terminals.length === 0 ? (
+            <Text modifiers={[SECONDARY]}>{t('emptyHint')}</Text>
+          ) : (
+            terminals.map((terminal) => (
+              <NavigationRow
+                key={terminal.terminalId}
+                title={terminal.shell ?? terminal.terminalId.slice(0, 8)}
+                subtitle={`${terminal.cwd ?? t('unknownCwd')} · ${terminal.cols}×${terminal.rows}`}
+                badgeText={terminal.controllerAttachmentId ? t('controlled') : undefined}
+                onPress={() => openTerminal(terminal.terminalId)}
               />
-            </HStack>
-            <Button
-              label={creating ? t('creating') : t('create')}
-              onPress={onCreate}
-              modifiers={[disabled(creating)]}
+            ))
+          )}
+        </Section>
+
+        <Section title={t('newTerminal')}>
+          <HStack spacing={12}>
+            <Text>{t('cwdLabel')}</Text>
+            <TextField
+              testID="terminal-cwd-input"
+              text={cwd}
+              placeholder={t('cwdPlaceholder')}
+              modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled()]}
             />
-          </Section>
-        </Form>
-      </Host>
-    </>
+          </HStack>
+          <Button
+            label={creating ? t('creating') : t('create')}
+            onPress={onCreate}
+            modifiers={[disabled(creating)]}
+          />
+        </Section>
+      </Form>
+    </Host>
   );
 }

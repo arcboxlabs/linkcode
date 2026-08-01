@@ -1,4 +1,5 @@
 import { TerminalIdSchema } from '@linkcode/schema';
+import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import TerminalRenderer from '@mobile/components/terminal/terminal-renderer';
 import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { resolveTerminalTheme, useTerminalPrefsStore } from '@mobile/stores/terminal-prefs-store';
@@ -8,9 +9,18 @@ import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 
+/** A terminal is a screen of the host stack, not of a tab, so the canvas owns the full height. */
+export default function TerminalRoute(): React.ReactNode {
+  return (
+    <HostClientGate>
+      <TerminalScreen />
+    </HostClientGate>
+  );
+}
+
 /** Interactive mobile view of one host-owned PTY. Attachment and all network I/O live in
  * {@link useTerminalSession}; this route only renders and navigates. */
-export default function TerminalScreen(): React.ReactNode {
+function TerminalScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminal');
   const router = useRouter();
   const insets = useSafeAreaInsets();

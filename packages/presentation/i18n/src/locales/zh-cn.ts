@@ -1279,6 +1279,10 @@ export const zhCN = {
       privacy: '隐私',
       analytics: '共享使用分析',
       analyticsHint: '发送功能使用事件，不包含对话、代码、路径或终端内容。默认关闭。',
+      connections: '连接',
+      keepHostsConnected: '保持所有主机连接',
+      keepHostsConnectedHint:
+        '开启后每台已保存的主机都持续连接，切换是瞬时的，代价是更费电和流量。关闭时只连当前主机，切回去要重新握手。',
       legalAndSupport: '法律与支持',
       privacyPolicy: '隐私政策',
       termsOfService: '服务条款',

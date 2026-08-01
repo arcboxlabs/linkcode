@@ -2,12 +2,14 @@ import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/u
 import { font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
 import type { ThemePreference } from '@mobile/stores/settings-store';
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
@@ -24,19 +26,33 @@ const SUPPORT_URL = 'https://linkcode.ai/support';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
-/** App settings: account + host management entries plus the About/contract summary. */
-export default function SettingsScreen(): React.ReactNode {
+/** App settings: account + host management entries plus the About/contract summary. Nothing here is
+ * host-scoped, and the tab is deliberately ungated — this is where "Manage hosts" lives, so it has
+ * to survive the selected host being unreachable. */
+export function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
   const account = useCloudAccount();
+  const hostMenuItems = useHostMenuItems();
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const themePreference = useSettingsStore((state) => state.themePreference);
   const setThemePreference = useSettingsStore((state) => state.setThemePreference);
+  const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
+  const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
 
+  // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
+  // proposed the whole window and paints straight over the large title.
   return (
-    <>
-      <Stack.Screen options={{ headerShown: true, headerLargeTitle: true, title: t('title') }} />
+    <View className="flex-1 bg-background">
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerLargeTitle: true,
+          title: t('title'),
+          unstable_headerLeftItems: () => hostMenuItems,
+        }}
+      />
       {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         <Form>
@@ -54,6 +70,14 @@ export default function SettingsScreen(): React.ReactNode {
             <NavigationRow
               title={t('terminalAppearance')}
               onPress={() => router.push('/terminal-appearance')}
+            />
+          </Section>
+
+          <Section title={t('connections')} footer={<Text>{t('keepHostsConnectedHint')}</Text>}>
+            <Toggle
+              isOn={keepHostsConnected}
+              onIsOnChange={setKeepHostsConnected}
+              label={t('keepHostsConnected')}
             />
           </Section>
 
@@ -107,6 +131,6 @@ export default function SettingsScreen(): React.ReactNode {
           </Section>
         </Form>
       </Host>
-    </>
+    </View>
   );
 }

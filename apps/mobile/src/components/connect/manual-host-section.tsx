@@ -15,8 +15,8 @@ import {
   textContentType,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
+import { useOpenHost } from '@mobile/runtime/use-open-host';
 import { HostUrlSchema, useHostRegistryStore } from '@mobile/stores/host-store';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 
@@ -27,7 +27,7 @@ export function ManualHostSection({
   startsExpanded: boolean;
 }): React.ReactNode {
   const t = useTranslations('mobile.connect');
-  const router = useRouter();
+  const openHost = useOpenHost();
   const addHost = useHostRegistryStore((state) => state.addHost);
 
   // Null until the user decides either way. Seeding `useState` from `startsExpanded` would freeze
@@ -49,7 +49,7 @@ export function ManualHostSection({
     name.set('');
     url.set('');
     setUrlInvalid(false);
-    router.push(`/host/${profile.id}`);
+    openHost(profile.id);
   };
 
   return (

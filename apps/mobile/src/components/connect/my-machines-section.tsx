@@ -5,8 +5,8 @@ import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
 import { ensureDeviceRegistered } from '@mobile/runtime/cloud/devices';
 import type { OnlineHost } from '@mobile/runtime/cloud/hosts';
 import { fetchOnlineHosts } from '@mobile/runtime/cloud/hosts';
+import { useOpenHost } from '@mobile/runtime/use-open-host';
 import { useHostRegistryStore } from '@mobile/stores/host-store';
-import { useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -14,7 +14,7 @@ import { useTranslations } from 'use-intl';
 /** Online machines (daemons connected to the relay) — tapping one saves it as a tunnel host and opens it. */
 export function MyMachinesSection({ userId }: { userId: string }): React.ReactNode {
   const t = useTranslations('mobile.connect.cloud');
-  const router = useRouter();
+  const openHost = useOpenHost();
   const addTunnelHost = useHostRegistryStore((state) => state.addTunnelHost);
 
   const [onlineHosts, setOnlineHosts] = useState<OnlineHost[] | null>(null);
@@ -39,12 +39,12 @@ export function MyMachinesSection({ userId }: { userId: string }): React.ReactNo
     load();
   }, [userId, load]);
 
-  const openHost = (host: OnlineHost) => {
+  const saveAndOpen = (host: OnlineHost) => {
     const profile = addTunnelHost({
       name: host.name ?? host.hostId.slice(0, 8),
       tunnelHostId: host.hostId,
     });
-    router.push(`/host/${profile.id}`);
+    openHost(profile.id);
   };
 
   return (
@@ -75,7 +75,7 @@ export function MyMachinesSection({ userId }: { userId: string }): React.ReactNo
             key={host.hostId}
             title={host.name ?? host.hostId.slice(0, 8)}
             subtitle={t('title')}
-            onPress={() => openHost(host)}
+            onPress={() => saveAndOpen(host)}
           />
         ))
       )}

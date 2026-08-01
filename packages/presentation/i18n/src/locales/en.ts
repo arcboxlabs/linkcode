@@ -1313,6 +1313,10 @@ export const en = {
       analytics: 'Share usage analytics',
       analyticsHint:
         'Send feature usage events without conversations, code, paths, or terminal content. Off by default.',
+      connections: 'Connections',
+      keepHostsConnected: 'Keep every host connected',
+      keepHostsConnectedHint:
+        'Holds a connection to every saved host so switching is instant, at the cost of battery and data. Off keeps only the selected host dialed.',
       legalAndSupport: 'Legal & Support',
       privacyPolicy: 'Privacy Policy',
       termsOfService: 'Terms of Service',
