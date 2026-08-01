@@ -1,6 +1,6 @@
 import type { BranchMode, GitBranch, GitBranchSwitchCheck } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
-import { Input } from 'coss-ui/components/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import {
   Menu,
   MenuGroup,
@@ -153,22 +153,25 @@ export function NewSessionBranchPicker({
         </MenuTrigger>
         <MenuPopup align="start" className="w-80" side="top" sideOffset={8}>
           <div
-            className="relative mb-1"
+            className="mb-1"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label={t('branchSearch')}
-              autoFocus
-              className="border-0 bg-transparent shadow-none before:hidden has-focus-visible:ring-0"
-              disabled={loading}
-              placeholder={t('branchSearch')}
-              size="sm"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
+            <InputGroup className="border-0 bg-transparent shadow-none before:hidden has-[input:focus-visible]:ring-0">
+              <InputGroupAddon>
+                <SearchIcon className="text-muted-foreground" />
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label={t('branchSearch')}
+                autoFocus
+                disabled={loading}
+                placeholder={t('branchSearch')}
+                size="sm"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </InputGroup>
           </div>
           <MenuGroup>
             <MenuGroupLabel>{t('branches')}</MenuGroupLabel>

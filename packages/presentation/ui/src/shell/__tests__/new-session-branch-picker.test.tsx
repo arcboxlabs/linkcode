@@ -61,6 +61,9 @@ describe('NewSessionBranchPicker', () => {
     await user.click(screen.getByRole('button', { name: 'branch' }));
     expect(await screen.findByText('branchUncommitted')).toBeDefined();
     const search = await screen.findByRole('searchbox', { name: 'branchSearch' });
+    const searchGroup = search.closest('[data-slot="input-group"]');
+    expect(searchGroup).not.toBeNull();
+    expect(searchGroup?.querySelector('[data-slot="input-group-addon"]')).not.toBeNull();
     await user.type(search, 'login');
     expect(screen.queryByText('feature/search')).toBeNull();
     expect(screen.getByText('bugfix/login')).toBeDefined();
