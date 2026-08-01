@@ -918,6 +918,9 @@ export const en = {
       textSizeLarge: 'Large',
       reduceMotion: 'Reduce motion',
       reduceMotionHint: 'Minimize animations and transitions.',
+      smoothConversationScrolling: 'Smooth conversation follow',
+      smoothConversationScrollingHint:
+        'Animate following content updates to the bottom. Reduce motion always jumps directly.',
       listDensity: 'List density',
       listDensityHint: 'Row height for long lists such as the thread sidebar and history.',
       listDensityComfortable: 'Comfortable',

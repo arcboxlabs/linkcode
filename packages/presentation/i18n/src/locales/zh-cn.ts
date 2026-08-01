@@ -895,6 +895,8 @@ export const zhCN = {
       textSizeLarge: '大',
       reduceMotion: '减弱动效',
       reduceMotionHint: '尽量减少动画与过渡效果。',
+      smoothConversationScrolling: '平滑跟随对话',
+      smoothConversationScrollingHint: '内容更新时平滑跟随到底部；开启「减弱动效」时始终直接定位。',
       listDensity: '列表密度',
       listDensityHint: '会话侧栏与历史等长列表的行高。',
       listDensityComfortable: '舒适',

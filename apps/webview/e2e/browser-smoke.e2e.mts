@@ -17,6 +17,9 @@ const daemonDir = fileURLToPath(new URL('../../daemon', import.meta.url));
 const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('vite')));
 const mockThreadTitle = 'Wire the workbench to the daemon';
 const longThreadTitle = 'Long thread · navigation testbed';
+const longThreadTurns = 48;
+const maxMountedRows = 10;
+const RE_LONG_THREAD_TURN = /Turn (\d+) —/g;
 
 interface ViteServer {
   child: ChildProcess;
@@ -65,17 +68,52 @@ async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Prom
 }
 
 async function verifyLongThreadVirtualization(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ flags, source }) => {
+      const host = document.querySelector('main');
+      if (!host) throw new Error('Missing workbench main');
+
+      const turnPattern = new RegExp(source, flags);
+      const mountedTurns = new Set<number>();
+      const collect = (node: Node): void => {
+        for (const match of (node.textContent ?? '').matchAll(turnPattern)) {
+          mountedTurns.add(Number(match[1]));
+        }
+      };
+      const process = (records: MutationRecord[]): void => {
+        for (const record of records) {
+          for (const node of record.addedNodes) collect(node);
+        }
+      };
+      const observer = new MutationObserver(process);
+      observer.observe(host, { childList: true, subtree: true });
+      Reflect.set(window, '__longThreadMountProbe', () => {
+        process(observer.takeRecords());
+        observer.disconnect();
+        return [...mountedTurns];
+      });
+    },
+    { flags: RE_LONG_THREAD_TURN.flags, source: RE_LONG_THREAD_TURN.source },
+  );
+
   await page.locator('[data-thread-title]', { hasText: longThreadTitle }).click();
   await page.locator('[data-conversation-title]', { hasText: longThreadTitle }).waitFor();
-  await page.waitForFunction(() => {
+  await page.waitForFunction((lastTurn) => {
     const scroll = document.querySelector('[role="log"]')?.firstElementChild;
     const virtualizer = scroll?.firstElementChild?.firstElementChild;
     return (
       scroll instanceof HTMLElement &&
       scroll.scrollHeight > scroll.clientHeight &&
-      (virtualizer?.childElementCount ?? Number.POSITIVE_INFINITY) < 10
+      (virtualizer?.childElementCount ?? Number.POSITIVE_INFINITY) < 10 &&
+      virtualizer?.textContent.includes(`Turn ${lastTurn} —`)
     );
-  });
+  }, longThreadTurns);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 
   const metrics = await page.getByRole('log').evaluate((root) => {
     const scroll = root.firstElementChild as HTMLElement;
@@ -85,11 +123,28 @@ async function verifyLongThreadVirtualization(page: Page): Promise<void> {
       mountedRows: virtualizer?.childElementCount,
     };
   });
+  const mountedDuringSwitch = await page.evaluate(() => {
+    const finish = Reflect.get(window, '__longThreadMountProbe') as undefined | (() => number[]);
+    if (!finish) throw new Error('Missing long-thread mount probe');
+    Reflect.deleteProperty(window, '__longThreadMountProbe');
+    return finish();
+  });
   assert.ok(
     metrics.bottomDifference <= 2,
     `Long thread opened ${metrics.bottomDifference}px above bottom`,
   );
-  assert.ok((metrics.mountedRows ?? 0) < 10, `Long thread mounted ${metrics.mountedRows} rows`);
+  assert.ok(
+    (metrics.mountedRows ?? 0) < maxMountedRows,
+    `Long thread mounted ${metrics.mountedRows} rows`,
+  );
+  assert.ok(
+    mountedDuringSwitch.includes(longThreadTurns),
+    'Long thread tail was not observed during the switch',
+  );
+  assert.ok(
+    mountedDuringSwitch.length < maxMountedRows,
+    `Long thread mounted ${mountedDuringSwitch.length} distinct turns while switching`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -162,13 +217,14 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     const appErrors: string[] = [];
     const page = await browser.newPage();
     monitorApplicationErrors(page, server.origin, appErrors);
-    // This boundary verifies wire prompt/reload recovery, not animation timing: the product's
-    // reduce-motion fallback collapses the title animations so a throttled headless tab cannot
-    // hold the assertions below open across animation frames.
     await page.addInitScript(() => {
+      if (localStorage.getItem('linkcode.workbench.appearance:v2') !== null) return;
       localStorage.setItem(
-        'linkcode.workbench.appearance:v1',
-        JSON.stringify({ state: { reduceMotion: true }, version: 0 }),
+        'linkcode.workbench.appearance:v2',
+        JSON.stringify({
+          state: { reduceMotion: false, smoothConversationScrolling: false },
+          version: 0,
+        }),
       );
     });
     await page.goto(server.origin, { waitUntil: 'domcontentloaded' });
@@ -176,6 +232,16 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
 
     await page.getByRole('link', { name: 'Open settings' }).click();
     await page.waitForURL(`${server.origin}/settings`);
+    await page.getByRole('link', { name: 'Appearance' }).click();
+    await page.waitForURL(`${server.origin}/settings/appearance`);
+    const smoothConversationSwitch = page.getByRole('switch', {
+      name: 'Smooth conversation follow',
+    });
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'false');
+    await smoothConversationSwitch.click();
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'true');
+    await smoothConversationSwitch.click();
+    assert.equal(await smoothConversationSwitch.getAttribute('aria-checked'), 'false');
     await page.getByRole('link', { name: 'Back' }).click();
     await page.waitForURL(`${server.origin}/`);
 
