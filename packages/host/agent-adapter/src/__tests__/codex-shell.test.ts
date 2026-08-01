@@ -221,6 +221,16 @@ describe('CodexAdapter shell-command passthrough', () => {
     });
   });
 
+  it('reads config.toml from the same environment the app-server got', async () => {
+    const adapter = new TestCodex();
+    // An account's extraEnv can move CODEX_HOME; reading the unmerged environment would report
+    // defaults from a different codex home than the one the session actually uses.
+    await adapter.startCatalog({ config: { extraEnv: { CODEX_HOME: '/accounts/codex' } } });
+
+    expect(adapter.configuredModelEnvironment?.CODEX_HOME).toBe('/accounts/codex');
+    expect(adapter.fakeServers[0].opts.env?.CODEX_HOME).toBe('/accounts/codex');
+  });
+
   it('falls back to the effort advertised for the model config.toml names', async () => {
     const adapter = new TestCodex();
     adapter.configuredModel = { model: 'gpt-5.6-luna' };
