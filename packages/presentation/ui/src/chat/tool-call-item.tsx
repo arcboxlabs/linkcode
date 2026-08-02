@@ -1,7 +1,9 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
+import { ToolCaseIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { toolCallDiffStats } from '../diff-utils';
+import { cn } from '../lib/cn';
 import type { ToolMetadata } from '../tool-utils';
 import {
   hasToolBody,
@@ -99,6 +101,14 @@ export function ToolCallItem({
   const searchCounts = toolSearch ? undefined : toolCallSearchCounts(toolCall);
   let title = mcp?.tool ?? toolCall.title;
   let summary = toolCallContextSummary(toolCall);
+  let headerIcon = icon;
+  if (toolSearch && !headerIcon) {
+    headerIcon = (
+      <ToolCaseIcon
+        className={cn('size-3.5 shrink-0', running ? 'text-foreground' : 'text-muted-foreground')}
+      />
+    );
+  }
   if (toolSearch) {
     title =
       toolSearch.mode === 'select'
@@ -131,7 +141,7 @@ export function ToolCallItem({
         declined={declined}
         diffStats={diffTotals}
         hasBody={hasBody}
-        icon={icon}
+        icon={headerIcon}
         kind={toolCall.kind}
         status={toolCall.status}
         statusLabel={
