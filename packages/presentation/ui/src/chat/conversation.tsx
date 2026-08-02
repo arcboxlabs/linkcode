@@ -78,12 +78,14 @@ export function ConversationContent<T>({
       return;
     }
 
-    // The library's instant path still waits for rAF; snap before paint while virtua settles.
-    const snapToBottom = (): void => {
-      if (state.isAtBottom) scroll.scrollTop = scroll.scrollHeight;
+    // Keep the DOM and virtua's external-scroll offset aligned while rows settle before paint.
+    const snapToBottom = (syncVirtualizer = false): void => {
+      if (!state.isAtBottom) return;
+      scroll.scrollTop = scroll.scrollHeight;
+      if (syncVirtualizer) scroll.dispatchEvent(new Event('scroll'));
     };
     snapToBottom();
-    const observer = new ResizeObserver(snapToBottom);
+    const observer = new ResizeObserver(() => snapToBottom(true));
     observer.observe(content);
     return () => observer.disconnect();
   }, [contentRef, reduceMotion, scrollRef, smoothConversationScrolling, state]);

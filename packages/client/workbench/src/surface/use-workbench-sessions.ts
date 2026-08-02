@@ -17,7 +17,7 @@ import { withoutAutomationSessions } from '@linkcode/ui';
 import { toastManager } from 'coss-ui/components/toast';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { useDeferredValue, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { captureProductEvent } from '../analytics/product-analytics';
 import type { NavLocation } from '../navigation/history';
@@ -94,18 +94,15 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Session page: every thread stays one click away in the sidebar, so we skip straight to the
   // new-thread draft instead of auto-opening an arbitrary recent session (an all-automation list
   // has nothing to open either; an explicit automation selection resolves against the full list).
-  // Deferred for the render path only: the outgoing thread stays painted while the incoming tree
-  // renders, instead of flashing through an empty surface. Mutations use the live store values.
-  const deferredSelectedId = useDeferredValue(selectedId);
-  const draft = explicitDraft ?? (deferredSelectedId === null ? LANDING_DRAFT : null);
+  const draft = explicitDraft ?? (selectedId === null ? LANDING_DRAFT : null);
 
   const active = useMemo(() => {
     if (draft) return null;
     // Only an explicit selection resolves a conversation. One absent from the loaded list must NOT
     // fall back to a different thread (wrong conversation); hold null while the effect below
     // refreshes the list so a click-through to a not-yet-listed session resolves.
-    return sessionById(sessions, deferredSelectedId);
-  }, [draft, deferredSelectedId, sessions]);
+    return sessionById(sessions, selectedId);
+  }, [draft, selectedId, sessions]);
   const activeId = active?.sessionId ?? null;
 
   const recordNavigation = useNavigationHistoryStore((state) => state.record);
