@@ -153,8 +153,10 @@ export const zhCN = {
       expand: '展开',
       collapse: '收起',
       toolSearch: {
+        select: '工具选择',
         selecting: '正在选择工具',
         selected: '{count, plural, =1 {已选择一个工具} other {已选择 # 个工具}}',
+        search: '工具搜索',
         searching: '正在搜索工具',
         searched: '已搜索工具',
       },

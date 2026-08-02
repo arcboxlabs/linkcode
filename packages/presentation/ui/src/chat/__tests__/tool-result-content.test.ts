@@ -171,6 +171,20 @@ describe('tool search presentation', () => {
     });
   });
 
+  it('keeps identifier-shaped failed settles as error prose', () => {
+    const toolCall = toolSearch({
+      status: 'failed',
+      content: [{ type: 'content', content: { type: 'text', text: 'unavailable' } }],
+    });
+
+    expect(toolSearchPresentation(toolCall)).toEqual({
+      query: 'select:WebSearch',
+      mode: 'select',
+      names: [],
+      message: 'unavailable',
+    });
+  });
+
   it('presents a running call with neither rows nor message', () => {
     expect(toolSearchPresentation(toolSearch({ status: 'in_progress' }))).toEqual({
       query: 'select:WebSearch',
