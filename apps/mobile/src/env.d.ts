@@ -10,6 +10,7 @@ declare namespace NodeJS {
     /** Public PostHog project configuration; both values are required or analytics no-ops. */
     EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN?: string;
     EXPO_PUBLIC_POSTHOG_HOST?: string;
+    EXPO_PUBLIC_CONFIG_SIGNING_POC?: string;
   }
 }
 

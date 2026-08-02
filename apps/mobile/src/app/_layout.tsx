@@ -23,6 +23,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '@mobile/global.css';
 
+if (process.env.EXPO_PUBLIC_CONFIG_SIGNING_POC === '1') {
+  void import('@linkcode/common/config-signing-poc')
+    .then(({ runNobleConfigSigningPoc }) => runNobleConfigSigningPoc())
+    .then((result) => console.info('config signing POC passed', result));
+}
+
 // The DSN is a publishable identifier (not a secret); Expo inlines EXPO_PUBLIC_* env vars at build time.
 // With no DSN the SDK no-ops, so local dev reports nothing unless EXPO_PUBLIC_SENTRY_DSN is set.
 const navigationIntegration = Sentry.reactNavigationIntegration({

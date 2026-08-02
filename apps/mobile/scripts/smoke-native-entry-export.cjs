@@ -13,6 +13,7 @@ const requiredRouteModules = [
   '/apps/mobile/src/app/index.tsx',
   '/apps/mobile/src/app/(tabs)/threads/index.tsx',
   '/apps/mobile/src/app/(tabs)/terminals/index.tsx',
+  '/packages/foundation/common/src/config-signing-poc/index.ts',
 ];
 
 async function runExpoExport(platform, outputDirectory) {
@@ -36,6 +37,7 @@ async function runExpoExport(platform, outputDirectory) {
         env: {
           ...process.env,
           CI: '1',
+          EXPO_PUBLIC_CONFIG_SIGNING_POC: '1',
           EXPO_NO_TELEMETRY: '1',
           NODE_ENV: 'production',
         },

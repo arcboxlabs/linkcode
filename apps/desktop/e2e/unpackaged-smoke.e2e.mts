@@ -39,6 +39,14 @@ async function main(): Promise<void> {
     assert.match(boundary.version, VERSION_RE);
     assert.equal(boundary.managed, false);
     assert.equal(typeof boundary.maximized, 'boolean');
+    await page.waitForFunction(() => window.configSigningPoc !== undefined);
+    const signingPoc = await page.evaluate(() => window.configSigningPoc);
+    assert.deepEqual(signingPoc?.noble, signingPoc?.webCrypto);
+    assert.equal(
+      signingPoc?.webCrypto.snapshotSha256,
+      '513910f70984fbd2290d4538d8e668a8b9d853b466921e6839695b2d98b10e97',
+    );
+    console.log('PASS Electron WebCrypto and Noble config signing vector');
     console.log('PASS unpackaged built main, sandbox preload bridge, and renderer window');
   } finally {
     await app?.close().catch(noop);
