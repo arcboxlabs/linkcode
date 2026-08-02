@@ -73,6 +73,7 @@
       }
     },
     "plugins": [
+      "./plugins/with-gradle-jvm-memory.cjs",
       "expo-router",
       [
         "@sentry/react-native/expo",
