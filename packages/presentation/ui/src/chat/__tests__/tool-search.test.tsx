@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ToolCall } from '@linkcode/schema';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hasToolBody } from '../../tool-utils';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
@@ -100,5 +100,33 @@ describe('tool search presentation', () => {
 
     expect(hasToolBody(toolCall)).toBe(false);
     expect(screen.getByText('toolSearch.selecting')).toBeDefined();
+  });
+
+  it('uses neutral wording and error prose for a failed selection', () => {
+    const toolCall = toolSearch({
+      status: 'failed',
+      content: [{ type: 'content', content: { type: 'text', text: 'unavailable' } }],
+    });
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('toolSearch.select')).toBeDefined();
+    expect(screen.queryByText('toolSearch.selected')).toBeNull();
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('unavailable')).toBeDefined();
+  });
+
+  it('uses neutral wording when a keyword search is declined', () => {
+    const toolCall = toolSearch({
+      status: 'in_progress',
+      rawInput: { query: 'Linear issues search' },
+      rawOutput: undefined,
+    });
+
+    render(<ToolCallItem declined toolCall={toolCall} />);
+
+    expect(screen.getByText('toolSearch.search')).toBeDefined();
+    expect(screen.queryByText('toolSearch.searching')).toBeNull();
+    expect(screen.queryByText('toolSearch.searched')).toBeNull();
   });
 });

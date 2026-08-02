@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ToolCall } from '@linkcode/schema';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   hasToolBody,
@@ -51,7 +51,11 @@ describe('tool metadata policy', () => {
       content: [],
     };
 
-    expect(toolCallMetadata(toolCall)).toEqual([]);
+    expect(toolCallMetadata(toolCall)).toEqual([
+      { key: 'query', value: 'tool-call' },
+      { key: 'matches', value: '2' },
+      { key: 'files', value: '2' },
+    ]);
     expect(toolCallSearchCounts(toolCall)).toEqual({ matches: 2, files: 2 });
 
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
@@ -81,11 +85,56 @@ describe('tool metadata policy', () => {
     };
 
     expect(toolCallSearchCounts(toolCall)).toEqual({ matches: 12, files: 3 });
+    expect(toolCallMetadata(toolCall)).toEqual([
+      { key: 'query', value: 'permission-request|tool-call|plan' },
+      { key: 'matches', value: '12' },
+      { key: 'files', value: '3' },
+    ]);
 
     render(<ToolCallItem toolCall={toolCall} />);
 
     expect(screen.getByText('· searchSummary.matches · searchSummary.files')).toBeDefined();
     expect(screen.queryByText('permission-request|tool-call|plan')).toBeNull();
+  });
+
+  it('keeps MCP server identity beside search counts', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'search-mcp',
+      title: 'mcp__repo__search_files',
+      kind: 'search',
+      status: 'completed',
+      rawInput: { pattern: 'ToolCallItem' },
+      rawOutput: { numFiles: 3, numMatches: 12 },
+      content: [{ type: 'content', content: { type: 'text', text: 'a.ts\nb.ts\nc.ts' } }],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('· repo · searchSummary.matches · searchSummary.files')).toBeDefined();
+    expect(screen.getByText('search_files')).toBeDefined();
+    expect(screen.queryByText('ToolCallItem')).toBeNull();
+  });
+
+  it('keeps an output-less search query in an expandable body card', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'search-empty',
+      title: 'Grep',
+      kind: 'search',
+      status: 'in_progress',
+      rawInput: { pattern: 'permission-request|tool-call|plan' },
+      content: [],
+    };
+
+    expect(hasToolBody(toolCall)).toBe(true);
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(container.querySelector('button')?.textContent).not.toContain(
+      'permission-request|tool-call|plan',
+    );
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('permission-request|tool-call|plan')).toBeDefined();
+    expect(container.querySelector('pre')).toBeNull();
   });
 
   it('previews an allowlisted fetch response without exposing its envelopes', () => {

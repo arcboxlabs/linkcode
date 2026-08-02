@@ -157,8 +157,10 @@ export const en = {
       expand: 'Expand',
       collapse: 'Collapse',
       toolSearch: {
+        select: 'Tool selection',
         selecting: 'Selecting tools',
         selected: 'Selected {count, plural, one {a tool} other {# tools}}',
+        search: 'Tool search',
         searching: 'Searching for tools',
         searched: 'Searched for tools',
       },

@@ -9,6 +9,8 @@ import {
   toolCallExecuteText,
   toolCallFetchStatus,
   toolCallFetchUrl,
+  toolCallSearchQuery,
+  toolSearchPresentation,
 } from './chat/tool-result-content';
 
 export { toolCallDisplayContent } from './chat/tool-result-content';
@@ -92,10 +94,19 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
     case 'delete':
     case 'move':
       return [];
-    // Search rows carry no badges: the header summary owns the counts, and the raw query lives
-    // only in the expanded result card.
-    case 'search':
-      return [];
+    case 'search': {
+      const metadata: ToolMetadata[] = [];
+      const query = toolCallSearchQuery(toolCall);
+      if (query) metadata.push({ key: 'query', value: query });
+      const counts = toolCallSearchCounts(toolCall);
+      if (counts?.matches !== undefined) {
+        metadata.push({ key: 'matches', value: String(counts.matches) });
+      }
+      if (counts?.files !== undefined) {
+        metadata.push({ key: 'files', value: String(counts.files) });
+      }
+      return metadata;
+    }
     case 'fetch': {
       const metadata: ToolMetadata[] = [];
       const url = toolCallFetchUrl(toolCall);
@@ -221,6 +232,9 @@ export function hasToolBody(toolCall: ToolCall): boolean {
   if (toolCall.kind === 'execute') {
     if (toolCallCommand(toolCall)) return true;
     if (toolCallExecuteText(toolCall)) return true;
+  }
+  if (toolSearchPresentation(toolCall)) {
+    return toolCallFailureMessage(toolCall) !== undefined;
   }
   return toolCallMetadata(toolCall).length > 0 || toolCallFailureMessage(toolCall) !== undefined;
 }

@@ -87,7 +87,11 @@ export function toolSearchPresentation(toolCall: ToolCall): ToolSearchPresentati
   const mode = query.startsWith('select:') ? 'select' : 'search';
   const text = toolCallDisplayText(toolCall);
   const lines = [...new Set(text.split('\n').filter((line) => line.length > 0))];
-  if (lines.length > 0 && lines.every((line) => TOOL_NAME_LINE_RE.test(line))) {
+  if (
+    toolCall.status === 'completed' &&
+    lines.length > 0 &&
+    lines.every((line) => TOOL_NAME_LINE_RE.test(line))
+  ) {
     return { query, mode, names: lines };
   }
   return { query, mode, names: [], message: text.length > 0 ? text : undefined };
