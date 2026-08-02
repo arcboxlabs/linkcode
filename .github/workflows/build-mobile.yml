@@ -147,8 +147,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: android
-            extension: aab
+          # - platform: android
+          #   extension: aab
           - platform: ios
             extension: ipa
 
