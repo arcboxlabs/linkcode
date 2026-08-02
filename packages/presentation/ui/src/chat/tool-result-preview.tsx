@@ -1,5 +1,5 @@
 import type { ToolCall, ToolCallContent } from '@linkcode/schema';
-import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
+import { FileTextIcon, GlobeIcon, TextSearchIcon, WrenchIcon } from 'lucide-react';
 import { Fragment } from 'react';
 import { toolCallCommand, toolCallDisplayTitle } from '../tool-utils';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
@@ -63,7 +63,7 @@ function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): R
   // splitting an unbounded grep result into rows can freeze the Electron renderer.
   return (
     <ToolPreviewCard
-      icon={SearchIcon}
+      icon={TextSearchIcon}
       title={toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall)}
     >
       <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
