@@ -66,9 +66,11 @@ function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): R
       icon={TextSearchIcon}
       title={toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall)}
     >
-      <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-        <code>{text}</code>
-      </pre>
+      {text ? (
+        <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
+          <code>{text}</code>
+        </pre>
+      ) : null}
     </ToolPreviewCard>
   );
 }
@@ -322,6 +324,9 @@ export function ToolResultPreview({
   const toolSearch = toolSearchPresentation(toolCall);
   if (toolSearch) return <ToolSearchResult presentation={toolSearch} />;
   const content = toolCallDisplayContent(toolCall);
+  if (toolCall.kind === 'search' && content.length === 0 && toolCallSearchQuery(toolCall)) {
+    return <SearchRows text="" toolCall={toolCall} />;
+  }
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');

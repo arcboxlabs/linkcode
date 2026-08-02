@@ -52,10 +52,11 @@ export function ToolCallBody({
     toolCall.kind === 'execute' ? undefined : toolCallFailureMessage(toolCall);
   const failureMessage =
     rawFailureMessage && !contentText.includes(rawFailureMessage) ? rawFailureMessage : undefined;
+  const metadata = toolCall.kind === 'search' ? [] : toolCallMetadata(toolCall);
 
   return (
     <>
-      <ToolMetadataList metadata={toolCallMetadata(toolCall)} />
+      <ToolMetadataList metadata={metadata} />
       <ToolResultPreview TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
 
       {failureMessage ? (
@@ -93,7 +94,8 @@ export function ToolCallItem({
   const hasBody = hasToolBody(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
   const mcp = mcpToolName(toolCall.title);
-  const running = toolCall.status === 'pending' || toolCall.status === 'in_progress';
+  const running = !declined && (toolCall.status === 'pending' || toolCall.status === 'in_progress');
+  const completed = !declined && toolCall.status === 'completed';
 
   // Search headers are humanized: ToolSearch gets a localized verb (never its raw select: query),
   // and other search calls summarize settle counts — raw patterns live only in the body card.
@@ -114,10 +116,14 @@ export function ToolCallItem({
       toolSearch.mode === 'select'
         ? running
           ? tt('toolSearch.selecting')
-          : tt('toolSearch.selected', { count: toolSearch.names.length })
+          : completed
+            ? tt('toolSearch.selected', { count: toolSearch.names.length })
+            : tt('toolSearch.select')
         : running
           ? tt('toolSearch.searching')
-          : tt('toolSearch.searched');
+          : completed
+            ? tt('toolSearch.searched')
+            : tt('toolSearch.search');
     summary = toolSearch.mode === 'search' ? { label: toolSearch.query } : undefined;
   } else if (searchCounts) {
     const label = [
@@ -130,7 +136,10 @@ export function ToolCallItem({
     ]
       .filter((part) => part !== undefined)
       .join(' · ');
-    summary = { label };
+    summary = {
+      label: summary ? `${summary.label} · ${label}` : label,
+      tooltip: summary?.tooltip,
+    };
   }
 
   return (
