@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/arcboxlabs/linkcode/compare/v0.18.2...v0.19.0) (2026-08-02)
+
+
+### Features
+
+* **mobile:** polish terminal inbox ([#382](https://github.com/arcboxlabs/linkcode/issues/382)) ([9fe21a1](https://github.com/arcboxlabs/linkcode/commit/9fe21a18bcf9fb1a3802e097720d4d6d7fcfe73f))
+* **mobile:** polish unreachable host state ([#387](https://github.com/arcboxlabs/linkcode/issues/387)) ([e8bd4d4](https://github.com/arcboxlabs/linkcode/commit/e8bd4d4ffdbad634100133ebec2eb59ff8d07b34))
+
+
+### Bug Fixes
+
+* **chat:** render selected conversation on first paint ([#390](https://github.com/arcboxlabs/linkcode/issues/390)) ([bb2d509](https://github.com/arcboxlabs/linkcode/commit/bb2d50941ebad7b74500f686977914d9356a151f))
+* **mobile:** detect metadata upload failures ([a1c30c4](https://github.com/arcboxlabs/linkcode/commit/a1c30c45af8d190ab6a407af04ae6365fadca69f))
+
 ## [0.18.2](https://github.com/arcboxlabs/linkcode/compare/v0.18.1...v0.18.2) (2026-08-01)
 
 
