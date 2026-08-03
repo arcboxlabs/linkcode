@@ -1,3 +1,10 @@
+export type { BrandIdentityArtifact, BrandIdentityProvenance } from './brand-identity';
+export {
+  assertBrandIdentityArtifact,
+  assertBrandIdentityMatchesBundle,
+  BRAND_IDENTITY_VERSION,
+  parseBrandIdentityArtifact,
+} from './brand-identity';
 export type {
   ConfigBuildBundle,
   ConfigBuildBundleEndpoints,

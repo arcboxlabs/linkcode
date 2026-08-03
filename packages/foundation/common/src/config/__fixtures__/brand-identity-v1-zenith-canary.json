@@ -1,0 +1,15 @@
+{
+  "applicationId": "dev.arcbox.zenith.desktop.canary",
+  "assetsPath": "brands/zenith",
+  "brandId": "zenith",
+  "brandIdentityVersion": 1,
+  "channel": "canary",
+  "displayName": "Zenith Workspace Canary",
+  "platform": "desktop",
+  "provenance": {
+    "manifestSchemaVersion": 1,
+    "sourceGitSha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "storageNamespace": "Zenith Workspace Canary",
+  "urlScheme": "zenith-canary"
+}
