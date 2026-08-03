@@ -198,6 +198,7 @@ export interface ConfigEmergencyState {
 export interface ConfigRuntimeState<Values> {
   readonly configVersion: string | null;
   readonly emergency: ConfigEmergencyState | null;
+  readonly sha256: string | null;
   readonly source: 'defaults' | 'lkg' | 'remote';
   readonly stagedColdKeys: ReadonlyArray<keyof Values>;
   readonly values: Values;
