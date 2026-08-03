@@ -13,6 +13,9 @@ const requiredRouteModules = [
   '/apps/mobile/src/app/index.tsx',
   '/apps/mobile/src/app/(tabs)/threads/index.tsx',
   '/apps/mobile/src/app/(tabs)/terminals/index.tsx',
+  '/apps/mobile/src/runtime/config/mobile.ts',
+  '/apps/mobile/src/runtime/config/background.ts',
+  '/packages/foundation/common/src/config/core.ts',
   '/packages/foundation/common/src/config-signing-poc/index.ts',
 ];
 

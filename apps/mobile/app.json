@@ -86,6 +86,7 @@
         }
       ],
       "expo-apple-authentication",
+      "expo-background-task",
       "expo-sqlite",
       "expo-secure-store",
       "expo-status-bar",
