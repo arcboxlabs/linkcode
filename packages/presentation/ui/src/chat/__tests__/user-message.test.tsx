@@ -69,10 +69,12 @@ describe('UserMessage', () => {
 
     render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={onEditPrompt} />);
     fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     const editor = screen.getByRole('textbox', { name: 'editPromptLabel' });
+    expect(editor.closest('[data-role="user"]')).not.toBeNull();
     expect((editor as HTMLTextAreaElement).value).toBe('original prompt');
     fireEvent.change(editor, { target: { value: 'replacement prompt' } });
-    fireEvent.click(screen.getByRole('button', { name: 'editCreate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'editSend' }));
 
     await waitFor(() => {
       expect(onEditPrompt).toHaveBeenCalledWith('user-editable', 'opaque-cursor', [
@@ -80,6 +82,28 @@ describe('UserMessage', () => {
         { type: 'image', data: 'cG5n', mimeType: 'image/png' },
       ]);
     });
+  });
+
+  it('cancels inline editing without changing the prompt', () => {
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-editable',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [{ type: 'text', text: 'original prompt' }],
+      isStreaming: false,
+      branchCursor: 'opaque-cursor',
+    };
+
+    render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'editPromptLabel' }), {
+      target: { value: 'discarded edit' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'editCancel' }));
+
+    expect(screen.queryByRole('textbox', { name: 'editPromptLabel' })).toBeNull();
+    expect(screen.getByText('original prompt')).toBeDefined();
   });
 
   it.each([

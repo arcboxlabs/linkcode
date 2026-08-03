@@ -201,15 +201,10 @@ export const en = {
       editUnavailable: 'This message cannot be rewritten yet',
       editUnsupported: 'This agent does not support editing historical prompts',
       editBusy: 'Wait for the agent to finish before editing',
-      editDialogTitle: 'Rewrite prompt',
-      editDialogDescription:
-        'This removes this message and all later messages from the current conversation, then resends the edited prompt.',
       editPromptLabel: 'Prompt',
-      editFileStateWarning:
-        'The rewritten conversation keeps the current file state. Files are not restored to how they were when this message was sent.',
       editCancel: 'Cancel',
-      editCreate: 'Rewrite and resend',
-      editCreating: 'Rewriting…',
+      editSend: 'Send',
+      editSending: 'Sending…',
       editError: 'Failed to rewrite prompt: {message}',
       showMore: 'Show more',
       showLess: 'Show less',

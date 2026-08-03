@@ -1,14 +1,5 @@
 import type { ContentBlock } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from 'coss-ui/components/dialog';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Textarea } from 'coss-ui/components/textarea';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -102,95 +93,101 @@ export function UserMessage({
 
   return (
     <Message from="user">
-      <MessageContent>
-        <div className={collapsible && !expanded ? 'line-clamp-[20]' : undefined}>
-          {positionalBlockEntries(item.blocks).map(({ block, key }) => (
-            <ContentBlockView key={key} block={block} />
-          ))}
-        </div>
-        {collapsible ? (
-          <Button
-            className="-ml-2 mt-1 text-muted-foreground hover:text-foreground"
-            size="xs"
-            type="button"
-            variant="ghost"
-            onClick={() => setExpanded((previous) => !previous)}
-          >
-            {expanded ? t('showLess') : t('showMore')}
-            <ChevronDownIcon className={cn('transition-transform', expanded && 'rotate-180')} />
-          </Button>
-        ) : null}
-      </MessageContent>
-      {/* Meta row under the bubble; revealed by hovering the message. */}
-      <MessageActions className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        {item.receivedAt === undefined ? null : (
-          <span className="text-muted-foreground text-xs mr-1">
-            {format.dateTime(new Date(item.receivedAt), { timeStyle: 'short' })}
-          </span>
-        )}
-        <MessageAction tooltip={copied ? t('copied') : t('copy')} onClick={copyValue}>
-          {copied ? <CheckIcon /> : <CopyIcon />}
-        </MessageAction>
-        <MessageAction disabled={!canEdit} tooltip={editTooltip} onClick={openEditor}>
-          <PencilIcon />
-        </MessageAction>
-      </MessageActions>
-      <Dialog
-        open={editing}
-        disablePointerDismissal={pending}
-        onOpenChange={(open) => {
-          if (!open) closeEditor();
-        }}
+      <MessageContent
+        className={editing ? 'w-full sm:group-data-[role=user]:max-w-full' : undefined}
       >
-        <DialogPopup className="max-w-lg" closeProps={{ disabled: pending }}>
-          <DialogHeader>
-            <DialogTitle>{t('editDialogTitle')}</DialogTitle>
-            <DialogDescription>{t('editDialogDescription')}</DialogDescription>
-          </DialogHeader>
+        {editing ? (
           <form
+            className="flex min-h-36 w-full flex-col gap-3"
             onSubmit={(event) => {
               submitEdit(event).catch(noop);
             }}
           >
-            <DialogPanel>
-              <Field name="prompt" invalid={error !== null}>
-                <FieldLabel>{t('editPromptLabel')}</FieldLabel>
-                <Textarea
-                  aria-invalid={error !== null}
-                  autoFocus
-                  className="min-h-40 resize-y"
-                  disabled={pending}
-                  value={draft}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    setError(null);
-                  }}
-                />
-                <p className="text-muted-foreground text-xs">{t('editFileStateWarning')}</p>
-                <FieldError match={error !== null}>
-                  {error === null
-                    ? null
-                    : t('editError', { message: extractErrorMessage(error, false) ?? '' })}
-                </FieldError>
-              </Field>
-            </DialogPanel>
-            <DialogFooter variant="bare">
+            <Field className="min-h-0 flex-1 gap-0" name="prompt" invalid={error !== null}>
+              <FieldLabel className="sr-only">{t('editPromptLabel')}</FieldLabel>
+              <Textarea
+                unstyled
+                aria-invalid={error !== null}
+                autoFocus
+                className="flex min-h-24 w-full flex-1 [&_[data-slot=textarea]]:min-h-24 [&_[data-slot=textarea]]:resize-none [&_[data-slot=textarea]]:p-0"
+                disabled={pending}
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.key === 'Process') return;
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeEditor();
+                  }
+                }}
+              />
+              <FieldError className="mt-2" match={error !== null}>
+                {error === null
+                  ? null
+                  : t('editError', { message: extractErrorMessage(error, false) ?? '' })}
+              </FieldError>
+            </Field>
+            <div className="flex justify-end gap-2">
               <Button
                 disabled={pending}
                 size="sm"
                 type="button"
-                variant="ghost"
+                variant="outline"
                 onClick={closeEditor}
               >
                 {t('editCancel')}
               </Button>
-              <Button disabled={pending || draft.trim().length === 0} size="sm" type="submit">
-                {pending ? t('editCreating') : t('editCreate')}
+              <Button
+                disabled={pending || draft.trim().length === 0}
+                loading={pending}
+                size="sm"
+                type="submit"
+              >
+                {pending ? t('editSending') : t('editSend')}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogPopup>
-      </Dialog>
+        ) : (
+          <>
+            <div className={collapsible && !expanded ? 'line-clamp-[20]' : undefined}>
+              {positionalBlockEntries(item.blocks).map(({ block, key }) => (
+                <ContentBlockView key={key} block={block} />
+              ))}
+            </div>
+            {collapsible ? (
+              <Button
+                className="-ml-2 mt-1 text-muted-foreground hover:text-foreground"
+                size="xs"
+                type="button"
+                variant="ghost"
+                onClick={() => setExpanded((previous) => !previous)}
+              >
+                {expanded ? t('showLess') : t('showMore')}
+                <ChevronDownIcon className={cn('transition-transform', expanded && 'rotate-180')} />
+              </Button>
+            ) : null}
+          </>
+        )}
+      </MessageContent>
+      {/* Meta row under the bubble; revealed by hovering the message. */}
+      {editing ? null : (
+        <MessageActions className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          {item.receivedAt === undefined ? null : (
+            <span className="text-muted-foreground text-xs mr-1">
+              {format.dateTime(new Date(item.receivedAt), { timeStyle: 'short' })}
+            </span>
+          )}
+          <MessageAction tooltip={copied ? t('copied') : t('copy')} onClick={copyValue}>
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </MessageAction>
+          <MessageAction disabled={!canEdit} tooltip={editTooltip} onClick={openEditor}>
+            <PencilIcon />
+          </MessageAction>
+        </MessageActions>
+      )}
     </Message>
   );
 }
