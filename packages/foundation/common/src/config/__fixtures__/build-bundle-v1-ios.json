@@ -1,0 +1,32 @@
+{
+  "brandId": "acme",
+  "buildBundleVersion": 1,
+  "channel": "stable",
+  "endpoints": {
+    "emergency": "https://emergency.example.invalid/acme",
+    "normal": "https://config.example.invalid/acme",
+    "telemetry": "https://telemetry.example.invalid/acme"
+  },
+  "keyrings": {
+    "emergency": {
+      "build-emergency-2026": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"
+    },
+    "normal": {
+      "build-normal-2026": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    }
+  },
+  "maximumSchemaVersion": 1,
+  "platform": "ios",
+  "provenance": {
+    "configRevisionId": "rev-2026-08-01-001",
+    "configVersion": "42",
+    "generatedAt": "2026-08-01T00:00:00Z",
+    "schemaVersion": 1,
+    "sourceGitSha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "snapshot": {
+    "base64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoic3RhYmxlIiwiY29uZmlnVmVyc2lvbiI6IjQyIiwiY29udHJhY3RWZXJzaW9uIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMDgtMDFUMDA6MDA6MDBaIiwib3ZlcnJpZGVzIjpbeyJzZXQiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnRydWV9LCJ3aGVuIjp7Im9zIjoid2luZG93cyJ9fV0sInBsYXRmb3JtIjoiaW9zIiwicm9sbG91dHMiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnsiYmFzaXNQb2ludHMiOjI1MDAsInNhbHQiOiJmaXh0dXJlLXJvbGxvdXQtc2FsdCIsInZhbHVlIjp0cnVlfX0sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGVmYXVsdExvY2FsZSI6ImVuIiwiYXBwLmRpc3BsYXlOYW1lIjoiQWNtZSBTdHVkaW8iLCJhcHAucHJpdmFjeVVybCI6Imh0dHBzOi8vYWNtZS5leGFtcGxlLmludmFsaWQvcHJpdmFjeSIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJCdWlsZCB3aXRoIEFjbWUiLCJ1cmwiOiJodHRwczovL2FjbWUuZXhhbXBsZS5pbnZhbGlkL2RvY3MifSwiZmVhdHVyZS5haUFzc2lzdCI6dHJ1ZSwiZmVhdHVyZS5uZXdFZGl0b3IiOmZhbHNlLCJtb2R1bGVzLm1lc3NhZ2luZy5lbmFibGVkIjp0cnVlLCJtb2R1bGVzLnRlcm1pbmFsLmVuYWJsZWQiOmZhbHNlLCJtb2R1bGVzLndvcmtzcGFjZS5lbmFibGVkIjp0cnVlLCJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6NTEyLCJ1aS50aGVtZSI6eyJsb2dvVmFyaWFudCI6ImRhcmsiLCJwcmltYXJ5IjoiIzAwNjZGRiJ9fX0",
+    "sha256": "53c874147b2087764a705928fdb2b37fe3803876d87c6156490a97268c351740",
+    "sizeBytes": 1094
+  }
+}
