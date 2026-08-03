@@ -16,7 +16,9 @@ const USAGE = String.raw`Usage: config:render \
   --revision <file>             config revision metadata JSON \
   --keyrings <file>             public keyrings JSON \
   --brand <id> --channel <canary|stable> \
-  --telemetry-endpoint <url>    authenticated telemetry endpoint for this target`;
+  --telemetry-endpoint <url>    authenticated telemetry endpoint for this target \
+  --release-manifest-ios <file>     optional per-target manifest digest-binding inputs/snapshot \
+  --release-manifest-android <file> required together with --release-manifest-ios`;
 
 const MOBILE_PLATFORMS = ['ios', 'android'] as const;
 
@@ -33,6 +35,8 @@ async function main(): Promise<void> {
       keyrings: { type: 'string' },
       publisher: { type: 'string' },
       'publisher-git-sha': { type: 'string' },
+      'release-manifest-android': { type: 'string' },
+      'release-manifest-ios': { type: 'string' },
       revision: { type: 'string' },
       'source-git-sha': { type: 'string' },
       structural: { type: 'string' },
@@ -44,6 +48,13 @@ async function main(): Promise<void> {
   const channel = values.channel ?? bail('--channel is required');
   if (channel !== 'canary' && channel !== 'stable') {
     bail('--channel must be canary or stable');
+  }
+  const releaseManifests = {
+    android: values['release-manifest-android'],
+    ios: values['release-manifest-ios'],
+  };
+  if ((releaseManifests.ios === undefined) !== (releaseManifests.android === undefined)) {
+    bail('--release-manifest-ios and --release-manifest-android must be passed together');
   }
   const configDir = resolve(import.meta.dirname, '../src/runtime/config');
   const workDir = await mkdtemp(join(tmpdir(), 'linkcode-config-render-'));
@@ -61,6 +72,7 @@ async function main(): Promise<void> {
         platform,
         publisherDir: values.publisher ?? bail('--publisher is required'),
         publisherGitSha: values['publisher-git-sha'] ?? bail('--publisher-git-sha is required'),
+        releaseManifestPath: releaseManifests[platform],
         revisionPath: values.revision ?? bail('--revision is required'),
         sourceGitSha: values['source-git-sha'] ?? bail('--source-git-sha is required'),
         structuralDir: values.structural ?? bail('--structural is required'),
