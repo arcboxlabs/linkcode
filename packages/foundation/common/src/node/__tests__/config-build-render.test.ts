@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +25,9 @@ const RE_TARGET_MISMATCH =
   /targets acme\/desktop\/stable, but this build requires other-brand\/desktop\/stable/;
 const RE_SOURCE_DRIFT = /regenerate from the pinned commit/;
 const RE_TELEMETRY_MISMATCH = /telemetry endpoint/;
+const RE_BINDING_SNAPSHOT = /Release manifest binding failed: expectedSnapshotSha256/;
+const RE_BINDING_REVISION = /Release manifest binding failed: revisionSha256/;
+const RE_UNSUPPORTED_FIELD = /unsupported field extra/;
 
 function headForDir(dir: string): string {
   return dir.endsWith('structural') ? SOURCE_SHA : PUBLISHER_SHA;
@@ -181,6 +185,95 @@ describe('renderConfigBundleWithPublisher', () => {
       onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
     });
     await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(RE_TARGET_MISMATCH);
+  });
+});
+
+describe('release manifest binding', () => {
+  const digest = (text: string) => createHash('sha256').update(text).digest('hex');
+  const REVISION_TEXT = '{"configRevisionId":"rev-fixture"}';
+  const KEYRINGS_TEXT = '{"normal":{},"emergency":{}}';
+
+  async function makeBoundRequest(): Promise<ConfigBuildRenderRequest> {
+    const publisherDir = await makePublisherCheckout();
+    const request: ConfigBuildRenderRequest = {
+      ...makeRequest(publisherDir),
+      releaseManifestPath: join(workDir, 'release-manifest.json'),
+    };
+    await writeFile(request.revisionPath, REVISION_TEXT);
+    await writeFile(request.keyringsPath, KEYRINGS_TEXT);
+    await writeFile(
+      request.releaseManifestPath!,
+      JSON.stringify({
+        brandId: fixtureBundle.brandId,
+        channel: fixtureBundle.channel,
+        configRevisionId: fixtureBundle.provenance.configRevisionId,
+        expectedSnapshotSha256: fixtureBundle.snapshot.sha256,
+        platform: fixtureBundle.platform,
+        publicKeyringsSha256: digest(KEYRINGS_TEXT),
+        publisherGitSha: PUBLISHER_SHA,
+        releaseManifestFormatVersion: 1,
+        revisionSha256: digest(REVISION_TEXT),
+        sourceGitSha: SOURCE_SHA,
+        telemetryEndpoint: fixtureBundle.endpoints.telemetry,
+      }),
+    );
+    return request;
+  }
+
+  it('passes the manifest through to the publisher CLI and verifies the binding', async () => {
+    const request = await makeBoundRequest();
+    const { calls, run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    const bundle = await renderConfigBundleWithPublisher(request, run);
+    expect(bundle.snapshot.sha256).toBe(fixtureBundle.snapshot.sha256);
+    const render = calls.find((call) => call.command === 'pnpm');
+    expect(render?.args).toContain('--release-manifest');
+    expect(render?.args).toContain(request.releaseManifestPath);
+  });
+
+  it('fails when the rendered snapshot digest is not the pinned published digest', async () => {
+    const request = await makeBoundRequest();
+    const manifest = JSON.parse(await readFile(request.releaseManifestPath!, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      request.releaseManifestPath!,
+      JSON.stringify({ ...manifest, expectedSnapshotSha256: 'f'.repeat(64) }),
+    );
+    const { run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(
+      RE_BINDING_SNAPSHOT,
+    );
+  });
+
+  it('fails when input file bytes differ from their pinned digests', async () => {
+    const request = await makeBoundRequest();
+    await writeFile(request.revisionPath, `${REVISION_TEXT}\n`);
+    const { run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(
+      RE_BINDING_REVISION,
+    );
+  });
+
+  it('fails closed on unknown manifest fields', async () => {
+    const request = await makeBoundRequest();
+    const manifest = JSON.parse(await readFile(request.releaseManifestPath!, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(request.releaseManifestPath!, JSON.stringify({ ...manifest, extra: true }));
+    const { run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(
+      RE_UNSUPPORTED_FIELD,
+    );
   });
 });
 
