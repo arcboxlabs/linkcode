@@ -58,8 +58,10 @@ import {
   UsageReportSchema,
   unifiedPatchText,
 } from '@linkcode/schema';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { waitWithAbort } from 'foxts/wait';
 import { z } from 'zod';
 import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
@@ -407,6 +409,10 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   toolUsePatches: new Map(),
 };
 
+const TITLE_POLL_INITIAL_DELAY_MS = 500;
+const TITLE_POLL_RETRIES = 3;
+const TITLE_POLL_RETRY_DELAY_MS = 1000;
+
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` `query()` in **streaming input
  * mode**: one persistent `Query` per session, fed through `AsyncMessageQueue`. This replaced a
@@ -446,6 +452,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
+  private getSessionInfo:
+    | ((sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>)
+    | undefined;
+  private titlePollStarted = false;
+  private titlePollController: AbortController | null = null;
   /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
    * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
   private pendingCompaction: {
@@ -510,6 +521,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    this.getSessionInfo = Object.hasOwn(sdk, 'getSessionInfo') ? sdk.getSessionInfo : undefined;
+    if (this.resumeFrom && this.getSessionInfo) {
+      try {
+        const info = await this.getSessionInfo(this.resumeFrom, { dir: opts.cwd });
+        const title = generatedClaudeTitle(info);
+        if (title) this.emitTitle(title);
+      } catch {
+        // Metadata is best-effort; a title read must not prevent the conversation from resuming.
+      }
+    }
     if (this.effort === undefined) {
       const { effective } = await sdk.resolveSettings({ cwd: opts.cwd });
       // The SDK documents `high` as Claude's provider default. A persisted setting wins, while the
@@ -979,6 +1000,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   protected override onStop(): Promise<void> {
     this.stopped = true;
     this.turnActive = false;
+    this.titlePollController?.abort();
+    this.titlePollController = null;
     this.q?.close();
     this.inputQueue?.close();
     return Promise.resolve();
@@ -1411,17 +1434,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const cancelling = this.cancelling;
     this.cancelling = false;
     this.turnActive = false;
-    if (msg.subtype === 'success') {
-      if (msg.api_error_status === 401) {
-        this.emitError(
-          'Claude authentication failed — sign in to Claude',
-          AUTH_FAILED_ERROR_CODE,
-          false,
-        );
-        this.teardown();
-        if (!cancelling) this.emitStatus('idle');
-        return;
+    if (msg.subtype === 'success' && msg.api_error_status === 401) {
+      this.emitError(
+        'Claude authentication failed — sign in to Claude',
+        AUTH_FAILED_ERROR_CODE,
+        false,
+      );
+      this.teardown();
+      if (!cancelling) this.emitStatus('idle');
+      return;
+    }
+    if (!cancelling) {
+      if (this.titlePollStarted) {
+        if (msg.subtype === 'success') this.refreshTitle();
+      } else {
+        this.startTitlePoll();
       }
+    }
+    if (msg.subtype === 'success') {
       const usage = isRecord(msg.usage) ? msg.usage : {};
       this.emitUsage({
         inputTokens: numberField(usage, 'input_tokens'),
@@ -1442,6 +1472,87 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // base send(cancel)'s final teardown cannot sweep a newly admitted turn.
     if (!cancelling) this.emitStatus('idle');
   }
+
+  private startTitlePoll(): void {
+    const sessionId = this.lastSessionRef;
+    const getSessionInfo = this.getSessionInfo;
+    if (!sessionId || !getSessionInfo || this.titlePollStarted) return;
+    this.titlePollStarted = true;
+    const controller = new AbortController();
+    this.titlePollController = controller;
+    void this.pollTitle(sessionId, getSessionInfo, controller.signal).finally(() => {
+      if (this.titlePollController === controller) this.titlePollController = null;
+    });
+  }
+
+  private refreshTitle(): void {
+    const sessionId = this.lastSessionRef;
+    const getSessionInfo = this.getSessionInfo;
+    if (!sessionId || !getSessionInfo) return;
+    this.titlePollController?.abort();
+    const controller = new AbortController();
+    this.titlePollController = controller;
+    void (async () => {
+      if (!(await this.readAndEmitTitle(sessionId, getSessionInfo, controller.signal))) {
+        await this.pollTitle(sessionId, getSessionInfo, controller.signal);
+      }
+    })().finally(() => {
+      if (this.titlePollController === controller) this.titlePollController = null;
+    });
+  }
+
+  private async pollTitle(
+    sessionId: string,
+    getSessionInfo: (
+      sessionId: string,
+      options?: { dir?: string },
+    ) => Promise<SDKSessionInfo | undefined>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      await waitWithAbort(TITLE_POLL_INITIAL_DELAY_MS, signal, true);
+      await asyncRetry(
+        async () => {
+          if (await this.readAndEmitTitle(sessionId, getSessionInfo, signal)) return;
+          throw new Error('Claude session title is not available');
+        },
+        {
+          retries: TITLE_POLL_RETRIES,
+          factor: 2,
+          minTimeout: TITLE_POLL_RETRY_DELAY_MS,
+          randomize: false,
+          signal,
+        },
+      );
+    } catch {
+      // Metadata is best-effort; polling exhaustion or cancellation must not affect the session.
+    }
+  }
+
+  private async readAndEmitTitle(
+    sessionId: string,
+    getSessionInfo: (
+      sessionId: string,
+      options?: { dir?: string },
+    ) => Promise<SDKSessionInfo | undefined>,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    try {
+      const info = await getSessionInfo(sessionId, { dir: this.opts?.cwd });
+      if (signal.aborted || this.stopped || this.lastSessionRef !== sessionId) return false;
+      const title = generatedClaudeTitle(info);
+      if (!title) return false;
+      this.emitTitle(title);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function generatedClaudeTitle(info: SDKSessionInfo | undefined): string | undefined {
+  // The SDK folds explicit and AI titles into customTitle; summary can fall back to the last prompt.
+  return info ? firstText(info.customTitle) : undefined;
 }
 
 /** `locationsFromToolInput` with the CLI's MSYS drive-form spellings (`/c/…`, reported when it

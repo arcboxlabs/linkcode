@@ -46,7 +46,7 @@ export const SessionRecordSchema = z.object({
   sessionId: SessionIdSchema,
   kind: AgentKindSchema,
   cwd: z.string(),
-  /** Derived from the first prompt, or user-renamed later. */
+  /** Provider title when available; otherwise derived from the first prompt. */
   title: z.string().optional(),
   origin: SessionOriginSchema,
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */

@@ -846,6 +846,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
       if (threadId && !this.holdSessionRef) this.emitSessionRef(asHistoryId(threadId));
+      const threadName = thread ? stringField(thread, 'name') : undefined;
+      if (threadName) this.emitTitle(threadName);
       // Advertise the axis so the composer's picker appears with the session's real state.
       this.emitApprovalPolicy(this.approvalPolicyState());
       await this.publishCommands(server);
@@ -1065,6 +1067,12 @@ export class CodexAdapter extends BaseAgentAdapter {
               ? this.modelOptions.get(model)?.defaultEffort
               : undefined;
         if (effective) this.emitEffort(effective);
+        break;
+      }
+      case 'thread/name/updated': {
+        const threadId = stringField(params, 'threadId');
+        const threadName = stringField(params, 'threadName');
+        if (threadName && threadId === this.threadId) this.emitTitle(threadName);
         break;
       }
       case 'turn/started': {
