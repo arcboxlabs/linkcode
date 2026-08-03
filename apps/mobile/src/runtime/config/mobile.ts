@@ -6,8 +6,11 @@ import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import Storage from 'expo-sqlite/kv-store';
 import { Platform } from 'react-native';
+import { useAnalyticsPreferenceStore } from '../../stores/analytics-store';
+import { cloudAuthClient } from '../cloud/client';
 import { createConfigNetwork, createConfigStorage, resolveMobileConfigPlatform } from './adapters';
 import { BUNDLED_CONFIG_BOOTSTRAP, BUNDLED_CONFIG_DEFINITIONS } from './bundled';
+import { createMobileConfigTelemetry } from './telemetry';
 
 const platform = resolveMobileConfigPlatform(Platform.OS);
 if (
@@ -27,6 +30,34 @@ const unavailableNetwork: ConfigNetwork = {
     Promise.reject(new ConfigCoreError('fetch', 'Bundled configuration has no remote endpoint')),
 };
 
+const telemetry = createMobileConfigTelemetry({
+  appVersion: Constants.expoConfig?.version ?? null,
+  brandId: BUNDLED_CONFIG_BOOTSTRAP.brandId,
+  channel: BUNDLED_CONFIG_BOOTSTRAP.channel,
+  consent: () =>
+    useAnalyticsPreferenceStore.persist.hasHydrated() &&
+    useAnalyticsPreferenceStore.getState().enabled,
+  authFetch: (url, init) => cloudAuthClient.$fetch(url, init),
+  hasSession: () => cloudAuthClient.getCookie() !== '',
+  platform,
+  randomUuid: randomUUID,
+  storage: createConfigStorage(Storage),
+  telemetryEndpoint: BUNDLED_CONFIG_BOOTSTRAP.telemetryEndpoint,
+});
+
+if (telemetry) {
+  // Reconcile on hydration (even to a persisted `false`, purging a stale queue from a previous
+  // run) and on every later transition; grants drain, revocations discard.
+  if (useAnalyticsPreferenceStore.persist.hasHydrated()) telemetry.syncConsent();
+  else useAnalyticsPreferenceStore.persist.onFinishHydration(() => telemetry.syncConsent());
+  let previousConsent = useAnalyticsPreferenceStore.getState().enabled;
+  useAnalyticsPreferenceStore.subscribe((state) => {
+    if (state.enabled === previousConsent) return;
+    previousConsent = state.enabled;
+    telemetry.syncConsent();
+  });
+}
+
 export const mobileConfiguration = platform
   ? new ConfigCore({
       context: {
@@ -41,6 +72,7 @@ export const mobileConfiguration = platform
       maximumSchemaVersion: BUNDLED_CONFIG_BOOTSTRAP.maximumSchemaVersion,
       network: configuredNetwork(BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl),
       normalKeyring: BUNDLED_CONFIG_BOOTSTRAP.normalKeyring,
+      ...(telemetry && { report: (event) => telemetry.record(event) }),
       storage: createConfigStorage(Storage),
       target: {
         brandId: BUNDLED_CONFIG_BOOTSTRAP.brandId,
@@ -64,6 +96,7 @@ export async function refreshMobileConfiguration(): Promise<boolean> {
     normalEnabled ? mobileConfiguration.refresh() : undefined,
     emergencyEnabled ? mobileConfiguration.refreshEmergency() : undefined,
   ]);
+  void telemetry?.flush();
   return normal?.status !== 'error' && emergency?.status !== 'error';
 }
 
