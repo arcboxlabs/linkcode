@@ -1,9 +1,10 @@
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKSessionInfo, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, EffortLevel } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { asyncNoop, noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { asHistoryId } from '../history-util';
 import { ClaudeCodeAdapter } from '../native/claude-code';
 
 const sdkMock = vi.hoisted(() => ({
@@ -119,6 +120,21 @@ async function makeAdapter(effort?: EffortLevel): Promise<{
   return { adapter, events };
 }
 
+class TitleClaude extends ClaudeCodeAdapter {
+  constructor(
+    private readonly readSessionInfo: (
+      sessionId: string,
+      options?: { dir?: string },
+    ) => Promise<SDKSessionInfo | undefined>,
+  ) {
+    super();
+  }
+
+  protected override async loadSdk<T>(_name: string, loader: () => Promise<T>): Promise<T> {
+    return Object.assign({}, await loader(), { getSessionInfo: this.readSessionInfo });
+  }
+}
+
 function prompt(adapter: ClaudeCodeAdapter): Promise<void> {
   return adapter.send({ type: 'prompt', content: [textBlock('hi')] });
 }
@@ -126,6 +142,137 @@ function prompt(adapter: ClaudeCodeAdapter): Promise<void> {
 function setEffort(adapter: ClaudeCodeAdapter, effort: 'low' | 'high' | 'max' | 'ultracode') {
   return adapter.send({ type: 'set-effort', effort });
 }
+
+describe('ClaudeCodeAdapter session titles', () => {
+  it('polls after the first turn until the generated title replaces the first prompt', async () => {
+    vi.useFakeTimers();
+    const getSessionInfo = vi
+      .fn<(sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>>()
+      .mockResolvedValueOnce({
+        sessionId: 'sess-title',
+        summary: 'hi',
+        firstPrompt: 'hi',
+        lastModified: 1,
+      })
+      .mockResolvedValue({
+        sessionId: 'sess-title',
+        summary: 'Fix OAuth callback handling',
+        firstPrompt: 'hi',
+        lastModified: 2,
+      });
+    const adapter = new TitleClaude(getSessionInfo);
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    try {
+      await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+      await prompt(adapter);
+      queries[0].push({ type: 'system', session_id: 'sess-title' });
+      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
+      queries[0].push({
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {},
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([]);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(getSessionInfo).toHaveBeenCalledTimes(2);
+      expect(getSessionInfo).toHaveBeenLastCalledWith('sess-title', { dir: '/tmp/repo' });
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([
+        { type: 'title-update', title: 'Fix OAuth callback handling' },
+      ]);
+    } finally {
+      await adapter.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it('refreshes metadata after later successful turns to catch explicit renames', async () => {
+    vi.useFakeTimers();
+    const getSessionInfo = vi
+      .fn<(sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>>()
+      .mockResolvedValueOnce({
+        sessionId: 'sess-rename',
+        summary: 'Generated title',
+        firstPrompt: 'hi',
+        lastModified: 1,
+      })
+      .mockResolvedValueOnce({
+        sessionId: 'sess-rename',
+        summary: 'Generated title',
+        customTitle: 'Explicit rename',
+        firstPrompt: 'hi',
+        lastModified: 2,
+      });
+    const adapter = new TitleClaude(getSessionInfo);
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    try {
+      await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+      await prompt(adapter);
+      queries[0].push({ type: 'system', session_id: 'sess-rename' });
+      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
+      queries[0].push({
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {},
+      });
+      await vi.advanceTimersByTimeAsync(500);
+
+      await prompt(adapter);
+      queries[0].push({
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {},
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(getSessionInfo).toHaveBeenCalledTimes(2);
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([
+        { type: 'title-update', title: 'Generated title' },
+        { type: 'title-update', title: 'Explicit rename' },
+      ]);
+    } finally {
+      await adapter.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the existing provider title when resuming', async () => {
+    const getSessionInfo = vi.fn(() =>
+      Promise.resolve<SDKSessionInfo>({
+        sessionId: 'sess-resume',
+        summary: 'Generated title',
+        customTitle: 'My renamed session',
+        firstPrompt: 'hi',
+        lastModified: 1,
+      }),
+    );
+    const adapter = new TitleClaude(getSessionInfo);
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.resumeHistory(
+      { historyId: asHistoryId('sess-resume') },
+      { kind: 'claude-code', cwd: '/tmp/repo' },
+    );
+
+    expect(events).toContainEqual({ type: 'title-update', title: 'My renamed session' });
+    await adapter.stop();
+  });
+});
 
 async function waitIdle(events: AgentEvent[]): Promise<void> {
   await vi.waitFor(() => {

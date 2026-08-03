@@ -246,7 +246,9 @@ function sessionRefs(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 's
 
 describe('OpenCodeAdapter.resumeHistory', () => {
   it('adopts the existing session under its own directory and announces the ref immediately', async () => {
-    const client = makeLiveClient(makeSession({ id: 'ses-9', directory: '/tmp/original' }));
+    const client = makeLiveClient(
+      makeSession({ id: 'ses-9', directory: '/tmp/original', title: 'Existing session title' }),
+    );
     sdkMock.createOpencode = () =>
       Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
 
@@ -260,6 +262,7 @@ describe('OpenCodeAdapter.resumeHistory', () => {
 
     expect(client.session.create).not.toHaveBeenCalled();
     expect(sessionRefs(events).map((e) => e.historyId)).toEqual(['ses-9']);
+    expect(events).toContainEqual({ type: 'title-update', title: 'Existing session title' });
     // Every session-bound call scopes to the session's real home, not the resume cwd — events
     // ride the per-directory instance bus.
     expect(client.event.subscribe).toHaveBeenCalledWith({ directory: '/tmp/original' });

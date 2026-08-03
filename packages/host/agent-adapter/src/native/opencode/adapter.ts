@@ -216,6 +216,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;
   private sessionId: string | null = null;
+  /** Last provider title observed; a fresh session's placeholder is the baseline, not an update. */
+  private sessionTitle: string | null = null;
   /** Provider session id to adopt at the next start — set by `resumeHistory`. OpenCode sessions
    * live server-side, so a native resume is just prompting the existing id again. */
   private resumeFrom: string | null = null;
@@ -337,6 +339,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       this.sessionId = got.data.id;
       this.directory = got.data.directory;
+      this.sessionTitle = got.data.title.trim() || null;
+      if (this.sessionTitle) this.emitTitle(this.sessionTitle);
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
@@ -353,6 +357,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!id) throw new Error('opencode: failed to create session');
       this.sessionId = id;
       this.directory = opts.cwd;
+      this.sessionTitle = created.data?.title.trim() || null;
     }
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start. They are independent reads of the same local server, so
@@ -838,6 +843,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handleEvent(ev: Event): void {
     try {
       switch (ev.type) {
+        case 'session.updated': {
+          const { info, sessionID } = ev.properties;
+          if (sessionID === this.sessionId && info.id === this.sessionId) {
+            const title = info.title.trim();
+            if (title.length > 0 && title !== this.sessionTitle) {
+              this.sessionTitle = title;
+              this.emitTitle(title);
+            }
+          }
+          break;
+        }
         case 'message.updated':
           if (ev.properties.sessionID === this.sessionId) {
             const { info } = ev.properties;

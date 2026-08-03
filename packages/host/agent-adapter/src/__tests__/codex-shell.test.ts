@@ -168,6 +168,50 @@ function driveShellTurn(
   server.notify('thread/status/changed', { status: 'idle' });
 }
 
+describe('CodexAdapter session titles', () => {
+  it('reads a resumed thread name and consumes updates for only the current thread', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1', name: 'Existing thread name' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: null,
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.resumeHistory({ historyId: asHistoryId('thread-1') }, start);
+    const server = adapter.fakeServers[0];
+    server.notify('thread/name/updated', {
+      threadId: 'thread-other',
+      threadName: 'Ignore me',
+    });
+    server.notify('thread/name/updated', { threadId: 'thread-1', threadName: 'New thread name' });
+    server.notify('thread/name/updated', { threadId: 'thread-1', threadName: 'New thread name' });
+    server.notify('thread/name/updated', { threadId: 'thread-1' });
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([
+      { type: 'title-update', title: 'Existing thread name' },
+      { type: 'title-update', title: 'New thread name' },
+    ]);
+  });
+
+  it('does not treat an unnamed thread preview as a title', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1', preview: 'First prompt preview' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: null,
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start(start);
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([]);
+    await adapter.stop();
+  });
+});
+
 describe('CodexAdapter shell-command passthrough', () => {
   it('advertises normalized per-model effort capabilities before session start', async () => {
     const adapter = new TestCodex();
