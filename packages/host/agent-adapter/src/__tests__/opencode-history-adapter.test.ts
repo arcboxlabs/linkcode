@@ -284,6 +284,73 @@ describe('OpenCodeAdapter.resumeHistory', () => {
   });
 });
 
+describe('OpenCodeAdapter.branchHistory', () => {
+  it('forks before the cursor prompt in the source canonical directory and starts the child', async () => {
+    const source = makeSession({ id: 'ses-source', directory: '/canonical/repo' });
+    const child = makeSession({
+      id: 'ses-child',
+      parentID: 'ses-source',
+      directory: source.directory,
+    });
+    const fork = vi.fn(() => Promise.resolve({ data: child }));
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: source })),
+        fork,
+      },
+    });
+    const client = makeLiveClient(child);
+    sdkMock.createOpencode = () =>
+      Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+
+    const adapter = new HistoryTestAdapter();
+    adapter.onEvent(noop);
+    await adapter.branchHistory(
+      {
+        historyId: 'ses-source' as AgentHistoryId,
+        cursor: JSON.stringify({
+          version: 1,
+          kind: 'opencode',
+          historyId: 'ses-source',
+          branchPoint: 'msg-target',
+        }),
+      },
+      { kind: 'opencode', cwd: '/different/repo' },
+    );
+
+    expect(fork).toHaveBeenCalledWith({
+      sessionID: 'ses-source',
+      messageID: 'msg-target',
+      directory: '/canonical/repo',
+    });
+    expect(client.session.create).not.toHaveBeenCalled();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'replacement' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: 'ses-child', directory: '/canonical/repo' }),
+    );
+  });
+
+  it('rejects a cursor minted for another source before calling the provider', async () => {
+    const get = vi.fn();
+    sdkMock.createOpencodeClient = () => ({ session: { get } });
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-other',
+            branchPoint: 'msg-target',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toThrow('opencode: history branch cursor does not match the source session');
+    expect(get).not.toHaveBeenCalled();
+  });
+});
+
 describe('OpenCodeAdapter.resumeHistory credential injection', () => {
   it('pre-reads the recorded model so the spawn injects the right provider credential', async () => {
     const recorded = makeSession({
