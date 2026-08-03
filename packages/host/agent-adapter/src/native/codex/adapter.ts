@@ -155,6 +155,8 @@ export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHand
 
 const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
 
+const CODEX_PLUGIN_APPS_SERVER = 'codex_apps';
+
 /** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
  * structured status (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`) rides only the
  * mid-retry notifications; the final no-retry error leaves the 401 in prose — match both
@@ -1279,11 +1281,21 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'mcpToolCall': {
-        const server = stringField(item, 'server') ?? 'mcp';
-        const tool = stringField(item, 'tool') ?? 'tool';
+        // Emit the shared `mcp__<server>__<tool>` slug — the UI's server/tool join key — instead
+        // of codex's raw `server.tool`. Plugin apps all mount under the one `codex_apps` server
+        // with the plugin in the tool's first segment; surface the plugin as the server.
+        let server = stringField(item, 'server') ?? 'mcp';
+        let tool = stringField(item, 'tool') ?? 'tool';
+        if (server === CODEX_PLUGIN_APPS_SERVER) {
+          const plugin = tool.indexOf('.');
+          if (plugin > 0 && plugin < tool.length - 1) {
+            server = tool.slice(0, plugin);
+            tool = tool.slice(plugin + 1);
+          }
+        }
         this.emitTool({
           toolCallId: id,
-          title: `${server}.${tool}`,
+          title: `mcp__${server}__${tool}`,
           kind: 'other',
           status: mapCodexItemStatus(stringField(item, 'status')),
           content: [],
