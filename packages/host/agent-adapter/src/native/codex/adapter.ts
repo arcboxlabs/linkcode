@@ -1,4 +1,6 @@
+import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { extname } from 'node:path';
 import type {
   AgentCommand,
   AgentHistoryBranchOptions,
@@ -65,6 +67,8 @@ import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
   path: string;
+  /** Brand icon file inside the skill/plugin package — read and embedded at publish time. */
+  iconPath?: string;
 }
 
 type CodexTurnInput =
@@ -84,6 +88,8 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
+const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
+
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
@@ -95,17 +101,51 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
       const path = stringField(skill, 'path');
       if (!name || !path || commands.has(name)) continue;
       const interfaceMetadata = recordField(skill, 'interface');
+      const brandColor = interfaceMetadata && stringField(interfaceMetadata, 'brandColor');
       commands.set(name, {
         name,
         description:
           stringField(skill, 'description') ??
           (interfaceMetadata && stringField(interfaceMetadata, 'shortDescription')) ??
           stringField(skill, 'shortDescription'),
+        displayName: interfaceMetadata && stringField(interfaceMetadata, 'displayName'),
+        brandColor: brandColor && BRAND_COLOR_RE.test(brandColor) ? brandColor : undefined,
         path,
+        iconPath:
+          (interfaceMetadata && stringField(interfaceMetadata, 'iconSmall')) ??
+          (interfaceMetadata && stringField(interfaceMetadata, 'iconLarge')),
       });
     }
   }
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Composer icons render at chip size; anything bigger than this is not an icon. */
+const SKILL_ICON_MAX_BYTES = 32 * 1024;
+
+const SKILL_ICON_MIME: Record<string, string> = {
+  '.gif': 'image/gif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
+/** Embed a skill's icon file as a `data:image/*` URI, or nothing when the file is missing,
+ * unreasonably large, or not a known image type. The path comes from the user's own codex
+ * install; failures degrade to the glyph fallback, never to an error. */
+export async function skillIconDataUri(iconPath: string): Promise<string | undefined> {
+  const mime = SKILL_ICON_MIME[extname(iconPath).toLowerCase()];
+  if (!mime) return undefined;
+  try {
+    const info = await stat(iconPath);
+    if (!info.isFile() || info.size === 0 || info.size > SKILL_ICON_MAX_BYTES) return undefined;
+    const data = await readFile(iconPath);
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch {
+    return undefined;
+  }
 }
 
 interface CodexModelCatalog {
@@ -927,9 +967,17 @@ export class CodexAdapter extends BaseAgentAdapter {
       const skills = codexSkillCommands(response).filter(
         (skill) => skill.name !== COMPACT_COMMAND.name,
       );
+      const catalog = await Promise.all(
+        skills.map(async ({ path: _path, iconPath, ...command }) => ({
+          ...command,
+          iconDataUri: iconPath === undefined ? undefined : await skillIconDataUri(iconPath),
+        })),
+      );
+      // The icon reads awaited — re-check that a newer refresh or server didn't win meanwhile.
+      if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
       this.skillCommands.clear();
       for (const skill of skills) this.skillCommands.set(skill.name, skill);
-      this.emitCommands([COMPACT_COMMAND, ...skills.map(({ path: _path, ...command }) => command)]);
+      this.emitCommands([COMPACT_COMMAND, ...catalog]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
         this.skillCommands.clear();

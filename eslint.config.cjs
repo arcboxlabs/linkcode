@@ -122,6 +122,7 @@ module.exports = require('eslint-config-sukka').sukka(
     name: 'linkcode/unplugin-icons-virtual-modules',
     files: [
       'packages/presentation/ui/src/chat/agent-icon.tsx',
+      'packages/presentation/ui/src/chat/integration-brand.tsx',
       'packages/presentation/ui/src/lib/__tests__/file-icon.test.ts',
       'packages/presentation/ui/src/lib/material-file-icons.ts',
       'packages/presentation/ui/src/shell/service-icon.tsx',
