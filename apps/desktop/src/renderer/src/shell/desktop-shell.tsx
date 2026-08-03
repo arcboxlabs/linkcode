@@ -28,6 +28,7 @@ import {
   suppressSimulatorAutoReveal,
   TerminalPanel,
   useBrowserHostRegistration,
+  useCloudBilling,
   useCloudHosts,
   useResourcesPanelStore,
   useSelectedHostStore,
@@ -122,11 +123,13 @@ export function DesktopShell({
   BranchStatusComponent,
   onDismissError,
   onOpenSettings,
+  onOpenBilling,
   onImportHistory,
   themeType,
 }: WorkbenchShellProps & {
   systemBridge: SystemBridge;
   onOpenSettings?: () => void;
+  onOpenBilling?: () => void;
   /** Opens the desktop settings overlay on the History import category. */
   onImportHistory?: () => void;
   themeType: ThemePreference;
@@ -171,6 +174,7 @@ export function DesktopShell({
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
   const toggleResources = useResourcesPanelStore((state) => state.toggle);
   const remoteHosts = useCloudHosts(cloudAuth.account?.email ?? null);
+  const billing = useCloudBilling(cloudAuth.account?.email ?? null);
   const { selectedHostId, selectHost } = useSelectedHostStore(
     useShallow((state) => ({ selectedHostId: state.selectedHostId, selectHost: state.selectHost })),
   );
@@ -776,6 +780,8 @@ export function DesktopShell({
                         onSignIn={cloudAuth.signIn}
                         onSignOut={cloudAuth.signOut}
                         onManageAccount={cloudAuth.manageAccount}
+                        balance={billing.data?.summary.displayBalance}
+                        onOpenBilling={onOpenBilling}
                         remoteHosts={remoteHostItems}
                         remoteHostsLoading={remoteHosts.isLoading}
                         selectedHostId={selectedHostId}

@@ -10,6 +10,7 @@ import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, Menu } from 'electron';
 import { DESKTOP_SPAN_NAMES, DESKTOP_TRANSACTION_NAMES } from '../sentry-privacy';
 import { applyThemePreference } from './appearance';
+import { registerCloudBillingBridge } from './cloud-auth/billing';
 import { setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
@@ -59,6 +60,7 @@ if (app.requestSingleInstanceLock()) {
   // alongside the rest of the cloud wiring; ipcMain.handle is safe before the app is ready.
   registerCloudTunnelBridge();
   registerCloudImBridge();
+  registerCloudBillingBridge();
 
   app
     .whenReady()

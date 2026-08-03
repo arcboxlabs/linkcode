@@ -14,7 +14,7 @@ export function CloudHostsProvider({
   children,
 }: {
   source: CloudHostsSource;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }): React.ReactNode {
   return <CloudHostsSourceContext value={source}>{children}</CloudHostsSourceContext>;
 }

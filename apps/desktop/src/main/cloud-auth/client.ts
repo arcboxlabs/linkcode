@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { electronClient } from '@better-auth/electron/client';
 import { createAuthClient } from 'better-auth/client';
+import { organizationClient } from 'better-auth/client/plugins';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { CLOUD_CLAIM_DEEP_LINK_CHANNEL } from '../../shared/cloud';
 import { CHANNEL } from '../constants';
@@ -33,6 +34,7 @@ export const authClient = createAuthClient({
   // The API mounts better-auth at /auth, not the client default /api/auth.
   basePath: '/auth',
   plugins: [
+    organizationClient(),
     electronClient({
       signInURL: CLOUD_SIGN_IN_URL,
       protocol: { scheme: CLOUD_AUTH_SCHEME },

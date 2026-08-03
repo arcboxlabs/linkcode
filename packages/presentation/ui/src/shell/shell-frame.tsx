@@ -107,6 +107,8 @@ export interface ShellFrameProps
   onOpenAutomations?: () => void;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
+  /** App-owned cloud/system footer; the default shows only local host state. */
+  sidebarFooter?: React.ReactNode;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   onDismissError?: () => void;
 }
@@ -162,6 +164,7 @@ export function ShellFrame({
   onOpenSearch,
   onOpenAutomations,
   searchShortcut,
+  sidebarFooter,
   TerminalBlockComponent,
   BranchStatusComponent,
   onDismissError,
@@ -179,7 +182,7 @@ export function ShellFrame({
           activeId={active?.sessionId ?? null}
           pinnedSessionIds={pinnedSessionIds}
           collapsedSections={collapsedSections}
-          footer={<DefaultHostFooter />}
+          footer={sidebarFooter ?? <DefaultHostFooter />}
           onSelect={onSelectSession}
           onClose={onCloseSession}
           onToggleSessionPinned={onToggleSessionPinned}

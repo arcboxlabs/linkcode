@@ -4,7 +4,7 @@
  * process's inferred types across the process boundary, so the vendor's stable shape is mirrored here.
  */
 
-import type { CloudHost, CloudImSource } from '@linkcode/workbench';
+import type { CloudBillingSource, CloudHost, CloudImSource } from '@linkcode/workbench';
 import { traceRendererIpc } from '../ipc';
 
 /** The authenticated user, as normalized by the electron plugin. Extra IdP fields are preserved. */
@@ -36,6 +36,8 @@ export interface CloudDataBridges {
      * called right before a sign-in. Resolves to whether the OS accepted it.
      */
     claimDeepLink: () => Promise<boolean>;
+    /** Organization billing management; main attaches the keychain-backed session. */
+    billing: CloudBillingSource;
     /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */
     im: CloudImSource;
   };
@@ -47,6 +49,13 @@ const cloudSource = window.linkcodeCloud;
 export const cloudDataBridge: CloudDataBridges['linkcodeCloud'] = {
   listHosts: () => traceRendererIpc('cloud.list-hosts', () => cloudSource.listHosts()),
   claimDeepLink: () => traceRendererIpc('cloud.claim-deep-link', () => cloudSource.claimDeepLink()),
+  billing: {
+    overview: () =>
+      traceRendererIpc('cloud.billing.overview', () => cloudSource.billing.overview()),
+    checkout: (input) =>
+      traceRendererIpc('cloud.billing.checkout', () => cloudSource.billing.checkout(input)),
+    portal: () => traceRendererIpc('cloud.billing.portal', () => cloudSource.billing.portal()),
+  },
   im: {
     overview: () => traceRendererIpc('cloud.im.overview', () => cloudSource.im.overview()),
     bindings: () => traceRendererIpc('cloud.im.bindings', () => cloudSource.im.bindings()),

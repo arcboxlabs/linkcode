@@ -12,6 +12,7 @@ export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps)
       systemBridge={systemBridge}
       header={header}
       onOpenSettings={() => openDesktopSettings()}
+      onOpenBilling={() => openDesktopSettings('billing')}
       onOpenProviderSettings={() => {
         useProvidersSettingsStore.getState().startAdd();
         openDesktopSettings('providers');
