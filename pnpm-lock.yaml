@@ -240,7 +240,7 @@ importers:
     devDependencies:
       '@effect/opentelemetry':
         specifier: 4.0.0-beta.98
-        version: 4.0.0-beta.98(@opentelemetry/api-logs@0.214.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@4.0.0-beta.98)
+        version: 4.0.0-beta.98(@opentelemetry/api-logs@0.214.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-beta.98)
       '@effect/platform-node':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
@@ -264,7 +264,7 @@ importers:
         version: 0.31.10
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4)
       effect:
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98
@@ -282,7 +282,7 @@ importers:
     dependencies:
       '@better-auth/electron':
         specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@43.2.0)
+        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@43.2.0)
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/foundation/common
@@ -302,8 +302,8 @@ importers:
         specifier: ^7.15.0
         version: 7.15.0
       better-auth:
-        specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+        specifier: 1.7.0-rc.2
+        version: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       electron-log:
         specifier: ^5.4.4
         version: 5.4.4
@@ -427,7 +427,7 @@ importers:
     dependencies:
       '@better-auth/expo':
         specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))
+        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))
       '@expo/ui':
         specifier: 57.0.7
         version: 57.0.7(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(expo@57.0.4)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -459,8 +459,8 @@ importers:
         specifier: ~7.11.0
         version: 7.11.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       better-auth:
-        specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+        specifier: 1.7.0-rc.2
+        version: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       expo:
         specifier: ~57.0.4
         version: 57.0.4(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(@expo/metro-runtime@57.0.3)(@typescript/typescript6@6.0.2)(expo-router@57.0.4)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -655,8 +655,8 @@ importers:
         specifier: 10.62.0
         version: 10.62.0(react@19.3.0-canary-96fcba90-20260728)
       better-auth:
-        specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+        specifier: 1.7.0-rc.2
+        version: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       coss-ui:
         specifier: workspace:*
         version: link:../../packages/vendor/coss-ui
@@ -2006,8 +2006,8 @@ packages:
       '@types/react':
         optional: true
 
-  '@better-auth/core@1.7.0-rc.1':
-    resolution: {integrity: sha512-qwVJ5LBPAp8FhhRbUzJDv8cp6h6sn266PPJIXBhB2aYXee40/VGpyoTmx9+LmOotOLQ4BWSO5rCSDvS8FGVdEQ==}
+  '@better-auth/core@1.7.0-rc.2':
+    resolution: {integrity: sha512-NreNGg68j4qUVVYTcC1DtvRTwSJdCavH5igrMyTO5ghZxnzL4G539uRIzOZmJ64MLzOyOwzWH+JHqpVaj0ZRxw==}
     peerDependencies:
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
@@ -2023,10 +2023,10 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@better-auth/drizzle-adapter@1.7.0-rc.1':
-    resolution: {integrity: sha512-r2PjeNFZpWwkW9hvMyE+sgqzYPm3+pB7wE6+aL/iVl0SumqJns1fTFZiqTlQP67AUhJHO2Oelra+WdrtEE0v5Q==}
+  '@better-auth/drizzle-adapter@1.7.0-rc.2':
+    resolution: {integrity: sha512-o6HCC8PCyvg1/BQaNWvJM7kO8svXWvuM++APj7ah+iEfFWcp0yklNQWLijDLu+PAaoKHwNMgDpmclDruirHdPA==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
       drizzle-orm: ^0.45.2 || >=1.0.0-rc.1 <2.0.0
     peerDependenciesMeta:
@@ -2069,36 +2069,36 @@ packages:
       expo-web-browser:
         optional: true
 
-  '@better-auth/kysely-adapter@1.7.0-rc.1':
-    resolution: {integrity: sha512-8ykUlvqJERPJj3fohgc66VA091tGNiZlw0Pr4YnChr4n7bSqI6P/9bic1g6+XiGz10Li4t0qGcyqBpXKJb/iTw==}
+  '@better-auth/kysely-adapter@1.7.0-rc.2':
+    resolution: {integrity: sha512-g65JeOOseffsqHJXOM0/+SdPvojXzFPejVEFKuUatkdfXcw/l0zEiEkH38Ag5SWFaqfvog/wRPY/MK8PC/ODvg==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
       kysely: ^0.28.17 || ^0.29.0
     peerDependenciesMeta:
       kysely:
         optional: true
 
-  '@better-auth/memory-adapter@1.7.0-rc.1':
-    resolution: {integrity: sha512-CyGMXZNCLQ531K4mhdSfhAjXXh+R+ybX/Xss2u9ZYs7un5XZbL+gC5rTGNPktV3KcEHPG60/om7x3bH4jMPi6g==}
+  '@better-auth/memory-adapter@1.7.0-rc.2':
+    resolution: {integrity: sha512-ACP69pbSDnIYYcx/KEtRXpFmte6q0Adh3028pRP5aDydkmbcCc7cFiwnRMQuI/MY7aBfW0wefEbcEwOse61Hcg==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/mongo-adapter@1.7.0-rc.1':
-    resolution: {integrity: sha512-nJEythD9d9rsEPCb3awTSrYn+heLDAReTyBQrfxOC5HYv+m+ekElE8Fy/XuFzENw+7qyY0V7LlfGK7JYhL5XbQ==}
+  '@better-auth/mongo-adapter@1.7.0-rc.2':
+    resolution: {integrity: sha512-/QeC23KheruIamhu4XIqtPLcvupoDXmSpPB9QvmVqQcb5oVjAILJo6kIbZtq/JYbaHjrIO7mpdH6404hyv7weg==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
       mongodb: ^6.0.0 || ^7.0.0
     peerDependenciesMeta:
       mongodb:
         optional: true
 
-  '@better-auth/prisma-adapter@1.7.0-rc.1':
-    resolution: {integrity: sha512-d7J+VO7ZGnt20agKYDfA8XRi8Tzw4fekmzQTUzfkfd9EwYvOUx1Ed6cCjG7nsEPuHn49PLVtv+iX5Cfx2XF2kw==}
+  '@better-auth/prisma-adapter@1.7.0-rc.2':
+    resolution: {integrity: sha512-OFRJbg44ha2zD5lpXIKfoGBEwPe58YBhwIgKlfRuHpsZSpknaXOTvFIH2da8q8SK5L5mjYQ9vSsnX0oOf8gNDA==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
       '@prisma/client': ^5.0.0 || ^6.0.0 || ^7.0.0
       prisma: ^5.0.0 || ^6.0.0 || ^7.0.0
@@ -2108,10 +2108,10 @@ packages:
       prisma:
         optional: true
 
-  '@better-auth/telemetry@1.7.0-rc.1':
-    resolution: {integrity: sha512-1lpODl12kDY3jA/46odeEtfC0u/UyPWAchtqIZq/JZVJGrnK5UCLwHRcSHYlkpHfZWXm7sXZYJ1vHJHKX66HCg==}
+  '@better-auth/telemetry@1.7.0-rc.2':
+    resolution: {integrity: sha512-sSZ+/FkG/axBjXVeF01LT+NQjT23TLwRwpdkcI8FJBWINNUCYhuxgdi05dv70MeX8iocfMhKxQ4EPgvt/eW/kQ==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
 
@@ -3745,6 +3745,10 @@ packages:
 
   '@opentelemetry/semantic-conventions@1.41.1':
     resolution: {integrity: sha512-/UhIkaZgPutTFmQ7RnIJGgDXZmtEJ7Dvi86xNTFWcnRxVRNk/aotsqDJYeEvDP+FSMB2SdW+pQzNMcWP0rwuNA==}
+    engines: {node: '>=14'}
+
+  '@opentelemetry/semantic-conventions@1.43.0':
+    resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
   '@ota-meshi/ast-token-store@0.3.0':
@@ -5913,8 +5917,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  better-auth@1.7.0-rc.1:
-    resolution: {integrity: sha512-dmTImZTzxDYfNSLdv5yTwRxNMnN8xBQnG9oeeW+eSltO0R0TxOfYZTnu1JE9MSI8tlR5tFfUaoLBTal6Z28v9A==}
+  better-auth@1.7.0-rc.2:
+    resolution: {integrity: sha512-5KZrqbAsoQA8q1edmufaoF/CBbMjGb/BoPqyMTzXFyDeXNhk8pXO2xJkiDDeZcSGtyhUKXiDnD7hxh4sJVgYZw==}
     peerDependencies:
       '@lynx-js/react': '*'
       '@prisma/client': ^5.0.0 || ^6.0.0 || ^7.0.0
@@ -5922,7 +5926,7 @@ packages:
       '@tanstack/react-start': ^1.0.0
       '@tanstack/solid-start': ^1.0.0
       better-sqlite3: ^12.0.0
-      drizzle-kit: '>=0.31.4'
+      drizzle-kit: '>=0.31.4 || >=1.0.0-beta.1'
       drizzle-orm: ^0.45.2
       mongodb: ^6.0.0 || ^7.0.0
       mysql2: ^3.0.0
@@ -8249,11 +8253,11 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.3:
-    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
-
   jose@6.2.4:
     resolution: {integrity: sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==}
+
+  jose@6.2.7:
+    resolution: {integrity: sha512-hq1OB1bALKfydZNoViyg6hPVGV4i93ny9Op+n4zP5RSf7SCZEXa/TsG2O3IEr7+WlHRTPnpqDmHfMH6qXAD60w==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -8353,8 +8357,8 @@ packages:
   kubernetes-types@1.30.0:
     resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
 
-  kysely@0.29.2:
-    resolution: {integrity: sha512-s6WVJyEZrbm6jhBpiKHsGHyePMrVQKJ85wZCFCr9W4QHv6WTjWIrdvTmO9hDEA3bNK0xkrE2DqrHsXMLWuZpQg==}
+  kysely@0.29.4:
+    resolution: {integrity: sha512-y5mVgQNkMbs1eK9Xyc0pmNdabN2wHhRYY/5r4W5HrUT1rYCEPeVNSj1RUJeSDKT3U0p+mXCvLgkrFuIafYI6BA==}
     engines: {node: '>=22.0.0'}
 
   lan-network@0.2.1:
@@ -9117,8 +9121,8 @@ packages:
     engines: {node: ^18 || >=20}
     hasBin: true
 
-  nanostores@1.4.0:
-    resolution: {integrity: sha512-i0tloweeudshAEuddpDxcg9Ik6pkPfVsHIgKyf143JrgG7/MOh0+q7BypdLXZPoOP7fOYt1eTcwGkyiVmhJFkA==}
+  nanostores@1.4.2:
+    resolution: {integrity: sha512-Wxv8Roefr2nqtiRG0bnaFlpYqpIVtOEeJZHaH+4nGgOK1/7n6OHOuHCb/bhqrNQgZM8fyd0s1PqhdrJc9Ib44g==}
     engines: {node: ^20.0.0 || >=22.0.0}
 
   napi-build-utils@2.0.0:
@@ -12222,64 +12226,43 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  '@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)':
+  '@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)':
     dependencies:
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
       '@standard-schema/spec': 1.1.0
       better-call: 1.3.7(zod@4.4.3)
-      jose: 6.2.3
-      kysely: 0.29.2
-      nanostores: 1.4.0
+      jose: 6.2.7
+      kysely: 0.29.4
+      nanostores: 1.4.2
       zod: 4.4.3
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)':
+  '@better-auth/drizzle-adapter@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))':
     dependencies:
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
+      '@better-auth/utils': 0.4.2
+    optionalDependencies:
+      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4)
+
+  '@better-auth/electron@1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@43.2.0)':
+    dependencies:
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
-      '@opentelemetry/semantic-conventions': 1.41.1
-      '@standard-schema/spec': 1.1.0
-      better-call: 1.3.7(zod@4.4.3)
-      jose: 6.2.4
-      kysely: 0.29.2
-      nanostores: 1.4.0
-      zod: 4.4.3
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-
-  '@better-auth/drizzle-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-    optionalDependencies:
-      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
-
-  '@better-auth/drizzle-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-    optionalDependencies:
-      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
-
-  '@better-auth/electron@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@43.2.0)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-      '@better-fetch/fetch': 1.3.1
-      better-auth: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+      better-auth: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       better-call: 1.3.7(zod@4.4.3)
       zod: 4.4.3
     optionalDependencies:
       electron: 43.2.0
 
-  '@better-auth/expo@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))':
+  '@better-auth/expo@1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-fetch/fetch': 1.3.1
-      better-auth: 1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+      better-auth: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
       better-call: 1.3.7(zod@4.4.3)
       zod: 4.4.3
     optionalDependencies:
@@ -12288,59 +12271,31 @@ snapshots:
       expo-network: 57.0.1(expo@57.0.4)(react@19.2.3)
       expo-web-browser: 57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))
 
-  '@better-auth/kysely-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(kysely@0.29.2)':
+  '@better-auth/kysely-adapter@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.29.4)':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
     optionalDependencies:
-      kysely: 0.29.2
+      kysely: 0.29.4
 
-  '@better-auth/kysely-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(kysely@0.29.2)':
+  '@better-auth/memory-adapter@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-    optionalDependencies:
-      kysely: 0.29.2
-
-  '@better-auth/memory-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/memory-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
+  '@better-auth/mongo-adapter@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/mongo-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
+  '@better-auth/prisma-adapter@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/mongo-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
+  '@better-auth/telemetry@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-
-  '@better-auth/prisma-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-
-  '@better-auth/prisma-adapter@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-
-  '@better-auth/telemetry@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/utils': 0.4.2
-      '@better-fetch/fetch': 1.3.1
-
-  '@better-auth/telemetry@1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
-    dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
 
@@ -12537,9 +12492,9 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
 
-  '@effect/opentelemetry@4.0.0-beta.98(@opentelemetry/api-logs@0.214.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(effect@4.0.0-beta.98)':
+  '@effect/opentelemetry@4.0.0-beta.98(@opentelemetry/api-logs@0.214.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-beta.98)':
     dependencies:
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
       effect: 4.0.0-beta.98
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
@@ -14083,7 +14038,7 @@ snapshots:
   '@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -14098,7 +14053,7 @@ snapshots:
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -14106,16 +14061,18 @@ snapshots:
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace': 2.9.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/sdk-trace@2.9.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/semantic-conventions@1.41.1': {}
+
+  '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 
@@ -16208,29 +16165,29 @@ snapshots:
 
   baseline-browser-mapping@2.10.40: {}
 
-  better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
+  better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/drizzle-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))
-      '@better-auth/kysely-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(kysely@0.29.2)
-      '@better-auth/memory-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/mongo-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/prisma-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/telemetry': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.4)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
+      '@better-auth/drizzle-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))
+      '@better-auth/kysely-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.29.4)
+      '@better-auth/memory-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/mongo-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/prisma-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/telemetry': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       '@noble/ciphers': 2.2.0
       '@noble/hashes': 2.2.0
       better-call: 1.3.7(zod@4.4.3)
       defu: 6.1.7
-      jose: 6.2.3
-      kysely: 0.29.2
-      nanostores: 1.4.0
+      jose: 6.2.7
+      kysely: 0.29.4
+      nanostores: 1.4.2
       zod: 4.4.3
     optionalDependencies:
       better-sqlite3: 12.11.1
       drizzle-kit: 0.31.10
-      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
+      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4)
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -16238,29 +16195,29 @@ snapshots:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
 
-  better-auth@1.7.0-rc.1(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
+  better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))):
     dependencies:
-      '@better-auth/core': 1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0)
-      '@better-auth/drizzle-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2))
-      '@better-auth/kysely-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(kysely@0.29.2)
-      '@better-auth/memory-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/mongo-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/prisma-adapter': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/telemetry': 1.7.0-rc.1(@better-auth/core@1.7.0-rc.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
+      '@better-auth/drizzle-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))
+      '@better-auth/kysely-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.29.4)
+      '@better-auth/memory-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/mongo-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/prisma-adapter': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/telemetry': 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       '@noble/ciphers': 2.2.0
       '@noble/hashes': 2.2.0
       better-call: 1.3.7(zod@4.4.3)
       defu: 6.1.7
-      jose: 6.2.3
-      kysely: 0.29.2
-      nanostores: 1.4.0
+      jose: 6.2.7
+      kysely: 0.29.4
+      nanostores: 1.4.2
       zod: 4.4.3
     optionalDependencies:
       better-sqlite3: 12.11.1
       drizzle-kit: 0.31.10
-      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2)
+      drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4)
       react: 19.3.0-canary-96fcba90-20260728
       react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -17061,12 +17018,12 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.1
 
-  drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.2):
+  drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4):
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@types/better-sqlite3': 7.6.13
       better-sqlite3: 12.11.1
-      kysely: 0.29.2
+      kysely: 0.29.4
 
   dunder-proto@1.0.1:
     dependencies:
@@ -18895,9 +18852,9 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  jose@6.2.3: {}
-
   jose@6.2.4: {}
+
+  jose@6.2.7: {}
 
   joycon@3.1.1: {}
 
@@ -19006,7 +18963,7 @@ snapshots:
 
   kubernetes-types@1.30.0: {}
 
-  kysely@0.29.2: {}
+  kysely@0.29.4: {}
 
   lan-network@0.2.1: {}
 
@@ -20019,7 +19976,7 @@ snapshots:
 
   nanoid@5.1.16: {}
 
-  nanostores@1.4.0: {}
+  nanostores@1.4.2: {}
 
   napi-build-utils@2.0.0: {}
 
