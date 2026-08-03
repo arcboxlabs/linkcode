@@ -30,7 +30,7 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
-    "@better-auth/electron": "1.7.0-rc.1",
+    "@better-auth/electron": "1.7.0-rc.2",
     "@linkcode/common": "workspace:*",
     "@linkcode/daemon": "workspace:*",
     "@linkcode/ipc": "workspace:*",
