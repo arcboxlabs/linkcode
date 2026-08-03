@@ -188,10 +188,12 @@ export const en = {
         think: 'Thinking',
         fetch: 'Fetching',
         other: 'Using an integration',
+        integrationBrand: 'Using {brand}',
       },
       settled: {
         files: 'Made {count, plural, one {a file change} other {# file changes}}',
         integration: 'Used an integration {count, plural, one {once} other {# times}}',
+        integrationBrand: 'Used {brand} {count, plural, one {once} other {# times}}',
         command: 'Ran {count, plural, one {a command} other {# commands}}',
         explore: 'Explored {count, plural, one {once} other {# times}}',
         thinking: 'Thought',
@@ -199,6 +201,7 @@ export const en = {
       settledMany: {
         files: 'Changed files',
         integration: 'Used integrations',
+        integrationBrand: 'Used {brand} repeatedly',
         command: 'Ran commands',
         explore: 'Explored repeatedly',
       },

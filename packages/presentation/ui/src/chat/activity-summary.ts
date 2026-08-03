@@ -100,7 +100,8 @@ function activityCategory(item: ActivityRunItem): ActivityCategory {
   return item.kind === 'reasoning' ? 'thinking' : toolDescriptor(item.toolCall.kind).category;
 }
 
-function itemBrand(item: ActivityRunItem): IntegrationBrand | undefined {
+/** The known integration a run item belongs to, resolved from its MCP server name. */
+export function activityItemBrand(item: ActivityRunItem): IntegrationBrand | undefined {
   if (item.kind !== 'tool') return undefined;
   const mcp = mcpToolName(item.toolCall.title);
   return mcp ? integrationBrand(mcp.server) : undefined;
@@ -113,13 +114,13 @@ export function activityRunBrand(items: readonly ActivityRunItem[]): Integration
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
     if (item.kind !== 'tool' || !isActiveTool(item)) continue;
-    const brand = itemBrand(item);
+    const brand = activityItemBrand(item);
     if (brand) return brand;
   }
 
   let single: IntegrationBrand | undefined;
   for (const item of items) {
-    const brand = itemBrand(item);
+    const brand = activityItemBrand(item);
     if (!brand) continue;
     if (single !== undefined && single !== brand) return undefined;
     single = brand;
