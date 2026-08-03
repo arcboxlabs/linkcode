@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./config": "./src/config/index.ts",
     "./config-signing-poc": "./src/config-signing-poc/index.ts",
     "./node": "./src/node/index.ts",
     "./sentry": "./src/sentry/index.ts",
@@ -18,6 +19,7 @@
     "@noble/ed25519": "3.0.0",
     "@noble/hashes": "2.2.0",
     "canonicalize": "3.0.0",
+    "foxts": "^5.8.1",
     "zod": "catalog:",
     "zustand": "catalog:"
   },

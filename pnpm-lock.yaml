@@ -883,6 +883,9 @@ importers:
       canonicalize:
         specifier: 3.0.0
         version: 3.0.0
+      foxts:
+        specifier: ^5.8.1
+        version: 5.8.1
       zod:
         specifier: 'catalog:'
         version: 4.4.3
