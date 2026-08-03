@@ -1,5 +1,7 @@
 import {
+  CloudBillingProvider,
   CloudImProvider,
+  createBrowserCloudBillingSource,
   createBrowserCloudImSource,
   SessionNotifier,
   syncProductAnalyticsIdentity,
@@ -10,9 +12,11 @@ import { authClient, CLOUD_API_URL } from '@webview/cloud/auth';
 import { webviewDaemonConnectionSource } from '@webview/daemon-connection-source';
 import { presentWebNotification } from '@webview/notifications';
 import { useSettingsStore } from '@webview/settings/store';
+import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { Outlet } from 'react-router';
 
 /** Browser shell: the credential is the shared session cookie, so the source is plain fetch. */
+const cloudBillingSource = createBrowserCloudBillingSource(CLOUD_API_URL);
 const cloudImSource = createBrowserCloudImSource(CLOUD_API_URL);
 interface AnalyticsSessionState {
   data: { user: { id: string } } | null;
@@ -39,14 +43,19 @@ export function RootLayout(): React.ReactNode {
 
   return (
     <WorkbenchAppProviders locale={locale}>
-      <CloudImProvider source={cloudImSource}>
+      <ComposeContextProvider
+        contexts={[
+          <CloudBillingProvider key="cloud-billing" source={cloudBillingSource} />,
+          <CloudImProvider key="cloud-im" source={cloudImSource} />,
+        ]}
+      >
         <WorkbenchProviders connectionSource={webviewDaemonConnectionSource}>
           {/* Persistent across route changes, so background notifications keep arriving while the
               user is on a non-workbench route such as Settings. */}
           <SessionNotifier present={presentWebNotification} />
           <Outlet />
         </WorkbenchProviders>
-      </CloudImProvider>
+      </ComposeContextProvider>
     </WorkbenchAppProviders>
   );
 }

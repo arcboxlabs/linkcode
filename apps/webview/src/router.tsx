@@ -2,6 +2,7 @@ import { AutomationsRoute } from '@webview/routes/automations';
 import { RootLayout } from '@webview/routes/root-layout';
 import { AgentsSettings } from '@webview/routes/settings/agents';
 import { AppearanceSettings } from '@webview/routes/settings/appearance';
+import { BillingSettings } from '@webview/routes/settings/billing';
 import { DeveloperSettings } from '@webview/routes/settings/developer';
 import { GeneralSettings } from '@webview/routes/settings/general';
 import { MessagingSettings } from '@webview/routes/settings/messaging';
@@ -33,6 +34,7 @@ export function createWebviewRouter(
             { path: 'developer', element: <DeveloperSettings /> },
             { path: 'notifications', element: <NotificationsSettings /> },
             { path: 'providers', element: <ProvidersSettings /> },
+            { path: 'billing', element: <BillingSettings /> },
             { path: 'plugins', element: <PluginsSettings /> },
             { path: 'agents', element: <AgentsSettings /> },
             { path: 'messaging', element: <MessagingSettings /> },
