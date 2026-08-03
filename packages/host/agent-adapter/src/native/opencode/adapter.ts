@@ -3,6 +3,7 @@ import { parse, sep } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -27,7 +28,7 @@ import type {
 } from '@opencode-ai/sdk/v2';
 import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { invariant } from 'foxts/guard';
+import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
@@ -35,6 +36,7 @@ import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
 import {
   contentToText,
@@ -151,7 +153,12 @@ type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 type OpencodeProviderList = NonNullable<
   Awaited<ReturnType<OpencodeClient['provider']['list']>>['data']
 >;
-type OpencodeAgentSummary = { name: string; mode: string; hidden?: boolean; description?: string };
+interface OpencodeAgentSummary {
+  name: string;
+  mode: string;
+  hidden?: boolean;
+  description?: string;
+}
 
 /** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to the
  * credential-injected provider when one is in play. Pre-session reads pass null — the injection is
@@ -184,7 +191,7 @@ function opencodeModelOptions(
  * the first primary, else the first selectable. Null when nothing is selectable, so the axis stays
  * hidden rather than advertising an empty list. */
 function opencodeAgentPolicies(
-  agents: ReadonlyArray<OpencodeAgentSummary>,
+  agents: readonly OpencodeAgentSummary[],
 ): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
   const selectable = agents.filter(
     (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
@@ -212,6 +219,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private client: OpencodeClient | null = null;
@@ -621,6 +629,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const messageID = nullthrow(
+      decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId),
+      'opencode: history branch cursor has no target prompt',
+    );
+    const childId = await this.withHistoryClient(async (client) => {
+      const source = okOrThrow(
+        await client.session.get({ sessionID: opts.historyId }),
+        'opencode: session.get',
+      );
+      invariant(source.data, 'opencode: session.get returned no session');
+      const forked = okOrThrow(
+        await client.session.fork({
+          sessionID: opts.historyId,
+          messageID,
+          directory: source.data.directory,
+        }),
+        'opencode: session.fork',
+      );
+      invariant(forked.data, 'opencode: session.fork returned no session');
+      return forked.data.id;
+    });
+    this.resumeFrom = childId;
+    await this.start(startOpts);
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
@@ -767,7 +804,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
   private adoptAgentCatalog(
-    agents: ReadonlyArray<OpencodeAgentSummary>,
+    agents: readonly OpencodeAgentSummary[],
     preferredAgent: string | null,
   ): void {
     const catalog = opencodeAgentPolicies(agents);

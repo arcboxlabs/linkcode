@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -65,6 +66,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     list: false,
     read: false,
     resume: false,
+    branch: false,
   };
 
   protected readonly events = new Listeners<AgentEvent>();
@@ -114,6 +116,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 
   resumeHistory(_opts: AgentHistoryResumeOptions, _startOpts: StartOptions): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: history resume is not supported`));
+  }
+
+  branchHistory(_opts: AgentHistoryBranchOptions, _startOpts: StartOptions): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: history branch is not supported`));
   }
 
   async send(input: AgentInput): Promise<void> {

@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -30,6 +31,7 @@ import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -302,6 +304,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private server: CodexServerHandle | null = null;
@@ -433,6 +436,47 @@ export class CodexAdapter extends BaseAgentAdapter {
     startOpts: StartOptions,
   ): Promise<void> {
     this.resumeFrom = opts.historyId;
+    try {
+      await this.start(startOpts);
+    } finally {
+      this.resumeFrom = undefined;
+    }
+  }
+
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const branchPoint = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
+    if (branchPoint === null) {
+      await this.start(startOpts);
+      return;
+    }
+
+    const processEnvironment = await resolveCodexEnvironment(startOpts.cwd);
+    const credentialEnv = codexEnv(readAgentCredential(startOpts.config));
+    const serverEnvironment = credentialEnv
+      ? { ...processEnvironment, ...credentialEnv }
+      : processEnvironment;
+    const server = await this.startAppServer({
+      env: serverEnvironment,
+      onNotification: noop,
+      onExit: noop,
+    });
+    let childThreadId: string;
+    try {
+      const response = await server.request('thread/fork', {
+        threadId: opts.historyId,
+        lastTurnId: branchPoint,
+      });
+      const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
+      childThreadId = thread ? (stringField(thread, 'id') ?? '') : '';
+      if (!childThreadId) throw new Error('codex: thread/fork returned no thread id');
+    } finally {
+      server.close();
+    }
+
+    this.resumeFrom = childThreadId;
     try {
       await this.start(startOpts);
     } finally {

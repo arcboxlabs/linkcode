@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AgentHistoryCapabilitiesSchema } from '../history';
 import { ImPlatformSchema } from '../im';
 import {
   AgentHistoryIdSchema,
@@ -75,5 +76,7 @@ export const SessionInfoSchema = z.object({
   automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
+  /** Provider-history operations supported by this session's adapter/runtime. */
+  historyCapabilities: AgentHistoryCapabilitiesSchema.optional(),
 });
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;

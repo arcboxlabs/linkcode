@@ -137,6 +137,13 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
+  beginRun(sessionId: SessionId): void {
+    const record = this.records.get(sessionId);
+    if (!record) return;
+    record.runs.push({ startedAt: Date.now() });
+    this.persist(record);
+  }
+
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {
     const record = this.records.get(sessionId);
     if (!record || record.title !== undefined) return;
