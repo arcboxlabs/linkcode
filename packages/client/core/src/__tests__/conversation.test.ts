@@ -297,6 +297,33 @@ describe('buildConversation', () => {
     });
   });
 
+  it('rewinds the selected prompt and every later conversation event before replacement', () => {
+    const c = buildConversation([
+      { type: 'status', status: 'idle' },
+      userText('keep'),
+      text('kept reply', 'kept-reply'),
+      userText('replace'),
+      text('discarded reply', 'discarded-reply'),
+      {
+        type: 'permission-request',
+        requestId: 'discarded-request',
+        toolCall: { toolCallId: 'discarded-tool', title: 'Discarded tool' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      },
+      { type: 'conversation-rewind', messageId: 'user:replace' as MessageId },
+      userText('replacement'),
+      text('new reply', 'new-reply'),
+    ]);
+
+    expect(
+      c.items.flatMap((item) =>
+        item.kind === 'message' && item.blocks[0]?.type === 'text' ? [item.blocks[0].text] : [],
+      ),
+    ).toEqual(['keep', 'kept reply', 'replacement', 'new reply']);
+    expect(c.pendingPermissionIds).toEqual([]);
+    expect(c.status).toBe('idle');
+  });
+
   it('replaces plans by stable identity and keeps distinct plans separate', () => {
     const c = buildConversation([
       userText('first'),

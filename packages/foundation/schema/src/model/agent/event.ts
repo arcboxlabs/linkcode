@@ -42,6 +42,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     /** Present only on provider-history replay when this prompt can seed a child session. */
     branchCursor: z.string().min(1).optional(),
   }),
+  /** Drops the selected user prompt and every later event before a replacement prompt is sent. */
+  z.object({
+    type: z.literal('conversation-rewind'),
+    messageId: MessageIdSchema,
+  }),
 
   // Agent output: whole snapshots replace by messageId; chunks append to the same identity.
   // Omitting whole-event content confirms/backfills identity without changing the current body.
