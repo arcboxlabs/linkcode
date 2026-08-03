@@ -334,10 +334,7 @@ function WorkbenchSessionSurface({
     branchCursor: string,
     content: ContentBlock[],
   ): Promise<void> {
-    if (
-      (active?.status !== 'idle' && active?.status !== 'stopped') ||
-      active.historyCapabilities?.branch !== true
-    ) {
+    if (active?.historyCapabilities?.branch !== true) {
       throw new Error('Prompt editing is unavailable for this session');
     }
     await rewriteMutation.trigger({

@@ -253,11 +253,7 @@ export function ShellFrame({
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}
             promptEditState={
-              active?.historyCapabilities?.branch !== true
-                ? 'unsupported'
-                : active.status === 'idle'
-                  ? 'enabled'
-                  : 'busy'
+              active?.historyCapabilities?.branch === true ? 'enabled' : 'unsupported'
             }
             onEditPrompt={onEditPrompt}
             mentionItems={mentionItems}

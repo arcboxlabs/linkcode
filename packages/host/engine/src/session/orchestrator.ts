@@ -95,11 +95,6 @@ export class SessionOrchestrator {
     return Effect.suspend<void, EngineFailure, never>(() => {
       const session = this.sessions.get(sessionId);
       if (!session) return Effect.void;
-      if (session.turnInputActive || (session.status !== 'idle' && session.status !== 'stopped')) {
-        return Effect.fail(
-          new RequestError({ code: 'conflict', message: `Session is busy: ${sessionId}` }),
-        );
-      }
       return this.teardown(sessionId, session, 'history.rewrite', false);
     });
   }
