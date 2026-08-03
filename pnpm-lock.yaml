@@ -1292,8 +1292,8 @@ importers:
         specifier: workspace:*
         version: link:../../foundation/schema
       '@moeru/eventa':
-        specifier: 1.0.0-beta.11
-        version: 1.0.0-beta.11(electron@43.2.0)(hono@4.12.32)
+        specifier: 1.0.0-beta.12
+        version: 1.0.0-beta.12(electron@43.2.0)(hono@4.12.32)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -3450,8 +3450,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@moeru/eventa@1.0.0-beta.11':
-    resolution: {integrity: sha512-g0zQ76hVmmF/7RrlLR2r7mhw2n70Iwdyg49VwtjpKtLRhbLUxAwAypJxQ8I7m2S9TyZLT+DJcL4SATn+fazIzQ==}
+  '@moeru/eventa@1.0.0-beta.12':
+    resolution: {integrity: sha512-o82wVXLM2dHavNdXjOeHCN2bVTjDHDFYd6Kt2WwYmIeGqu/ri5YZfeg8smXUxcYbHV4G982/ZJmQ+kE0gtRuUg==}
     peerDependencies:
       electron: '>=39'
       h3: '>=2.0.1-rc.22'
@@ -9116,9 +9116,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.16:
-    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
-    engines: {node: ^18 || >=20}
+  nanoid@6.0.0:
+    resolution: {integrity: sha512-mkUH+rPkwU2qPadJ0oJZOjeZ5Mxn8Q1UhevwkTRWNuUZzyia3h4rhzK39hxaHTk0o2OxB8W2SQ6A8k23ZDi1pQ==}
+    engines: {node: ^22 || ^24 || >=26}
     hasBin: true
 
   nanostores@1.4.2:
@@ -13836,9 +13836,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@moeru/eventa@1.0.0-beta.11(electron@43.2.0)(hono@4.12.32)':
+  '@moeru/eventa@1.0.0-beta.12(electron@43.2.0)(hono@4.12.32)':
     dependencies:
-      nanoid: 5.1.16
+      nanoid: 6.0.0
       picomatch: 4.0.5
     optionalDependencies:
       electron: 43.2.0
@@ -19974,7 +19974,7 @@ snapshots:
 
   nanoid@3.3.16: {}
 
-  nanoid@5.1.16: {}
+  nanoid@6.0.0: {}
 
   nanostores@1.4.2: {}
 
