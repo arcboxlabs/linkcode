@@ -144,19 +144,20 @@ function setEffort(adapter: ClaudeCodeAdapter, effort: 'low' | 'high' | 'max' | 
 }
 
 describe('ClaudeCodeAdapter session titles', () => {
-  it('polls after the first turn until the generated title replaces the first prompt', async () => {
+  it('polls until a generated title exists without treating a prompt fallback as the title', async () => {
     vi.useFakeTimers();
     const getSessionInfo = vi
       .fn<(sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>>()
       .mockResolvedValueOnce({
         sessionId: 'sess-title',
-        summary: 'hi',
+        summary: 'A later raw prompt',
         firstPrompt: 'hi',
         lastModified: 1,
       })
       .mockResolvedValue({
         sessionId: 'sess-title',
         summary: 'Fix OAuth callback handling',
+        customTitle: 'Fix OAuth callback handling',
         firstPrompt: 'hi',
         lastModified: 2,
       });
@@ -201,6 +202,7 @@ describe('ClaudeCodeAdapter session titles', () => {
       .mockResolvedValueOnce({
         sessionId: 'sess-rename',
         summary: 'Generated title',
+        customTitle: 'Generated title',
         firstPrompt: 'hi',
         lastModified: 1,
       })

@@ -518,7 +518,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (this.resumeFrom && this.getSessionInfo) {
       try {
         const info = await this.getSessionInfo(this.resumeFrom, { dir: opts.cwd });
-        const title = info && firstText(info.customTitle, info.summary, info.firstPrompt);
+        const title = generatedClaudeTitle(info);
         if (title) this.emitTitle(title);
       } catch {
         // Metadata is best-effort; a title read must not prevent the conversation from resuming.
@@ -1512,12 +1512,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 }
 
 function generatedClaudeTitle(info: SDKSessionInfo | undefined): string | undefined {
-  if (!info) return undefined;
-  const customTitle = firstText(info.customTitle);
-  if (customTitle) return customTitle;
-  const summary = firstText(info.summary);
-  const firstPrompt = firstText(info.firstPrompt);
-  return summary && summary.trim() !== firstPrompt?.trim() ? summary : undefined;
+  // The SDK folds explicit and AI titles into customTitle; summary can fall back to the last prompt.
+  return info ? firstText(info.customTitle) : undefined;
 }
 
 /** `locationsFromToolInput` with the CLI's MSYS drive-form spellings (`/c/…`, reported when it
