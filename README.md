@@ -1,4 +1,3 @@
-<h4 align="right"><strong>English</strong> | <a href="docs/README.zh-CN.md">简体中文</a></h4>
 
 <p align="center">
     <picture>
@@ -8,8 +7,11 @@
 </p>
 
 <h1 align="center">LinkCode</h1>
+
+<h4 align="center"><strong>English</strong> | <a href="docs/README.zh-CN.md">简体中文</a></h4>
+
 <p align="center"><strong>
-Open-source alternative to Codex App / Workbuddy, supporting Codex, Claude Code, OpenCode, Pi, and Grok Build.
+Open-source alternative to Codex App, supporting Codex, Claude Code, OpenCode, Pi, and Grok Build.
 </strong></p>
 <p align="center">
 可能是最好用的 Codex App / WorkBuddy 开源平替，支持 Codex、Claude Code、OpenCode、Pi 和 Grok Build。
