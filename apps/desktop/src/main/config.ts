@@ -8,7 +8,6 @@ import type {
   ConfigRefreshResult,
   ConfigStorage,
   ConfigValue,
-  ConfigValueDefinition,
   JsonValue,
   OperatingSystem,
 } from '@linkcode/common/config';
@@ -17,6 +16,7 @@ import {
   ConfigCore,
   ConfigCoreError,
   canonicalizeJson,
+  definitionsFromDefaults,
 } from '@linkcode/common/config';
 import { app } from 'electron';
 import log from 'electron-log';
@@ -50,6 +50,9 @@ export interface DesktopConfigBootstrap {
   readonly endpoint: string | null;
   readonly maximumSchemaVersion: number;
   readonly publicKeys: Readonly<Record<string, string>>;
+  /** Authenticated telemetry endpoint for this target; carried by every generated build bundle.
+   * Bootstrap data only — telemetry behavior is out of scope here (CODE-555). */
+  readonly telemetryEndpoint: string | null;
 }
 
 export interface DesktopConfigServiceOptions {
@@ -236,7 +239,7 @@ export async function loadEffectiveDefaults(
   }
 }
 
-function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
+export function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
   if (!raw) {
     return {
       brandId: 'linkcode',
@@ -247,6 +250,7 @@ function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
       endpoint: null,
       maximumSchemaVersion: 1,
       publicKeys: {},
+      telemetryEndpoint: null,
     };
   }
   const value = JSON.parse(raw) as unknown;
@@ -273,28 +277,8 @@ function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
     endpoint,
     maximumSchemaVersion: value.maximumSchemaVersion,
     publicKeys: parseKeyring(value.publicKeys),
+    telemetryEndpoint: parseEndpoint(value.telemetryEndpoint ?? null),
   };
-}
-
-function definitionsFromDefaults(
-  defaults: Readonly<Record<string, ConfigValue>>,
-): ConfigDefinitions {
-  return Object.fromEntries(
-    Object.entries(defaults).map(([key, defaultValue]) => [
-      key,
-      {
-        defaultValue,
-        parse: (value: ConfigValue) => parseLikeDefault(value, defaultValue),
-      } satisfies ConfigValueDefinition,
-    ]),
-  );
-}
-
-function parseLikeDefault(value: ConfigValue, defaultValue: ConfigValue): ConfigValue {
-  const expected = Array.isArray(defaultValue) ? 'array' : typeof defaultValue;
-  const actual = Array.isArray(value) ? 'array' : typeof value;
-  if (actual !== expected) throw new TypeError(`Expected ${expected}, received ${actual}`);
-  return structuredClone(value);
 }
 
 function refreshStatus(result: ConfigRefreshResult | undefined): ConfigRefreshStatus {

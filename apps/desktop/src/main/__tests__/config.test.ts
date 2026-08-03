@@ -2,10 +2,15 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConfigNetwork, ConfigNetworkResponse, ConfigValue } from '@linkcode/common/config';
-import { decodeBase64Url, MAX_SNAPSHOT_SIZE_BYTES } from '@linkcode/common/config';
+import {
+  configBuildBundleDefaults,
+  decodeBase64Url,
+  MAX_SNAPSHOT_SIZE_BYTES,
+  parseConfigBuildBundle,
+} from '@linkcode/common/config';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopConfigBootstrap } from '../config';
-import { DesktopConfigService, loadEffectiveDefaults } from '../config';
+import { DesktopConfigService, loadEffectiveDefaults, parseBootstrap } from '../config';
 import { AtomicConfigStorage, FetchConfigNetwork, nodeConfigCrypto } from '../config-adapters';
 
 vi.mock('electron', () => ({
@@ -170,6 +175,62 @@ describe('desktop config runtime', () => {
   });
 });
 
+describe('build-bundle derived bootstrap', () => {
+  it('parses the generated bootstrap shape and preserves the telemetry endpoint', async () => {
+    const bootstrap = parseBootstrap(JSON.stringify(await bundleBootstrap()));
+    const bundle = parseConfigBuildBundle(await loadBuildBundleFixture());
+    expect(bootstrap.brandId).toBe(bundle.brandId);
+    expect(bootstrap.channel).toBe(bundle.channel);
+    expect(bootstrap.defaults).toEqual(configBuildBundleDefaults(bundle));
+    expect(bootstrap.telemetryEndpoint).toBe(bundle.endpoints.telemetry);
+  });
+
+  it('defaults the telemetry endpoint to null and rejects non-HTTPS values', async () => {
+    expect(parseBootstrap(undefined).telemetryEndpoint).toBeNull();
+    const bootstrap = await bundleBootstrap();
+    expect(() =>
+      parseBootstrap(JSON.stringify({ ...bootstrap, telemetryEndpoint: 'http://x.example' })),
+    ).toThrow('Config endpoints must use HTTPS');
+  });
+
+  it('starts offline from bundled defaults without any network wait', async () => {
+    const bootstrap = parseBootstrap(JSON.stringify(await bundleBootstrap()));
+    // No network adapters at all — a new install must serve rendered defaults immediately.
+    const service = makeService(bootstrap, new AtomicConfigStorage(await temporaryDirectory()));
+    await service.initialize();
+    expect(service.effectiveSnapshot()).toEqual(bootstrap.defaults);
+    expect(service.snapshotInfo()).toMatchObject({ source: 'bundled', status: 'READY' });
+    await expect(service.refresh()).resolves.toMatchObject({
+      emergency: 'disabled',
+      normal: 'disabled',
+    });
+  });
+});
+
+// Mirrors the derivation in scripts/render-config-bundle.mts.
+async function bundleBootstrap(): Promise<Record<string, unknown>> {
+  const bundle = parseConfigBuildBundle(await loadBuildBundleFixture());
+  return {
+    brandId: bundle.brandId,
+    channel: bundle.channel,
+    defaults: configBuildBundleDefaults(bundle),
+    emergencyEndpoint: bundle.endpoints.emergency,
+    emergencyPublicKeys: bundle.keyrings.emergency,
+    endpoint: bundle.endpoints.normal,
+    maximumSchemaVersion: bundle.maximumSchemaVersion,
+    publicKeys: bundle.keyrings.normal,
+    telemetryEndpoint: bundle.endpoints.telemetry,
+  };
+}
+
+async function loadBuildBundleFixture(): Promise<unknown> {
+  const url = new URL(
+    '../../../../../packages/foundation/common/src/config/__fixtures__/build-bundle-v1.json',
+    import.meta.url,
+  );
+  return JSON.parse(await readFile(url, 'utf8'));
+}
+
 function makeService(
   bootstrap: DesktopConfigBootstrap,
   storage: AtomicConfigStorage,
@@ -197,6 +258,7 @@ function makeBootstrap(
     endpoint: null,
     maximumSchemaVersion: 1,
     publicKeys,
+    telemetryEndpoint: null,
   };
 }
 
