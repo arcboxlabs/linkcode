@@ -3,7 +3,7 @@ import { electronClient } from '@better-auth/electron/client';
 import { createAuthClient } from 'better-auth/client';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { CLOUD_CLAIM_DEEP_LINK_CHANNEL } from '../../shared/cloud';
-import { CHANNEL } from '../constants';
+import { CLOUD_AUTH_SCHEME } from '../constants';
 import { createSafeStorage } from './storage';
 
 /**
@@ -13,12 +13,10 @@ import { createSafeStorage } from './storage';
  */
 export const CLOUD_API_URL = process.env.LINKCODE_CLOUD_API_URL ?? 'https://api.linkcode.ai';
 
-/**
- * OAuth deep-link protocol, trusted by linkcodehq; split per channel (see constants.ts) so a
- * `development` build never fights the installed `release` app over the OS-global scheme — the
- * last registrant would win and silently route the callback to the wrong app.
- */
-export const CLOUD_AUTH_SCHEME = CHANNEL === 'development' ? 'linkcode-dev' : 'linkcode';
+// The OAuth deep-link scheme is brand identity (CLOUD_AUTH_SCHEME in constants.ts): brand-owned
+// on branded builds, channel-split so a development build never fights the release app over the
+// OS-global scheme — the last registrant would win and silently route the callback wrong.
+export { CLOUD_AUTH_SCHEME } from '../constants';
 
 // Tell the HQ sign-in page which scheme to deep-link back on; the better-auth client appends its
 // own params with `URL.searchParams.set`, preserving this one.
