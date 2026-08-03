@@ -288,6 +288,82 @@ describe('ConfigCore normal state machine', () => {
   });
 });
 
+describe('ConfigCore telemetry events', () => {
+  const NORMAL_PUBLICATION = {
+    activationVersion: fixture.pointers.normal.document.activationVersion,
+    configVersion: fixture.pointers.normal.document.configVersion,
+    sha256: fixture.pointers.normal.document.sha256,
+  };
+
+  it('emits one activation with the verified identity per accepted publication', async () => {
+    const storage = new MemoryStorage();
+    const setup = makeSetup({
+      storage,
+      normalResponses: [...normalPublication(), { status: 304 }],
+    });
+    await setup.core.initialize();
+    await expect(setup.core.refresh()).resolves.toEqual({ status: 'updated' });
+    expect(setup.events).toEqual([{ type: 'activation', publication: NORMAL_PUBLICATION }]);
+
+    await expect(setup.core.refresh()).resolves.toEqual({ status: 'not-modified' });
+    expect(setup.events).toHaveLength(1);
+
+    const restarted = makeSetup({ storage, normalResponses: [{ status: 304 }] });
+    expect((await restarted.core.initialize()).source).toBe('lkg');
+    await expect(restarted.core.refresh()).resolves.toEqual({ status: 'not-modified' });
+    expect(restarted.events).toEqual([]);
+  });
+
+  it('attaches the verified pointer identity to failures after pointer verification', async () => {
+    const fetchSetup = makeSetup({
+      normalResponses: [ok(pointerBytes('normal')), { status: 503 }],
+    });
+    await fetchSetup.core.initialize();
+    await expectError(fetchSetup.core.refresh(), 'fetch');
+    expect(fetchSetup.events).toMatchObject([
+      { type: 'error', operation: 'normal-refresh', publication: NORMAL_PUBLICATION },
+    ]);
+
+    const changed = snapshotBytes('current');
+    changed[changed.length - 2] ^= 1;
+    const hashSetup = makeSetup({
+      normalResponses: [ok(pointerBytes('normal')), ok(changed)],
+    });
+    await hashSetup.core.initialize();
+    await expectError(hashSetup.core.refresh(), 'hash-mismatch');
+    expect(hashSetup.events).toMatchObject([{ publication: NORMAL_PUBLICATION }]);
+  });
+
+  it('omits publication identity when no pointer was verified for the attempt', async () => {
+    const setup = makeSetup({ normalResponses: [{ status: 503 }] });
+    await setup.core.initialize();
+    await expectError(setup.core.refresh(), 'fetch');
+    expect(setup.events).toHaveLength(1);
+    expect(setup.events[0]).not.toHaveProperty('publication');
+  });
+
+  it('keeps activation unaffected by a throwing report sink', async () => {
+    const core = new ConfigCore({
+      context: { appVersion: '2.5.0', locale: 'ZH_cn', os: 'windows' },
+      crypto: TEST_CRYPTO,
+      definitions: DEFINITIONS,
+      emergencyKeyring: fixture.keys.emergency,
+      emergencyNetwork: new QueueNetwork(),
+      maximumSchemaVersion: 1,
+      network: new QueueNetwork(normalPublication()),
+      normalKeyring: fixture.keys.normal,
+      report() {
+        throw new Error('sink failed');
+      },
+      storage: new MemoryStorage(),
+      target: TARGET,
+    });
+    await core.initialize();
+    await expect(core.refresh()).resolves.toEqual({ status: 'updated' });
+    expect(core.getState().source).toBe('remote');
+  });
+});
+
 describe('ConfigCore emergency state', () => {
   it('rejects a 304 when no accepted emergency state exists', async () => {
     const setup = makeSetup({ emergencyResponses: [{ status: 304 }] });

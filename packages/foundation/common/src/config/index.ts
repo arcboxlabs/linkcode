@@ -46,9 +46,26 @@ export { ConfigCore } from './core';
 export { createNobleConfigCrypto } from './crypto';
 export { decodeBase64Url, encodeBase64Url, parseIJson } from './i-json';
 export type {
+  ConfigTelemetryEventType,
+  ConfigTelemetryFailureType,
+  ConfigTelemetryReporterOptions,
+  ConfigTelemetryRequest,
+  ConfigTelemetrySendOutcome,
+} from './telemetry';
+export {
+  CONFIG_TELEMETRY_EVENT_TYPES,
+  CONFIG_TELEMETRY_SCHEMA_VERSION,
+  ConfigTelemetryReporter,
+  configTelemetryEventsUrl,
+  configTelemetryFailureType,
+  configTelemetryOutcomeForStatus,
+  telemetryStorageKey,
+} from './telemetry';
+export type {
   AntiReplayDecision,
   AntiReplayState,
   ApplyMode,
+  ConfigActivationEvent,
   ConfigChannel,
   ConfigCrypto,
   ConfigDefinitions,
@@ -61,6 +78,7 @@ export type {
   ConfigOverride,
   ConfigPlatform,
   ConfigPointer,
+  ConfigPublicationIdentity,
   ConfigRefreshResult,
   ConfigRollout,
   ConfigRuntimeState,

@@ -16,6 +16,7 @@ import type {
   ConfigEmergencyState,
   ConfigEvent,
   ConfigNetwork,
+  ConfigPublicationIdentity,
   ConfigRefreshResult,
   ConfigRuntimeState,
   ConfigStorage,
@@ -181,6 +182,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
   }
 
   async #refreshNormal(): Promise<ConfigRefreshResult> {
+    let publication: ConfigPublicationIdentity | undefined;
     try {
       const response = await getResponse(
         this.#options.network,
@@ -217,6 +219,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
         this.#normal = nextState;
         trusted = candidate;
       }
+      publication = publicationIdentity(trusted);
 
       const lkgRepresentsTrusted =
         this.#normal.lkg?.pointer.payloadSha256 === trusted.payloadSha256;
@@ -260,9 +263,10 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
       await saveNormalState(this.#options.storage, this.#options.target, nextState);
       this.#normal = nextState;
       this.#projectRemote(lkg);
+      this.#report({ type: 'activation', publication });
       return { status: 'updated' };
     } catch (error) {
-      return this.#failure('normal-refresh', error);
+      return this.#failure('normal-refresh', error, publication);
     }
   }
 
@@ -358,9 +362,10 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
   #failure(
     operation: 'emergency-refresh' | 'normal-refresh',
     cause: unknown,
+    publication?: ConfigPublicationIdentity,
   ): { readonly status: 'error'; readonly error: ConfigCoreError } {
     const error = asConfigError(cause, 'malformed', 'Configuration operation failed');
-    this.#report({ type: 'error', operation, error });
+    this.#report({ type: 'error', operation, error, ...(publication && { publication }) });
     return { status: 'error', error };
   }
 
@@ -392,6 +397,14 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     this.#operationQueue = result.then(noop).catch(noop);
     return result;
   }
+}
+
+function publicationIdentity(pointer: VerifiedPointer): ConfigPublicationIdentity {
+  return {
+    activationVersion: pointer.document.activationVersion,
+    configVersion: pointer.document.configVersion,
+    sha256: pointer.document.sha256,
+  };
 }
 
 function pointerReplay(pointer: VerifiedPointer) {
