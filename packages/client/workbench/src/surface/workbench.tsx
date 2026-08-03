@@ -9,9 +9,10 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import { workspaceKind } from '@linkcode/schema';
+import { MessageIdSchema, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
+  branchHistory,
   cancelTurn,
   hostArtifact,
   hostWorkspaceFile,
@@ -214,6 +215,7 @@ function WorkbenchSessionSurface({
   const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
+  const branchMutation = useMutation(branchHistory);
   // The host mirrors recoverable turn-input failures into the conversation as `input_rejected`.
   // Keep transport/validation failures global because they do not have a corresponding event.
   const turnInputMutation = useMutation(sendInput, {
@@ -325,6 +327,27 @@ function WorkbenchSessionSurface({
     return submitActiveInput({ type: 'prompt', content }).then(() => {
       captureProductEvent('turn submitted', { input_kind: 'prompt' });
     });
+  }
+
+  async function handleEditPrompt(
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ): Promise<void> {
+    if (
+      (active?.status !== 'idle' && active?.status !== 'stopped') ||
+      active.historyCapabilities?.branch !== true
+    ) {
+      throw new Error('Prompt editing is unavailable for this session');
+    }
+    const sessionId = await branchMutation.trigger({
+      sourceSessionId: active.sessionId,
+      sourceMessageId: MessageIdSchema.parse(messageId),
+      branchCursor,
+      content,
+    });
+    sessions.refresh();
+    sessions.select(sessionId);
   }
 
   function handleStopTurn(): void {
@@ -641,6 +664,7 @@ function WorkbenchSessionSurface({
       onDownloadAgent={onboarding.download}
       onContinueUnverified={onboarding.acknowledgeUnverified}
       conversation={conversation}
+      onEditPrompt={handleEditPrompt}
       respondingRequestIds={respondingRequestIds}
       responseErrors={visibleResponseErrors}
       header={{

@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, ContentBlock } from '@linkcode/schema';
 import { Spinner } from 'coss-ui/components/spinner';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -13,7 +13,7 @@ import { ConversationMinimap, useConversationMinimap } from './conversation-mini
 import { SubagentViewer } from './subagent-viewer';
 import { partitionSubagentItems } from './subagents';
 import { TurnSegmentView } from './turn-segment-view';
-import type { ConversationItem, ConversationViewModel } from './types';
+import type { ConversationItem, ConversationViewModel, PromptEditState } from './types';
 import { useTimelineModel } from './use-timeline-model';
 
 export interface ConversationViewProps {
@@ -23,6 +23,12 @@ export interface ConversationViewProps {
   /** Session-level fallback for the per-turn model meta (a turn's own message stamp wins). */
   modelName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  promptEditState: PromptEditState;
+  onEditPrompt?: (
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ) => Promise<void>;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
   /** Receives the conversation scroll controller for composer-driven positioning. */
@@ -36,6 +42,8 @@ export function ConversationView({
   cwd,
   modelName,
   TerminalBlockComponent,
+  promptEditState,
+  onEditPrompt,
   onReviewChanges,
   scrollContextRef,
 }: ConversationViewProps): React.ReactNode {
@@ -122,6 +130,8 @@ export function ConversationView({
             awaitingAnswer={awaitingAnswer}
             questionsByToolCall={questionsByToolCall}
             TerminalBlockComponent={TerminalBlockComponent}
+            promptEditState={promptEditState}
+            onEditPrompt={onEditPrompt}
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
           />
