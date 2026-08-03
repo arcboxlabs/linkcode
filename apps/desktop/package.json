@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@electron/asar": "^4.2.1",
-    "@hookform/resolvers": "^5.4.0",
+    "@hookform/resolvers": "^5.5.7",
     "@iconify-json/material-icon-theme": "catalog:",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
@@ -68,7 +68,7 @@
     "foxact": "^0.3.8",
     "lucide-react": "catalog:",
     "motion": "^12.42.2",
-    "playwright-core": "^1.61.1",
+    "playwright-core": "^1.62.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-hook-form": "^7.82.0",
