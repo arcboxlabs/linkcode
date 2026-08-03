@@ -56,6 +56,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
   #emergency: EmergencyPersistentState = {};
   #source: ConfigRuntimeState<ConfigValues<Definitions>>['source'] = 'defaults';
   #configVersion: string | null = null;
+  #sha256: string | null = null;
   #stagedColdKeys: Array<keyof ConfigValues<Definitions>> = [];
   #coldPinned: ConfigValues<Definitions>;
   #baseActive: ConfigValues<Definitions>;
@@ -128,6 +129,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     return {
       configVersion: this.#configVersion,
       emergency: this.#emergencyView(),
+      sha256: this.#sha256,
       source: this.#source,
       stagedColdKeys: [...this.#stagedColdKeys],
       values: this.getAll(),
@@ -163,6 +165,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
       const values = this.#normal.lkg?.values ?? defaultValues(this.#options.definitions);
       this.#source = this.#normal.lkg ? 'lkg' : 'defaults';
       this.#configVersion = this.#normal.lkg?.pointer.document.configVersion ?? null;
+      this.#sha256 = this.#normal.lkg?.pointer.document.sha256 ?? null;
       this.#coldPinned = cloneJson(values as ConfigValue) as ConfigValues<Definitions>;
       this.#baseActive = cloneJson(values as ConfigValue) as ConfigValues<Definitions>;
       this.#active = applyEmergency(
@@ -330,6 +333,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     );
     this.#source = 'remote';
     this.#configVersion = lkg.pointer.document.configVersion;
+    this.#sha256 = lkg.pointer.document.sha256;
     this.#stagedColdKeys = staged;
     this.#emitIfChanged(before);
   }
