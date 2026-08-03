@@ -51,6 +51,9 @@ catalogs:
     lucide-react:
       specifier: ^1.25.0
       version: 1.27.0
+    p-retry:
+      specifier: ^8.0.0
+      version: 8.0.0
     react:
       specifier: 19.3.0-canary-96fcba90-20260728
       version: 19.3.0-canary-96fcba90-20260728
@@ -231,6 +234,9 @@ importers:
       foxts:
         specifier: ^5.8.0
         version: 5.8.1
+      p-retry:
+        specifier: 'catalog:'
+        version: 8.0.0
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -959,7 +965,7 @@ importers:
         specifier: ^5.8.0
         version: 5.8.1
       p-retry:
-        specifier: ^8.0.0
+        specifier: 'catalog:'
         version: 8.0.0
       smol-toml:
         specifier: ^1.7.1
