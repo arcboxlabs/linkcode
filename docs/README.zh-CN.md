@@ -8,7 +8,9 @@
 </p>
 
 <h1 align="center">LinkCode</h1>
-<p align="center"><strong>每一个 Code Agent，尽在掌心</strong></p>
+<p align="center">
+可能是最好用的 Codex App / WorkBuddy 开源平替，支持 Codex、Claude Code、OpenCode、Pi 和 Grok Build。
+</p>
 
 <div align="center">
     <a href="https://github.com/arcboxlabs/linkcode/releases/latest" target="_blank">
@@ -33,32 +35,34 @@
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-dark-rounded.webp?v=dee6283">
-  <img src="https://static.linkcode.ai/screenshot/2026-07-desktop-new-task/shots-light-rounded.webp?v=dee6283" alt="LinkCode">
+  <img src="./assets/readme-cover.png" alt="LinkCode">
 </picture>
 
 LinkCode 是所有 Coding Agent 的统一工作台。它在你的机器上运行一个本地宿主，接管 Claude Code、Codex、OpenCode、Pi 和 Grok Build，把它们各不相同的原生事件归一成同一份数据契约，再把同样的会话投送到每一个客户端 —— 在电脑前启动 Agent，走到哪里都能随时照看。
 
 ## 功能特性
 
-- **所有 Agent，一个收件箱** —— 五种 Agent 的会话并排运行，共用同一套界面和同一套操作。
-- **完整交互** —— 权限审批、计划评审、提问、图片、slash 命令：Agent 想要的一切都以原生控件呈现，而不是在终端里刷屏滚过。
-- **真正的终端** —— 由原生 Rust sidecar 驱动的 PTY 终端，支持多端接管，自带流控，洪流输出也不会卡死。
-- **工作区随手可及** —— 文件树、git 面板、项目脚本与 dev server 预览，就在会话旁边。
-- **自动化** —— 定时运行 Agent，或者循环执行一个提示词直到工作完成。
-- **历史留在原地** —— 会话始终存放在各 Agent 自己的本地历史里；LinkCode 直接列出、导入、恢复它们，不复制任何转录。
-- **本地优先** —— 宿主只绑定本机回环地址，代码不出机器。
-- **远程与手机控制**（未就绪） —— 通过 LinkCode Cloud 显式开启隧道，即可在任何地方连回你的宿主，并用配套移动端 App 随行控制；仍在开发中，尚未开放。
+- **为所有 Agent 而生的统一交互界面：** 无论你爱用 Codex 还是 Claude Code，它们都有了同一套好用的界面和交互。
+- **完整交互：** 权限审批、计划评审、提问、图片、slash 命令：Agent 想要的一切都以原生控件呈现，而无需使用终端交互。
+- **自动嗅探：** 自动嗅探已安装的 Codex/Claude Code/Open Code CLI，自动导入已有对话记录。
+- **真正的终端：** 由 Rust 驱动的高性能终端，支持多端接管，自带流控，为生产级环境准备。
+- **完整工作区：** 文件树、git 面板、项目脚本与 dev server 预览，使用面板灵活编排。
+- **自动化任务：** 定时运行 Agent，或者循环执行一个提示词直到工作完成。
+- **导入已有会话：** 会话始终存放在各 Agent 自己的本地历史里；LinkCode 直接列出、导入、恢复它们，不复制任何转录。
+- **管理订阅与 API Key：** 无需使用其他工具，直接为 Agent 配置已有订阅或者第三方 AI 服务商。
+- **本地优先：** 你的代码你做主，直接在你自己的电脑上与 AI 交互。
+- **远程与手机控制：** （即将发布）通过 LinkCode Cloud 显式开启隧道，即可在任何地方连回你的宿主，并用配套移动端 App 随行控制。
+- **针对中国大陆网络优化：** （与移动端一同发布）无论你使用何种网络，都可以在 50ms 内远程遥控你的 Agent。
 
 ## 支持的 Agent
 
-| Agent | 厂商 |
-| --- | --- |
-| [Claude Code](https://github.com/anthropics/claude-code) | Anthropic |
-| [Codex](https://github.com/openai/codex) | OpenAI |
-| [OpenCode](https://opencode.ai) | SST |
-| [Pi](https://github.com/earendil-works/pi) | Earendil Works |
-| [Grok Build](https://x.ai) | xAI |
+| Agent                                                    | 厂商           |
+| -------------------------------------------------------- | -------------- |
+| [Claude Code](https://github.com/anthropics/claude-code) | Anthropic      |
+| [Codex](https://github.com/openai/codex)                 | OpenAI         |
+| [OpenCode](https://opencode.ai)                          | SST            |
+| [Pi](https://github.com/earendil-works/pi)               | Earendil Works |
+| [Grok Build](https://x.ai)                               | xAI            |
 
 > [!NOTE]
 > 应用不内置 Agent CLI。daemon 会自动探测机器上已有的安装，或按需下载一份托管副本 —— 你用自己的 Agent 账号登录。
