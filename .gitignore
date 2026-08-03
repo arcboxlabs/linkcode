@@ -6,6 +6,9 @@ node_modules/
 dist/
 out/
 build/
+# build-time source modules, not build output (the bare build/ pattern above would eat them)
+!apps/desktop/src/build/
+!apps/mobile/src/build/
 .vite/
 expo-export/
 *.tsbuildinfo
@@ -32,6 +35,7 @@ apps/desktop/sidecar/
 
 # generated immutable config bootstrap (CODE-552; rendered by the pinned config publisher)
 apps/desktop/generated/
+apps/mobile/generated/
 apps/mobile/src/runtime/config/bundled.generated.ios.ts
 apps/mobile/src/runtime/config/bundled.generated.android.ts
 
