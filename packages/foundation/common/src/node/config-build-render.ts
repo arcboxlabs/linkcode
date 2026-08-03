@@ -1,20 +1,24 @@
 /// <reference types="node" />
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { ConfigBuildBundle } from '../config/build-bundle';
 import { parseConfigBuildBundle } from '../config/build-bundle';
 import type { ConfigChannel, ConfigPlatform } from '../config/types';
+import type { RenderCommandResult, RenderCommandRunner } from './render-checkout';
+import {
+  assertPublisherCheckout,
+  defaultRenderCommandRunner,
+  RE_GIT_SHA,
+  verifyPinnedCheckout,
+} from './render-checkout';
 
-const execFileAsync = promisify(execFile);
-
-const RE_GIT_SHA = /^[0-9a-f]{40}$/;
 // Layout of the publisher checkout; the render CLI ships inside the publisher package itself.
 const PUBLISHER_PACKAGE_PATH = 'packages/config-publisher';
 const PUBLISHER_SCRIPT_PATH = 'packages/config-publisher/scripts/build-render.mts';
+
+export type { RenderCommandResult, RenderCommandRunner };
 
 /** Explicit, fully pinned inputs for one build-bundle render. Nothing is defaulted or fetched:
  * both checkouts must already exist at the exact pinned commits or the render fails closed. */
@@ -38,24 +42,6 @@ export interface ConfigBuildRenderRequest {
   readonly structuralDir: string;
   readonly telemetryEndpoint: string;
 }
-
-export interface RenderCommandResult {
-  readonly stdout: string;
-}
-
-export type RenderCommandRunner = (
-  command: string,
-  args: readonly string[],
-  options: { readonly cwd: string },
-) => Promise<RenderCommandResult>;
-
-const defaultRunner: RenderCommandRunner = async (command, args, options) => {
-  const { stdout } = await execFileAsync(command, [...args], {
-    cwd: options.cwd,
-    windowsHide: true,
-  });
-  return { stdout };
-};
 
 /** pnpm arguments that invoke the publisher's own build-render CLI inside its checkout. */
 export function configBuildRenderArgs(request: ConfigBuildRenderRequest): readonly string[] {
@@ -231,53 +217,11 @@ export function assertRenderedBundleMatches(
   }
 }
 
-async function assertPublisherCheckout(dir: string, pinnedSha: string): Promise<void> {
-  try {
-    const stats = await stat(join(dir, PUBLISHER_SCRIPT_PATH));
-    if (!stats.isFile()) throw new Error('not a file');
-  } catch {
-    throw new Error(
-      `Config publisher checkout not found at ${dir} (expected ${PUBLISHER_SCRIPT_PATH} inside). ` +
-        `Check out the config publisher at commit ${pinnedSha} and pass its root explicitly; ` +
-        'builds never fall back to a stale or global publisher install',
-    );
-  }
-}
-
-async function verifyPinnedCheckout(
-  dir: string,
-  pinnedSha: string,
-  label: string,
-  run: RenderCommandRunner,
-): Promise<void> {
-  let head: string;
-  try {
-    head = (await run('git', ['-C', dir, 'rev-parse', 'HEAD'], { cwd: dir })).stdout.trim();
-  } catch {
-    throw new Error(`${label} checkout at ${dir} is not a git checkout`);
-  }
-  if (head !== pinnedSha) {
-    throw new Error(
-      `${label} checkout at ${dir} is at commit ${head}, but this build pins ${pinnedSha}; ` +
-        'check out the pinned commit and retry',
-    );
-  }
-  const status = (
-    await run('git', ['-C', dir, 'status', '--porcelain'], { cwd: dir })
-  ).stdout.trim();
-  if (status.length > 0) {
-    throw new Error(
-      `${label} checkout at ${dir} has local modifications; ` +
-        'rendered output must come from the pinned commit only',
-    );
-  }
-}
-
 /** Renders one build bundle by invoking the publisher CLI from a pinned checkout, then validates
  * the output with the frozen v1 contract. Rendering semantics live in the publisher only. */
 export async function renderConfigBundleWithPublisher(
   request: ConfigBuildRenderRequest,
-  run: RenderCommandRunner = defaultRunner,
+  run: RenderCommandRunner = defaultRenderCommandRunner,
 ): Promise<ConfigBuildBundle> {
   if (!RE_GIT_SHA.test(request.publisherGitSha)) {
     throw new Error('publisherGitSha must be an exact lowercase 40-hex commit');
@@ -285,7 +229,11 @@ export async function renderConfigBundleWithPublisher(
   if (!RE_GIT_SHA.test(request.sourceGitSha)) {
     throw new Error('sourceGitSha must be an exact lowercase 40-hex commit');
   }
-  await assertPublisherCheckout(request.publisherDir, request.publisherGitSha);
+  await assertPublisherCheckout(
+    request.publisherDir,
+    request.publisherGitSha,
+    PUBLISHER_SCRIPT_PATH,
+  );
   await verifyPinnedCheckout(
     request.publisherDir,
     request.publisherGitSha,
