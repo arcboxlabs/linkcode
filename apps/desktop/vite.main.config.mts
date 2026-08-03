@@ -1,42 +1,12 @@
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+// Relative .mts import: Vite's config bundler inlines it (and its deep import into the config
+// package source); a bare workspace import would be externalized and fail under plain Node.
+import { loadGeneratedConfigBundle, stageConfigBundle } from './scripts/config-bundle.mts';
 import { assetPlugin, NODE_TARGET, nodeExternals, processEnvDefine } from './vite.shared';
 
-// Build-time immutable config: scripts/render-config-bundle.mts writes both files from the pinned
-// publisher render. When they exist, the derived bootstrap is inlined into the main bundle and any
-// ambient MAIN_VITE_CONFIG_BOOTSTRAP is a hard error — generated output cannot be overridden.
-function loadGeneratedConfigBootstrap(): { bootstrapJson: string; bundlePath: string } | null {
-  const bootstrapPath = resolve(__dirname, 'generated/config-bootstrap.json');
-  const bundlePath = resolve(__dirname, 'generated/config-build-bundle.json');
-  const hasBootstrap = existsSync(bootstrapPath);
-  const hasBundle = existsSync(bundlePath);
-  if (!hasBootstrap && !hasBundle) {
-    if (process.env.LINKCODE_REQUIRE_CONFIG_BUNDLE === '1') {
-      throw new Error(
-        'LINKCODE_REQUIRE_CONFIG_BUNDLE=1 but apps/desktop/generated is empty — run ' +
-          '`pnpm -F @linkcode/desktop config:render` with pinned inputs before building',
-      );
-    }
-    return null;
-  }
-  if (!hasBootstrap || !hasBundle) {
-    throw new Error(
-      'apps/desktop/generated is incomplete — re-run `pnpm -F @linkcode/desktop config:render`',
-    );
-  }
-  if (process.env.MAIN_VITE_CONFIG_BOOTSTRAP) {
-    throw new Error(
-      'MAIN_VITE_CONFIG_BOOTSTRAP must not be set when a generated config bundle exists; ' +
-        'the generated bootstrap is immutable',
-    );
-  }
-  const bootstrapJson = readFileSync(bootstrapPath, 'utf8');
-  JSON.parse(bootstrapJson);
-  return { bootstrapJson, bundlePath };
-}
-
-const generatedConfig = loadGeneratedConfigBootstrap();
+const generatedConfig = loadGeneratedConfigBundle(__dirname, process.env);
 
 export default defineConfig({
   root: __dirname,
@@ -103,11 +73,7 @@ export default defineConfig({
     {
       name: 'stage-config-build-bundle',
       closeBundle() {
-        if (!generatedConfig) return;
-        // Provenance record shipped next to the inlined bootstrap (out/** is packed into the asar).
-        const outConfig = resolve(__dirname, 'out/config');
-        mkdirSync(outConfig, { recursive: true });
-        cpSync(generatedConfig.bundlePath, resolve(outConfig, 'build-bundle.json'));
+        stageConfigBundle(__dirname, generatedConfig);
       },
     },
   ],

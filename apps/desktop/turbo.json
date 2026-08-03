@@ -10,11 +10,7 @@
         "RENDERER_VITE_POSTHOG_PROJECT_TOKEN",
         "RENDERER_VITE_POSTHOG_HOST"
       ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "generated/config-build-bundle.json",
-        "generated/config-bootstrap.json"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "generated/config-build-bundle.json"]
     }
   }
 }
