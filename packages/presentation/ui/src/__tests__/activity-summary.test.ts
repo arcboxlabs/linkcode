@@ -2,6 +2,7 @@ import type { ToolCall } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { ActivityRunItem } from '../chat/activity-groups';
 import {
+  activityRunBrand,
   activityRunCurrentDescriptor,
   settledActivityRunDescriptor,
 } from '../chat/activity-summary';
@@ -186,5 +187,35 @@ describe('activityRunCurrentDescriptor', () => {
 
     expect(descriptor).toEqual({ category: 'explore', kind: 'fetch' });
     expect(JSON.stringify(descriptor)).not.toMatch(RE_SENSITIVE_ACTIVITY_DETAIL);
+  });
+});
+
+describe('activityRunBrand', () => {
+  it('wears the single distinct brand and stays generic for mixed or unbranded runs', () => {
+    expect(
+      activityRunBrand([
+        tool('other', { title: 'mcp__linear__get_issue' }),
+        tool('read'),
+        tool('other', { title: 'mcp__linear__save_issue' }),
+      ]),
+    ).toBe('linear');
+    expect(
+      activityRunBrand([
+        tool('other', { title: 'mcp__linear__get_issue' }),
+        tool('other', { title: 'mcp__slack__send_message' }),
+      ]),
+    ).toBeUndefined();
+    expect(
+      activityRunBrand([tool('other', { title: 'mcp__f5fcc7d5-d616__get_issue' }), tool('read')]),
+    ).toBeUndefined();
+  });
+
+  it('lets a running branded call win over a mixed settled run', () => {
+    expect(
+      activityRunBrand([
+        tool('other', { title: 'mcp__linear__get_issue' }),
+        tool('other', { title: 'mcp__slack__send_message', status: 'in_progress' }),
+      ]),
+    ).toBe('slack');
   });
 });

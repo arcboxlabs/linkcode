@@ -5,7 +5,11 @@ import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
-import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
+import {
+  activityRunBrand,
+  activityRunCurrentDescriptor,
+  settledActivityRunDescriptor,
+} from './activity-summary';
 import type { QuestionConversationItem } from './conversation-prompts';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
@@ -15,6 +19,8 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
+import type { IntegrationBrand } from './integration-brand';
+import { IntegrationIcon } from './integration-brand';
 import { QuestionCallItem } from './question-call-item';
 import { Shimmer } from './shimmer';
 import { ThoughtBlock } from './thought-block';
@@ -88,6 +94,7 @@ export function ActivityRun({
       ? 'thinking'
       : undefined);
   const iconCategory = current?.category ?? primaryCategory;
+  const brand = activityRunBrand(run.items);
   const [open, setOpen] = useState(false);
 
   return (
@@ -98,6 +105,7 @@ export function ActivityRun({
       >
         <ChatDisclosureIconSlot>
           <ActivityRunIcon
+            brand={brand}
             category={iconCategory}
             failed={hasFailure}
             running={current !== undefined}
@@ -194,20 +202,27 @@ const ACTIVITY_ICONS: Record<
 };
 
 function ActivityRunIcon({
+  brand,
   category,
   failed,
   running,
 }: {
+  /** A single-brand run wears its integration glyph instead of the category glyph. */
+  brand?: IntegrationBrand;
   category?: SettledActivityCategory;
   failed: boolean;
   running: boolean;
 }): React.ReactNode {
   // The shimmering label already signals activity, so a running head keeps its category
   // glyph (no spinner) and only brightens it.
+  const tint = failed
+    ? 'text-destructive-foreground'
+    : running
+      ? 'text-foreground'
+      : 'text-muted-foreground';
+  if (brand) return <IntegrationIcon brand={brand} className={tint} />;
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
-  if (failed) return <Icon className="size-3.5 shrink-0 text-destructive-foreground" />;
-  if (running) return <Icon className="size-3.5 shrink-0 text-foreground" />;
-  return <Icon className="size-3.5 shrink-0 text-muted-foreground" />;
+  return <Icon className={cn('size-3.5 shrink-0', tint)} />;
 }
 
 function primarySettledCategory(

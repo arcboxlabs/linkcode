@@ -49,6 +49,7 @@
     "@electron/asar": "^4.2.1",
     "@hookform/resolvers": "^5.5.7",
     "@iconify-json/material-icon-theme": "catalog:",
+    "@iconify-json/simple-icons": "catalog:",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "@proj-airi/lobe-icons": "catalog:",

@@ -338,6 +338,26 @@ describe('tool metadata policy', () => {
     expect(mcpToolName('linear_get_issue')).toBeUndefined();
   });
 
+  it('wears a known integration brand glyph in the header icon slot', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'mcp-brand-1',
+      title: 'mcp__linear__get_issue',
+      kind: 'other',
+      status: 'completed',
+      rawInput: { id: 'CODE-525' },
+      content: [],
+    };
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+    expect(container.querySelector('[data-brand="linear"]')).not.toBeNull();
+
+    cleanup();
+    const unbranded = render(
+      <ToolCallItem toolCall={{ ...toolCall, title: 'mcp__f5fcc7d5-d616__get_issue' }} />,
+    );
+    expect(unbranded.container.querySelector('[data-brand]')).toBeNull();
+  });
+
   it('headlines an MCP call with its tool name and server context without a redundant badge', () => {
     const toolCall: ToolCall = {
       toolCallId: 'mcp-1',
