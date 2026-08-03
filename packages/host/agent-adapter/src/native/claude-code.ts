@@ -1469,7 +1469,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.titlePollController?.abort();
     const controller = new AbortController();
     this.titlePollController = controller;
-    void this.readAndEmitTitle(sessionId, getSessionInfo, controller.signal).finally(() => {
+    void (async () => {
+      if (!(await this.readAndEmitTitle(sessionId, getSessionInfo, controller.signal))) {
+        await this.pollTitle(sessionId, getSessionInfo, controller.signal);
+      }
+    })().finally(() => {
       if (this.titlePollController === controller) this.titlePollController = null;
     });
   }

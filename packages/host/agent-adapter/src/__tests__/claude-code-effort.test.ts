@@ -252,6 +252,65 @@ describe('ClaudeCodeAdapter session titles', () => {
     }
   });
 
+  it('continues polling when a later turn interrupts the initial poll before the title exists', async () => {
+    vi.useFakeTimers();
+    const getSessionInfo = vi
+      .fn<(sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>>()
+      .mockResolvedValueOnce({
+        sessionId: 'sess-delayed',
+        summary: 'hi',
+        firstPrompt: 'hi',
+        lastModified: 1,
+      })
+      .mockResolvedValue({
+        sessionId: 'sess-delayed',
+        summary: 'Delayed generated title',
+        customTitle: 'Delayed generated title',
+        firstPrompt: 'hi',
+        lastModified: 2,
+      });
+    const adapter = new TitleClaude(getSessionInfo);
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    try {
+      await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
+      await prompt(adapter);
+      queries[0].push({ type: 'system', session_id: 'sess-delayed' });
+      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
+      queries[0].push({
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {},
+      });
+      await vi.advanceTimersByTimeAsync(250);
+
+      await prompt(adapter);
+      queries[0].push({
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        total_cost_usd: 0,
+        usage: {},
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(getSessionInfo).toHaveBeenCalledTimes(1);
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([]);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(getSessionInfo).toHaveBeenCalledTimes(2);
+      expect(events.filter((event) => event.type === 'title-update')).toEqual([
+        { type: 'title-update', title: 'Delayed generated title' },
+      ]);
+    } finally {
+      await adapter.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it('reads the existing provider title when resuming', async () => {
     const getSessionInfo = vi.fn(() =>
       Promise.resolve<SDKSessionInfo>({
