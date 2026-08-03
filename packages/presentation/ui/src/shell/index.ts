@@ -31,4 +31,5 @@ export * from './sidebar';
 export * from './task-resources-panel';
 export * from './terminal/prefs';
 export * from './terminal-settings-panel';
+export * from './usage-report-card';
 export * from './use-relative-time-label';
