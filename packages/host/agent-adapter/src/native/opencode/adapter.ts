@@ -25,13 +25,12 @@ import type {
   Part,
   TextPartInput,
 } from '@opencode-ai/sdk/v2';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- Server startup must allocate a fresh port per attempt.
-import pRetry from 'p-retry';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
@@ -312,13 +311,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
       // port can be stolen between the probe and the child's bind), so one failed spawn retries
       // with a fresh port — the same discipline as the shared history server.
-      server = await pRetry(
+      server = await asyncRetry(
         async () =>
           startOpencodeServe({
             port: await allocatePort(),
             config: serverOptions?.config,
           }),
-        { retries: 1, minTimeout: 0 },
+        { retries: 1, minTimeout: 1, randomize: false },
       );
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';

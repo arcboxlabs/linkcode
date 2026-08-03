@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import { linkcodeStateDirName } from '@linkcode/schema/daemon-runtime';
 import { resolveProductChannel } from '@linkcode/schema/product';
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- Startup retry must allocate a fresh port per attempt.
-import pRetry from 'p-retry';
+import { asyncRetry } from 'foxts/async-retry';
 
 import type { OpencodeServeProcess } from './serve';
 import {
@@ -140,9 +139,10 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
   private async start(): Promise<string> {
     mkdirSync(this.neutralCwd, { recursive: true });
     // allocatePort is check-then-use, so an immediate startup exit retries once with a fresh port.
-    return pRetry(() => this.spawnGeneration(), {
+    return asyncRetry(() => this.spawnGeneration(), {
       retries: 1,
-      minTimeout: 0,
+      minTimeout: 1,
+      randomize: false,
       shouldRetry: ({ error }) => error instanceof ServeStartupExitError,
     });
   }

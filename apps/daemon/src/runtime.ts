@@ -11,9 +11,8 @@ import {
 import type { PreviewRouteTable } from '@linkcode/transport';
 import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer } from '@linkcode/transport/server';
+import { asyncRetry } from 'foxts/async-retry';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- Timeout-only probing uses p-retry's error filter.
-import pRetry from 'p-retry';
 import type { DaemonListenerConfig } from './config';
 import { runtimeFilePath } from './config';
 
@@ -54,7 +53,7 @@ export async function probeDaemonIdentity(
   timeoutMs: number = PROBE_TIMEOUT_MS,
 ): Promise<DaemonIdentity | null> {
   try {
-    return await pRetry(
+    return await asyncRetry(
       async () => {
         const res = await fetch(new URL(DAEMON_IDENTITY_PATH, baseUrl), {
           signal: AbortSignal.timeout(timeoutMs),
@@ -65,7 +64,8 @@ export async function probeDaemonIdentity(
       },
       {
         retries: PROBE_TIMEOUT_RETRIES,
-        minTimeout: 0,
+        minTimeout: 1,
+        randomize: false,
         shouldRetry: ({ error }) => error instanceof DOMException && error.name === 'TimeoutError',
       },
     );

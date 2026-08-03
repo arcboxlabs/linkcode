@@ -21,7 +21,6 @@
     "@opencode-ai/sdk": "^1.18.3",
     "cross-spawn": "^7.0.6",
     "foxts": "^5.8.0",
-    "p-retry": "catalog:",
     "smol-toml": "^1.7.1",
     "zod": "catalog:"
   },

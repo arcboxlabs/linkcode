@@ -57,11 +57,10 @@ import {
   UsageReportSchema,
   unifiedPatchText,
 } from '@linkcode/schema';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { waitWithAbort } from 'foxts/wait';
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- This poll explicitly uses p-retry's AbortSignal-aware backoff.
-import pRetry from 'p-retry';
 import { z } from 'zod';
 import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
@@ -1488,7 +1487,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     try {
       await waitWithAbort(TITLE_POLL_INITIAL_DELAY_MS, signal, true);
-      await pRetry(
+      await asyncRetry(
         async () => {
           if (await this.readAndEmitTitle(sessionId, getSessionInfo, signal)) return;
           throw new Error('Claude session title is not available');
@@ -1497,6 +1496,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           retries: TITLE_POLL_RETRIES,
           factor: 2,
           minTimeout: TITLE_POLL_RETRY_DELAY_MS,
+          randomize: false,
           signal,
         },
       );

@@ -96,7 +96,6 @@ catalog:
   # Build / runtime tools
   tsx: ^4.23.0
   tsup: ^8.5.1
-  p-retry: ^8.0.0
 
   # Testing
   vitest: ^4.1.10
