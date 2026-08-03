@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionEntry, SessionInfo } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { encodeHistoryBranchCursor } from '../history-branch';
 import { asHistoryId } from '../history-util';
 import type { PiSdk } from '../native/pi/history';
 import {
@@ -13,11 +14,11 @@ import {
   readPiHistory,
 } from '../native/pi/history';
 
-function entry(id: string, message: unknown) {
+function entry(id: string, message: unknown, parentId: string | null = null) {
   return {
     type: 'message',
     id,
-    parentId: null,
+    parentId,
     timestamp: '2026-07-17T02:00:00Z',
     message,
   } as unknown as SessionEntry;
@@ -71,6 +72,22 @@ describe('Pi history', () => {
     });
     expect(events[1]).toMatchObject({ itemId: 'pi-response-1:thought:0' });
     expect(events[2]).toMatchObject({ itemId: 'pi-response-1:message:1' });
+  });
+
+  it('carries first and middle user prompt branch cursors', () => {
+    const historyId = asHistoryId('id');
+    const events = mapPiHistoryEvents(historyId, [
+      entry('first', { role: 'user', content: 'first' }),
+      entry('assistant', { role: 'assistant', content: [] }, 'first'),
+      entry('middle', { role: 'user', content: 'middle' }, 'assistant'),
+    ]);
+
+    expect(
+      events.map(({ event }) => ('branchCursor' in event ? event.branchCursor : undefined)),
+    ).toEqual([
+      encodeHistoryBranchCursor('pi', historyId, null),
+      encodeHistoryBranchCursor('pi', historyId, 'assistant'),
+    ]);
   });
 
   it('marks cancelled and nonzero bash executions as failed', () => {

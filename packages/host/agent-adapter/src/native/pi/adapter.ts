@@ -12,6 +12,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -31,6 +32,7 @@ import type { AgentStartCatalogOptions, BrowserToolsetFactory } from '../../adap
 import { renderBrowserToolResult } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import { asHistoryId } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
 import {
@@ -172,12 +174,14 @@ export class PiAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private session: AgentSession | null = null;
   private unsub: (() => void) | null = null;
   private modelRegistry: PiRegistry | null = null;
   private resumeFrom: AgentHistoryId | null = null;
+  private pendingBranchManager: SessionManager | null = null;
   private credentialProviderId: string | null = null;
   private policyId: PiPolicy = 'default';
   private readonly sessionAllowedTools = new Set<string>();
@@ -218,6 +222,27 @@ export class PiAdapter extends BaseAgentAdapter {
     this.resumeFrom = opts.historyId;
     await this.start(startOpts);
   }
+  override async branchHistory(opts: AgentHistoryBranchOptions, startOpts: StartOptions) {
+    const predecessor = decodeHistoryBranchCursor(opts.cursor, 'pi', opts.historyId);
+    const pi = await this.importSdk();
+    const file = await findPiSessionFile(opts.historyId);
+    if (!file) throw new Error(`pi: history '${opts.historyId}' was not found`);
+    const sourceManager = pi.SessionManager.open(file);
+    if (predecessor !== null) {
+      if (!sourceManager.getEntry(predecessor)) {
+        throw new Error(`pi: history branch predecessor '${predecessor}' was not found`);
+      }
+      sourceManager.createBranchedSession(predecessor);
+      this.pendingBranchManager = sourceManager;
+    } else {
+      this.pendingBranchManager = pi.SessionManager.create(
+        sourceManager.getCwd(),
+        sourceManager.getSessionDir(),
+        { parentSession: file },
+      );
+    }
+    await this.start(startOpts);
+  }
 
   private importSdk() {
     const managed = agentRuntimeProber.resolveEntry('pi');
@@ -247,9 +272,11 @@ export class PiAdapter extends BaseAgentAdapter {
       }
       this.policyId = opts.approvalPolicyId;
     }
-    let manager: SessionManager | undefined;
+    let manager: SessionManager | undefined = this.pendingBranchManager ?? undefined;
     let savedProvider: string | undefined;
-    if (this.resumeFrom) {
+    if (manager) {
+      savedProvider = lastPiModelChange(manager.getBranch())?.provider;
+    } else if (this.resumeFrom) {
       const file = await findPiSessionFile(this.resumeFrom);
       if (!file) throw new Error(`pi: history '${this.resumeFrom}' was not found`);
       manager = pi.SessionManager.open(file);
@@ -438,6 +465,7 @@ export class PiAdapter extends BaseAgentAdapter {
     this.modelRegistry = null;
     this.credentialProviderId = null;
     this.resumeFrom = null;
+    this.pendingBranchManager = null;
     this.sessionAllowedTools.clear();
     this.initialEffort = null;
     this.policyId = 'default';

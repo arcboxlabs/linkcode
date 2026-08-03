@@ -287,6 +287,64 @@ describe('createClaudeHistoryEventMapper', () => {
     expect(reply.map((e) => e.event.type)).toEqual(['agent-message']);
   });
 
+  it('adds branch cursors to real top-level prompts using raw transcript ancestry', () => {
+    const parentUuidByUuid = new Map<string, string | null>([
+      ['u1', null],
+      ['u3', 'a2'],
+    ]);
+    const map = createClaudeHistoryEventMapper(
+      historyId,
+      undefined,
+      undefined,
+      undefined,
+      parentUuidByUuid,
+    );
+    const first = map(row('user', 'u1', 'first prompt'));
+    const later = map(row('user', 'u3', 'later prompt'));
+
+    expect(first[0].event).toMatchObject({
+      type: 'user-message',
+      branchCursor: JSON.stringify({
+        version: 1,
+        kind: 'claude-code',
+        historyId: 'h1',
+        branchPoint: null,
+      }),
+    });
+    expect(later[0].event).toMatchObject({
+      type: 'user-message',
+      branchCursor: JSON.stringify({
+        version: 1,
+        kind: 'claude-code',
+        historyId: 'h1',
+        branchPoint: 'a2',
+      }),
+    });
+  });
+
+  it('does not add branch cursors to synthetic tool results or subagent prompts', () => {
+    const ancestry = new Map<string, string | null>([
+      ['tool-result', 'a1'],
+      ['subagent', 'a2'],
+    ]);
+    const map = createClaudeHistoryEventMapper(
+      historyId,
+      undefined,
+      undefined,
+      undefined,
+      ancestry,
+    );
+    map(row('assistant', 'a1', [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }]));
+
+    const result = map(
+      row('user', 'tool-result', [
+        { type: 'tool_result', tool_use_id: 'toolu_1', content: 'body' },
+      ]),
+    );
+    expect(result.map((event) => event.event.type)).toEqual(['tool-call']);
+    expect(map(row('user', 'subagent', 'injected', 'toolu_task'))).toEqual([]);
+  });
+
   it('replays thinking and text under the provider message id used by the live stream', () => {
     const map = createClaudeHistoryEventMapper(historyId);
     const events = map(

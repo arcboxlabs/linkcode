@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AgentKind, ContentBlock } from '@linkcode/schema';
 import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import { groupTimeline } from './activity-groups';
@@ -20,6 +20,7 @@ import { AgentTurnActions } from './turn-actions';
 import { TurnDiffSummary } from './turn-diff-summary';
 import type { TurnSegment } from './turn-edits';
 import { turnFileEdits } from './turn-edits';
+import type { PromptEditState } from './types';
 import { UserMessage } from './user-message';
 
 export interface TurnSegmentViewProps {
@@ -37,6 +38,12 @@ export interface TurnSegmentViewProps {
   awaitingAnswer: ReadonlySet<string>;
   questionsByToolCall: ReadonlyMap<string, QuestionConversationItem>;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  promptEditState: PromptEditState;
+  onEditPrompt?: (
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ) => Promise<void>;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -60,6 +67,8 @@ export function TurnSegmentView({
   awaitingAnswer,
   questionsByToolCall,
   TerminalBlockComponent,
+  promptEditState,
+  onEditPrompt,
   onExpandTask,
   onReviewChanges,
 }: TurnSegmentViewProps): React.ReactNode {
@@ -135,7 +144,16 @@ export function TurnSegmentView({
 
     switch (item.kind) {
       case 'message':
-        if (item.role === 'user') return <UserMessage key={item.id} item={item} />;
+        if (item.role === 'user') {
+          return (
+            <UserMessage
+              key={item.id}
+              item={item}
+              promptEditState={promptEditState}
+              onEditPrompt={onEditPrompt}
+            />
+          );
+        }
         return (
           <Message key={item.id} from="assistant">
             <MessageContent className="space-y-1">

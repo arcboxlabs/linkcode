@@ -23,6 +23,7 @@ import { toHostPath } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryEvent,
   AgentHistoryId,
@@ -64,6 +65,7 @@ import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } 
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
+import { decodeHistoryBranchCursor, encodeHistoryBranchCursor } from '../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -400,6 +402,7 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
 const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   records: new Map(),
   droppedRows: [],
+  parentUuidByUuid: new Map(),
   toolUseResults: new Map(),
   toolUsePatches: new Map(),
 };
@@ -417,6 +420,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private q: Query | null = null;
@@ -611,6 +615,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const predecessor = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
+    if (predecessor !== null) {
+      const mod = await this.loadSdk(
+        '@anthropic-ai/claude-agent-sdk',
+        () => import('@anthropic-ai/claude-agent-sdk'),
+      );
+      const fork = await mod.forkSession(opts.historyId, {
+        upToMessageId: predecessor,
+        dir: startOpts.cwd,
+      });
+      this.resumeFrom = fork.sessionId;
+    }
+    await this.start(startOpts);
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const mod = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
@@ -656,6 +679,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       supplement.records,
       supplement.toolUseResults,
       supplement.toolUsePatches,
+      supplement.parentUuidByUuid,
     );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript right after its spawn announce so children land inside the
@@ -1607,6 +1631,9 @@ export interface ClaudeTranscriptSupplement {
    * summary, whose `parentUuid` is null — `logicalParentUuid` is ignored). In file (= chronological)
    * order; rows the SDK still returns (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
+  /** Message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`, but Claude
+   * requires the predecessor message id when forking immediately before a historical prompt. */
+  parentUuidByUuid: Map<string, string | null>;
   /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
    * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
   toolUseResults: Map<string, Record<string, unknown>>;
@@ -1630,6 +1657,7 @@ export function buildClaudeTranscriptSupplement(
   lines: Iterable<string>,
 ): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
+  const parentUuidByUuid = new Map<string, string | null>();
   const toolUseResults = new Map<string, Record<string, unknown>>();
   const toolUsePatches = new Map<string, ToolCallContent[]>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
@@ -1646,6 +1674,7 @@ export function buildClaudeTranscriptSupplement(
     if (!isRecord(parsed) || typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
     const row = parsed;
     const uuid = parsed.uuid;
+    parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
     if (row.type === 'system' && row.subtype === 'compact_boundary') {
       boundaries += 1;
       const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};
@@ -1684,6 +1713,7 @@ export function buildClaudeTranscriptSupplement(
   }
   return {
     records,
+    parentUuidByUuid,
     // Only rows before the last boundary are dropped by the SDK's chain walk; the rest of the
     // timeline (summary head onward) comes back from getSessionMessages as usual.
     droppedRows: rows.reduce<SessionMessage[]>((dropped, r) => {
@@ -1812,7 +1842,13 @@ async function readSubagentTranscripts(
         rows.flatMap(
           // No compaction records or result envelopes: a subagent transcript has no compaction
           // boundary, and `rawOutput` recovery there is a separate concern.
-          createClaudeHistoryEventMapper(asHistoryId(sessionId), undefined, undefined, patches),
+          createClaudeHistoryEventMapper(
+            asHistoryId(sessionId),
+            undefined,
+            undefined,
+            patches,
+            undefined,
+          ),
         ),
       );
     }),
@@ -1838,6 +1874,8 @@ export function createClaudeHistoryEventMapper(
   /** Edit diffs recovered from the same raw results, so a replayed settle carries the patch the
    * live path emits rather than the announce-time fragment. */
   toolUsePatches?: ReadonlyMap<string, ToolCallContent[]>,
+  /** Raw message ancestry recovered from the transcript; absent for nested subagent reads. */
+  parentUuidByUuid?: ReadonlyMap<string, string | null>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
   /** Last model announced to the timeline; assistant rows re-announce only on change. */
@@ -1945,7 +1983,13 @@ export function createClaudeHistoryEventMapper(
     const promptValue =
       results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
     const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue, ts);
-    if (text) events.push(text);
+    if (text) {
+      const predecessor = parentUuidByUuid?.get(message.uuid);
+      if (predecessor !== undefined && text.event.type === 'user-message') {
+        text.event.branchCursor = encodeHistoryBranchCursor('claude-code', historyId, predecessor);
+      }
+      events.push(text);
+    }
     return events;
   };
 }
