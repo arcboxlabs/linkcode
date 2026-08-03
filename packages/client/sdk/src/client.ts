@@ -212,14 +212,14 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.resumeHistoryWithWarnings(agentKind, historyId, startOpts));
   }
 
-  branchHistory(
+  rewritePrompt(
     sourceSessionId: SessionId,
     sourceMessageId: MessageId,
     branchCursor: AgentHistoryBranchCursor,
     content: ContentBlock[],
   ): RequestResult<SessionId> {
     return toResult(
-      this.raw.branchHistory(sourceSessionId, sourceMessageId, branchCursor, content),
+      this.raw.rewritePrompt(sourceSessionId, sourceMessageId, branchCursor, content),
     );
   }
 

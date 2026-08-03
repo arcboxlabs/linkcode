@@ -4,7 +4,6 @@ import { ImPlatformSchema } from '../im';
 import {
   AgentHistoryIdSchema,
   AgentKindSchema,
-  MessageIdSchema,
   SessionIdSchema,
   TimestampSchema,
 } from '../primitives';
@@ -29,14 +28,6 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
     /** The provider-local history session this record was imported from. */
     historyId: AgentHistoryIdSchema,
     importedAt: TimestampSchema,
-  }),
-  z.object({
-    type: z.literal('branched'),
-    parentSessionId: SessionIdSchema,
-    sourceHistoryId: AgentHistoryIdSchema,
-    sourceMessageId: MessageIdSchema,
-    branchCursor: z.string().min(1),
-    branchedAt: TimestampSchema,
   }),
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;

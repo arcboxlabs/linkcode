@@ -722,14 +722,14 @@ export class LinkCodeClient {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
   }
 
-  branchHistory(
+  rewritePrompt(
     sourceSessionId: SessionId,
     sourceMessageId: MessageId,
     branchCursor: AgentHistoryBranchCursor,
     content: ContentBlock[],
   ): Promise<SessionId> {
     return this.control
-      .branchHistory(sourceSessionId, sourceMessageId, branchCursor, content)
+      .rewritePrompt(sourceSessionId, sourceMessageId, branchCursor, content)
       .then((result) => result.sessionId);
   }
 

@@ -175,7 +175,7 @@ export function resumeHistoryWithWarnings(
   );
 }
 
-export function branchHistory(
+export function rewritePrompt(
   options: Options<{
     sourceSessionId: SessionId;
     sourceMessageId: MessageId;
@@ -183,7 +183,7 @@ export function branchHistory(
     content: ContentBlock[];
   }>,
 ): RequestResult<SessionId> {
-  return resolveClient(options).branchHistory(
+  return resolveClient(options).rewritePrompt(
     options.sourceSessionId,
     options.sourceMessageId,
     options.branchCursor,

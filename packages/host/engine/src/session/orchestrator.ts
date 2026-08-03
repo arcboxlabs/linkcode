@@ -1,9 +1,11 @@
 import type { AdapterFactory, AgentAdapter, BrowserToolsetFactory } from '@linkcode/agent-adapter';
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
   AgentInput,
   ContentBlock,
   McpWarning,
+  MessageId,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -89,6 +91,19 @@ export class SessionOrchestrator {
     );
   }
 
+  stopForReplacement(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
+    return Effect.suspend<void, EngineFailure, never>(() => {
+      const session = this.sessions.get(sessionId);
+      if (!session) return Effect.void;
+      if (session.turnInputActive || (session.status !== 'idle' && session.status !== 'stopped')) {
+        return Effect.fail(
+          new RequestError({ code: 'conflict', message: `Session is busy: ${sessionId}` }),
+        );
+      }
+      return this.teardown(sessionId, session, 'history.rewrite', false);
+    });
+  }
+
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
     const { resources } = this;
     return Effect.gen({ self: this }, function* () {
@@ -172,7 +187,11 @@ export class SessionOrchestrator {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     mcpWarnings: readonly McpWarning[] = [],
-    options: { initialInput?: AgentInput; deleteRecordOnStartFailure?: boolean } = {},
+    options: {
+      initialInput?: AgentInput;
+      registerRecord?: boolean;
+      rewindMessageId?: MessageId;
+    } = {},
   ): Effect.Effect<void, EngineFailure> {
     const {
       events,
@@ -187,7 +206,7 @@ export class SessionOrchestrator {
     const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
-    const { initialInput, deleteRecordOnStartFailure = false } = options;
+    const { initialInput, registerRecord = true, rewindMessageId } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
@@ -196,10 +215,25 @@ export class SessionOrchestrator {
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
         const session = new LiveSession(adapter, sessionId, scope, closed);
-        session.listen((event) => events.handle(sessionId, session, event));
+        const startupEvents: AgentEvent[] = [];
+        let bufferEvents = rewindMessageId !== undefined;
+        session.listen((event) => {
+          if (bufferEvents) startupEvents.push(event);
+          else events.handle(sessionId, session, event);
+        });
+        if (sessions.has(sessionId)) {
+          session.stopListening();
+          yield* Scope.close(scope, Exit.interrupt());
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: `Session is already running: ${sessionId}`,
+            }),
+          );
+        }
         sessions.set(sessionId, session);
         yield* recordLiveSessions(sessions.size);
-        records.register(record);
+        if (registerRecord) records.register(record);
         // A start can land before the boot probe settles. Register first so delete can tear it down,
         // then wait and re-check identity before and after adapter startup to prevent resurrection.
         const startAdapterSession = Effect.gen(function* () {
@@ -208,16 +242,22 @@ export class SessionOrchestrator {
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         });
-        yield* session.run(startAdapterSession).pipe(
-          Effect.tapError(() =>
-            discardFailedStart(session).pipe(
-              Effect.andThen(deleteRecordOnStartFailure ? records.delete(sessionId) : Effect.void),
-              Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
+        yield* session
+          .run(startAdapterSession)
+          .pipe(
+            Effect.tapError(() =>
+              discardFailedStart(session).pipe(
+                Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
+              ),
             ),
-          ),
-        );
-        // Branch creation uses the same validated/echoed prompt path as every later input. A prompt
-        // rejection leaves the provider child live and recoverable instead of deleting it.
+          );
+        if (rewindMessageId !== undefined) {
+          events.broadcast(sessionId, [
+            { type: 'conversation-rewind', messageId: rewindMessageId },
+          ]);
+          bufferEvents = false;
+          for (const event of startupEvents) events.handle(sessionId, session, event);
+        }
         if (initialInput !== undefined) {
           yield* session
             .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput)))
@@ -225,7 +265,7 @@ export class SessionOrchestrator {
               Effect.mapError((cause) =>
                 toOperationFailure(cause, {
                   subsystem: 'agent',
-                  operation: 'history.branch.input',
+                  operation: 'history.rewrite.input',
                   publicMessage: 'Agent input was rejected',
                 }),
               ),
@@ -286,6 +326,7 @@ export class SessionOrchestrator {
     sessionId: SessionId,
     session: LiveSession,
     operation: string,
+    releaseSession = true,
   ): Effect.Effect<void, OperationError> {
     return observeOperation(
       Effect.suspend(() => {
@@ -301,7 +342,7 @@ export class SessionOrchestrator {
           Effect.ensuring(
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
-              this.onStopped(sessionId);
+              if (releaseSession) this.onStopped(sessionId);
               this.records.sealCurrentRun(sessionId);
               return recordLiveSessions(this.sessions.size);
             }),

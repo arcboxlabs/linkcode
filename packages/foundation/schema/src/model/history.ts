@@ -10,7 +10,7 @@ export const AgentHistoryCapabilitiesSchema = z.object({
   read: z.boolean(),
   /** Adapter can resume a live session from a known provider-local history id. */
   resume: z.boolean(),
-  /** Adapter can create a child provider session before a historical user prompt. */
+  /** Adapter can fork provider history before a historical user prompt for replacement. */
   branch: z.boolean().optional(),
 });
 export type AgentHistoryCapabilities = z.infer<typeof AgentHistoryCapabilitiesSchema>;

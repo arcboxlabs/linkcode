@@ -179,7 +179,7 @@ export class ControlChannel {
     }));
   }
 
-  branchHistory(
+  rewritePrompt(
     sourceSessionId: SessionId,
     sourceMessageId: MessageId,
     branchCursor: AgentHistoryBranchCursor,

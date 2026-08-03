@@ -69,7 +69,7 @@ export class HistoryRequestHandler {
       case 'history.branch':
         return this.responder.reply(
           payload.clientReqId,
-          this.lifecycle.branchSession(
+          this.lifecycle.rewritePrompt(
             payload.clientReqId,
             payload.sourceSessionId,
             payload.sourceMessageId,

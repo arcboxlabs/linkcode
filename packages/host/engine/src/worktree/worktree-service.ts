@@ -110,28 +110,6 @@ export class WorktreeService {
     );
   }
 
-  transferOwner(
-    currentSessionId: SessionId,
-    nextSessionId: SessionId,
-  ): Effect.Effect<void, OperationError> {
-    const record = this.bySession.get(currentSessionId);
-    if (!record) return Effect.void;
-    const transferred = { ...record, sessionId: nextSessionId };
-    return this.semaphore(normalizeRepoRoot(record.repoRoot)).withPermit(
-      storeEffect('worktrees.save', 'Failed to transfer managed worktree ownership', () =>
-        this.store.save(transferred),
-      ).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            this.bySession.delete(currentSessionId);
-            this.index(transferred);
-          }),
-        ),
-        Effect.asVoid,
-      ),
-    );
-  }
-
   provisionLocked(
     options: StartOptions,
     sessionId: SessionId,

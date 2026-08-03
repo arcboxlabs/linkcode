@@ -12,7 +12,6 @@ import type {
 import { MessageIdSchema, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
-  branchHistory,
   cancelTurn,
   hostArtifact,
   hostWorkspaceFile,
@@ -20,6 +19,7 @@ import {
   registerWorkspace,
   respondPermission,
   respondQuestion,
+  rewritePrompt,
   sendInput,
   setEffort,
   setModel,
@@ -215,7 +215,7 @@ function WorkbenchSessionSurface({
   const questionMutation = useMutation(respondQuestion);
   const modelMutation = useMutation(setModel, { onError });
   const effortMutation = useMutation(setEffort, { onError });
-  const branchMutation = useMutation(branchHistory);
+  const rewriteMutation = useMutation(rewritePrompt);
   // The host mirrors recoverable turn-input failures into the conversation as `input_rejected`.
   // Keep transport/validation failures global because they do not have a corresponding event.
   const turnInputMutation = useMutation(sendInput, {
@@ -340,14 +340,13 @@ function WorkbenchSessionSurface({
     ) {
       throw new Error('Prompt editing is unavailable for this session');
     }
-    const sessionId = await branchMutation.trigger({
+    await rewriteMutation.trigger({
       sourceSessionId: active.sessionId,
       sourceMessageId: MessageIdSchema.parse(messageId),
       branchCursor,
       content,
     });
     sessions.refresh();
-    sessions.select(sessionId);
   }
 
   function handleStopTurn(): void {

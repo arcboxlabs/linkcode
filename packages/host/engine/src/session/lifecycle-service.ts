@@ -28,6 +28,7 @@ type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions
 export class SessionLifecycleService {
   readonly driver: SessionDriver;
   private readonly importSemaphores = new Map<string, Semaphore.Semaphore>();
+  private readonly sessionSemaphores = new Map<SessionId, Semaphore.Semaphore>();
   private seq = 0;
   private runEffect: RunEffect | undefined;
 
@@ -61,18 +62,10 @@ export class SessionLifecycleService {
   }
 
   deleteSession(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { records, sessions, workspaces, worktrees } = this;
+    const { sessions, workspaces, worktrees } = this;
     return Effect.gen(function* () {
       const worktree = worktrees.get(sessionId);
-      const replacementOwner = worktree
-        ? [...records.values()].find(
-            (record) => record.sessionId !== sessionId && record.cwd === worktree.worktreePath,
-          )
-        : undefined;
       yield* sessions.delete(sessionId);
-      if (replacementOwner) {
-        yield* worktrees.transferOwner(sessionId, replacementOwner.sessionId);
-      }
       yield* worktrees.cleanupDeletedSession(sessionId);
       if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
         const workspace = workspaces.findByCwd(worktree.worktreePath);
@@ -193,83 +186,61 @@ export class SessionLifecycleService {
     });
   }
 
-  branchSession(
+  rewritePrompt(
     replyTo: string,
     sourceSessionId: SessionId,
     sourceMessageId: MessageId,
     branchCursor: string,
     content: ContentBlock[],
   ): Effect.Effect<void, EngineFailure> {
-    return Effect.suspend(() => {
-      const source = this.records.get(sourceSessionId);
-      if (!source) {
-        return Effect.fail(
-          new RequestError({
-            code: 'not_found',
-            message: `Unknown session: ${sourceSessionId}`,
-          }),
-        );
-      }
-      if (this.sessions.isBusy(sourceSessionId)) {
-        return Effect.fail(
-          new RequestError({
-            code: 'conflict',
-            message: `Session is busy: ${sourceSessionId}`,
-          }),
-        );
-      }
-      const sourceHistoryId = this.records.historyId(sourceSessionId);
-      if (!sourceHistoryId) {
-        return Effect.fail(
-          new RequestError({
-            code: 'conflict',
-            message: 'The source session has no provider history to branch',
-          }),
-        );
-      }
+    return this.sessionSemaphore(sourceSessionId).withPermit(
+      Effect.suspend(() => {
+        const source = this.records.get(sourceSessionId);
+        if (!source) {
+          return Effect.fail(
+            new RequestError({
+              code: 'not_found',
+              message: `Unknown session: ${sourceSessionId}`,
+            }),
+          );
+        }
+        const sourceHistoryId = this.records.historyId(sourceSessionId);
+        if (!sourceHistoryId) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The session has no provider history to rewrite',
+            }),
+          );
+        }
 
-      const { history, sessions, startOptions: resolver, workspaces } = this;
-      const sessionId = this.nextSessionId();
-      return Effect.gen(function* () {
-        const { options: startOptions, warnings } = yield* resolver.resolve(
-          { kind: source.kind, cwd: source.cwd },
-          sessionId,
-        );
-        if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
-        const now = Date.now();
-        const record: SessionRecord = {
-          sessionId,
-          kind: source.kind,
-          cwd: startOptions.cwd,
-          origin: {
-            type: 'branched',
-            parentSessionId: sourceSessionId,
-            sourceHistoryId,
-            sourceMessageId,
-            branchCursor,
-            branchedAt: now,
-          },
-          createdAt: now,
-          updatedAt: now,
-          runs: [{ startedAt: now }],
-        };
-        yield* sessions.startLive(
-          replyTo,
-          record,
-          (adapter) =>
-            history.branch(
-              adapter,
-              { historyId: sourceHistoryId, cursor: branchCursor },
-              startOptions,
-            ),
-          warnings,
-          {
-            initialInput: { type: 'prompt', content },
-            deleteRecordOnStartFailure: true,
-          },
-        );
-      });
-    });
+        const { history, records, sessions, startOptions: resolver } = this;
+        return Effect.gen(function* () {
+          const { options: startOptions, warnings } = yield* resolver.resolve(
+            { kind: source.kind, cwd: source.cwd },
+            sourceSessionId,
+          );
+          yield* sessions.stopForReplacement(sourceSessionId);
+          records.beginRun(sourceSessionId);
+          yield* sessions.startLive(
+            replyTo,
+            source,
+            (adapter) =>
+              history.branch(
+                adapter,
+                { historyId: sourceHistoryId, cursor: branchCursor },
+                startOptions,
+              ),
+            warnings,
+            {
+              initialInput: { type: 'prompt', content },
+              registerRecord: false,
+              rewindMessageId: sourceMessageId,
+            },
+          );
+        });
+      }),
+    );
   }
 
   /** Wake a cold session in place under the same LinkCode id. */
@@ -277,52 +248,54 @@ export class SessionLifecycleService {
     replyTo: string | undefined,
     sessionId: SessionId,
   ): Effect.Effect<void, EngineFailure> {
-    return Effect.suspend(() => {
-      if (this.sessions.has(sessionId)) {
-        return Effect.fail(
-          new RequestError({
-            code: 'conflict',
-            message: `Session is already running: ${sessionId}`,
-          }),
-        );
-      }
-      const record = this.records.get(sessionId);
-      if (!record) {
-        return Effect.fail(
-          new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
-        );
-      }
-      // A never-prompted session has no provider transcript to resume from (the adapter only mints one
-      // on the first prompt); waking it is a fresh start under the same LinkCode id.
-      const historyId = this.records.historyId(sessionId);
-      const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
-      return Effect.gen(function* () {
-        yield* worktrees.verifyResume(sessionId);
-        const { options: startOptions, warnings } = yield* resolver.resolve(
-          { kind: record.kind, cwd: record.cwd },
-          sessionId,
-        );
-        // Register before starting so a persistence failure cannot follow a successful
-        // `session.started` reply with a contradictory request failure.
-        const worktree = worktrees.get(sessionId);
-        if (worktree) {
-          const parent = yield* workspaceTouch(workspaces, worktree.repoRoot);
-          yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
-        } else if (record.cwd) {
-          yield* workspaceTouch(workspaces, record.cwd);
+    return this.sessionSemaphore(sessionId).withPermit(
+      Effect.suspend(() => {
+        if (this.sessions.has(sessionId)) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: `Session is already running: ${sessionId}`,
+            }),
+          );
         }
-        record.runs.push({ historyId, startedAt: Date.now() });
-        yield* sessions.startLive(
-          replyTo,
-          record,
-          (adapter) =>
-            historyId === undefined
-              ? sessions.startAdapter(adapter, startOptions)
-              : history.resume(adapter, historyId, startOptions),
-          warnings,
-        );
-      });
-    });
+        const record = this.records.get(sessionId);
+        if (!record) {
+          return Effect.fail(
+            new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+          );
+        }
+        // A never-prompted session has no provider transcript to resume from (the adapter only mints one
+        // on the first prompt); waking it is a fresh start under the same LinkCode id.
+        const historyId = this.records.historyId(sessionId);
+        const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
+        return Effect.gen(function* () {
+          yield* worktrees.verifyResume(sessionId);
+          const { options: startOptions, warnings } = yield* resolver.resolve(
+            { kind: record.kind, cwd: record.cwd },
+            sessionId,
+          );
+          // Register before starting so a persistence failure cannot follow a successful
+          // `session.started` reply with a contradictory request failure.
+          const worktree = worktrees.get(sessionId);
+          if (worktree) {
+            const parent = yield* workspaceTouch(workspaces, worktree.repoRoot);
+            yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
+          } else if (record.cwd) {
+            yield* workspaceTouch(workspaces, record.cwd);
+          }
+          record.runs.push({ historyId, startedAt: Date.now() });
+          yield* sessions.startLive(
+            replyTo,
+            record,
+            (adapter) =>
+              historyId === undefined
+                ? sessions.startAdapter(adapter, startOptions)
+                : history.resume(adapter, historyId, startOptions),
+            warnings,
+          );
+        });
+      }),
+    );
   }
 
   private createAutomationSession(options: {
@@ -370,6 +343,14 @@ export class SessionLifecycleService {
     if (existing) return existing;
     const semaphore = Semaphore.makeUnsafe(1);
     this.importSemaphores.set(key, semaphore);
+    return semaphore;
+  }
+
+  private sessionSemaphore(sessionId: SessionId): Semaphore.Semaphore {
+    const existing = this.sessionSemaphores.get(sessionId);
+    if (existing) return existing;
+    const semaphore = Semaphore.makeUnsafe(1);
+    this.sessionSemaphores.set(sessionId, semaphore);
     return semaphore;
   }
 
