@@ -54,6 +54,12 @@ const RE_PI_WIDE = /Pi Wide/;
 const RE_HIGH_EFFORT = /High/;
 const RE_LOW_EFFORT = /Low/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
+const RE_PROVIDER_CLAUDE_CODE_MENU = /provider.*Claude Code/;
+const RE_MODEL_SONNET_5_MENU = /model.*Sonnet 5/;
+const RE_MODEL_GPT_56_SOL_MENU = /model.*GPT-5\.6-Sol/;
+const RE_MODEL_DEFAULT_MENU = /model.*modelDefault/;
+const RE_MODEL_PI_SONNET_MENU = /model.*Pi Sonnet/;
+const RE_EFFORT_DEFAULT_MENU = /effort.*effortDefault/;
 const RE_APPROVAL_DEFAULT = /Default/;
 const RE_ACCEPT_EDITS = /Accept edits/;
 const RE_PROJECT_WORKSPACE = /app/;
@@ -274,7 +280,7 @@ describe('NewSessionSurface', () => {
     );
   });
 
-  it('names the model selector with its agent, model, and reasoning effort', () => {
+  it('names the model selector with its agent, model, and effort', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
@@ -289,7 +295,7 @@ describe('NewSessionSurface', () => {
 
     expect(
       screen.getByRole('button', {
-        name: 'Claude Code, Sonnet 5, reasoning: effortDefault',
+        name: 'Claude Code, Sonnet 5, effort: effortDefault',
       }),
     ).toBeTruthy();
   });
@@ -571,7 +577,16 @@ describe('NewSessionSurface', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_SONNET_5 }));
-    await user.click(await screen.findByText('High'));
+    const providerItem = await screen.findByRole('menuitem', {
+      name: RE_PROVIDER_CLAUDE_CODE_MENU,
+    });
+    expect(screen.getByRole('menuitem', { name: RE_MODEL_SONNET_5_MENU })).toBeTruthy();
+    providerItem.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(await screen.findByRole('menuitemradio', { name: 'Claude Code' })).toBeTruthy();
+    await user.keyboard('{ArrowLeft}');
+    await user.click(screen.getByRole('menuitem', { name: RE_EFFORT_DEFAULT_MENU }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'High' }));
     typeInComposer('hello');
     await pressInComposer('Enter');
 
@@ -717,7 +732,7 @@ describe('NewSessionSurface', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_GPT_56_SOL }));
-    await user.click(await screen.findByRole('menuitem', { name: 'GPT-5.6-Sol' }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_GPT_56_SOL_MENU }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'GPT-5.6-Luna' }));
     typeInComposer('use Luna');
     await pressInComposer('Enter');
@@ -775,11 +790,11 @@ describe('NewSessionSurface', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_OPUS_4_8 }));
-    await user.click(await screen.findByRole('menuitem', { name: 'useDefaultModel' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'resetToDefault' }));
     expect(screen.getByRole('button', { name: RE_CONFIGURED_CLAUDE_MODEL })).toBeTruthy();
-
     await user.click(screen.getByRole('button', { name: RE_CONFIGURED_CLAUDE_MODEL }));
-    await user.click(await screen.findByRole('menuitem', { name: 'useDefaultEffort' }));
+    expect(screen.queryByRole('menuitem', { name: 'resetToDefault' })).toBeNull();
+    await user.keyboard('{Escape}');
 
     typeInComposer('use provider defaults');
     await pressInComposer('Enter');
@@ -808,7 +823,7 @@ describe('NewSessionSurface', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_SONNET_5 }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Sonnet 5' }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_SONNET_5_MENU }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Opus 5' }));
     typeInComposer('hello');
     await pressInComposer('Enter');
@@ -1048,10 +1063,11 @@ describe('NewSessionSurface', () => {
     );
 
     await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
-    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT_MENU }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
     await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
-    await user.click(await screen.findByText('High'));
+    await user.click(await screen.findByRole('menuitem', { name: RE_EFFORT_DEFAULT_MENU }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'High' }));
     await user.click(screen.getByRole('button', { name: RE_APPROVAL_DEFAULT }));
     await user.click(await screen.findByRole('menuitemradio', { name: RE_ACCEPT_EDITS }));
     typeInComposer('catalog choices');
@@ -1068,7 +1084,7 @@ describe('NewSessionSurface', () => {
 
     onSubmit.mockClear();
     await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Pi Sonnet' }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_PI_SONNET_MENU }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
     typeInComposer('no stale effort');
     await pressInComposer('Enter');
