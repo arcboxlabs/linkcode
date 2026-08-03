@@ -2,6 +2,7 @@ import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@lin
 import { useRef } from 'react';
 import type { StickToBottomContext } from 'use-stick-to-bottom';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
+import { CommandCatalogProvider } from '../chat/command-brand';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
@@ -142,17 +143,25 @@ export function ConversationSurface({
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       <div className={cn('min-h-0 flex-1', conversationClassName)}>
         <ArtifactHostActionsProvider actions={artifactActions}>
-          <ConversationView
-            conversation={conversation}
-            agentKind={agentKind}
-            cwd={cwd}
-            modelName={modelName ?? conversation.currentModel ?? undefined}
-            scrollContextRef={conversationScrollRef}
-            TerminalBlockComponent={TerminalBlockComponent}
-            promptEditState={promptEditState}
-            onEditPrompt={onEditPrompt}
-            onReviewChanges={onReviewChanges}
-          />
+          <CommandCatalogProvider
+            commands={
+              composer.directiveControls.slash.state === 'ready'
+                ? composer.directiveControls.slash.commands
+                : null
+            }
+          >
+            <ConversationView
+              conversation={conversation}
+              agentKind={agentKind}
+              cwd={cwd}
+              modelName={modelName ?? conversation.currentModel ?? undefined}
+              scrollContextRef={conversationScrollRef}
+              TerminalBlockComponent={TerminalBlockComponent}
+              promptEditState={promptEditState}
+              onEditPrompt={onEditPrompt}
+              onReviewChanges={onReviewChanges}
+            />
+          </CommandCatalogProvider>
         </ArtifactHostActionsProvider>
       </div>
       <ConversationPromptDock

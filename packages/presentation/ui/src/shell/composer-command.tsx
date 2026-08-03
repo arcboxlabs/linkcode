@@ -18,6 +18,7 @@ import {
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
+import { CommandBrandGlyph } from '../chat/command-brand';
 import type { FileIconComponent } from '../lib/file-icon';
 import { fileIconFor } from '../lib/file-icon';
 
@@ -241,24 +242,8 @@ export function buildComposerCommandGroups({
 }
 
 function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNode {
-  // A provider-branded command shows its own icon; brandColor tints an initial chip when the
-  // catalog carried a color but no usable icon. Unbranded commands keep the shared glyph.
   if (entry.kind === 'command') {
-    const { brandColor, displayName, iconDataUri, name } = entry.command;
-    if (iconDataUri) {
-      return <img alt="" className="size-4 shrink-0 rounded-xs" src={iconDataUri} />;
-    }
-    if (brandColor) {
-      return (
-        <span
-          aria-hidden
-          className="flex size-4 shrink-0 items-center justify-center rounded-xs font-medium text-2xs text-white uppercase"
-          style={{ backgroundColor: brandColor }}
-        >
-          {(displayName ?? name).slice(0, 1)}
-        </span>
-      );
-    }
+    return <CommandBrandGlyph className="size-4" command={entry.command} />;
   }
   const Icon = entry.icon;
   if (!Icon) return null;

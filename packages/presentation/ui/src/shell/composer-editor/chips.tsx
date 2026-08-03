@@ -3,16 +3,17 @@ import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import type { NodeKey } from 'lexical';
-import { BookTextIcon, TerminalIcon, TriangleAlertIcon } from 'lucide-react';
+import { TerminalIcon, TriangleAlertIcon } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { fileBasename } from '../../chat/artifacts/file-kind';
+import { CommandBrandGlyph } from '../../chat/command-brand';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
 import { Chip } from '../../chat/link-chip';
 import { cn } from '../../lib/cn';
 import type { ComposerDirectiveState, DirectivePlacementIssue } from './directive-state';
-import { commandStatus, directiveStateFor, shellStatus } from './directive-state';
+import { commandFor, commandStatus, directiveStateFor, shellStatus } from './directive-state';
 import { $convertDirectiveToText, $removeDirective } from './serialize';
 
 function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T {
@@ -144,6 +145,7 @@ export function CommandChip({
   nodeKey: NodeKey;
 }): React.ReactNode {
   const status = useDirectiveState((state) => commandStatus(name, state.directiveControls.slash));
+  const command = useDirectiveState((state) => commandFor(name, state.directiveControls.slash));
   const placement = useDirectiveState((state) => state.placementIssues[nodeKey]);
   const t = useTranslations('workbench.composer');
   const statusReason =
@@ -164,7 +166,7 @@ export function CommandChip({
       {reason ? (
         <TriangleAlertIcon aria-hidden className="size-3.5" />
       ) : (
-        <BookTextIcon aria-hidden className="size-3.5" />
+        <CommandBrandGlyph className="size-3.5" command={command} />
       )}
       /{name}
     </DirectiveChip>

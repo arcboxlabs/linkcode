@@ -89,6 +89,15 @@ export function commandStatus(
     : 'unknown';
 }
 
+/** The catalog entry a typed name resolves to (canonical name or alias), for chip branding. */
+export function commandFor(
+  name: string,
+  controls: ComposerSlashCommandControls,
+): AgentCommand | undefined {
+  if (controls.state !== 'ready') return undefined;
+  return controls.commands.find((command) => agentCommandMatches(command, name));
+}
+
 export function commandCatalog(controls: ComposerSlashCommandControls): readonly AgentCommand[] {
   return controls.state === 'ready' ? controls.commands : EMPTY_COMMANDS;
 }

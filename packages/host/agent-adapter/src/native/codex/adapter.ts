@@ -91,11 +91,11 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
   return resolveAgentShellEnvironment(cwd ?? homedir());
 }
 
+const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
+
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
-const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
-
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
