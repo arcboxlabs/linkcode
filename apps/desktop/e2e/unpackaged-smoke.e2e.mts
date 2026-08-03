@@ -30,6 +30,12 @@ async function main(): Promise<void> {
     const page = await app.firstWindow();
     await page.locator('body').waitFor({ state: 'visible', timeout: 30000 });
     const boundary = await page.evaluate(async () => ({
+      config: {
+        info: window.linkcodeConfig.snapshotInfo(),
+        refresh: await window.linkcodeConfig.refresh(),
+        snapshot: window.linkcodeConfig.effectiveSnapshot(),
+        unsubscribeType: typeof window.linkcodeConfig.onHotUpdate((keys) => keys.length),
+      },
       platform: window.linkcodeSystem.app.platform,
       version: await window.linkcodeSystem.app.version(),
       managed: await window.linkcodeSystem.daemon.isManaged(),
@@ -39,6 +45,17 @@ async function main(): Promise<void> {
     assert.match(boundary.version, VERSION_RE);
     assert.equal(boundary.managed, false);
     assert.equal(typeof boundary.maximized, 'boolean');
+    assert.deepEqual(boundary.config.snapshot, {});
+    assert.deepEqual(boundary.config.info, {
+      configVersion: null,
+      sha256: null,
+      source: 'bundled',
+      stagedColdKeys: [],
+      status: 'READY',
+    });
+    assert.equal(boundary.config.refresh.normal, 'disabled');
+    assert.equal(boundary.config.refresh.emergency, 'disabled');
+    assert.equal(boundary.config.unsubscribeType, 'function');
     await page.waitForFunction(() => window.configSigningPoc !== undefined);
     const signingPoc = await page.evaluate(() => window.configSigningPoc);
     assert.deepEqual(signingPoc?.noble, signingPoc?.webCrypto);

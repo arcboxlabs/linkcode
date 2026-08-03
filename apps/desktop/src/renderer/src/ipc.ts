@@ -1,8 +1,10 @@
 import type { SystemBridge } from '@linkcode/ipc';
 import { startSpan } from '@sentry/electron/renderer';
+import type { ConfigBridge } from '../../shared/config';
 
 declare global {
   interface Window {
+    linkcodeConfig: ConfigBridge;
     linkcodeSystem: SystemBridge;
   }
 }
