@@ -144,7 +144,10 @@ export type LinkCodePluginIntegrity = z.infer<typeof LinkCodePluginIntegritySche
 
 /** Immutable package bytes advertised by a marketplace release. */
 export const LinkCodePluginArtifactSchema = z.object({
-  /** Ordered HTTPS or marketplace-relative mirrors of the same integrity-pinned bytes. */
+  /**
+   * Ordered HTTPS or marketplace-relative mirrors of the same integrity-pinned bytes. Relative
+   * URLs resolve against the marketplace index document URL per RFC 3986.
+   */
   urls: z.array(z.union([z.url({ protocol: /^https$/ }), LinkCodePluginPackagePathSchema])).min(1),
   integrity: LinkCodePluginIntegritySchema,
   size: z.number().int().positive().optional(),
@@ -156,7 +159,7 @@ export type LinkCodePluginArtifact = z.infer<typeof LinkCodePluginArtifactSchema
 export const LinkCodePluginReleaseSchema = z.object({
   manifest: LinkCodePluginManifestReaderSchema,
   artifact: LinkCodePluginArtifactSchema,
-  publishedAt: z.iso.datetime().optional(),
+  publishedAt: z.iso.datetime({ offset: true }).optional(),
 });
 export type LinkCodePluginRelease = z.infer<typeof LinkCodePluginReleaseSchema>;
 
