@@ -37,7 +37,7 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@sentry/electron": "^7.15.0",
-    "better-auth": "1.7.0-rc.1",
+    "better-auth": "1.7.0-rc.2",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
     "foxts": "^5.8.0",
