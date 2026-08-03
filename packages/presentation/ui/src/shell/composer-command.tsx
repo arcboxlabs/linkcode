@@ -186,16 +186,24 @@ export function buildComposerCommandGroups({
   const commandItems: ComposerCommandEntry[] = [];
   if (commandSource === 'slash') {
     for (const command of agentCommands) {
-      // Aliases match too (typing /cost surfaces /usage); selection inserts the canonical name.
+      // Aliases and display names match too (typing /cost surfaces /usage); selection inserts
+      // the canonical name.
       if (
         !matchesQuery(command.name, command.name, command.description, commandQuery) &&
+        !command.displayName?.toLowerCase().includes(commandQuery) &&
         !command.aliases?.some((alias) => alias.toLowerCase().includes(commandQuery))
       ) {
         continue;
       }
+      const hint =
+        command.displayName === undefined
+          ? (command.description ?? command.argumentHint)
+          : [command.displayName, command.description ?? command.argumentHint]
+              .filter((part) => part !== undefined)
+              .join(' · ');
       commandItems.push({
         command,
-        hint: command.description ?? command.argumentHint,
+        hint,
         icon: BookTextIcon,
         id: `command:${command.name}`,
         kind: 'command',
@@ -233,6 +241,25 @@ export function buildComposerCommandGroups({
 }
 
 function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNode {
+  // A provider-branded command shows its own icon; brandColor tints an initial chip when the
+  // catalog carried a color but no usable icon. Unbranded commands keep the shared glyph.
+  if (entry.kind === 'command') {
+    const { brandColor, displayName, iconDataUri, name } = entry.command;
+    if (iconDataUri) {
+      return <img alt="" className="size-4 shrink-0 rounded-xs" src={iconDataUri} />;
+    }
+    if (brandColor) {
+      return (
+        <span
+          aria-hidden
+          className="flex size-4 shrink-0 items-center justify-center rounded-xs font-medium text-2xs text-white uppercase"
+          style={{ backgroundColor: brandColor }}
+        >
+          {(displayName ?? name).slice(0, 1)}
+        </span>
+      );
+    }
+  }
   const Icon = entry.icon;
   if (!Icon) return null;
   return (

@@ -44,6 +44,7 @@
     "@biomejs/biome": "^2.5.5",
     "@eslint-sukka/react": "^8.14.2",
     "@iconify-json/material-icon-theme": "catalog:",
+    "@iconify-json/simple-icons": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
     "@svgr/core": "catalog:",
     "@svgr/plugin-jsx": "catalog:",
