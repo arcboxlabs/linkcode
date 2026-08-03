@@ -42,6 +42,28 @@ const INTEGRATION_GLYPHS = {
 
 export type IntegrationBrand = keyof typeof INTEGRATION_GLYPHS;
 
+/** Proper brand casing for labels ("Used Linear 2 times"). */
+export const INTEGRATION_LABELS: Record<IntegrationBrand, string> = {
+  asana: 'Asana',
+  atlassian: 'Atlassian',
+  cloudflare: 'Cloudflare',
+  figma: 'Figma',
+  github: 'GitHub',
+  gmail: 'Gmail',
+  googledrive: 'Google Drive',
+  intercom: 'Intercom',
+  jira: 'Jira',
+  linear: 'Linear',
+  notion: 'Notion',
+  postgres: 'PostgreSQL',
+  postgresql: 'PostgreSQL',
+  sentry: 'Sentry',
+  slack: 'Slack',
+  stripe: 'Stripe',
+  supabase: 'Supabase',
+  vercel: 'Vercel',
+};
+
 const RE_SERVER_TOKEN_BOUNDARY = /[^a-z0-9]+/;
 
 /** MCP server names are user-chosen config keys (`linear`, `claude_ai_Gmail`, opaque ids) —

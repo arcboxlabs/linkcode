@@ -1,4 +1,5 @@
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
+import { activityItemBrand } from './activity-summary';
 import type { ConversationItem } from './types';
 
 type ReasoningTimelineItem = Extract<ConversationItem, { kind: 'reasoning' }>;
@@ -31,7 +32,13 @@ export interface ActivityGroupingPolicy {
 const DEFAULT_ACTIVITY_KEY = 'activity';
 
 export const defaultActivityGroupingPolicy: ActivityGroupingPolicy = {
-  classify: (item) => (isActivityRunItem(item) ? DEFAULT_ACTIVITY_KEY : null),
+  // Branded integration calls run in their own dedicated groups, so a failing generic call never
+  // shares a header (or paints its glyph) with a healthy integration.
+  classify(item) {
+    if (!isActivityRunItem(item)) return null;
+    const brand = activityItemBrand(item);
+    return brand === undefined ? DEFAULT_ACTIVITY_KEY : `brand:${brand}`;
+  },
   minimumGroupSize: 2,
 };
 

@@ -658,6 +658,16 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         rawInput: { id: 'CODE-228', includeRelations: true },
         rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
       },
+      // Adjacent same-brand calls form a dedicated brand group ("Used Linear 2 times").
+      {
+        toolCallId: 'mock-tool-mcp-slug-save',
+        title: 'mcp__linear__save_issue',
+        kind: 'other',
+        status: 'completed',
+        content: [{ type: 'content', content: textBlock('CODE-228 moved to In Review.') }],
+        rawInput: { id: 'CODE-228', state: 'In Review' },
+        rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
+      },
       {
         toolCallId: 'mock-tool-task-review',
         title: 'Review metadata policy',

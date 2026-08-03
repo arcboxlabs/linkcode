@@ -20,7 +20,7 @@ import {
   ChatDisclosureIconSlot,
 } from './disclosure-header';
 import type { IntegrationBrand } from './integration-brand';
-import { IntegrationIcon } from './integration-brand';
+import { INTEGRATION_LABELS, IntegrationIcon } from './integration-brand';
 import { QuestionCallItem } from './question-call-item';
 import { Shimmer } from './shimmer';
 import { ThoughtBlock } from './thought-block';
@@ -49,6 +49,8 @@ export function ActivityRun({
   const t = useTranslations('workbench.activityRun');
   const current = activityRunCurrentDescriptor(run.items);
   const settled = settledActivityRunDescriptor(run.items);
+  const brand = activityRunBrand(run.items);
+  const brandLabel = brand === undefined ? undefined : INTEGRATION_LABELS[brand];
   const firstClause = settled.clauses[0];
   const failureClause = firstClause.category === 'failure' ? firstClause : undefined;
   const hasFailure = failureClause !== undefined;
@@ -59,6 +61,12 @@ export function ActivityRun({
         ? t('failed', { count: clause.count })
         : t('failedMany');
     }
+    // A dedicated brand group names its integration ("Used Linear 2 times").
+    if (brandLabel !== undefined && clause.category === 'integration') {
+      return clause.count <= EXACT_ACTIVITY_COUNT_MAX
+        ? t('settled.integrationBrand', { brand: brandLabel, count: clause.count })
+        : t('settledMany.integrationBrand', { brand: brandLabel });
+    }
     return clause.count <= EXACT_ACTIVITY_COUNT_MAX
       ? t(`settled.${clause.category}`, { count: clause.count })
       : t(`settledMany.${clause.category}`);
@@ -68,7 +76,10 @@ export function ActivityRun({
     ? [
         {
           key: `running-${current.kind}`,
-          text: t(`running.${current.kind}`),
+          text:
+            brandLabel !== undefined && current.kind === 'other'
+              ? t('running.integrationBrand', { brand: brandLabel })
+              : t(`running.${current.kind}`),
           failure: false,
         },
         ...(currentSummary
@@ -94,7 +105,6 @@ export function ActivityRun({
       ? 'thinking'
       : undefined);
   const iconCategory = current?.category ?? primaryCategory;
-  const brand = activityRunBrand(run.items);
   const [open, setOpen] = useState(false);
 
   return (
@@ -220,7 +230,9 @@ function ActivityRunIcon({
     : running
       ? 'text-foreground'
       : 'text-muted-foreground';
-  if (brand) return <IntegrationIcon brand={brand} className={tint} />;
+  // A brand glyph never wears the destructive tint — a red Linear logo reads as the
+  // integration itself being broken; failures fall back to the category glyph.
+  if (brand && !failed) return <IntegrationIcon brand={brand} className={tint} />;
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
   return <Icon className={cn('size-3.5 shrink-0', tint)} />;
 }

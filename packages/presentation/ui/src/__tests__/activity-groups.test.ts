@@ -136,6 +136,27 @@ describe('groupTimeline', () => {
     expect(groupTimeline(items)).toEqual([{ type: 'item', item: items[0] }]);
   });
 
+  it('isolates branded integration calls into dedicated per-brand runs', () => {
+    const items = [
+      tool('read'),
+      tool('search'),
+      tool('other', { title: 'mcp__linear__get_issue' }),
+      tool('other', { title: 'mcp__linear__save_issue' }),
+      tool('other', { title: 'mcp__slack__send_message' }),
+      tool('other'),
+      tool('execute'),
+    ];
+    const entries = groupTimeline(items);
+
+    expect(entries).toEqual([
+      { type: 'run', id: `run-${items[0].id}`, items: [items[0], items[1]] },
+      { type: 'run', id: `run-${items[2].id}`, items: [items[2], items[3]] },
+      // A lone branded call stays an ordinary row — its own header already wears the brand.
+      { type: 'item', item: items[4] },
+      { type: 'run', id: `run-${items[5].id}`, items: [items[5], items[6]] },
+    ]);
+  });
+
   it.each(['user', 'assistant'] as const)('splits runs on %s messages', (role) => {
     const first = tool('read');
     const narration = message(role);
