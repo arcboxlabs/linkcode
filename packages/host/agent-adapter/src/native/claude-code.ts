@@ -60,6 +60,8 @@ import {
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { waitWithAbort } from 'foxts/wait';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- This poll explicitly uses p-retry's AbortSignal-aware backoff.
+import pRetry from 'p-retry';
 import { z } from 'zod';
 import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
@@ -405,7 +407,9 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   toolUsePatches: new Map(),
 };
 
-const TITLE_POLL_DELAYS_MS = [500, 1000, 2000, 4000] as const;
+const TITLE_POLL_INITIAL_DELAY_MS = 500;
+const TITLE_POLL_RETRIES = 3;
+const TITLE_POLL_RETRY_DELAY_MS = 1000;
 
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` `query()` in **streaming input
@@ -1478,15 +1482,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     ) => Promise<SDKSessionInfo | undefined>,
     signal: AbortSignal,
   ): Promise<void> {
-    for (const delay of TITLE_POLL_DELAYS_MS) {
-      try {
-        // eslint-disable-next-line no-await-in-loop -- bounded polling waits for provider metadata
-        await waitWithAbort(delay, signal, true);
-        // eslint-disable-next-line no-await-in-loop -- each read observes the title after the delay
-        if (await this.readAndEmitTitle(sessionId, getSessionInfo, signal)) return;
-      } catch {
-        if (signal.aborted) return;
-      }
+    try {
+      await waitWithAbort(TITLE_POLL_INITIAL_DELAY_MS, signal, true);
+      await pRetry(
+        async () => {
+          if (await this.readAndEmitTitle(sessionId, getSessionInfo, signal)) return;
+          throw new Error('Claude session title is not available');
+        },
+        {
+          retries: TITLE_POLL_RETRIES,
+          factor: 2,
+          minTimeout: TITLE_POLL_RETRY_DELAY_MS,
+          signal,
+        },
+      );
+    } catch {
+      // Metadata is best-effort; polling exhaustion or cancellation must not affect the session.
     }
   }
 
