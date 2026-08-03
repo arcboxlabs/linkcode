@@ -280,7 +280,12 @@ describe('buildConversation', () => {
   it('upserts replayed user messages by stable identity', () => {
     const messageId = 'user-stable' as MessageId;
     const c = buildConversation([
-      { type: 'user-message', messageId, content: [{ type: 'text', text: 'draft' }] },
+      {
+        type: 'user-message',
+        messageId,
+        content: [{ type: 'text', text: 'draft' }],
+        branchCursor: 'opaque-cursor',
+      },
       { type: 'user-message', messageId, content: [{ type: 'text', text: 'final' }] },
     ]);
 
@@ -288,6 +293,7 @@ describe('buildConversation', () => {
     expect(c.items[0]).toMatchObject({
       id: messageId,
       blocks: [{ type: 'text', text: 'final' }],
+      branchCursor: 'opaque-cursor',
     });
   });
 

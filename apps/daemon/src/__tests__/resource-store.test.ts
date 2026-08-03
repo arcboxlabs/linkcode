@@ -83,3 +83,31 @@ describe('SQLite resource store', () => {
     expect(await restarted.list(session.sessionId)).toEqual([]);
   });
 });
+
+describe('SQLite session store', () => {
+  it('round-trips branched session provenance across store instances', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'linkcode-session-store-'));
+    temporaryDirectories.push(directory);
+    const database = join(directory, 'daemon.db');
+    const record = SessionRecordSchema.parse({
+      sessionId: 'session-child',
+      kind: 'codex',
+      cwd: directory,
+      origin: {
+        type: 'branched',
+        parentSessionId: 'session-parent',
+        sourceHistoryId: 'history-parent',
+        sourceMessageId: 'message-edited',
+        branchCursor: 'opaque-branch-cursor',
+        branchedAt: 2,
+      },
+      createdAt: 2,
+      updatedAt: 3,
+      runs: [{ historyId: 'history-child', startedAt: 2 }],
+    });
+
+    await createSessionStore(database).save(record);
+
+    await expect(createSessionStore(database).load()).resolves.toEqual([record]);
+  });
+});

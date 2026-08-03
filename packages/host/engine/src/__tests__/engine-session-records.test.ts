@@ -1,20 +1,28 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { asHistoryId } from '@linkcode/agent-adapter';
 import type {
+  AgentHistoryBranchOptions,
+  AgentHistoryCapabilities,
   AgentHistoryReadOptions,
   SessionId,
   SessionRecord,
   WorkspaceId,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
+import { MessageIdSchema, textBlock } from '@linkcode/schema';
+import { describe, expect, it, vi } from 'vitest';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
+import { InMemoryWorktreeStore } from '../worktree/worktree-store';
 import {
   FakeAdapter,
   createSessionHarness as harness,
   listedSessions,
   startedSessionId as startedId,
+  settleEngineTasks as tick,
 } from './fixtures/session-harness';
 
 class CwdlessHistoryAdapter extends FakeAdapter {
@@ -28,6 +36,35 @@ class CwdlessHistoryAdapter extends FakeAdapter {
       },
       events: [],
     });
+  }
+}
+
+class BranchingHistoryAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    branch: true,
+  };
+  branchedFrom: AgentHistoryBranchOptions | null = null;
+
+  branchHistory(opts: AgentHistoryBranchOptions, startOpts: Parameters<FakeAdapter['start']>[0]) {
+    this.branchedFrom = opts;
+    this.startedWith = startOpts;
+    this.emit({ type: 'session-ref', historyId: asHistoryId('native-child') });
+    return Promise.resolve();
+  }
+}
+
+class RejectingBranchAdapter extends BranchingHistoryAdapter {
+  override branchHistory(): Promise<void> {
+    return Promise.reject(new Error('provider fork failed'));
+  }
+}
+
+class RejectingBranchedPromptAdapter extends BranchingHistoryAdapter {
+  override send(): Promise<void> {
+    return Promise.reject(new Error('edited prompt rejected'));
   }
 }
 
@@ -80,6 +117,280 @@ describe('engine session records', () => {
       historyId: 'native-1',
     });
     expect(sessions[0].updatedAt).toBeTypeOf('number');
+  });
+
+  it('branches provider history before the selected prompt and persists child provenance', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'branch',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await tick();
+
+    const childSessionId = startedId(h.sent, 'branch');
+    const childAdapter = h.adapters[1] as BranchingHistoryAdapter;
+    expect(childAdapter.branchedFrom).toEqual({
+      historyId: 'native-source',
+      cursor: 'opaque-cursor',
+    });
+    expect(childAdapter.sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('edited prompt')] },
+    ]);
+    expect(h.adapters[0].sentInputs).toEqual([]);
+
+    const records = await store.load();
+    expect(records).toHaveLength(2);
+    expect(records.find((record) => record.sessionId === sourceSessionId)?.origin).toEqual({
+      type: 'created',
+    });
+    expect(records.find((record) => record.sessionId === childSessionId)?.origin).toMatchObject({
+      type: 'branched',
+      parentSessionId: sourceSessionId,
+      sourceHistoryId: 'native-source',
+      sourceMessageId: 'source-message',
+      branchCursor: 'opaque-cursor',
+    });
+  });
+
+  it('creates independent children for concurrent branches from the same source', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+
+    await Promise.all([
+      h.inject({
+        kind: 'history.branch',
+        clientReqId: 'branch-one',
+        sourceSessionId,
+        sourceMessageId: MessageIdSchema.parse('source-message'),
+        branchCursor: 'opaque-cursor',
+        content: [textBlock('first edit')],
+      }),
+      h.inject({
+        kind: 'history.branch',
+        clientReqId: 'branch-two',
+        sourceSessionId,
+        sourceMessageId: MessageIdSchema.parse('source-message'),
+        branchCursor: 'opaque-cursor',
+        content: [textBlock('second edit')],
+      }),
+    ]);
+    await tick();
+
+    const childIds = [startedId(h.sent, 'branch-one'), startedId(h.sent, 'branch-two')];
+    expect(new Set(childIds).size).toBe(2);
+    expect(h.adapters.slice(1).map((adapter) => adapter.sentInputs)).toEqual(
+      expect.arrayContaining([
+        [{ type: 'prompt', content: [textBlock('first edit')] }],
+        [{ type: 'prompt', content: [textBlock('second edit')] }],
+      ]),
+    );
+    const records = await store.load();
+    expect(records).toHaveLength(3);
+    const branchedIds: SessionId[] = [];
+    for (const record of records) {
+      if (record.origin.type === 'branched') branchedIds.push(record.sessionId);
+    }
+    expect(branchedIds).toEqual(expect.arrayContaining(childIds));
+  });
+
+  it('transfers managed worktree ownership to a branch across restart and cleans the last owner', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'linkcode-branch-worktree-'));
+    execFileSync('git', ['init', '--quiet'], { cwd: repoRoot, windowsHide: true });
+    try {
+      const store = new InMemorySessionStore();
+      const worktreeStore = new InMemoryWorktreeStore();
+      const parentSessionId = 'sess-parent' as SessionId;
+      const childSessionId = 'sess-child' as SessionId;
+      const worktreePath = join(repoRoot, 'managed-worktree');
+      const sourceHistoryId = asHistoryId('native-source');
+      await store.save({
+        sessionId: parentSessionId,
+        kind: 'claude-code',
+        cwd: worktreePath,
+        origin: { type: 'created' },
+        createdAt: 1,
+        updatedAt: 1,
+        runs: [{ historyId: sourceHistoryId, startedAt: 1 }],
+      });
+      await store.save({
+        sessionId: childSessionId,
+        kind: 'claude-code',
+        cwd: worktreePath,
+        origin: {
+          type: 'branched',
+          parentSessionId,
+          sourceHistoryId,
+          sourceMessageId: MessageIdSchema.parse('source-message'),
+          branchCursor: 'opaque-cursor',
+          branchedAt: 2,
+        },
+        createdAt: 2,
+        updatedAt: 2,
+        runs: [{ historyId: asHistoryId('native-child'), startedAt: 2 }],
+      });
+      await worktreeStore.save({
+        sessionId: parentSessionId,
+        repoRoot,
+        worktreePath,
+        branch: 'feature',
+        createdAt: 1,
+        state: 'active',
+      });
+
+      const first = harness(store, undefined, undefined, undefined, undefined, undefined, {
+        worktreeStore,
+      });
+      await first.engine.start();
+      await first.inject({
+        kind: 'session.delete',
+        clientReqId: 'delete-parent',
+        sessionId: parentSessionId,
+      });
+
+      expect((await worktreeStore.load())[0]).toMatchObject({
+        sessionId: childSessionId,
+        worktreePath,
+      });
+      expect((await store.load()).map((record) => record.sessionId)).toEqual([childSessionId]);
+
+      const restarted = harness(store, undefined, undefined, undefined, undefined, undefined, {
+        worktreeStore,
+      });
+      await restarted.engine.start();
+      await restarted.inject({
+        kind: 'session.delete',
+        clientReqId: 'delete-child',
+        sessionId: childSessionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(restarted.sent).toContainEqual({
+          kind: 'request.succeeded',
+          replyTo: 'delete-child',
+        }),
+      );
+      expect(await worktreeStore.load()).toEqual([]);
+      expect(await store.load()).toEqual([]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a busy source without creating a child', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'branch-busy',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'branch-busy',
+      code: 'conflict',
+      message: `Session is busy: ${sourceSessionId}`,
+    });
+    expect(await store.load()).toHaveLength(1);
+  });
+
+  it('removes the provisional child record when the provider fork fails', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new RejectingBranchAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'branch-failed',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'branch-failed',
+      code: 'operation_failed',
+      message: 'Failed to branch agent history',
+    });
+    expect(await store.load()).toHaveLength(1);
+  });
+
+  it('keeps the provider child recoverable when its edited prompt is rejected', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new RejectingBranchedPromptAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'prompt-failed',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await tick();
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'prompt-failed',
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
+      reportedInConversation: true,
+    });
+    const records = await store.load();
+    expect(records).toHaveLength(2);
+    expect(records.some((record) => record.origin.type === 'branched')).toBe(true);
   });
 
   it('resumes a persisted session under the same id, appending a run', async () => {
