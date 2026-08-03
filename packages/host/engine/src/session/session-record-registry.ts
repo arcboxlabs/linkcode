@@ -147,6 +147,18 @@ export class SessionRecordRegistry {
     this.onChanged(sessionId, 'updated');
   }
 
+  setProviderTitle(sessionId: SessionId, title: string): void {
+    const record = this.records.get(sessionId);
+    const normalized = title.trim();
+    // Automation titles name the durable job/run and must not be replaced by provider metadata.
+    if (!record || record.automation || normalized.length === 0 || record.title === normalized) {
+      return;
+    }
+    record.title = normalized;
+    this.persist(record);
+    this.onChanged(sessionId, 'updated');
+  }
+
   historyId(sessionId: SessionId): AgentHistoryId | undefined {
     const record = this.records.get(sessionId);
     return record ? latestHistoryId(record) : undefined;

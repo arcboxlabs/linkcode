@@ -14,6 +14,7 @@ import {
   FakeAdapter,
   createSessionHarness as harness,
   listedSessions,
+  settleEngineTasks,
   startedSessionId as startedId,
 } from './fixtures/session-harness';
 
@@ -105,6 +106,76 @@ describe('engine session records', () => {
     expect(record.runs).toHaveLength(2);
     expect(record.runs[0].endedAt).toBeTypeOf('number');
     expect(record.runs[1].historyId).toBe('native-1');
+  });
+
+  it('replaces the first-prompt fallback with a provider title and dedupes repeats', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('Investigate the login regression')] },
+    });
+    const changesBeforeTitle = h.sent.filter(
+      (payload) => payload.kind === 'session.changed',
+    ).length;
+
+    h.adapters[0].emit({ type: 'title-update', title: 'Fix OAuth callback handling' });
+    h.adapters[0].emit({ type: 'title-update', title: 'Fix OAuth callback handling' });
+    await settleEngineTasks();
+
+    expect((await store.load())[0].title).toBe('Fix OAuth callback handling');
+    expect(h.sent.filter((payload) => payload.kind === 'session.changed')).toHaveLength(
+      changesBeforeTitle + 1,
+    );
+    expect(h.sent.findLast((payload) => payload.kind === 'session.changed')).toEqual({
+      kind: 'session.changed',
+      sessionId,
+      reason: 'updated',
+    });
+
+    const restarted = harness(store);
+    await restarted.engine.start();
+    await restarted.inject({ kind: 'session.list', clientReqId: 'r3' });
+    expect(listedSessions(restarted.sent, 'r3')[0].title).toBe('Fix OAuth callback handling');
+  });
+
+  it('does not replace an automation title with provider metadata', async () => {
+    const store = new InMemorySessionStore();
+    const sessionId = 'automation-session' as SessionId;
+    await store.save({
+      sessionId,
+      kind: 'claude-code',
+      cwd: '/repo',
+      title: 'Nightly dependency update',
+      origin: { type: 'created' },
+      automation: { kind: 'schedule', id: 'schedule-1' },
+      createdAt: 1,
+      updatedAt: 2,
+      runs: [{ historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 2 }],
+    });
+    const h = harness(store);
+    await h.engine.start();
+    await h.inject({ kind: 'session.resume', clientReqId: 'r1', sessionId });
+    const changesBeforeTitle = h.sent.filter(
+      (payload) => payload.kind === 'session.changed',
+    ).length;
+
+    h.adapters[0].emit({ type: 'title-update', title: 'Provider generated title' });
+    await settleEngineTasks();
+
+    expect((await store.load())[0].title).toBe('Nightly dependency update');
+    expect(h.sent.filter((payload) => payload.kind === 'session.changed')).toHaveLength(
+      changesBeforeTitle,
+    );
   });
 
   it('imports a provider history session as a cold record', async () => {

@@ -41,6 +41,9 @@ class TestAdapter extends BaseAgentAdapter {
   commands(catalog: AgentCommand[]): void {
     this.emitCommands(catalog);
   }
+  title(value: string): void {
+    this.emitTitle(value);
+  }
   askQuestion(signal?: AbortSignal): Promise<unknown> {
     return this.requestQuestion(
       { toolCallId: 't1' },
@@ -59,6 +62,19 @@ class TestAdapter extends BaseAgentAdapter {
     );
   }
 }
+
+describe('BaseAgentAdapter.emitTitle', () => {
+  it('normalizes titles and ignores empty or duplicate updates', () => {
+    const adapter = new TestAdapter();
+    adapter.title('  Fix auth flow  ');
+    adapter.title('Fix auth flow');
+    adapter.title('   ');
+
+    expect(adapter.seen.filter((event) => event.type === 'title-update')).toEqual([
+      { type: 'title-update', title: 'Fix auth flow' },
+    ]);
+  });
+});
 
 class EffortTestAdapter extends TestAdapter {
   readonly lifecycle: string[] = [];
