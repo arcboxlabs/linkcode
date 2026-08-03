@@ -28,8 +28,9 @@ permissions:
   contents: read
 
 env:
-  # Typed linting needs one TS program set in a single heap: `lint:ci` runs eslint with
-  # `--concurrency=off`, and a cold cache still walks the whole repo, which does not fit in 4096.
+  # For the non-lint Node steps: `typecheck` builds the whole tsconfig solution in one heap,
+  # which does not fit in the 4096 default. Lint no longer relies on this — it sets its own,
+  # larger limit inline in package.json so local runs get it too.
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
@@ -105,10 +106,12 @@ jobs:
       - name: Check formatting and imports
         run: pnpm format:check
 
-      # `lint:ci`, not `lint`: multithread linting duplicates the typescript-eslint program per
-      # worker instead of splitting it, which OOMs a 2-worker runner (CODE-468).
+      # `pnpm lint` is single-threaded by default (CODE-468): multithread linting duplicates the
+      # typescript-eslint program per worker instead of splitting it, so each worker costs a full
+      # ~4.7 GB and the total scales linearly with the worker count. `lint:ci` no longer exists —
+      # local and CI run the identical command.
       - name: Lint
-        run: pnpm lint:ci
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
