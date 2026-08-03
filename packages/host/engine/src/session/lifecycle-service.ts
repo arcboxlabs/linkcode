@@ -1,6 +1,8 @@
 import type {
   AgentHistoryId,
   AgentKind,
+  ContentBlock,
+  MessageId,
   SessionAutomation,
   SessionId,
   SessionRecord,
@@ -59,10 +61,18 @@ export class SessionLifecycleService {
   }
 
   deleteSession(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { sessions, workspaces, worktrees } = this;
+    const { records, sessions, workspaces, worktrees } = this;
     return Effect.gen(function* () {
       const worktree = worktrees.get(sessionId);
+      const replacementOwner = worktree
+        ? [...records.values()].find(
+            (record) => record.sessionId !== sessionId && record.cwd === worktree.worktreePath,
+          )
+        : undefined;
       yield* sessions.delete(sessionId);
+      if (replacementOwner) {
+        yield* worktrees.transferOwner(sessionId, replacementOwner.sessionId);
+      }
       yield* worktrees.cleanupDeletedSession(sessionId);
       if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
         const workspace = workspaces.findByCwd(worktree.worktreePath);
@@ -180,6 +190,85 @@ export class SessionLifecycleService {
         (adapter) => history.resume(adapter, historyId, startOptions),
         warnings,
       );
+    });
+  }
+
+  branchSession(
+    replyTo: string,
+    sourceSessionId: SessionId,
+    sourceMessageId: MessageId,
+    branchCursor: string,
+    content: ContentBlock[],
+  ): Effect.Effect<void, EngineFailure> {
+    return Effect.suspend(() => {
+      const source = this.records.get(sourceSessionId);
+      if (!source) {
+        return Effect.fail(
+          new RequestError({
+            code: 'not_found',
+            message: `Unknown session: ${sourceSessionId}`,
+          }),
+        );
+      }
+      if (this.sessions.isBusy(sourceSessionId)) {
+        return Effect.fail(
+          new RequestError({
+            code: 'conflict',
+            message: `Session is busy: ${sourceSessionId}`,
+          }),
+        );
+      }
+      const sourceHistoryId = this.records.historyId(sourceSessionId);
+      if (!sourceHistoryId) {
+        return Effect.fail(
+          new RequestError({
+            code: 'conflict',
+            message: 'The source session has no provider history to branch',
+          }),
+        );
+      }
+
+      const { history, sessions, startOptions: resolver, workspaces } = this;
+      const sessionId = this.nextSessionId();
+      return Effect.gen(function* () {
+        const { options: startOptions, warnings } = yield* resolver.resolve(
+          { kind: source.kind, cwd: source.cwd },
+          sessionId,
+        );
+        if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
+        const now = Date.now();
+        const record: SessionRecord = {
+          sessionId,
+          kind: source.kind,
+          cwd: startOptions.cwd,
+          origin: {
+            type: 'branched',
+            parentSessionId: sourceSessionId,
+            sourceHistoryId,
+            sourceMessageId,
+            branchCursor,
+            branchedAt: now,
+          },
+          createdAt: now,
+          updatedAt: now,
+          runs: [{ startedAt: now }],
+        };
+        yield* sessions.startLive(
+          replyTo,
+          record,
+          (adapter) =>
+            history.branch(
+              adapter,
+              { historyId: sourceHistoryId, cursor: branchCursor },
+              startOptions,
+            ),
+          warnings,
+          {
+            initialInput: { type: 'prompt', content },
+            deleteRecordOnStartFailure: true,
+          },
+        );
+      });
     });
   }
 

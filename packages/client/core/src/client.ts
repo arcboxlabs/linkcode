@@ -5,6 +5,7 @@ import type {
   AccountSecret,
   Accounts,
   AgentEvent,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -35,6 +36,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -718,6 +720,17 @@ export class LinkCodeClient {
     startOpts: StartOptions,
   ): Promise<SessionStartResult> {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
+  }
+
+  branchHistory(
+    sourceSessionId: SessionId,
+    sourceMessageId: MessageId,
+    branchCursor: AgentHistoryBranchCursor,
+    content: ContentBlock[],
+  ): Promise<SessionId> {
+    return this.control
+      .branchHistory(sourceSessionId, sourceMessageId, branchCursor, content)
+      .then((result) => result.sessionId);
   }
 
   /** Low-level: send any normalized input to a session. */

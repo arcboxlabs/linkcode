@@ -19,9 +19,14 @@ export const sessions = sqliteTable(
     kind: text('kind').notNull(),
     cwd: text('cwd').notNull(),
     title: text('title'),
-    originType: text('origin_type', { enum: ['created', 'imported'] }).notNull(),
+    originType: text('origin_type', { enum: ['created', 'imported', 'branched'] }).notNull(),
     originHistoryId: text('origin_history_id'),
     originImportedAt: integer('origin_imported_at'),
+    originParentSessionId: text('origin_parent_session_id'),
+    originSourceHistoryId: text('origin_source_history_id'),
+    originSourceMessageId: text('origin_source_message_id'),
+    originBranchCursor: text('origin_branch_cursor'),
+    originBranchedAt: integer('origin_branched_at'),
     /** IM platform the session was created from (`SessionRecord.createdVia`); null for LinkCode clients. */
     createdVia: text('created_via'),
     /** Automation that created this session (`SessionRecord.automation`); null for user sessions. */

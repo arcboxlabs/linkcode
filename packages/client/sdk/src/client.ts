@@ -14,6 +14,7 @@ import type {
   AccountModel,
   AccountSecret,
   Accounts,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -21,6 +22,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  ContentBlock,
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
   EffortLevel,
@@ -40,6 +42,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -207,6 +210,17 @@ export class LinkCodeSdkClient {
     startOpts: StartOptions,
   ): RequestResult<SessionStartResult> {
     return toResult(this.raw.resumeHistoryWithWarnings(agentKind, historyId, startOpts));
+  }
+
+  branchHistory(
+    sourceSessionId: SessionId,
+    sourceMessageId: MessageId,
+    branchCursor: AgentHistoryBranchCursor,
+    content: ContentBlock[],
+  ): RequestResult<SessionId> {
+    return toResult(
+      this.raw.branchHistory(sourceSessionId, sourceMessageId, branchCursor, content),
+    );
   }
 
   sendInput(sessionId: SessionId, input: AgentInput): RequestResult<{ ok: true }> {

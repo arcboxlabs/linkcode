@@ -112,6 +112,11 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originType: record.origin.type,
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
+    originParentSessionId: record.origin.type === 'branched' ? record.origin.parentSessionId : null,
+    originSourceHistoryId: record.origin.type === 'branched' ? record.origin.sourceHistoryId : null,
+    originSourceMessageId: record.origin.type === 'branched' ? record.origin.sourceMessageId : null,
+    originBranchCursor: record.origin.type === 'branched' ? record.origin.branchCursor : null,
+    originBranchedAt: record.origin.type === 'branched' ? record.origin.branchedAt : null,
     createdVia: record.createdVia ?? null,
     automationKind: record.automation?.kind ?? null,
     automationId: record.automation?.id ?? null,
@@ -126,14 +131,7 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
     kind: row.kind,
     cwd: row.cwd,
     title: row.title ?? undefined,
-    origin:
-      row.originType === 'imported'
-        ? {
-            type: 'imported',
-            historyId: row.originHistoryId,
-            importedAt: row.originImportedAt,
-          }
-        : { type: 'created' },
+    origin: toOrigin(row),
     createdVia: row.createdVia ?? undefined,
     automation:
       row.automationKind && row.automationId
@@ -147,4 +145,25 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
       endedAt: run.endedAt ?? undefined,
     })),
   });
+}
+
+function toOrigin(row: SessionRow): unknown {
+  if (row.originType === 'imported') {
+    return {
+      type: 'imported',
+      historyId: row.originHistoryId,
+      importedAt: row.originImportedAt,
+    };
+  }
+  if (row.originType === 'branched') {
+    return {
+      type: 'branched',
+      parentSessionId: row.originParentSessionId,
+      sourceHistoryId: row.originSourceHistoryId,
+      sourceMessageId: row.originSourceMessageId,
+      branchCursor: row.originBranchCursor,
+      branchedAt: row.originBranchedAt,
+    };
+  }
+  return { type: 'created' };
 }

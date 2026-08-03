@@ -15,7 +15,7 @@ import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
 import type { EngineFailure } from '../failure';
-import { OperationError, RequestError } from '../failure';
+import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
 import type { ResourceService } from '../resource/service';
 import { LiveSession } from './live-session';
@@ -58,7 +58,12 @@ export class SessionOrchestrator {
   }
 
   list(): SessionInfo[] {
-    return this.records.list((sessionId) => this.sessions.get(sessionId)?.status);
+    return this.records
+      .list((sessionId) => this.sessions.get(sessionId)?.status)
+      .map((session) => ({
+        ...session,
+        historyCapabilities: this.factory(session.kind).historyCapabilities,
+      }));
   }
 
   isBusy(sessionId: SessionId): boolean {
@@ -167,11 +172,22 @@ export class SessionOrchestrator {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     mcpWarnings: readonly McpWarning[] = [],
+    options: { initialInput?: AgentInput; deleteRecordOnStartFailure?: boolean } = {},
   ): Effect.Effect<void, EngineFailure> {
-    const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
+    const {
+      events,
+      factory,
+      inputs,
+      records,
+      runtimes,
+      scope: parentScope,
+      sessions,
+      transport,
+    } = this;
     const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
+    const { initialInput, deleteRecordOnStartFailure = false } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
@@ -186,23 +202,46 @@ export class SessionOrchestrator {
         records.register(record);
         // A start can land before the boot probe settles. Register first so delete can tear it down,
         // then wait and re-check identity before and after adapter startup to prevent resurrection.
-        const start = Effect.gen(function* () {
+        const startAdapterSession = Effect.gen(function* () {
           yield* runtimes.awaitReady();
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
-          if (replyTo !== undefined) {
-            transport.send(
-              createWireMessage({
-                kind: 'session.started',
-                replyTo,
-                sessionId,
-                ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
-              }),
-            );
-          }
         });
-        yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));
+        yield* session.run(startAdapterSession).pipe(
+          Effect.tapError(() =>
+            discardFailedStart(session).pipe(
+              Effect.andThen(deleteRecordOnStartFailure ? records.delete(sessionId) : Effect.void),
+              Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
+            ),
+          ),
+        );
+        // Branch creation uses the same validated/echoed prompt path as every later input. A prompt
+        // rejection leaves the provider child live and recoverable instead of deleting it.
+        if (initialInput !== undefined) {
+          yield* session
+            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput)))
+            .pipe(
+              Effect.mapError((cause) =>
+                toOperationFailure(cause, {
+                  subsystem: 'agent',
+                  operation: 'history.branch.input',
+                  publicMessage: 'Agent input was rejected',
+                }),
+              ),
+            );
+        }
+        if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
+        if (replyTo !== undefined) {
+          transport.send(
+            createWireMessage({
+              kind: 'session.started',
+              replyTo,
+              sessionId,
+              ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
+            }),
+          );
+        }
       }),
       {
         span: 'Session.start',

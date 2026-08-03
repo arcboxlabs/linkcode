@@ -64,6 +64,13 @@
       "when": 1785425562289,
       "tag": "0008_add_session_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785733495115,
+      "tag": "0009_steep_puppet_master",
+      "breakpoints": true
     }
   ]
 }

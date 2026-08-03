@@ -46,6 +46,7 @@ export type ConversationItem = (
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      branchCursor?: string;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
       /** The model serving the session when this assistant message opened (from `model-update`). */
@@ -321,6 +322,7 @@ export function createConversationBuilder(): ConversationBuilder {
             items[existing] = {
               ...item,
               blocks: [...event.content],
+              branchCursor: event.branchCursor ?? item.branchCursor,
               receivedAt: receivedAt ?? item.receivedAt,
             };
           }
@@ -337,6 +339,7 @@ export function createConversationBuilder(): ConversationBuilder {
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
+          branchCursor: event.branchCursor,
           receivedAt,
         });
         messageIndex.set(event.messageId, items.length - 1);

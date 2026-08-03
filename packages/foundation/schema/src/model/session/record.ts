@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { AgentHistoryCapabilitiesSchema } from '../history';
 import { ImPlatformSchema } from '../im';
 import {
   AgentHistoryIdSchema,
   AgentKindSchema,
+  MessageIdSchema,
   SessionIdSchema,
   TimestampSchema,
 } from '../primitives';
@@ -27,6 +29,14 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
     /** The provider-local history session this record was imported from. */
     historyId: AgentHistoryIdSchema,
     importedAt: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('branched'),
+    parentSessionId: SessionIdSchema,
+    sourceHistoryId: AgentHistoryIdSchema,
+    sourceMessageId: MessageIdSchema,
+    branchCursor: z.string().min(1),
+    branchedAt: TimestampSchema,
   }),
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
@@ -75,5 +85,7 @@ export const SessionInfoSchema = z.object({
   automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
+  /** Provider-history operations supported by this session's adapter/runtime. */
+  historyCapabilities: AgentHistoryCapabilitiesSchema.optional(),
 });
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;

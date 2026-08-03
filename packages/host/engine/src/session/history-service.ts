@@ -2,6 +2,7 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryEvent,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -16,7 +17,7 @@ import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 
-export const HISTORY_CONVERSION_CACHE_VERSION = 4;
+export const HISTORY_CONVERSION_CACHE_VERSION = 5;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
@@ -169,6 +170,25 @@ export class HistoryService {
     }
     return agentHistoryOperation('history.resume', 'Failed to resume agent history', () =>
       adapter.resumeHistory({ historyId }, startOpts),
+    );
+  }
+
+  branch(
+    adapter: AgentAdapter,
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Effect.Effect<void, RequestError | OperationError> {
+    const branchHistory = adapter.branchHistory?.bind(adapter);
+    if (branchHistory === undefined || adapter.historyCapabilities.branch !== true) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${adapter.kind}: history branch is not supported`,
+        }),
+      );
+    }
+    return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
+      branchHistory(opts, startOpts),
     );
   }
 
