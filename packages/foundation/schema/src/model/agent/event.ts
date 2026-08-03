@@ -39,6 +39,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     messageId: MessageIdSchema,
     // The full message, same shape as `AgentInput.prompt`'s content.
     content: z.array(ContentBlockSchema),
+    /** Present only on provider-history replay when this prompt can seed a child session. */
+    branchCursor: z.string().min(1).optional(),
   }),
 
   // Agent output: whole snapshots replace by messageId; chunks append to the same identity.

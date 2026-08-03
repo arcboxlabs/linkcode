@@ -1,6 +1,7 @@
 import type {
   AgentCapabilities,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -51,6 +52,8 @@ export interface AgentAdapter {
   readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult>;
   /** Start/resume a live adapter session from a provider-local history id, if supported. */
   resumeHistory(opts: AgentHistoryResumeOptions, startOpts: StartOptions): Promise<void>;
+  /** Start this adapter on a provider child branched before the cursor's historical prompt. */
+  branchHistory?(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;
   /** Subscribe to events normalized by the abstraction layer. */
   onEvent(cb: (e: AgentEvent) => void): Unsubscribe;

@@ -14,6 +14,7 @@ import type {
   ToolCall,
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
+import { encodeHistoryBranchCursor } from '../../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -157,7 +158,10 @@ export function mapPiHistoryEvents(
     const message = entry.message;
     if (message.role === 'user') {
       const event = textHistoryEvent(historyId, 'user', entry.id, message.content, ts);
-      if (event) events.push(event);
+      if (event?.event.type === 'user-message') {
+        event.event.branchCursor = encodeHistoryBranchCursor('pi', historyId, entry.parentId);
+        events.push(event);
+      }
     } else if (message.role === 'assistant' && Array.isArray(message.content)) {
       const responseId = typeof message.responseId === 'string' ? message.responseId : undefined;
       const messageTimestamp =

@@ -8,6 +8,7 @@ import type {
 } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import type { Message, Part, Session } from '@opencode-ai/sdk/v2';
+import { encodeHistoryBranchCursor } from '../../history-branch';
 import {
   asHistoryId,
   compactRecord,
@@ -120,7 +121,15 @@ export function mapOpencodeHistoryEvents(
       // textHistoryEvent owns the empty-text-drops-the-event rule and the wire shape (shared with
       // the codex history path).
       const event = textHistoryEvent(historyId, 'user', info.id, text, ts);
-      if (event) events.push(event);
+      if (event?.event.type === 'user-message') {
+        events.push({
+          ...event,
+          event: {
+            ...event.event,
+            branchCursor: encodeHistoryBranchCursor('opencode', historyId, info.id),
+          },
+        });
+      }
       continue;
     }
     for (const part of parts) {
