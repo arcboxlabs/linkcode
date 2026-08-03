@@ -1,7 +1,10 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { CodexServerHandle } from '../native/codex/adapter';
-import { CodexAdapter, codexSkillCommands } from '../native/codex/adapter';
+import { CodexAdapter, codexSkillCommands, skillIconDataUri } from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
 
 class FakeCodexServer {
@@ -92,6 +95,49 @@ describe('CodexAdapter slash commands', () => {
     ).toEqual([
       { name: 'alpha', description: 'A', path: '/a/SKILL.md' },
       { name: 'zeta', description: 'Z', path: '/z/SKILL.md' },
+    ]);
+  });
+
+  it('projects skill brand identity, preferring the small icon and validating the color', () => {
+    expect(
+      codexSkillCommands(
+        response(
+          {
+            name: 'documents',
+            description: 'Docs',
+            path: '/skills/documents/SKILL.md',
+            enabled: true,
+            interface: {
+              displayName: 'Documents',
+              brandColor: '#2563EB',
+              iconSmall: '/plugins/documents/assets/small.png',
+              iconLarge: '/plugins/documents/assets/large.png',
+            },
+          },
+          {
+            name: 'plain',
+            description: 'No brand',
+            path: '/skills/plain/SKILL.md',
+            enabled: true,
+            interface: { brandColor: 'blue', iconLarge: '/plugins/plain/assets/large.png' },
+          },
+        ),
+      ),
+    ).toEqual([
+      {
+        name: 'documents',
+        description: 'Docs',
+        displayName: 'Documents',
+        brandColor: '#2563EB',
+        path: '/skills/documents/SKILL.md',
+        iconPath: '/plugins/documents/assets/small.png',
+      },
+      {
+        name: 'plain',
+        description: 'No brand',
+        path: '/skills/plain/SKILL.md',
+        iconPath: '/plugins/plain/assets/large.png',
+      },
     ]);
   });
 
@@ -311,5 +357,57 @@ describe('CodexAdapter slash commands', () => {
       { type: 'status', status: 'running' },
       { type: 'status', status: 'idle' },
     ]);
+  });
+});
+
+describe('codex skill icons', () => {
+  const dirPromise = mkdtemp(join(tmpdir(), 'codex-skill-icon-'));
+  afterAll(async () => {
+    await rm(await dirPromise, { force: true, recursive: true });
+  });
+
+  it('embeds a small icon file as a data URI and refuses non-icons', async () => {
+    const dir = await dirPromise;
+    const iconPath = join(dir, 'icon.png');
+    const iconBytes = Buffer.from('89504E470D0A1A0A6D6F636B', 'hex');
+    await writeFile(iconPath, iconBytes);
+    const oversizedPath = join(dir, 'oversized.png');
+    await writeFile(oversizedPath, Buffer.alloc(33 * 1024, 1));
+
+    expect(await skillIconDataUri(iconPath)).toBe(
+      `data:image/png;base64,${iconBytes.toString('base64')}`,
+    );
+    expect(await skillIconDataUri(oversizedPath)).toBeUndefined();
+    expect(await skillIconDataUri(join(dir, 'missing.png'))).toBeUndefined();
+    expect(await skillIconDataUri(join(dir, 'icon.bmp'))).toBeUndefined();
+  });
+
+  it('publishes the embedded icon on the catalog while keeping paths private', async () => {
+    const dir = await dirPromise;
+    const iconPath = join(dir, 'documents.svg');
+    await writeFile(iconPath, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const adapter = new TestCodex(
+      response({
+        name: 'documents',
+        description: 'Docs',
+        path: '/skills/documents/SKILL.md',
+        enabled: true,
+        interface: { displayName: 'Documents', brandColor: '#2563EB', iconSmall: iconPath },
+      }),
+    );
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start(start);
+
+    const commands = catalog(events).at(-1)?.commands;
+    expect(commands?.find((command) => command.name === 'documents')).toEqual({
+      name: 'documents',
+      description: 'Docs',
+      displayName: 'Documents',
+      brandColor: '#2563EB',
+      iconDataUri: `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64')}`,
+    });
+    expect(JSON.stringify(commands)).not.toContain(dir);
   });
 });
