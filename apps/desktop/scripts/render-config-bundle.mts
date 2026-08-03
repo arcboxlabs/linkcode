@@ -1,5 +1,6 @@
 // Renders the desktop build bundle through the pinned config publisher checkout and derives the
-// immutable main-process bootstrap. Run via tsx: `pnpm -F @linkcode/desktop config:render -- …`.
+// immutable main-process bootstrap. Run via `pnpm -F @linkcode/desktop config:render --publisher …`
+// (no `--` separator).
 // Every input is an explicit pin; there is no default checkout, no fetch, and no stale fallback.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';

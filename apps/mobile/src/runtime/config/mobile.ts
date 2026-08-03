@@ -10,7 +10,18 @@ import { createConfigNetwork, createConfigStorage, resolveMobileConfigPlatform }
 import { BUNDLED_CONFIG_BOOTSTRAP, BUNDLED_CONFIG_DEFINITIONS } from './bundled';
 
 const platform = resolveMobileConfigPlatform(Platform.OS);
-const remoteEnabled = BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl !== null;
+if (
+  platform &&
+  BUNDLED_CONFIG_BOOTSTRAP.platform &&
+  BUNDLED_CONFIG_BOOTSTRAP.platform !== platform
+) {
+  throw new Error(
+    `Bundled configuration targets ${BUNDLED_CONFIG_BOOTSTRAP.platform} but is running on ${platform}`,
+  );
+}
+const normalEnabled = BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl !== null;
+const emergencyEnabled = BUNDLED_CONFIG_BOOTSTRAP.emergencyRemoteBaseUrl !== null;
+const remoteEnabled = normalEnabled || emergencyEnabled;
 const unavailableNetwork: ConfigNetwork = {
   get: () =>
     Promise.reject(new ConfigCoreError('fetch', 'Bundled configuration has no remote endpoint')),
@@ -26,7 +37,7 @@ export const mobileConfiguration = platform
       crypto: createNobleConfigCrypto(randomUUID),
       definitions: BUNDLED_CONFIG_DEFINITIONS,
       emergencyKeyring: BUNDLED_CONFIG_BOOTSTRAP.emergencyKeyring,
-      emergencyNetwork: configuredNetwork(BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl),
+      emergencyNetwork: configuredNetwork(BUNDLED_CONFIG_BOOTSTRAP.emergencyRemoteBaseUrl),
       maximumSchemaVersion: BUNDLED_CONFIG_BOOTSTRAP.maximumSchemaVersion,
       network: configuredNetwork(BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl),
       normalKeyring: BUNDLED_CONFIG_BOOTSTRAP.normalKeyring,
@@ -50,10 +61,10 @@ export async function initializeMobileConfiguration(): Promise<void> {
 export async function refreshMobileConfiguration(): Promise<boolean> {
   if (!mobileConfiguration || !remoteEnabled) return false;
   const [normal, emergency] = await Promise.all([
-    mobileConfiguration.refresh(),
-    mobileConfiguration.refreshEmergency(),
+    normalEnabled ? mobileConfiguration.refresh() : undefined,
+    emergencyEnabled ? mobileConfiguration.refreshEmergency() : undefined,
   ]);
-  return normal.status !== 'error' && emergency.status !== 'error';
+  return normal?.status !== 'error' && emergency?.status !== 'error';
 }
 
 function getRuntimeLocale(): string {

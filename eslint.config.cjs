@@ -17,6 +17,9 @@ module.exports = require('eslint-config-sukka').sukka(
         // expo prebuild output (gitignored continuous native generation)
         'apps/mobile/ios/**',
         'apps/mobile/android/**',
+        // gitignored per-target config modules rendered by the pinned publisher (CODE-552)
+        'apps/mobile/src/runtime/config/bundled.generated.ios.ts',
+        'apps/mobile/src/runtime/config/bundled.generated.android.ts',
         '.vscode/**',
         '.zed/**',
         '**/expo-export/**',

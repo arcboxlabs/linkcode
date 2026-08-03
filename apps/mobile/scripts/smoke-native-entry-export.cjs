@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const { existsSync } = require('node:fs');
 const { mkdir, mkdtemp, readFile, rm, stat } = require('node:fs/promises');
 const { join, resolve } = require('node:path');
 const process = require('node:process');
@@ -8,6 +9,7 @@ const projectRoot = resolve(__dirname, '..');
 const temporaryRoot = join(projectRoot, 'expo-export');
 const expoCli = require.resolve('expo/bin/cli');
 const platforms = ['android', 'ios'];
+const RE_WHITESPACE = /\s/g;
 const requiredRouteModules = [
   '/apps/mobile/src/app/_layout.tsx',
   '/apps/mobile/src/app/index.tsx',
@@ -122,8 +124,66 @@ async function validateExport(platform, outputDirectory) {
     throw new Error(`${assetMapPath} is empty`);
   }
 
+  await validateBundledConfig(platform, sourceMap);
+
   console.log(
     `validated ${platform}: ${platformMetadata.bundle} (${platformMetadata.assets.length} assets)`,
+  );
+}
+
+// Proves the exact generated config target was compiled into this platform's Hermes export:
+// the platform-specific generated module must win over the committed sentinel, and its compiled
+// source must carry the bundle's own target and provenance. This validates the export
+// (Metro -> Hermes bytecode), not on-device runtime behavior.
+async function validateBundledConfig(platform, sourceMap) {
+  const configDir = join(projectRoot, 'src/runtime/config');
+  const generatedPath = join(configDir, `bundled.generated.${platform}.ts`);
+  const generated = existsSync(generatedPath);
+  const expectedModule = generated
+    ? `/apps/mobile/src/runtime/config/bundled.generated.${platform}.ts`
+    : '/apps/mobile/src/runtime/config/bundled.generated.ts';
+  const moduleIndex = sourceMap.sources.indexOf(expectedModule);
+  if (moduleIndex === -1) {
+    throw new Error(`${platform} bundle did not include generated config module ${expectedModule}`);
+  }
+  if (!generated) {
+    console.log(`validated ${platform}: development config sentinel bundled (no generated target)`);
+    return;
+  }
+
+  // render-config-bundle.mts writes exactly one `= { bundle: <json> };` object literal.
+  const moduleSource = await readFile(generatedPath, 'utf8');
+  const literalStart = moduleSource.indexOf('= {');
+  const literalEnd = moduleSource.lastIndexOf('};');
+  if (literalStart === -1 || literalEnd <= literalStart) {
+    throw new Error(`${generatedPath} does not hold the generated config module shape`);
+  }
+  const module = JSON.parse(
+    moduleSource.slice(literalStart + 2, literalEnd + 1).replace('{ bundle:', '{ "bundle":'),
+  );
+  const bundle = module?.bundle;
+  if (!bundle || bundle.platform !== platform) {
+    throw new Error(`${generatedPath} does not hold a ${platform} build bundle`);
+  }
+  const compiledSource = Array.isArray(sourceMap.sourcesContent)
+    ? sourceMap.sourcesContent[moduleIndex]
+    : null;
+  if (typeof compiledSource !== 'string') {
+    throw new TypeError(`${platform} source map does not embed ${expectedModule}`);
+  }
+  for (const marker of [
+    `"brandId":"${bundle.brandId}"`,
+    `"platform":"${platform}"`,
+    `"sourceGitSha":"${bundle.provenance.sourceGitSha}"`,
+    `"sha256":"${bundle.snapshot.sha256}"`,
+  ]) {
+    if (!compiledSource.replaceAll(RE_WHITESPACE, '').includes(marker)) {
+      throw new Error(`${platform} compiled config module is missing ${marker}`);
+    }
+  }
+  console.log(
+    `validated ${platform}: generated config target ${bundle.brandId}/${platform}/${bundle.channel} ` +
+      `(source ${bundle.provenance.sourceGitSha.slice(0, 12)}) compiled into Hermes export`,
   );
 }
 
