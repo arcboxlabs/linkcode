@@ -16,6 +16,7 @@ import {
 } from '../shared/cloud';
 import type { ConfigBridge } from '../shared/config';
 import {
+  CONFIG_ANALYTICS_CONSENT_CHANNEL,
   CONFIG_HOT_UPDATE_CHANNEL,
   CONFIG_REFRESH_CHANNEL,
   CONFIG_SNAPSHOT_CHANNEL,
@@ -41,6 +42,7 @@ const configBridge: ConfigBridge = {
     ipcRenderer.on(CONFIG_HOT_UPDATE_CHANNEL, handler);
     return () => ipcRenderer.removeListener(CONFIG_HOT_UPDATE_CHANNEL, handler);
   },
+  notifyAnalyticsConsent: (enabled) => ipcRenderer.send(CONFIG_ANALYTICS_CONSENT_CHANNEL, enabled),
 };
 
 contextBridge.exposeInMainWorld('linkcodeConfig', configBridge);

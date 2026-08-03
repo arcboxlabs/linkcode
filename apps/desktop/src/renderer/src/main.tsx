@@ -6,6 +6,7 @@ import {
   initializeProductAnalytics,
   installAppearancePrefs,
   installNavigationPerformanceObserver,
+  useProductAnalyticsPreference,
 } from '@linkcode/workbench';
 import {
   browserTracingIntegration,
@@ -41,6 +42,16 @@ initializeProductAnalytics({
   host: import.meta.env.RENDERER_VITE_POSTHOG_HOST,
   surface: 'desktop',
   platform: systemBridge.app.platform,
+});
+
+// Main owns config telemetry but not the durable consent preference; mirror the hydrated value
+// and every transition so main stays disabled until an explicit grant arrives.
+let lastNotifiedConsent = useProductAnalyticsPreference.getState().enabled;
+window.linkcodeConfig.notifyAnalyticsConsent(lastNotifiedConsent);
+useProductAnalyticsPreference.subscribe((state) => {
+  if (state.enabled === lastNotifiedConsent) return;
+  lastNotifiedConsent = state.enabled;
+  window.linkcodeConfig.notifyAnalyticsConsent(state.enabled);
 });
 
 let desktopRendererTraceSampleRate =

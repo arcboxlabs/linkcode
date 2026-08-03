@@ -1,5 +1,6 @@
 import type { ConfigValue } from '@linkcode/common/config';
 
+export const CONFIG_ANALYTICS_CONSENT_CHANNEL = 'linkcode.config.analyticsConsent';
 export const CONFIG_HOT_UPDATE_CHANNEL = 'linkcode.config.hotUpdate';
 export const CONFIG_REFRESH_CHANNEL = 'linkcode.config.refresh';
 export const CONFIG_SNAPSHOT_CHANNEL = 'linkcode.config.snapshot';
@@ -28,4 +29,6 @@ export interface ConfigBridge {
   readonly snapshotInfo: () => ConfigSnapshotInfo;
   readonly refresh: () => Promise<ConfigRefreshReport>;
   readonly onHotUpdate: (callback: (keys: readonly string[]) => void) => () => void;
+  /** One-way notification of the user's durable analytics consent; carries no config data. */
+  readonly notifyAnalyticsConsent: (enabled: boolean) => void;
 }

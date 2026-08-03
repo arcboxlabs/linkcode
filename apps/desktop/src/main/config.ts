@@ -29,6 +29,7 @@ import type {
   EffectiveConfigSnapshot,
 } from '../shared/config';
 import { AtomicConfigStorage, FetchConfigNetwork, nodeConfigCrypto } from './config-adapters';
+import { initializeDesktopConfigTelemetry, recordDesktopConfigEvent } from './config-telemetry';
 import { CHANNEL } from './constants';
 
 const FIRST_REFRESH_DELAY_MS = 3000;
@@ -61,6 +62,7 @@ export interface DesktopConfigServiceOptions {
   readonly crypto: ConfigCrypto;
   readonly emergencyNetwork?: ConfigNetwork;
   readonly network?: ConfigNetwork;
+  readonly onEvent?: (event: ConfigEvent) => void;
   readonly storage: ConfigStorage;
 }
 
@@ -89,7 +91,10 @@ export class DesktopConfigService {
       maximumSchemaVersion: options.bootstrap.maximumSchemaVersion,
       network: options.network ?? disabledNetwork,
       normalKeyring: options.bootstrap.publicKeys,
-      report: reportConfigEvent,
+      report(event) {
+        reportConfigEvent(event);
+        options.onEvent?.(event);
+      },
       storage: options.storage,
       target: {
         brandId: options.bootstrap.brandId,
@@ -168,7 +173,9 @@ let service: DesktopConfigService | null = null;
 let refreshTimeout: NodeJS.Timeout | null = null;
 let refreshInterval: NodeJS.Timeout | null = null;
 
-export async function initializeDesktopConfig(): Promise<DesktopConfigService> {
+export async function initializeDesktopConfig(
+  getSessionCookie: () => string,
+): Promise<DesktopConfigService> {
   const bootstrap = parseBootstrap(import.meta.env.MAIN_VITE_CONFIG_BOOTSTRAP);
   const configDirectory = join(app.getPath('userData'), 'config');
   const defaults = await loadEffectiveDefaults(
@@ -176,6 +183,13 @@ export async function initializeDesktopConfig(): Promise<DesktopConfigService> {
     join(configDirectory, 'override.json'),
     !app.isPackaged,
   );
+  const storage = new AtomicConfigStorage(configDirectory);
+  initializeDesktopConfigTelemetry({
+    appVersion: app.getVersion(),
+    bootstrap,
+    getCookie: getSessionCookie,
+    storage,
+  });
   const candidate = new DesktopConfigService({
     bootstrap: { ...bootstrap, defaults },
     context: {
@@ -184,6 +198,7 @@ export async function initializeDesktopConfig(): Promise<DesktopConfigService> {
       os: operatingSystem(process.platform),
     },
     crypto: nodeConfigCrypto,
+    onEvent: recordDesktopConfigEvent,
     ...(bootstrap.endpoint &&
       !isObjectEmpty(bootstrap.publicKeys) && {
         network: new FetchConfigNetwork(bootstrap.endpoint),
@@ -192,7 +207,7 @@ export async function initializeDesktopConfig(): Promise<DesktopConfigService> {
       !isObjectEmpty(bootstrap.emergencyPublicKeys) && {
         emergencyNetwork: new FetchConfigNetwork(bootstrap.emergencyEndpoint),
       }),
-    storage: new AtomicConfigStorage(configDirectory),
+    storage,
   });
   await candidate.initialize();
   service = candidate;
@@ -288,7 +303,7 @@ function refreshStatus(result: ConfigRefreshResult | undefined): ConfigRefreshSt
 function reportConfigEvent(event: ConfigEvent): void {
   if (event.type === 'error') {
     log.warn(`Config ${event.operation} failed: ${event.error.code}`);
-  } else {
+  } else if (event.type === 'invalid-runtime-app-version') {
     log.warn('Config runtime app version is invalid');
   }
 }
