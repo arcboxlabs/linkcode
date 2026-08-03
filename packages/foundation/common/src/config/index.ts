@@ -28,6 +28,7 @@ export {
 } from './contract';
 export type { ConfigCoreOptions } from './core';
 export { ConfigCore } from './core';
+export { createNobleConfigCrypto } from './crypto';
 export { decodeBase64Url, encodeBase64Url, parseIJson } from './i-json';
 export type {
   AntiReplayDecision,
