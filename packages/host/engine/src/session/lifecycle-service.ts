@@ -19,6 +19,7 @@ import { RequestError, toOperationFailure } from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
 import type { WorktreeService } from '../worktree/worktree-service';
 import type { HistoryService } from './history-service';
+import { decodeLiveBranchCursor } from './live-session';
 import type { SessionOrchestrator } from './orchestrator';
 import type { SessionRecordRegistry } from './session-record-registry';
 import type { SessionStartOptionsResolver } from './start-options-resolver';
@@ -204,7 +205,27 @@ export class SessionLifecycleService {
             }),
           );
         }
-        const sourceHistoryId = this.records.historyId(sourceSessionId);
+        const liveCursor = decodeLiveBranchCursor(branchCursor);
+        if (liveCursor.type === 'invalid-live') {
+          return Effect.fail(
+            new RequestError({ code: 'invalid_request', message: 'Invalid live prompt cursor' }),
+          );
+        }
+        if (
+          liveCursor.type === 'live' &&
+          !source.runs.some((run) => run.historyId === liveCursor.historyId)
+        ) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The prompt history does not belong to this session',
+            }),
+          );
+        }
+        const sourceHistoryId =
+          liveCursor.type === 'live'
+            ? liveCursor.historyId
+            : this.records.historyId(sourceSessionId);
         if (!sourceHistoryId) {
           return Effect.fail(
             new RequestError({
@@ -221,6 +242,16 @@ export class SessionLifecycleService {
             sourceSessionId,
           );
           yield* sessions.stopForReplacement(sourceSessionId);
+          const resolvedBranchCursor =
+            liveCursor.type === 'live'
+              ? yield* history.resolveLiveBranchCursor(
+                  source.kind,
+                  sourceHistoryId,
+                  source.cwd,
+                  liveCursor.offsetFromEnd,
+                  liveCursor.contentFingerprint,
+                )
+              : branchCursor;
           records.beginRun(sourceSessionId);
           yield* sessions.startLive(
             replyTo,
@@ -228,7 +259,7 @@ export class SessionLifecycleService {
             (adapter) =>
               history.branch(
                 adapter,
-                { historyId: sourceHistoryId, cursor: branchCursor },
+                { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
                 startOptions,
               ),
             warnings,

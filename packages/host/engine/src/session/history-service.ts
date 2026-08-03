@@ -16,6 +16,7 @@ import type {
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
+import { promptContentFingerprint } from './live-session';
 
 export const HISTORY_CONVERSION_CACHE_VERSION = 5;
 
@@ -189,6 +190,63 @@ export class HistoryService {
     }
     return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
       branchHistory(opts, startOpts),
+    );
+  }
+
+  resolveLiveBranchCursor(
+    kind: AgentKind,
+    historyId: AgentHistoryId,
+    cwd: string,
+    offsetFromEnd: number,
+    contentFingerprint: string,
+  ): Effect.Effect<string, RequestError | OperationError> {
+    const adapter = this.factory(kind);
+    if (!adapter.historyCapabilities.read) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${kind}: history read is not supported`,
+        }),
+      );
+    }
+    return agentHistoryOperation('history.read', 'Failed to read agent history', async () => {
+      const branchablePrompts: Array<{ branchCursor: string; contentFingerprint: string }> = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result = sanitizeHistoryResult(
+          // eslint-disable-next-line no-await-in-loop -- Provider cursors require serial pagination.
+          await adapter.readHistory({ historyId, cwd, limit: 1000, cursor }),
+        );
+        for (const entry of result.events) {
+          if (entry.event.type === 'user-message' && entry.event.branchCursor !== undefined) {
+            branchablePrompts.push({
+              branchCursor: entry.event.branchCursor,
+              contentFingerprint: promptContentFingerprint(entry.event.content),
+            });
+          }
+        }
+        cursor = result.cursor;
+        if (cursor !== undefined && seenCursors.has(cursor)) {
+          throw new Error(`${kind}: history read returned a repeated cursor`);
+        }
+        if (cursor !== undefined) seenCursors.add(cursor);
+      } while (cursor !== undefined);
+      const matchingPrompts = branchablePrompts.filter(
+        (prompt) => prompt.contentFingerprint === contentFingerprint,
+      );
+      return matchingPrompts.at(-(offsetFromEnd + 1))?.branchCursor;
+    }).pipe(
+      Effect.flatMap((cursor) =>
+        cursor === undefined
+          ? Effect.fail(
+              new RequestError({
+                code: 'conflict',
+                message: 'The prompt does not match the latest provider history',
+              }),
+            )
+          : Effect.succeed(cursor),
+      ),
     );
   }
 

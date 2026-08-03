@@ -39,7 +39,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     messageId: MessageIdSchema,
     // The full message, same shape as `AgentInput.prompt`'s content.
     content: z.array(ContentBlockSchema),
-    /** Present only on provider-history replay when this prompt can seed replacement history. */
+    /** Present when provider history can seed a replacement from before this prompt. */
     branchCursor: z.string().min(1).optional(),
   }),
   /** Drops the selected user prompt and every later event before a replacement prompt is sent. */

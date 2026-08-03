@@ -1,11 +1,16 @@
+import { createHash } from 'node:crypto';
 import type { AgentAdapter } from '@linkcode/agent-adapter';
+import { contentToText } from '@linkcode/agent-adapter';
 import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentHistoryId,
   AgentModelOption,
   ApprovalPolicyState,
+  ContentBlock,
   EffortLevel,
+  MessageId,
   SessionId,
   SessionInfo,
 } from '@linkcode/schema';
@@ -15,6 +20,23 @@ import { Effect, Fiber } from 'effect';
 import { noop } from 'foxts/noop';
 import type { OperationError } from '../failure';
 import { InteractiveRequests } from './interactive-requests';
+
+const LIVE_BRANCH_CURSOR_TYPE = 'linkcode-live-branch';
+
+export type LiveBranchCursorParseResult =
+  | { readonly type: 'provider' }
+  | { readonly type: 'invalid-live' }
+  | {
+      readonly type: 'live';
+      readonly historyId: AgentHistoryId;
+      readonly offsetFromEnd: number;
+      readonly contentFingerprint: string;
+    };
+
+interface LivePrompt {
+  readonly messageId: MessageId;
+  readonly content: ContentBlock[];
+}
 
 /** Mutable state derived from one live adapter's event stream. */
 export class LiveSession {
@@ -30,6 +52,8 @@ export class LiveSession {
   capabilities: AgentCapabilities;
   private unsubscribe: Unsubscribe = noop;
   private closing = false;
+  private historyId: AgentHistoryId | undefined;
+  private readonly livePrompts: LivePrompt[] = [];
 
   constructor(
     readonly adapter: AgentAdapter,
@@ -65,6 +89,22 @@ export class LiveSession {
 
   stopListening(): void {
     this.unsubscribe();
+  }
+
+  trackPrompt(messageId: MessageId, content: ContentBlock[]): AgentEvent[] {
+    this.livePrompts.push({ messageId, content });
+    if (this.historyId === undefined) {
+      return [{ type: 'user-message', messageId, content }];
+    }
+    return this.livePromptEvents(promptContentFingerprint(content));
+  }
+
+  untrackPrompt(messageId: MessageId): AgentEvent[] {
+    const index = this.livePrompts.findIndex((prompt) => prompt.messageId === messageId);
+    if (index < 0) return [];
+    const contentFingerprint = promptContentFingerprint(this.livePrompts[index].content);
+    this.livePrompts.splice(index, 1);
+    return this.historyId === undefined ? [] : this.livePromptEvents(contentFingerprint);
   }
 
   /** Apply adapter-owned state before the original event is broadcast; returned resolutions must
@@ -114,6 +154,10 @@ export class LiveSession {
       case 'capabilities-update':
         this.capabilities = event.capabilities;
         break;
+      case 'session-ref':
+        if (this.historyId === event.historyId) break;
+        this.historyId = event.historyId;
+        return this.livePromptEvents();
       default:
         break;
     }
@@ -144,4 +188,81 @@ export class LiveSession {
     this.turnInputActive = false;
     return [...resolutions, { type: 'status', status: 'stopped' }];
   }
+
+  private livePromptEvents(onlyFingerprint?: string): AgentEvent[] {
+    const historyId = this.historyId;
+    if (historyId === undefined) return [];
+    const occurrenceByFingerprint = new Map<string, number>();
+    return this.livePrompts
+      .toReversed()
+      .map((prompt) => {
+        const contentFingerprint = promptContentFingerprint(prompt.content);
+        const offsetFromEnd = occurrenceByFingerprint.get(contentFingerprint) ?? 0;
+        occurrenceByFingerprint.set(contentFingerprint, offsetFromEnd + 1);
+        return {
+          type: 'user-message' as const,
+          messageId: prompt.messageId,
+          content: prompt.content,
+          branchCursor: encodeLiveBranchCursor(historyId, offsetFromEnd, contentFingerprint),
+        };
+      })
+      .reverse()
+      .filter(
+        (event) =>
+          onlyFingerprint === undefined ||
+          promptContentFingerprint(event.content) === onlyFingerprint,
+      );
+  }
+}
+
+export function decodeLiveBranchCursor(cursor: string): LiveBranchCursorParseResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cursor);
+  } catch {
+    return { type: 'provider' };
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('type' in parsed) ||
+    parsed.type !== LIVE_BRANCH_CURSOR_TYPE
+  ) {
+    return { type: 'provider' };
+  }
+  if (
+    !('historyId' in parsed) ||
+    typeof parsed.historyId !== 'string' ||
+    !('offsetFromEnd' in parsed) ||
+    typeof parsed.offsetFromEnd !== 'number' ||
+    !Number.isSafeInteger(parsed.offsetFromEnd) ||
+    parsed.offsetFromEnd < 0 ||
+    !('contentFingerprint' in parsed) ||
+    typeof parsed.contentFingerprint !== 'string'
+  ) {
+    return { type: 'invalid-live' };
+  }
+  return {
+    type: 'live',
+    historyId: parsed.historyId as AgentHistoryId,
+    offsetFromEnd: parsed.offsetFromEnd,
+    contentFingerprint: parsed.contentFingerprint,
+  };
+}
+
+export function promptContentFingerprint(content: ContentBlock[]): string {
+  return createHash('sha256').update(contentToText(content)).digest('base64url');
+}
+
+function encodeLiveBranchCursor(
+  historyId: AgentHistoryId,
+  offsetFromEnd: number,
+  contentFingerprint: string,
+): string {
+  return JSON.stringify({
+    type: LIVE_BRANCH_CURSOR_TYPE,
+    historyId,
+    offsetFromEnd,
+    contentFingerprint,
+  });
 }
