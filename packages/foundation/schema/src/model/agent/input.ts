@@ -102,8 +102,9 @@ export const AgentCommandSchema = z.object({
   aliases: z.array(z.string().min(1)).optional(),
   /** Provider-supplied human name (codex plugin skills: "Documents"), shown beside `name`. */
   displayName: z.string().min(1).optional(),
-  /** Small brand icon embedded as a data URI — size-capped at adapter ingest, so consumers can
-   * render it directly (no asset endpoint exists for command icons). */
+  /** Small brand icon embedded as a data URI — size-capped at adapter ingest (per icon and in
+   * aggregate per catalog), so consumers can render it directly (no asset endpoint exists for
+   * command icons). */
   iconDataUri: z.string().startsWith('data:image/').optional(),
   /** Brand accent for icon fallbacks (menu initial chips). */
   brandColor: z

@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { CodexServerHandle } from '../native/codex/adapter';
-import { CodexAdapter, codexSkillCommands, skillIconDataUri } from '../native/codex/adapter';
+import {
+  CodexAdapter,
+  capSkillIconPayload,
+  codexSkillCommands,
+  skillIconDataUri,
+} from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
 
 class FakeCodexServer {
@@ -409,5 +414,24 @@ describe('codex skill icons', () => {
       iconDataUri: `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64')}`,
     });
     expect(JSON.stringify(commands)).not.toContain(dir);
+  });
+
+  it('drops icons past the shared catalog budget while keeping smaller later ones', () => {
+    const dataUri = (length: number): string => `data:image/png;base64,${'A'.repeat(length)}`;
+    const commands = [
+      { name: 'a', iconDataUri: dataUri(100) },
+      { name: 'b', iconDataUri: dataUri(200) },
+      { name: 'c', iconDataUri: dataUri(100) },
+      { name: 'd' },
+    ];
+
+    const capped = capSkillIconPayload(commands, dataUri(100).length * 2 + 50);
+
+    expect(capped.map((command) => [command.name, command.iconDataUri !== undefined])).toEqual([
+      ['a', true],
+      ['b', false],
+      ['c', true],
+      ['d', false],
+    ]);
   });
 });
