@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import crossSpawn from 'cross-spawn';
+import { assertStagedConfigMatchesGenerated } from './package-config.mts';
 import { mergeUpdateFeeds } from './update-feed.mts';
 
 const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
@@ -166,11 +167,7 @@ const IDENTITY_OVERRIDE_RE = /^-c\.(?:appId|productName|protocols)\b/;
 function build(): void {
   // Both extend the shared electron-builder.yml base; each adds its own deep-link scheme (release
   // `linkcode://`, dev shell `linkcode-dev://`). The base is never passed directly — it has none.
-  // A branded build (config:render wrote generated/electron-builder.brand.json) uses the generated
-  // overlay instead: appId, productName, protocol scheme, and icons all come from the rendered
-  // brand identity, never from hand-edited YAML.
-  const brandConfig = join(desktopDir, 'generated', 'electron-builder.brand.json');
-  const branded = existsSync(brandConfig);
+  const branded = assertStagedConfigMatchesGenerated(desktopDir);
   if (branded && devshell) {
     // out/ already embeds the branded bootstrap+identity; packing it as a dev shell would mix
     // the LinkCode Development shell identity with another brand's runtime identity.
@@ -179,6 +176,7 @@ function build(): void {
         '--devshell) — a dev shell must not embed another brand',
     );
   }
+  const brandConfig = join(desktopDir, 'out', 'config', 'electron-builder.brand.json');
   if (branded) {
     const rejected = passthrough.find((arg) => IDENTITY_OVERRIDE_RE.test(arg));
     if (rejected !== undefined) {
@@ -190,7 +188,7 @@ function build(): void {
     : branded
       ? brandConfig
       : 'electron-builder.release.yml';
-  const brandIcon = join(desktopDir, 'generated', 'brand-assets', 'icon.png');
+  const brandIcon = join(desktopDir, 'out', 'config', 'brand-assets', 'icon.png');
   const feeds = new Map<string, string>();
   for (const arch of stagedArches()) {
     const target = materializeStaging(arch);

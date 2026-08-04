@@ -2,13 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseBrandIdentityArtifact } from '@linkcode/common/config';
 import { keysLength } from 'foxts/property-count';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadGeneratedConfigBundle, stageConfigBundle } from '../../scripts/config-bundle.mts';
+import { assertStagedConfigMatchesGenerated } from '../../scripts/package-config.mts';
+import {
+  electronBuilderBrandConfig,
+  serializeElectronBuilderBrandConfig,
+} from '../build/electron-builder-brand';
 
 const RE_REQUIRED_ABSENT =
   /LINKCODE_REQUIRE_CONFIG_BUNDLE=1 but apps\/desktop\/generated has no bundle/;
+const RE_AMBIENT_IDENTITY = /MAIN_VITE_BRAND_IDENTITY must not be set/;
+const RE_BRAND_ARTIFACT_MISMATCH = /brand artifacts do not match the config bundle/;
+const RE_BUILDER_MISMATCH = /electron-builder brand config does not match/;
+const RE_INCOMPLETE = /must contain exactly/;
 const RE_IMMUTABLE = /immutable/;
+const RE_REBUILD = /rebuild before packaging/;
 const RE_WRONG_PLATFORM = /targets ios, expected desktop/;
 const RE_FIXTURE_KEY = /conformance fixture key/;
 const RE_EMERGENCY_BOOTSTRAP = /requires an emergency endpoint and emergency public key/;
@@ -37,15 +48,38 @@ const FIXTURES = join(
 );
 const desktopFixture = readFileSync(join(FIXTURES, 'build-bundle-v1.json'), 'utf8');
 const iosFixture = readFileSync(join(FIXTURES, 'build-bundle-v1-ios.json'), 'utf8');
+const brandIdentityFixture = readFileSync(join(FIXTURES, 'brand-identity-v1.json'), 'utf8');
+const brandBuilderFixture = serializeElectronBuilderBrandConfig(
+  electronBuilderBrandConfig(parseBrandIdentityArtifact(JSON.parse(brandIdentityFixture))),
+);
+const brandIconFixture = Buffer.from('test brand icon');
 
 const temporaryDirectories: string[] = [];
 
-async function makeDesktopDir(bundleText?: string): Promise<string> {
+function isBrandedBundle(bundleText: string | undefined): boolean {
+  if (bundleText === undefined) return false;
+  try {
+    return (JSON.parse(bundleText) as { brandId?: unknown }).brandId !== 'linkcode';
+  } catch {
+    return false;
+  }
+}
+
+async function makeDesktopDir(
+  bundleText?: string,
+  brandArtifacts = isBrandedBundle(bundleText),
+): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'config-bundle-'));
   temporaryDirectories.push(dir);
   if (bundleText !== undefined) {
     mkdirSync(join(dir, 'generated'), { recursive: true });
     writeFileSync(join(dir, 'generated/config-build-bundle.json'), bundleText);
+  }
+  if (brandArtifacts) {
+    mkdirSync(join(dir, 'generated/brand-assets'), { recursive: true });
+    writeFileSync(join(dir, 'generated/brand-identity.json'), brandIdentityFixture);
+    writeFileSync(join(dir, 'generated/electron-builder.brand.json'), brandBuilderFixture);
+    writeFileSync(join(dir, 'generated/brand-assets/icon.png'), brandIconFixture);
   }
   return dir;
 }
@@ -78,6 +112,13 @@ describe('loadGeneratedConfigBundle', () => {
   it('returns null when no bundle is rendered and none is required', async () => {
     const dir = await makeDesktopDir();
     expect(loadGeneratedConfigBundle(dir, {})).toBeNull();
+  });
+
+  it('rejects ambient brand identity even without generated output', async () => {
+    const dir = await makeDesktopDir();
+    expect(() =>
+      loadGeneratedConfigBundle(dir, { MAIN_VITE_BRAND_IDENTITY: '{"brandId":"fake"}' }),
+    ).toThrow(RE_AMBIENT_IDENTITY);
   });
 
   it('fails when LINKCODE_REQUIRE_CONFIG_BUNDLE=1 and no bundle exists', async () => {
@@ -166,6 +207,18 @@ describe('loadGeneratedConfigBundle', () => {
     },
   );
 
+  it('rejects a non-default bundle without the complete brand artifact set', async () => {
+    const dir = await makeDesktopDir(validDesktopFixture, false);
+    expect(() => loadGeneratedConfigBundle(dir, {})).toThrow(RE_INCOMPLETE);
+    expect(() => assertStagedConfigMatchesGenerated(dir)).toThrow(RE_BRAND_ARTIFACT_MISMATCH);
+  });
+
+  it('rejects a builder overlay that does not match the rendered identity', async () => {
+    const dir = await makeDesktopDir(validDesktopFixture);
+    writeFileSync(join(dir, 'generated/electron-builder.brand.json'), '{}\n');
+    expect(() => loadGeneratedConfigBundle(dir, {})).toThrow(RE_BUILDER_MISMATCH);
+  });
+
   it('derives a bootstrap that the runtime parser accepts, with exact source bytes', async () => {
     const dir = await makeDesktopDir(validDesktopFixture);
     const generated = loadGeneratedConfigBundle(dir, {});
@@ -203,8 +256,25 @@ describe('stageConfigBundle', () => {
     const dir = await makeDesktopDir(validDesktopFixture);
     const generated = loadGeneratedConfigBundle(dir, {});
     stageConfigBundle(dir, generated);
-    const staged = readFileSync(join(dir, 'out/config/build-bundle.json'), 'utf8');
-    expect(staged).toBe(validDesktopFixture);
+    expect(readFileSync(join(dir, 'out/config/build-bundle.json'), 'utf8')).toBe(
+      validDesktopFixture,
+    );
+    expect(readFileSync(join(dir, 'out/config/brand-identity.json'), 'utf8')).toBe(
+      brandIdentityFixture,
+    );
+    expect(readFileSync(join(dir, 'out/config/electron-builder.brand.json'), 'utf8')).toBe(
+      brandBuilderFixture,
+    );
+    expect(readFileSync(join(dir, 'out/config/brand-assets/icon.png'))).toEqual(brandIconFixture);
+    expect(assertStagedConfigMatchesGenerated(dir)).toBe(true);
+  });
+
+  it('rejects packaging after generated artifacts change without a rebuild', async () => {
+    const dir = await makeDesktopDir(validDesktopFixture);
+    const generated = loadGeneratedConfigBundle(dir, {});
+    stageConfigBundle(dir, generated);
+    writeFileSync(join(dir, 'generated/brand-identity.json'), brandIdentityFixture.trim());
+    expect(() => assertStagedConfigMatchesGenerated(dir)).toThrow(RE_REBUILD);
   });
 
   it('removes a stale staged copy when no bundle is rendered', async () => {
@@ -213,5 +283,6 @@ describe('stageConfigBundle', () => {
     writeFileSync(join(dir, 'out/config/build-bundle.json'), 'stale');
     stageConfigBundle(dir, null);
     expect(existsSync(join(dir, 'out/config'))).toBe(false);
+    expect(assertStagedConfigMatchesGenerated(dir)).toBe(false);
   });
 });
