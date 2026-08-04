@@ -70,7 +70,8 @@ const RE_SERVER_TOKEN_BOUNDARY = /[^a-z0-9]+/;
  * token-match them against the known brands; no match means no branding. */
 export function integrationBrand(server: string): IntegrationBrand | undefined {
   for (const token of server.toLowerCase().split(RE_SERVER_TOKEN_BOUNDARY)) {
-    if (token in INTEGRATION_GLYPHS) return token as IntegrationBrand;
+    // Own-key check: `in` would also match prototype keys ("constructor" is a valid token).
+    if (Object.hasOwn(INTEGRATION_GLYPHS, token)) return token as IntegrationBrand;
   }
   return undefined;
 }
