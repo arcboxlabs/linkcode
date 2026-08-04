@@ -116,7 +116,9 @@ export function ToolCallItem({
       toolSearch.mode === 'select'
         ? running
           ? tt('toolSearch.selecting')
-          : completed
+          : // History reads can lose the result rows (the SDK strips tool_use_result), so a
+            // settle without names keeps the neutral label instead of "Selected 0 tools".
+            completed && toolSearch.names.length > 0
             ? tt('toolSearch.selected', { count: toolSearch.names.length })
             : tt('toolSearch.select')
         : running
