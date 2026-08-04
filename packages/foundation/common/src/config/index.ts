@@ -44,6 +44,7 @@ export {
 export type { ConfigCoreOptions } from './core';
 export { ConfigCore } from './core';
 export { createNobleConfigCrypto } from './crypto';
+export { emergencyHostState, forceMinVersionSatisfied } from './evaluation';
 export { decodeBase64Url, encodeBase64Url, parseIJson } from './i-json';
 export type {
   AntiReplayDecision,
@@ -71,6 +72,7 @@ export type {
   ConfigValueDefinition,
   ConfigValues,
   EmergencyDocument,
+  EmergencyHostState,
   EmergencyNotice,
   EvaluationContext,
   JsonPrimitive,

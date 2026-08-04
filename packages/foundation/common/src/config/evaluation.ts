@@ -4,17 +4,20 @@ import {
   conditionMatches,
   isConfigKey,
   isValidSemver,
+  matchesVersionRange,
   rolloutMatches,
 } from './contract';
 import { cloneJson } from './i-json';
 import type {
   ConfigDefinitions,
+  ConfigEmergencyState,
   ConfigEvent,
   ConfigSnapshot,
   ConfigValue,
   ConfigValueDefinition,
   ConfigValues,
   EmergencyDocument,
+  EmergencyHostState,
   EvaluationContext,
   JsonValue,
 } from './types';
@@ -83,6 +86,29 @@ export function applyEmergency<Definitions extends ConfigDefinitions>(
     if (definitionFor(definitions, key)) projected[key] = false;
   }
   return projected as ConfigValues<Definitions>;
+}
+
+/** A missing or unparsable runtime version cannot prove it satisfies the minimum: enforce. */
+export function forceMinVersionSatisfied(
+  appVersion: string,
+  forceMinVersion: string | null,
+): boolean {
+  if (forceMinVersion === null) return true;
+  return isValidSemver(appVersion) && matchesVersionRange(appVersion, `>=${forceMinVersion}`);
+}
+
+export function emergencyHostState(
+  state: ConfigEmergencyState | null,
+  appVersion: string,
+): EmergencyHostState | null {
+  return state
+    ? {
+        disabledFeatures: [...state.disabledFeatures],
+        emergencyVersion: state.emergencyVersion,
+        forceMinVersion: state.forceMinVersion,
+        updateRequired: !forceMinVersionSatisfied(appVersion, state.forceMinVersion),
+      }
+    : null;
 }
 
 export function jsonEqual(left: JsonValue, right: JsonValue): boolean {

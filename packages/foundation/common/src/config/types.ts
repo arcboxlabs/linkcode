@@ -190,9 +190,19 @@ export type ConfigRefreshResult =
   | { readonly status: 'error'; readonly error: ConfigCoreError };
 
 export interface ConfigEmergencyState {
+  readonly disabledFeatures: readonly string[];
   readonly emergencyVersion: string;
   readonly forceMinVersion: string | null;
   readonly notice: EmergencyNotice | null;
+}
+
+/** Smallest host-facing emergency view: enough to enforce a forced minimum and inspect the
+ * accepted disable overlay, without exposing wire or persistence internals. */
+export interface EmergencyHostState {
+  readonly disabledFeatures: readonly string[];
+  readonly emergencyVersion: string;
+  readonly forceMinVersion: string | null;
+  readonly updateRequired: boolean;
 }
 
 export interface ConfigRuntimeState<Values> {

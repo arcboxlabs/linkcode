@@ -1,0 +1,225 @@
+{
+  "handoffVersion": 1,
+  "contractVersion": 1,
+  "issue": "CODE-554 cloud half: emergency signing channel client handoff",
+  "endpoint": {
+    "pathTemplate": "/v1/{brandId}/{platform}/emergency.json",
+    "cacheControl": "public, max-age=60, must-revalidate",
+    "boundary": "The emergency document is served from a dedicated origin and Cloudflare Pages project with its own credential and signing keyring. It shares nothing with the normal configuration channel except the contract rules in CONTRACT.md. A normal-channel outage must not affect this endpoint.",
+    "targetScope": "Emergency state is channel-neutral and bound to exactly (brandId, platform). Clients must reject a document whose brandId or platform differs from the requested target."
+  },
+  "keys": {
+    "emergency": {
+      "emergency-rfc8032-1": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    },
+    "note": "Test keyring only (public RFC 8032 conformance seed). Production emergency public keys ship inside the client via the CODE-552 generated keyring and are never fetched at runtime."
+  },
+  "documents": {
+    "killSwitch": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:01:00Z",
+        "disabledFeatures": [
+          "feature.aiAssist"
+        ],
+        "emergencyVersion": "1",
+        "forceMinVersion": null,
+        "keyId": "emergency-rfc8032-1",
+        "notice": null,
+        "platform": "desktop",
+        "sig": "rqOygGaF27t46uI7RY9c_jFpdLzK6Zkr2pqhWEbA8XwL_wK4lW0SP-vj_wIas-v26Be_zr0JBcKQJdeMkBlmBA"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:01:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"1\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\"}",
+      "payloadSha256": "528ca2fd8fe18089dd7667436d112e2ee90f1bb1738bdf2acf35ab72e89662d9",
+      "canonicalDocument": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:01:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"1\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\",\"sig\":\"rqOygGaF27t46uI7RY9c_jFpdLzK6Zkr2pqhWEbA8XwL_wK4lW0SP-vj_wIas-v26Be_zr0JBcKQJdeMkBlmBA\"}",
+      "canonicalDocumentBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowMTowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUuYWlBc3Npc3QiXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjEiLCJmb3JjZU1pblZlcnNpb24iOm51bGwsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6bnVsbCwicGxhdGZvcm0iOiJkZXNrdG9wIiwic2lnIjoicnFPeWdHYUYyN3Q0NnVJN1JZOWNfakZwZEx6SzZaa3IycHFoV0ViQThYd0xfd0s0bFcwU1Atdmpfd0lhcy12MjZCZV96cjBKQmNLUUpkZU1rQmxtQkEifQ",
+      "documentSha256": "fd16d7d48e96d84610d3f74a7a8e4d3e2702d07427eaf580c819e79f1ab7c7fc",
+      "sizeBytes": 319
+    },
+    "forcedMinimum": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:02:00Z",
+        "disabledFeatures": [
+          "feature.aiAssist"
+        ],
+        "emergencyVersion": "2",
+        "forceMinVersion": "2.4.0",
+        "keyId": "emergency-rfc8032-1",
+        "notice": {
+          "body": "Update LinkCode to continue using this feature.",
+          "title": "Update required",
+          "url": "https://linkcode.ai/download"
+        },
+        "platform": "desktop",
+        "sig": "XgId3argn8WCDktWJKiL5w-WMje93e1eIybokxRw664_7dlvSPnCWlu9XbT0Pp0ZIsXtNdIQmluZTWRvB_oyCQ"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:02:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"2\",\"forceMinVersion\":\"2.4.0\",\"keyId\":\"emergency-rfc8032-1\",\"notice\":{\"body\":\"Update LinkCode to continue using this feature.\",\"title\":\"Update required\",\"url\":\"https://linkcode.ai/download\"},\"platform\":\"desktop\"}",
+      "payloadSha256": "2e8d13d502df3169b709cd54607ba6215eccd539d77b46b9b8704787f9ba9e23",
+      "canonicalDocument": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:02:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"2\",\"forceMinVersion\":\"2.4.0\",\"keyId\":\"emergency-rfc8032-1\",\"notice\":{\"body\":\"Update LinkCode to continue using this feature.\",\"title\":\"Update required\",\"url\":\"https://linkcode.ai/download\"},\"platform\":\"desktop\",\"sig\":\"XgId3argn8WCDktWJKiL5w-WMje93e1eIybokxRw664_7dlvSPnCWlu9XbT0Pp0ZIsXtNdIQmluZTWRvB_oyCQ\"}",
+      "canonicalDocumentBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowMjowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUuYWlBc3Npc3QiXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjIiLCJmb3JjZU1pblZlcnNpb24iOiIyLjQuMCIsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6eyJib2R5IjoiVXBkYXRlIExpbmtDb2RlIHRvIGNvbnRpbnVlIHVzaW5nIHRoaXMgZmVhdHVyZS4iLCJ0aXRsZSI6IlVwZGF0ZSByZXF1aXJlZCIsInVybCI6Imh0dHBzOi8vbGlua2NvZGUuYWkvZG93bmxvYWQifSwicGxhdGZvcm0iOiJkZXNrdG9wIiwic2lnIjoiWGdJZDNhcmduOFdDRGt0V0pLaUw1dy1XTWplOTNlMWVJeWJva3hSdzY2NF83ZGx2U1BuQ1dsdTlYYlQwUHAwWklzWHROZElRbWx1WlRXUnZCX295Q1EifQ",
+      "documentSha256": "5cd726388bd13b605ff15685285b684651551f404b2ae1fd104bf4f42d667f70",
+      "sizeBytes": 439
+    },
+    "release": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:03:00Z",
+        "disabledFeatures": [],
+        "emergencyVersion": "3",
+        "forceMinVersion": null,
+        "keyId": "emergency-rfc8032-1",
+        "notice": null,
+        "platform": "desktop",
+        "sig": "sqn_41LU-CyaJJ7DqvJNi1d2p5vMB6LQVYI-x693VfbN3gdsL-dik7IdFFWyua1GdLyeESEm0rJ5d8HMmDaOBw"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:03:00Z\",\"disabledFeatures\":[],\"emergencyVersion\":\"3\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\"}",
+      "payloadSha256": "62aef8e74c245c129876814010581023455c04d27e39c3bec99f270ed3a4614f",
+      "canonicalDocument": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:03:00Z\",\"disabledFeatures\":[],\"emergencyVersion\":\"3\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\",\"sig\":\"sqn_41LU-CyaJJ7DqvJNi1d2p5vMB6LQVYI-x693VfbN3gdsL-dik7IdFFWyua1GdLyeESEm0rJ5d8HMmDaOBw\"}",
+      "canonicalDocumentBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowMzowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjMiLCJmb3JjZU1pblZlcnNpb24iOm51bGwsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6bnVsbCwicGxhdGZvcm0iOiJkZXNrdG9wIiwic2lnIjoic3FuXzQxTFUtQ3lhSko3RHF2Sk5pMWQycDV2TUI2TFFWWUkteDY5M1ZmYk4zZ2RzTC1kaWs3SWRGRld5dWExR2RMeWVFU0VtMHJKNWQ4SE1tRGFPQncifQ",
+      "documentSha256": "6277730b48a55e5d5a1fbfd3e31d9b75e0bc85c6ac7fc79c9fb60103e216c49c",
+      "sizeBytes": 301
+    },
+    "equivocation": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:03:30Z",
+        "disabledFeatures": [
+          "feature.newEditor"
+        ],
+        "emergencyVersion": "3",
+        "forceMinVersion": null,
+        "keyId": "emergency-rfc8032-1",
+        "notice": null,
+        "platform": "desktop",
+        "sig": "1TAvaFpPvOp054V6JSNF22MViW-naSJ9q6CAq5Wg23jNUbkJ68ATGlNwG915TIYA9ozExoIbUb1S2mwWWZJHCw"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:03:30Z\",\"disabledFeatures\":[\"feature.newEditor\"],\"emergencyVersion\":\"3\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\"}",
+      "payloadSha256": "822efcebf9a176f978909715a5a8744b5d223c171652c666ad42bf0494ae3639",
+      "canonicalDocument": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:03:30Z\",\"disabledFeatures\":[\"feature.newEditor\"],\"emergencyVersion\":\"3\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\",\"sig\":\"1TAvaFpPvOp054V6JSNF22MViW-naSJ9q6CAq5Wg23jNUbkJ68ATGlNwG915TIYA9ozExoIbUb1S2mwWWZJHCw\"}",
+      "canonicalDocumentBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowMzozMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUubmV3RWRpdG9yIl0sImVtZXJnZW5jeVZlcnNpb24iOiIzIiwiZm9yY2VNaW5WZXJzaW9uIjpudWxsLCJrZXlJZCI6ImVtZXJnZW5jeS1yZmM4MDMyLTEiLCJub3RpY2UiOm51bGwsInBsYXRmb3JtIjoiZGVza3RvcCIsInNpZyI6IjFUQXZhRnBQdk9wMDU0VjZKU05GMjJNVmlXLW5hU0o5cTZDQXE1V2cyM2pOVWJrSjY4QVRHbE53RzkxNVRJWUE5b3pFeG9JYlViMVMybXdXV1pKSEN3In0",
+      "documentSha256": "c3b334d4ba69163e1763d6f092c5a4dda1ec45dfba9ef87afa2423918324031d",
+      "sizeBytes": 320
+    }
+  },
+  "antiReplayCases": [
+    {
+      "name": "first accepted document",
+      "candidate": "killSwitch",
+      "accepted": null,
+      "expected": "advance"
+    },
+    {
+      "name": "newer version advances",
+      "candidate": "forcedMinimum",
+      "accepted": "killSwitch",
+      "expected": "advance"
+    },
+    {
+      "name": "identical re-serve is idempotent",
+      "candidate": "forcedMinimum",
+      "accepted": "forcedMinimum",
+      "expected": "idempotent"
+    },
+    {
+      "name": "older version is replay",
+      "candidate": "killSwitch",
+      "accepted": "forcedMinimum",
+      "expected": "replay"
+    },
+    {
+      "name": "equal version with different payload is equivocation",
+      "candidate": "equivocation",
+      "accepted": "release",
+      "expected": "equivocation"
+    }
+  ],
+  "semantics": {
+    "monotonicVersion": "emergencyVersion is a canonical uint64 decimal string compared numerically. Persist the high-water mark and the complete accepted document once signature, target, and monotonic checks pass. Never accept a lower version; accept an equal version only for byte-identical payloads.",
+    "disabledFeatures": "Every listed known feature key is forced to boolean false after overrides and rollouts, regardless of apply mode. Unknown keys are ignored. An empty array explicitly clears the effect.",
+    "forceMinVersionSticky": "forceMinVersion persists until a strictly newer accepted signed document explicitly carries forceMinVersion null. LinkCode Cloud only signs such a clearing document through an explicit release publication approved by two people; clients simply apply the newest accepted document in full.",
+    "notice": "notice is { title, body, url } or null. null explicitly clears it. Render it verbatim; the URL is HTTPS or null.",
+    "failOpen": "Network, parse, unknown-key, signature, replay, and equivocation failures are fail-open for startup: retain the last accepted emergency state and continue. There is no implicit expiry; local time is never used for freshness.",
+    "releaseRehearsal": "The release document above clears disabledFeatures, forceMinVersion, and notice in one strictly newer publication. Clients need no rehearsal-specific behavior: a rehearsal is an ordinary publish followed by an ordinary release."
+  },
+  "cloudControlPlane": {
+    "api": {
+      "base": "/admin/config/emergency",
+      "note": "Operator-facing control plane of LinkCode Cloud. Clients never call these endpoints; they are frozen here so the desktop and mobile halves can rely on the operational semantics.",
+      "createRequest": {
+        "method": "POST",
+        "path": "/admin/config/emergency/requests",
+        "request": {
+          "brandId": "acme",
+          "platform": "desktop",
+          "disabledFeatures": [
+            "feature.aiAssist"
+          ],
+          "forceMinVersion": null,
+          "releasesForceMinVersion": false,
+          "notice": null,
+          "reason": "Disable the assistant while the incident is investigated.",
+          "evidence": {
+            "incident": "INC-2026-0803"
+          }
+        },
+        "response": {
+          "id": "019fc9c0-0000-7000-8000-000000000001",
+          "status": "pending_approval"
+        }
+      },
+      "approve": {
+        "method": "POST",
+        "path": "/admin/config/emergency/requests/{requestId}/approve",
+        "rule": "The approver must be a different person than the requester; self-approval and duplicate approval are rejected. Approval requires the emergency action grant for the request's brand.",
+        "request": {
+          "reason": "Confirmed the incident impact."
+        }
+      },
+      "publish": {
+        "method": "POST",
+        "path": "/admin/config/emergency/requests/{requestId}/publish",
+        "headers": {
+          "Idempotency-Key": "incident-2026-0803-publish-1"
+        },
+        "request": {
+          "reason": "Publish the approved kill switch."
+        },
+        "rule": "Each distinct Idempotency-Key allocates the next emergencyVersion for the target; retrying the same key returns the same publication. An approved request may be published repeatedly for rehearsals."
+      }
+    },
+    "versionAllocation": "emergencyVersion is allocated by the control plane under a per-target lock, strictly increasing per (brandId, platform). A CLI fallback publication is reconciled afterwards by raising the allocator floor with an audited reconciliation record; the allocator never decreases.",
+    "cliFallback": "The emergency CLI publishes without the LinkCode Cloud API, database, normal publication runner, or normal Pages credential. It uses the emergency signing key, a sealed local monotonic state, two distinct recorded human identities, and writes an auditable evidence file."
+  },
+  "cliEvidenceExample": {
+    "approvedBy": "bob",
+    "changed": true,
+    "createdAt": "2026-08-03T10:01:00Z",
+    "deployment": {
+      "dryRun": true
+    },
+    "disabledFeatures": [
+      "feature.aiAssist"
+    ],
+    "documentSha256": "fd16d7d48e96d84610d3f74a7a8e4d3e2702d07427eaf580c819e79f1ab7c7fc",
+    "emergencyVersion": "1",
+    "forceMinVersion": null,
+    "keyId": "emergency-rfc8032-1",
+    "payloadSha256": "528ca2fd8fe18089dd7667436d112e2ee90f1bb1738bdf2acf35ab72e89662d9",
+    "reason": "Disable the assistant while the incident is investigated.",
+    "releasesForceMinVersion": false,
+    "requestedBy": "alice",
+    "resume": false,
+    "sizeBytes": 319,
+    "startedAt": "2026-08-03T10:01:00Z",
+    "target": {
+      "brandId": "acme",
+      "platform": "desktop"
+    },
+    "tool": "linkcode-emergency-publish"
+  }
+}
