@@ -148,6 +148,25 @@ export async function skillIconDataUri(iconPath: string): Promise<string | undef
   }
 }
 
+/** One catalog frame is engine-cached and replayed on every attach; bound its total embedded
+ * icon payload so a huge plugin catalog cannot outgrow transport reassembly buffers. */
+const SKILL_ICON_TOTAL_MAX_LENGTH = 256 * 1024;
+
+/** Drop icons that no longer fit the shared budget (catalog order — sorted by name); dropped
+ * ones fall back to the brandColor initial chip. */
+export function capSkillIconPayload(
+  commands: AgentCommand[],
+  budget = SKILL_ICON_TOTAL_MAX_LENGTH,
+): AgentCommand[] {
+  let remaining = budget;
+  return commands.map((command) => {
+    if (command.iconDataUri === undefined) return command;
+    if (command.iconDataUri.length > remaining) return { ...command, iconDataUri: undefined };
+    remaining -= command.iconDataUri.length;
+    return command;
+  });
+}
+
 interface CodexModelCatalog {
   defaultModel: string | undefined;
   models: AgentModelOption[];
@@ -977,7 +996,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
       this.skillCommands.clear();
       for (const skill of skills) this.skillCommands.set(skill.name, skill);
-      this.emitCommands([COMPACT_COMMAND, ...catalog]);
+      this.emitCommands([COMPACT_COMMAND, ...capSkillIconPayload(catalog)]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
         this.skillCommands.clear();
