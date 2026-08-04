@@ -17,6 +17,7 @@ import {
   ConfigCoreError,
   canonicalizeJson,
   definitionsFromDefaults,
+  emergencyHostState,
 } from '@linkcode/common/config';
 import { app } from 'electron';
 import log from 'electron-log';
@@ -33,6 +34,9 @@ import { CHANNEL } from './constants';
 
 const FIRST_REFRESH_DELAY_MS = 3000;
 const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const FIRST_EMERGENCY_REFRESH_DELAY_MS = 1000;
+const EMERGENCY_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const EMERGENCY_RETRY_DELAY_MS = 60 * 1000;
 const MANUAL_REFRESH_COOLDOWN_MS = 1000;
 
 const disabledNetwork: ConfigNetwork = {
@@ -71,7 +75,10 @@ export class DesktopConfigService {
   readonly #listeners = new Set<HotUpdateListener>();
   readonly #normalEnabled: boolean;
   readonly #emergencyEnabled: boolean;
+  readonly #appVersion: string;
   #snapshot: EffectiveConfigSnapshot;
+  #emergencyRefreshPromise: Promise<ConfigRefreshStatus> | null = null;
+  #normalRefreshPromise: Promise<ConfigRefreshStatus> | null = null;
   #refreshPromise: Promise<ConfigRefreshReport> | null = null;
   #lastRefresh: { readonly completedAt: number; readonly report: ConfigRefreshReport } | null =
     null;
@@ -80,6 +87,7 @@ export class DesktopConfigService {
     const definitions = definitionsFromDefaults(options.bootstrap.defaults);
     this.#normalEnabled = options.network !== undefined;
     this.#emergencyEnabled = options.emergencyNetwork !== undefined;
+    this.#appVersion = options.context.appVersion;
     this.#core = new ConfigCore({
       context: options.context,
       crypto: options.crypto,
@@ -120,6 +128,8 @@ export class DesktopConfigService {
     const state = this.#core.getState();
     return {
       configVersion: state.configVersion,
+      emergency: emergencyHostState(state.emergency, this.#appVersion),
+      emergencySupport: this.#emergencyEnabled ? 'active' : 'disabled',
       sha256: state.sha256,
       source: state.source === 'defaults' ? 'bundled' : state.source === 'lkg' ? 'cache' : 'remote',
       stagedColdKeys: state.stagedColdKeys.map(String),
@@ -146,14 +156,33 @@ export class DesktopConfigService {
     return refresh;
   }
 
+  refreshEmergency(): Promise<ConfigRefreshStatus> {
+    if (!this.#emergencyEnabled) return Promise.resolve('disabled');
+    if (this.#emergencyRefreshPromise) return this.#emergencyRefreshPromise;
+    const refresh = this.#core.refreshEmergency().then(refreshStatus);
+    this.#emergencyRefreshPromise = refresh;
+    void refresh.finally(() => {
+      if (this.#emergencyRefreshPromise === refresh) this.#emergencyRefreshPromise = null;
+    });
+    return refresh;
+  }
+
+  refreshNormal(): Promise<ConfigRefreshStatus> {
+    if (!this.#normalEnabled) return Promise.resolve('disabled');
+    if (this.#normalRefreshPromise) return this.#normalRefreshPromise;
+    const refresh = this.#core.refresh().then(refreshStatus);
+    this.#normalRefreshPromise = refresh;
+    void refresh.finally(() => {
+      if (this.#normalRefreshPromise === refresh) this.#normalRefreshPromise = null;
+    });
+    return refresh;
+  }
+
   async #performRefresh(): Promise<ConfigRefreshReport> {
-    const [normal, emergency] = await Promise.all([
-      this.#normalEnabled ? this.#core.refresh() : undefined,
-      this.#emergencyEnabled ? this.#core.refreshEmergency() : undefined,
-    ]);
+    const [normal, emergency] = await Promise.all([this.refreshNormal(), this.refreshEmergency()]);
     return {
-      emergency: refreshStatus(emergency),
-      normal: refreshStatus(normal),
+      emergency,
+      normal,
       snapshotInfo: this.snapshotInfo(),
     };
   }
@@ -167,6 +196,8 @@ export class DesktopConfigService {
 let service: DesktopConfigService | null = null;
 let refreshTimeout: NodeJS.Timeout | null = null;
 let refreshInterval: NodeJS.Timeout | null = null;
+let emergencyRefreshTimeout: NodeJS.Timeout | null = null;
+let refreshGeneration = 0;
 
 export async function initializeDesktopConfig(): Promise<DesktopConfigService> {
   const bootstrap = parseBootstrap(import.meta.env.MAIN_VITE_CONFIG_BOOTSTRAP);
@@ -204,19 +235,25 @@ export function getDesktopConfig(): DesktopConfigService {
 }
 
 export function startDesktopConfigRefresh(): void {
+  const generation = ++refreshGeneration;
   refreshTimeout = setTimeout(() => {
+    if (generation !== refreshGeneration) return;
     refreshDesktopConfig();
     refreshInterval = setInterval(refreshDesktopConfig, REFRESH_INTERVAL_MS);
     refreshInterval.unref();
   }, FIRST_REFRESH_DELAY_MS);
   refreshTimeout.unref();
+  scheduleEmergencyRefresh(generation, FIRST_EMERGENCY_REFRESH_DELAY_MS);
 }
 
 export function stopDesktopConfigRefresh(): void {
+  refreshGeneration += 1;
   if (refreshTimeout) clearTimeout(refreshTimeout);
   if (refreshInterval) clearInterval(refreshInterval);
+  if (emergencyRefreshTimeout) clearTimeout(emergencyRefreshTimeout);
   refreshTimeout = null;
   refreshInterval = null;
+  emergencyRefreshTimeout = null;
 }
 
 export async function loadEffectiveDefaults(
@@ -360,5 +397,22 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 }
 
 function refreshDesktopConfig(): void {
-  void getDesktopConfig().refresh();
+  void getDesktopConfig().refreshNormal();
+}
+
+function scheduleEmergencyRefresh(generation: number, delay: number): void {
+  emergencyRefreshTimeout = setTimeout(() => {
+    if (generation !== refreshGeneration) return;
+    emergencyRefreshTimeout = null;
+    void getDesktopConfig()
+      .refreshEmergency()
+      .then((status) => {
+        if (generation !== refreshGeneration) return;
+        scheduleEmergencyRefresh(
+          generation,
+          status === 'error' ? EMERGENCY_RETRY_DELAY_MS : EMERGENCY_REFRESH_INTERVAL_MS,
+        );
+      });
+  }, delay);
+  emergencyRefreshTimeout.unref();
 }

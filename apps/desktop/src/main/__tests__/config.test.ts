@@ -8,16 +8,28 @@ import {
   MAX_SNAPSHOT_SIZE_BYTES,
   parseConfigBuildBundle,
 } from '@linkcode/common/config';
+import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopConfigBootstrap } from '../config';
-import { DesktopConfigService, loadEffectiveDefaults, parseBootstrap } from '../config';
+import {
+  DesktopConfigService,
+  initializeDesktopConfig,
+  loadEffectiveDefaults,
+  parseBootstrap,
+  startDesktopConfigRefresh,
+  stopDesktopConfigRefresh,
+} from '../config';
 import { AtomicConfigStorage, FetchConfigNetwork, nodeConfigCrypto } from '../config-adapters';
+
+const { getElectronPath } = vi.hoisted(() => ({
+  getElectronPath: vi.fn(() => '/unused'),
+}));
 
 vi.mock('electron', () => ({
   app: {
     commandLine: { getSwitchValue: () => '', hasSwitch: () => false },
     getLocale: () => 'en-US',
-    getPath: () => '/unused',
+    getPath: getElectronPath,
     getVersion: () => '2.4.0',
     isPackaged: false,
   },
@@ -33,6 +45,13 @@ interface Fixture {
     readonly current: { readonly canonicalPayloadBase64Url: string };
     readonly previous: { readonly document: { readonly values: Record<string, ConfigValue> } };
   };
+}
+
+interface EmergencyFixture {
+  readonly documents: {
+    readonly forcedMinimum: { readonly document: unknown };
+  };
+  readonly keys: { readonly emergency: Readonly<Record<string, string>> };
 }
 
 const temporaryDirectories: string[] = [];
@@ -51,7 +70,20 @@ class SequenceNetwork implements ConfigNetwork {
   }
 }
 
+class DeferredNetwork implements ConfigNetwork {
+  readonly get = vi.fn(
+    () =>
+      new Promise<ConfigNetworkResponse>((resolve) => {
+        this.resolve = resolve;
+      }),
+  );
+  resolve: (response: ConfigNetworkResponse) => void = noop;
+}
+
 afterEach(async () => {
+  stopDesktopConfigRefresh();
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await Promise.all(
     temporaryDirectories
@@ -155,6 +187,77 @@ describe('desktop config runtime', () => {
     await first;
   });
 
+  it('coalesces emergency refresh independently with a combined refresh', async () => {
+    const emergencyNetwork = new DeferredNetwork();
+    const service = makeService(
+      makeBootstrap({ 'feature.safe': true }, {}),
+      new AtomicConfigStorage(await temporaryDirectory()),
+      undefined,
+      emergencyNetwork,
+    );
+    await service.initialize();
+
+    const emergency = service.refreshEmergency();
+    const combined = service.refresh();
+    expect(service.refreshEmergency()).toBe(emergency);
+    await vi.waitFor(() => expect(emergencyNetwork.get).toHaveBeenCalledTimes(1));
+    emergencyNetwork.resolve(ok(new TextEncoder().encode('{}')));
+
+    await expect(emergency).resolves.toBe('error');
+    await expect(combined).resolves.toMatchObject({ emergency: 'error', normal: 'disabled' });
+  });
+
+  it('exposes typed emergency support and host state using the runtime app version', async () => {
+    const fixture = await loadEmergencyFixture();
+    const emergencyNetwork = new SequenceNetwork([
+      ok(documentBytes(fixture.documents.forcedMinimum.document)),
+    ]);
+    const bootstrap = makeBootstrap({ 'feature.safe': true }, {});
+    const service = makeService(
+      { ...bootstrap, emergencyPublicKeys: fixture.keys.emergency },
+      new AtomicConfigStorage(await temporaryDirectory()),
+      undefined,
+      emergencyNetwork,
+    );
+    await service.initialize();
+
+    expect(service.snapshotInfo()).toMatchObject({ emergency: null, emergencySupport: 'active' });
+    await expect(service.refreshEmergency()).resolves.toBe('updated');
+    expect(service.snapshotInfo()).toMatchObject({
+      emergency: { emergencyVersion: '2', updateRequired: false },
+      emergencySupport: 'active',
+    });
+  });
+
+  it('runs emergency refresh on its own retry and success cadence', async () => {
+    vi.useFakeTimers();
+    const directory = await temporaryDirectory();
+    getElectronPath.mockReturnValue(directory);
+    vi.stubEnv(
+      'MAIN_VITE_CONFIG_BOOTSTRAP',
+      JSON.stringify(makeBootstrap({ 'feature.safe': true }, {})),
+    );
+    const service = await initializeDesktopConfig();
+    const emergencyRefresh = vi
+      .spyOn(service, 'refreshEmergency')
+      .mockResolvedValueOnce('error')
+      .mockResolvedValue('updated');
+
+    startDesktopConfigRefresh();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(emergencyRefresh).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(emergencyRefresh).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(emergencyRefresh).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(emergencyRefresh).toHaveBeenCalledTimes(3);
+
+    stopDesktopConfigRefresh();
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(emergencyRefresh).toHaveBeenCalledTimes(3);
+  });
+
   it('bounds response bytes and prevents endpoint path escape', async () => {
     const network = new FetchConfigNetwork('https://config.example/base');
     vi.stubGlobal(
@@ -235,12 +338,14 @@ function makeService(
   bootstrap: DesktopConfigBootstrap,
   storage: AtomicConfigStorage,
   network?: ConfigNetwork,
+  emergencyNetwork?: ConfigNetwork,
 ): DesktopConfigService {
   return new DesktopConfigService({
     bootstrap,
     context: { appVersion: '2.4.0', locale: 'en-US', os: 'linux' },
     crypto: nodeConfigCrypto,
     ...(network && { network }),
+    ...(emergencyNetwork && { emergencyNetwork }),
     storage,
   });
 }
@@ -276,6 +381,14 @@ async function loadFixture(): Promise<Fixture> {
     import.meta.url,
   );
   return JSON.parse(await readFile(url, 'utf8')) as Fixture;
+}
+
+async function loadEmergencyFixture(): Promise<EmergencyFixture> {
+  const url = new URL(
+    '../../../../../packages/foundation/common/src/config/__fixtures__/emergency-handoff-v1.json',
+    import.meta.url,
+  );
+  return JSON.parse(await readFile(url, 'utf8')) as EmergencyFixture;
 }
 
 async function temporaryDirectory(): Promise<string> {
