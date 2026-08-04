@@ -14,6 +14,9 @@ describe('integration brand resolution', () => {
     expect(integrationBrand('jira')).toBe('jira');
     expect(integrationBrand('f5fcc7d5-d616-4ac2-9cdb-55372529dad2')).toBeUndefined();
     expect(integrationBrand('workspace')).toBeUndefined();
+    // Object-prototype keys are not brands (a `constructor` token once resolved to `Object`).
+    expect(integrationBrand('constructor')).toBeUndefined();
+    expect(integrationBrand('my-constructor-server')).toBeUndefined();
   });
 
   it('renders the brand glyph with its brand stamped for styling and tests', () => {
