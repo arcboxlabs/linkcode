@@ -7,19 +7,30 @@ import { useMobileConfiguration } from '../use-mobile-configuration';
 
 const {
   initializeMobileConfiguration,
+  getMobileEmergencyState,
   refreshMobileConfiguration,
+  refreshMobileEmergencyConfiguration,
   registerMobileConfigBackgroundRefresh,
   subscribeToForegroundRefresh,
+  subscribeToEmergencyRefresh,
 } = vi.hoisted(() => ({
+  getMobileEmergencyState: vi.fn(() => ({ support: 'active' as const, state: null })),
   initializeMobileConfiguration: vi.fn<() => Promise<void>>(),
+  refreshMobileEmergencyConfiguration: vi.fn(() => Promise.resolve(true)),
   refreshMobileConfiguration: vi.fn(() => Promise.resolve(true)),
   registerMobileConfigBackgroundRefresh: vi.fn(() => Promise.resolve('registered' as const)),
   subscribeToForegroundRefresh: vi.fn(() => vi.fn()),
+  subscribeToEmergencyRefresh: vi.fn(() => vi.fn()),
 }));
 
-vi.mock('../mobile', () => ({ initializeMobileConfiguration, refreshMobileConfiguration }));
+vi.mock('../mobile', () => ({
+  getMobileEmergencyState,
+  initializeMobileConfiguration,
+  refreshMobileConfiguration,
+  refreshMobileEmergencyConfiguration,
+}));
 vi.mock('../background', () => ({ registerMobileConfigBackgroundRefresh }));
-vi.mock('../lifecycle', () => ({ subscribeToForegroundRefresh }));
+vi.mock('../lifecycle', () => ({ subscribeToEmergencyRefresh, subscribeToForegroundRefresh }));
 vi.mock('react-native', () => ({
   AppState: { addEventListener: vi.fn(), currentState: 'active' },
 }));
@@ -47,5 +58,9 @@ describe('useMobileConfiguration', () => {
     expect(refreshMobileConfiguration).toHaveBeenCalledOnce();
     expect(registerMobileConfigBackgroundRefresh).toHaveBeenCalledOnce();
     expect(subscribeToForegroundRefresh).toHaveBeenCalledOnce();
+    expect(subscribeToEmergencyRefresh).toHaveBeenCalledWith(
+      expect.anything(),
+      refreshMobileEmergencyConfiguration,
+    );
   });
 });
