@@ -86,7 +86,7 @@ export function CloudImProvider({
   children,
 }: {
   source: CloudImSource;
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }): React.ReactNode {
   return <CloudImSourceContext value={source}>{children}</CloudImSourceContext>;
 }

@@ -2,9 +2,6 @@ import { setupRenderer } from '@better-auth/electron/preload';
 import { createElectronSystemBridge } from '@linkcode/ipc/electron-renderer';
 import { contextBridge, ipcRenderer } from 'electron';
 import {
-  CLOUD_BILLING_CHECKOUT_CHANNEL,
-  CLOUD_BILLING_OVERVIEW_CHANNEL,
-  CLOUD_BILLING_PORTAL_CHANNEL,
   CLOUD_CLAIM_DEEP_LINK_CHANNEL,
   CLOUD_IM_BINDINGS_CHANNEL,
   CLOUD_IM_CREATE_BINDING_CHANNEL,
@@ -16,6 +13,7 @@ import {
   CLOUD_IM_UNLINK_TELEGRAM_CHANNEL,
   CLOUD_IM_UPDATE_BINDING_CHANNEL,
   CLOUD_LIST_HOSTS_CHANNEL,
+  CLOUD_OPEN_HOSTED_BILLING_CHANNEL,
 } from '../shared/cloud';
 
 /**
@@ -36,11 +34,7 @@ setupRenderer();
 contextBridge.exposeInMainWorld('linkcodeCloud', {
   listHosts: () => ipcRenderer.invoke(CLOUD_LIST_HOSTS_CHANNEL),
   claimDeepLink: () => ipcRenderer.invoke(CLOUD_CLAIM_DEEP_LINK_CHANNEL),
-  billing: {
-    overview: () => ipcRenderer.invoke(CLOUD_BILLING_OVERVIEW_CHANNEL),
-    checkout: (input: unknown) => ipcRenderer.invoke(CLOUD_BILLING_CHECKOUT_CHANNEL, input),
-    portal: () => ipcRenderer.invoke(CLOUD_BILLING_PORTAL_CHANNEL),
-  },
+  openHostedBilling: () => ipcRenderer.invoke(CLOUD_OPEN_HOSTED_BILLING_CHANNEL),
   im: {
     overview: () => ipcRenderer.invoke(CLOUD_IM_OVERVIEW_CHANNEL),
     bindings: () => ipcRenderer.invoke(CLOUD_IM_BINDINGS_CHANNEL),

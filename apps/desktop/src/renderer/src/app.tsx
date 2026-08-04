@@ -1,6 +1,5 @@
 import type { CloudHost } from '@linkcode/workbench';
 import {
-  CloudBillingProvider,
   CloudHostsProvider,
   CloudImProvider,
   ConnectionState,
@@ -11,7 +10,6 @@ import {
   WorkbenchAppProviders,
   WorkbenchProviders,
 } from '@linkcode/workbench';
-import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { DesktopAutomationsView } from './automations/automations-view';
@@ -27,7 +25,6 @@ import { DesktopWorkbenchShell } from './shell/desktop-workbench-shell';
 
 /** Cloud data comes from main (it holds the keychain session); see preload's bridge. */
 const listCloudHosts = (): Promise<CloudHost[]> => cloudDataBridge.listHosts();
-const cloudBillingSource = cloudDataBridge.billing;
 // The preload bridge implements CloudImSource verbatim; hand it to the provider as-is.
 const cloudImSource = cloudDataBridge.im;
 
@@ -38,31 +35,27 @@ export function DesktopApp(): React.ReactNode {
 
   return (
     <WorkbenchAppProviders locale={localeOverride}>
-      <ComposeContextProvider
-        contexts={[
-          <CloudHostsProvider key="cloud-hosts" source={listCloudHosts} />,
-          <CloudBillingProvider key="cloud-billing" source={cloudBillingSource} />,
-          <CloudImProvider key="cloud-im" source={cloudImSource} />,
-        ]}
-      >
-        <WorkbenchProviders
-          connectionSource={desktopDaemonConnectionSource}
-          // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
-          // URL), yet its history-import panel can still use the data plane once connected.
-          ungated={settingsOpen ? <SettingsView /> : null}
-          fallback={<DesktopConnectionFallback />}
-        >
-          <SessionNotifier present={presentDesktopNotification} />
-          <OverlayUnderlay>
-            <Workbench shellComponent={DesktopWorkbenchShell} />
-          </OverlayUnderlay>
-          {/* Gated: Automations lists schedules over the data plane, so it mounts inside the gate. */}
-          {automationsOpen ? <DesktopAutomationsView /> : null}
-        </WorkbenchProviders>
-        {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
+      <CloudHostsProvider source={listCloudHosts}>
+        <CloudImProvider source={cloudImSource}>
+          <WorkbenchProviders
+            connectionSource={desktopDaemonConnectionSource}
+            // Ungated: Settings stays reachable while the daemon is down (needed to fix a bad daemon
+            // URL), yet its history-import panel can still use the data plane once connected.
+            ungated={settingsOpen ? <SettingsView /> : null}
+            fallback={<DesktopConnectionFallback />}
+          >
+            <SessionNotifier present={presentDesktopNotification} />
+            <OverlayUnderlay>
+              <Workbench shellComponent={DesktopWorkbenchShell} />
+            </OverlayUnderlay>
+            {/* Gated: Automations lists schedules over the data plane, so it mounts inside the gate. */}
+            {automationsOpen ? <DesktopAutomationsView /> : null}
+          </WorkbenchProviders>
+          {/* Window controls live above the connection gate and the settings overlay so Windows/Linux
               can always minimize/maximize/close — including while the daemon is connecting or down. */}
-        <DesktopWindowControls />
-      </ComposeContextProvider>
+          <DesktopWindowControls />
+        </CloudImProvider>
+      </CloudHostsProvider>
     </WorkbenchAppProviders>
   );
 }

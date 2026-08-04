@@ -23,7 +23,8 @@ export default defineConfig({
       formats: ['cjs'],
     },
     rolldownOptions: {
-      external: nodeExternals(),
+      // @linkcode/cloud is ESM-only; bundle its tiny URL builder into the CJS main process.
+      external: nodeExternals(['@linkcode/cloud']),
       output: {
         entryFileNames: '[name].js',
         assetFileNames: 'chunks/[name]-[hash][extname]',

@@ -92,14 +92,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('providers.accountModel'),
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
     ],
-    billing: [
-      t('billing.available'),
-      t('billing.reserved'),
-      t('billing.creditPacks'),
-      t('billing.topUpAmount'),
-      t('billing.orders'),
-      t('billing.subscription'),
-    ],
+    billing: [t('billing.description'), t('billing.openOnWeb')],
     imChannel: [t('imChannel.connectTitle'), t('imChannel.bindings'), t('imChannel.autoMirror')],
     plugins: [
       t('plugins.title'),

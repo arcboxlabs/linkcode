@@ -28,7 +28,6 @@ import {
   SettingsIcon,
   ShieldIcon,
   SparklesIcon,
-  WalletCardsIcon,
 } from 'lucide-react';
 import { useRef } from 'react';
 import { useTranslations } from 'use-intl';
@@ -222,8 +221,6 @@ export function HostFooter({
   onSignIn,
   onSignOut,
   onManageAccount,
-  balance,
-  onOpenBilling,
   remoteHosts,
   remoteHostsLoading = false,
   selectedHostId,
@@ -241,9 +238,6 @@ export function HostFooter({
   onSignOut?: () => void;
   /** Opens the IdP account center (profile/avatar) in the system browser; shown when signed in. */
   onManageAccount?: () => void;
-  /** Available Cloud balance, displayed persistently beside the signed-in account. */
-  balance?: { currency: string; amount: string };
-  onOpenBilling?: () => void;
   /** The account's online hosts (Remote access); undefined until first load. Requires `account`. */
   remoteHosts?: RemoteHostItem[];
   /** First load of the host list — the Remote access area shows a checking hint, not "no hosts". */
@@ -276,23 +270,6 @@ export function HostFooter({
             }
           />
           <div className="ml-auto flex items-center gap-1">
-            {account && balance && (
-              <PopoverClose
-                render={
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="font-mono text-2xs tabular-nums"
-                    aria-label={t('billingBalance', balance)}
-                    disabled={!onOpenBilling}
-                    onClick={onOpenBilling}
-                  >
-                    <WalletCardsIcon />
-                    {balance.currency} {balance.amount}
-                  </Button>
-                }
-              />
-            )}
             {account ? (
               <PopoverTrigger
                 render={

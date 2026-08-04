@@ -1,27 +1,17 @@
-import {
-  ErrorBadge,
-  HostFooter,
-  ShellFrame,
-  ShellIconButton,
-  ThreadTitle,
-  TitleStrip,
-} from '@linkcode/ui';
+import { ErrorBadge, ShellFrame, ShellIconButton, ThreadTitle, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   getResourcesPanelPresentation,
   RESOURCES_FLOATING_COLUMN_WIDTH,
   RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
-  useCloudBilling,
   useProvidersSettingsStore,
   useResourcesPanelStore,
   WorkspaceServicesMenu,
 } from '@linkcode/workbench';
-import { authClient, signInWithCloud } from '@webview/cloud/auth';
 import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
-import { noop } from 'foxact/noop';
 import { ChevronLeftIcon, ChevronRightIcon, Settings2Icon, SettingsIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
@@ -68,16 +58,6 @@ export function WebWorkbenchShell({
       <div className="h-full min-h-0 min-w-0">
         <ShellFrame
           {...props}
-          sidebarFooter={
-            <WebCloudFooter
-              onOpenBilling={() => {
-                void navigate('/settings/billing');
-              }}
-              onOpenSettings={() => {
-                void navigate('/settings');
-              }}
-            />
-          }
           showPlanInPromptDock={!resourcesSurfaceOpen}
           onOpenProviderSettings={() => {
             useProvidersSettingsStore.getState().startAdd();
@@ -174,32 +154,5 @@ export function WebWorkbenchShell({
         </div>
       </aside>
     </div>
-  );
-}
-
-function WebCloudFooter({
-  onOpenBilling,
-  onOpenSettings,
-}: {
-  onOpenBilling: () => void;
-  onOpenSettings: () => void;
-}): React.ReactNode {
-  const session = authClient.useSession();
-  const account = session.data?.user ?? null;
-  const billing = useCloudBilling(account?.email ?? null);
-  return (
-    <HostFooter
-      account={account}
-      onSignIn={signInWithCloud}
-      onSignOut={() => {
-        authClient.signOut().catch(noop);
-      }}
-      onManageAccount={() =>
-        window.open('https://auth.arcbox.dev/account', '_blank', 'noopener,noreferrer')
-      }
-      balance={billing.data?.summary.displayBalance}
-      onOpenBilling={onOpenBilling}
-      onOpenSettings={onOpenSettings}
-    />
   );
 }
