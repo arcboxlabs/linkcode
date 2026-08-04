@@ -93,6 +93,16 @@ describe('tool search presentation', () => {
     expect(screen.getByText('No matching deferred tools found')).toBeDefined();
   });
 
+  it('keeps neutral wording when a settled selection has no recoverable result rows', () => {
+    // The cold-history shape: completed, but the SDK stripped the tool_use_result rows.
+    const toolCall = toolSearch({ content: [] });
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('toolSearch.select')).toBeDefined();
+    expect(screen.queryByText('toolSearch.selected')).toBeNull();
+  });
+
   it('keeps a running call body-less with a progressive header', () => {
     const toolCall = toolSearch({ status: 'in_progress', rawOutput: undefined });
 
