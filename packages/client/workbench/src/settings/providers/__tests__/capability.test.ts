@@ -59,6 +59,20 @@ describe('bindingAvailability', () => {
     });
   });
 
+  it('supports DeepSeek through Chat-compatible agents but not Responses-only Codex', () => {
+    const deepseek = account({
+      service: 'deepseek',
+      endpoint: { baseUrl: 'https://api.deepseek.com', protocol: 'openai-chat' },
+    });
+    expect(bindingAvailability(deepseek, 'claude-code')).toEqual({ tier: 'translate' });
+    expect(bindingAvailability(deepseek, 'opencode')).toEqual({ tier: 'native' });
+    expect(bindingAvailability(deepseek, 'pi')).toEqual({ tier: 'native' });
+    expect(bindingAvailability(deepseek, 'codex')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
+  });
+
   it('binds Grok Build to xAI catalog accounts', () => {
     expect(bindingAvailability(account({ service: 'xai' }), 'grok-build')).toEqual({
       tier: 'native',
@@ -130,6 +144,7 @@ describe('catalog helpers', () => {
 
   it('implies a protocol from the service when the endpoint is absent', () => {
     expect(accountProtocol(account({ service: 'anthropic-api' }))).toBe('anthropic');
+    expect(accountProtocol(account({ service: 'deepseek' }))).toBe('openai-chat');
     expect(accountProtocol(account({ service: 'xai' }))).toBe('openai-chat');
     // Dual-protocol gateways imply nothing without an endpoint.
     expect(accountProtocol(account({ service: 'openrouter' }))).toBeUndefined();
@@ -143,5 +158,21 @@ describe('catalog helpers', () => {
         }),
       ),
     ).toBe('anthropic');
+  });
+
+  it('seeds the official DeepSeek Chat-compatible endpoint', () => {
+    const deepseek = serviceById('deepseek');
+    expect(deepseek).toMatchObject({
+      id: 'deepseek',
+      group: 'direct',
+      kind: 'endpoint',
+      variants: [
+        {
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          credentialType: 'api-key',
+        },
+      ],
+    });
   });
 });

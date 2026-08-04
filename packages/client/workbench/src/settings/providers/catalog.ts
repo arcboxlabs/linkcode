@@ -76,6 +76,21 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     secretPlaceholder: 'sk-…',
   },
   {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    group: 'direct',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.deepseek.com',
+        credentialType: 'api-key',
+      },
+    ],
+    secretPlaceholder: 'sk-…',
+  },
+  {
     id: 'xai',
     label: 'xAI (Grok)',
     group: 'direct',

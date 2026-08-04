@@ -164,4 +164,30 @@ describe('non-subscription account creation', () => {
       ),
     );
   });
+
+  it('creates a DeepSeek account with its Chat-compatible endpoint', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AddAccountForm
+        serviceId="deepseek"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        onBack={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('sk-…'), { target: { value: 'sk-deepseek' } });
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: 'deepseek',
+          credential: { type: 'api-key', key: 'sk-deepseek' },
+          endpoint: { baseUrl: 'https://api.deepseek.com', protocol: 'openai-chat' },
+        }),
+      ),
+    );
+  });
 });
