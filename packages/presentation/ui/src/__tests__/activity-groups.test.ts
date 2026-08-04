@@ -157,6 +157,32 @@ describe('groupTimeline', () => {
     ]);
   });
 
+  it('glues thinking into a brand run instead of splitting it', () => {
+    const items = [
+      tool('other', { title: 'mcp__linear__get_issue' }),
+      reasoning(),
+      tool('other', { title: 'mcp__linear__save_issue' }),
+      tool('think'),
+      tool('other', { title: 'mcp__linear__close_issue' }),
+    ];
+
+    expect(groupTimeline(items)).toEqual([{ type: 'run', id: `run-${items[0].id}`, items }]);
+  });
+
+  it('lets leading thinking open the run the next keyed item defines', () => {
+    const lead = reasoning();
+    const branded = [
+      tool('other', { title: 'mcp__linear__get_issue' }),
+      tool('other', { title: 'mcp__linear__save_issue' }),
+    ];
+    const generic = tool('read');
+
+    expect(groupTimeline([lead, ...branded, generic])).toEqual([
+      { type: 'run', id: `run-${lead.id}`, items: [lead, ...branded] },
+      { type: 'item', item: generic },
+    ]);
+  });
+
   it.each(['user', 'assistant'] as const)('splits runs on %s messages', (role) => {
     const first = tool('read');
     const narration = message(role);

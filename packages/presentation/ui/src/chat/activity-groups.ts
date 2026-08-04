@@ -24,18 +24,24 @@ export interface ActivityGroupingContext {
 }
 
 export interface ActivityGroupingPolicy {
-  /** Equal non-null keys form a run until another key or a non-activity item interrupts it. */
+  /** Equal non-null keys form a run until another key or a non-activity item interrupts it;
+   * `ACTIVITY_RUN_GLUE_KEY` joins the surrounding run without setting its key. */
   classify(item: ConversationItem, context: ActivityGroupingContext): string | null;
   minimumGroupSize: number;
 }
 
 const DEFAULT_ACTIVITY_KEY = 'activity';
 
+/** Classification that extends whatever run surrounds the item instead of keying its own. */
+export const ACTIVITY_RUN_GLUE_KEY = '*';
+
 export const defaultActivityGroupingPolicy: ActivityGroupingPolicy = {
   // Branded integration calls run in their own dedicated groups, so a failing generic call never
-  // shares a header (or paints its glyph) with a healthy integration.
+  // shares a header (or paints its glyph) with a healthy integration. Thinking is glue — agents
+  // routinely reason between calls, and a key of its own would split every brand run apart.
   classify(item) {
     if (!isActivityRunItem(item)) return null;
+    if (item.kind === 'reasoning' || item.toolCall.kind === 'think') return ACTIVITY_RUN_GLUE_KEY;
     const brand = activityItemBrand(item);
     return brand === undefined ? DEFAULT_ACTIVITY_KEY : `brand:${brand}`;
   },
@@ -81,8 +87,10 @@ export function groupTimeline(
       entries.push({ type: 'item', item });
       continue;
     }
-    if (runKey !== null && key !== runKey) flushRun();
-    runKey = key;
+    if (key !== ACTIVITY_RUN_GLUE_KEY) {
+      if (runKey !== null && key !== runKey) flushRun();
+      runKey = key;
+    }
     run.push(item);
   }
   flushRun();
