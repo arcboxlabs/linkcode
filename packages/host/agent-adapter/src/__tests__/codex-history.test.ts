@@ -417,6 +417,53 @@ describe('mapCodexHistoryEvents', () => {
     ]);
   });
 
+  it("replays MCP calls under the live adapter's mcp slug, unwrapping the plugin namespace", () => {
+    // Real rollout shapes: the server rides `namespace` (`mcp__<server>`, sometimes with a stray
+    // trailing `__`); plugin apps namespace as `mcp__codex_apps__<app>` with a leading-`_` tool.
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1 + 1"}',
+        call_id: 'call_mcp1',
+      }),
+      responseItem({ type: 'function_call_output', call_id: 'call_mcp1', output: '2' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__computer_use__',
+        name: 'click',
+        arguments: '{}',
+        call_id: 'call_mcp2',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_save_comment',
+        arguments: '{}',
+        call_id: 'call_mcp3',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'collaboration',
+        name: 'send_message',
+        arguments: '{}',
+        call_id: 'call_builtin',
+      }),
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp2', 'mcp__computer_use__click'],
+      ['call_mcp3', 'mcp__linear__save_comment'],
+      ['call_builtin', 'send_message'],
+    ]);
+    expect(tools[0].kind).toBe('other');
+    expect(tools[1]).toMatchObject({ status: 'completed', kind: 'other' });
+  });
+
   it('settles an aborted run and a declined run as failed with the raw text as the record', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
