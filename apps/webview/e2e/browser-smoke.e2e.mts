@@ -299,7 +299,9 @@ async function verifyProductionEntry(browser: Browser): Promise<void> {
       await page.locator('#root > *').waitFor();
       await page.getByRole('link', { name: 'Open settings' }).click();
       await page.waitForURL(`${server.origin}/settings`);
-      await page.goto(`${server.origin}/settings`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${server.origin}/settings/billing`, { waitUntil: 'domcontentloaded' });
+      await page.getByText('LinkCode does not read or process billing or checkout data.').waitFor();
+      await page.getByRole('button', { name: 'Manage on the web' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).click();
       await page.waitForURL(`${server.origin}/`);

@@ -4,6 +4,7 @@ import {
   BellIcon,
   BotIcon,
   CodeXmlIcon,
+  CreditCardIcon,
   KeyRoundIcon,
   PuzzleIcon,
   SendIcon,
@@ -22,6 +23,7 @@ const SETTINGS_ROUTES: Record<string, string> = {
   notifications: '/settings/notifications',
   agents: '/settings/agents',
   providers: '/settings/providers',
+  billing: '/settings/billing',
   plugins: '/settings/plugins',
   messaging: '/settings/messaging',
   developer: '/settings/developer',
@@ -93,6 +95,14 @@ export function SettingsLayout(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: isActive(pathname, 'providers'),
           render: <Link to="/settings/providers" />,
+        },
+        {
+          key: 'billing',
+          icon: <CreditCardIcon className="size-4" />,
+          label: t('tabs.billing'),
+          keywords: searchKeywords.billing,
+          active: isActive(pathname, 'billing'),
+          render: <Link to="/settings/billing" />,
         },
         {
           key: 'plugins',
@@ -172,6 +182,7 @@ function isActive(
     | 'terminal'
     | 'developer'
     | 'notifications'
+    | 'billing'
     | 'providers'
     | 'plugins'
     | 'agents'

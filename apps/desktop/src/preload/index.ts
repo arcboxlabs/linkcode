@@ -13,6 +13,7 @@ import {
   CLOUD_IM_UNLINK_TELEGRAM_CHANNEL,
   CLOUD_IM_UPDATE_BINDING_CHANNEL,
   CLOUD_LIST_HOSTS_CHANNEL,
+  CLOUD_OPEN_HOSTED_BILLING_CHANNEL,
 } from '../shared/cloud';
 
 /**
@@ -33,6 +34,7 @@ setupRenderer();
 contextBridge.exposeInMainWorld('linkcodeCloud', {
   listHosts: () => ipcRenderer.invoke(CLOUD_LIST_HOSTS_CHANNEL),
   claimDeepLink: () => ipcRenderer.invoke(CLOUD_CLAIM_DEEP_LINK_CHANNEL),
+  openHostedBilling: () => ipcRenderer.invoke(CLOUD_OPEN_HOSTED_BILLING_CHANNEL),
   im: {
     overview: () => ipcRenderer.invoke(CLOUD_IM_OVERVIEW_CHANNEL),
     bindings: () => ipcRenderer.invoke(CLOUD_IM_BINDINGS_CHANNEL),

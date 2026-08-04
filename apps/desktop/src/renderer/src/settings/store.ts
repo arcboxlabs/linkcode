@@ -11,6 +11,7 @@ export type SettingsCategory =
   | 'developer'
   | 'notifications'
   | 'about'
+  | 'billing'
   | 'providers'
   | 'agents'
   | 'imChannel'

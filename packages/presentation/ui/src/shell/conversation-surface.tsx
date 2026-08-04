@@ -13,6 +13,7 @@ import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './c
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
+import { UsageReportCard } from './usage-report-card';
 
 /** Composer behavior that every app shell must carry as one unit. Keeping the complete controller
  * required prevents a custom shell from silently dropping only mode, slash, or shell actions. */
@@ -147,6 +148,7 @@ export function ConversationSurface({
           />
         </ArtifactHostActionsProvider>
       </div>
+      {conversation.usageReport && <UsageReportCard report={conversation.usageReport} />}
       <ConversationPromptDock
         conversation={conversation}
         showPlan={showPlanInPromptDock}

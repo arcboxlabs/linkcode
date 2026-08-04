@@ -8,6 +8,9 @@ export const CLOUD_LIST_HOSTS_CHANNEL = 'linkcode.cloud.list-hosts';
 // renderer invokes it right before a sign-in so the OAuth deep-link callback comes back here.
 export const CLOUD_CLAIM_DEEP_LINK_CHANNEL = 'linkcode.cloud.claim-deep-link';
 
+// Opens the Cloud-owned billing surface; all billing and checkout state stays in the browser.
+export const CLOUD_OPEN_HOSTED_BILLING_CHANNEL = 'linkcode.cloud.open-hosted-billing';
+
 // IM Channel management (`/im/*` on the cloud API).
 export const CLOUD_IM_OVERVIEW_CHANNEL = 'linkcode.cloud.im.overview';
 export const CLOUD_IM_BINDINGS_CHANNEL = 'linkcode.cloud.im.bindings';
