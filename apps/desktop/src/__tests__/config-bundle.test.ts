@@ -10,6 +10,15 @@ const RE_REQUIRED_ABSENT =
   /LINKCODE_REQUIRE_CONFIG_BUNDLE=1 but apps\/desktop\/generated has no bundle/;
 const RE_IMMUTABLE = /immutable/;
 const RE_WRONG_PLATFORM = /targets ios, expected desktop/;
+const RE_FIXTURE_KEY = /conformance fixture key/;
+const RE_EMERGENCY_BOOTSTRAP = /requires an emergency endpoint and emergency public key/;
+const RE_ENABLED_TOGETHER = /enabled together/;
+const SAFE_EMERGENCY_PUBLIC_KEY = 'I-ZZtxm_RMtR2fMqJtiENzX13BIMmqE8X9lDWQ-bg4c';
+const FIXTURE_PUBLIC_KEYS = [
+  '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo',
+  'PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw',
+  '_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU',
+] as const;
 
 vi.mock('electron', () => ({
   app: {
@@ -40,6 +49,22 @@ async function makeDesktopDir(bundleText?: string): Promise<string> {
   }
   return dir;
 }
+
+function desktopBundle(overrides: Record<string, unknown>): string {
+  const fixture = JSON.parse(desktopFixture) as {
+    keyrings: Record<string, unknown>;
+  };
+  return JSON.stringify({
+    ...fixture,
+    keyrings: {
+      ...fixture.keyrings,
+      emergency: { 'release-emergency': SAFE_EMERGENCY_PUBLIC_KEY },
+    },
+    ...overrides,
+  });
+}
+
+const validDesktopFixture = desktopBundle({});
 
 afterEach(async () => {
   await Promise.all(
@@ -76,7 +101,7 @@ describe('loadGeneratedConfigBundle', () => {
 
   it('fails closed on an unknown top-level field', async () => {
     const tampered = JSON.stringify({
-      ...(JSON.parse(desktopFixture) as Record<string, unknown>),
+      ...(JSON.parse(validDesktopFixture) as Record<string, unknown>),
       extraField: true,
     });
     const dir = await makeDesktopDir(tampered);
@@ -88,15 +113,68 @@ describe('loadGeneratedConfigBundle', () => {
     expect(() => loadGeneratedConfigBundle(dir, {})).toThrow(RE_WRONG_PLATFORM);
   });
 
+  it('accepts a complete emergency bootstrap and allows the fixture key in the normal keyring', async () => {
+    const dir = await makeDesktopDir(validDesktopFixture);
+    expect(() =>
+      loadGeneratedConfigBundle(dir, { LINKCODE_REQUIRE_CONFIG_BUNDLE: '1' }),
+    ).not.toThrow();
+  });
+
+  it.each(FIXTURE_PUBLIC_KEYS)(
+    'always rejects RFC 8032 fixture key %s in the emergency keyring',
+    async (fixturePublicKey) => {
+      const fixture = JSON.parse(desktopFixture) as { keyrings: Record<string, unknown> };
+      const dir = await makeDesktopDir(
+        desktopBundle({
+          keyrings: { ...fixture.keyrings, emergency: { fixture: fixturePublicKey } },
+        }),
+      );
+      expect(() => loadGeneratedConfigBundle(dir, {})).toThrow(RE_FIXTURE_KEY);
+    },
+  );
+
+  it('allows an absent emergency bootstrap only when the generated bundle is optional', async () => {
+    const fixture = JSON.parse(desktopFixture) as {
+      endpoints: Record<string, unknown>;
+      keyrings: Record<string, unknown>;
+    };
+    const incomplete = desktopBundle({
+      endpoints: { ...fixture.endpoints, emergency: null },
+      keyrings: { ...fixture.keyrings, emergency: {} },
+    });
+    const optionalDir = await makeDesktopDir(incomplete);
+    expect(() => loadGeneratedConfigBundle(optionalDir, {})).not.toThrow();
+    expect(() =>
+      loadGeneratedConfigBundle(optionalDir, { LINKCODE_REQUIRE_CONFIG_BUNDLE: '1' }),
+    ).toThrow(RE_EMERGENCY_BOOTSTRAP);
+  });
+
+  it.each([
+    [
+      'missing emergency endpoint',
+      { endpoints: { ...JSON.parse(desktopFixture).endpoints, emergency: null } },
+    ],
+    [
+      'empty emergency keyring',
+      { keyrings: { ...JSON.parse(desktopFixture).keyrings, emergency: {} } },
+    ],
+  ])(
+    'rejects a mismatched %s even when the generated bundle is optional',
+    async (_name, overrides) => {
+      const dir = await makeDesktopDir(desktopBundle(overrides));
+      expect(() => loadGeneratedConfigBundle(dir, {})).toThrow(RE_ENABLED_TOGETHER);
+    },
+  );
+
   it('derives a bootstrap that the runtime parser accepts, with exact source bytes', async () => {
-    const dir = await makeDesktopDir(desktopFixture);
+    const dir = await makeDesktopDir(validDesktopFixture);
     const generated = loadGeneratedConfigBundle(dir, {});
     expect(generated).not.toBeNull();
-    expect(generated?.bundleText).toBe(desktopFixture);
+    expect(generated?.bundleText).toBe(validDesktopFixture);
 
     const { parseBootstrap } = await import('../main/config');
     const bootstrap = parseBootstrap(generated?.bootstrapJson);
-    const fixture = JSON.parse(desktopFixture) as {
+    const fixture = JSON.parse(validDesktopFixture) as {
       brandId: string;
       channel: string;
       endpoints: { normal: string | null; emergency: string | null; telemetry: string | null };
@@ -113,7 +191,7 @@ describe('loadGeneratedConfigBundle', () => {
   });
 
   it('never carries private key material into the bootstrap', async () => {
-    const dir = await makeDesktopDir(desktopFixture);
+    const dir = await makeDesktopDir(validDesktopFixture);
     const generated = loadGeneratedConfigBundle(dir, {});
     expect(generated?.bootstrapJson.toLowerCase()).not.toContain('private');
     expect(generated?.bootstrapJson.toLowerCase()).not.toContain('secret');
@@ -122,11 +200,11 @@ describe('loadGeneratedConfigBundle', () => {
 
 describe('stageConfigBundle', () => {
   it('stages the exact source bytes into out/config', async () => {
-    const dir = await makeDesktopDir(desktopFixture);
+    const dir = await makeDesktopDir(validDesktopFixture);
     const generated = loadGeneratedConfigBundle(dir, {});
     stageConfigBundle(dir, generated);
     const staged = readFileSync(join(dir, 'out/config/build-bundle.json'), 'utf8');
-    expect(staged).toBe(desktopFixture);
+    expect(staged).toBe(validDesktopFixture);
   });
 
   it('removes a stale staged copy when no bundle is rendered', async () => {
