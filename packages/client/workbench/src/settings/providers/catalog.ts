@@ -27,6 +27,8 @@ export interface ServiceVariant {
   credentialType: 'api-key' | 'auth-token';
 }
 
+export const LINKCODE_GATEWAY_SERVICE_ID = 'linkcode-gateway';
+
 export type ServiceDescriptor =
   /** Delegates to an agent CLI's own login store — no secret handled by LinkCode. */
   | { id: string; label: string; group: 'subscription'; kind: 'oauth'; agent: AgentKind }
@@ -38,6 +40,8 @@ export type ServiceDescriptor =
       kind: 'endpoint';
       variants: ServiceVariant[];
       secretPlaceholder?: string;
+      /** The Desktop Cloud session mints this service's credential; users never paste it. */
+      credentialSource?: 'linkcode-cloud';
     }
   /** Free-form endpoint — the full account form. */
   | { id: 'custom'; label: string; group: 'custom'; kind: 'custom' };
@@ -89,6 +93,21 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       },
     ],
     secretPlaceholder: 'xai-…',
+  },
+  {
+    id: LINKCODE_GATEWAY_SERVICE_ID,
+    label: 'LinkCode Gateway',
+    group: 'gateway',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+        credentialType: 'auth-token',
+      },
+    ],
+    credentialSource: 'linkcode-cloud',
   },
   {
     id: 'openrouter',

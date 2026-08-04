@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
@@ -20,7 +21,13 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
-import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
+import {
+  fillTemplate,
+  LINKCODE_GATEWAY_SERVICE_ID,
+  SERVICE_CATALOG,
+  serviceById,
+  templatePlaceholders,
+} from './catalog';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -104,8 +111,10 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
 /** Step one of the add flow: the grouped service directory. */
 export function ServiceCatalogView({
   onPick,
+  linkCodeGatewayAvailable = false,
 }: {
   onPick: (service: string) => void;
+  linkCodeGatewayAvailable?: boolean;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   return (
@@ -116,24 +125,26 @@ export function ServiceCatalogView({
             {t(`group.${group}`)}
           </span>
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
-            {(SERVICES_BY_GROUP.get(group) ?? []).map((service) => (
-              <button
-                key={service.id}
-                type="button"
-                className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted/50"
-                onClick={() => onPick(service.id)}
-              >
-                <ServiceIcon service={service.id} label={service.label} className="size-7" />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium text-sm">
-                    {t(`serviceName.${service.id}`)}
+            {(SERVICES_BY_GROUP.get(group) ?? []).map((service) =>
+              !linkCodeGatewayAvailable && service.id === LINKCODE_GATEWAY_SERVICE_ID ? null : (
+                <button
+                  key={service.id}
+                  type="button"
+                  className="flex items-start gap-2.5 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => onPick(service.id)}
+                >
+                  <ServiceIcon service={service.id} label={service.label} className="size-7" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-sm">
+                      {t(`serviceName.${service.id}`)}
+                    </span>
+                    <span className="block text-muted-foreground text-xs">
+                      {t(`serviceHint.${service.id}`)}
+                    </span>
                   </span>
-                  <span className="block text-muted-foreground text-xs">
-                    {t(`serviceHint.${service.id}`)}
-                  </span>
-                </span>
-              </button>
-            ))}
+                </button>
+              ),
+            )}
           </div>
         </div>
       ))}
@@ -149,6 +160,7 @@ export function AddAccountForm({
   busy,
   onBack,
   onSubmit,
+  linkCodeGateway,
 }: {
   serviceId: string;
   runtimes: AgentRuntimes | undefined;
@@ -156,6 +168,7 @@ export function AddAccountForm({
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
+  linkCodeGateway?: LinkCodeGatewayAccess;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const service = serviceById(serviceId);
@@ -180,12 +193,108 @@ export function AddAccountForm({
           busy={busy}
           onSubmit={onSubmit}
         />
+      ) : service.kind === 'endpoint' && service.credentialSource === 'linkcode-cloud' ? (
+        <LinkCodeGatewayForm
+          service={service}
+          access={linkCodeGateway}
+          busy={busy}
+          onSubmit={onSubmit}
+        />
       ) : service.kind === 'endpoint' ? (
         <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
       ) : (
         <CustomAccountForm busy={busy} onSubmit={onSubmit} />
       )}
     </div>
+  );
+}
+
+export interface LinkCodeGatewayAccess {
+  signedIn: boolean;
+  signingIn: boolean;
+  signIn: () => void;
+  createKey: (name: string) => Promise<string>;
+}
+
+const LinkCodeGatewayDraftSchema = z.object({ label: z.string().trim().min(1).max(80) });
+type LinkCodeGatewayDraft = z.infer<typeof LinkCodeGatewayDraftSchema>;
+
+function LinkCodeGatewayForm({
+  service,
+  access,
+  busy,
+  onSubmit,
+}: {
+  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>;
+  access: LinkCodeGatewayAccess | undefined;
+  busy: boolean;
+  onSubmit: (account: Account) => void;
+}): React.ReactNode {
+  const t = useTranslations('settings.providers');
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<LinkCodeGatewayDraft>({
+    resolver: zodResolver(LinkCodeGatewayDraftSchema),
+    defaultValues: { label: t(`serviceName.${service.id}`) },
+  });
+
+  if (!access?.signedIn) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-muted-foreground text-sm">{t('linkCodeSignInHint')}</p>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={!access || access.signingIn}
+            onClick={access?.signIn}
+          >
+            {access?.signingIn ? t('linkCodeConnecting') : t('linkCodeSignIn')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={handleSubmit(async ({ label }) => {
+        try {
+          const key = await access.createKey(label);
+          const variant = service.variants[0];
+          onSubmit({
+            ...newAccountBase(label),
+            service: service.id,
+            credential: { type: 'auth-token', token: key },
+            endpoint: { baseUrl: variant.baseUrl, protocol: variant.protocol },
+          });
+        } catch (error) {
+          setError('root', {
+            message: extractErrorMessage(error, false) ?? t('linkCodeGatewayError'),
+          });
+        }
+      })}
+    >
+      <Field>
+        <FieldLabel>{t('form.label')}</FieldLabel>
+        <Input className="w-full" autoComplete="off" {...register('label')} />
+      </Field>
+      <p className="text-muted-foreground text-xs">{t('linkCodeGatewayOptIn')}</p>
+      {errors.root?.message ? (
+        <p role="alert" className="text-destructive-foreground text-xs">
+          {errors.root.message}
+        </p>
+      ) : null}
+      <div className="flex justify-end pt-1">
+        <Button type="submit" size="sm" disabled={busy || isSubmitting}>
+          {t('linkCodeUseGateway')}
+        </Button>
+      </div>
+    </form>
   );
 }
 

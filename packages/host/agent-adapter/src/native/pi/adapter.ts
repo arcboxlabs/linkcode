@@ -623,7 +623,7 @@ export class PiAdapter extends BaseAgentAdapter {
     this.teardown();
     if (this.finalOutcome.stopReason === 'aborted') this.emitStop('cancelled');
     else if (this.finalOutcome.stopReason === 'error') {
-      this.emitError(this.finalOutcome.errorMessage ?? 'Pi agent failed');
+      this.emitProviderError(this.finalOutcome.errorMessage ?? 'Pi agent failed');
     } else this.emitStop('end_turn');
     this.emitStatus('idle');
   }

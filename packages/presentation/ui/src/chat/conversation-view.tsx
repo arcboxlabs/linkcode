@@ -25,6 +25,8 @@ export interface ConversationViewProps {
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
+  /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
+  onOpenBilling?: () => void;
   /** Receives the conversation scroll controller for composer-driven positioning. */
   scrollContextRef?: React.Ref<StickToBottomContext>;
 }
@@ -37,6 +39,7 @@ export function ConversationView({
   modelName,
   TerminalBlockComponent,
   onReviewChanges,
+  onOpenBilling,
   scrollContextRef,
 }: ConversationViewProps): React.ReactNode {
   const t = useTranslations('workbench.conversation');
@@ -124,6 +127,7 @@ export function ConversationView({
             TerminalBlockComponent={TerminalBlockComponent}
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
+            onOpenBilling={onOpenBilling}
           />
         )}
       </ConversationContent>
