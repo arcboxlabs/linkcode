@@ -138,6 +138,28 @@ class TestCodex extends CodexAdapter {
 
 const start: StartOptions = { kind: 'codex', cwd: '/repo' };
 
+describe('CodexAdapter history resume', () => {
+  it('retries the selected thread after a transient thread/resume failure', async () => {
+    const adapter = new TestCodex();
+    const historyId = asHistoryId('thread-to-resume');
+    adapter.rejectMethod = 'thread/resume';
+
+    await expect(adapter.resumeHistory({ historyId }, start)).rejects.toThrow(
+      'codex: invalid request',
+    );
+    expect(adapter.fakeServers[0].closed).toBe(true);
+
+    adapter.rejectMethod = undefined;
+    await adapter.send({ type: 'prompt', content: [textBlock('retry')] });
+
+    expect(adapter.fakeServers).toHaveLength(2);
+    expect(adapter.fakeServers[1].requests).toContainEqual({
+      method: 'thread/resume',
+      params: expect.objectContaining({ threadId: historyId, excludeTurns: true }),
+    });
+  });
+});
+
 describe('CodexAdapter history branching', () => {
   it('forks through a short-lived server and resumes the child thread', async () => {
     const adapter = new TestCodex();

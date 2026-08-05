@@ -436,11 +436,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     startOpts: StartOptions,
   ): Promise<void> {
     this.resumeFrom = opts.historyId;
-    try {
-      await this.start(startOpts);
-    } finally {
-      this.resumeFrom = undefined;
-    }
+    await this.start(startOpts);
   }
 
   override async branchHistory(
