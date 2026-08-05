@@ -28,7 +28,7 @@ export function applyMergePatch(
   if (typeof patch !== 'object' || Array.isArray(patch)) return cloneJson(patch);
   const result: Record<string, JsonValue> =
     typeof target === 'object' && target !== null && !Array.isArray(target)
-      ? (cloneJson(target) as Record<string, JsonValue>)
+      ? cloneJson(target)
       : {};
   for (const [key, patchValue] of Object.entries(patch)) {
     const merged = applyMergePatch(result[key], patchValue);
