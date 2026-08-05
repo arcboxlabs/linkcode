@@ -39,6 +39,13 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     messageId: MessageIdSchema,
     // The full message, same shape as `AgentInput.prompt`'s content.
     content: z.array(ContentBlockSchema),
+    /** Present when provider history can seed a replacement from before this prompt. */
+    branchCursor: z.string().min(1).optional(),
+  }),
+  /** Drops the selected user prompt and every later event before a replacement prompt is sent. */
+  z.object({
+    type: z.literal('conversation-rewind'),
+    messageId: MessageIdSchema,
   }),
 
   // Agent output: whole snapshots replace by messageId; chunks append to the same identity.
@@ -109,6 +116,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
    * it even when no model was requested) and on every switch. Adapters that can't observe their
    * model never emit it. */
   z.object({ type: z.literal('model-update'), model: z.string().min(1) }),
+  /** Provider-owned display title, emitted when the live session learns or changes it. */
+  z.object({ type: z.literal('title-update'), title: z.string().min(1) }),
   /** The reasoning-effort level the session is actually running at. Emitted on every switch and
    * once the resolved default is learned (claude-code via a Stop hook); never-emitted keeps the
    * client showing a placeholder rather than a guessed value. */

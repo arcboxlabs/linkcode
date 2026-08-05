@@ -300,11 +300,12 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, resources, ...seed } of SEED_SESSIONS) {
+    for (const { ageMs, resources, workspaceKind, ...seed } of SEED_SESSIONS) {
       const createdAt = now - ageMs;
       const session = this.addSession({ ...seed, createdAt, updatedAt: createdAt });
       this.seedResources(session.sessionId, now, resources ?? []);
-      this.touchWorkspace(seed.cwd, createdAt);
+      const workspace = this.touchWorkspace(seed.cwd, createdAt);
+      if (workspaceKind) workspace.kind = workspaceKind;
     }
     this.history = SEED_HISTORY.map(({ ageMs, ...entry }) => ({
       ...entry,

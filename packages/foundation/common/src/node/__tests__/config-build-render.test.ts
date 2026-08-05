@@ -167,6 +167,16 @@ describe('renderConfigBundleWithPublisher', () => {
     );
   });
 
+  it('removes stale output before invoking the publisher', async () => {
+    const publisherDir = await makePublisherCheckout();
+    const request = makeRequest(publisherDir);
+    await writeFile(request.outPath, JSON.stringify(fixture));
+    const { run } = fakeRunner({});
+
+    await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(RE_NO_OUTPUT);
+    await expect(readFile(request.outPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('fails closed when the rendered output is tampered', async () => {
     const publisherDir = await makePublisherCheckout();
     const request = makeRequest(publisherDir);

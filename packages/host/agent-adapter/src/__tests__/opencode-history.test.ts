@@ -187,6 +187,12 @@ describe('mapOpencodeHistoryEvents', () => {
           type: 'user-message',
           messageId: 'msg-u1',
           content: [{ type: 'text', text: 'first\nsecond' }],
+          branchCursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: HISTORY_ID,
+            branchPoint: 'msg-u1',
+          }),
         },
       },
     ]);

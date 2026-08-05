@@ -18,6 +18,7 @@ import {
 } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { not } from 'foxts/guard';
+import { encodeHistoryBranchCursor } from '../../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -469,6 +470,9 @@ export function mapCodexHistoryEvents(
   const promptTexts = collectCodexPromptTexts(rows);
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
+  let currentTurnId: string | null = null;
+  let previousTurnId: string | null = null;
+  let userPromptCount = 0;
 
   // Records the snapshot as the call's latest state (settle reads it back as `existing`) AND
   // builds the history event — both announce and settle go through it, so the latest wins.
@@ -478,6 +482,15 @@ export function mapCodexHistoryEvents(
   };
 
   rows.forEach((row, index) => {
+    if (stringField(row, 'type') === 'turn_context') {
+      const payload = recordField(row, 'payload');
+      const turnId = payload ? stringField(payload, 'turn_id') : undefined;
+      if (turnId && turnId !== currentTurnId) {
+        previousTurnId = currentTurnId;
+        currentTurnId = turnId;
+      }
+      return;
+    }
     // A `compacted` row is the persisted compaction boundary; `message` carries the swapped-in
     // summary. `window_id` is optional on the wire format — fall back to a positional id.
     if (stringField(row, 'type') === 'compacted') {
@@ -527,7 +540,15 @@ export function mapCodexHistoryEvents(
       role === 'user'
         ? codexUserHistoryEvent(historyId, itemId, payload, timestampMs(row.timestamp))
         : textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
-    if (event) events.push(event);
+    if (event) {
+      if (event.event.type === 'user-message') {
+        if (userPromptCount === 0 || previousTurnId !== null) {
+          event.event.branchCursor = encodeHistoryBranchCursor('codex', historyId, previousTurnId);
+        }
+        userPromptCount += 1;
+      }
+      events.push(event);
+    }
   });
   return events;
 }

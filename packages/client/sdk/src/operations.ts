@@ -11,6 +11,7 @@ import type {
   AccountModel,
   AccountSecret,
   Accounts,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -18,6 +19,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  ContentBlock,
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
   EffortLevel,
@@ -37,6 +39,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -169,6 +172,22 @@ export function resumeHistoryWithWarnings(
     options.agentKind,
     options.historyId,
     options.startOpts,
+  );
+}
+
+export function rewritePrompt(
+  options: Options<{
+    sourceSessionId: SessionId;
+    sourceMessageId: MessageId;
+    branchCursor: AgentHistoryBranchCursor;
+    content: ContentBlock[];
+  }>,
+): RequestResult<SessionId> {
+  return resolveClient(options).rewritePrompt(
+    options.sourceSessionId,
+    options.sourceMessageId,
+    options.branchCursor,
+    options.content,
   );
 }
 

@@ -23,8 +23,6 @@ export interface BundledConfigBootstrap {
   /** Target platform of the embedded bundle; null only for the development sentinel. */
   readonly platform: Extract<ConfigPlatform, 'android' | 'ios'> | null;
   readonly remoteBaseUrl: string | null;
-  /** Authenticated telemetry endpoint carried by every generated build bundle. Bootstrap data
-   * only — telemetry behavior is out of scope here (CODE-555). */
   readonly telemetryEndpoint: string | null;
 }
 

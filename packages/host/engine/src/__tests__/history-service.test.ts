@@ -1,8 +1,9 @@
-import { MessageIdSchema } from '@linkcode/schema';
+import { MessageIdSchema, textBlock } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { HistoryService } from '../session/history-service';
+import { promptContentFingerprint } from '../session/live-session';
 import type { FakeHistoryState } from './fixtures/history-adapter';
 import { fakeHistoryFactory, historyId } from './fixtures/history-adapter';
 
@@ -69,5 +70,73 @@ describe('HistoryService', () => {
       type: 'user-message',
       content: [{ type: 'text', text: 'Summarize this' }],
     });
+  });
+
+  it('resolves live prompt offsets against fresh provider history', async () => {
+    const events = ['first-cursor', 'second-cursor'].map((branchCursor, index) => ({
+      historyId,
+      itemId: `u${index + 1}`,
+      event: {
+        type: 'user-message' as const,
+        messageId: MessageIdSchema.parse(`u${index + 1}`),
+        content: [{ type: 'text' as const, text: `prompt ${index + 1}` }],
+        branchCursor,
+      },
+    }));
+    const state: FakeHistoryState = {
+      listCalls: 0,
+      readCalls: 0,
+      resumeCalls: 0,
+      events,
+    };
+    const service = new HistoryService(fakeHistoryFactory(state));
+
+    await expect(
+      Effect.runPromise(
+        service.resolveLiveBranchCursor(
+          'codex',
+          historyId,
+          '/repo',
+          0,
+          promptContentFingerprint([textBlock('prompt 2')]),
+        ),
+      ),
+    ).resolves.toBe('second-cursor');
+    await expect(
+      Effect.runPromise(
+        service.resolveLiveBranchCursor(
+          'codex',
+          historyId,
+          '/repo',
+          0,
+          promptContentFingerprint([textBlock('prompt 1')]),
+        ),
+      ),
+    ).resolves.toBe('first-cursor');
+    await expect(
+      Effect.runPromise(
+        service.resolveLiveBranchCursor(
+          'codex',
+          historyId,
+          '/repo',
+          0,
+          promptContentFingerprint([
+            textBlock('prompt 2'),
+            { type: 'image', mimeType: 'image/png', data: 'AA==' },
+          ]),
+        ),
+      ),
+    ).resolves.toBe('second-cursor');
+    await expect(
+      Effect.runPromise(
+        service.resolveLiveBranchCursor(
+          'codex',
+          historyId,
+          '/repo',
+          0,
+          promptContentFingerprint([textBlock('different prompt')]),
+        ),
+      ),
+    ).rejects.toThrow('The prompt does not match the latest provider history');
   });
 });

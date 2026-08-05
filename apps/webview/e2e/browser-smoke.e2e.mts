@@ -16,6 +16,7 @@ const webviewDir = fileURLToPath(new URL('..', import.meta.url));
 const daemonDir = fileURLToPath(new URL('../../daemon', import.meta.url));
 const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('vite')));
 const mockThreadTitle = 'Wire the workbench to the daemon';
+const mockChatThreadTitle = 'Prototype without git';
 const longThreadTitle = 'Long thread · navigation testbed';
 const longThreadTurns = 48;
 const maxMountedRows = 10;
@@ -64,6 +65,57 @@ async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Prom
   await editor.fill(prompt);
   await page.getByRole('button', { name: 'Send' }).click();
   await page.getByText(`You said: ${prompt}`, { exact: false }).waitFor({ timeout: 15000 });
+  assertNoApplicationErrors(appErrors);
+}
+
+async function verifyNewChatIsolation(page: Page, appErrors: string[]): Promise<void> {
+  await page.evaluate(() => {
+    localStorage.setItem(
+      'linkcode.workbench.new-session-defaults:v5',
+      JSON.stringify({ state: { lastProvider: 'pi' }, version: 0 }),
+    );
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('[data-thread-title]', { hasText: mockChatThreadTitle }).waitFor();
+  await page.locator('[data-thread-title]', { hasText: mockChatThreadTitle }).click();
+  await page.locator('[data-conversation-title]', { hasText: mockChatThreadTitle }).waitFor();
+  await page.getByRole('button', { name: 'New chat' }).click();
+
+  const prompt = `new-chat-isolation-${Date.now().toString(36)}`;
+  const editor = page.locator('[data-slot="composer-editor"][contenteditable="true"]');
+  await editor.waitFor({ state: 'visible' });
+  await editor.fill(prompt);
+  await page.evaluate(() => {
+    const main = document.querySelector('main');
+    if (!main) throw new Error('Missing workbench main');
+    const titles = new Set<string | null>();
+    const collect = (): void => {
+      titles.add(document.querySelector('[data-conversation-title]')?.textContent ?? null);
+    };
+    const observer = new MutationObserver(collect);
+    observer.observe(main, { childList: true, characterData: true, subtree: true });
+    Reflect.set(window, '__newChatIsolationProbe', () => {
+      collect();
+      observer.disconnect();
+      return [...titles];
+    });
+  });
+
+  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByText(`You said: ${prompt}`, { exact: false }).waitFor({ timeout: 15000 });
+  const titles = await page.evaluate(() => {
+    const finish = Reflect.get(window, '__newChatIsolationProbe') as
+      | undefined
+      | (() => Array<string | null>);
+    if (!finish) throw new Error('Missing new-chat isolation probe');
+    Reflect.deleteProperty(window, '__newChatIsolationProbe');
+    return finish();
+  });
+  assert.equal(
+    titles.some((title) => title?.includes(mockChatThreadTitle)),
+    false,
+    `New chat rendered the previous conversation after submission: ${JSON.stringify(titles)}`,
+  );
   assertNoApplicationErrors(appErrors);
 }
 
@@ -312,6 +364,7 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     await selectMockThread(page);
     const recoveryPrompt = `${firstPrompt}-after-reload`;
     await sendPrompt(page, recoveryPrompt, appErrors);
+    await verifyNewChatIsolation(page, appErrors);
     await verifyLongThreadVirtualization(page);
     assertNoApplicationErrors(appErrors);
     await page.close();

@@ -7,6 +7,7 @@
 
 export * from './adapter';
 export * from './base';
+export * from './history-branch';
 export { asHistoryId, boundedLimit, cursorOffset } from './history-util';
 export * from './login';
 export { ClaudeCodeAdapter } from './native/claude-code';

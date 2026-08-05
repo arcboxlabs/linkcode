@@ -6,12 +6,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isObjectEmpty } from 'foxts/is-object-empty';
-// Relative on purpose: this module is inlined into the bundled Vite config, which runs under
-// plain Node — Node cannot resolve the package's extensionless TS source exports.
 import {
   configBuildBundleDefaults,
   parseConfigBuildBundle,
-} from '../../../packages/foundation/common/src/config/build-bundle';
+} from '../../../packages/foundation/common/src/config/build-bundle'; // eslint-disable-line import-x/no-relative-packages -- Vite must inline this source dependency.
 
 export interface GeneratedConfigBundle {
   readonly bootstrapJson: string;

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -294,6 +294,7 @@ export async function renderConfigBundleWithPublisher(
   );
   await verifyPinnedCheckout(request.structuralDir, request.sourceGitSha, 'Config source', run);
 
+  await rm(request.outPath, { force: true });
   try {
     await run('pnpm', configBuildRenderArgs(request), { cwd: request.publisherDir });
   } catch (error) {

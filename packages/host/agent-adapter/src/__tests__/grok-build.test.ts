@@ -131,6 +131,10 @@ describe('GrokBuildAdapter', () => {
     vi.restoreAllMocks();
   });
 
+  it('does not advertise provider-history branching', () => {
+    expect(new GrokBuildAdapter().historyCapabilities.branch).toBe(false);
+  });
+
   it('fails start when no CLI is resolved', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue(undefined);
     const adapter = new GrokBuildAdapter();

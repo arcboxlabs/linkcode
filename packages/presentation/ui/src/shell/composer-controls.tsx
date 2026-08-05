@@ -17,10 +17,10 @@ import {
 } from 'coss-ui/components/menu';
 import { Separator } from 'coss-ui/components/separator';
 import {
-  BrainCircuitIcon,
   ChevronDownIcon,
   ListTodoIcon,
   PlusIcon,
+  RotateCcwIcon,
   ShieldIcon,
   SlidersHorizontalIcon,
   TargetIcon,
@@ -211,7 +211,6 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   );
 }
 
-/** Codex-style model trigger: [provider glyph] model + effort, opening reasoning/model/provider menus. */
 export function ModelSelectorMenu({
   disabled,
   provider,
@@ -264,7 +263,7 @@ export function ModelSelectorMenu({
   const selectorLabels: string[] = [];
   if (provider) selectorLabels.push(AGENT_LABELS[provider]);
   if (showsModel) selectorLabels.push(modelLabel);
-  if (hasEfforts) selectorLabels.push(`${t('reasoning')}: ${effortLabel}`);
+  if (hasEfforts) selectorLabels.push(`${t('effort')}: ${effortLabel}`);
 
   return (
     <Menu>
@@ -287,93 +286,16 @@ export function ModelSelectorMenu({
         <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
-        {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}
-        {onResetEffort ? (
-          <MenuItem onClick={onResetEffort}>{t('useDefaultEffort')}</MenuItem>
-        ) : null}
-        {onResetModel || onResetEffort ? <MenuSeparator /> : null}
-        {hasEfforts ? (
-          <MenuGroup>
-            <MenuGroupLabel>{t('reasoning')}</MenuGroupLabel>
-            <MenuRadioGroup
-              value={selectedEffortId ?? ''}
-              onValueChange={(value) => onSelectEffort(value as EffortLevel)}
-            >
-              {effortOptions?.map((option) => (
-                <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                  {option.label}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuGroup>
-        ) : null}
-        {hasModels ? (
-          <>
-            {hasEfforts ? <MenuSeparator /> : null}
-            <MenuSub>
-              <MenuSubTrigger>
-                <span className="flex size-4 shrink-0 items-center justify-center">
-                  <BrainCircuitIcon className="size-4" />
-                </span>
-                {modelLabel}
-              </MenuSubTrigger>
-              <MenuSubPopup className="w-56">
-                <MenuRadioGroup
-                  value={selectedModel?.id ?? selectedModelId ?? ''}
-                  onValueChange={(value) => onSelectModel(String(value))}
-                >
-                  {providerGroups === null ? (
-                    modelOptions?.map((option) => (
-                      <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                        <span className="flex min-w-0 flex-col">
-                          <span>{option.label}</span>
-                          {option.description ? (
-                            <span className="text-muted-foreground text-xs">
-                              {option.description}
-                            </span>
-                          ) : null}
-                        </span>
-                      </MenuRadioItem>
-                    ))
-                  ) : (
-                    <>
-                      {providerGroups.ungrouped.map((option) => (
-                        <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                          {option.label}
-                        </MenuRadioItem>
-                      ))}
-                      {/* One submenu per provider; the trigger names the provider, so items drop
-                       * the subtitle the flat list needs for disambiguation. */}
-                      {providerGroups.groups.map((group) => (
-                        <MenuSub key={group.label}>
-                          <MenuSubTrigger>{group.label}</MenuSubTrigger>
-                          <MenuSubPopup className="w-56">
-                            {group.options.map((option) => (
-                              <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                                {option.label}
-                              </MenuRadioItem>
-                            ))}
-                          </MenuSubPopup>
-                        </MenuSub>
-                      ))}
-                    </>
-                  )}
-                </MenuRadioGroup>
-              </MenuSubPopup>
-            </MenuSub>
-          </>
-        ) : null}
         {onSelectProvider && providers.length > 0 ? (
           <MenuSub>
             <MenuSubTrigger>
-              {provider ? (
-                <>
-                  <AgentIcon kind={provider} variant="brand" />
-                  {AGENT_LABELS[provider]}
-                </>
-              ) : (
-                t('provider')
-              )}
+              <span>{t('provider')}</span>
+              <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-muted-foreground">
+                {provider ? <AgentIcon kind={provider} variant="brand" /> : null}
+                <span className="truncate">
+                  {provider ? AGENT_LABELS[provider] : t('modelDefault')}
+                </span>
+              </span>
             </MenuSubTrigger>
             <MenuSubPopup className="w-60">
               <MenuRadioGroup
@@ -394,6 +316,97 @@ export function ModelSelectorMenu({
               </MenuRadioGroup>
             </MenuSubPopup>
           </MenuSub>
+        ) : null}
+        {hasModels ? (
+          <MenuSub>
+            <MenuSubTrigger>
+              <span>{t('model')}</span>
+              <span className="min-w-0 flex-1 truncate text-end text-muted-foreground">
+                {modelLabel}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup className="w-56">
+              <MenuRadioGroup
+                value={selectedModel?.id ?? selectedModelId ?? ''}
+                onValueChange={(value) => onSelectModel(String(value))}
+              >
+                {providerGroups === null ? (
+                  modelOptions?.map((option) => (
+                    <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                      <span className="flex min-w-0 flex-col">
+                        <span>{option.label}</span>
+                        {option.description ? (
+                          <span className="text-muted-foreground text-xs">
+                            {option.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    </MenuRadioItem>
+                  ))
+                ) : (
+                  <>
+                    {providerGroups.ungrouped.map((option) => (
+                      <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                        {option.label}
+                      </MenuRadioItem>
+                    ))}
+                    {/* One submenu per provider; the trigger names the provider, so items drop
+                     * the subtitle the flat list needs for disambiguation. */}
+                    {providerGroups.groups.map((group) => (
+                      <MenuSub key={group.label}>
+                        <MenuSubTrigger>{group.label}</MenuSubTrigger>
+                        <MenuSubPopup className="w-56">
+                          {group.options.map((option) => (
+                            <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                              {option.label}
+                            </MenuRadioItem>
+                          ))}
+                        </MenuSubPopup>
+                      </MenuSub>
+                    ))}
+                  </>
+                )}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        ) : null}
+        {hasEfforts ? (
+          <MenuSub>
+            <MenuSubTrigger>
+              <span>{t('effort')}</span>
+              <span className="min-w-0 flex-1 truncate text-end text-muted-foreground">
+                {effortLabel}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup className="w-56">
+              <MenuRadioGroup
+                value={selectedEffortId ?? ''}
+                onValueChange={(value) => onSelectEffort(value as EffortLevel)}
+              >
+                {effortOptions?.map((option) => (
+                  <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                    {option.label}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        ) : null}
+        {onResetModel || onResetEffort ? (
+          <>
+            <MenuSeparator />
+            <MenuItem
+              onClick={() => {
+                onResetModel?.();
+                onResetEffort?.();
+              }}
+            >
+              {t('resetToDefault')}
+              <span className="ms-auto flex">
+                <RotateCcwIcon aria-hidden className="size-4 opacity-80" />
+              </span>
+            </MenuItem>
+          </>
         ) : null}
       </MenuPopup>
     </Menu>
