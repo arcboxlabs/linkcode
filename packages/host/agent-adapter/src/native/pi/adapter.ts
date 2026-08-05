@@ -11,6 +11,7 @@ import type {
   ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
+  AccountProtocol,
   AgentCommand,
   AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
@@ -130,6 +131,20 @@ function piCommandCatalog(
   return commands;
 }
 
+/** Our protocol vocabulary in pi's own `Api` terms (`@earendil-works/pi-ai` `KnownApi`). */
+function piApi(protocol: AccountProtocol | undefined): string | undefined {
+  switch (protocol) {
+    case 'anthropic':
+      return 'anthropic-messages';
+    case 'openai-chat':
+      return 'openai-completions';
+    case 'openai-responses':
+      return 'openai-responses';
+    default:
+      return undefined;
+  }
+}
+
 function createConfiguredRegistry(
   pi: PiSdk,
   opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
@@ -144,15 +159,25 @@ function createConfiguredRegistry(
 
   const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
-  const provider = ref?.provider ?? fallbackProvider ?? modelRegistry.getAvailable()[0]?.provider;
+  // The model ref decides which provider pi routes through, so it wins; the resolved known
+  // provider replaces the "first available provider" guess when no ref names one.
+  const provider =
+    ref?.provider ??
+    cred.knownProvider ??
+    fallbackProvider ??
+    modelRegistry.getAvailable()[0]?.provider;
   if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
   if (cred.baseUrl) {
+    // A provider pi already knows carries its own correct wire. For a guessed provider name the
+    // wire would be inherited from whatever that name spoke, which need not match this endpoint.
+    const api = cred.knownProvider === undefined ? piApi(cred.protocol) : undefined;
     modelRegistry.registerProvider(provider, {
       baseUrl: cred.baseUrl,
       ...(key && { apiKey: key }),
+      ...(api && { api }),
     });
   }
   return {

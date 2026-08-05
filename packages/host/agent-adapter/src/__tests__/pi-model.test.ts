@@ -139,6 +139,42 @@ describe('Pi dynamic model catalog', () => {
     expect(catalog.models).toContainEqual(expect.objectContaining({ id: 'openai/gpt' }));
   });
 
+  it('targets the resolved known provider and leaves its own wire alone', async () => {
+    await new PiAdapter().startCatalog({
+      config: {
+        apiKey: 'account-key',
+        baseUrl: 'https://gateway.example.test/v1',
+        protocol: 'openai-chat',
+        knownProvider: 'openai',
+      },
+    });
+
+    // No model ref names a provider, so without the resolved id this would target whichever
+    // provider happened to be first available.
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('openai', 'account-key');
+    expect(sdk.registerProvider).toHaveBeenCalledWith('openai', {
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'account-key',
+    });
+  });
+
+  it('pins the wire when the provider was guessed rather than resolved', async () => {
+    await new PiAdapter().startCatalog({
+      config: {
+        apiKey: 'account-key',
+        baseUrl: 'https://relay.example.test',
+        protocol: 'anthropic',
+      },
+    });
+
+    // A guessed provider name would otherwise speak whatever wire that name spoke.
+    expect(sdk.registerProvider).toHaveBeenCalledWith('openai', {
+      baseUrl: 'https://relay.example.test',
+      apiKey: 'account-key',
+      api: 'anthropic-messages',
+    });
+  });
+
   it('switches model and effort live and reflects SDK readback', async () => {
     const { adapter, events } = await start();
     events.length = 0;

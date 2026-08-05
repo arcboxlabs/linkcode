@@ -1382,6 +1382,37 @@ describe('OpenCodeAdapter server spawn (CODE-242)', () => {
     expect(typeof opts.port).toBe('number');
     expect(opts.port).not.toBe(4096);
   });
+
+  it('injects the credential under the resolved known provider when the model names none', async () => {
+    const seen: unknown[] = [];
+    sdkMock.createOpencode = (opts: unknown) => {
+      seen.push(opts);
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      model: 'gpt-5.5',
+      config: {
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+        knownProvider: 'openai',
+      },
+    });
+
+    // Without the resolved provider id, a bare model id left the spawn unauthenticated.
+    expect(seen[0]).toMatchObject({
+      config: {
+        provider: {
+          openai: { options: { apiKey: 'sk-test', baseURL: 'https://api.openai.com/v1' } },
+        },
+      },
+    });
+  });
 });
 
 describe('OpenCodeAdapter server spawn retry', () => {
