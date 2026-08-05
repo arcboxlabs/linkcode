@@ -116,10 +116,25 @@ export class ConfigCoreError extends Error {
   }
 }
 
+/** Verified identity of a publication, read only from a signature-verified pointer. */
+export interface ConfigPublicationIdentity {
+  readonly activationVersion: string;
+  readonly configVersion: string;
+  readonly sha256: string;
+}
+
 export interface ConfigErrorEvent {
   readonly type: 'error';
   readonly operation: 'emergency-refresh' | 'initialize' | 'normal-refresh';
   readonly error: ConfigCoreError;
+  /** Absent when the failure happened before any pointer for the attempt was verified. */
+  readonly publication?: ConfigPublicationIdentity;
+}
+
+/** Emitted exactly once per newly accepted remote publication; never for 304/LKG/defaults. */
+export interface ConfigActivationEvent {
+  readonly type: 'activation';
+  readonly publication: ConfigPublicationIdentity;
 }
 
 export interface InvalidRuntimeVersionEvent {
@@ -127,7 +142,7 @@ export interface InvalidRuntimeVersionEvent {
   readonly value: string;
 }
 
-export type ConfigEvent = ConfigErrorEvent | InvalidRuntimeVersionEvent;
+export type ConfigEvent = ConfigActivationEvent | ConfigErrorEvent | InvalidRuntimeVersionEvent;
 
 export type ConfigRefreshResult =
   | { readonly status: 'idempotent' | 'not-modified' | 'updated' }

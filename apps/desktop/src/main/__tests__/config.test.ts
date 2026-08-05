@@ -270,7 +270,7 @@ describe('desktop config runtime', () => {
       'MAIN_VITE_CONFIG_BOOTSTRAP',
       JSON.stringify(makeBootstrap({ 'feature.safe': true }, {})),
     );
-    const service = await initializeDesktopConfig();
+    const service = await initializeDesktopConfig(() => '');
     const emergencyRefresh = vi
       .spyOn(service, 'refreshEmergency')
       .mockResolvedValueOnce('error')

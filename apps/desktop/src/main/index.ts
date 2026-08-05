@@ -10,7 +10,7 @@ import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { DESKTOP_SPAN_NAMES, DESKTOP_TRANSACTION_NAMES } from '../sentry-privacy';
 import { applyThemePreference } from './appearance';
-import { setupCloudAuth } from './cloud-auth/client';
+import { authClient, setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
 import {
@@ -70,7 +70,7 @@ if (app.requestSingleInstanceLock()) {
   app
     .whenReady()
     .then(async () => {
-      await initializeDesktopConfig();
+      await initializeDesktopConfig(() => authClient.getCookie());
       const unregisterConfigIpc = registerDesktopConfigIpc();
       startDesktopConfigRefresh();
       app.once('before-quit', () => {
