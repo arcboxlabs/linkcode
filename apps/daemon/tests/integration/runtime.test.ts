@@ -99,8 +99,9 @@ async function occupyAdjacentPair(attempt = 0): Promise<{ port: number; neighbou
   }
 }
 
-function serveForeign(): Promise<number> {
+function serveForeign(onRequest?: () => void): Promise<number> {
   return listen((_req, res) => {
+    onRequest?.();
     res.writeHead(200);
     res.end('not a daemon');
   });
@@ -119,8 +120,12 @@ describe('probeDaemonIdentity', () => {
   });
 
   it('returns null for a foreign occupant', async () => {
-    const port = await serveForeign();
+    let requests = 0;
+    const port = await serveForeign(() => {
+      requests += 1;
+    });
     await expect(probeDaemonIdentity(`http://127.0.0.1:${port}`)).resolves.toBeNull();
+    expect(requests).toBe(1);
   });
 
   it('returns null when nothing listens', async () => {

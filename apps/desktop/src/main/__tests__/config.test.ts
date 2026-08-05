@@ -25,7 +25,13 @@ vi.mock('electron', () => ({
 }));
 
 interface Fixture {
-  readonly keys: { readonly normal: Readonly<Record<string, string>> };
+  readonly emergencies: {
+    readonly active: { readonly document: unknown };
+  };
+  readonly keys: {
+    readonly emergency: Readonly<Record<string, string>>;
+    readonly normal: Readonly<Record<string, string>>;
+  };
   readonly pointers: {
     readonly normal: { readonly document: unknown };
   };
@@ -114,6 +120,36 @@ describe('desktop config runtime', () => {
     expect(offline.snapshotInfo()).toMatchObject({ source: 'cache', status: 'READY' });
   });
 
+  it('exposes and notifies emergency metadata when effective values do not change', async () => {
+    const fixture = await loadFixture();
+    const bootstrap = {
+      ...makeBootstrap({ 'feature.safe': true }, {}),
+      emergencyPublicKeys: fixture.keys.emergency,
+    };
+    const service = makeService(
+      bootstrap,
+      new AtomicConfigStorage(await temporaryDirectory()),
+      undefined,
+      new SequenceNetwork([ok(documentBytes(fixture.emergencies.active.document))]),
+    );
+    const hotUpdates: string[][] = [];
+    service.onHotUpdate((keys) => hotUpdates.push([...keys]));
+    await service.initialize();
+
+    await expect(service.refresh()).resolves.toMatchObject({ emergency: 'updated' });
+    expect(service.effectiveSnapshot()).toEqual({ 'feature.safe': true });
+    expect(service.snapshotInfo().emergency).toEqual({
+      emergencyVersion: '7',
+      forceMinVersion: '2.4.0',
+      notice: {
+        body: 'Update LinkCode to continue using this feature.',
+        title: 'Update required',
+        url: 'https://linkcode.ai/download',
+      },
+    });
+    expect(hotUpdates).toEqual([[]]);
+  });
+
   it('ignores local overrides when a packaged build disables them', async () => {
     const directory = await temporaryDirectory();
     const overridePath = join(directory, 'override.json');
@@ -195,7 +231,6 @@ describe('build-bundle derived bootstrap', () => {
 
   it('starts offline from bundled defaults without any network wait', async () => {
     const bootstrap = parseBootstrap(JSON.stringify(await bundleBootstrap()));
-    // No network adapters at all — a new install must serve rendered defaults immediately.
     const service = makeService(bootstrap, new AtomicConfigStorage(await temporaryDirectory()));
     await service.initialize();
     expect(service.effectiveSnapshot()).toEqual(bootstrap.defaults);
@@ -207,7 +242,6 @@ describe('build-bundle derived bootstrap', () => {
   });
 });
 
-// Mirrors the derivation in scripts/render-config-bundle.mts.
 async function bundleBootstrap(): Promise<Record<string, unknown>> {
   const bundle = parseConfigBuildBundle(await loadBuildBundleFixture());
   return {
@@ -235,11 +269,13 @@ function makeService(
   bootstrap: DesktopConfigBootstrap,
   storage: AtomicConfigStorage,
   network?: ConfigNetwork,
+  emergencyNetwork?: ConfigNetwork,
 ): DesktopConfigService {
   return new DesktopConfigService({
     bootstrap,
     context: { appVersion: '2.4.0', locale: 'en-US', os: 'linux' },
     crypto: nodeConfigCrypto,
+    ...(emergencyNetwork && { emergencyNetwork }),
     ...(network && { network }),
     storage,
   });

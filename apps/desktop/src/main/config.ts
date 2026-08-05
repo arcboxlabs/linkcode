@@ -50,8 +50,6 @@ export interface DesktopConfigBootstrap {
   readonly endpoint: string | null;
   readonly maximumSchemaVersion: number;
   readonly publicKeys: Readonly<Record<string, string>>;
-  /** Authenticated telemetry endpoint for this target; carried by every generated build bundle.
-   * Bootstrap data only — telemetry behavior is out of scope here (CODE-555). */
   readonly telemetryEndpoint: string | null;
 }
 
@@ -64,6 +62,7 @@ export interface DesktopConfigServiceOptions {
   readonly storage: ConfigStorage;
 }
 
+// An empty key list signals a metadata-only state change.
 type HotUpdateListener = (keys: readonly string[]) => void;
 
 export class DesktopConfigService {
@@ -107,7 +106,6 @@ export class DesktopConfigService {
       const previous = this.#snapshot;
       this.#snapshot = cloneSnapshot(next.values);
       const changed = changedKeys(previous, this.#snapshot);
-      if (changed.length === 0) return;
       for (const listener of this.#listeners) listener(changed);
     });
   }
@@ -120,6 +118,7 @@ export class DesktopConfigService {
     const state = this.#core.getState();
     return {
       configVersion: state.configVersion,
+      emergency: state.emergency,
       sha256: state.sha256,
       source: state.source === 'defaults' ? 'bundled' : state.source === 'lkg' ? 'cache' : 'remote',
       stagedColdKeys: state.stagedColdKeys.map(String),

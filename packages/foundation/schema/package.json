@@ -8,12 +8,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./daemon-runtime": "./src/daemon-runtime.ts",
-    "./product": "./src/product.ts"
+    "./product": "./src/product.ts",
+    "./remote-config": "./src/remote-config.ts"
   },
   "scripts": {
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
+    "canonicalize": "3.0.0",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -164,6 +164,8 @@ function WorkbenchRuntimeGeneration({
       contexts={[
         <WorkbenchSdkClientContext.Provider key="sdk-client" value={contextGeneration.client} />,
         <TayoriProvider key="tayori" initClient={() => contextGeneration.client} />,
+        // Tayori enables this by default; identity-scoped data must not survive a key change.
+        <SWRConfig key="swr-policy" value={{ keepPreviousData: false }} />,
         <LinkCodeProvider key="linkcode" client={contextGeneration.client.raw} />,
       ]}
     >
@@ -217,11 +219,6 @@ function WorkbenchSWRConfig({ children }: React.PropsWithChildren): React.ReactN
   const { current: cache } = useSingleton<Cache>(() => new Map());
   const { current: provider } = useSingleton(() => createCacheProvider(cache));
   return (
-    // `keepPreviousData` stays at SWR's own default (off) on purpose. Turning it on here made the
-    // risky option the default: every identity-scoped request — keyed by session, workspace, loop —
-    // would answer with the *previous* identity's data while the new key loads, and forever if that
-    // request fails. A surface that genuinely wants the stale-while-loading behavior asks for it at
-    // its own call site, where the intent is visible.
     <SWRConfig
       value={{
         onError: handleFetchError,

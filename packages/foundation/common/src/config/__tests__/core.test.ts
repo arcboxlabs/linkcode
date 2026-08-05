@@ -86,6 +86,19 @@ describe('ConfigCore normal state machine', () => {
     expect(setup.normal.requests).toEqual([]);
   });
 
+  it('rejects non-boolean feature defaults even when their parser is permissive', () => {
+    const definitions = {
+      ...DEFINITIONS,
+      'feature.aiAssist': {
+        defaultValue: 1,
+        parse: (value: ConfigValue) => value,
+      },
+    } satisfies ConfigDefinitions;
+    expect(() => makeSetup({ definitions })).toThrow(
+      'Known feature feature.aiAssist must be boolean',
+    );
+  });
+
   it('fetches with ETags, applies hot keys, stages cold keys, and boots the LKG cold', async () => {
     const storage = new MemoryStorage();
     const setup = makeSetup({

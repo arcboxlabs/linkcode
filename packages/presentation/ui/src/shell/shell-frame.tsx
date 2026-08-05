@@ -1,6 +1,7 @@
 import type {
   AgentKind,
   BranchSelection,
+  ContentBlock,
   EffortLevel,
   QuestionOutcome,
   SessionId,
@@ -69,6 +70,11 @@ export interface ShellFrameProps
   /** Opens Providers settings at the signed-out agent's setup flow. */
   onOpenProviderSettings?: (kind: AgentKind) => void;
   conversation: ConversationViewModel;
+  onEditPrompt?: (
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ) => Promise<void>;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
   header?: React.ReactNode;
@@ -133,6 +139,7 @@ export function ShellFrame({
   onContinueUnverified,
   onOpenProviderSettings,
   conversation,
+  onEditPrompt,
   respondingRequestIds,
   responseErrors,
   header,
@@ -245,6 +252,10 @@ export function ShellFrame({
             respondingRequestIds={respondingRequestIds}
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}
+            promptEditState={
+              active?.historyCapabilities?.branch === true ? 'enabled' : 'unsupported'
+            }
+            onEditPrompt={onEditPrompt}
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
             showPlanInPromptDock={showPlanInPromptDock}

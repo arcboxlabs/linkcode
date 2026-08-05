@@ -246,7 +246,9 @@ function sessionRefs(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 's
 
 describe('OpenCodeAdapter.resumeHistory', () => {
   it('adopts the existing session under its own directory and announces the ref immediately', async () => {
-    const client = makeLiveClient(makeSession({ id: 'ses-9', directory: '/tmp/original' }));
+    const client = makeLiveClient(
+      makeSession({ id: 'ses-9', directory: '/tmp/original', title: 'Existing session title' }),
+    );
     sdkMock.createOpencode = () =>
       Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
 
@@ -260,6 +262,7 @@ describe('OpenCodeAdapter.resumeHistory', () => {
 
     expect(client.session.create).not.toHaveBeenCalled();
     expect(sessionRefs(events).map((e) => e.historyId)).toEqual(['ses-9']);
+    expect(events).toContainEqual({ type: 'title-update', title: 'Existing session title' });
     // Every session-bound call scopes to the session's real home, not the resume cwd — events
     // ride the per-directory instance bus.
     expect(client.event.subscribe).toHaveBeenCalledWith({ directory: '/tmp/original' });
@@ -281,6 +284,73 @@ describe('OpenCodeAdapter.resumeHistory', () => {
         { kind: 'opencode', cwd: '/tmp/elsewhere' },
       ),
     ).rejects.toThrow("opencode: history 'ses-gone' was not found");
+  });
+});
+
+describe('OpenCodeAdapter.branchHistory', () => {
+  it('forks before the cursor prompt in the source canonical directory and starts the child', async () => {
+    const source = makeSession({ id: 'ses-source', directory: '/canonical/repo' });
+    const child = makeSession({
+      id: 'ses-child',
+      parentID: 'ses-source',
+      directory: source.directory,
+    });
+    const fork = vi.fn(() => Promise.resolve({ data: child }));
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: source })),
+        fork,
+      },
+    });
+    const client = makeLiveClient(child);
+    sdkMock.createOpencode = () =>
+      Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+
+    const adapter = new HistoryTestAdapter();
+    adapter.onEvent(noop);
+    await adapter.branchHistory(
+      {
+        historyId: 'ses-source' as AgentHistoryId,
+        cursor: JSON.stringify({
+          version: 1,
+          kind: 'opencode',
+          historyId: 'ses-source',
+          branchPoint: 'msg-target',
+        }),
+      },
+      { kind: 'opencode', cwd: '/different/repo' },
+    );
+
+    expect(fork).toHaveBeenCalledWith({
+      sessionID: 'ses-source',
+      messageID: 'msg-target',
+      directory: '/canonical/repo',
+    });
+    expect(client.session.create).not.toHaveBeenCalled();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'replacement' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: 'ses-child', directory: '/canonical/repo' }),
+    );
+  });
+
+  it('rejects a cursor minted for another source before calling the provider', async () => {
+    const get = vi.fn();
+    sdkMock.createOpencodeClient = () => ({ session: { get } });
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-other',
+            branchPoint: 'msg-target',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toThrow('opencode: history branch cursor does not match the source session');
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

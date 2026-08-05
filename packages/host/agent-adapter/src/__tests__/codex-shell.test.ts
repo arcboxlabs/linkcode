@@ -1,6 +1,7 @@
 import type { AgentEvent, EffortLevel, StartOptions } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
+import { encodeHistoryBranchCursor } from '../history-branch';
 import { asHistoryId } from '../history-util';
 import { CodexAdapter } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
@@ -33,6 +34,9 @@ class FakeCodexServer {
     }
     if (method === 'thread/start' || method === 'thread/resume') {
       return Promise.resolve(this.threadResponse);
+    }
+    if (method === 'thread/fork') {
+      return Promise.resolve({ thread: { id: 'forked-thread' } });
     }
     if (method === 'model/list') {
       if (this.emptyModelList) return Promise.resolve({ data: [] });
@@ -134,6 +138,51 @@ class TestCodex extends CodexAdapter {
 
 const start: StartOptions = { kind: 'codex', cwd: '/repo' };
 
+describe('CodexAdapter history branching', () => {
+  it('forks through a short-lived server and resumes the child thread', async () => {
+    const adapter = new TestCodex();
+    const historyId = asHistoryId('source-thread');
+
+    await adapter.branchHistory(
+      {
+        historyId,
+        cursor: encodeHistoryBranchCursor('codex', historyId, 'turn-7'),
+      },
+      start,
+    );
+
+    expect(adapter.fakeServers).toHaveLength(2);
+    expect(adapter.fakeServers[0].requests).toContainEqual({
+      method: 'thread/fork',
+      params: { threadId: historyId, lastTurnId: 'turn-7' },
+    });
+    expect(adapter.fakeServers[0].closed).toBe(true);
+    expect(adapter.fakeServers[1].requests).toContainEqual({
+      method: 'thread/resume',
+      params: expect.objectContaining({ threadId: 'forked-thread', excludeTurns: true }),
+    });
+  });
+
+  it('starts an empty thread for the first-prompt cursor', async () => {
+    const adapter = new TestCodex();
+    const historyId = asHistoryId('source-thread');
+
+    await adapter.branchHistory(
+      { historyId, cursor: encodeHistoryBranchCursor('codex', historyId, null) },
+      start,
+    );
+
+    expect(adapter.fakeServers).toHaveLength(1);
+    expect(adapter.fakeServers[0].requests.some(({ method }) => method === 'thread/fork')).toBe(
+      false,
+    );
+    expect(adapter.fakeServers[0].requests).toContainEqual({
+      method: 'thread/start',
+      params: expect.any(Object),
+    });
+  });
+});
+
 /** Drives the verified live notification sequence for a shell command that ran to completion:
  * status running → turn/started → item/started → item/completed → turn/completed. */
 function driveShellTurn(
@@ -167,6 +216,50 @@ function driveShellTurn(
   server.notify('turn/completed', { turn: { id: opts.turnId, status: 'completed' } });
   server.notify('thread/status/changed', { status: 'idle' });
 }
+
+describe('CodexAdapter session titles', () => {
+  it('reads a resumed thread name and consumes updates for only the current thread', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1', name: 'Existing thread name' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: null,
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.resumeHistory({ historyId: asHistoryId('thread-1') }, start);
+    const server = adapter.fakeServers[0];
+    server.notify('thread/name/updated', {
+      threadId: 'thread-other',
+      threadName: 'Ignore me',
+    });
+    server.notify('thread/name/updated', { threadId: 'thread-1', threadName: 'New thread name' });
+    server.notify('thread/name/updated', { threadId: 'thread-1', threadName: 'New thread name' });
+    server.notify('thread/name/updated', { threadId: 'thread-1' });
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([
+      { type: 'title-update', title: 'Existing thread name' },
+      { type: 'title-update', title: 'New thread name' },
+    ]);
+  });
+
+  it('does not treat an unnamed thread preview as a title', async () => {
+    const adapter = new TestCodex();
+    adapter.threadResponse = {
+      thread: { id: 'thread-1', preview: 'First prompt preview' },
+      model: 'gpt-5.6-sol',
+      reasoningEffort: null,
+    };
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start(start);
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([]);
+    await adapter.stop();
+  });
+});
 
 describe('CodexAdapter shell-command passthrough', () => {
   it('advertises normalized per-model effort capabilities before session start', async () => {

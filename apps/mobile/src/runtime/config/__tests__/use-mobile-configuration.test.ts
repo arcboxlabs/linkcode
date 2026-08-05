@@ -20,6 +20,7 @@ const {
 vi.mock('../mobile', () => ({ initializeMobileConfiguration, refreshMobileConfiguration }));
 vi.mock('../background', () => ({ registerMobileConfigBackgroundRefresh }));
 vi.mock('../lifecycle', () => ({ subscribeToForegroundRefresh }));
+vi.mock('@sentry/react-native', () => ({ captureException: vi.fn() }));
 vi.mock('react-native', () => ({
   AppState: { addEventListener: vi.fn(), currentState: 'active' },
 }));

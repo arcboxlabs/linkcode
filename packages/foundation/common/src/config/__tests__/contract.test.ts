@@ -21,7 +21,7 @@ import {
   rolloutMatches,
   targetMatches,
 } from '../contract';
-import { decodeBase64Url, encodeBase64Url, parseIJson } from '../i-json';
+import { cloneJson, decodeBase64Url, encodeBase64Url, parseIJson } from '../i-json';
 import type { AntiReplayState, ConfigCrypto, OverrideCondition } from '../types';
 import { validateSnapshotBytes, verifyPointerBytes } from '../verification';
 
@@ -84,6 +84,107 @@ describe('configuration contract v1 golden fixture', () => {
     await expect(
       validateSnapshotBytes(bytes, { ...pointer, snapshotSchemaVersion: 2 }, target, crypto),
     ).rejects.toMatchObject({ code: 'schema-invalid' });
+  });
+
+  it('validates the same snapshot bytes that were covered by the digest', async () => {
+    const expectedBytes = decodeBase64Url(snapshots.current.canonicalPayloadBase64Url);
+    const rawBytes = expectedBytes.slice();
+    let signalDigestStarted!: () => void;
+    let releaseDigest!: () => void;
+    const digestStarted = new Promise<void>((resolve) => {
+      signalDigestStarted = resolve;
+    });
+    const digestReleased = new Promise<void>((resolve) => {
+      releaseDigest = resolve;
+    });
+    const delayedCrypto: ConfigCrypto = {
+      ...crypto,
+      async sha256(bytes) {
+        signalDigestStarted();
+        await digestReleased;
+        return sha256(bytes);
+      },
+    };
+    const pointer: unknown = pointers.normal.document;
+    assertConfigPointer(pointer);
+    const validation = validateSnapshotBytes(
+      rawBytes,
+      pointer,
+      { brandId: 'acme', channel: 'canary', platform: 'desktop' },
+      delayedCrypto,
+    );
+    await digestStarted;
+    rawBytes[0] ^= 1;
+    releaseDigest();
+
+    const validated = await validation;
+    expect(validated.document).toEqual(snapshots.current.document);
+    expect(validated.rawBytes).toEqual(expectedBytes);
+  });
+
+  it('requires boolean values throughout the feature namespace', () => {
+    const snapshot = snapshots.current.document;
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        values: { ...snapshot.values, 'feature.aiAssist': 1 },
+      }),
+    ).toThrow('Feature values must be boolean');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        overrides: [
+          {
+            ...snapshot.overrides[0],
+            set: { ...snapshot.overrides[0].set, 'feature.newEditor': { enabled: true } },
+          },
+          ...snapshot.overrides.slice(1),
+        ],
+      }),
+    ).toThrow('Feature values must be boolean');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        rollouts: {
+          ...snapshot.rollouts,
+          'feature.aiAssist': { ...snapshot.rollouts['feature.aiAssist'], value: 'true' },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('rejects own __proto__ members in validated config maps', () => {
+    const snapshot = snapshots.current.document;
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        values: Object.fromEntries([...Object.entries(snapshot.values), ['__proto__', false]]),
+      }),
+    ).toThrow('__proto__');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        overrides: [
+          {
+            ...snapshot.overrides[0],
+            set: Object.fromEntries([
+              ...Object.entries(snapshot.overrides[0].set),
+              ['__proto__', false],
+            ]),
+          },
+          ...snapshot.overrides.slice(1),
+        ],
+      }),
+    ).toThrow('__proto__');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        rollouts: Object.fromEntries([
+          ...Object.entries(snapshot.rollouts),
+          ['__proto__', { basisPoints: 'invalid' }],
+        ]),
+      }),
+    ).toThrow('__proto__');
   });
 
   it('verifies pointer signatures while retaining additive root fields', () => {
@@ -282,6 +383,15 @@ describe('I-JSON trust boundary', () => {
     expect(() =>
       canonicalSignedPayload({ ...pointers.normal.document, futureNumber: 1.5 }),
     ).toThrow('safe integers');
+  });
+
+  it('clones __proto__ as an own JSON member without changing prototypes', () => {
+    const parsed = parseIJson(encoder.encode('{"__proto__":{"polluted":true}}'));
+    const cloned = cloneJson(parsed) as object;
+    expect(Object.hasOwn(cloned, '__proto__')).toBe(true);
+    expect(Reflect.get(cloned, '__proto__')).toEqual({ polluted: true });
+    expect(Object.getPrototypeOf(cloned)).toBe(Object.prototype);
+    expect(Reflect.get({}, 'polluted')).toBeUndefined();
   });
 });
 
