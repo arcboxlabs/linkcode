@@ -22,6 +22,11 @@ const RE_SHA256 = /^[0-9a-f]{64}$/;
 const RE_SIGNATURE = /^[\w-]{85}[AQgw]$/;
 const RE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
+const RecordWithoutProtoSchema = z.custom<Record<string, unknown>>(
+  (value) => isRecord(value) && !Object.hasOwn(value, '__proto__'),
+  { message: 'Must not contain an own __proto__ member' },
+);
+
 export const JsonValueSchema = z.json();
 export type JsonValue = z.infer<typeof JsonValueSchema>;
 
@@ -74,45 +79,49 @@ export const ConfigTargetSchema = z.strictObject({
 });
 export type ConfigTarget = z.infer<typeof ConfigTargetSchema>;
 
-export const OverrideConditionSchema = z
-  .strictObject({
-    appVersion: z
-      .string()
-      .refine(isValidVersionRange, { message: 'Invalid version range' })
-      .optional(),
-    locale: z.string().refine(isValidLocale, { message: 'Invalid locale' }).optional(),
-    os: OperatingSystemSchema.optional(),
-  })
-  .refine(
-    (condition) =>
-      condition.appVersion !== undefined ||
-      condition.locale !== undefined ||
-      condition.os !== undefined,
-    { message: 'Must not be empty' },
-  );
+export const OverrideConditionSchema = RecordWithoutProtoSchema.pipe(
+  z
+    .strictObject({
+      appVersion: z
+        .string()
+        .refine(isValidVersionRange, { message: 'Invalid version range' })
+        .optional(),
+      locale: z.string().refine(isValidLocale, { message: 'Invalid locale' }).optional(),
+      os: OperatingSystemSchema.optional(),
+    })
+    .refine(
+      (condition) =>
+        condition.appVersion !== undefined ||
+        condition.locale !== undefined ||
+        condition.os !== undefined,
+      { message: 'Must not be empty' },
+    ),
+);
 export type OverrideCondition = z.infer<typeof OverrideConditionSchema>;
 
 export const ConfigOverrideSchema = z
   .object({
-    set: z.record(z.string(), JsonValueSchema),
+    set: RecordWithoutProtoSchema.pipe(z.record(z.string(), JsonValueSchema)),
     when: OverrideConditionSchema,
   })
   .catchall(JsonValueSchema);
 export type ConfigOverride = z.infer<typeof ConfigOverrideSchema>;
 
-export const ConfigRolloutSchema = z.strictObject({
-  basisPoints: z.number().int().min(0).max(10000),
-  salt: z.string().refine((value) => {
-    const length = new TextEncoder().encode(value).byteLength;
-    return length >= 1 && length <= 128;
-  }, 'Must contain 1 to 128 UTF-8 bytes'),
-  value: z.boolean(),
-});
+export const ConfigRolloutSchema = RecordWithoutProtoSchema.pipe(
+  z.strictObject({
+    basisPoints: z.number().int().min(0).max(10000),
+    salt: z.string().refine((value) => {
+      const length = new TextEncoder().encode(value).byteLength;
+      return length >= 1 && length <= 128;
+    }, 'Must contain 1 to 128 UTF-8 bytes'),
+    value: z.boolean(),
+  }),
+);
 export type ConfigRollout = z.infer<typeof ConfigRolloutSchema>;
 
 export const ConfigSnapshotSchema = z
   .object({
-    applyModes: z.record(z.string(), ApplyModeSchema),
+    applyModes: RecordWithoutProtoSchema.pipe(z.record(z.string(), ApplyModeSchema)),
     brandId: BrandIdSchema,
     channel: ConfigChannelSchema,
     configVersion: ConfigVersionSchema,
@@ -120,9 +129,9 @@ export const ConfigSnapshotSchema = z
     generatedAt: TimestampSchema,
     overrides: z.array(ConfigOverrideSchema),
     platform: ConfigPlatformSchema,
-    rollouts: z.record(z.string(), ConfigRolloutSchema),
+    rollouts: RecordWithoutProtoSchema.pipe(z.record(z.string(), ConfigRolloutSchema)),
     schemaVersion: SchemaVersionSchema,
-    values: z.record(z.string(), ConfigValueSchema),
+    values: RecordWithoutProtoSchema.pipe(z.record(z.string(), ConfigValueSchema)),
   })
   .catchall(JsonValueSchema)
   .superRefine((snapshot, context) => {
@@ -212,11 +221,13 @@ export const ConfigPointerSchema = z
   .catchall(SignedJsonValueSchema);
 export type ConfigPointer = z.infer<typeof ConfigPointerSchema>;
 
-export const EmergencyNoticeSchema = z.strictObject({
-  body: z.string().min(1).max(1000),
-  title: z.string().min(1).max(120),
-  url: z.union([z.null(), z.string().max(2048).startsWith('https://')]),
-});
+export const EmergencyNoticeSchema = RecordWithoutProtoSchema.pipe(
+  z.strictObject({
+    body: z.string().min(1).max(1000),
+    title: z.string().min(1).max(120),
+    url: z.union([z.null(), z.string().max(2048).startsWith('https://')]),
+  }),
+);
 export type EmergencyNotice = z.infer<typeof EmergencyNoticeSchema>;
 
 export const EmergencyDocumentSchema = z

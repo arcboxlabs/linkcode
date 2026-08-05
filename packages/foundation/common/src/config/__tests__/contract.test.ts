@@ -153,6 +153,40 @@ describe('configuration contract v1 golden fixture', () => {
     ).toThrow();
   });
 
+  it('rejects own __proto__ members in validated config maps', () => {
+    const snapshot = snapshots.current.document;
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        values: Object.fromEntries([...Object.entries(snapshot.values), ['__proto__', false]]),
+      }),
+    ).toThrow('__proto__');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        overrides: [
+          {
+            ...snapshot.overrides[0],
+            set: Object.fromEntries([
+              ...Object.entries(snapshot.overrides[0].set),
+              ['__proto__', false],
+            ]),
+          },
+          ...snapshot.overrides.slice(1),
+        ],
+      }),
+    ).toThrow('__proto__');
+    expect(() =>
+      assertConfigSnapshot({
+        ...snapshot,
+        rollouts: Object.fromEntries([
+          ...Object.entries(snapshot.rollouts),
+          ['__proto__', { basisPoints: 'invalid' }],
+        ]),
+      }),
+    ).toThrow('__proto__');
+  });
+
   it('verifies pointer signatures while retaining additive root fields', () => {
     for (const name of [
       'normal',
