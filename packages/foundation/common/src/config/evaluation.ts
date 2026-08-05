@@ -26,7 +26,7 @@ export function defaultValues<Definitions extends ConfigDefinitions>(
   const values: Record<string, ConfigValue> = {};
   for (const [key, definition] of Object.entries(definitions)) {
     if (!isConfigKey(key)) throw new ConfigCoreError('schema-invalid', `Invalid known key ${key}`);
-    values[key] = parseKnownValue(definition.parse, definition.defaultValue, `default.${key}`);
+    values[key] = parseDefinitionValue(definition, key, definition.defaultValue, `default.${key}`);
     if (key.startsWith('feature.')) {
       const disabled = parseKnownValue(definition.parse, false, `disabled.${key}`);
       if (disabled !== false) {
@@ -68,7 +68,7 @@ export function evaluateSnapshot<Definitions extends ConfigDefinitions>(
   for (const [key, value] of Object.entries(evaluated)) {
     const definition = definitionFor(definitions, key);
     if (!definition) continue;
-    values[key] = parseKnownValue(definition.parse, value, key);
+    values[key] = parseDefinitionValue(definition, key, value, key);
   }
   return values as ConfigValues<Definitions>;
 }
@@ -96,8 +96,21 @@ function validateKnownValues(
 ): void {
   for (const [key, value] of Object.entries(values)) {
     const definition = definitionFor(definitions, key);
-    if (definition) parseKnownValue(definition.parse, value, `${label}.${key}`);
+    if (definition) parseDefinitionValue(definition, key, value, `${label}.${key}`);
   }
+}
+
+function parseDefinitionValue(
+  definition: ConfigValueDefinition,
+  key: string,
+  value: JsonValue,
+  label: string,
+): ConfigValue {
+  const parsed = parseKnownValue(definition.parse, value, label);
+  if (typeof parsed !== 'boolean' && key.startsWith('feature.')) {
+    throw new ConfigCoreError('schema-invalid', `Known feature ${key} must be boolean`);
+  }
+  return parsed;
 }
 
 function parseKnownValue(
