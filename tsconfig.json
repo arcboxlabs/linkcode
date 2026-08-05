@@ -19,6 +19,7 @@
     { "path": "packages/client/workbench" },
     { "path": "packages/client/workbench/tests" },
     { "path": "packages/foundation/common" },
+    { "path": "packages/foundation/providers" },
     { "path": "packages/foundation/schema" },
     { "path": "packages/foundation/schema/tests" },
     { "path": "packages/foundation/transport" },
