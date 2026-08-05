@@ -1,0 +1,78 @@
+{
+  "bootstrapDefaults": {
+    "app.defaultLocale": "en",
+    "app.displayName": "LinkCode",
+    "app.privacyUrl": "https://linkcode.ai/privacy",
+    "content.home.banner": {
+      "title": "Build with LinkCode",
+      "url": "https://linkcode.ai/docs"
+    },
+    "feature.aiAssist": false,
+    "feature.newEditor": false,
+    "modules.messaging.enabled": true,
+    "modules.terminal.enabled": false,
+    "modules.workspace.enabled": true,
+    "params.upload.maxSizeMb": 200,
+    "ui.theme": {
+      "primary": "#0066FF",
+      "logoVariant": "dark"
+    }
+  },
+  "fixtureVersion": 1,
+  "headers": "/v1/:brand/:platform/:channel/s/*\n  Cache-Control: public, max-age=31536000, immutable\n/v1/:brand/:platform/:channel/latest.json\n  Cache-Control: public, max-age=60, must-revalidate\n",
+  "keys": {
+    "pilot-rfc8032-2": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"
+  },
+  "maximumSchemaVersion": 1,
+  "steps": [
+    {
+      "activationVersion": "1",
+      "configVersion": "pilot-revision-1",
+      "name": "baseline",
+      "pointerBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEiLCJicmFuZElkIjoiYWNtZSIsImNoYW5uZWwiOiJjYW5hcnkiLCJjb25maWdWZXJzaW9uIjoicGlsb3QtcmV2aXNpb24tMSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMTowMFoiLCJrZXlJZCI6InBpbG90LXJmYzgwMzItMiIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6IjExOGQ2NTQxYWYzNGQ0YzU0MTIxMzI0MGY0YjNlMzg4NmI2YWIzOWQ4NmUyMGQ1ZWUxNGExZmRjOTgwOTBhZWYiLCJzaWciOiJkWUdGdjctbDk4ZkdlUUhldlVsVVFKblJuQnJ5ZlU4QV8xeloxQ1c2ZHJtVkREVnluMlUwVDNFQkgybExRMl9BX1pNLVJnWmtqTDUycnR1c05FTzlDdyIsInNpemVCeXRlcyI6OTY2LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "pointerPath": "/v1/acme/desktop/canary/latest.json",
+      "sha256": "118d6541af34d4c541213240f4b3e3886b6ab39d86e20d5ee14a1fdc98090aef",
+      "sizeBytes": 966,
+      "snapshotBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6InBpbG90LXJldmlzaW9uLTEiLCJjb250cmFjdFZlcnNpb24iOjEsImdlbmVyYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMDowMFoiLCJvdmVycmlkZXMiOltdLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJyb2xsb3V0cyI6e30sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGVmYXVsdExvY2FsZSI6ImVuIiwiYXBwLmRpc3BsYXlOYW1lIjoiQWNtZSBTdHVkaW8iLCJhcHAucHJpdmFjeVVybCI6Imh0dHBzOi8vYWNtZS5leGFtcGxlLmludmFsaWQvcHJpdmFjeSIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJCdWlsZCB3aXRoIExpbmtDb2RlIiwidXJsIjoiaHR0cHM6Ly9saW5rY29kZS5haS9kb2NzIn0sImZlYXR1cmUuYWlBc3Npc3QiOmZhbHNlLCJmZWF0dXJlLm5ld0VkaXRvciI6ZmFsc2UsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOnRydWUsIm1vZHVsZXMudGVybWluYWwuZW5hYmxlZCI6dHJ1ZSwibW9kdWxlcy53b3Jrc3BhY2UuZW5hYmxlZCI6dHJ1ZSwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOjIwMCwidWkudGhlbWUiOnsibG9nb1ZhcmlhbnQiOiJkYXJrIiwicHJpbWFyeSI6IiMwMDY2RkYifX19",
+      "snapshotPath": "/v1/acme/desktop/canary/s/118d6541af34d4c541213240f4b3e3886b6ab39d86e20d5ee14a1fdc98090aef.json"
+    },
+    {
+      "activationVersion": "2",
+      "configVersion": "pilot-revision-2",
+      "name": "canary-change",
+      "pointerBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjIiLCJicmFuZElkIjoiYWNtZSIsImNoYW5uZWwiOiJjYW5hcnkiLCJjb25maWdWZXJzaW9uIjoicGlsb3QtcmV2aXNpb24tMiIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMjowMFoiLCJrZXlJZCI6InBpbG90LXJmYzgwMzItMiIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6ImZjMTBiMGUyNDAyMjA1OTNlNmZlNGYzYjk5ZmNmNWU4MjllYTllMDljNzJlYmM1MTVkNWQzMTNhNTY3ODU2YzgiLCJzaWciOiJYaGN5UnR6SlVLZUpuZkhmbnduY3Zsd3FYZVFuSmtTY0JHaG5tZ09GdWh5cmpXaGYxa0t0OVNEQmtVbnN2bUJWTzdoNkdNY085RHNpd1JNOUhJbEFCdyIsInNpemVCeXRlcyI6OTczLCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "pointerPath": "/v1/acme/desktop/canary/latest.json",
+      "sha256": "fc10b0e240220593e6fe4f3b99fcf5e829ea9e09c72ebc515d5d313a567856c8",
+      "sizeBytes": 973,
+      "snapshotBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6InBpbG90LXJldmlzaW9uLTIiLCJjb250cmFjdFZlcnNpb24iOjEsImdlbmVyYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMDowMFoiLCJvdmVycmlkZXMiOltdLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJyb2xsb3V0cyI6e30sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGVmYXVsdExvY2FsZSI6ImVuIiwiYXBwLmRpc3BsYXlOYW1lIjoiQWNtZSBTdHVkaW8gQ2FuYXJ5IiwiYXBwLnByaXZhY3lVcmwiOiJodHRwczovL2FjbWUuZXhhbXBsZS5pbnZhbGlkL3ByaXZhY3kiLCJjb250ZW50LmhvbWUuYmFubmVyIjp7InRpdGxlIjoiQnVpbGQgd2l0aCBMaW5rQ29kZSIsInVybCI6Imh0dHBzOi8vbGlua2NvZGUuYWkvZG9jcyJ9LCJmZWF0dXJlLmFpQXNzaXN0IjpmYWxzZSwiZmVhdHVyZS5uZXdFZGl0b3IiOmZhbHNlLCJtb2R1bGVzLm1lc3NhZ2luZy5lbmFibGVkIjp0cnVlLCJtb2R1bGVzLnRlcm1pbmFsLmVuYWJsZWQiOnRydWUsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOnRydWUsInBhcmFtcy51cGxvYWQubWF4U2l6ZU1iIjoyMDAsInVpLnRoZW1lIjp7ImxvZ29WYXJpYW50IjoiZGFyayIsInByaW1hcnkiOiIjMDA2NkZGIn19fQ",
+      "snapshotPath": "/v1/acme/desktop/canary/s/fc10b0e240220593e6fe4f3b99fcf5e829ea9e09c72ebc515d5d313a567856c8.json"
+    },
+    {
+      "activationVersion": "3",
+      "configVersion": "pilot-revision-1",
+      "name": "rollback",
+      "pointerBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjMiLCJicmFuZElkIjoiYWNtZSIsImNoYW5uZWwiOiJjYW5hcnkiLCJjb25maWdWZXJzaW9uIjoicGlsb3QtcmV2aXNpb24tMSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMzowMFoiLCJrZXlJZCI6InBpbG90LXJmYzgwMzItMiIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6IjExOGQ2NTQxYWYzNGQ0YzU0MTIxMzI0MGY0YjNlMzg4NmI2YWIzOWQ4NmUyMGQ1ZWUxNGExZmRjOTgwOTBhZWYiLCJzaWciOiJuNl9yM21laC1lWDVQSFMyRkxKV1hPMVU1UlFpeUh5VkZWSGZEbGdnWXBQWkpLbEJYRF8yY1RDdHZMOHF4V1RrR1RCSWJVTzhaYWd0akNNRGRsLTZDdyIsInNpemVCeXRlcyI6OTY2LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "pointerPath": "/v1/acme/desktop/canary/latest.json",
+      "sha256": "118d6541af34d4c541213240f4b3e3886b6ab39d86e20d5ee14a1fdc98090aef",
+      "sizeBytes": 966,
+      "snapshotBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6InBpbG90LXJldmlzaW9uLTEiLCJjb250cmFjdFZlcnNpb24iOjEsImdlbmVyYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMDowMFoiLCJvdmVycmlkZXMiOltdLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJyb2xsb3V0cyI6e30sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGVmYXVsdExvY2FsZSI6ImVuIiwiYXBwLmRpc3BsYXlOYW1lIjoiQWNtZSBTdHVkaW8iLCJhcHAucHJpdmFjeVVybCI6Imh0dHBzOi8vYWNtZS5leGFtcGxlLmludmFsaWQvcHJpdmFjeSIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJCdWlsZCB3aXRoIExpbmtDb2RlIiwidXJsIjoiaHR0cHM6Ly9saW5rY29kZS5haS9kb2NzIn0sImZlYXR1cmUuYWlBc3Npc3QiOmZhbHNlLCJmZWF0dXJlLm5ld0VkaXRvciI6ZmFsc2UsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOnRydWUsIm1vZHVsZXMudGVybWluYWwuZW5hYmxlZCI6dHJ1ZSwibW9kdWxlcy53b3Jrc3BhY2UuZW5hYmxlZCI6dHJ1ZSwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOjIwMCwidWkudGhlbWUiOnsibG9nb1ZhcmlhbnQiOiJkYXJrIiwicHJpbWFyeSI6IiMwMDY2RkYifX19",
+      "snapshotPath": "/v1/acme/desktop/canary/s/118d6541af34d4c541213240f4b3e3886b6ab39d86e20d5ee14a1fdc98090aef.json"
+    },
+    {
+      "activationVersion": "4",
+      "configVersion": "pilot-revision-2",
+      "name": "roll-forward",
+      "pointerBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjQiLCJicmFuZElkIjoiYWNtZSIsImNoYW5uZWwiOiJjYW5hcnkiLCJjb25maWdWZXJzaW9uIjoicGlsb3QtcmV2aXNpb24tMiIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowNDowMFoiLCJrZXlJZCI6InBpbG90LXJmYzgwMzItMiIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6ImZjMTBiMGUyNDAyMjA1OTNlNmZlNGYzYjk5ZmNmNWU4MjllYTllMDljNzJlYmM1MTVkNWQzMTNhNTY3ODU2YzgiLCJzaWciOiJacUc3R0k3bzVPbkVJR2tQZFlFVlFjZWtUTGhrR0dMVFhsc2ZVNUNiNGtyeXhheU8tZVFxR3lwemVWaDRMOEVrU3pEdUplQ3ZMZHJ5WjRLZWRXdjNEdyIsInNpemVCeXRlcyI6OTczLCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "pointerPath": "/v1/acme/desktop/canary/latest.json",
+      "sha256": "fc10b0e240220593e6fe4f3b99fcf5e829ea9e09c72ebc515d5d313a567856c8",
+      "sizeBytes": 973,
+      "snapshotBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6InBpbG90LXJldmlzaW9uLTIiLCJjb250cmFjdFZlcnNpb24iOjEsImdlbmVyYXRlZEF0IjoiMjAyNi0wOC0wM1QxMjowMDowMFoiLCJvdmVycmlkZXMiOltdLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJyb2xsb3V0cyI6e30sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGVmYXVsdExvY2FsZSI6ImVuIiwiYXBwLmRpc3BsYXlOYW1lIjoiQWNtZSBTdHVkaW8gQ2FuYXJ5IiwiYXBwLnByaXZhY3lVcmwiOiJodHRwczovL2FjbWUuZXhhbXBsZS5pbnZhbGlkL3ByaXZhY3kiLCJjb250ZW50LmhvbWUuYmFubmVyIjp7InRpdGxlIjoiQnVpbGQgd2l0aCBMaW5rQ29kZSIsInVybCI6Imh0dHBzOi8vbGlua2NvZGUuYWkvZG9jcyJ9LCJmZWF0dXJlLmFpQXNzaXN0IjpmYWxzZSwiZmVhdHVyZS5uZXdFZGl0b3IiOmZhbHNlLCJtb2R1bGVzLm1lc3NhZ2luZy5lbmFibGVkIjp0cnVlLCJtb2R1bGVzLnRlcm1pbmFsLmVuYWJsZWQiOnRydWUsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOnRydWUsInBhcmFtcy51cGxvYWQubWF4U2l6ZU1iIjoyMDAsInVpLnRoZW1lIjp7ImxvZ29WYXJpYW50IjoiZGFyayIsInByaW1hcnkiOiIjMDA2NkZGIn19fQ",
+      "snapshotPath": "/v1/acme/desktop/canary/s/fc10b0e240220593e6fe4f3b99fcf5e829ea9e09c72ebc515d5d313a567856c8.json"
+    }
+  ],
+  "target": {
+    "brandId": "acme",
+    "channel": "canary",
+    "platform": "desktop"
+  }
+}
