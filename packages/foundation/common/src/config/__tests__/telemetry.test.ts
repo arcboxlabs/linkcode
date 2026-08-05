@@ -141,7 +141,7 @@ describe('classification', () => {
     expect(configTelemetryEventsUrl('https://api.linkcode.ai/system/config-telemetry')).toBe(
       'https://api.linkcode.ai/system/config-telemetry/events',
     );
-    expect(configTelemetryEventsUrl('https://telemetry.example.invalid/acme/')).toBe(
+    expect(configTelemetryEventsUrl('https://telemetry.example.invalid/acme////')).toBe(
       'https://telemetry.example.invalid/acme/events',
     );
   });

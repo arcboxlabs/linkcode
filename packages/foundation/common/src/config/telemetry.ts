@@ -40,14 +40,16 @@ export interface ConfigTelemetryRequest {
 /** Terminal outcomes dequeue; `retry` and `unauthenticated` hold the exact body for later. */
 export type ConfigTelemetrySendOutcome = 'accepted' | 'rejected' | 'retry' | 'unauthenticated';
 
-const TRAILING_SLASHES_RE = /\/+$/;
-
 export function telemetryStorageKey(target: ConfigTarget): string {
   return `linkcode-config:v1:telemetry:${target.brandId}:${target.platform}:${target.channel}`;
 }
 
 export function configTelemetryEventsUrl(endpoint: string): string {
-  return `${endpoint.replace(TRAILING_SLASHES_RE, '')}/events`;
+  let pathEnd = endpoint.length;
+  while (pathEnd > 0 && endpoint[pathEnd - 1] === '/') {
+    pathEnd -= 1;
+  }
+  return `${endpoint.slice(0, pathEnd)}/events`;
 }
 
 // Anti-replay rejections and local storage/crypto faults have no accepted wire event type.
