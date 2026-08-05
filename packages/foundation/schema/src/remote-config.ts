@@ -2,6 +2,7 @@ import canonicalize from 'canonicalize';
 import { z } from 'zod';
 
 export const CONFIG_CONTRACT_VERSION = 1;
+export const CONFIG_BUILD_BUNDLE_VERSION = 1;
 export const MAX_SNAPSHOT_SIZE_BYTES = 1024 * 1024;
 export const MAX_MONOTONIC_VERSION = '18446744073709551615';
 
@@ -17,9 +18,11 @@ const RE_DECIMAL = /^(?:0|[1-9]\d*)$/;
 const RE_KEY_ID = /^[\dA-Z][\w.-]{0,127}$/i;
 const RE_LOCALE_SUBTAG = /^[\dA-Z]{1,8}$/i;
 const RE_NUMERIC_IDENTIFIER = /^\d+$/;
+const RE_REVISION_ID = /^[\dA-Z][\w.-]{0,127}$/i;
 const RE_SEMVER_IDENTIFIER = /^[\dA-Z-]+$/i;
 const RE_SHA256 = /^[0-9a-f]{64}$/;
 const RE_SIGNATURE = /^[\w-]{85}[AQgw]$/;
+const RE_SOURCE_GIT_SHA = /^[0-9a-f]{40}$/;
 const RE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 const RecordWithoutProtoSchema = z.custom<Record<string, unknown>>(
@@ -203,6 +206,93 @@ export const ConfigSnapshotSchema = z
   });
 export type ConfigSnapshot = z.infer<typeof ConfigSnapshotSchema>;
 
+const ConfigBuildEndpointSchema = z.string().superRefine((endpoint, context) => {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    context.addIssue({ code: 'custom', message: 'Endpoint must be an absolute URL' });
+    return;
+  }
+  if (url.protocol !== 'https:') {
+    context.addIssue({ code: 'custom', message: 'Endpoint must use HTTPS' });
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Endpoint must not carry credentials, query, or fragment',
+    });
+  }
+});
+const OptionalConfigBuildEndpointSchema = z.union([z.null(), ConfigBuildEndpointSchema]);
+const ConfigBuildKeyringSchema = RecordWithoutProtoSchema.pipe(z.record(KeyIdSchema, z.string()));
+
+export const ConfigBuildBundleEndpointsSchema = z.strictObject({
+  emergency: OptionalConfigBuildEndpointSchema,
+  normal: OptionalConfigBuildEndpointSchema,
+  telemetry: ConfigBuildEndpointSchema,
+});
+export type ConfigBuildBundleEndpoints = z.infer<typeof ConfigBuildBundleEndpointsSchema>;
+
+export const ConfigBuildBundleKeyringsSchema = z.strictObject({
+  emergency: ConfigBuildKeyringSchema,
+  normal: ConfigBuildKeyringSchema,
+});
+export type ConfigBuildBundleKeyrings = z.infer<typeof ConfigBuildBundleKeyringsSchema>;
+
+export const ConfigBuildBundleProvenanceSchema = z.strictObject({
+  configRevisionId: z.string().regex(RE_REVISION_ID),
+  configVersion: ConfigVersionSchema,
+  generatedAt: TimestampSchema,
+  schemaVersion: SchemaVersionSchema,
+  sourceGitSha: z.string().regex(RE_SOURCE_GIT_SHA, 'Must be an exact lowercase 40-hex commit'),
+});
+export type ConfigBuildBundleProvenance = z.infer<typeof ConfigBuildBundleProvenanceSchema>;
+
+export const ConfigBuildBundleSnapshotEnvelopeSchema = z.strictObject({
+  base64Url: z.string(),
+  sha256: Sha256Schema,
+  sizeBytes: z.number().int().min(1).max(MAX_SNAPSHOT_SIZE_BYTES),
+});
+export type ConfigBuildBundleSnapshotEnvelope = z.infer<
+  typeof ConfigBuildBundleSnapshotEnvelopeSchema
+>;
+
+export const ConfigBuildBundleSchema = z
+  .strictObject({
+    brandId: BrandIdSchema,
+    buildBundleVersion: z.literal(CONFIG_BUILD_BUNDLE_VERSION),
+    channel: ConfigChannelSchema,
+    endpoints: ConfigBuildBundleEndpointsSchema,
+    keyrings: ConfigBuildBundleKeyringsSchema,
+    maximumSchemaVersion: z.number().int(),
+    platform: ConfigPlatformSchema,
+    provenance: ConfigBuildBundleProvenanceSchema,
+    snapshot: ConfigBuildBundleSnapshotEnvelopeSchema,
+  })
+  .superRefine((bundle, context) => {
+    for (const kind of ['normal', 'emergency'] as const) {
+      if (
+        (bundle.endpoints[kind] === null) !==
+        (Object.keys(bundle.keyrings[kind]).at(0) === undefined)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `${kind} endpoint and keyring must be enabled together`,
+          path: ['keyrings', kind],
+        });
+      }
+    }
+    if (bundle.maximumSchemaVersion < bundle.provenance.schemaVersion) {
+      context.addIssue({
+        code: 'custom',
+        message: 'maximumSchemaVersion must cover the snapshot schema version',
+        path: ['maximumSchemaVersion'],
+      });
+    }
+  });
+export type ConfigBuildBundle = z.infer<typeof ConfigBuildBundleSchema>;
+
 export const ConfigPointerSchema = z
   .object({
     activationVersion: MonotonicVersionSchema,
@@ -322,6 +412,10 @@ export function assertConfigSnapshot(value: unknown): asserts value is ConfigSna
   if (!isRecord(value)) throw new TypeError('snapshot must be an object');
   canonicalizeJson(value as JsonValue);
   ConfigSnapshotSchema.parse(value);
+}
+
+export function assertConfigBuildBundle(value: unknown): asserts value is ConfigBuildBundle {
+  ConfigBuildBundleSchema.parse(value);
 }
 
 export function assertEmergencyDocument(value: unknown): asserts value is EmergencyDocument {

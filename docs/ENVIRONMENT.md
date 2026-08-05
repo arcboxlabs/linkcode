@@ -74,7 +74,8 @@ client configuration or new build.
 | Variable | Surface | Notes |
 | --- | --- | --- |
 | `LINKCODE_SENTRY_DSN` | Daemon process | Read by `apps/daemon/src/instrument.ts`, preloaded via `--import`. The desktop supervisor copies `MAIN_VITE_SENTRY_DSN` into it for the packaged daemon. |
-| `MAIN_VITE_CONFIG_BOOTSTRAP` | Electron main | Build-time immutable JSON containing the config target, HTTPS endpoints, public verification keyrings, schema version, and bundled defaults. Unset builds stay READY on empty bundled defaults with remote refresh disabled. Local override files are read only by unpackaged builds. |
+| `MAIN_VITE_CONFIG_BOOTSTRAP` | Electron main | Build-time immutable JSON containing the config target, HTTPS endpoints, public verification keyrings, schema version, and bundled defaults. Unset builds stay READY on empty bundled defaults with remote refresh disabled. Local override files are read only by unpackaged builds. Setting it while `apps/desktop/generated/config-build-bundle.json` exists is a hard build error — a rendered bundle cannot be overridden. |
+| `LINKCODE_REQUIRE_CONFIG_BUNDLE` | Desktop build/packaging | `1` makes the Vite main build fail without a rendered `apps/desktop/generated/config-build-bundle.json` and makes `verify-artifacts.mts` require the staged asar copy. Set by `build-desktop.yml` on signed builds ([`RELEASE.md`](RELEASE.md), "Immutable config bundle"). |
 | `MAIN_VITE_SENTRY_DSN` | Electron main | Build-time inlined; declared in `apps/desktop/turbo.json` `build.env`. Only signed builds carry it. |
 | `VITE_SENTRY_DSN` | Webview | Build-time inlined; declared in `apps/webview/turbo.json` `build.env`. |
 | `EXPO_PUBLIC_SENTRY_DSN` | Mobile | Inlined by Metro/EAS at bundle time. |

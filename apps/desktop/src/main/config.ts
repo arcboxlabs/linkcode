@@ -3,13 +3,11 @@ import { join } from 'node:path';
 import type {
   ConfigCrypto,
   ConfigDefinitions,
-  ConfigEmergencyState,
   ConfigEvent,
   ConfigNetwork,
   ConfigRefreshResult,
   ConfigStorage,
   ConfigValue,
-  ConfigValueDefinition,
   JsonValue,
   OperatingSystem,
 } from '@linkcode/common/config';
@@ -18,11 +16,18 @@ import {
   ConfigCore,
   ConfigCoreError,
   canonicalizeJson,
+  definitionsFromDefaults,
 } from '@linkcode/common/config';
 import { app } from 'electron';
 import log from 'electron-log';
 import { nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
+import type {
+  ConfigRefreshReport,
+  ConfigRefreshStatus,
+  ConfigSnapshotInfo,
+  EffectiveConfigSnapshot,
+} from '../shared/config';
 import { AtomicConfigStorage, FetchConfigNetwork, nodeConfigCrypto } from './config-adapters';
 import { CHANNEL } from './constants';
 
@@ -36,25 +41,6 @@ const disabledNetwork: ConfigNetwork = {
   },
 };
 
-export type EffectiveConfigSnapshot = Readonly<Record<string, ConfigValue>>;
-
-export interface ConfigSnapshotInfo {
-  readonly configVersion: string | null;
-  readonly emergency: ConfigEmergencyState | null;
-  readonly sha256: string | null;
-  readonly source: 'bundled' | 'cache' | 'remote';
-  readonly stagedColdKeys: readonly string[];
-  readonly status: 'READY';
-}
-
-export type ConfigRefreshStatus = 'disabled' | 'error' | 'idempotent' | 'not-modified' | 'updated';
-
-export interface ConfigRefreshReport {
-  readonly emergency: ConfigRefreshStatus;
-  readonly normal: ConfigRefreshStatus;
-  readonly snapshotInfo: ConfigSnapshotInfo;
-}
-
 export interface DesktopConfigBootstrap {
   readonly brandId: string;
   readonly channel: 'canary' | 'stable';
@@ -64,6 +50,7 @@ export interface DesktopConfigBootstrap {
   readonly endpoint: string | null;
   readonly maximumSchemaVersion: number;
   readonly publicKeys: Readonly<Record<string, string>>;
+  readonly telemetryEndpoint: string | null;
 }
 
 export interface DesktopConfigServiceOptions {
@@ -251,7 +238,7 @@ export async function loadEffectiveDefaults(
   }
 }
 
-function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
+export function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
   if (!raw) {
     return {
       brandId: 'linkcode',
@@ -262,6 +249,7 @@ function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
       endpoint: null,
       maximumSchemaVersion: 1,
       publicKeys: {},
+      telemetryEndpoint: null,
     };
   }
   const value = JSON.parse(raw) as unknown;
@@ -288,28 +276,8 @@ function parseBootstrap(raw: string | undefined): DesktopConfigBootstrap {
     endpoint,
     maximumSchemaVersion: value.maximumSchemaVersion,
     publicKeys: parseKeyring(value.publicKeys),
+    telemetryEndpoint: parseEndpoint(value.telemetryEndpoint ?? null),
   };
-}
-
-function definitionsFromDefaults(
-  defaults: Readonly<Record<string, ConfigValue>>,
-): ConfigDefinitions {
-  return Object.fromEntries(
-    Object.entries(defaults).map(([key, defaultValue]) => [
-      key,
-      {
-        defaultValue,
-        parse: (value: ConfigValue) => parseLikeDefault(value, defaultValue),
-      } satisfies ConfigValueDefinition,
-    ]),
-  );
-}
-
-function parseLikeDefault(value: ConfigValue, defaultValue: ConfigValue): ConfigValue {
-  const expected = Array.isArray(defaultValue) ? 'array' : typeof defaultValue;
-  const actual = Array.isArray(value) ? 'array' : typeof value;
-  if (actual !== expected) throw new TypeError(`Expected ${expected}, received ${actual}`);
-  return structuredClone(value);
 }
 
 function refreshStatus(result: ConfigRefreshResult | undefined): ConfigRefreshStatus {

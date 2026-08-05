@@ -14,6 +14,13 @@ import {
   CLOUD_IM_UPDATE_BINDING_CHANNEL,
   CLOUD_LIST_HOSTS_CHANNEL,
 } from '../shared/cloud';
+import type { ConfigBridge } from '../shared/config';
+import {
+  CONFIG_HOT_UPDATE_CHANNEL,
+  CONFIG_REFRESH_CHANNEL,
+  CONFIG_SNAPSHOT_CHANNEL,
+  CONFIG_SNAPSHOT_INFO_CHANNEL,
+} from '../shared/config';
 
 /**
  * Preload: exposes a minimal, system / UI only bridge via contextBridge.
@@ -22,6 +29,21 @@ import {
 const systemBridge = createElectronSystemBridge(ipcRenderer, process.platform);
 
 contextBridge.exposeInMainWorld('linkcodeSystem', systemBridge);
+
+const configBridge: ConfigBridge = {
+  effectiveSnapshot: () => ipcRenderer.sendSync(CONFIG_SNAPSHOT_CHANNEL),
+  snapshotInfo: () => ipcRenderer.sendSync(CONFIG_SNAPSHOT_INFO_CHANNEL),
+  refresh: () => ipcRenderer.invoke(CONFIG_REFRESH_CHANNEL),
+  onHotUpdate(callback) {
+    const handler = (_event: Electron.IpcRendererEvent, keys: unknown): void => {
+      if (Array.isArray(keys) && keys.every((key) => typeof key === 'string')) callback(keys);
+    };
+    ipcRenderer.on(CONFIG_HOT_UPDATE_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(CONFIG_HOT_UPDATE_CHANNEL, handler);
+  },
+};
+
+contextBridge.exposeInMainWorld('linkcodeConfig', configBridge);
 
 // LinkCode Cloud auth bridges (window.requestAuth / onAuthenticated / signOut / …): the better-auth
 // plugin's own contextBridge surface — system-plane and sandbox-safe (electron IPC only), so it

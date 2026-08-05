@@ -4,11 +4,13 @@
   "tasks": {
     "build": {
       "env": [
+        "LINKCODE_REQUIRE_CONFIG_BUNDLE",
         "MAIN_VITE_CONFIG_BOOTSTRAP",
         "MAIN_VITE_SENTRY_DSN",
         "RENDERER_VITE_POSTHOG_PROJECT_TOKEN",
         "RENDERER_VITE_POSTHOG_HOST"
-      ]
+      ],
+      "inputs": ["$TURBO_DEFAULT$", "generated/config-build-bundle.json"]
     }
   }
 }

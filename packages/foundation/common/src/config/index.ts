@@ -1,3 +1,18 @@
+export type {
+  ConfigBuildBundle,
+  ConfigBuildBundleEndpoints,
+  ConfigBuildBundleKeyrings,
+  ConfigBuildBundleProvenance,
+  ConfigBuildBundleSnapshotEnvelope,
+} from './build-bundle';
+export {
+  assertConfigBuildBundle,
+  CONFIG_BUILD_BUNDLE_VERSION,
+  configBuildBundleDefaults,
+  configBuildBundleSnapshot,
+  definitionsFromDefaults,
+  parseConfigBuildBundle,
+} from './build-bundle';
 export {
   applyConfigPatch,
   applyMergePatch,

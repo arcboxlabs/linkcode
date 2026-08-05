@@ -41,9 +41,47 @@ jobs:
             exit 1
           fi
 
+  # Store builds always sign, so the immutable config bundle is unconditionally required: this
+  # job renders both platform modules in one invocation from the pinned publisher checkout and
+  # fails with an actionable error when the release-environment pins are absent.
+  render-config:
+    name: Render immutable config
+    needs: preflight
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup EAS
+        uses: ./.github/actions/setup-eas
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Render config bundles
+        uses: ./.github/actions/render-release-config
+        with:
+          app: mobile
+          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
+          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+          release-manifest-ios: ${{ vars.CONFIG_RELEASE_MANIFEST_IOS }}
+          release-manifest-android: ${{ vars.CONFIG_RELEASE_MANIFEST_ANDROID }}
+
+      - name: Upload generated config modules
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-config-modules
+          path: apps/mobile/src/runtime/config/bundled.generated.*.ts
+          if-no-files-found: error
+          retention-days: 1
+
   build:
     name: Build ${{ matrix.platform }}
-    needs: preflight
+    needs: [preflight, render-config]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     environment: release
@@ -117,6 +155,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The exact modules rendered by render-config; .easignore lets them into the EAS project
+      # archive, and the eas-build-pre-install hook re-verifies them inside that archive.
+      - name: Fetch generated config modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: mobile-config-modules
+          path: apps/mobile/src/runtime/config
+
+      - name: Verify release config modules
+        run: pnpm -F @linkcode/mobile config:verify-release
 
       - name: Build signed artifact locally
         working-directory: ${{ env.MOBILE_DIR }}

@@ -11,6 +11,7 @@
     "dev:mock": "node scripts/dev.mts --mode mock",
     "start": "pnpm run build && electron .",
     "build": "node scripts/build.mts",
+    "config:render": "pnpm --dir ../.. exec tsx apps/desktop/scripts/render-config-bundle.mts",
     "stage:host-runtime": "pnpm -F @linkcode/daemon build && node scripts/stage-sidecar.mts",
     "package": "pnpm run stage:host-runtime && node scripts/build.mts && node scripts/package-app.mts",
     "package:devshell": "pnpm run stage:host-runtime && node scripts/build.mts --mode devshell && node scripts/package-app.mts --devshell",

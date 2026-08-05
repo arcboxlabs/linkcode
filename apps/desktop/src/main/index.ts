@@ -18,6 +18,7 @@ import {
   startDesktopConfigRefresh,
   stopDesktopConfigRefresh,
 } from './config';
+import { registerDesktopConfigIpc } from './config-ipc';
 import { APP_NAME } from './constants';
 import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
@@ -70,8 +71,12 @@ if (app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       await initializeDesktopConfig();
+      const unregisterConfigIpc = registerDesktopConfigIpc();
       startDesktopConfigRefresh();
-      app.once('before-quit', stopDesktopConfigRefresh);
+      app.once('before-quit', () => {
+        stopDesktopConfigRefresh();
+        unregisterConfigIpc();
+      });
       // Dev only: brand the macOS Dock (stock Electron has no icon) with a static grid-margined
       // glass render — a full-bleed raster looks oversized. Loaded by path so it isn't bundled
       // into prod; packaged builds render live Liquid Glass from the .icon.

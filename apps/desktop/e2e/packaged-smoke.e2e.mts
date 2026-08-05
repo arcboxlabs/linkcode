@@ -7,9 +7,10 @@
 
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { extractFile } from '@electron/asar';
 import type { ValidatedWireMessage } from '@linkcode/schema';
 import { createWireMessage, SocketIoTransport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
@@ -35,9 +36,38 @@ interface RuntimeInfo {
   listeners: Array<{ type: string; url: string }>;
 }
 
+/** Staging proof (CODE-552): when the build rendered a config bundle, the packaged asar must
+ * carry the byte-identical copy under out/config; without one, nothing may be staged. Returns the
+ * bundled default values the packaged main must serve, or null for the sentinel build. */
+function verifyPackagedConfigStaging(): Record<string, unknown> | null {
+  const asarPath = join(desktopDir, 'release/linux-unpacked/resources/app.asar');
+  assert(existsSync(asarPath), `packaged asar is missing: ${asarPath}`);
+  const generatedPath = join(desktopDir, 'generated/config-build-bundle.json');
+  let staged: Buffer | null;
+  try {
+    staged = extractFile(asarPath, 'out/config/build-bundle.json');
+  } catch {
+    staged = null;
+  }
+  if (!existsSync(generatedPath)) {
+    assert.equal(staged, null, 'packaged asar staged a config bundle no render produced');
+    return null;
+  }
+  const generated = readFileSync(generatedPath);
+  assert(staged, 'rendered config bundle was not staged into the packaged asar');
+  assert(staged.equals(generated), 'packaged config bundle differs from the rendered bundle');
+  const bundle = JSON.parse(generated.toString('utf8')) as { snapshot: { base64Url: string } };
+  const snapshot = JSON.parse(
+    Buffer.from(bundle.snapshot.base64Url, 'base64url').toString('utf8'),
+  ) as { values: Record<string, unknown> };
+  console.log('PASS packaged asar carries the byte-identical rendered config bundle');
+  return snapshot.values;
+}
+
 async function main(): Promise<void> {
   assert.equal(process.platform, 'linux', 'packaged dev-shell smoke is a Linux CI boundary');
   assert(existsSync(executable), `packaged executable is missing: ${executable}`);
+  const expectedBundledValues = verifyPackagedConfigStaging();
 
   const root = mkdtempSync(join(tmpdir(), 'linkcode-packaged-e2e-'));
   const home = join(root, 'home');
@@ -50,6 +80,14 @@ async function main(): Promise<void> {
   const runtimePath = join(stateDir, 'runtime.json');
   mkdirSync(home);
   mkdirSync(config);
+  // A packaged (release-shaped) product must ignore the development-only local override file and
+  // any runtime bootstrap variable — both are planted here and asserted inert below (CODE-552).
+  const overrideDir = join(config, 'LinkCode Development', 'config');
+  mkdirSync(overrideDir, { recursive: true });
+  writeFileSync(
+    join(overrideDir, 'override.json'),
+    '{"app.displayName":"LOCAL-OVERRIDE-MUST-BE-IGNORED"}',
+  );
   let app: ElectronApplication | null = null;
   let transport: SocketIoTransport | null = null;
 
@@ -62,6 +100,7 @@ async function main(): Promise<void> {
         HOME: home,
         XDG_CONFIG_HOME: config,
         LINKCODE_PROFILE: profile,
+        MAIN_VITE_CONFIG_BOOTSTRAP: '{"defaults":{"app.displayName":"RUNTIME-OVERRIDE"}}',
       },
     });
     const page = await app.firstWindow();
@@ -70,6 +109,8 @@ async function main(): Promise<void> {
     const bridge = await page.evaluate(async () => {
       const system = window.linkcodeSystem;
       return {
+        configSnapshot: window.linkcodeConfig.effectiveSnapshot(),
+        configSource: window.linkcodeConfig.snapshotInfo().source,
         platform: system.app.platform,
         version: await system.app.version(),
         settings: system.settings.snapshot(),
@@ -82,6 +123,11 @@ async function main(): Promise<void> {
     assert.equal(bridge.settings.daemonUrl, null);
     assert.equal(bridge.managed, true);
     assert.equal(typeof bridge.maximized, 'boolean');
+    // Packaged runs must serve exactly the build-time bundle (or the empty sentinel): the planted
+    // override.json and runtime MAIN_VITE_CONFIG_BOOTSTRAP above must both be ignored.
+    assert.deepEqual(bridge.configSnapshot, expectedBundledValues ?? {});
+    assert.equal(bridge.configSource, 'bundled');
+    console.log('PASS packaged config ignores local override and runtime bootstrap variable');
 
     // This surface mounts only below the Workbench connection gate. Bridge and external transport
     // checks alone would not catch a renderer that failed to discover or dial the packaged daemon.

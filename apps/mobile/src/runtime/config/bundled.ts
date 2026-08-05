@@ -1,20 +1,82 @@
-import type { ConfigChannel, ConfigDefinitions } from '@linkcode/common/config';
+import type {
+  ConfigChannel,
+  ConfigDefinitions,
+  ConfigPlatform,
+  ConfigValue,
+} from '@linkcode/common/config';
+import {
+  configBuildBundleDefaults,
+  definitionsFromDefaults,
+  parseConfigBuildBundle,
+} from '@linkcode/common/config';
+// Metro resolves bundled.generated.<platform>.ts when scripts/render-config-bundle.mts has run;
+// the committed base module must stay the { bundle: null } development sentinel.
+import generatedModule from './bundled.generated';
 
-interface BundledConfigBootstrap {
+export interface BundledConfigBootstrap {
   readonly brandId: string;
   readonly channel: ConfigChannel;
   readonly emergencyKeyring: Readonly<Record<string, string>>;
+  readonly emergencyRemoteBaseUrl: string | null;
   readonly maximumSchemaVersion: number;
   readonly normalKeyring: Readonly<Record<string, string>>;
+  /** Target platform of the embedded bundle; null only for the development sentinel. */
+  readonly platform: Extract<ConfigPlatform, 'android' | 'ios'> | null;
   readonly remoteBaseUrl: string | null;
+  readonly telemetryEndpoint: string | null;
 }
 
-export const BUNDLED_CONFIG_DEFINITIONS = {} satisfies ConfigDefinitions;
-export const BUNDLED_CONFIG_BOOTSTRAP: BundledConfigBootstrap = {
-  brandId: 'linkcode',
-  channel: 'stable',
-  emergencyKeyring: {},
-  maximumSchemaVersion: 1,
-  normalKeyring: {},
-  remoteBaseUrl: null,
+export interface BundledConfig {
+  readonly bootstrap: BundledConfigBootstrap;
+  readonly defaults: Readonly<Record<string, ConfigValue>>;
+  readonly definitions: ConfigDefinitions;
+}
+
+const DEV_FALLBACK: BundledConfig = {
+  bootstrap: {
+    brandId: 'linkcode',
+    channel: 'stable',
+    emergencyKeyring: {},
+    emergencyRemoteBaseUrl: null,
+    maximumSchemaVersion: 1,
+    normalKeyring: {},
+    platform: null,
+    remoteBaseUrl: null,
+    telemetryEndpoint: null,
+  },
+  defaults: {},
+  definitions: {},
 };
+
+/** A generated module either holds the development sentinel (bundle: null) or an exact publisher
+ * build bundle for this platform; anything else fails closed instead of falling back. */
+export function bundledConfigFromModule(module: unknown): BundledConfig {
+  if (typeof module !== 'object' || module === null || !('bundle' in module)) {
+    throw new TypeError('Generated config module must carry a bundle field');
+  }
+  const raw: unknown = (module as { readonly bundle: unknown }).bundle;
+  if (raw === null) return DEV_FALLBACK;
+  const bundle = parseConfigBuildBundle(raw);
+  if (bundle.platform !== 'ios' && bundle.platform !== 'android') {
+    throw new TypeError(`Bundled configuration targets ${bundle.platform}, not a mobile platform`);
+  }
+  const defaults = configBuildBundleDefaults(bundle);
+  return {
+    bootstrap: {
+      brandId: bundle.brandId,
+      channel: bundle.channel,
+      emergencyKeyring: bundle.keyrings.emergency,
+      emergencyRemoteBaseUrl: bundle.endpoints.emergency,
+      maximumSchemaVersion: bundle.maximumSchemaVersion,
+      normalKeyring: bundle.keyrings.normal,
+      platform: bundle.platform,
+      remoteBaseUrl: bundle.endpoints.normal,
+      telemetryEndpoint: bundle.endpoints.telemetry,
+    },
+    defaults,
+    definitions: definitionsFromDefaults(defaults),
+  };
+}
+
+export const { bootstrap: BUNDLED_CONFIG_BOOTSTRAP, definitions: BUNDLED_CONFIG_DEFINITIONS } =
+  bundledConfigFromModule(generatedModule);
