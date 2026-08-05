@@ -31,7 +31,8 @@ export const AccountCredentialSchema = z.discriminatedUnion('type', [
 ]);
 export type AccountCredential = z.infer<typeof AccountCredentialSchema>;
 
-/** A custom endpoint (gateway / relay / local translator). Absent means the agent's native default. */
+/** An explicitly named endpoint: a custom account's own, or the local translator's. Outranks the
+ * service catalog; absent means the endpoint is resolved per agent from `service`. */
 export const AccountEndpointSchema = z.object({
   baseUrl: z.url(),
   protocol: AccountProtocolSchema,
@@ -44,11 +45,15 @@ export const AccountSchema = z.object({
   /** User-facing name. */
   label: z.string().min(1),
   /** Service-catalog key the account was created from (e.g. `openrouter`). Drives brand
-   * presentation and, when `endpoint` is absent, implies the protocol a bare key speaks.
+   * presentation and, when `endpoint` is absent, resolves the endpoint each agent uses.
    * Absent for custom and pre-catalog accounts. */
   service: z.string().optional(),
   credential: AccountCredentialSchema,
   endpoint: AccountEndpointSchema.optional(),
+  /** Values for a catalog endpoint's `{placeholder}` segments (e.g. Cloudflare's account and
+   * gateway ids). The account holds these rather than a resolved URL, because one secret can
+   * resolve to a different endpoint per agent. */
+  endpointParams: z.record(z.string(), z.string()).optional(),
   /** Per-account default model (vendor-specific), overriding the provider default when set. */
   model: z.string().optional(),
   /** Extra environment injected into the agent process (escape hatch, e.g. gateway flags). */
