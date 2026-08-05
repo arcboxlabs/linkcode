@@ -1,7 +1,7 @@
 /// <reference types="unplugin-icons/types/react" />
 import type { AgentKind } from '@linkcode/schema';
+import ClaudeColorGlyph from '~icons/lobe-icons/claude-color';
 import ClaudeCodeGlyph from '~icons/lobe-icons/claudecode';
-import ClaudeCodeColorGlyph from '~icons/lobe-icons/claudecode-color';
 import CodexGlyph from '~icons/lobe-icons/codex';
 import CodexColorGlyph from '~icons/lobe-icons/codex-color';
 import OpenCodeGlyph from '~icons/lobe-icons/opencode';
@@ -16,8 +16,8 @@ const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
   opencode: OpenCodeGlyph,
 };
 
-const AGENT_COLOR_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeColorGlyph>> = {
-  'claude-code': ClaudeCodeColorGlyph,
+const AGENT_COLOR_GLYPHS: Partial<Record<AgentKind, typeof ClaudeColorGlyph>> = {
+  'claude-code': ClaudeColorGlyph,
   codex: CodexColorGlyph,
 };
 

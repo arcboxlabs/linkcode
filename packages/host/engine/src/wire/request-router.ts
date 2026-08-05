@@ -71,7 +71,8 @@ export class WireRequestRouter {
       }
       case 'history.list':
       case 'history.read':
-      case 'history.resume': {
+      case 'history.resume':
+      case 'history.branch': {
         return this.handlers.history.handle(p);
       }
       case 'agent-runtime.list':

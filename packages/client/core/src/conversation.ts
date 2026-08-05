@@ -46,6 +46,7 @@ export type ConversationItem = (
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      branchCursor?: string;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
       /** The model serving the session when this assistant message opened (from `model-update`). */
@@ -195,6 +196,35 @@ export interface ConversationBuilder {
  * re-reduce). Item updates are copy-on-write — previously returned snapshots are never mutated.
  */
 export function createConversationBuilder(): ConversationBuilder {
+  let projection = createConversationProjection();
+  let entries: Array<{ event: AgentEvent; receivedAt?: number }> = [];
+
+  return {
+    advance(event, receivedAt) {
+      if (event.type !== 'conversation-rewind') {
+        entries.push({ event, receivedAt });
+        projection.advance(event, receivedAt);
+        return;
+      }
+
+      let cut = -1;
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const candidate = entries[index].event;
+        if (candidate.type === 'user-message' && candidate.messageId === event.messageId) {
+          cut = index;
+          break;
+        }
+      }
+      if (cut < 0) return;
+      entries = entries.slice(0, cut);
+      projection = createConversationProjection();
+      for (const entry of entries) projection.advance(entry.event, entry.receivedAt);
+    },
+    snapshot: () => projection.snapshot(),
+  };
+}
+
+function createConversationProjection(): ConversationBuilder {
   const items: ConversationItem[] = [];
   const toolIndex = new Map<string, number>();
   // messageId → item index, so streaming chunks bucket into one item regardless of interleaving.
@@ -321,6 +351,7 @@ export function createConversationBuilder(): ConversationBuilder {
             items[existing] = {
               ...item,
               blocks: [...event.content],
+              branchCursor: event.branchCursor ?? item.branchCursor,
               receivedAt: receivedAt ?? item.receivedAt,
             };
           }
@@ -337,6 +368,7 @@ export function createConversationBuilder(): ConversationBuilder {
           role: 'user',
           blocks: [...event.content],
           isStreaming: false,
+          branchCursor: event.branchCursor,
           receivedAt,
         });
         messageIndex.set(event.messageId, items.length - 1);

@@ -4,6 +4,7 @@ import type {
   AccountModel,
   AccountSecret,
   Accounts,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -33,6 +34,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -174,6 +176,22 @@ export class ControlChannel {
       agentKind,
       historyId,
       startOpts: { ...startOpts, kind: agentKind },
+    }));
+  }
+
+  rewritePrompt(
+    sourceSessionId: SessionId,
+    sourceMessageId: MessageId,
+    branchCursor: AgentHistoryBranchCursor,
+    content: ContentBlock[],
+  ): Promise<SessionStartResult> {
+    return this.sendCorrelated('start', (clientReqId) => ({
+      kind: 'history.branch',
+      clientReqId,
+      sourceSessionId,
+      sourceMessageId,
+      branchCursor,
+      content,
     }));
   }
 

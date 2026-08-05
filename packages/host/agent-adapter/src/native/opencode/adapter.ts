@@ -3,6 +3,7 @@ import { parse, sep } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -25,8 +26,9 @@ import type {
   Part,
   TextPartInput,
 } from '@opencode-ai/sdk/v2';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { invariant } from 'foxts/guard';
+import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
@@ -34,6 +36,7 @@ import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
 import {
   contentToText,
@@ -150,7 +153,12 @@ type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 type OpencodeProviderList = NonNullable<
   Awaited<ReturnType<OpencodeClient['provider']['list']>>['data']
 >;
-type OpencodeAgentSummary = { name: string; mode: string; hidden?: boolean; description?: string };
+interface OpencodeAgentSummary {
+  name: string;
+  mode: string;
+  hidden?: boolean;
+  description?: string;
+}
 
 /** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to the
  * credential-injected provider when one is in play. Pre-session reads pass null — the injection is
@@ -183,7 +191,7 @@ function opencodeModelOptions(
  * the first primary, else the first selectable. Null when nothing is selectable, so the axis stays
  * hidden rather than advertising an empty list. */
 function opencodeAgentPolicies(
-  agents: ReadonlyArray<OpencodeAgentSummary>,
+  agents: readonly OpencodeAgentSummary[],
 ): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
   const selectable = agents.filter(
     (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
@@ -211,11 +219,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;
   private sessionId: string | null = null;
+  /** Last provider title observed; a fresh session's placeholder is the baseline, not an update. */
+  private sessionTitle: string | null = null;
   /** Provider session id to adopt at the next start — set by `resumeHistory`. OpenCode sessions
    * live server-side, so a native resume is just prompting the existing id again. */
   private resumeFrom: string | null = null;
@@ -308,17 +319,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
       // port can be stolen between the probe and the child's bind), so one failed spawn retries
       // with a fresh port — the same discipline as the shared history server.
-      try {
-        server = await startOpencodeServe({
-          port: await allocatePort(),
-          config: serverOptions?.config,
-        });
-      } catch {
-        server = await startOpencodeServe({
-          port: await allocatePort(),
-          config: serverOptions?.config,
-        });
-      }
+      server = await asyncRetry(
+        async () =>
+          startOpencodeServe({
+            port: await allocatePort(),
+            config: serverOptions?.config,
+          }),
+        { retries: 1, minTimeout: 1, randomize: false },
+      );
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
@@ -337,6 +345,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       this.sessionId = got.data.id;
       this.directory = got.data.directory;
+      this.sessionTitle = got.data.title.trim() || null;
+      if (this.sessionTitle) this.emitTitle(this.sessionTitle);
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
@@ -353,6 +363,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!id) throw new Error('opencode: failed to create session');
       this.sessionId = id;
       this.directory = opts.cwd;
+      this.sessionTitle = created.data?.title.trim() || null;
     }
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start. They are independent reads of the same local server, so
@@ -618,6 +629,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const messageID = nullthrow(
+      decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId),
+      'opencode: history branch cursor has no target prompt',
+    );
+    const childId = await this.withHistoryClient(async (client) => {
+      const source = okOrThrow(
+        await client.session.get({ sessionID: opts.historyId }),
+        'opencode: session.get',
+      );
+      invariant(source.data, 'opencode: session.get returned no session');
+      const forked = okOrThrow(
+        await client.session.fork({
+          sessionID: opts.historyId,
+          messageID,
+          directory: source.data.directory,
+        }),
+        'opencode: session.fork',
+      );
+      invariant(forked.data, 'opencode: session.fork returned no session');
+      return forked.data.id;
+    });
+    this.resumeFrom = childId;
+    await this.start(startOpts);
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
@@ -764,7 +804,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
   private adoptAgentCatalog(
-    agents: ReadonlyArray<OpencodeAgentSummary>,
+    agents: readonly OpencodeAgentSummary[],
     preferredAgent: string | null,
   ): void {
     const catalog = opencodeAgentPolicies(agents);
@@ -838,6 +878,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handleEvent(ev: Event): void {
     try {
       switch (ev.type) {
+        case 'session.updated': {
+          const { info, sessionID } = ev.properties;
+          if (sessionID === this.sessionId && info.id === this.sessionId) {
+            const title = info.title.trim();
+            if (title.length > 0 && title !== this.sessionTitle) {
+              this.sessionTitle = title;
+              this.emitTitle(title);
+            }
+          }
+          break;
+        }
         case 'message.updated':
           if (ev.properties.sessionID === this.sessionId) {
             const { info } = ev.properties;
