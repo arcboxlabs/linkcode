@@ -1,10 +1,16 @@
-import type { ConfigNetwork } from '@linkcode/common/config';
-import { ConfigCore, ConfigCoreError, createNobleConfigCrypto } from '@linkcode/common/config';
+import type { ConfigNetwork, EmergencyHostState } from '@linkcode/common/config';
+import {
+  ConfigCore,
+  ConfigCoreError,
+  createNobleConfigCrypto,
+  emergencyHostState,
+} from '@linkcode/common/config';
 import { defaultLocale, resolveLocale } from '@linkcode/i18n';
 import { fetch as expoFetch } from 'expo/fetch';
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import Storage from 'expo-sqlite/kv-store';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { Platform } from 'react-native';
 import { createConfigNetwork, createConfigStorage, resolveMobileConfigPlatform } from './adapters';
 import { BUNDLED_CONFIG_BOOTSTRAP, BUNDLED_CONFIG_DEFINITIONS } from './bundled';
@@ -20,8 +26,12 @@ if (
   );
 }
 const normalEnabled = BUNDLED_CONFIG_BOOTSTRAP.remoteBaseUrl !== null;
-const emergencyEnabled = BUNDLED_CONFIG_BOOTSTRAP.emergencyRemoteBaseUrl !== null;
+const emergencyEnabled =
+  BUNDLED_CONFIG_BOOTSTRAP.emergencyRemoteBaseUrl !== null &&
+  !isObjectEmpty(BUNDLED_CONFIG_BOOTSTRAP.emergencyKeyring);
 const remoteEnabled = normalEnabled || emergencyEnabled;
+const appVersion = Constants.expoConfig?.version ?? '0.0.0';
+let emergencyRefresh: Promise<boolean> | null = null;
 const unavailableNetwork: ConfigNetwork = {
   get: () =>
     Promise.reject(new ConfigCoreError('fetch', 'Bundled configuration has no remote endpoint')),
@@ -30,7 +40,7 @@ const unavailableNetwork: ConfigNetwork = {
 export const mobileConfiguration = platform
   ? new ConfigCore({
       context: {
-        appVersion: Constants.expoConfig?.version ?? '0.0.0',
+        appVersion,
         locale: getRuntimeLocale(),
         os: platform,
       },
@@ -62,9 +72,33 @@ export async function refreshMobileConfiguration(): Promise<boolean> {
   if (!mobileConfiguration || !remoteEnabled) return false;
   const [normal, emergency] = await Promise.all([
     normalEnabled ? mobileConfiguration.refresh() : undefined,
-    emergencyEnabled ? mobileConfiguration.refreshEmergency() : undefined,
+    emergencyEnabled ? refreshMobileEmergencyConfiguration() : undefined,
   ]);
-  return normal?.status !== 'error' && emergency?.status !== 'error';
+  return normal?.status !== 'error' && emergency !== false;
+}
+
+export function refreshMobileEmergencyConfiguration(): Promise<boolean> {
+  if (!mobileConfiguration || !emergencyEnabled) return Promise.resolve(false);
+  if (emergencyRefresh) return emergencyRefresh;
+  emergencyRefresh = mobileConfiguration
+    .refreshEmergency()
+    .then((result) => result.status !== 'error')
+    .finally(() => {
+      emergencyRefresh = null;
+    });
+  return emergencyRefresh;
+}
+
+export function getMobileEmergencyState(): {
+  support: 'active' | 'disabled' | 'unsupported';
+  state: EmergencyHostState | null;
+} {
+  if (!platform) return { support: 'unsupported', state: null };
+  if (!emergencyEnabled) return { support: 'disabled', state: null };
+  return {
+    support: 'active',
+    state: emergencyHostState(mobileConfiguration?.getState().emergency ?? null, appVersion),
+  };
 }
 
 function getRuntimeLocale(): string {

@@ -5,6 +5,7 @@
 // hard error — generated output cannot be overridden.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import {
   configBuildBundleDefaults,
   parseConfigBuildBundle,
@@ -14,6 +15,12 @@ export interface GeneratedConfigBundle {
   readonly bootstrapJson: string;
   readonly bundleText: string;
 }
+
+const CONFORMANCE_FIXTURE_PUBLIC_KEYS = new Set([
+  '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo',
+  'PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw',
+  '_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU',
+]);
 
 export function loadGeneratedConfigBundle(
   desktopDir: string,
@@ -39,6 +46,21 @@ export function loadGeneratedConfigBundle(
   const bundle = parseConfigBuildBundle(JSON.parse(bundleText));
   if (bundle.platform !== 'desktop') {
     throw new Error(`generated config bundle targets ${bundle.platform}, expected desktop`);
+  }
+  if (
+    Object.values(bundle.keyrings.emergency).some((key) => CONFORMANCE_FIXTURE_PUBLIC_KEYS.has(key))
+  ) {
+    throw new Error(
+      'generated config bundle emergency keyring contains the conformance fixture key',
+    );
+  }
+  if (
+    env.LINKCODE_REQUIRE_CONFIG_BUNDLE === '1' &&
+    (bundle.endpoints.emergency === null || isObjectEmpty(bundle.keyrings.emergency))
+  ) {
+    throw new Error(
+      'LINKCODE_REQUIRE_CONFIG_BUNDLE=1 requires an emergency endpoint and emergency public key',
+    );
   }
   // Same shape as DesktopConfigBootstrap (src/main/config.ts); parseBootstrap revalidates it at
   // runtime after Vite inlines it into the main bundle.

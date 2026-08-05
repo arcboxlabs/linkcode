@@ -4,14 +4,20 @@ import { noop } from 'foxts/noop';
 import { useState } from 'react';
 import { AppState } from 'react-native';
 import { registerMobileConfigBackgroundRefresh } from './background';
-import { subscribeToForegroundRefresh } from './lifecycle';
-import { initializeMobileConfiguration, refreshMobileConfiguration } from './mobile';
+import { subscribeToEmergencyRefresh, subscribeToForegroundRefresh } from './lifecycle';
+import {
+  getMobileEmergencyState,
+  initializeMobileConfiguration,
+  refreshMobileConfiguration,
+  refreshMobileEmergencyConfiguration,
+} from './mobile';
 
 export function useMobileConfiguration(): boolean {
   const [ready, setReady] = useState(false);
 
   useEffect((signal) => {
     let unsubscribe = noop;
+    let unsubscribeEmergency = noop;
     void initializeMobileConfiguration()
       .catch((error: unknown) => {
         Sentry.captureException(error);
@@ -24,8 +30,17 @@ export function useMobileConfiguration(): boolean {
         unsubscribe = subscribeToForegroundRefresh(AppState, () => {
           void refreshMobileConfiguration();
         });
+        if (getMobileEmergencyState().support === 'active') {
+          unsubscribeEmergency = subscribeToEmergencyRefresh(
+            AppState,
+            refreshMobileEmergencyConfiguration,
+          );
+        }
       });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubscribeEmergency();
+    };
   }, []);
 
   return ready;

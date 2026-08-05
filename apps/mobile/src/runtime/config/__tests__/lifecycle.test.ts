@@ -1,7 +1,11 @@
 import { asyncNoop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import type { BackgroundRefreshScheduler } from '../lifecycle';
-import { registerBackgroundRefresh, subscribeToForegroundRefresh } from '../lifecycle';
+import {
+  registerBackgroundRefresh,
+  subscribeToEmergencyRefresh,
+  subscribeToForegroundRefresh,
+} from '../lifecycle';
 
 class StateSource {
   listener: ((state: string) => void) | null = null;
@@ -59,6 +63,59 @@ describe('mobile configuration lifecycle', () => {
     const unsupported = makeScheduler(false, false);
     await expect(registerBackgroundRefresh(true, unsupported)).resolves.toBe('unsupported');
     expect(unsupported.register).not.toHaveBeenCalled();
+  });
+
+  it('schedules emergency refresh cadence and retries failures', async () => {
+    vi.useFakeTimers();
+    const source = new StateSource('active');
+    const refresh = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    const unsubscribe = subscribeToEmergencyRefresh(source, refresh);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(refresh).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(refresh).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(refresh).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('pauses, resumes, and ignores stale emergency refresh completion after cleanup', async () => {
+    vi.useFakeTimers();
+    const source = new StateSource('background');
+    let finishRefresh: ((success: boolean) => void) | undefined;
+    const refresh = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishRefresh = resolve;
+        }),
+    );
+    const unsubscribe = subscribeToEmergencyRefresh(source, refresh);
+
+    await vi.advanceTimersByTimeAsync(10 * 1000);
+    expect(refresh).not.toHaveBeenCalled();
+    source.emit('active');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(refresh).toHaveBeenCalledOnce();
+    source.emit('background');
+    finishRefresh?.(true);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(refresh).toHaveBeenCalledOnce();
+
+    source.emit('active');
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(source.listener).toBeNull();
+    vi.useRealTimers();
   });
 });
 
