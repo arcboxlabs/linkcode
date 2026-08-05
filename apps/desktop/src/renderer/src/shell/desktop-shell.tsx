@@ -88,6 +88,7 @@ export function DesktopShell({
   onContinueUnverified,
   onOpenProviderSettings,
   conversation,
+  onEditPrompt,
   respondingRequestIds,
   responseErrors,
   resourcesPanel,
@@ -459,6 +460,14 @@ export function DesktopShell({
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}
+          promptEditState={
+            active?.historyCapabilities?.branch === true
+              ? active.status === 'idle' || active.status === 'stopped'
+                ? 'enabled'
+                : 'busy'
+              : 'unsupported'
+          }
+          onEditPrompt={onEditPrompt}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           mentionItems={mentionItems}

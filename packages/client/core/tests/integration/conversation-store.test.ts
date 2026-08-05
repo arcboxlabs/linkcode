@@ -211,6 +211,48 @@ describe('createConversationStore', () => {
     close();
   });
 
+  it('does not restore a rewritten suffix when the replacement transcript reseeds', async () => {
+    const { client, send, close } = await harness();
+    const keep = userText('keep');
+    const source = userText('old prompt', 'source-message');
+    const discarded = userText('discarded suffix');
+    send(keep);
+    send(source);
+    send(discarded);
+    await tick();
+
+    const original = createConversationStore(client, sessionId, {
+      events: [{ event: keep }, { event: source }, { event: discarded }],
+      uptoSeq: 3,
+    });
+    expect(original.getSnapshot().items).toHaveLength(3);
+
+    const replacement = userText('rewritten prompt', 'replacement-message');
+    send({ type: 'conversation-rewind', messageId: 'source-message' as MessageId });
+    send(replacement);
+    await tick();
+    expect(
+      original
+        .getSnapshot()
+        .items.flatMap((item) =>
+          item.kind === 'message' && item.blocks[0]?.type === 'text' ? [item.blocks[0].text] : [],
+        ),
+    ).toEqual(['keep', 'rewritten prompt']);
+
+    const reseeded = createConversationStore(client, sessionId, {
+      events: [{ event: keep }, { event: replacement }],
+      uptoSeq: client.eventSeq(sessionId),
+    });
+    expect(
+      reseeded
+        .getSnapshot()
+        .items.flatMap((item) =>
+          item.kind === 'message' && item.blocks[0]?.type === 'text' ? [item.blocks[0].text] : [],
+        ),
+    ).toEqual(['keep', 'rewritten prompt']);
+    close();
+  });
+
   it('projects live-only sessions without a seed', async () => {
     const { client, send, close } = await harness();
     const store = createConversationStore(client, sessionId);

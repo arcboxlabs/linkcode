@@ -8,7 +8,7 @@ import type { SessionLifecycleService } from './lifecycle-service';
 
 type HistoryRequest = Extract<
   WirePayload,
-  { kind: 'history.list' | 'history.read' | 'history.resume' }
+  { kind: 'history.list' | 'history.read' | 'history.resume' | 'history.branch' }
 >;
 
 /** Translates provider-history requests into cached reads and session lifecycle operations. */
@@ -64,6 +64,17 @@ export class HistoryRequestHandler {
             payload.agentKind,
             payload.historyId,
             payload.startOpts,
+          ),
+        );
+      case 'history.branch':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.lifecycle.rewritePrompt(
+            payload.clientReqId,
+            payload.sourceSessionId,
+            payload.sourceMessageId,
+            payload.branchCursor,
+            payload.content,
           ),
         );
       default:

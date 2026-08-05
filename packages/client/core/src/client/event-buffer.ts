@@ -39,6 +39,13 @@ export class EventBuffer {
     const seq = (this.seqs.get(sessionId) ?? 0) + 1;
     this.seqs.set(sessionId, seq);
     const sequenced: SequencedAgentEvent = { event, seq, receivedAt: Date.now() };
+    if (event.type === 'conversation-rewind') {
+      // The reducer also rewinds, but the receive buffer must drop the suffix or a later reseed
+      // can fold discarded live events back over the provider's replacement transcript.
+      this.events.delete(sessionId);
+      this.snapshots.delete(sessionId);
+      this.resolvedRequestIds.delete(sessionId);
+    }
     if (event.type === 'permission-resolved' || event.type === 'question-resolved') {
       let resolved = this.resolvedRequestIds.get(sessionId);
       if (!resolved) {
