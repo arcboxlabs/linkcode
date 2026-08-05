@@ -25,6 +25,15 @@ import { openDesktopSettings } from './settings/store';
 import { installAdaptiveTheme } from './theme';
 import './index.css';
 
+if (import.meta.env.RENDERER_VITE_CONFIG_SIGNING_POC === '1') {
+  window.configSigningPoc = import('@linkcode/common/config-signing-poc').then(
+    async ({ runNobleConfigSigningPoc, runWebCryptoConfigSigningPoc }) => ({
+      noble: runNobleConfigSigningPoc(),
+      webCrypto: await runWebCryptoConfigSigningPoc(crypto.subtle),
+    }),
+  );
+}
+
 setKeyboardShortcutPlatform(systemBridge.app.platform === 'darwin' ? 'mac' : 'non-mac');
 
 initializeProductAnalytics({
