@@ -1,0 +1,32 @@
+{
+  "brandId": "acme",
+  "buildBundleVersion": 1,
+  "channel": "stable",
+  "endpoints": {
+    "emergency": "https://emergency.example.invalid/acme",
+    "normal": "https://config.example.invalid/acme",
+    "telemetry": "https://telemetry.example.invalid/acme"
+  },
+  "keyrings": {
+    "emergency": {
+      "build-emergency-2026": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"
+    },
+    "normal": {
+      "build-normal-2026": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    }
+  },
+  "maximumSchemaVersion": 1,
+  "platform": "android",
+  "provenance": {
+    "configRevisionId": "rev-2026-08-01-001",
+    "configVersion": "42",
+    "generatedAt": "2026-08-01T00:00:00Z",
+    "schemaVersion": 1,
+    "sourceGitSha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "snapshot": {
+    "base64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kZWZhdWx0TG9jYWxlIjoiY29sZCIsImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJhcHAucHJpdmFjeVVybCI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiZmVhdHVyZS5haUFzc2lzdCI6ImhvdCIsImZlYXR1cmUubmV3RWRpdG9yIjoiY29sZCIsIm1vZHVsZXMubWVzc2FnaW5nLmVuYWJsZWQiOiJjb2xkIiwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjoiY29sZCIsIm1vZHVsZXMud29ya3NwYWNlLmVuYWJsZWQiOiJjb2xkIiwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOiJjb2xkIiwidWkudGhlbWUiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoic3RhYmxlIiwiY29uZmlnVmVyc2lvbiI6IjQyIiwiY29udHJhY3RWZXJzaW9uIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMDgtMDFUMDA6MDA6MDBaIiwib3ZlcnJpZGVzIjpbeyJzZXQiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnRydWV9LCJ3aGVuIjp7Im9zIjoid2luZG93cyJ9fV0sInBsYXRmb3JtIjoiYW5kcm9pZCIsInJvbGxvdXRzIjp7ImZlYXR1cmUubmV3RWRpdG9yIjp7ImJhc2lzUG9pbnRzIjoyNTAwLCJzYWx0IjoiZml4dHVyZS1yb2xsb3V0LXNhbHQiLCJ2YWx1ZSI6dHJ1ZX19LCJzY2hlbWFWZXJzaW9uIjoxLCJ2YWx1ZXMiOnsiYXBwLmRlZmF1bHRMb2NhbGUiOiJlbiIsImFwcC5kaXNwbGF5TmFtZSI6IkFjbWUgU3R1ZGlvIiwiYXBwLnByaXZhY3lVcmwiOiJodHRwczovL2FjbWUuZXhhbXBsZS5pbnZhbGlkL3ByaXZhY3kiLCJjb250ZW50LmhvbWUuYmFubmVyIjp7InRpdGxlIjoiQnVpbGQgd2l0aCBBY21lIiwidXJsIjoiaHR0cHM6Ly9hY21lLmV4YW1wbGUuaW52YWxpZC9kb2NzIn0sImZlYXR1cmUuYWlBc3Npc3QiOnRydWUsImZlYXR1cmUubmV3RWRpdG9yIjpmYWxzZSwibW9kdWxlcy5tZXNzYWdpbmcuZW5hYmxlZCI6dHJ1ZSwibW9kdWxlcy50ZXJtaW5hbC5lbmFibGVkIjpmYWxzZSwibW9kdWxlcy53b3Jrc3BhY2UuZW5hYmxlZCI6dHJ1ZSwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOjUxMiwidWkudGhlbWUiOnsibG9nb1ZhcmlhbnQiOiJkYXJrIiwicHJpbWFyeSI6IiMwMDY2RkYifX19",
+    "sha256": "bbcf919d5a56bb66d1232939850f3d6cc6466cd28cc67cd796a95c69afa023aa",
+    "sizeBytes": 1098
+  }
+}

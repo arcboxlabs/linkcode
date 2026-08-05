@@ -5,11 +5,16 @@ const ID_SEGMENT_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const PACKAGE_PATH_SEGMENT_RE = /^[0-9A-Z][\w.-]*$/i;
 const WINDOWS_RESERVED_SEGMENT_RE = /^(?:aux|con|nul|prn|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const NUMERIC_IDENTIFIER_RE = /^\d+$/;
+const WHITESPACE_RE = /\s+/;
 const MAX_ID_SEGMENT_LENGTH = 64;
 const SEMVER_RE =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Z-]+(?:\.[0-9A-Z-]+)*)?(?:\+[0-9A-Z-]+(?:\.[0-9A-Z-]+)*)?$/i;
-const SRI_RE =
-  /^(?:sha256|sha384|sha512)-[A-Za-z0-9+/]+={0,2}(?:\s+(?:sha256|sha384|sha512)-[A-Za-z0-9+/]+={0,2})*$/;
+const SRI_TOKEN_RE = /^(sha256|sha384|sha512)-([A-Za-z0-9+/]+={0,2})$/;
+const SRI_DIGEST_LENGTHS: Readonly<Record<string, number>> = {
+  sha256: 32,
+  sha384: 48,
+  sha512: 64,
+};
 
 function isSafeIdSegment(value: string): boolean {
   return (
@@ -32,6 +37,21 @@ function isSemver(value: string): boolean {
       (identifier) =>
         !NUMERIC_IDENTIFIER_RE.test(identifier) || identifier === '0' || identifier[0] !== '0',
     );
+}
+
+function isSri(value: string): boolean {
+  if (value.length === 0 || value.trim() !== value) return false;
+  return value.split(WHITESPACE_RE).every((token) => {
+    const match = SRI_TOKEN_RE.exec(token);
+    if (!match) return false;
+    const [, algorithm, encoded] = match;
+    try {
+      const decoded = atob(encoded);
+      return decoded.length === SRI_DIGEST_LENGTHS[algorithm] && btoa(decoded) === encoded;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** Stable LinkCode marketplace identity, independent of every agent provider. */
@@ -76,7 +96,10 @@ const linkCodePluginSkillFields = {
   name: z.string().refine(isSafeIdSegment, 'Expected a safe lowercase skill name'),
   description: z.string().optional(),
   /** Package-relative SKILL.md entry point. */
-  entry: LinkCodePluginPackagePathSchema,
+  entry: LinkCodePluginPackagePathSchema.refine(
+    (path) => path.split('/').at(-1) === 'SKILL.md',
+    'Expected a package path ending in SKILL.md',
+  ),
 } as const;
 
 /** First portable LinkCode component: an Agent Skill package that adapters can materialize. */
@@ -139,7 +162,7 @@ export type LinkCodePluginArchiveFormat = z.infer<typeof LinkCodePluginArchiveFo
 /** SRI digest of immutable package bytes; retained after install for audit and re-verification. */
 export const LinkCodePluginIntegritySchema = z
   .string()
-  .regex(SRI_RE, 'Expected sha256, sha384, or sha512 SRI integrity');
+  .refine(isSri, 'Expected canonical sha256, sha384, or sha512 SRI integrity');
 export type LinkCodePluginIntegrity = z.infer<typeof LinkCodePluginIntegritySchema>;
 
 /** Immutable package bytes advertised by a marketplace release. */

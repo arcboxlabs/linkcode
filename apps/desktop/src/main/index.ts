@@ -7,12 +7,19 @@ import { sanitizeSentryTransaction } from '@linkcode/common/sentry';
 import type { TelemetryConfig } from '@linkcode/common/telemetry-config';
 import { DEFAULT_TELEMETRY_CONFIG, fetchTelemetryConfig } from '@linkcode/common/telemetry-config';
 import * as Sentry from '@sentry/electron/main';
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { DESKTOP_SPAN_NAMES, DESKTOP_TRANSACTION_NAMES } from '../sentry-privacy';
 import { applyThemePreference } from './appearance';
-import { setupCloudAuth } from './cloud-auth/client';
+import { authClient, setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
+import {
+  initializeDesktopConfig,
+  startDesktopConfigRefresh,
+  stopDesktopConfigRefresh,
+} from './config';
+import { registerDesktopConfigIpc } from './config-ipc';
+import { APP_NAME } from './constants';
 import { startDaemonSupervisor } from './daemon-supervisor';
 import { buildAppMenu } from './menu';
 import { getSettings } from './settings';
@@ -62,7 +69,14 @@ if (app.requestSingleInstanceLock()) {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      await initializeDesktopConfig(() => authClient.getCookie());
+      const unregisterConfigIpc = registerDesktopConfigIpc();
+      startDesktopConfigRefresh();
+      app.once('before-quit', () => {
+        stopDesktopConfigRefresh();
+        unregisterConfigIpc();
+      });
       // Dev only: brand the macOS Dock (stock Electron has no icon) with a static grid-margined
       // glass render — a full-bleed raster looks oversized. Loaded by path so it isn't bundled
       // into prod; packaged builds render live Liquid Glass from the .icon.
@@ -86,6 +100,8 @@ if (app.requestSingleInstanceLock()) {
     .catch((err) => {
       startupSpan.end();
       console.error('[link-code/desktop] failed to start:', err);
+      dialog.showErrorBox(APP_NAME, 'LinkCode failed to initialize its local configuration.');
+      app.exit(1);
     });
 
   app.on('window-all-closed', () => {

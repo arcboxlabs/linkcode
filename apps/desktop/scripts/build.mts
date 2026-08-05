@@ -13,8 +13,10 @@ async function main(): Promise<void> {
   const desktopDir = resolve(import.meta.dirname, '..');
   // Main goes first: its closeBundle stages out/daemon + out/drizzle, matching electron-vite's
   // main → preload → renderer order.
+  // main is .mts: its config imports ESM-only deps, so Vite must load it as ESM.
   for (const target of ['main', 'preload', 'renderer']) {
-    await build({ configFile: resolve(desktopDir, `vite.${target}.config.ts`), mode });
+    const ext = target === 'main' ? 'mts' : 'ts';
+    await build({ configFile: resolve(desktopDir, `vite.${target}.config.${ext}`), mode });
   }
 }
 

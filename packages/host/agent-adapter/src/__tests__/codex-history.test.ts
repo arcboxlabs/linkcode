@@ -24,6 +24,68 @@ function base64WithByteLength(bytes: number): string {
 }
 
 describe('mapCodexHistoryEvents', () => {
+  it('maps each prompt to the previous completed turn', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'turn_context', payload: { turn_id: 'turn-1' } },
+      responseItem({
+        type: 'message',
+        id: 'first-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first' }],
+      }),
+      responseItem({
+        type: 'message',
+        id: 'first-answer',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'answer' }],
+      }),
+      { type: 'turn_context', payload: { turn_id: 'turn-2' } },
+      responseItem({
+        type: 'message',
+        id: 'second-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second' }],
+      }),
+    ]);
+
+    const prompts = events.filter((event) => event.event.type === 'user-message');
+    expect(
+      prompts.map((entry) =>
+        JSON.parse(entry.event.type === 'user-message' ? (entry.event.branchCursor ?? '') : ''),
+      ),
+    ).toEqual([
+      { version: 1, kind: 'codex', historyId: HID, branchPoint: null },
+      { version: 1, kind: 'codex', historyId: HID, branchPoint: 'turn-1' },
+    ]);
+  });
+
+  it('omits the cursor for later prompts when legacy rollout rows have no turn ids', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'first-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first' }],
+      }),
+      responseItem({
+        type: 'message',
+        id: 'second-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second' }],
+      }),
+    ]);
+
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      branchCursor: expect.any(String),
+    });
+    expect(events[1].event).toEqual({
+      type: 'user-message',
+      messageId: 'second-prompt',
+      content: [{ type: 'text', text: 'second' }],
+    });
+  });
+
   it('replays text and drops synthetic user rows (pre-existing behavior)', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem(
@@ -65,6 +127,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'user-message',
       messageId: 'user-with-image',
+      branchCursor: expect.any(String),
       content: [
         { type: 'text', text: 'before' },
         { type: 'image', data: 'cG5n', mimeType: 'image/png' },
@@ -155,6 +218,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'user-message',
       messageId: 'real-prompt',
+      branchCursor: expect.any(String),
       content: [{ type: 'text', text: concatenated }],
     });
   });

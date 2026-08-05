@@ -55,9 +55,61 @@ env:
   AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
   AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
 
+  # Signed builds must embed the rendered immutable config bundle: the Vite main build and
+  # verify-artifacts both fail when it is absent instead of shipping empty defaults.
+  LINKCODE_REQUIRE_CONFIG_BUNDLE: ${{ inputs.sign && '1' || '' }}
+
 jobs:
+  # Renders the immutable config bundle from the pinned config publisher checkout (release
+  # environment holds the pins and the publisher read token). Unsigned builds skip this and
+  # build without a bundle; signed builds hard-require its output.
+  render-config:
+    name: Render immutable config
+    if: ${{ inputs.sign }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Render config bundle
+        uses: ./.github/actions/render-release-config
+        with:
+          app: desktop
+          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
+          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+          release-manifest: ${{ vars.CONFIG_RELEASE_MANIFEST_DESKTOP }}
+
+      - name: Upload rendered bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-config-bundle
+          path: apps/desktop/generated/config-build-bundle.json
+          if-no-files-found: error
+          retention-days: 1
+
   build:
     name: Build (${{ matrix.platform }})
+    needs: render-config
+    # render-config self-skips on unsigned builds; only a real failure blocks the build.
+    if: ${{ !cancelled() && (needs.render-config.result == 'success' || needs.render-config.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     # Signing is gated by the `release` environment (secrets + tag policy); '' = no environment.
     environment: ${{ inputs.sign && 'release' || '' }}
@@ -108,6 +160,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The exact bytes rendered by render-config: Vite validates them, derives the inlined
+      # bootstrap, and stages them into the asar; verify-artifacts byte-compares the staged copy.
+      - name: Fetch rendered config bundle
+        if: ${{ inputs.sign }}
+        uses: actions/download-artifact@v8
+        with:
+          name: desktop-config-bundle
+          path: apps/desktop/generated
 
       - parallel:
           - name: Build workspace

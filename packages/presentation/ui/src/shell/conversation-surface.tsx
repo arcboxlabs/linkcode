@@ -5,7 +5,7 @@ import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
-import type { ConversationViewModel } from '../chat/types';
+import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
@@ -50,6 +50,12 @@ export interface ConversationSurfaceProps {
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  promptEditState?: PromptEditState;
+  onEditPrompt?: (
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ) => Promise<void>;
   /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
   mentionItems?: MentionItem[];
   /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
@@ -92,6 +98,8 @@ export function ConversationSurface({
   className,
   conversationClassName,
   TerminalBlockComponent,
+  promptEditState = 'unsupported',
+  onEditPrompt,
   mentionItems,
   onMentionQueryChange,
   showPlanInPromptDock = true,
@@ -133,6 +141,8 @@ export function ConversationSurface({
             modelName={modelName ?? conversation.currentModel ?? undefined}
             scrollContextRef={conversationScrollRef}
             TerminalBlockComponent={TerminalBlockComponent}
+            promptEditState={promptEditState}
+            onEditPrompt={onEditPrompt}
             onReviewChanges={onReviewChanges}
           />
         </ArtifactHostActionsProvider>

@@ -193,6 +193,7 @@ describe('OpencodeHistoryServer', () => {
     const rejection = expect(call).rejects.toThrow(STARTUP_TIMEOUT_RE);
     await vi.advanceTimersByTimeAsync(5000);
     await rejection;
+    expect(spawned).toHaveLength(1);
     expect(spawned[0].signals).toContain('SIGKILL');
     spawned[0].emitExit(null, 'SIGKILL');
   });

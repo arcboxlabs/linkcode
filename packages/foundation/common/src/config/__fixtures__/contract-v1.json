@@ -1,0 +1,795 @@
+{
+  "fixtureVersion": 1,
+  "contractVersion": 1,
+  "keys": {
+    "emergency": {
+      "emergency-rfc8032-1": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    },
+    "normal": {
+      "normal-rfc8032-2": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "normal-rfc8032-3": "_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU"
+    }
+  },
+  "snapshots": {
+    "current": {
+      "document": {
+        "applyModes": {
+          "app.displayName": "cold",
+          "content.home.banner": "hot",
+          "content.items": "hot",
+          "feature.aiAssist": "hot",
+          "feature.legacy": "cold",
+          "feature.newEditor": "cold",
+          "params.upload.maxSizeMb": "cold",
+          "ui.theme": "hot",
+          "ui.theme.primary": "hot"
+        },
+        "brandId": "acme",
+        "channel": "canary",
+        "contractVersion": 1,
+        "overrides": [
+          {
+            "set": {
+              "feature.newEditor": true
+            },
+            "when": {
+              "appVersion": ">=2.3.0 <3.0.0"
+            }
+          },
+          {
+            "set": {
+              "params.upload.maxSizeMb": 100
+            },
+            "when": {
+              "os": "windows"
+            }
+          },
+          {
+            "set": {
+              "content.home.banner": {
+                "title": "你好"
+              }
+            },
+            "when": {
+              "locale": "zh"
+            }
+          }
+        ],
+        "platform": "desktop",
+        "rollouts": {
+          "feature.aiAssist": {
+            "basisPoints": 2000,
+            "salt": "r7",
+            "value": true
+          }
+        },
+        "schemaVersion": 1,
+        "configVersion": "2026.08.03-041",
+        "generatedAt": "2026-08-03T09:14:00Z",
+        "values": {
+          "app.displayName": "Acme Studio",
+          "content.home.banner": {
+            "title": "Build with LinkCode",
+            "url": "https://linkcode.ai/docs"
+          },
+          "content.items": [
+            "one",
+            "two"
+          ],
+          "feature.aiAssist": false,
+          "feature.legacy": false,
+          "params.upload.maxSizeMb": 200,
+          "ui.theme": {
+            "logoVariant": "light",
+            "nested": {
+              "keep": true
+            },
+            "primary": "#0066FF"
+          },
+          "ui.theme.primary": "atomic-dotted-key"
+        }
+      },
+      "canonicalPayload": "{\"applyModes\":{\"app.displayName\":\"cold\",\"content.home.banner\":\"hot\",\"content.items\":\"hot\",\"feature.aiAssist\":\"hot\",\"feature.legacy\":\"cold\",\"feature.newEditor\":\"cold\",\"params.upload.maxSizeMb\":\"cold\",\"ui.theme\":\"hot\",\"ui.theme.primary\":\"hot\"},\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-041\",\"contractVersion\":1,\"generatedAt\":\"2026-08-03T09:14:00Z\",\"overrides\":[{\"set\":{\"feature.newEditor\":true},\"when\":{\"appVersion\":\">=2.3.0 <3.0.0\"}},{\"set\":{\"params.upload.maxSizeMb\":100},\"when\":{\"os\":\"windows\"}},{\"set\":{\"content.home.banner\":{\"title\":\"你好\"}},\"when\":{\"locale\":\"zh\"}}],\"platform\":\"desktop\",\"rollouts\":{\"feature.aiAssist\":{\"basisPoints\":2000,\"salt\":\"r7\",\"value\":true}},\"schemaVersion\":1,\"values\":{\"app.displayName\":\"Acme Studio\",\"content.home.banner\":{\"title\":\"Build with LinkCode\",\"url\":\"https://linkcode.ai/docs\"},\"content.items\":[\"one\",\"two\"],\"feature.aiAssist\":false,\"feature.legacy\":false,\"params.upload.maxSizeMb\":200,\"ui.theme\":{\"logoVariant\":\"light\",\"nested\":{\"keep\":true},\"primary\":\"#0066FF\"},\"ui.theme.primary\":\"atomic-dotted-key\"}}",
+      "canonicalPayloadBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiY29udGVudC5pdGVtcyI6ImhvdCIsImZlYXR1cmUuYWlBc3Npc3QiOiJob3QiLCJmZWF0dXJlLmxlZ2FjeSI6ImNvbGQiLCJmZWF0dXJlLm5ld0VkaXRvciI6ImNvbGQiLCJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6ImNvbGQiLCJ1aS50aGVtZSI6ImhvdCIsInVpLnRoZW1lLnByaW1hcnkiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6IjIwMjYuMDguMDMtMDQxIiwiY29udHJhY3RWZXJzaW9uIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMDgtMDNUMDk6MTQ6MDBaIiwib3ZlcnJpZGVzIjpbeyJzZXQiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnRydWV9LCJ3aGVuIjp7ImFwcFZlcnNpb24iOiI-PTIuMy4wIDwzLjAuMCJ9fSx7InNldCI6eyJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6MTAwfSwid2hlbiI6eyJvcyI6IndpbmRvd3MifX0seyJzZXQiOnsiY29udGVudC5ob21lLmJhbm5lciI6eyJ0aXRsZSI6IuS9oOWlvSJ9fSwid2hlbiI6eyJsb2NhbGUiOiJ6aCJ9fV0sInBsYXRmb3JtIjoiZGVza3RvcCIsInJvbGxvdXRzIjp7ImZlYXR1cmUuYWlBc3Npc3QiOnsiYmFzaXNQb2ludHMiOjIwMDAsInNhbHQiOiJyNyIsInZhbHVlIjp0cnVlfX0sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGlzcGxheU5hbWUiOiJBY21lIFN0dWRpbyIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJCdWlsZCB3aXRoIExpbmtDb2RlIiwidXJsIjoiaHR0cHM6Ly9saW5rY29kZS5haS9kb2NzIn0sImNvbnRlbnQuaXRlbXMiOlsib25lIiwidHdvIl0sImZlYXR1cmUuYWlBc3Npc3QiOmZhbHNlLCJmZWF0dXJlLmxlZ2FjeSI6ZmFsc2UsInBhcmFtcy51cGxvYWQubWF4U2l6ZU1iIjoyMDAsInVpLnRoZW1lIjp7ImxvZ29WYXJpYW50IjoibGlnaHQiLCJuZXN0ZWQiOnsia2VlcCI6dHJ1ZX0sInByaW1hcnkiOiIjMDA2NkZGIn0sInVpLnRoZW1lLnByaW1hcnkiOiJhdG9taWMtZG90dGVkLWtleSJ9fQ",
+      "sha256": "f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9",
+      "sizeBytes": 1066
+    },
+    "previous": {
+      "document": {
+        "applyModes": {
+          "app.displayName": "cold",
+          "content.home.banner": "hot",
+          "content.items": "hot",
+          "feature.aiAssist": "hot",
+          "feature.legacy": "cold",
+          "feature.newEditor": "cold",
+          "params.upload.maxSizeMb": "cold",
+          "ui.theme": "hot",
+          "ui.theme.primary": "hot"
+        },
+        "brandId": "acme",
+        "channel": "canary",
+        "contractVersion": 1,
+        "overrides": [
+          {
+            "set": {
+              "feature.newEditor": true
+            },
+            "when": {
+              "appVersion": ">=2.3.0 <3.0.0"
+            }
+          },
+          {
+            "set": {
+              "params.upload.maxSizeMb": 100
+            },
+            "when": {
+              "os": "windows"
+            }
+          },
+          {
+            "set": {
+              "content.home.banner": {
+                "title": "你好"
+              }
+            },
+            "when": {
+              "locale": "zh"
+            }
+          }
+        ],
+        "platform": "desktop",
+        "rollouts": {
+          "feature.aiAssist": {
+            "basisPoints": 2000,
+            "salt": "r7",
+            "value": true
+          }
+        },
+        "schemaVersion": 1,
+        "configVersion": "2026.08.03-040",
+        "generatedAt": "2026-08-03T09:04:00Z",
+        "values": {
+          "app.displayName": "Acme Studio",
+          "content.home.banner": {
+            "title": "Welcome",
+            "url": "https://linkcode.ai"
+          },
+          "content.items": [
+            "one",
+            "two"
+          ],
+          "feature.aiAssist": false,
+          "feature.legacy": true,
+          "params.upload.maxSizeMb": 200,
+          "ui.theme": {
+            "logoVariant": "dark",
+            "nested": {
+              "drop": true,
+              "keep": true
+            },
+            "primary": "#1D9E75"
+          },
+          "ui.theme.primary": "atomic-dotted-key"
+        }
+      },
+      "canonicalPayload": "{\"applyModes\":{\"app.displayName\":\"cold\",\"content.home.banner\":\"hot\",\"content.items\":\"hot\",\"feature.aiAssist\":\"hot\",\"feature.legacy\":\"cold\",\"feature.newEditor\":\"cold\",\"params.upload.maxSizeMb\":\"cold\",\"ui.theme\":\"hot\",\"ui.theme.primary\":\"hot\"},\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"generatedAt\":\"2026-08-03T09:04:00Z\",\"overrides\":[{\"set\":{\"feature.newEditor\":true},\"when\":{\"appVersion\":\">=2.3.0 <3.0.0\"}},{\"set\":{\"params.upload.maxSizeMb\":100},\"when\":{\"os\":\"windows\"}},{\"set\":{\"content.home.banner\":{\"title\":\"你好\"}},\"when\":{\"locale\":\"zh\"}}],\"platform\":\"desktop\",\"rollouts\":{\"feature.aiAssist\":{\"basisPoints\":2000,\"salt\":\"r7\",\"value\":true}},\"schemaVersion\":1,\"values\":{\"app.displayName\":\"Acme Studio\",\"content.home.banner\":{\"title\":\"Welcome\",\"url\":\"https://linkcode.ai\"},\"content.items\":[\"one\",\"two\"],\"feature.aiAssist\":false,\"feature.legacy\":true,\"params.upload.maxSizeMb\":200,\"ui.theme\":{\"logoVariant\":\"dark\",\"nested\":{\"drop\":true,\"keep\":true},\"primary\":\"#1D9E75\"},\"ui.theme.primary\":\"atomic-dotted-key\"}}",
+      "canonicalPayloadBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiY29udGVudC5pdGVtcyI6ImhvdCIsImZlYXR1cmUuYWlBc3Npc3QiOiJob3QiLCJmZWF0dXJlLmxlZ2FjeSI6ImNvbGQiLCJmZWF0dXJlLm5ld0VkaXRvciI6ImNvbGQiLCJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6ImNvbGQiLCJ1aS50aGVtZSI6ImhvdCIsInVpLnRoZW1lLnByaW1hcnkiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6IjIwMjYuMDguMDMtMDQwIiwiY29udHJhY3RWZXJzaW9uIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMDgtMDNUMDk6MDQ6MDBaIiwib3ZlcnJpZGVzIjpbeyJzZXQiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnRydWV9LCJ3aGVuIjp7ImFwcFZlcnNpb24iOiI-PTIuMy4wIDwzLjAuMCJ9fSx7InNldCI6eyJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6MTAwfSwid2hlbiI6eyJvcyI6IndpbmRvd3MifX0seyJzZXQiOnsiY29udGVudC5ob21lLmJhbm5lciI6eyJ0aXRsZSI6IuS9oOWlvSJ9fSwid2hlbiI6eyJsb2NhbGUiOiJ6aCJ9fV0sInBsYXRmb3JtIjoiZGVza3RvcCIsInJvbGxvdXRzIjp7ImZlYXR1cmUuYWlBc3Npc3QiOnsiYmFzaXNQb2ludHMiOjIwMDAsInNhbHQiOiJyNyIsInZhbHVlIjp0cnVlfX0sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGlzcGxheU5hbWUiOiJBY21lIFN0dWRpbyIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJXZWxjb21lIiwidXJsIjoiaHR0cHM6Ly9saW5rY29kZS5haSJ9LCJjb250ZW50Lml0ZW1zIjpbIm9uZSIsInR3byJdLCJmZWF0dXJlLmFpQXNzaXN0IjpmYWxzZSwiZmVhdHVyZS5sZWdhY3kiOnRydWUsInBhcmFtcy51cGxvYWQubWF4U2l6ZU1iIjoyMDAsInVpLnRoZW1lIjp7ImxvZ29WYXJpYW50IjoiZGFyayIsIm5lc3RlZCI6eyJkcm9wIjp0cnVlLCJrZWVwIjp0cnVlfSwicHJpbWFyeSI6IiMxRDlFNzUifSwidWkudGhlbWUucHJpbWFyeSI6ImF0b21pYy1kb3R0ZWQta2V5In19",
+      "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+      "sizeBytes": 1059
+    },
+    "tampered": {
+      "canonicalPayload": "{\"applyModes\":{\"app.displayName\":\"cold\",\"content.home.banner\":\"hot\",\"content.items\":\"hot\",\"feature.aiAssist\":\"hot\",\"feature.legacy\":\"cold\",\"feature.newEditor\":\"cold\",\"params.upload.maxSizeMb\":\"cold\",\"ui.theme\":\"hot\",\"ui.theme.primary\":\"hot\"},\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-041\",\"contractVersion\":1,\"generatedAt\":\"2026-08-03T09:14:00Z\",\"overrides\":[{\"set\":{\"feature.newEditor\":true},\"when\":{\"appVersion\":\">=2.3.0 <3.0.0\"}},{\"set\":{\"params.upload.maxSizeMb\":100},\"when\":{\"os\":\"windows\"}},{\"set\":{\"content.home.banner\":{\"title\":\"你好\"}},\"when\":{\"locale\":\"zh\"}}],\"platform\":\"desktop\",\"rollouts\":{\"feature.aiAssist\":{\"basisPoints\":2000,\"salt\":\"r7\",\"value\":true}},\"schemaVersion\":1,\"values\":{\"app.displayName\":\"Acme Studio\",\"content.home.banner\":{\"title\":\"Build with LinkCode\",\"url\":\"https://linkcode.ai/docs\"},\"content.items\":[\"one\",\"two\"],\"feature.aiAssist\":true,\"feature.legacy\":false,\"params.upload.maxSizeMb\":200,\"ui.theme\":{\"logoVariant\":\"light\",\"nested\":{\"keep\":true},\"primary\":\"#0066FF\"},\"ui.theme.primary\":\"atomic-dotted-key\"}}",
+      "canonicalPayloadBase64Url": "eyJhcHBseU1vZGVzIjp7ImFwcC5kaXNwbGF5TmFtZSI6ImNvbGQiLCJjb250ZW50LmhvbWUuYmFubmVyIjoiaG90IiwiY29udGVudC5pdGVtcyI6ImhvdCIsImZlYXR1cmUuYWlBc3Npc3QiOiJob3QiLCJmZWF0dXJlLmxlZ2FjeSI6ImNvbGQiLCJmZWF0dXJlLm5ld0VkaXRvciI6ImNvbGQiLCJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6ImNvbGQiLCJ1aS50aGVtZSI6ImhvdCIsInVpLnRoZW1lLnByaW1hcnkiOiJob3QifSwiYnJhbmRJZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6IjIwMjYuMDguMDMtMDQxIiwiY29udHJhY3RWZXJzaW9uIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMDgtMDNUMDk6MTQ6MDBaIiwib3ZlcnJpZGVzIjpbeyJzZXQiOnsiZmVhdHVyZS5uZXdFZGl0b3IiOnRydWV9LCJ3aGVuIjp7ImFwcFZlcnNpb24iOiI-PTIuMy4wIDwzLjAuMCJ9fSx7InNldCI6eyJwYXJhbXMudXBsb2FkLm1heFNpemVNYiI6MTAwfSwid2hlbiI6eyJvcyI6IndpbmRvd3MifX0seyJzZXQiOnsiY29udGVudC5ob21lLmJhbm5lciI6eyJ0aXRsZSI6IuS9oOWlvSJ9fSwid2hlbiI6eyJsb2NhbGUiOiJ6aCJ9fV0sInBsYXRmb3JtIjoiZGVza3RvcCIsInJvbGxvdXRzIjp7ImZlYXR1cmUuYWlBc3Npc3QiOnsiYmFzaXNQb2ludHMiOjIwMDAsInNhbHQiOiJyNyIsInZhbHVlIjp0cnVlfX0sInNjaGVtYVZlcnNpb24iOjEsInZhbHVlcyI6eyJhcHAuZGlzcGxheU5hbWUiOiJBY21lIFN0dWRpbyIsImNvbnRlbnQuaG9tZS5iYW5uZXIiOnsidGl0bGUiOiJCdWlsZCB3aXRoIExpbmtDb2RlIiwidXJsIjoiaHR0cHM6Ly9saW5rY29kZS5haS9kb2NzIn0sImNvbnRlbnQuaXRlbXMiOlsib25lIiwidHdvIl0sImZlYXR1cmUuYWlBc3Npc3QiOnRydWUsImZlYXR1cmUubGVnYWN5IjpmYWxzZSwicGFyYW1zLnVwbG9hZC5tYXhTaXplTWIiOjIwMCwidWkudGhlbWUiOnsibG9nb1ZhcmlhbnQiOiJsaWdodCIsIm5lc3RlZCI6eyJrZWVwIjp0cnVlfSwicHJpbWFyeSI6IiMwMDY2RkYifSwidWkudGhlbWUucHJpbWFyeSI6ImF0b21pYy1kb3R0ZWQta2V5In19",
+      "document": {
+        "applyModes": {
+          "app.displayName": "cold",
+          "content.home.banner": "hot",
+          "content.items": "hot",
+          "feature.aiAssist": "hot",
+          "feature.legacy": "cold",
+          "feature.newEditor": "cold",
+          "params.upload.maxSizeMb": "cold",
+          "ui.theme": "hot",
+          "ui.theme.primary": "hot"
+        },
+        "brandId": "acme",
+        "channel": "canary",
+        "contractVersion": 1,
+        "overrides": [
+          {
+            "set": {
+              "feature.newEditor": true
+            },
+            "when": {
+              "appVersion": ">=2.3.0 <3.0.0"
+            }
+          },
+          {
+            "set": {
+              "params.upload.maxSizeMb": 100
+            },
+            "when": {
+              "os": "windows"
+            }
+          },
+          {
+            "set": {
+              "content.home.banner": {
+                "title": "你好"
+              }
+            },
+            "when": {
+              "locale": "zh"
+            }
+          }
+        ],
+        "platform": "desktop",
+        "rollouts": {
+          "feature.aiAssist": {
+            "basisPoints": 2000,
+            "salt": "r7",
+            "value": true
+          }
+        },
+        "schemaVersion": 1,
+        "configVersion": "2026.08.03-041",
+        "generatedAt": "2026-08-03T09:14:00Z",
+        "values": {
+          "app.displayName": "Acme Studio",
+          "content.home.banner": {
+            "title": "Build with LinkCode",
+            "url": "https://linkcode.ai/docs"
+          },
+          "content.items": [
+            "one",
+            "two"
+          ],
+          "feature.aiAssist": true,
+          "feature.legacy": false,
+          "params.upload.maxSizeMb": 200,
+          "ui.theme": {
+            "logoVariant": "light",
+            "nested": {
+              "keep": true
+            },
+            "primary": "#0066FF"
+          },
+          "ui.theme.primary": "atomic-dotted-key"
+        }
+      },
+      "expectedPointerSha256": "f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9",
+      "tamperedSha256": "713027f9487978b373aba0ef6994f0fe75689fdcf99a389b3221c5a8aab5a348"
+    }
+  },
+  "pointers": {
+    "additive": {
+      "document": {
+        "activationVersion": "103",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:03:00Z",
+        "keyId": "normal-rfc8032-3",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "futureHint": "optional-and-signed",
+        "sig": "nq35PGeIJOz0B6hR9KSk8dQR0NA9aAK3rtDIhQWL0SmHfaSMpGNJzF3lmdw8fhgbjFT05-ptbqgXert8i3uhCw"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"103\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:03:00Z\",\"futureHint\":\"optional-and-signed\",\"keyId\":\"normal-rfc8032-3\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMyIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMzowMFoiLCJmdXR1cmVIaW50Ijoib3B0aW9uYWwtYW5kLXNpZ25lZCIsImtleUlkIjoibm9ybWFsLXJmYzgwMzItMyIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6IjJmNmUxMDMxOTMyZGU3OThjMTZiNDU3ZDc0ODY5ZTFmZmQ2ZTJkMDFkMDNlOWIyYjZjMjBlY2Y1ODc2MzhlYWYiLCJzaXplQnl0ZXMiOjEwNTksInNuYXBzaG90U2NoZW1hVmVyc2lvbiI6MX0",
+      "payloadSha256": "ee7279a59d0de73fcdd8c177daf9b668475ed371188d33fe676dd9eae02f7487"
+    },
+    "normal": {
+      "document": {
+        "activationVersion": "100",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-041",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:00:00Z",
+        "keyId": "normal-rfc8032-2",
+        "platform": "desktop",
+        "sha256": "f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9",
+        "sizeBytes": 1066,
+        "snapshotSchemaVersion": 1,
+        "sig": "fYcXaWlPfNAI0pw4tTJHbl46OeZHTfvPuUFAoAPEu4Eou4h2jmgamHglIYnQCTBY7_l88AXbgILF9PbxrnfHCQ"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"100\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-041\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:00:00Z\",\"keyId\":\"normal-rfc8032-2\",\"platform\":\"desktop\",\"sha256\":\"f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9\",\"sizeBytes\":1066,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMCIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMDowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTIiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiJmMzQ4MjQ2NGUwOTljNDE2ZTkyZmViMTlmOTQ5MjQ1OGQwYzFjOWRlOGY3NGM4OWNhNWQyZDRhNGQ0NzYwMGI5Iiwic2l6ZUJ5dGVzIjoxMDY2LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "750c27c7ba6bd58fb6fa20e7431b9012d6d2474b79a3015e8133a4abaca78779"
+    },
+    "rollback": {
+      "document": {
+        "activationVersion": "101",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:01:00Z",
+        "keyId": "normal-rfc8032-2",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "sig": "Z5P4paQBhPz22F4K3lfsA65VF0efEUifR2qpOuE9S_VK5ZU4GeGBV0aLMLIYEgRk2UrSHkDd3sysQoidVlAUDA"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"101\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:01:00Z\",\"keyId\":\"normal-rfc8032-2\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMSIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMTowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTIiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiIyZjZlMTAzMTkzMmRlNzk4YzE2YjQ1N2Q3NDg2OWUxZmZkNmUyZDAxZDAzZTliMmI2YzIwZWNmNTg3NjM4ZWFmIiwic2l6ZUJ5dGVzIjoxMDU5LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "003ffe6ec4bc0b42793b0db716b5009f37c1c79c8204f875629900a371ba75a8"
+    },
+    "rotation": {
+      "document": {
+        "activationVersion": "102",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:02:00Z",
+        "keyId": "normal-rfc8032-3",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "sig": "upaeClxiaNnYSGjxznQWAzGZekZnE8cHmiozAXMbXIgm8491R8urSlU67ftRnay9wwfohK1T4ZhRYQMnWfalDA"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"102\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:02:00Z\",\"keyId\":\"normal-rfc8032-3\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMiIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMjowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTMiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiIyZjZlMTAzMTkzMmRlNzk4YzE2YjQ1N2Q3NDg2OWUxZmZkNmUyZDAxZDAzZTliMmI2YzIwZWNmNTg3NjM4ZWFmIiwic2l6ZUJ5dGVzIjoxMDU5LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "705727ddbbdc96dd32f51857b073e590fc1b7dbea4967ea93a39168cd753fc42"
+    },
+    "rotationWithoutBump": {
+      "document": {
+        "activationVersion": "101",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:01:00Z",
+        "keyId": "normal-rfc8032-3",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "sig": "WLw3jGEsE7Xak5G7zYQpwBYcUUZEJZ9og4AJBuPbNRweBW4VzIUUiKH7CUNliMWXNET3qhSbMM5h6Z9f3lqFDg"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"101\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:01:00Z\",\"keyId\":\"normal-rfc8032-3\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMSIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMTowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTMiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiIyZjZlMTAzMTkzMmRlNzk4YzE2YjQ1N2Q3NDg2OWUxZmZkNmUyZDAxZDAzZTliMmI2YzIwZWNmNTg3NjM4ZWFmIiwic2l6ZUJ5dGVzIjoxMDU5LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "d082b633ee3a9ee2677d5b8d8fdb826122d2e44b6be62e0f55c7f5a3f4f11c5f"
+    },
+    "schemaTooNew": {
+      "document": {
+        "activationVersion": "104",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:04:00Z",
+        "keyId": "normal-rfc8032-3",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 2,
+        "sig": "4DDyPTTOC1Jxd6KU-tq3GoBcWstnO29tjhjlQEQC2QKxxjxmy11AgzxtfSFlNLNdy3tHg3kW3POZBEUMf7pECg"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"104\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:04:00Z\",\"keyId\":\"normal-rfc8032-3\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":2}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwNCIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowNDowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTMiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiIyZjZlMTAzMTkzMmRlNzk4YzE2YjQ1N2Q3NDg2OWUxZmZkNmUyZDAxZDAzZTliMmI2YzIwZWNmNTg3NjM4ZWFmIiwic2l6ZUJ5dGVzIjoxMDU5LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjJ9",
+      "payloadSha256": "201ffcd5985c9ed5eabb4792513e1875287095758941917385d595620c8d7fa8"
+    },
+    "tampered": {
+      "document": {
+        "activationVersion": "100",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-041",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:00:00Z",
+        "keyId": "normal-rfc8032-2",
+        "platform": "desktop",
+        "sha256": "f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9",
+        "sizeBytes": 1067,
+        "snapshotSchemaVersion": 1,
+        "sig": "fYcXaWlPfNAI0pw4tTJHbl46OeZHTfvPuUFAoAPEu4Eou4h2jmgamHglIYnQCTBY7_l88AXbgILF9PbxrnfHCQ"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"100\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-041\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:00:00Z\",\"keyId\":\"normal-rfc8032-2\",\"platform\":\"desktop\",\"sha256\":\"f3482464e099c416e92feb19f9492458d0c1c9de8f74c89ca5d2d4a4d47600b9\",\"sizeBytes\":1066,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwMCIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowMDowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTIiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiJmMzQ4MjQ2NGUwOTljNDE2ZTkyZmViMTlmOTQ5MjQ1OGQwYzFjOWRlOGY3NGM4OWNhNWQyZDRhNGQ0NzYwMGI5Iiwic2l6ZUJ5dGVzIjoxMDY2LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "750c27c7ba6bd58fb6fa20e7431b9012d6d2474b79a3015e8133a4abaca78779"
+    },
+    "unknownKey": {
+      "document": {
+        "activationVersion": "105",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T09:05:00Z",
+        "keyId": "unknown-normal-key",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "sig": "yizsD3_PD-3r9hrdEfDPAT7PBz8S3kZ_T-lsweOUp_LXUz7Ww_mccJJq3OTRWz4NAyaCG_fxY5_9HW1aMj-NDg"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"105\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T09:05:00Z\",\"keyId\":\"unknown-normal-key\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwNSIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowNTowMFoiLCJrZXlJZCI6InVua25vd24tbm9ybWFsLWtleSIsInBsYXRmb3JtIjoiZGVza3RvcCIsInNoYTI1NiI6IjJmNmUxMDMxOTMyZGU3OThjMTZiNDU3ZDc0ODY5ZTFmZmQ2ZTJkMDFkMDNlOWIyYjZjMjBlY2Y1ODc2MzhlYWYiLCJzaXplQnl0ZXMiOjEwNTksInNuYXBzaG90U2NoZW1hVmVyc2lvbiI6MX0",
+      "payloadSha256": "a4b87a8c170133c367fa4a77068d064a3ee554f5864af55c1fdbd6386332d526"
+    },
+    "unsupportedContract": {
+      "document": {
+        "activationVersion": "105",
+        "brandId": "acme",
+        "channel": "canary",
+        "configVersion": "2026.08.03-040",
+        "contractVersion": 2,
+        "createdAt": "2026-08-03T09:05:00Z",
+        "keyId": "normal-rfc8032-3",
+        "platform": "desktop",
+        "sha256": "2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf",
+        "sizeBytes": 1059,
+        "snapshotSchemaVersion": 1,
+        "sig": "w-sb-Rkobps_4utawo8SzfI-utlKZ190aWJq3-wzCuO6sK-FofMnuQLkgRYXvn3AV1kOQHSyem1HleqfshoRBA"
+      },
+      "canonicalPayload": "{\"activationVersion\":\"105\",\"brandId\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"2026.08.03-040\",\"contractVersion\":2,\"createdAt\":\"2026-08-03T09:05:00Z\",\"keyId\":\"normal-rfc8032-3\",\"platform\":\"desktop\",\"sha256\":\"2f6e1031932de798c16b457d74869e1ffd6e2d01d03e9b2b6c20ecf587638eaf\",\"sizeBytes\":1059,\"snapshotSchemaVersion\":1}",
+      "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEwNSIsImJyYW5kSWQiOiJhY21lIiwiY2hhbm5lbCI6ImNhbmFyeSIsImNvbmZpZ1ZlcnNpb24iOiIyMDI2LjA4LjAzLTA0MCIsImNvbnRyYWN0VmVyc2lvbiI6MiwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QwOTowNTowMFoiLCJrZXlJZCI6Im5vcm1hbC1yZmM4MDMyLTMiLCJwbGF0Zm9ybSI6ImRlc2t0b3AiLCJzaGEyNTYiOiIyZjZlMTAzMTkzMmRlNzk4YzE2YjQ1N2Q3NDg2OWUxZmZkNmUyZDAxZDAzZTliMmI2YzIwZWNmNTg3NjM4ZWFmIiwic2l6ZUJ5dGVzIjoxMDU5LCJzbmFwc2hvdFNjaGVtYVZlcnNpb24iOjF9",
+      "payloadSha256": "659acd82a7e1f118fdb1bcc3179c2ea04200a4ead3dd06829e84d5fd0262be29"
+    }
+  },
+  "emergencies": {
+    "active": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:07:00Z",
+        "disabledFeatures": [
+          "feature.aiAssist"
+        ],
+        "emergencyVersion": "7",
+        "forceMinVersion": "2.4.0",
+        "keyId": "emergency-rfc8032-1",
+        "notice": {
+          "body": "Update LinkCode to continue using this feature.",
+          "title": "Update required",
+          "url": "https://linkcode.ai/download"
+        },
+        "platform": "desktop",
+        "sig": "vsJryxk6MdMcbrQwO8iQx_qAwV7OaCnFnZGeGuCmayKhVq2uTex0LRNSu7UcG-e7YrMkAzPTN8LmKe7LuTNWCg"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:07:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"7\",\"forceMinVersion\":\"2.4.0\",\"keyId\":\"emergency-rfc8032-1\",\"notice\":{\"body\":\"Update LinkCode to continue using this feature.\",\"title\":\"Update required\",\"url\":\"https://linkcode.ai/download\"},\"platform\":\"desktop\"}",
+      "canonicalPayloadBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowNzowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUuYWlBc3Npc3QiXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjciLCJmb3JjZU1pblZlcnNpb24iOiIyLjQuMCIsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6eyJib2R5IjoiVXBkYXRlIExpbmtDb2RlIHRvIGNvbnRpbnVlIHVzaW5nIHRoaXMgZmVhdHVyZS4iLCJ0aXRsZSI6IlVwZGF0ZSByZXF1aXJlZCIsInVybCI6Imh0dHBzOi8vbGlua2NvZGUuYWkvZG93bmxvYWQifSwicGxhdGZvcm0iOiJkZXNrdG9wIn0",
+      "payloadSha256": "d12d5f3d0661ef9c466c79558b40445a1be7d635ac30c3dd32396933af072cee"
+    },
+    "clear": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:08:00Z",
+        "disabledFeatures": [],
+        "emergencyVersion": "8",
+        "forceMinVersion": null,
+        "keyId": "emergency-rfc8032-1",
+        "notice": null,
+        "platform": "desktop",
+        "sig": "s7bKTZXRj7L8tucEgofMWMYSLgawgc2CZfcNmsSrz8p1na90xho9unRAr5xoql0NWCF__uNbvGqoBVZj3oKfBg"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:08:00Z\",\"disabledFeatures\":[],\"emergencyVersion\":\"8\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\"}",
+      "canonicalPayloadBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowODowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjgiLCJmb3JjZU1pblZlcnNpb24iOm51bGwsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6bnVsbCwicGxhdGZvcm0iOiJkZXNrdG9wIn0",
+      "payloadSha256": "6ad8ee532e319c0b1ed0539cf4a2bc7d15423c7a1103c6589b030864004f510a"
+    },
+    "equivocation": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:08:00Z",
+        "disabledFeatures": [
+          "feature.newEditor"
+        ],
+        "emergencyVersion": "8",
+        "forceMinVersion": null,
+        "keyId": "emergency-rfc8032-1",
+        "notice": null,
+        "platform": "desktop",
+        "sig": "ZvNluVESOvBDX_aFn8IewnGsCGN_Wu3UczKtSAxc-JP_RHaoXlbrMv5LQwBrDyWWeAhBrZuswrsAt7FMPZzcBw"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:08:00Z\",\"disabledFeatures\":[\"feature.newEditor\"],\"emergencyVersion\":\"8\",\"forceMinVersion\":null,\"keyId\":\"emergency-rfc8032-1\",\"notice\":null,\"platform\":\"desktop\"}",
+      "canonicalPayloadBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowODowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUubmV3RWRpdG9yIl0sImVtZXJnZW5jeVZlcnNpb24iOiI4IiwiZm9yY2VNaW5WZXJzaW9uIjpudWxsLCJrZXlJZCI6ImVtZXJnZW5jeS1yZmM4MDMyLTEiLCJub3RpY2UiOm51bGwsInBsYXRmb3JtIjoiZGVza3RvcCJ9",
+      "payloadSha256": "eaa9cdb463c558e8ec312a2207b96287344d734e3cb28974b5a2afa667f39ff9"
+    },
+    "tampered": {
+      "document": {
+        "brandId": "acme",
+        "contractVersion": 1,
+        "createdAt": "2026-08-03T10:07:00Z",
+        "disabledFeatures": [
+          "feature.aiAssist"
+        ],
+        "emergencyVersion": "7",
+        "forceMinVersion": "2.5.0",
+        "keyId": "emergency-rfc8032-1",
+        "notice": {
+          "body": "Update LinkCode to continue using this feature.",
+          "title": "Update required",
+          "url": "https://linkcode.ai/download"
+        },
+        "platform": "desktop",
+        "sig": "vsJryxk6MdMcbrQwO8iQx_qAwV7OaCnFnZGeGuCmayKhVq2uTex0LRNSu7UcG-e7YrMkAzPTN8LmKe7LuTNWCg"
+      },
+      "canonicalPayload": "{\"brandId\":\"acme\",\"contractVersion\":1,\"createdAt\":\"2026-08-03T10:07:00Z\",\"disabledFeatures\":[\"feature.aiAssist\"],\"emergencyVersion\":\"7\",\"forceMinVersion\":\"2.4.0\",\"keyId\":\"emergency-rfc8032-1\",\"notice\":{\"body\":\"Update LinkCode to continue using this feature.\",\"title\":\"Update required\",\"url\":\"https://linkcode.ai/download\"},\"platform\":\"desktop\"}",
+      "canonicalPayloadBase64Url": "eyJicmFuZElkIjoiYWNtZSIsImNvbnRyYWN0VmVyc2lvbiI6MSwiY3JlYXRlZEF0IjoiMjAyNi0wOC0wM1QxMDowNzowMFoiLCJkaXNhYmxlZEZlYXR1cmVzIjpbImZlYXR1cmUuYWlBc3Npc3QiXSwiZW1lcmdlbmN5VmVyc2lvbiI6IjciLCJmb3JjZU1pblZlcnNpb24iOiIyLjQuMCIsImtleUlkIjoiZW1lcmdlbmN5LXJmYzgwMzItMSIsIm5vdGljZSI6eyJib2R5IjoiVXBkYXRlIExpbmtDb2RlIHRvIGNvbnRpbnVlIHVzaW5nIHRoaXMgZmVhdHVyZS4iLCJ0aXRsZSI6IlVwZGF0ZSByZXF1aXJlZCIsInVybCI6Imh0dHBzOi8vbGlua2NvZGUuYWkvZG93bmxvYWQifSwicGxhdGZvcm0iOiJkZXNrdG9wIn0",
+      "payloadSha256": "d12d5f3d0661ef9c466c79558b40445a1be7d635ac30c3dd32396933af072cee"
+    }
+  },
+  "cases": {
+    "conditions": [
+      {
+        "condition": {
+          "appVersion": ">=2.3.0"
+        },
+        "context": {
+          "appVersion": "2.4.0-beta.1",
+          "locale": "en-US",
+          "os": "macos"
+        },
+        "name": "SemVer prerelease uses direct precedence",
+        "expectedMatch": true
+      },
+      {
+        "condition": {
+          "appVersion": ">=2.3.0 <3.0.0",
+          "os": "windows"
+        },
+        "context": {
+          "appVersion": "2.5.0",
+          "locale": "en-US",
+          "os": "macos"
+        },
+        "name": "conditions are ANDed",
+        "expectedMatch": false
+      },
+      {
+        "condition": {
+          "locale": "zh"
+        },
+        "context": {
+          "appVersion": "2.5.0",
+          "locale": "ZH_cn",
+          "os": "windows"
+        },
+        "name": "locale underscore and case normalization",
+        "expectedMatch": true
+      },
+      {
+        "condition": {
+          "locale": "zh"
+        },
+        "context": {
+          "appVersion": "2.5.0",
+          "locale": "zha",
+          "os": "windows"
+        },
+        "name": "locale subtag boundary",
+        "expectedMatch": false
+      },
+      {
+        "condition": {
+          "appVersion": ">=2.3.0"
+        },
+        "context": {
+          "appVersion": "not-semver",
+          "locale": "en",
+          "os": "linux"
+        },
+        "name": "invalid runtime SemVer skips override",
+        "expectedMatch": false
+      }
+    ],
+    "emergencyAntiReplay": [
+      {
+        "accepted": null,
+        "candidate": "active",
+        "name": "first emergency",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "active",
+        "candidate": "active",
+        "name": "idempotent emergency",
+        "expectedDecision": "idempotent"
+      },
+      {
+        "accepted": "active",
+        "candidate": "clear",
+        "name": "explicit clear",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "clear",
+        "candidate": "active",
+        "name": "emergency replay",
+        "expectedDecision": "replay"
+      },
+      {
+        "accepted": "clear",
+        "candidate": "equivocation",
+        "name": "emergency equivocation",
+        "expectedDecision": "equivocation"
+      }
+    ],
+    "keyRotation": {
+      "expectedWithOldKeyOnly": "unknown-key",
+      "expectedWithOverlap": "signature-valid",
+      "newKeyId": "normal-rfc8032-3",
+      "oldKeyId": "normal-rfc8032-2",
+      "pointer": "rotation",
+      "reusesSnapshotFrom": "rollback",
+      "versionWasIncremented": true
+    },
+    "mergePatch": {
+      "base": {
+        "content.items": [
+          "one",
+          "two"
+        ],
+        "feature.legacy": true,
+        "ui.theme": {
+          "logoVariant": "dark",
+          "nested": {
+            "drop": true,
+            "keep": true
+          },
+          "primary": "#1D9E75"
+        },
+        "ui.theme.primary": "independent"
+      },
+      "patch": {
+        "content.items": [
+          "replacement"
+        ],
+        "feature.legacy": null,
+        "ui.theme": {
+          "logoVariant": "light",
+          "nested": {
+            "add": true,
+            "drop": null
+          }
+        }
+      },
+      "expected": {
+        "content.items": [
+          "replacement"
+        ],
+        "ui.theme": {
+          "logoVariant": "light",
+          "nested": {
+            "keep": true,
+            "add": true
+          },
+          "primary": "#1D9E75"
+        },
+        "ui.theme.primary": "independent"
+      }
+    },
+    "monotonicVersionErrors": [
+      "",
+      "+1",
+      "01",
+      " 1",
+      "18446744073709551616",
+      "100000000000000000000"
+    ],
+    "pointerAntiReplay": [
+      {
+        "accepted": null,
+        "candidate": "normal",
+        "name": "first publication",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "normal",
+        "candidate": "normal",
+        "name": "idempotent retry",
+        "expectedDecision": "idempotent"
+      },
+      {
+        "accepted": "normal",
+        "candidate": "rollback",
+        "name": "rollback",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "rollback",
+        "candidate": "normal",
+        "name": "replay",
+        "expectedDecision": "replay"
+      },
+      {
+        "accepted": "rollback",
+        "candidate": "rotationWithoutBump",
+        "name": "key change without version bump",
+        "expectedDecision": "equivocation"
+      },
+      {
+        "accepted": "rollback",
+        "candidate": "rotation",
+        "name": "key rotation with version bump",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "rotation",
+        "candidate": "additive",
+        "name": "signed additive field",
+        "expectedDecision": "advance"
+      },
+      {
+        "accepted": "additive",
+        "candidate": "schemaTooNew",
+        "name": "unsupported schema advances trusted high-water",
+        "expectedDecision": "advance"
+      }
+    ],
+    "rollouts": [
+      {
+        "deviceId": "550E8400-E29B-41D4-A716-446655440000",
+        "expectedBucket": 3949,
+        "expectedHitAtBoundary": false,
+        "expectedHitAboveBoundary": true,
+        "expectedHitAtZero": false,
+        "expectedHitAtFull": true,
+        "salt": "a"
+      },
+      {
+        "deviceId": "550E8400-E29B-41D4-A716-446655440000",
+        "expectedBucket": 4782,
+        "expectedHitAtBoundary": false,
+        "expectedHitAboveBoundary": true,
+        "expectedHitAtZero": false,
+        "expectedHitAtFull": true,
+        "salt": "é"
+      },
+      {
+        "deviceId": "550E8400-E29B-41D4-A716-446655440000",
+        "expectedBucket": 4340,
+        "expectedHitAtBoundary": false,
+        "expectedHitAboveBoundary": true,
+        "expectedHitAtZero": false,
+        "expectedHitAtFull": true,
+        "salt": "签"
+      }
+    ],
+    "tamper": [
+      {
+        "expected": "signature-invalid",
+        "kind": "pointer",
+        "vector": "tampered"
+      },
+      {
+        "expected": "raw-sha256-mismatch",
+        "kind": "snapshot",
+        "vector": "tampered"
+      },
+      {
+        "expected": "signature-invalid",
+        "kind": "emergency",
+        "vector": "tampered"
+      }
+    ],
+    "targets": [
+      {
+        "document": "normal",
+        "expectedMatch": true,
+        "name": "normal target"
+      },
+      {
+        "document": "normal",
+        "expectedMatch": false,
+        "name": "cross-channel replay"
+      },
+      {
+        "document": "active",
+        "expectedMatch": false,
+        "name": "cross-brand emergency replay"
+      }
+    ]
+  }
+}

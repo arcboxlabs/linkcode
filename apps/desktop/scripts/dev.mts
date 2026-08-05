@@ -30,8 +30,10 @@ async function main(): Promise<void> {
   process.env.NODE_ENV ??= 'development';
 
   const desktopDir = resolve(import.meta.dirname, '..');
+  // main is .mts: its config imports ESM-only deps, so Vite must load it as ESM.
   for (const target of ['main', 'preload']) {
-    await build({ configFile: resolve(desktopDir, `vite.${target}.config.ts`), mode });
+    const ext = target === 'main' ? 'mts' : 'ts';
+    await build({ configFile: resolve(desktopDir, `vite.${target}.config.${ext}`), mode });
   }
 
   const server = await createServer({

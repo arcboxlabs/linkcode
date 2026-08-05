@@ -1,0 +1,153 @@
+name: Render release config
+description: >
+  Renders the immutable build-time config bundle for a signed release. Checks out the config
+  publisher and structural source at the exact commits pinned by the release manifest(s), then
+  invokes the app's config:render through the pinned checkout. Every input is explicit: a missing
+  value fails the build with an actionable error, and nothing is fetched from a mutable ref.
+
+inputs:
+  app:
+    description: Which app to render for (desktop or mobile)
+    required: true
+  publisher-repo:
+    description: owner/name of the config publisher repository (vars.CONFIG_PUBLISHER_REPO)
+    required: false
+    default: ""
+  publisher-token:
+    description: Token that can read the config publisher repository (secrets.CONFIG_PUBLISHER_TOKEN)
+    required: false
+    default: ""
+  revision:
+    description: Config revision metadata JSON content (vars.CONFIG_RELEASE_REVISION)
+    required: false
+    default: ""
+  keyrings:
+    description: Public keyrings JSON content (vars.CONFIG_RELEASE_KEYRINGS)
+    required: false
+    default: ""
+  release-manifest:
+    description: Desktop release-render manifest JSON content (app == desktop)
+    required: false
+    default: ""
+  release-manifest-ios:
+    description: iOS release-render manifest JSON content (app == mobile)
+    required: false
+    default: ""
+  release-manifest-android:
+    description: Android release-render manifest JSON content (app == mobile)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Render config bundle from pinned publisher checkout
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+        PUBLISHER_REPO: ${{ inputs.publisher-repo }}
+        PUBLISHER_TOKEN: ${{ inputs.publisher-token }}
+        REVISION_JSON: ${{ inputs.revision }}
+        KEYRINGS_JSON: ${{ inputs.keyrings }}
+        MANIFEST_DESKTOP: ${{ inputs.release-manifest }}
+        MANIFEST_IOS: ${{ inputs.release-manifest-ios }}
+        MANIFEST_ANDROID: ${{ inputs.release-manifest-android }}
+      run: |
+        set -euo pipefail
+
+        missing=()
+        [ -n "$PUBLISHER_REPO" ] || missing+=(CONFIG_PUBLISHER_REPO)
+        [ -n "$PUBLISHER_TOKEN" ] || missing+=(CONFIG_PUBLISHER_TOKEN)
+        [ -n "$REVISION_JSON" ] || missing+=(CONFIG_RELEASE_REVISION)
+        [ -n "$KEYRINGS_JSON" ] || missing+=(CONFIG_RELEASE_KEYRINGS)
+        case "$APP" in
+          desktop) [ -n "$MANIFEST_DESKTOP" ] || missing+=(CONFIG_RELEASE_MANIFEST_DESKTOP) ;;
+          mobile)
+            [ -n "$MANIFEST_IOS" ] || missing+=(CONFIG_RELEASE_MANIFEST_IOS)
+            [ -n "$MANIFEST_ANDROID" ] || missing+=(CONFIG_RELEASE_MANIFEST_ANDROID)
+            ;;
+          *) echo "::error::render-release-config: unknown app '$APP'"; exit 1 ;;
+        esac
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "::error::Release builds embed an immutable config bundle rendered from the pinned config publisher checkout, but these release-environment inputs are missing: ${missing[*]}. Configure them in the GitHub 'release' environment (see docs/RELEASE.md, 'Immutable config bundle')."
+          exit 1
+        fi
+
+        work="$RUNNER_TEMP/config-render"
+        mkdir -p "$work"
+        printf '%s' "$REVISION_JSON" > "$work/revision.json"
+        printf '%s' "$KEYRINGS_JSON" > "$work/keyrings.json"
+
+        pin() { jq -er "$2" "$1"; }
+        # Validated at top level before any $(pin …) use: inside command substitution a failure
+        # would be swallowed (stdout captured; exit only leaves the subshell).
+        check_manifest() {
+          for field in .publisherGitSha .sourceGitSha .brandId .channel .telemetryEndpoint; do
+            if ! pin "$1" "$field" > /dev/null; then
+              echo "::error::Release manifest $1 is missing or has a null field: $field"
+              exit 1
+            fi
+          done
+        }
+
+        if [ "$APP" = desktop ]; then
+          printf '%s' "$MANIFEST_DESKTOP" > "$work/manifest-desktop.json"
+          check_manifest "$work/manifest-desktop.json"
+          primary="$work/manifest-desktop.json"
+        else
+          printf '%s' "$MANIFEST_IOS" > "$work/manifest-ios.json"
+          printf '%s' "$MANIFEST_ANDROID" > "$work/manifest-android.json"
+          check_manifest "$work/manifest-ios.json"
+          check_manifest "$work/manifest-android.json"
+          primary="$work/manifest-ios.json"
+          # Both mobile targets must pin identical commits, target identity, and endpoint —
+          # they render in one invocation from one pair of checkouts.
+          for field in .publisherGitSha .sourceGitSha .brandId .channel .telemetryEndpoint; do
+            if [ "$(pin "$work/manifest-ios.json" "$field")" != "$(pin "$work/manifest-android.json" "$field")" ]; then
+              echo "::error::iOS and Android release manifests disagree on $field; both targets must render from the same pinned inputs"
+              exit 1
+            fi
+          done
+        fi
+
+        publisher_sha="$(pin "$primary" .publisherGitSha)"
+        source_sha="$(pin "$primary" .sourceGitSha)"
+        brand="$(pin "$primary" .brandId)"
+        channel="$(pin "$primary" .channel)"
+        telemetry="$(pin "$primary" .telemetryEndpoint)"
+
+        # Fetch exactly the two pinned commits — never a branch head — and keep the token out of
+        # persisted git config by passing it per command.
+        auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$PUBLISHER_TOKEN" | base64 -w0)"
+        publisher="$work/publisher"
+        git init -q "$publisher"
+        git -C "$publisher" remote add origin "https://github.com/${PUBLISHER_REPO}.git"
+        if ! git -C "$publisher" -c "http.https://github.com/.extraheader=$auth" \
+            fetch -q --depth 1 origin "$publisher_sha" "$source_sha"; then
+          echo "::error::Could not fetch pinned commits ${publisher_sha} / ${source_sha} from the config publisher repository. Release builds require read access to the private publisher repository and both pinned commits to exist."
+          exit 1
+        fi
+        git -C "$publisher" checkout -q "$publisher_sha"
+        git -C "$publisher" worktree add -q --detach "$work/source" "$source_sha"
+
+        pnpm --dir "$publisher" install --frozen-lockfile
+
+        common_args=(
+          --publisher "$publisher"
+          --publisher-git-sha "$publisher_sha"
+          --structural "$work/source/packages/config-structural"
+          --source-git-sha "$source_sha"
+          --revision "$work/revision.json"
+          --keyrings "$work/keyrings.json"
+          --brand "$brand"
+          --channel "$channel"
+          --telemetry-endpoint "$telemetry"
+        )
+        if [ "$APP" = desktop ]; then
+          pnpm -F @linkcode/desktop config:render "${common_args[@]}" \
+            --release-manifest "$work/manifest-desktop.json"
+        else
+          pnpm -F @linkcode/mobile config:render "${common_args[@]}" \
+            --release-manifest-ios "$work/manifest-ios.json" \
+            --release-manifest-android "$work/manifest-android.json"
+        fi

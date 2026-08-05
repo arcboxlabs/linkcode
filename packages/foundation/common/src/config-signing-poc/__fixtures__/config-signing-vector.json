@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "rfc8785": {
+    "source": "RFC 8785 sections 3.2.2-3.2.3",
+    "input": {
+      "numbers": [333333333.3333333, 1e30, 4.5, 0.002, 1e-27],
+      "string": "€$\u000f\nA'B\"\\\\\"/",
+      "literals": [null, true, false]
+    },
+    "canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+  },
+  "rfc8032": {
+    "source": "RFC 8032 section 7.1 test 2",
+    "publicKeyBase64Url": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+    "messageBase64Url": "cg",
+    "signatureBase64Url": "kqAJqfDUyrhyDoILX2QlQKKye1QWUD-Ps3YiI-vbadoIWsHkPhWZbkWPNhPQ8R2MOHsurrQwKu6wDSkWErsMAA"
+  },
+  "snapshot": {
+    "payload": {
+      "brand": "acme",
+      "channel": "canary",
+      "configVersion": "code-537-poc-1",
+      "platform": "desktop",
+      "schemaVersion": 1,
+      "values": {
+        "content.poc": "签名配置",
+        "feature.poc": true
+      }
+    },
+    "canonicalPayload": "{\"brand\":\"acme\",\"channel\":\"canary\",\"configVersion\":\"code-537-poc-1\",\"platform\":\"desktop\",\"schemaVersion\":1,\"values\":{\"content.poc\":\"签名配置\",\"feature.poc\":true}}",
+    "canonicalPayloadBase64Url": "eyJicmFuZCI6ImFjbWUiLCJjaGFubmVsIjoiY2FuYXJ5IiwiY29uZmlnVmVyc2lvbiI6ImNvZGUtNTM3LXBvYy0xIiwicGxhdGZvcm0iOiJkZXNrdG9wIiwic2NoZW1hVmVyc2lvbiI6MSwidmFsdWVzIjp7ImNvbnRlbnQucG9jIjoi562-5ZCN6YWN572uIiwiZmVhdHVyZS5wb2MiOnRydWV9fQ",
+    "sha256": "513910f70984fbd2290d4538d8e668a8b9d853b466921e6839695b2d98b10e97",
+    "sizeBytes": 166
+  },
+  "configPointer": {
+    "payload": {
+      "activationVersion": "1",
+      "createdAt": "2026-08-03T09:14:00Z",
+      "keyId": "rfc8032-test-2",
+      "sha256": "513910f70984fbd2290d4538d8e668a8b9d853b466921e6839695b2d98b10e97",
+      "sizeBytes": 166
+    },
+    "canonicalPayload": "{\"activationVersion\":\"1\",\"createdAt\":\"2026-08-03T09:14:00Z\",\"keyId\":\"rfc8032-test-2\",\"sha256\":\"513910f70984fbd2290d4538d8e668a8b9d853b466921e6839695b2d98b10e97\",\"sizeBytes\":166}",
+    "canonicalPayloadBase64Url": "eyJhY3RpdmF0aW9uVmVyc2lvbiI6IjEiLCJjcmVhdGVkQXQiOiIyMDI2LTA4LTAzVDA5OjE0OjAwWiIsImtleUlkIjoicmZjODAzMi10ZXN0LTIiLCJzaGEyNTYiOiI1MTM5MTBmNzA5ODRmYmQyMjkwZDQ1MzhkOGU2NjhhOGI5ZDg1M2I0NjY5MjFlNjgzOTY5NWIyZDk4YjEwZTk3Iiwic2l6ZUJ5dGVzIjoxNjZ9",
+    "publicKeyBase64Url": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+    "signatureBase64Url": "hmu_EFSVNODmzhIROkIySXGqYvDTWRIvKZys7E7SGsnB5SXTBg-WWx2oZJvznKFCfEGOM5Rf_V2TN_WJt4aPDQ"
+  },
+  "emergency": {
+    "payload": {
+      "disabledFeatures": ["feature.poc"],
+      "forceMinVersion": null,
+      "keyId": "rfc8032-test-1",
+      "version": 1
+    },
+    "canonicalPayload": "{\"disabledFeatures\":[\"feature.poc\"],\"forceMinVersion\":null,\"keyId\":\"rfc8032-test-1\",\"version\":1}",
+    "publicKeyBase64Url": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+    "signatureBase64Url": "gS8pQHrYZWqix17Xcdcgj5GoEl_3XhcHT1gJTc9XRfTi6ICnENIrK7j-lw5rhftmneKRpQe7mu6n8s0XjpCiDA"
+  }
+}

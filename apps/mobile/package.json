@@ -8,6 +8,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "config:render": "pnpm --dir ../.. exec tsx apps/mobile/scripts/render-config-bundle.mts",
+    "config:verify-release": "node scripts/verify-release-config.cjs",
+    "eas-build-pre-install": "node scripts/verify-release-config.cjs --hook",
     "smoke:export": "node scripts/smoke-native-entry-export.cjs",
     "e2e:ui": "MAESTRO_CLI_NO_ANALYTICS=1 maestro test e2e/flows",
     "lint": "eslint --format=sukka ."
