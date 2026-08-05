@@ -89,6 +89,24 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     secretPlaceholder: 'xai-…',
   },
   {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    group: 'direct',
+    kind: 'endpoint',
+    credentialType: 'api-key',
+    variants: {
+      // Claude model names are remapped server-side (opus → v4-pro, sonnet/haiku → v4-flash).
+      anthropic: { baseUrl: 'https://api.deepseek.com/anthropic' },
+      // Responses serves `deepseek-v4-flash` only; v4-pro is still unsupported there (2026-08).
+      'openai-responses': { baseUrl: 'https://api.deepseek.com' },
+      'openai-chat': {
+        baseUrl: 'https://api.deepseek.com',
+        knownProvider: { opencode: 'deepseek', pi: 'deepseek' },
+      },
+    },
+    secretPlaceholder: 'sk-…',
+  },
+  {
     id: 'openrouter',
     label: 'OpenRouter',
     group: 'gateway',

@@ -108,6 +108,33 @@ describe('resolveBinding: variant chosen per agent', () => {
     expect(resolveBinding(openai, 'pi')).toMatchObject({ knownProvider: 'openai' });
   });
 
+  it('serves every agent natively from one three-variant service', () => {
+    const deepseek = account({ service: 'deepseek' });
+    expect(resolveBinding(deepseek, 'claude-code')).toEqual({
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+    });
+    expect(resolveBinding(deepseek, 'codex')).toEqual({
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://api.deepseek.com',
+    });
+    for (const kind of ['opencode', 'pi'] as const) {
+      expect(resolveBinding(deepseek, kind)).toEqual({
+        tier: 'native',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.deepseek.com',
+        knownProvider: 'deepseek',
+      });
+    }
+    // No translator anywhere: one key reaches four agents over three different wires.
+    expect(resolveBinding(deepseek, 'grok-build')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
+  });
+
   it('prefers a native anthropic variant over translation', () => {
     const openrouter = account({
       service: 'openrouter',
