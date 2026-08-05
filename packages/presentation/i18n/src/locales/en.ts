@@ -1071,7 +1071,7 @@ export const en = {
         'chatgpt-sub': 'Codex login, Plus / Pro plans',
         'anthropic-api': 'A key from console.anthropic.com',
         'openai-api': 'A key from platform.openai.com',
-        deepseek: 'A DeepSeek API key, OpenAI Chat-compatible',
+        deepseek: 'A DeepSeek API key, all three protocol shapes',
         xai: 'A key from console.x.ai, OpenAI-compatible',
         openrouter: 'Aggregation gateway, both protocol shapes',
         'vercel-gateway': 'Server-side translation, both protocol shapes',

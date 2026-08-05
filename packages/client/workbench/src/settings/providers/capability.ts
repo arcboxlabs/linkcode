@@ -7,8 +7,7 @@ import { accountProtocol } from './catalog';
  * adapters, packages/host/engine `translator.ts`):
  * - claude-code speaks Anthropic natively (`ANTHROPIC_*` env); an `openai-chat` endpoint is
  *   reachable through the local aigateway translator, which needs a base URL AND a key.
- * - codex reaches Responses endpoints via `OPENAI_BASE_URL` + `CODEX_API_KEY`; existing generic
- *   Chat-compatible services remain accepted, except known Chat-only services such as DeepSeek.
+ * - codex reaches Responses and compatible Chat endpoints via `OPENAI_BASE_URL` + `CODEX_API_KEY`.
  * - opencode and pi: openai-chat is the verified path; an Anthropic endpoint plausibly works but
  *   is unverified against the SDK — flip it here once verified live.
  * - grok-build only consumes an xAI key as `XAI_API_KEY`; it ignores custom endpoint base URLs.
@@ -52,9 +51,6 @@ export function bindingAvailability(account: Account, kind: AgentKind): BindingA
     return account.service === 'xai' || (protocol === undefined && account.service === undefined)
       ? { tier: 'native' }
       : { tier: 'unavailable', reason: 'protocol-unsupported' };
-  }
-  if (kind === 'codex' && account.service === 'deepseek') {
-    return { tier: 'unavailable', reason: 'protocol-unsupported' };
   }
   // Unknown protocol (pre-catalog custom account without endpoint): keep it bindable everywhere,
   // matching the pre-catalog behavior — the user knows which vendor the bare key belongs to.

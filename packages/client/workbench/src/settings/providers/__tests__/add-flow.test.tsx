@@ -165,7 +165,11 @@ describe('non-subscription account creation', () => {
     );
   });
 
-  it('creates a DeepSeek account with its Chat-compatible endpoint', async () => {
+  it.each([
+    ['openai-chat', 'https://api.deepseek.com', 0],
+    ['openai-responses', 'https://api.deepseek.com', 1],
+    ['anthropic', 'https://api.deepseek.com/anthropic', 2],
+  ])('creates a DeepSeek account with its %s endpoint', async (protocol, baseUrl, variantIndex) => {
     const onSubmit = vi.fn();
     render(
       <AddAccountForm
@@ -178,6 +182,7 @@ describe('non-subscription account creation', () => {
       />,
     );
 
+    fireEvent.click(screen.getAllByRole('radio').at(variantIndex)!);
     fireEvent.change(screen.getByPlaceholderText('sk-…'), { target: { value: 'sk-deepseek' } });
     fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
     await waitFor(() =>
@@ -185,7 +190,7 @@ describe('non-subscription account creation', () => {
         expect.objectContaining({
           service: 'deepseek',
           credential: { type: 'api-key', key: 'sk-deepseek' },
-          endpoint: { baseUrl: 'https://api.deepseek.com', protocol: 'openai-chat' },
+          endpoint: { baseUrl, protocol },
         }),
       ),
     );

@@ -1045,7 +1045,7 @@ export const zhCN = {
         'chatgpt-sub': 'Codex 登录,Plus / Pro 计划',
         'anthropic-api': 'console.anthropic.com 的密钥',
         'openai-api': 'platform.openai.com 的密钥',
-        deepseek: 'DeepSeek API 密钥,OpenAI Chat 兼容',
+        deepseek: 'DeepSeek API 密钥,三种协议形态',
         xai: 'console.x.ai 的密钥,OpenAI 兼容',
         openrouter: '聚合网关,双协议形态',
         'vercel-gateway': '服务端翻译,双协议形态',

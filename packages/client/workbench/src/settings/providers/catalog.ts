@@ -17,9 +17,9 @@ import type {
 /** Grouping in the add-account catalog grid. */
 export type ServiceGroup = 'subscription' | 'direct' | 'gateway' | 'custom';
 
-/** One endpoint shape a service offers; dual-shape gateways expose one variant per protocol. */
+/** One endpoint shape a service offers; multi-protocol services expose one variant per protocol. */
 export interface ServiceVariant {
-  id: 'openai' | 'anthropic' | 'default';
+  id: 'openai' | 'responses' | 'anthropic' | 'default';
   protocol: AccountProtocol;
   /** Endpoint URL, possibly templated with `{placeholder}` segments. */
   baseUrl: string;
@@ -82,9 +82,21 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     kind: 'endpoint',
     variants: [
       {
-        id: 'default',
+        id: 'openai',
         protocol: 'openai-chat',
         baseUrl: 'https://api.deepseek.com',
+        credentialType: 'api-key',
+      },
+      {
+        id: 'responses',
+        protocol: 'openai-responses',
+        baseUrl: 'https://api.deepseek.com',
+        credentialType: 'api-key',
+      },
+      {
+        id: 'anthropic',
+        protocol: 'anthropic',
+        baseUrl: 'https://api.deepseek.com/anthropic',
         credentialType: 'api-key',
       },
     ],
