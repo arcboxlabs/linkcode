@@ -54,7 +54,7 @@ if (telemetry) {
   useAnalyticsPreferenceStore.subscribe((state) => {
     if (state.enabled === previousConsent) return;
     previousConsent = state.enabled;
-    telemetry.syncConsent();
+    if (useAnalyticsPreferenceStore.persist.hasHydrated()) telemetry.syncConsent();
   });
 }
 
