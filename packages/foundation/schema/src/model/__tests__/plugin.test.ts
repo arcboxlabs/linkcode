@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   InstalledLinkCodePluginSchema,
+  LinkCodePluginIntegritySchema,
   LinkCodePluginManifestSchema,
   LinkCodePluginReleaseSchema,
 } from '../linkcode-plugin';
@@ -219,7 +220,9 @@ describe('LinkCode plugin package contracts', () => {
     'C:/SKILL.md',
     'skills/latex./SKILL.md',
     `skills/latex${String.fromCodePoint(0)}/SKILL.md`,
-  ])('rejects unsafe package entry %s', (entry) => {
+    'skills/latex/readme.md',
+    'skills/latex/skill.md',
+  ])('rejects invalid skill package entry %s', (entry) => {
     expect(
       LinkCodePluginManifestSchema.safeParse({
         ...latexManifest,
@@ -309,6 +312,29 @@ describe('LinkCode plugin package contracts', () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it.each([
+    'sha256-A',
+    'sha256-Zg==',
+    `sha256-${'A'.repeat(43)}`,
+    `sha256-${'A'.repeat(42)}B=`,
+    `sha384-${'A'.repeat(44)}`,
+    `sha512-${'A'.repeat(64)}`,
+  ])('rejects non-canonical or incorrectly sized SRI digest %s', (integrity) => {
+    expect(LinkCodePluginIntegritySchema.safeParse(integrity).success).toBe(false);
+  });
+
+  it('accepts canonical digests with the size required by each SRI algorithm', () => {
+    expect(
+      LinkCodePluginIntegritySchema.safeParse(
+        [
+          `sha256-${'A'.repeat(43)}=`,
+          `sha384-${'A'.repeat(64)}`,
+          `sha512-${'A'.repeat(86)}==`,
+        ].join(' '),
+      ).success,
+    ).toBe(true);
   });
 
   it('rejects non-HTTPS absolute artifact URLs', () => {
