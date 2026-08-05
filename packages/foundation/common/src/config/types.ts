@@ -1,88 +1,32 @@
-export const CONFIG_CONTRACT_VERSION = 1;
-export const MAX_SNAPSHOT_SIZE_BYTES = 1024 * 1024;
-export const MAX_MONOTONIC_VERSION = '18446744073709551615';
+import type { ConfigValue, EmergencyNotice, OperatingSystem } from '@linkcode/schema/remote-config';
 
-export const CONFIG_PLATFORMS = ['desktop', 'ios', 'android'] as const;
-export const CONFIG_CHANNELS = ['canary', 'stable'] as const;
-export const APPLY_MODES = ['hot', 'cold'] as const;
-export const OPERATING_SYSTEMS = ['windows', 'macos', 'linux', 'ios', 'android'] as const;
-
-export type ConfigPlatform = (typeof CONFIG_PLATFORMS)[number];
-export type ConfigChannel = (typeof CONFIG_CHANNELS)[number];
-export type ApplyMode = (typeof APPLY_MODES)[number];
-export type OperatingSystem = (typeof OPERATING_SYSTEMS)[number];
+export type {
+  ApplyMode,
+  ConfigChannel,
+  ConfigOverride,
+  ConfigPlatform,
+  ConfigPointer,
+  ConfigRollout,
+  ConfigSnapshot,
+  ConfigTarget,
+  ConfigValue,
+  EmergencyDocument,
+  EmergencyNotice,
+  JsonValue,
+  OperatingSystem,
+  OverrideCondition,
+} from '@linkcode/schema/remote-config';
+export {
+  APPLY_MODES,
+  CONFIG_CHANNELS,
+  CONFIG_CONTRACT_VERSION,
+  CONFIG_PLATFORMS,
+  MAX_MONOTONIC_VERSION,
+  MAX_SNAPSHOT_SIZE_BYTES,
+  OPERATING_SYSTEMS,
+} from '@linkcode/schema/remote-config';
 
 export type JsonPrimitive = boolean | number | string | null;
-export type JsonValue =
-  | JsonPrimitive
-  | { readonly [key: string]: JsonValue }
-  | readonly JsonValue[];
-export type ConfigValue = Exclude<JsonValue, null>;
-
-export interface ConfigTarget {
-  readonly brandId: string;
-  readonly platform: ConfigPlatform;
-  readonly channel: ConfigChannel;
-}
-
-export interface OverrideCondition {
-  readonly appVersion?: string;
-  readonly locale?: string;
-  readonly os?: OperatingSystem;
-}
-
-export interface ConfigOverride {
-  readonly when: OverrideCondition;
-  readonly set: Readonly<Record<string, JsonValue>>;
-}
-
-export interface ConfigRollout {
-  readonly basisPoints: number;
-  readonly salt: string;
-  readonly value: boolean;
-}
-
-export interface ConfigSnapshot extends ConfigTarget {
-  readonly applyModes: Readonly<Record<string, ApplyMode>>;
-  readonly configVersion: string;
-  readonly contractVersion: 1;
-  readonly generatedAt: string;
-  readonly overrides: readonly ConfigOverride[];
-  readonly rollouts: Readonly<Record<string, ConfigRollout>>;
-  readonly schemaVersion: number;
-  readonly values: Readonly<Record<string, ConfigValue>>;
-}
-
-export interface ConfigPointer extends ConfigTarget {
-  readonly activationVersion: string;
-  readonly configVersion: string;
-  readonly contractVersion: 1;
-  readonly createdAt: string;
-  readonly keyId: string;
-  readonly sha256: string;
-  readonly sig: string;
-  readonly sizeBytes: number;
-  readonly snapshotSchemaVersion: number;
-}
-
-export interface EmergencyNotice {
-  readonly body: string;
-  readonly title: string;
-  readonly url: string | null;
-}
-
-export interface EmergencyDocument {
-  readonly brandId: string;
-  readonly contractVersion: 1;
-  readonly createdAt: string;
-  readonly disabledFeatures: readonly string[];
-  readonly emergencyVersion: string;
-  readonly forceMinVersion: string | null;
-  readonly keyId: string;
-  readonly notice: EmergencyNotice | null;
-  readonly platform: ConfigPlatform;
-  readonly sig: string;
-}
 
 export interface EvaluationContext {
   readonly appVersion: string;
@@ -205,9 +149,19 @@ export type ConfigRefreshResult =
   | { readonly status: 'error'; readonly error: ConfigCoreError };
 
 export interface ConfigEmergencyState {
+  readonly disabledFeatures: readonly string[];
   readonly emergencyVersion: string;
   readonly forceMinVersion: string | null;
   readonly notice: EmergencyNotice | null;
+}
+
+/** Smallest host-facing emergency view: enough to enforce a forced minimum and inspect the
+ * accepted disable overlay, without exposing wire or persistence internals. */
+export interface EmergencyHostState {
+  readonly disabledFeatures: readonly string[];
+  readonly emergencyVersion: string;
+  readonly forceMinVersion: string | null;
+  readonly updateRequired: boolean;
 }
 
 export interface ConfigRuntimeState<Values> {

@@ -94,17 +94,21 @@ export async function validateSnapshotBytes(
   target: ConfigTarget,
   crypto: ConfigCrypto,
 ): Promise<ValidatedSnapshot> {
-  if (rawBytes.byteLength > MAX_SNAPSHOT_SIZE_BYTES || rawBytes.byteLength !== pointer.sizeBytes) {
+  const snapshotBytes = rawBytes.slice();
+  if (
+    snapshotBytes.byteLength > MAX_SNAPSHOT_SIZE_BYTES ||
+    snapshotBytes.byteLength !== pointer.sizeBytes
+  ) {
     throw new ConfigCoreError(
       'size-mismatch',
-      `Snapshot size ${rawBytes.byteLength} does not match ${pointer.sizeBytes}`,
+      `Snapshot size ${snapshotBytes.byteLength} does not match ${pointer.sizeBytes}`,
     );
   }
-  const digest = await sha256Hex(rawBytes, crypto);
+  const digest = await sha256Hex(snapshotBytes, crypto);
   if (digest !== pointer.sha256) {
     throw new ConfigCoreError('hash-mismatch', 'Snapshot SHA-256 does not match pointer');
   }
-  const value = parseDocument(rawBytes);
+  const value = parseDocument(snapshotBytes);
   assertSupportedContract(value);
   try {
     assertConfigSnapshot(value);
@@ -122,7 +126,7 @@ export async function validateSnapshotBytes(
   ) {
     throw new ConfigCoreError('schema-invalid', 'Snapshot metadata does not match pointer');
   }
-  return { document: value, rawBytes: rawBytes.slice() };
+  return { document: value, rawBytes: snapshotBytes };
 }
 
 export async function sha256Hex(bytes: Uint8Array, crypto: ConfigCrypto): Promise<string> {

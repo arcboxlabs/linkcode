@@ -52,6 +52,8 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
   readonly #listeners = new Set<Listener<Definitions>>();
   #initialization: Promise<void> | null = null;
   #operationQueue = Promise.resolve();
+  // Emergency refresh must stay schedulable while a normal fetch hangs: never share its queue.
+  #emergencyQueue = Promise.resolve();
   #deviceId = '';
   #normal: NormalPersistentState<Definitions> = {};
   #emergency: EmergencyPersistentState = {};
@@ -115,7 +117,9 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     } catch (error) {
       return this.#failure('emergency-refresh', error);
     }
-    return this.#enqueue(() => this.#refreshEmergency());
+    const result = this.#emergencyQueue.then(() => this.#refreshEmergency());
+    this.#emergencyQueue = result.then(noop).catch(noop);
+    return result;
   }
 
   get<Key extends keyof ConfigValues<Definitions>>(key: Key): ConfigValues<Definitions>[Key] {
@@ -346,6 +350,7 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     const emergency = this.#emergency.document?.document;
     return emergency
       ? {
+          disabledFeatures: [...emergency.disabledFeatures],
           emergencyVersion: emergency.emergencyVersion,
           forceMinVersion: emergency.forceMinVersion,
           notice: emergency.notice

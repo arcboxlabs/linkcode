@@ -10,7 +10,7 @@ export interface ConfigFetchResponse {
 
 export type ConfigFetch = (
   url: string,
-  init: { readonly headers: Readonly<Record<string, string>> },
+  init: { readonly headers: Readonly<Record<string, string>>; readonly signal: AbortSignal },
 ) => Promise<ConfigFetchResponse>;
 
 export interface AtomicKeyValueStorage {
@@ -22,16 +22,23 @@ export function createConfigNetwork(baseUrl: string, fetch: ConfigFetch): Config
   const root = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   return {
     async get(path, request) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10 * 1000);
       const headers: Record<string, string> = {};
       if (request.etag) headers['If-None-Match'] = request.etag;
-      const response = await fetch(new URL(path.replace(LEADING_SLASH_PATTERN, ''), root).href, {
-        headers,
-      });
-      return {
-        status: response.status,
-        ...(response.status !== 304 && { body: new Uint8Array(await response.arrayBuffer()) }),
-        ...(response.headers.get('etag') && { etag: response.headers.get('etag') ?? undefined }),
-      };
+      try {
+        const response = await fetch(new URL(path.replace(LEADING_SLASH_PATTERN, ''), root).href, {
+          headers,
+          signal: controller.signal,
+        });
+        return {
+          status: response.status,
+          ...(response.status !== 304 && { body: new Uint8Array(await response.arrayBuffer()) }),
+          ...(response.headers.get('etag') && { etag: response.headers.get('etag') ?? undefined }),
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
     },
   };
 }

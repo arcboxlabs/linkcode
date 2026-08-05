@@ -99,7 +99,39 @@ describe('mobile configuration adapters', () => {
     });
     expect(fetch).toHaveBeenCalledWith('https://config.example.test/root/pointer.json', {
       headers: { 'If-None-Match': '"prior"' },
+      signal: expect.any(AbortSignal),
     });
+  });
+
+  it('aborts a fetch after ten seconds and clears the timeout after settlement', async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const fetch = vi.fn<ConfigFetch>(
+      (_url, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const request = createConfigNetwork('https://config.example.test', fetch).get(
+      '/latest.json',
+      {},
+    );
+    const rejection = expect(request).rejects.toThrow('aborted');
+
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(fetch.mock.calls[0]?.[1].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejection;
+    expect(fetch.mock.calls[0]?.[1].signal.aborted).toBe(true);
+    expect(clearTimeoutSpy).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('clears the fetch timeout after a successful response', async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const fetch = vi.fn<ConfigFetch>(() => Promise.resolve(response(new Uint8Array())));
+    await createConfigNetwork('https://config.example.test', fetch).get('/latest.json', {});
+    expect(clearTimeoutSpy).toHaveBeenCalledOnce();
   });
 
   it('degrades unsupported runtimes instead of mapping them to a native target', () => {

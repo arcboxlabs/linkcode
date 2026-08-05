@@ -40,7 +40,7 @@ class FakeClient {
   readonly stream = new FakeEventStream();
   subscribeError: Error | null = null;
   readonly session = {
-    create: vi.fn(() => ({ data: { id: 'sess-1' } })),
+    create: vi.fn(() => ({ data: { id: 'sess-1', title: 'New session - 1' } })),
     promptAsync: vi.fn(() => ({ data: null })),
     abort: vi.fn(() => ({ data: true })),
     command: vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } })),
@@ -182,7 +182,40 @@ function pushAssistantModel(modelID: string, id: string): void {
   });
 }
 
+function pushSessionTitle(title: string, sessionID = 'sess-1', infoId = sessionID): void {
+  client.stream.push({
+    id: `e-title-${title}`,
+    type: 'session.updated',
+    properties: {
+      sessionID,
+      info: {
+        id: infoId,
+        slug: infoId,
+        projectID: 'project-1',
+        directory: '/tmp/repo',
+        title,
+        version: '1',
+        time: { created: 0, updated: 1 },
+      },
+    },
+  });
+}
+
 describe('OpenCodeAdapter.consumeEvents', () => {
+  it('emits an updated provider title but not the initial placeholder or other sessions', async () => {
+    const { events } = await makeAdapter();
+
+    pushSessionTitle('New session - 1');
+    pushSessionTitle('Other title', 'sess-other');
+    pushSessionTitle('Generated session title');
+    pushSessionTitle('Generated session title');
+    await drained();
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([
+      { type: 'title-update', title: 'Generated session title' },
+    ]);
+  });
+
   it('reports a malformed event via emitError instead of throwing, and keeps consuming', async () => {
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);

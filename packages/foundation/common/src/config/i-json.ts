@@ -47,9 +47,7 @@ export function cloneJson<Value extends JsonValue>(value: Value): Value;
 export function cloneJson(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => cloneJson(entry));
   if (typeof value === 'object' && value !== null) {
-    const cloned: Record<string, JsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) cloned[key] = cloneJson(entry);
-    return cloned;
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneJson(entry)]));
   }
   return value;
 }

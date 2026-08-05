@@ -4,17 +4,20 @@ import {
   conditionMatches,
   isConfigKey,
   isValidSemver,
+  matchesVersionRange,
   rolloutMatches,
 } from './contract';
 import { cloneJson } from './i-json';
 import type {
   ConfigDefinitions,
+  ConfigEmergencyState,
   ConfigEvent,
   ConfigSnapshot,
   ConfigValue,
   ConfigValueDefinition,
   ConfigValues,
   EmergencyDocument,
+  EmergencyHostState,
   EvaluationContext,
   JsonValue,
 } from './types';
@@ -26,7 +29,7 @@ export function defaultValues<Definitions extends ConfigDefinitions>(
   const values: Record<string, ConfigValue> = {};
   for (const [key, definition] of Object.entries(definitions)) {
     if (!isConfigKey(key)) throw new ConfigCoreError('schema-invalid', `Invalid known key ${key}`);
-    values[key] = parseKnownValue(definition.parse, definition.defaultValue, `default.${key}`);
+    values[key] = parseDefinitionValue(definition, key, definition.defaultValue, `default.${key}`);
     if (key.startsWith('feature.')) {
       const disabled = parseKnownValue(definition.parse, false, `disabled.${key}`);
       if (disabled !== false) {
@@ -68,7 +71,7 @@ export function evaluateSnapshot<Definitions extends ConfigDefinitions>(
   for (const [key, value] of Object.entries(evaluated)) {
     const definition = definitionFor(definitions, key);
     if (!definition) continue;
-    values[key] = parseKnownValue(definition.parse, value, key);
+    values[key] = parseDefinitionValue(definition, key, value, key);
   }
   return values as ConfigValues<Definitions>;
 }
@@ -85,6 +88,29 @@ export function applyEmergency<Definitions extends ConfigDefinitions>(
   return projected as ConfigValues<Definitions>;
 }
 
+/** A missing or unparsable runtime version cannot prove it satisfies the minimum: enforce. */
+export function forceMinVersionSatisfied(
+  appVersion: string,
+  forceMinVersion: string | null,
+): boolean {
+  if (forceMinVersion === null) return true;
+  return isValidSemver(appVersion) && matchesVersionRange(appVersion, `>=${forceMinVersion}`);
+}
+
+export function emergencyHostState(
+  state: ConfigEmergencyState | null,
+  appVersion: string,
+): EmergencyHostState | null {
+  return state
+    ? {
+        disabledFeatures: [...state.disabledFeatures],
+        emergencyVersion: state.emergencyVersion,
+        forceMinVersion: state.forceMinVersion,
+        updateRequired: !forceMinVersionSatisfied(appVersion, state.forceMinVersion),
+      }
+    : null;
+}
+
 export function jsonEqual(left: JsonValue, right: JsonValue): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
@@ -96,8 +122,21 @@ function validateKnownValues(
 ): void {
   for (const [key, value] of Object.entries(values)) {
     const definition = definitionFor(definitions, key);
-    if (definition) parseKnownValue(definition.parse, value, `${label}.${key}`);
+    if (definition) parseDefinitionValue(definition, key, value, `${label}.${key}`);
   }
+}
+
+function parseDefinitionValue(
+  definition: ConfigValueDefinition,
+  key: string,
+  value: JsonValue,
+  label: string,
+): ConfigValue {
+  const parsed = parseKnownValue(definition.parse, value, label);
+  if (typeof parsed !== 'boolean' && key.startsWith('feature.')) {
+    throw new ConfigCoreError('schema-invalid', `Known feature ${key} must be boolean`);
+  }
+  return parsed;
 }
 
 function parseKnownValue(

@@ -1,4 +1,4 @@
-import type { AgentKind, SessionResource, SessionStatus } from '@linkcode/schema';
+import type { AgentKind, SessionResource, SessionStatus, WorkspaceKind } from '@linkcode/schema';
 
 export const SHOWCASE_TITLE = 'Mocked streaming showcase';
 export const SHOWCASE_TERMINAL_ID = 'mock-terminal-showcase';
@@ -14,6 +14,7 @@ export interface SeedSession {
   title: string;
   status: SessionStatus;
   ageMs: number;
+  workspaceKind?: WorkspaceKind;
   showcase?: boolean;
   /** Seeds a long settled transcript instead of the scripted showcase (see `long-thread.ts`). */
   longThread?: boolean;
@@ -123,5 +124,6 @@ export const SEED_SESSIONS: SeedSession[] = [
     title: 'Prototype without git',
     status: 'idle',
     ageMs: 72 * 3_600_000,
+    workspaceKind: 'chat',
   },
 ];

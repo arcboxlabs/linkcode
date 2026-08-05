@@ -9,6 +9,15 @@ const RE_SENTINEL = /development sentinel/;
 const RE_WRONG_PLATFORM = /targets android, expected ios/;
 const RE_PROVENANCE_DRIFT = /disagree on target or provenance/;
 const RE_MODULE_SHAPE = /generated config module shape/;
+const RE_EMERGENCY_ENDPOINT = /no emergency endpoint/;
+const RE_EMERGENCY_KEYS = /no emergency public keys/;
+const RE_FIXTURE_KEY = /conformance fixture key/;
+const SAFE_EMERGENCY_PUBLIC_KEY = 'I-ZZtxm_RMtR2fMqJtiENzX13BIMmqE8X9lDWQ-bg4c';
+const FIXTURE_PUBLIC_KEYS = [
+  '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo',
+  'PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw',
+  '_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU',
+] as const;
 
 const require = createRequire(import.meta.url);
 // The release gate is dependency-free CommonJS because it also runs as the eas-build-pre-install
@@ -32,6 +41,11 @@ function bundleFor(platform: string, overrides: Record<string, unknown> = {}): u
   return {
     brandId: 'linkcode',
     channel: 'stable',
+    endpoints: { emergency: 'https://emergency.example.invalid', normal: null, telemetry: null },
+    keyrings: {
+      emergency: { emergency: SAFE_EMERGENCY_PUBLIC_KEY },
+      normal: { fixture: FIXTURE_PUBLIC_KEYS[0] },
+    },
     platform,
     provenance: {
       configRevisionId: 'rev-1',
@@ -58,6 +72,39 @@ describe('verify-release-config', () => {
     write('ios', bundleFor('ios'));
     write('android', bundleFor('android'));
     expect(() => verifyReleaseConfig(['android', 'ios'], dir)).not.toThrow();
+  });
+
+  it('accepts the fixture key only in the normal keyring', () => {
+    write('ios', bundleFor('ios'));
+    expect(() => verifyReleaseConfig(['ios'], dir)).not.toThrow();
+  });
+
+  it.each(FIXTURE_PUBLIC_KEYS)(
+    'rejects RFC 8032 fixture key %s in the emergency keyring',
+    (key) => {
+      write(
+        'ios',
+        bundleFor('ios', {
+          keyrings: { emergency: { fixture: key }, normal: {} },
+        }),
+      );
+      expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_FIXTURE_KEY);
+    },
+  );
+
+  it('rejects a missing emergency endpoint', () => {
+    write(
+      'ios',
+      bundleFor('ios', {
+        endpoints: { emergency: null, normal: null, telemetry: null },
+      }),
+    );
+    expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_EMERGENCY_ENDPOINT);
+  });
+
+  it('rejects an empty emergency keyring', () => {
+    write('ios', bundleFor('ios', { keyrings: { emergency: {}, normal: {} } }));
+    expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_EMERGENCY_KEYS);
   });
 
   it('fails when a generated module is missing', () => {

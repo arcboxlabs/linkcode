@@ -79,6 +79,8 @@ async function main(): Promise<void> {
       assert.deepEqual(boundary.config.snapshot, {});
       assert.deepEqual(boundary.config.info, {
         configVersion: null,
+        emergency: null,
+        emergencySupport: 'disabled',
         sha256: null,
         source: 'bundled',
         stagedColdKeys: [],

@@ -137,12 +137,31 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
+  beginRun(sessionId: SessionId): void {
+    const record = this.records.get(sessionId);
+    if (!record) return;
+    record.runs.push({ startedAt: Date.now() });
+    this.persist(record);
+  }
+
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {
     const record = this.records.get(sessionId);
     if (!record || record.title !== undefined) return;
     const title = titleFromContent(content);
     if (title === undefined) return;
     record.title = title;
+    this.persist(record);
+    this.onChanged(sessionId, 'updated');
+  }
+
+  setProviderTitle(sessionId: SessionId, title: string): void {
+    const record = this.records.get(sessionId);
+    const normalized = title.trim();
+    // Automation titles name the durable job/run and must not be replaced by provider metadata.
+    if (!record || record.automation || normalized.length === 0 || record.title === normalized) {
+      return;
+    }
+    record.title = normalized;
     this.persist(record);
     this.onChanged(sessionId, 'updated');
   }

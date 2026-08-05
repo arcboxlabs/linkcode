@@ -307,6 +307,7 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     return {
       records: new Map(),
       droppedRows: [],
+      parentUuidByUuid: new Map(),
       toolUseResults: new Map(),
       toolUsePatches: new Map(),
       ...partial,

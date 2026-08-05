@@ -1,4 +1,4 @@
-import type { ConfigValue } from '@linkcode/common/config';
+import type { ConfigValue, EmergencyHostState } from '@linkcode/common/config';
 
 export const CONFIG_ANALYTICS_CONSENT_CHANNEL = 'linkcode.config.analyticsConsent';
 export const CONFIG_HOT_UPDATE_CHANNEL = 'linkcode.config.hotUpdate';
@@ -10,6 +10,8 @@ export type EffectiveConfigSnapshot = Readonly<Record<string, ConfigValue>>;
 
 export interface ConfigSnapshotInfo {
   readonly configVersion: string | null;
+  readonly emergency: EmergencyHostState | null;
+  readonly emergencySupport: 'active' | 'disabled';
   readonly sha256: string | null;
   readonly source: 'bundled' | 'cache' | 'remote';
   readonly stagedColdKeys: readonly string[];

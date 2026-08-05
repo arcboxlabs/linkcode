@@ -12,6 +12,11 @@ const process = require('node:process');
 
 const CONFIG_DIR = resolve(__dirname, '../src/runtime/config');
 const PLATFORMS = new Set(['android', 'ios']);
+const CONFORMANCE_FIXTURE_PUBLIC_KEYS = new Set([
+  '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo',
+  'PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw',
+  '_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU',
+]);
 
 function loadGeneratedBundle(platform, configDir = CONFIG_DIR) {
   const path = join(configDir, `bundled.generated.${platform}.ts`);
@@ -35,6 +40,21 @@ function loadGeneratedBundle(platform, configDir = CONFIG_DIR) {
   }
   if (bundle.platform !== platform) {
     throw new Error(`${path} targets ${String(bundle.platform)}, expected ${platform}`);
+  }
+  if (
+    !bundle.endpoints ||
+    bundle.endpoints.emergency === null ||
+    bundle.endpoints.emergency === undefined
+  ) {
+    throw new Error(`${path} carries no emergency endpoint`);
+  }
+  const emergencyKeyring = bundle.keyrings && bundle.keyrings.emergency;
+  // eslint-disable-next-line sukka/prefer-foxts-object-size -- This pre-install gate has no dependencies.
+  if (!emergencyKeyring || Object.keys(emergencyKeyring).length === 0) {
+    throw new Error(`${path} carries no emergency public keys`);
+  }
+  if (Object.values(emergencyKeyring).some((key) => CONFORMANCE_FIXTURE_PUBLIC_KEYS.has(key))) {
+    throw new Error(`${path} emergency keyring contains the conformance fixture key`);
   }
   const provenance = bundle.provenance;
   if (

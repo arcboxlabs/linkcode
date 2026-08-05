@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.0](https://github.com/arcboxlabs/linkcode/compare/v0.19.0...v0.20.0) (2026-08-03)
+
+
+### Features
+
+* **history:** rewrite prompts while agents run ([#406](https://github.com/arcboxlabs/linkcode/issues/406)) ([de0145f](https://github.com/arcboxlabs/linkcode/commit/de0145f5a97ad918e38171873f959cead0d37e85))
+
+
+### Bug Fixes
+
+* **agent-adapter:** sync provider session titles ([#405](https://github.com/arcboxlabs/linkcode/issues/405)) ([7658ae1](https://github.com/arcboxlabs/linkcode/commit/7658ae1203a3f153f11f9848bd852b880d392d00))
+
 ## [0.19.0](https://github.com/arcboxlabs/linkcode/compare/v0.18.2...v0.19.0) (2026-08-02)
 
 

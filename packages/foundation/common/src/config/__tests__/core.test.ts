@@ -1,8 +1,10 @@
 import { hashes, verify } from '@noble/ed25519';
 import { sha256, sha512 } from '@noble/hashes/sha2.js';
 import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import fixture from '../__fixtures__/contract-v1.json';
+import handoffFixture from '../__fixtures__/emergency-handoff-v1.json';
 import { ConfigCore } from '../core';
 import { decodeBase64Url } from '../i-json';
 import type {
@@ -55,12 +57,25 @@ class MemoryStorage implements ConfigStorage {
   }
 }
 
+class FailingEmergencyStorage extends MemoryStorage {
+  failEmergencyWrites = false;
+
+  override set(key: string, value: string): Promise<void> {
+    if (this.failEmergencyWrites && key.startsWith('linkcode-config:v1:emergency:')) {
+      return Promise.reject(new Error('emergency write failed'));
+    }
+    return super.set(key, value);
+  }
+}
+
+type QueuedResponse = ConfigNetworkResponse | Promise<ConfigNetworkResponse>;
+
 class QueueNetwork implements ConfigNetwork {
   readonly requests: Array<{ path: string; request: ConfigNetworkRequest }> = [];
-  readonly responses: ConfigNetworkResponse[];
+  readonly responses: QueuedResponse[];
   #nextResponse = 0;
 
-  constructor(responses: ConfigNetworkResponse[] = []) {
+  constructor(responses: QueuedResponse[] = []) {
     this.responses = [...responses];
   }
 
@@ -84,6 +99,19 @@ describe('ConfigCore normal state machine', () => {
     expect(setup.core.get('feature.aiAssist')).toBe(true);
     expect(setup.core.get('params.upload.maxSizeMb')).toBe(10);
     expect(setup.normal.requests).toEqual([]);
+  });
+
+  it('rejects non-boolean feature defaults even when their parser is permissive', () => {
+    const definitions = {
+      ...DEFINITIONS,
+      'feature.aiAssist': {
+        defaultValue: 1,
+        parse: (value: ConfigValue) => value,
+      },
+    } satisfies ConfigDefinitions;
+    expect(() => makeSetup({ definitions })).toThrow(
+      'Known feature feature.aiAssist must be boolean',
+    );
   });
 
   it('fetches with ETags, applies hot keys, stages cold keys, and boots the LKG cold', async () => {
@@ -440,15 +468,147 @@ describe('ConfigCore emergency state', () => {
     ) as { highWater?: { version?: string } };
     expect(stored.highWater?.version).toBe('8');
   });
+
+  it('executes the frozen handoff progression and retains forced minimum state on failures', async () => {
+    const storage = new MemoryStorage();
+    const events: ConfigEvent[] = [];
+    const first = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [handoffOk('killSwitch'), handoffOk('forcedMinimum')],
+      events,
+      storage,
+    });
+    expect((await first.core.initialize()).source).toBe('defaults');
+    await expect(first.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(first.core.get('feature.aiAssist')).toBe(false);
+    await expect(first.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(first.core.getState().emergency).toMatchObject({
+      disabledFeatures: ['feature.aiAssist'],
+      emergencyVersion: '2',
+      forceMinVersion: '2.4.0',
+    });
+
+    const restarted = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [
+        { status: 404 },
+        handoffOk('forcedMinimum'),
+        handoffOk('killSwitch'),
+        handoffOk('release'),
+        handoffOk('equivocation'),
+      ],
+      events,
+      storage,
+    });
+    expect((await restarted.core.initialize()).emergency).toMatchObject({
+      emergencyVersion: '2',
+      forceMinVersion: '2.4.0',
+    });
+    await expectError(restarted.core.refreshEmergency(), 'fetch');
+    expect(restarted.core.getState().emergency?.forceMinVersion).toBe('2.4.0');
+    await expect(restarted.core.refreshEmergency()).resolves.toEqual({ status: 'idempotent' });
+    await expectError(restarted.core.refreshEmergency(), 'replay');
+    await expect(restarted.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(restarted.core.get('feature.aiAssist')).toBe(true);
+    expect(restarted.core.getState().emergency).toMatchObject({
+      disabledFeatures: [],
+      emergencyVersion: '3',
+      forceMinVersion: null,
+    });
+    await expectError(restarted.core.refreshEmergency(), 'equivocation');
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'error' &&
+          event.operation === 'emergency-refresh' &&
+          event.error.code === 'equivocation',
+      ),
+    ).toBe(true);
+  });
+
+  it('restores the emergency overlay on top of a normal LKG', async () => {
+    const storage = new MemoryStorage();
+    const first = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [handoffOk('forcedMinimum')],
+      normalResponses: [ok(pointerBytes('rollback')), ok(snapshotBytes('previous'))],
+      storage,
+    });
+    await first.core.initialize();
+    await expect(first.core.refresh()).resolves.toEqual({ status: 'updated' });
+    expect(first.core.getState().source).toBe('remote');
+    await expect(first.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(first.core.get('feature.aiAssist')).toBe(false);
+
+    const restarted = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      storage,
+    });
+    expect((await restarted.core.initialize()).source).toBe('lkg');
+    expect(restarted.core.get('feature.aiAssist')).toBe(false);
+    expect(restarted.core.getState().emergency?.forceMinVersion).toBe('2.4.0');
+  });
+
+  it('does not regress accepted state when its atomic persistence write fails', async () => {
+    const storage = new FailingEmergencyStorage();
+    const setup = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [handoffOk('forcedMinimum'), handoffOk('release')],
+      storage,
+    });
+    await setup.core.initialize();
+    await expect(setup.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    storage.failEmergencyWrites = true;
+    await expectError(setup.core.refreshEmergency(), 'storage');
+    expect(setup.core.get('feature.aiAssist')).toBe(false);
+    expect(setup.core.getState().emergency).toMatchObject({
+      emergencyVersion: '2',
+      forceMinVersion: '2.4.0',
+    });
+  });
+
+  it('serializes concurrent emergency refreshes', async () => {
+    let resolveFirst: (response: ConfigNetworkResponse) => void = noop;
+    const firstResponse = new Promise<ConfigNetworkResponse>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const setup = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [firstResponse, handoffOk('forcedMinimum')],
+    });
+    await setup.core.initialize();
+
+    const first = setup.core.refreshEmergency();
+    const second = setup.core.refreshEmergency();
+    await expect.poll(() => setup.emergency.requests).toHaveLength(1);
+    resolveFirst(handoffOk('killSwitch'));
+    await expect(first).resolves.toEqual({ status: 'updated' });
+    await expect(second).resolves.toEqual({ status: 'updated' });
+    expect(setup.emergency.requests).toHaveLength(2);
+    expect(setup.core.getState().emergency?.emergencyVersion).toBe('2');
+  });
+
+  it('refreshes emergency state while the normal channel is hung', async () => {
+    const setup = makeSetup({
+      emergencyKeyring: handoffFixture.keys.emergency,
+      emergencyResponses: [handoffOk('killSwitch')],
+      normalResponses: [new Promise<ConfigNetworkResponse>(noop)],
+    });
+    await setup.core.initialize();
+    void setup.core.refresh();
+    await expect.poll(() => setup.normal.requests).toHaveLength(1);
+    await expect(setup.core.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(setup.core.get('feature.aiAssist')).toBe(false);
+  });
 });
 
 function makeSetup<Definitions extends ConfigDefinitions = typeof DEFINITIONS>(options?: {
   definitions?: Definitions;
   emergencyKeyring?: Readonly<Record<string, string>>;
-  emergencyResponses?: ConfigNetworkResponse[];
+  emergencyResponses?: QueuedResponse[];
   events?: ConfigEvent[];
   normalKeyring?: Readonly<Record<string, string>>;
-  normalResponses?: ConfigNetworkResponse[];
+  normalResponses?: QueuedResponse[];
   storage?: MemoryStorage;
   target?: ConfigTarget;
 }) {
@@ -483,6 +643,10 @@ function pointerBytes(name: keyof typeof fixture.pointers): Uint8Array {
 
 function emergencyBytes(name: keyof typeof fixture.emergencies): Uint8Array {
   return documentBytes(fixture.emergencies[name].document);
+}
+
+function handoffOk(name: keyof typeof handoffFixture.documents): ConfigNetworkResponse {
+  return ok(documentBytes(handoffFixture.documents[name].document));
 }
 
 function snapshotBytes(name: 'current' | 'previous'): Uint8Array {
