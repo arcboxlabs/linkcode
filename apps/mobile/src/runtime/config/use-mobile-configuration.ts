@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
 import { useState } from 'react';
@@ -11,15 +12,19 @@ export function useMobileConfiguration(): boolean {
 
   useEffect((signal) => {
     let unsubscribe = noop;
-    void initializeMobileConfiguration().then(() => {
-      if (signal.aborted) return;
-      setReady(true);
-      void refreshMobileConfiguration();
-      void registerMobileConfigBackgroundRefresh();
-      unsubscribe = subscribeToForegroundRefresh(AppState, () => {
+    void initializeMobileConfiguration()
+      .catch((error: unknown) => {
+        Sentry.captureException(error);
+      })
+      .then(() => {
+        if (signal.aborted) return;
+        setReady(true);
         void refreshMobileConfiguration();
+        void registerMobileConfigBackgroundRefresh();
+        unsubscribe = subscribeToForegroundRefresh(AppState, () => {
+          void refreshMobileConfiguration();
+        });
       });
-    });
     return () => unsubscribe();
   }, []);
 
