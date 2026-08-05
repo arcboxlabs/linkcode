@@ -17,6 +17,7 @@
     "e2e:unpackaged": "pnpm -F @linkcode/daemon build && RENDERER_VITE_CONFIG_SIGNING_POC=1 pnpm run build && node e2e/unpackaged-smoke.e2e.mts",
     "e2e:packaged:smoke": "pnpm --dir ../.. exec tsx apps/desktop/e2e/packaged-smoke.e2e.mts",
     "e2e:packaged": "pnpm run package:devshell && pnpm run e2e:packaged:smoke",
+    "e2e:config-canary": "pnpm -F @linkcode/daemon build && node e2e/config-canary.e2e.mts",
     "e2e:notifications": "node e2e/notifications.e2e.mts",
     "e2e:file-tree": "node e2e/file-tree.e2e.mts",
     "e2e:new-session-branch": "node e2e/new-session-branch.e2e.mts",
