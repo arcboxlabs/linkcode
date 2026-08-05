@@ -68,6 +68,8 @@ export interface ShellFrameProps
   onContinueUnverified?: (kind: AgentKind) => void;
   /** Opens Providers settings at the signed-out agent's setup flow. */
   onOpenProviderSettings?: (kind: AgentKind) => void;
+  /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
+  onOpenBilling?: () => void;
   conversation: ConversationViewModel;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
@@ -132,6 +134,7 @@ export function ShellFrame({
   onDownloadAgent,
   onContinueUnverified,
   onOpenProviderSettings,
+  onOpenBilling,
   conversation,
   respondingRequestIds,
   responseErrors,
@@ -242,6 +245,7 @@ export function ShellFrame({
             cwd={active?.cwd}
             runtimeCues={runtimeCues}
             onOpenProviderSettings={onOpenProviderSettings}
+            onOpenBilling={onOpenBilling}
             respondingRequestIds={respondingRequestIds}
             responseErrors={responseErrors}
             TerminalBlockComponent={TerminalBlockComponent}

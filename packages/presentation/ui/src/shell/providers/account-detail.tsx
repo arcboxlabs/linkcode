@@ -1,4 +1,4 @@
-import type { AgentKind } from '@linkcode/schema';
+import type { AccountModel, AgentKind } from '@linkcode/schema';
 import {
   AlertDialog,
   AlertDialogClose,
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { Skeleton } from 'coss-ui/components/skeleton';
 import { Switch } from 'coss-ui/components/switch';
 import { useClipboard } from 'foxact/use-clipboard';
 import {
@@ -101,6 +102,11 @@ export function AccountDetail({
   busy,
   onSetBinding,
   onSetModel,
+  accountModels,
+  accountModelsLoading = false,
+  accountModelsError,
+  onReloadAccountModels,
+  onSetAccountModel,
   onEdit,
   onRemove,
 }: {
@@ -109,6 +115,11 @@ export function AccountDetail({
   busy: boolean;
   onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
   onSetModel: (kind: AgentKind, model: string | undefined) => void;
+  accountModels?: AccountModel[];
+  accountModelsLoading?: boolean;
+  accountModelsError?: string;
+  onReloadAccountModels?: () => void;
+  onSetAccountModel?: (model: string | undefined) => void;
   onEdit: () => void;
   onRemove: () => void;
 }): React.ReactNode {
@@ -191,7 +202,32 @@ export function AccountDetail({
               </span>
             </DetailRow>
           ) : null}
-          {account.accountModel !== undefined && account.accountModel !== '' ? (
+          {onSetAccountModel ? (
+            <DetailRow label={t('accountModel')}>
+              {accountModelsLoading && accountModels === undefined ? (
+                <Skeleton className="h-8 w-48 rounded-md" />
+              ) : accountModelsError ? (
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate text-destructive-foreground text-xs">
+                    {accountModelsError}
+                  </span>
+                  <Button type="button" size="sm" variant="outline" onClick={onReloadAccountModels}>
+                    {t('retryModels')}
+                  </Button>
+                </div>
+              ) : (
+                <ModelSelect
+                  options={(accountModels ?? []).map((model) => ({
+                    id: model.id,
+                    label: model.label ?? model.id,
+                  }))}
+                  value={account.accountModel ?? ''}
+                  disabled={busy || accountModelsLoading}
+                  onChange={(model) => onSetAccountModel(model === '' ? undefined : model)}
+                />
+              )}
+            </DetailRow>
+          ) : account.accountModel !== undefined && account.accountModel !== '' ? (
             <DetailRow label={t('accountModel')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
                 {account.accountModel}

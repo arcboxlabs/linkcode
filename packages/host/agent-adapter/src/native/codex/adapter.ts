@@ -925,7 +925,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       // An auth retirement rejects any in-flight turn/start when it closes the server; it already
       // finalized the turn and told the auth story — unwinding again would double-emit idle.
       if (!this.authFailed) {
-        this.emitError(extractErrorMessage(err) ?? 'codex: turn failed to start');
+        this.emitProviderError(extractErrorMessage(err) ?? 'codex: turn failed to start');
         this.teardown();
         this.emitStatus('idle');
       }
@@ -1106,7 +1106,11 @@ export class CodexAdapter extends BaseAgentAdapter {
         const message = error ? stringField(error, 'message') : undefined;
         // Turn-fatal errors also arrive as turn/completed(status failed), which finalizes; this
         // event alone (e.g. a retryable stream hiccup) must not tear the turn down.
-        this.emitError(message ?? 'Unknown error');
+        this.emitProviderError(message ?? 'Unknown error', {
+          statusCode: error ? numberField(error, 'statusCode') : undefined,
+          code: error ? stringField(error, 'code') : undefined,
+          responseBody: error ? stringField(error, 'responseBody') : undefined,
+        });
         break;
       }
       default:
@@ -1123,7 +1127,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     const status = stringField(turn, 'status');
     if (status === 'failed') {
       const error = recordField(turn, 'error');
-      this.emitError((error && stringField(error, 'message')) ?? 'Codex returned an error');
+      this.emitProviderError(
+        (error && stringField(error, 'message')) ?? 'Codex returned an error',
+        {
+          statusCode: error ? numberField(error, 'statusCode') : undefined,
+          code: error ? stringField(error, 'code') : undefined,
+          responseBody: error ? stringField(error, 'responseBody') : undefined,
+        },
+      );
     } else if (status === 'interrupted') {
       this.emitStop('cancelled');
     } else {

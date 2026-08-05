@@ -67,6 +67,8 @@ export interface ConversationSurfaceProps {
   onOpenVideoPreview?: (path: string) => void;
   /** Opens workspace changes in the shell's review surface. */
   onReviewChanges?: () => void;
+  /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
+  onOpenBilling?: () => void;
   /** Hosts inline content on the daemon's ephemeral origin (sandboxed html previews). */
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
@@ -101,6 +103,7 @@ export function ConversationSurface({
   onOpenFileArtifact,
   onOpenVideoPreview,
   onReviewChanges,
+  onOpenBilling,
   onHostArtifact,
   onOpenPreviewUrl,
   onPickAttachmentFiles,
@@ -135,6 +138,7 @@ export function ConversationSurface({
             scrollContextRef={conversationScrollRef}
             TerminalBlockComponent={TerminalBlockComponent}
             onReviewChanges={onReviewChanges}
+            onOpenBilling={onOpenBilling}
           />
         </ArtifactHostActionsProvider>
       </div>

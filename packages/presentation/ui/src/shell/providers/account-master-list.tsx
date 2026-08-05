@@ -44,12 +44,15 @@ export function AccountList({
   onSelect,
   onAdd,
   onAdoptDetected,
+  onUseLinkCodeGateway,
 }: ProviderAccountListViewModel & {
   loading: boolean;
   onSelect: (id: string) => void;
   onAdd: () => void;
   /** One-click adopt a detected CLI login into the pool (a suggestion card, not a pool member). */
   onAdoptDetected: (serviceId: string) => void;
+  /** Explicit first-party path shown only when no third-party account or login is available. */
+  onUseLinkCodeGateway?: () => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
@@ -160,9 +163,14 @@ export function AccountList({
             </li>
           ) : null}
           {!loading && needle === '' && accounts.length === 0 && detectedLogins.length === 0 ? (
-            <li className="flex flex-col items-center gap-1 px-6 py-12 text-center">
+            <li className="flex flex-col items-center gap-2 px-6 py-12 text-center">
               <span className="font-medium text-sm">{t('emptyTitle')}</span>
               <span className="max-w-sm text-muted-foreground text-xs">{t('emptyHint')}</span>
+              {onUseLinkCodeGateway ? (
+                <Button type="button" size="sm" className="mt-2" onClick={onUseLinkCodeGateway}>
+                  {t('linkCodeUseGateway')}
+                </Button>
+              ) : null}
             </li>
           ) : null}
           {!loading && needle === ''

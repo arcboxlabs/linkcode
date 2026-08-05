@@ -1,10 +1,14 @@
 import { resolve } from 'node:path';
+import { apiKeyClient } from '@better-auth/api-key/client';
 import { electronClient } from '@better-auth/electron/client';
 import { createHostedBillingUrl } from '@linkcode/cloud';
 import { createAuthClient } from 'better-auth/client';
+import { organizationClient } from 'better-auth/client/plugins';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { z } from 'zod';
 import {
   CLOUD_CLAIM_DEEP_LINK_CHANNEL,
+  CLOUD_CREATE_GATEWAY_KEY_CHANNEL,
   CLOUD_OPEN_HOSTED_BILLING_CHANNEL,
 } from '../../shared/cloud';
 import { CHANNEL } from '../constants';
@@ -45,6 +49,8 @@ export const authClient = createAuthClient({
       // privileged scheme); the footer renders initials.
       userImageProxy: { enabled: false },
     }),
+    organizationClient(),
+    apiKeyClient(),
   ],
 });
 
@@ -56,6 +62,18 @@ function claimDeepLink(): boolean {
         resolve(process.argv[1]),
       ])
     : app.setAsDefaultProtocolClient(CLOUD_AUTH_SCHEME);
+}
+
+async function createGatewayKey(name: unknown): Promise<string> {
+  const parsedName = z.string().trim().min(1).max(80).parse(name);
+  const session = await authClient.getSession();
+  if (session.error) throw new Error(session.error.message);
+  const organizationId = session.data?.session.activeOrganizationId;
+  if (!organizationId) throw new Error('Sign in to LinkCode Cloud, then try again');
+
+  const created = await authClient.apiKey.create({ name: parsedName, organizationId });
+  if (created.error) throw new Error(created.error.message);
+  return created.data.key;
 }
 
 /**
@@ -80,4 +98,7 @@ export function setupCloudAuth(): void {
       createHostedBillingUrl({ returnTarget: `${CLOUD_AUTH_SCHEME}://billing/return` }),
     );
   });
+  ipcMain.handle(CLOUD_CREATE_GATEWAY_KEY_CHANNEL, (_event, name: unknown) =>
+    createGatewayKey(name),
+  );
 }

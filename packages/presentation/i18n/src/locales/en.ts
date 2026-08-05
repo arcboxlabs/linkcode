@@ -136,6 +136,11 @@ export const en = {
       compacting: 'Compacting context…',
       compacted: 'Context compacted',
       compactedTokens: '{pre} → {post} tokens',
+      insufficientCreditsTitle: 'LinkCode credits needed',
+      insufficientCreditsHint: 'Top up your balance, then retry this message.',
+      topUpCredits: 'Top up credits',
+      billingUnavailableTitle: 'LinkCode billing is temporarily unavailable',
+      billingUnavailableHint: 'Your request was not sent to the model. Please retry shortly.',
       minimap: {
         label: 'Conversation navigation',
         turn: 'Turn {index}',
@@ -1024,6 +1029,15 @@ export const en = {
       noMatches: 'No matching accounts.',
       emptyTitle: 'No accounts yet',
       emptyHint: 'Add a subscription, API key, AI gateway, or custom endpoint.',
+      linkCodeUseGateway: 'Use LinkCode Gateway',
+      linkCodeGatewayOptIn:
+        'Uses your LinkCode credits. It stays separate from your API keys and is never selected automatically.',
+      linkCodeSignInHint: 'Sign in to LinkCode to create a Gateway credential.',
+      linkCodeSignIn: 'Sign in to LinkCode',
+      linkCodeConnecting: 'Connecting…',
+      linkCodeGatewayError: 'Could not connect LinkCode Gateway.',
+      modelLoadError: 'Could not load Gateway models.',
+      retryModels: 'Retry',
       detected: 'Detected',
       accountMenu: 'Account actions',
       edit: 'Edit account',
@@ -1077,6 +1091,7 @@ export const en = {
         openrouter: 'OpenRouter',
         'vercel-gateway': 'Vercel AI Gateway',
         'cloudflare-gateway': 'Cloudflare AI Gateway',
+        'linkcode-gateway': 'LinkCode Gateway',
         custom: 'Custom endpoint',
       },
       serviceHint: {
@@ -1088,6 +1103,7 @@ export const en = {
         openrouter: 'Aggregation gateway, both protocol shapes',
         'vercel-gateway': 'Server-side translation, both protocol shapes',
         'cloudflare-gateway': 'Pass-through gateway, needs Account / Gateway ID',
+        'linkcode-gateway': 'Use LinkCode credits without bringing an API key',
         custom: 'Any base URL + protocol',
       },
       variantName: {

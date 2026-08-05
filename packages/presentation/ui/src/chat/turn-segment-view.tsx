@@ -41,6 +41,8 @@ export interface TurnSegmentViewProps {
   onExpandTask: (toolCallId: string) => void;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
+  /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
+  onOpenBilling?: () => void;
 }
 
 /**
@@ -62,6 +64,7 @@ export function TurnSegmentView({
   TerminalBlockComponent,
   onExpandTask,
   onReviewChanges,
+  onOpenBilling,
 }: TurnSegmentViewProps): React.ReactNode {
   // Children leave the top-level timeline (they render inside their SubagentCard), but the
   // turn's edit rollup still counts them; the copyable reply text is the main agent's only.
@@ -196,6 +199,7 @@ export function TurnSegmentView({
             message={item.message}
             code={item.code}
             recoverable={item.recoverable}
+            onOpenBilling={onOpenBilling}
           />
         );
       default:

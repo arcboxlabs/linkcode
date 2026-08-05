@@ -1,4 +1,6 @@
+import { Button } from 'coss-ui/components/button';
 import { TriangleAlertIcon } from 'lucide-react';
+import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import { normalizeErrorMessage } from '../lib/error-text';
 import { Message, MessageContent } from './message';
@@ -8,11 +10,16 @@ export function ErrorMessage({
   message,
   code,
   recoverable,
+  onOpenBilling,
 }: {
   message: string;
   code?: string;
   recoverable: boolean;
+  onOpenBilling?: () => void;
 }): React.ReactNode {
+  const t = useTranslations('workbench.conversation');
+  const insufficientCredits = code === 'insufficient_credits';
+  const billingUnavailable = code === 'billing_unavailable';
   return (
     <Message from="assistant">
       <MessageContent>
@@ -23,9 +30,27 @@ export function ErrorMessage({
           )}
         >
           <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive-foreground" />
-          <div className="min-w-0 whitespace-pre-wrap break-words font-mono text-destructive-foreground text-xs leading-relaxed">
-            {normalizeErrorMessage(message)}
-            {code ? <span className="ml-2 opacity-64">({code})</span> : null}
+          <div className="min-w-0 flex-1 text-destructive-foreground text-xs leading-relaxed">
+            {insufficientCredits || billingUnavailable ? (
+              <div className="space-y-1">
+                <div className="font-medium text-sm">
+                  {t(insufficientCredits ? 'insufficientCreditsTitle' : 'billingUnavailableTitle')}
+                </div>
+                <div className="text-muted-foreground">
+                  {t(insufficientCredits ? 'insufficientCreditsHint' : 'billingUnavailableHint')}
+                </div>
+                {insufficientCredits && onOpenBilling ? (
+                  <Button type="button" size="sm" className="mt-2" onClick={onOpenBilling}>
+                    {t('topUpCredits')}
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap break-words font-mono">
+                {normalizeErrorMessage(message)}
+                {code ? <span className="ml-2 opacity-64">({code})</span> : null}
+              </div>
+            )}
           </div>
         </div>
       </MessageContent>

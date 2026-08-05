@@ -37,6 +37,8 @@ import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import type { AgentAdapter, AgentStartCatalogOptions } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
+import type { ProviderErrorDetails } from './gateway-error';
+import { linkCodeGatewayError } from './gateway-error';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
@@ -374,6 +376,25 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitError(message: string, code?: string, recoverable = true): void {
     this.emit({ type: 'error', message, code, recoverable });
+  }
+
+  protected emitProviderError(message: string, details: ProviderErrorDetails = {}): void {
+    const gatewayError = linkCodeGatewayError(this.opts?.config?.baseUrl, {
+      message,
+      ...details,
+    });
+    if (gatewayError) {
+      this.emitError(gatewayError.message, gatewayError.code, gatewayError.recoverable);
+    } else {
+      this.emitError(message);
+    }
+  }
+
+  protected emitGatewayError(details: ProviderErrorDetails): boolean {
+    const gatewayError = linkCodeGatewayError(this.opts?.config?.baseUrl, details);
+    if (!gatewayError) return false;
+    this.emitError(gatewayError.message, gatewayError.code, gatewayError.recoverable);
+    return true;
   }
 
   // ── Permission round-trip (resolved by a `permission-response` AgentInput, by id) ──

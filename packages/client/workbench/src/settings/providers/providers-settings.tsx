@@ -3,6 +3,7 @@ import {
   createAndBindAccount,
   getAccounts,
   getProviderConfig,
+  probeAccountModels,
   setAccounts,
   setProviderConfig,
 } from '@linkcode/sdk';
@@ -15,12 +16,14 @@ import {
   DialogTitle,
 } from 'coss-ui/components/dialog';
 import { Skeleton } from 'coss-ui/components/skeleton';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
+import type { LinkCodeGatewayAccess } from './add-flow';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
-import { serviceById } from './catalog';
+import { LINKCODE_GATEWAY_SERVICE_ID, serviceById } from './catalog';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
@@ -35,7 +38,11 @@ import {
  * Transport-backed — it must render inside `WorkbenchProviders`, but may sit above the connection
  * gate, degrading to loading/error while the daemon is down.
  */
-export function ProvidersSettingsPanel(): React.ReactNode {
+export function ProvidersSettingsPanel({
+  linkCodeGateway,
+}: {
+  linkCodeGateway?: LinkCodeGatewayAccess;
+} = {}): React.ReactNode {
   const t = useTranslations('settings.providers');
   const {
     data: accounts,
@@ -61,6 +68,19 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const pool = accounts ?? [];
   const accountsById = new Map(pool.map((account) => [account.id, account]));
   const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
+  const selectedSecret =
+    selected?.credential.type === 'api-key'
+      ? selected.credential
+      : selected?.credential.type === 'auth-token'
+        ? selected.credential
+        : undefined;
+  const models = useData(
+    probeAccountModels,
+    selectedSecret && selected?.endpoint && selected.service === LINKCODE_GATEWAY_SERVICE_ID
+      ? { endpoint: selected.endpoint, secret: selectedSecret }
+      : null,
+    { revalidateOnFocus: false },
+  );
   const busy = bindAccount.isMutating || saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
@@ -89,7 +109,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
       await saveAccounts.trigger({ accounts: [...pool, account] });
       await mutateAccounts();
     }
-    closeDialog();
+    if (account.service === LINKCODE_GATEWAY_SERVICE_ID) select(account.id);
+    else closeDialog();
   };
 
   const handleUpdate = async (account: Account): Promise<void> => {
@@ -136,6 +157,9 @@ export function ProvidersSettingsPanel(): React.ReactNode {
         onSelect={select}
         onAdd={startAdd}
         onAdoptDetected={handleAdoptDetected}
+        onUseLinkCodeGateway={
+          linkCodeGateway ? () => pickService(LINKCODE_GATEWAY_SERVICE_ID) : undefined
+        }
       />
       <Dialog
         open={dialogOpen}
@@ -157,7 +181,10 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                 <DialogTitle>{t('chooseService')}</DialogTitle>
               </DialogHeader>
               <DialogPanel>
-                <ServiceCatalogView onPick={pickService} />
+                <ServiceCatalogView
+                  onPick={pickService}
+                  linkCodeGatewayAvailable={linkCodeGateway !== undefined}
+                />
               </DialogPanel>
             </>
           ) : (
@@ -172,6 +199,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
+                    linkCodeGateway={linkCodeGateway}
                     onBack={() => {
                       cancelSubscriptionLogin();
                       backToCatalog();
@@ -194,6 +222,34 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     <AccountDetail
                       account={selectedDetail}
                       busy={busy}
+                      accountModels={
+                        selected.service === LINKCODE_GATEWAY_SERVICE_ID ? models.data : undefined
+                      }
+                      accountModelsLoading={
+                        selected.service === LINKCODE_GATEWAY_SERVICE_ID && models.isLoading
+                      }
+                      accountModelsError={
+                        selected.service === LINKCODE_GATEWAY_SERVICE_ID && models.error
+                          ? (extractErrorMessage(models.error, false) ?? t('modelLoadError'))
+                          : undefined
+                      }
+                      onReloadAccountModels={
+                        selected.service === LINKCODE_GATEWAY_SERVICE_ID
+                          ? () => {
+                              void models.mutate();
+                            }
+                          : undefined
+                      }
+                      onSetAccountModel={
+                        selected.service === LINKCODE_GATEWAY_SERVICE_ID
+                          ? (model) => {
+                              const { model: _oldModel, ...withoutModel } = selected;
+                              void handleUpdate(
+                                model === undefined ? withoutModel : { ...selected, model },
+                              );
+                            }
+                          : undefined
+                      }
                       onSetBinding={handleSetBinding}
                       onSetModel={handleSetModel}
                       onEdit={startEdit}
