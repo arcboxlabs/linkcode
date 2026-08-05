@@ -1,3 +1,5 @@
+import type { BindingUnavailableReason } from '@linkcode/providers';
+import { resolveBinding } from '@linkcode/providers';
 import type {
   Account,
   Accounts,
@@ -92,18 +94,30 @@ function resolveAccount(
 
 /** The adapter-facing bundle an account contributes to `StartOptions.config`; each adapter maps
  * the keys to its own env/options. An `oauth` account injects no secret — it delegates to the
- * agent CLI's own login store. */
-function accountConfigBundle(account: Account): Record<string, unknown> {
+ * agent CLI's own login store. The endpoint is resolved per agent, so one account can serve
+ * several natively. */
+function accountConfigBundle(
+  account: Account,
+  kind: AgentKind,
+): { bundle: Record<string, unknown> } | { unavailable: BindingUnavailableReason } {
+  const binding = resolveBinding(account, kind);
+  if (binding.tier === 'unavailable') return { unavailable: binding.reason };
   const bundle: Record<string, unknown> = {};
-  const { credential, endpoint, extraEnv } = account;
+  const { credential, extraEnv } = account;
   if (credential.type === 'api-key') bundle.apiKey = credential.key;
   else if (credential.type === 'auth-token') bundle.authToken = credential.token;
-  if (endpoint) {
-    bundle.baseUrl = endpoint.baseUrl;
-    bundle.protocol = endpoint.protocol;
-  }
+  if (binding.baseUrl !== undefined) bundle.baseUrl = binding.baseUrl;
+  if (binding.protocol !== undefined) bundle.protocol = binding.protocol;
+  if (binding.knownProvider !== undefined) bundle.knownProvider = binding.knownProvider;
   if (extraEnv) bundle.extraEnv = extraEnv;
-  return bundle;
+  return { bundle };
+}
+
+export interface AppliedProviderDefaults {
+  readonly options: StartOptions;
+  /** Why the bound account cannot back this agent. A session must refuse to start rather than
+   * run against an endpoint the agent cannot speak; pre-session reads may ignore it. */
+  readonly unavailable?: BindingUnavailableReason;
 }
 
 /** Apply the stored config to a session's StartOptions: resolve the bound account (or legacy
@@ -113,10 +127,10 @@ export function applyProviderDefaults(
   opts: StartOptions,
   providers: ProvidersConfig,
   accounts: Accounts = [],
-): StartOptions {
+): AppliedProviderDefaults {
   const config = providers[opts.kind];
   const account = resolveAccount(opts, config, accounts);
-  if (!config && !account) return opts;
+  if (!config && !account) return { options: opts };
 
   const next: StartOptions = { ...opts };
   if (next.model === undefined) {
@@ -124,10 +138,12 @@ export function applyProviderDefaults(
     if (model !== undefined) next.model = model;
   }
   if (account) {
-    next.config = { ...next.config, ...accountConfigBundle(account) };
+    const resolved = accountConfigBundle(account, opts.kind);
+    if ('unavailable' in resolved) return { options: next, unavailable: resolved.unavailable };
+    next.config = { ...next.config, ...resolved.bundle };
   } else if (config?.apiKey !== undefined) {
     // Legacy: no account bound — fall back to the provider's bare api key.
     next.config = { ...next.config, apiKey: config.apiKey };
   }
-  return next;
+  return { options: next };
 }

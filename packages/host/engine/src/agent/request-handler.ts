@@ -50,7 +50,9 @@ export class AgentRequestHandler {
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const startOptions = applyProviderDefaults(
+              // A pre-session read: an account the agent cannot bind still names the model list
+              // worth showing, so `unavailable` is deliberately not fatal here.
+              const { options: startOptions } = applyProviderDefaults(
                 { kind: payload.agentKind, cwd: payload.cwd ?? '.' },
                 this.providers.get(),
                 this.providers.getAccounts(),
