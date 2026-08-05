@@ -46,6 +46,34 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
   { id: 'claude-sub', label: 'Claude', group: 'subscription', kind: 'oauth', agent: 'claude-code' },
   { id: 'chatgpt-sub', label: 'ChatGPT', group: 'subscription', kind: 'oauth', agent: 'codex' },
   {
+    id: 'stepfun-plan-global',
+    label: 'StepFun Plan Global',
+    group: 'subscription',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.stepfun.ai/step_plan/v1',
+        credentialType: 'api-key',
+      },
+    ],
+  },
+  {
+    id: 'stepfun-plan-cn',
+    label: 'StepFun Plan China',
+    group: 'subscription',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.stepfun.com/step_plan/v1',
+        credentialType: 'api-key',
+      },
+    ],
+  },
+  {
     id: 'anthropic-api',
     label: 'Anthropic API',
     group: 'direct',
@@ -89,6 +117,34 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       },
     ],
     secretPlaceholder: 'xai-…',
+  },
+  {
+    id: 'stepfun-global',
+    label: 'StepFun Global',
+    group: 'direct',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.stepfun.ai/v1',
+        credentialType: 'api-key',
+      },
+    ],
+  },
+  {
+    id: 'stepfun-cn',
+    label: 'StepFun China',
+    group: 'direct',
+    kind: 'endpoint',
+    variants: [
+      {
+        id: 'default',
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.stepfun.com/v1',
+        credentialType: 'api-key',
+      },
+    ],
   },
   {
     id: 'openrouter',

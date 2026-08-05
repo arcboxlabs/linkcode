@@ -164,4 +164,42 @@ describe('non-subscription account creation', () => {
       ),
     );
   });
+
+  it.each([
+    ['stepfun-global', 'https://api.stepfun.ai/v1'],
+    ['stepfun-cn', 'https://api.stepfun.com/v1'],
+    ['stepfun-plan-global', 'https://api.stepfun.ai/step_plan/v1'],
+    ['stepfun-plan-cn', 'https://api.stepfun.com/step_plan/v1'],
+  ] as const)(
+    'creates the %s account with its OpenAI-compatible endpoint',
+    async (service, baseUrl) => {
+      const onSubmit = vi.fn();
+      const { container } = render(
+        <AddAccountForm
+          serviceId={service}
+          runtimes={undefined}
+          onboarding={onboarding()}
+          busy={false}
+          onBack={vi.fn()}
+          onSubmit={onSubmit}
+        />,
+      );
+
+      const secret = container.querySelector('input[type="password"]');
+      if (!secret) throw new Error('credential input missing');
+      fireEvent.change(secret, { target: { value: 'step-test-key' } });
+      fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            service,
+            endpoint: { baseUrl, protocol: 'openai-chat' },
+            credential: { type: 'api-key', key: 'step-test-key' },
+          }),
+        ),
+      );
+      expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('model');
+    },
+  );
 });
