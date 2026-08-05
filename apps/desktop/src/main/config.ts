@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type {
   ConfigCrypto,
   ConfigDefinitions,
+  ConfigEmergencyState,
   ConfigEvent,
   ConfigNetwork,
   ConfigRefreshResult,
@@ -22,12 +23,6 @@ import { app } from 'electron';
 import log from 'electron-log';
 import { nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
-import type {
-  ConfigRefreshReport,
-  ConfigRefreshStatus,
-  ConfigSnapshotInfo,
-  EffectiveConfigSnapshot,
-} from '../shared/config';
 import { AtomicConfigStorage, FetchConfigNetwork, nodeConfigCrypto } from './config-adapters';
 import { CHANNEL } from './constants';
 
@@ -40,6 +35,25 @@ const disabledNetwork: ConfigNetwork = {
     return Promise.reject(new ConfigCoreError('fetch', 'Configuration endpoint is disabled'));
   },
 };
+
+export type EffectiveConfigSnapshot = Readonly<Record<string, ConfigValue>>;
+
+export interface ConfigSnapshotInfo {
+  readonly configVersion: string | null;
+  readonly emergency: ConfigEmergencyState | null;
+  readonly sha256: string | null;
+  readonly source: 'bundled' | 'cache' | 'remote';
+  readonly stagedColdKeys: readonly string[];
+  readonly status: 'READY';
+}
+
+export type ConfigRefreshStatus = 'disabled' | 'error' | 'idempotent' | 'not-modified' | 'updated';
+
+export interface ConfigRefreshReport {
+  readonly emergency: ConfigRefreshStatus;
+  readonly normal: ConfigRefreshStatus;
+  readonly snapshotInfo: ConfigSnapshotInfo;
+}
 
 export interface DesktopConfigBootstrap {
   readonly brandId: string;
@@ -61,6 +75,7 @@ export interface DesktopConfigServiceOptions {
   readonly storage: ConfigStorage;
 }
 
+// An empty key list signals a metadata-only state change.
 type HotUpdateListener = (keys: readonly string[]) => void;
 
 export class DesktopConfigService {
@@ -104,7 +119,6 @@ export class DesktopConfigService {
       const previous = this.#snapshot;
       this.#snapshot = cloneSnapshot(next.values);
       const changed = changedKeys(previous, this.#snapshot);
-      if (changed.length === 0) return;
       for (const listener of this.#listeners) listener(changed);
     });
   }
@@ -117,6 +131,7 @@ export class DesktopConfigService {
     const state = this.#core.getState();
     return {
       configVersion: state.configVersion,
+      emergency: state.emergency,
       sha256: state.sha256,
       source: state.source === 'defaults' ? 'bundled' : state.source === 'lkg' ? 'cache' : 'remote',
       stagedColdKeys: state.stagedColdKeys.map(String),
