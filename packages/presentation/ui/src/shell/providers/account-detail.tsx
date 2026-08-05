@@ -39,7 +39,7 @@ import { ServiceIcon } from '../service-icon';
 
 export type ProviderBindingStatus =
   | { kind: 'unavailable-oauth'; agent: AgentKind }
-  | { kind: 'unavailable-translation-endpoint' }
+  | { kind: 'unavailable-endpoint-incomplete' }
   | { kind: 'unavailable-protocol' }
   | { kind: 'bound' }
   | { kind: 'no-provider' }
@@ -73,6 +73,8 @@ export interface ProviderAccountDetailViewModel {
   label: string;
   credential: ProviderCredentialViewModel;
   endpoint?: { baseUrl: string; protocol: string };
+  /** Shapes the account's service serves, when no single endpoint is pinned. */
+  protocols?: string[];
   accountModel?: string;
   bindings: ProviderBindingViewModel[];
   boundAgents: AgentKind[];
@@ -188,6 +190,12 @@ export function AccountDetail({
             <DetailRow label={t('endpoint')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
                 {account.endpoint.baseUrl} · {account.endpoint.protocol}
+              </span>
+            </DetailRow>
+          ) : account.protocols?.length ? (
+            <DetailRow label={t('protocols')}>
+              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
+                {account.protocols.join(' · ')}
               </span>
             </DetailRow>
           ) : null}
@@ -311,8 +319,8 @@ function bindingStatusLabel(
   switch (status.kind) {
     case 'unavailable-oauth':
       return t('unavailableOauth', { agent: tAgent(status.agent) });
-    case 'unavailable-translation-endpoint':
-      return t('unavailableTranslationEndpoint');
+    case 'unavailable-endpoint-incomplete':
+      return t('unavailableEndpointIncomplete');
     case 'unavailable-protocol':
       return t('unavailableProtocol');
     case 'bound':

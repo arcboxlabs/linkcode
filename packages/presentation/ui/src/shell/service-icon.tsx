@@ -20,6 +20,7 @@ const SERVICE_GLYPHS: Record<string, typeof AnthropicGlyph> = {
   openrouter: OpenRouterGlyph,
   'vercel-gateway': VercelGlyph,
   'cloudflare-gateway': CloudflareColorGlyph,
+  'cloudflare-anthropic': CloudflareColorGlyph,
 };
 
 const WHITESPACE = /\s+/;

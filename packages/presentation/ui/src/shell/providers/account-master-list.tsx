@@ -16,6 +16,8 @@ export interface ProviderAccountListItem {
   serviceLabel?: string;
   endpoint?: string;
   protocol?: string;
+  /** Shapes the account's service serves, when no single endpoint is pinned. */
+  protocols?: string[];
   credentialType: 'api-key' | 'auth-token' | 'oauth';
   auth?: { loggedIn: boolean; email?: string };
   boundAgents: AgentKind[];
@@ -64,7 +66,8 @@ export function AccountList({
   const accountDetailLine = (account: ProviderAccountListItem): string => {
     if (account.auth?.loggedIn === true) return account.auth.email ?? t('loggedIn');
     if (account.auth) return t('loggedOut');
-    return [account.endpoint, account.protocol].filter(Boolean).join(' · ');
+    if (account.endpoint) return [account.endpoint, account.protocol].filter(Boolean).join(' · ');
+    return account.protocols?.join(' · ') ?? '';
   };
 
   const needle = query.trim().toLowerCase();

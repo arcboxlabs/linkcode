@@ -1,3 +1,4 @@
+import { serviceById } from '@linkcode/providers';
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import {
   createAndBindAccount,
@@ -20,7 +21,6 @@ import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
-import { serviceById } from './catalog';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,

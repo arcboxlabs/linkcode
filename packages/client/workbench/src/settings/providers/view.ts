@@ -1,3 +1,9 @@
+import {
+  detectedLoginSuggestions,
+  resolveBinding,
+  serviceById,
+  serviceProtocols,
+} from '@linkcode/providers';
 import type {
   Account,
   Accounts,
@@ -14,8 +20,6 @@ import type {
   ProviderBindingViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
-import { bindingAvailability } from './capability';
-import { detectedLoginSuggestions, serviceById } from './catalog';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
@@ -86,7 +90,7 @@ function bindingStatus(
   kind: AgentKind,
   providers: ProvidersConfig | undefined,
 ): { bound: boolean; status: ProviderBindingStatus; tier: ProviderBindingViewModel['tier'] } {
-  const availability = bindingAvailability(account, kind);
+  const availability = resolveBinding(account, kind);
   const boundId = providers?.[kind]?.activeAccountId;
   const bound = boundId === account.id;
   if (availability.tier === 'unavailable') {
@@ -102,8 +106,8 @@ function bindingStatus(
       tier: availability.tier,
       status: {
         kind:
-          availability.reason === 'translation-needs-endpoint'
-            ? 'unavailable-translation-endpoint'
+          availability.reason === 'endpoint-incomplete'
+            ? 'unavailable-endpoint-incomplete'
             : 'unavailable-protocol',
       },
     };
@@ -137,6 +141,9 @@ export function providerAccountDetailViewModel(
   });
   const boundAgents = boundAgentKinds(providers, account.id);
   const serviceLabel = serviceById(account.service)?.label;
+  // A catalog account has no single endpoint — each agent resolves its own — so the detail pane
+  // lists the shapes the service serves instead.
+  const protocols = account.endpoint === undefined ? serviceProtocols(account.service) : [];
   return {
     id: account.id,
     label: account.label,
@@ -147,6 +154,7 @@ export function providerAccountDetailViewModel(
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
     ...(!(account.endpoint === undefined) && { endpoint: account.endpoint }),
+    ...(protocols.length > 0 && { protocols }),
     ...(!(account.model === undefined) && { accountModel: account.model }),
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
@@ -160,6 +168,7 @@ function providerAccountListItem(
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountListItem {
   const serviceLabel = serviceById(account.service)?.label;
+  const protocols = account.endpoint === undefined ? serviceProtocols(account.service) : [];
   const auth =
     account.credential.type === 'oauth' ? runtimes?.[account.credential.agent]?.auth : undefined;
   return {
@@ -171,6 +180,7 @@ function providerAccountListItem(
     ...(serviceLabel !== undefined && { serviceLabel }),
     ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
     ...(account.endpoint !== undefined && { protocol: account.endpoint.protocol }),
+    ...(protocols.length > 0 && { protocols }),
     ...(auth !== undefined && {
       auth: {
         loggedIn: auth.loggedIn,
