@@ -1628,7 +1628,29 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     });
   });
 
-  it('rejects a set-model ref that is not providerID/modelID', async () => {
+  it('qualifies a bare picked id with the endpoint’s known provider', async () => {
+    // A picked id comes from the service's model list and carries no provider; opencode routes
+    // only by providerID/modelID, so `knownProvider` supplies the missing half.
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      config: { knownProvider: 'deepseek' },
+    });
+
+    await adapter.send({ type: 'set-model', model: 'deepseek-v4-pro' });
+    // Reflected as the user picked it, so the client's own selected set matches.
+    expect(events).toContainEqual({ type: 'model-update', model: 'deepseek-v4-pro' });
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ model: { providerID: 'deepseek', modelID: 'deepseek-v4-pro' } }),
+    );
+  });
+
+  it('rejects a bare set-model ref when no known provider can qualify it', async () => {
     const { adapter, events } = await makeAdapter();
     events.length = 0;
 
