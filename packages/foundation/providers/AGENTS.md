@@ -55,8 +55,7 @@ smell this package exists to remove.
   **Only `openai-chat`**: `TranslatorUpstream.wire` is typed `'openai-chat'` and the sidecar
   implements nothing else, so a responses-only service is unavailable rather than translated.
 - `codex` — `openai-responses` only. Chat Completions was removed from the CLI (`wire_api = "chat"`
-  is a config-load error since 0.122; we pin 0.144.1), so a chat endpoint answers 404 on
-  `POST /responses`.
+  is a config-load error since 0.122), so a chat endpoint answers 404 on `POST /responses`.
 - `opencode` / `pi` — any shape. They route by provider, so the preferred variant is the one whose
   `knownProvider` names an entry in that agent's own catalog: the agent then carries the wire adapter
   and model metadata and needs only the key. `knownProvider` reaches the adapters through
@@ -78,3 +77,11 @@ Registering a **custom** provider for an endpoint no agent knows — opencode
 `/v1/models` response carries and `contextWindow` feeds pi's compaction math, so the metadata source
 is a real decision. Until it lands, endpoints without a known provider keep the pre-existing
 behavior (baseUrl override on a guessed provider).
+
+**Do not fake the gap by passing a wire hint.** pi's `ProviderConfigInput` accepts `api`, so
+`registerProvider({ baseUrl, api })` typechecks — and the SDK discards it on any call without
+`models`. An earlier revision shipped exactly that, with a comment and a doc paragraph asserting the
+wire was pinned; nothing failed, because a baseUrl-only injection is correct precisely when the
+target provider's built-in wire already matches, which is every provider pi ships metadata for. The
+correct scope is therefore known providers, and the honest statement of the limit is that
+differently-shaped endpoints are out of scope until the metadata question is answered.

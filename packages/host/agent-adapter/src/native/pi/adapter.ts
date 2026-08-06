@@ -11,7 +11,6 @@ import type {
   ToolCallEventResult,
 } from '@earendil-works/pi-coding-agent';
 import type {
-  AccountProtocol,
   AgentCommand,
   AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
@@ -131,20 +130,6 @@ function piCommandCatalog(
   return commands;
 }
 
-/** Our protocol vocabulary in pi's own `Api` terms (`@earendil-works/pi-ai` `KnownApi`). */
-function piApi(protocol: AccountProtocol | undefined): string | undefined {
-  switch (protocol) {
-    case 'anthropic':
-      return 'anthropic-messages';
-    case 'openai-chat':
-      return 'openai-completions';
-    case 'openai-responses':
-      return 'openai-responses';
-    default:
-      return undefined;
-  }
-}
-
 function createConfiguredRegistry(
   pi: PiSdk,
   opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
@@ -172,14 +157,13 @@ function createConfiguredRegistry(
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
   if (cred.baseUrl) {
-    // Only the resolved known provider carries the right wire for this endpoint. Any other name —
-    // a resumed session's own provider, or the first-available guess — keeps pi's built-in `api`
-    // for that name, because a models-less registerProvider patches baseUrl and nothing else.
-    const api = provider === cred.knownProvider ? undefined : piApi(cred.protocol);
+    // baseUrl override only: a models-less registerProvider rewrites the URL and leaves each
+    // model's wire at pi's built-in value, so this works exactly when that provider's built-in
+    // wire already matches the endpoint. Pointing a provider at a differently-shaped endpoint is
+    // not expressible without supplying full model metadata (see @linkcode/providers AGENTS.md).
     modelRegistry.registerProvider(provider, {
       baseUrl: cred.baseUrl,
       ...(key && { apiKey: key }),
-      ...(api && { api }),
     });
   }
   return {

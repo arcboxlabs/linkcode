@@ -1,5 +1,4 @@
-import type { AccountProtocol, StartOptions } from '@linkcode/schema';
-import { AccountProtocolSchema } from '@linkcode/schema';
+import type { StartOptions } from '@linkcode/schema';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /**
@@ -14,8 +13,6 @@ export interface AgentCredential {
   authToken?: string;
   /** Custom endpoint (gateway / relay / local translator). */
   baseUrl?: string;
-  /** The wire `baseUrl` speaks, as resolved for this agent. */
-  protocol?: AccountProtocol;
   /** This endpoint's id in the agent's own provider catalog, when it has one. Provider-routed
    * agents (opencode, pi) inject the credential under it instead of guessing a provider. */
   knownProvider?: string;
@@ -31,7 +28,6 @@ export function readAgentCredential(config: StartOptions['config']): AgentCreden
     apiKey: readString(config.apiKey),
     authToken: readString(config.authToken),
     baseUrl: readString(config.baseUrl),
-    protocol: readProtocol(config.protocol),
     knownProvider: readString(config.knownProvider),
     ...(extraEnv && { extraEnv }),
   };
@@ -89,11 +85,6 @@ export function grokEnv(cred: AgentCredential): Record<string, string> | undefin
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function readProtocol(value: unknown): AccountProtocol | undefined {
-  const parsed = AccountProtocolSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
 }
 
 function readStringRecord(value: unknown): Record<string, string> | undefined {

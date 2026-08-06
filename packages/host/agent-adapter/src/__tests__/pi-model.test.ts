@@ -139,12 +139,11 @@ describe('Pi dynamic model catalog', () => {
     expect(catalog.models).toContainEqual(expect.objectContaining({ id: 'openai/gpt' }));
   });
 
-  it('targets the resolved known provider and leaves its own wire alone', async () => {
+  it('targets the resolved known provider', async () => {
     await new PiAdapter().startCatalog({
       config: {
         apiKey: 'account-key',
         baseUrl: 'https://gateway.example.test/v1',
-        protocol: 'openai-chat',
         knownProvider: 'openai',
       },
     });
@@ -155,23 +154,6 @@ describe('Pi dynamic model catalog', () => {
     expect(sdk.registerProvider).toHaveBeenCalledWith('openai', {
       baseUrl: 'https://gateway.example.test/v1',
       apiKey: 'account-key',
-    });
-  });
-
-  it('pins the wire when the provider was guessed rather than resolved', async () => {
-    await new PiAdapter().startCatalog({
-      config: {
-        apiKey: 'account-key',
-        baseUrl: 'https://relay.example.test',
-        protocol: 'anthropic',
-      },
-    });
-
-    // A guessed provider name would otherwise speak whatever wire that name spoke.
-    expect(sdk.registerProvider).toHaveBeenCalledWith('openai', {
-      baseUrl: 'https://relay.example.test',
-      apiKey: 'account-key',
-      api: 'anthropic-messages',
     });
   });
 
@@ -236,7 +218,6 @@ describe('Pi native resume', () => {
         config: {
           apiKey: 'account-key',
           baseUrl: 'https://gateway.example.test/v1',
-          protocol: 'openai-responses',
           knownProvider: 'openai',
         },
       },
@@ -245,12 +226,5 @@ describe('Pi native resume', () => {
     // The session's own last-routed provider outranks the account's catalog default: registering
     // the key under `openai` would leave the model pi actually resumes without credentials.
     expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('other', 'account-key');
-    // And `other` is not the provider whose built-in wire matches this endpoint, so the wire has
-    // to be stated — a models-less registerProvider patches baseUrl and leaves `api` alone.
-    expect(sdk.registerProvider).toHaveBeenCalledWith('other', {
-      baseUrl: 'https://gateway.example.test/v1',
-      apiKey: 'account-key',
-      api: 'openai-responses',
-    });
   });
 });
