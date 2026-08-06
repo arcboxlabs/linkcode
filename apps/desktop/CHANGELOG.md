@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.0](https://github.com/arcboxlabs/linkcode/compare/v0.21.0...v0.22.0) (2026-08-06)
+
+
+### Features
+
+* **providers:** resolve provider endpoints per agent ([#424](https://github.com/arcboxlabs/linkcode/issues/424)) ([cd67dd9](https://github.com/arcboxlabs/linkcode/commit/cd67dd9f5d0d5d9d159944dccb30420949bd4781))
+
+
+### Bug Fixes
+
+* **lint:** run single-threaded by default and share one command with CI ([#416](https://github.com/arcboxlabs/linkcode/issues/416)) ([1fb5474](https://github.com/arcboxlabs/linkcode/commit/1fb54744463de92b050b0cc881376c633947943a))
+
 ## [0.21.0](https://github.com/arcboxlabs/linkcode/compare/v0.20.0...v0.21.0) (2026-08-05)
 
 
