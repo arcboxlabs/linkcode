@@ -13,7 +13,7 @@ expo-export/
 # turbo
 .turbo/
 
-# eslint (`lint:ci` only — see .github/workflows/ci.yml)
+# eslint (content-keyed cache, written by every `pnpm lint` run)
 .eslintcache
 
 # expo / react-native

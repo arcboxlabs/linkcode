@@ -28,8 +28,7 @@ permissions:
   contents: read
 
 env:
-  # Typed linting needs one TS program set in a single heap: `lint:ci` runs eslint with
-  # `--concurrency=off`, and a cold cache still walks the whole repo, which does not fit in 4096.
+  # Non-lint Node steps still need more than the default 4096 MB heap; lint sets its own limit.
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
@@ -105,10 +104,9 @@ jobs:
       - name: Check formatting and imports
         run: pnpm format:check
 
-      # `lint:ci`, not `lint`: multithread linting duplicates the typescript-eslint program per
-      # worker instead of splitting it, which OOMs a 2-worker runner (CODE-468).
+      # Type-aware programs are duplicated per worker, so lint defaults to single-threaded.
       - name: Lint
-        run: pnpm lint:ci
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
