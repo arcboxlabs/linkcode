@@ -297,7 +297,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // pre-adoption behavior for this path.
       }
     }
-    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    // The model ref decides routing (prompts carry `{providerID, modelID}`), so it wins; the
+    // resolved known provider covers the common case of a model id typed without one.
+    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : cred.knownProvider;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;

@@ -41,7 +41,17 @@ export class SessionStartOptionsResolver {
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
     return Effect.gen(function* () {
-      const custom = yield* withCustomMcpServers(defaults);
+      if (defaults.unavailable) {
+        // Starting anyway would point the agent at an endpoint it cannot speak, which surfaces
+        // much later as an opaque 404 from the provider.
+        return yield* Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: `The bound account cannot back ${options.kind} (${defaults.unavailable})`,
+          }),
+        );
+      }
+      const custom = yield* withCustomMcpServers(defaults.options);
       const resolved = withSimulatorMcp(custom.options, sessionId);
       const upstream = translationUpstream(resolved);
       if (!upstream) return { options: resolved, warnings: custom.warnings };

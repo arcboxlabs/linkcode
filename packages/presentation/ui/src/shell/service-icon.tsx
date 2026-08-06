@@ -2,6 +2,7 @@
 import AnthropicGlyph from '~icons/lobe-icons/anthropic';
 import ClaudeColorGlyph from '~icons/lobe-icons/claude-color';
 import CloudflareColorGlyph from '~icons/lobe-icons/cloudflare-color';
+import DeepSeekColorGlyph from '~icons/lobe-icons/deepseek-color';
 import OpenAiGlyph from '~icons/lobe-icons/openai';
 import OpenRouterGlyph from '~icons/lobe-icons/openrouter';
 import VercelGlyph from '~icons/lobe-icons/vercel';
@@ -17,9 +18,11 @@ const SERVICE_GLYPHS: Record<string, typeof AnthropicGlyph> = {
   'anthropic-api': AnthropicGlyph,
   'openai-api': OpenAiGlyph,
   xai: XaiGlyph,
+  deepseek: DeepSeekColorGlyph,
   openrouter: OpenRouterGlyph,
   'vercel-gateway': VercelGlyph,
   'cloudflare-gateway': CloudflareColorGlyph,
+  'cloudflare-anthropic': CloudflareColorGlyph,
 };
 
 const WHITESPACE = /\s+/;

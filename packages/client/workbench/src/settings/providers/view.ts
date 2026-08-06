@@ -1,3 +1,10 @@
+import {
+  detectedLoginSuggestions,
+  pinnedEndpoint,
+  resolveBinding,
+  serviceById,
+  serviceProtocols,
+} from '@linkcode/providers';
 import type {
   Account,
   Accounts,
@@ -10,12 +17,11 @@ import type {
   ProviderAccountDetailViewModel,
   ProviderAccountListItem,
   ProviderAccountListViewModel,
+  ProviderAccountRouting,
   ProviderBindingStatus,
   ProviderBindingViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
-import { bindingAvailability } from './capability';
-import { detectedLoginSuggestions, serviceById } from './catalog';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
@@ -86,7 +92,7 @@ function bindingStatus(
   kind: AgentKind,
   providers: ProvidersConfig | undefined,
 ): { bound: boolean; status: ProviderBindingStatus; tier: ProviderBindingViewModel['tier'] } {
-  const availability = bindingAvailability(account, kind);
+  const availability = resolveBinding(account, kind);
   const boundId = providers?.[kind]?.activeAccountId;
   const bound = boundId === account.id;
   if (availability.tier === 'unavailable') {
@@ -102,8 +108,8 @@ function bindingStatus(
       tier: availability.tier,
       status: {
         kind:
-          availability.reason === 'translation-needs-endpoint'
-            ? 'unavailable-translation-endpoint'
+          availability.reason === 'endpoint-incomplete'
+            ? 'unavailable-endpoint-incomplete'
             : 'unavailable-protocol',
       },
     };
@@ -137,6 +143,7 @@ export function providerAccountDetailViewModel(
   });
   const boundAgents = boundAgentKinds(providers, account.id);
   const serviceLabel = serviceById(account.service)?.label;
+  const routing = accountRouting(account);
   return {
     id: account.id,
     label: account.label,
@@ -146,12 +153,25 @@ export function providerAccountDetailViewModel(
     availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
-    ...(!(account.endpoint === undefined) && { endpoint: account.endpoint }),
+    ...(routing !== undefined && { routing }),
     ...(!(account.model === undefined) && { accountModel: account.model }),
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
     }),
   };
+}
+
+/**
+ * How this account reaches its provider, as the one axis the UI renders. A catalog account has no
+ * single endpoint — each agent resolves its own — so it advertises the shapes the service serves;
+ * only a user-named endpoint is a pin. Asking the resolver keeps this answer identical to the one
+ * a session start will act on.
+ */
+function accountRouting(account: Account): ProviderAccountRouting | undefined {
+  const pinned = pinnedEndpoint(account);
+  if (pinned) return { kind: 'pinned', baseUrl: pinned.baseUrl, protocol: pinned.protocol };
+  const protocols = serviceProtocols(account.service);
+  return protocols.length > 0 ? { kind: 'catalog', protocols } : undefined;
 }
 
 function providerAccountListItem(
@@ -160,6 +180,7 @@ function providerAccountListItem(
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountListItem {
   const serviceLabel = serviceById(account.service)?.label;
+  const routing = accountRouting(account);
   const auth =
     account.credential.type === 'oauth' ? runtimes?.[account.credential.agent]?.auth : undefined;
   return {
@@ -169,8 +190,7 @@ function providerAccountListItem(
     boundAgents: boundAgentKinds(providers, account.id),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
-    ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
-    ...(account.endpoint !== undefined && { protocol: account.endpoint.protocol }),
+    ...(routing !== undefined && { routing }),
     ...(auth !== undefined && {
       auth: {
         loggedIn: auth.loggedIn,

@@ -8,14 +8,14 @@ import { ChevronRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ServiceIcon } from '../service-icon';
+import type { ProviderAccountRouting } from './routing';
 
 export interface ProviderAccountListItem {
   id: string;
   service?: string;
   label: string;
   serviceLabel?: string;
-  endpoint?: string;
-  protocol?: string;
+  routing?: ProviderAccountRouting;
   credentialType: 'api-key' | 'auth-token' | 'oauth';
   auth?: { loggedIn: boolean; email?: string };
   boundAgents: AgentKind[];
@@ -61,16 +61,26 @@ export function AccountList({
     return t('credentialAuthToken');
   };
 
-  const accountDetailLine = (account: ProviderAccountListItem): string => {
+  /** Undefined means the row has no second line — the sole decision, so no separate render gate
+   * can disagree with it. Catalog accounts deliberately show nothing: their wire shapes are an
+   * implementation detail the add flow stopped asking about, and this slot has no label to give
+   * bare protocol names any meaning (the detail pane shows them under `t('protocols')`). */
+  const accountDetailLine = (account: ProviderAccountListItem): string | undefined => {
     if (account.auth?.loggedIn === true) return account.auth.email ?? t('loggedIn');
     if (account.auth) return t('loggedOut');
-    return [account.endpoint, account.protocol].filter(Boolean).join(' · ');
+    return account.routing?.kind === 'pinned'
+      ? `${account.routing.baseUrl} · ${account.routing.protocol}`
+      : undefined;
   };
 
   const needle = query.trim().toLowerCase();
   const rows = needle
     ? accounts.filter((account) =>
-        [account.label, account.serviceLabel ?? '', account.endpoint ?? '']
+        [
+          account.label,
+          account.serviceLabel ?? '',
+          account.routing?.kind === 'pinned' ? account.routing.baseUrl : '',
+        ]
           .join(' ')
           .toLowerCase()
           .includes(needle),
@@ -114,46 +124,53 @@ export function AccountList({
               </li>
             </>
           ) : null}
-          {rows.map((account) => (
-            <li key={account.id}>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-                onClick={() => onSelect(account.id)}
-              >
-                <ServiceIcon service={account.service} label={account.label} className="size-10" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-sm">{account.label}</span>
-                  <span className="block truncate text-muted-foreground text-xs">
-                    {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
-                  </span>
-                  {account.auth !== undefined || account.endpoint !== undefined ? (
+          {rows.map((account) => {
+            const detailLine = accountDetailLine(account);
+            return (
+              <li key={account.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => onSelect(account.id)}
+                >
+                  <ServiceIcon
+                    service={account.service}
+                    label={account.label}
+                    className="size-10"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-sm">{account.label}</span>
                     <span className="block truncate text-muted-foreground text-xs">
-                      {accountDetailLine(account)}
+                      {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
                     </span>
-                  ) : null}
-                </span>
-                <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
-                  {account.boundAgents.length === 0 ? (
-                    <Badge
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full border-dashed text-muted-foreground"
-                    >
-                      {t('unbound')}
-                    </Badge>
-                  ) : (
-                    account.boundAgents.map((kind) => (
-                      <Badge key={kind} variant="outline" size="sm" className="rounded-full">
-                        {tAgent(kind)}
+                    {detailLine ? (
+                      <span className="block truncate text-muted-foreground text-xs">
+                        {detailLine}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
+                    {account.boundAgents.length === 0 ? (
+                      <Badge
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full border-dashed text-muted-foreground"
+                      >
+                        {t('unbound')}
                       </Badge>
-                    ))
-                  )}
-                </span>
-                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            </li>
-          ))}
+                    ) : (
+                      account.boundAgents.map((kind) => (
+                        <Badge key={kind} variant="outline" size="sm" className="rounded-full">
+                          {tAgent(kind)}
+                        </Badge>
+                      ))
+                    )}
+                  </span>
+                  <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            );
+          })}
           {!loading && needle && rows.length === 0 ? (
             <li className="px-4 py-12 text-center text-muted-foreground text-sm">
               {t('noMatches')}

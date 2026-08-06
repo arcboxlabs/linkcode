@@ -18,6 +18,7 @@
     "@linkcode/client-core": "workspace:*",
     "@linkcode/common": "workspace:*",
     "@linkcode/i18n": "workspace:*",
+    "@linkcode/providers": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/sdk": "workspace:*",
     "@linkcode/transport": "workspace:*",

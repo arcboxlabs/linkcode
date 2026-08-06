@@ -1,3 +1,4 @@
+import { resolveBinding } from '@linkcode/providers';
 import type { AgentKind, AgentRuntimeAvailability } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
 import { AgentIcon, AgentOnboardingCard, SettingsCard } from '@linkcode/ui';
@@ -8,7 +9,6 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { useData, useMutation } from '../runtime/tayori';
-import { bindingAvailability } from './providers/capability';
 import { AGENT_KINDS, withEnabled } from './providers/view';
 import { SimulatorAgentAccessCard } from './simulator-access';
 
@@ -50,8 +50,7 @@ export function AgentsSettingsPanel({
           // A disabled agent's runtime gaps don't matter — no card, just the badge.
           const cue = enabled ? onboarding.cues[kind] : undefined;
           const translated =
-            boundAccount !== undefined &&
-            bindingAvailability(boundAccount, kind).tier === 'translate';
+            boundAccount !== undefined && resolveBinding(boundAccount, kind).tier === 'translate';
           // With no bound account the agent follows the CLI login — show who that is when probed.
           const cliIdentity =
             boundAccount === undefined && runtime?.auth?.loggedIn === true

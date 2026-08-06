@@ -1,10 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { EndpointService, ServiceDescriptor, ServiceGroup } from '@linkcode/providers';
+import {
+  pinnedEndpoint,
+  SERVICE_CATALOG,
+  serviceById,
+  serviceProtocols,
+  templatePlaceholders,
+} from '@linkcode/providers';
 import type { Account, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
 import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
-import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
 import {
   Select,
   SelectItem,
@@ -12,15 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'coss-ui/components/select';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
-import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
-import { fillTemplate, SERVICE_CATALOG, serviceById, templatePlaceholders } from './catalog';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -45,13 +51,11 @@ export function oauthAccount(
   };
 }
 
-function catalogAccount(
-  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>,
-  variant: ServiceVariant,
-  draft: CatalogDraft,
-): Account {
+/** The account holds only the secret, the service key and any template values — each agent resolves
+ * its own endpoint from those, so no protocol is chosen here. */
+function catalogAccount(service: EndpointService, draft: CatalogDraft): Account {
   const trimmed: Record<string, string> = {};
-  for (const key of templatePlaceholders(variant.baseUrl)) {
+  for (const key of servicePlaceholders(service)) {
     const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
     trimmed[key] = value.trim();
   }
@@ -59,12 +63,21 @@ function catalogAccount(
     ...newAccountBase(draft.label),
     service: service.id,
     credential:
-      variant.credentialType === 'auth-token'
+      service.credentialType === 'auth-token'
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
-    endpoint: { baseUrl: fillTemplate(variant.baseUrl, trimmed), protocol: variant.protocol },
+    ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
     ...(draft.model.trim() && { model: draft.model.trim() }),
   };
+}
+
+/** Placeholders across every variant: one secret covers them all, so the form asks once. */
+function servicePlaceholders(service: EndpointService): string[] {
+  const keys = new Set<string>();
+  for (const variant of Object.values(service.variants)) {
+    for (const key of templatePlaceholders(variant.baseUrl)) keys.add(key);
+  }
+  return [...keys];
 }
 
 function customAccount(draft: CustomDraft): Account {
@@ -348,9 +361,9 @@ const CatalogDraftSchema = z.object({
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
-function catalogDraftSchema(variant: ServiceVariant): typeof CatalogDraftSchema {
+function catalogDraftSchema(service: EndpointService): typeof CatalogDraftSchema {
   return CatalogDraftSchema.superRefine((draft, ctx) => {
-    for (const key of templatePlaceholders(variant.baseUrl)) {
+    for (const key of servicePlaceholders(service)) {
       const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
       if (!value.trim()) {
         ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });
@@ -371,72 +384,37 @@ function CatalogAccountForm({
   busy,
   onSubmit,
 }: {
-  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>;
+  service: EndpointService;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const serviceName = t(`serviceName.${service.id}`);
-  // The variant determines the form's shape (placeholders, secret kind); it is UI state, not a field.
-  const [variant, setVariant] = useState(service.variants[0]);
-  const placeholders = templatePlaceholders(variant.baseUrl);
+  const placeholders = servicePlaceholders(service);
 
   const {
     register,
-    control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<CatalogDraft>({
-    resolver: zodResolver(catalogDraftSchema(variant)),
+    resolver: zodResolver(catalogDraftSchema(service)),
     defaultValues: { label: serviceName, secret: '', model: '', placeholders: {} },
   });
-  // Display-only subscription for the endpoint preview; fields are wired via register/Controller.
-  const placeholderValues = useWatch({ control, name: 'placeholders' });
 
   const secretLabel =
-    variant.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');
+    service.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');
 
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit(catalogAccount(service, variant, draft)))}
+      onSubmit={handleSubmit((draft) => onSubmit(catalogAccount(service, draft)))}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('label')} />
       </Field>
-      {service.variants.length > 1 ? (
-        <Field>
-          <FieldLabel>{t('form.variant')}</FieldLabel>
-          <RadioGroup
-            className="gap-2"
-            value={variant.id}
-            onValueChange={(value) => {
-              const next = service.variants.find((candidate) => candidate.id === value);
-              if (next) setVariant(next);
-            }}
-          >
-            {service.variants.map((candidate) => (
-              <label
-                key={candidate.id}
-                className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3"
-              >
-                <RadioGroupItem value={candidate.id} className="mt-0.5" />
-                <span className="min-w-0">
-                  <span className="block font-medium text-sm">
-                    {t(`variantName.${candidate.protocol}`)}
-                  </span>
-                  <span className="block text-muted-foreground text-xs">
-                    {t(`variantNote.${candidate.protocol}`)}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </RadioGroup>
-        </Field>
-      ) : null}
       {placeholders.map((key) => (
-        <Field key={`${variant.id}:${key}`}>
+        <Field key={key}>
           <FieldLabel>{placeholderLabel(key)}</FieldLabel>
           <Input className="w-full" autoComplete="off" {...register(`placeholders.${key}`)} />
         </Field>
@@ -462,7 +440,7 @@ function CatalogAccountForm({
         </div>
       </div>
       <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
-        {fillTemplate(variant.baseUrl, placeholderValues)} · {variant.protocol}
+        {serviceProtocols(service.id).join(' · ')}
       </p>
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
@@ -513,8 +491,10 @@ function CustomAccountForm({
           : account?.credential.type === 'api-key'
             ? account.credential.key
             : '',
-      baseUrl: account?.endpoint?.baseUrl ?? '',
-      protocol: account?.endpoint?.protocol ?? '',
+      // Prefill only an endpoint that is actually honored: a catalog-derived one is ignored at
+      // resolve time, so showing it would invite the user to "keep" a value that does nothing.
+      baseUrl: (account && pinnedEndpoint(account)?.baseUrl) ?? '',
+      protocol: (account && pinnedEndpoint(account)?.protocol) ?? '',
       model: account?.model ?? '',
     },
   });

@@ -7,20 +7,22 @@ const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 describe('applyProviderDefaults', () => {
   it('returns the input untouched when no config exists for the kind', () => {
     const providers: ProvidersConfig = { 'claude-code': { enabled: true, apiKey: 'sk-x' } };
-    expect(applyProviderDefaults(baseOpts, providers)).toBe(baseOpts);
+    expect(applyProviderDefaults(baseOpts, providers).options).toBe(baseOpts);
   });
 
   it('fills the default model only when the client did not specify one', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, defaultModel: 'o4-mini' } };
-    expect(applyProviderDefaults(baseOpts, providers).model).toBe('o4-mini');
-    expect(applyProviderDefaults({ ...baseOpts, model: 'gpt-4o' }, providers).model).toBe('gpt-4o');
-    expect(applyProviderDefaults({ ...baseOpts, model: null }, providers).model).toBeNull();
+    expect(applyProviderDefaults(baseOpts, providers).options.model).toBe('o4-mini');
+    expect(applyProviderDefaults({ ...baseOpts, model: 'gpt-4o' }, providers).options.model).toBe(
+      'gpt-4o',
+    );
+    expect(applyProviderDefaults({ ...baseOpts, model: null }, providers).options.model).toBeNull();
   });
 
   it('injects the api key into config, preserving existing config keys', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, apiKey: 'sk-live' } };
     const merged = applyProviderDefaults({ ...baseOpts, config: { tools: ['a'] } }, providers);
-    expect(merged.config).toEqual({ tools: ['a'], apiKey: 'sk-live' });
+    expect(merged.options.config).toEqual({ tools: ['a'], apiKey: 'sk-live' });
   });
 
   it('does not mutate the input options', () => {
@@ -43,7 +45,7 @@ describe('applyProviderDefaults account pool', () => {
 
   it('injects the credential from the account bound via activeAccountId', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
-    expect(applyProviderDefaults(baseOpts, providers, [account]).config).toEqual({
+    expect(applyProviderDefaults(baseOpts, providers, [account]).options.config).toEqual({
       apiKey: 'sk-acc',
     });
   });
@@ -61,11 +63,28 @@ describe('applyProviderDefaults account pool', () => {
       providers,
       [account, other],
     );
-    expect(merged.config).toMatchObject({ apiKey: 'sk-other' });
+    expect(merged.options.config).toMatchObject({ apiKey: 'sk-other' });
   });
 
   it('injects authToken, baseUrl and protocol for an auth-token account with an endpoint', () => {
     const gateway: Account = {
+      id: 'gw',
+      label: 'Relay',
+      credential: { type: 'auth-token', token: 'or-tok' },
+      endpoint: { baseUrl: 'https://relay.example.com/v1', protocol: 'openai-responses' },
+      createdAt: 0,
+    };
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'gw' } };
+    const merged = applyProviderDefaults(baseOpts, providers, [gateway]);
+    expect(merged.options.config).toEqual({
+      authToken: 'or-tok',
+      baseUrl: 'https://relay.example.com/v1',
+      protocol: 'openai-responses',
+    });
+  });
+
+  it('reports an account whose endpoint the agent cannot speak instead of injecting it', () => {
+    const anthropicOnly: Account = {
       id: 'gw',
       label: 'OpenRouter',
       credential: { type: 'auth-token', token: 'or-tok' },
@@ -73,28 +92,48 @@ describe('applyProviderDefaults account pool', () => {
       createdAt: 0,
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'gw' } };
-    const merged = applyProviderDefaults(baseOpts, providers, [gateway]);
-    expect(merged.config).toEqual({
-      authToken: 'or-tok',
-      baseUrl: 'https://openrouter.ai/api',
-      protocol: 'anthropic',
+    const merged = applyProviderDefaults(baseOpts, providers, [anthropicOnly]);
+    expect(merged.unavailable).toBe('protocol-unsupported');
+    expect(merged.options.config?.baseUrl).toBeUndefined();
+  });
+
+  it('resolves a catalog service to the endpoint the bound agent speaks', () => {
+    const openai: Account = {
+      id: 'oa',
+      label: 'OpenAI',
+      service: 'openai-api',
+      credential: { type: 'api-key', key: 'sk-oa' },
+      createdAt: 0,
+    };
+    const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oa' } };
+    // Codex overrides the base URL of its own Responses provider, so it carries no knownProvider.
+    expect(applyProviderDefaults(baseOpts, providers, [openai]).options.config).toEqual({
+      apiKey: 'sk-oa',
+      baseUrl: 'https://api.openai.com/v1',
+      protocol: 'openai-responses',
     });
+    const forOpencode = applyProviderDefaults(
+      { ...baseOpts, kind: 'opencode' },
+      { opencode: { enabled: true, activeAccountId: 'oa' } },
+      [openai],
+    );
+    expect(forOpencode.options.config).toMatchObject({ knownProvider: 'openai' });
   });
 
   it('prefers the account model over the provider default model', () => {
     const providers: ProvidersConfig = {
       codex: { enabled: true, defaultModel: 'o4-mini', activeAccountId: 'acc_1' },
     };
-    expect(applyProviderDefaults(baseOpts, providers, [{ ...account, model: 'gpt-5' }]).model).toBe(
-      'gpt-5',
-    );
+    expect(
+      applyProviderDefaults(baseOpts, providers, [{ ...account, model: 'gpt-5' }]).options.model,
+    ).toBe('gpt-5');
   });
 
   it('falls back to the legacy apiKey when the bound account id is stale', () => {
     const providers: ProvidersConfig = {
       codex: { enabled: true, apiKey: 'sk-legacy', activeAccountId: 'deleted' },
     };
-    expect(applyProviderDefaults(baseOpts, providers, [account]).config).toEqual({
+    expect(applyProviderDefaults(baseOpts, providers, [account]).options.config).toEqual({
       apiKey: 'sk-legacy',
     });
   });
@@ -107,7 +146,7 @@ describe('applyProviderDefaults account pool', () => {
       createdAt: 0,
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
-    expect(applyProviderDefaults(baseOpts, providers, [oauth]).config).toEqual({});
+    expect(applyProviderDefaults(baseOpts, providers, [oauth]).options.config).toEqual({});
   });
 });
 

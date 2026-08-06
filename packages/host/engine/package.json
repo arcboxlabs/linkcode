@@ -14,6 +14,7 @@
   "dependencies": {
     "@linkcode/agent-adapter": "workspace:*",
     "@linkcode/common": "workspace:*",
+    "@linkcode/providers": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "acorn": "^8.17.0",

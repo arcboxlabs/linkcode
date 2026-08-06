@@ -164,6 +164,7 @@ dependency guardrails.
 | `foundation/schema` | zod schemas — the single data contract. Every cross-process / cross-end / post-abstraction message type derives from here (`z.infer`). |
 | `foundation/transport` | Communication layer ("how messages travel"): local / ws / Socket.IO implementations, the `Hub` fan-out, and the versioned wire protocol. |
 | `foundation/common` | Shared framework-agnostic utilities that do not belong to the data contract or a product layer (for example Zustand persistence helpers). |
+| `foundation/providers` | The model-provider service directory plus `resolveBinding`, which picks the endpoint variant a given agent speaks. Shared by the daemon (session start) and the client (binding availability), so neither keeps its own copy. |
 | `host/agent-adapter` | One adapter per agent (`claude-code` / `codex` / `opencode` / `pi` / `grok-build`) plus the abstraction layer that normalizes native events into `schema`. |
 | `host/assets` | Managed-asset store for verified agent CLI pairs, in-process package closures, and standalone toolchains. |
 | `host/engine` | The host engine: session lifecycle and agent orchestration, driving `agent-adapter`. |

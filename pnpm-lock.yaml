@@ -798,6 +798,9 @@ importers:
       '@linkcode/i18n':
         specifier: workspace:*
         version: link:../../presentation/i18n
+      '@linkcode/providers':
+        specifier: workspace:*
+        version: link:../../foundation/providers
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../foundation/schema
@@ -896,6 +899,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.1
+
+  packages/foundation/providers:
+    dependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../schema
+      foxts:
+        specifier: ^5.8.1
+        version: 5.8.1
 
   packages/foundation/schema:
     dependencies:
@@ -1053,6 +1065,9 @@ importers:
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../foundation/common
+      '@linkcode/providers':
+        specifier: workspace:*
+        version: link:../../foundation/providers
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../foundation/schema
@@ -8360,9 +8375,6 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.4:
-    resolution: {integrity: sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==}
-
   jose@6.2.7:
     resolution: {integrity: sha512-hq1OB1bALKfydZNoViyg6hPVGV4i93ny9Op+n4zP5RSf7SCZEXa/TsG2O3IEr7+WlHRTPnpqDmHfMH6qXAD60w==}
 
@@ -13952,7 +13964,7 @@ snapshots:
       express: 5.2.1
       express-rate-limit: 8.6.1(express@5.2.1)
       hono: 4.12.32
-      jose: 6.2.4
+      jose: 6.2.7
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
@@ -18986,8 +18998,6 @@ snapshots:
   jimp-compact@0.16.1: {}
 
   jiti@2.7.0: {}
-
-  jose@6.2.4: {}
 
   jose@6.2.7: {}
 

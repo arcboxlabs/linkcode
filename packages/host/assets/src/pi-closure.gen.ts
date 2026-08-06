@@ -1088,9 +1088,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'jose',
-    version: '6.2.4',
+    version: '6.2.7',
     integrity:
-      'sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA==',
+      'sha512-hq1OB1bALKfydZNoViyg6hPVGV4i93ny9Op+n4zP5RSf7SCZEXa/TsG2O3IEr7+WlHRTPnpqDmHfMH6qXAD60w==',
     path: 'node_modules/jose',
   },
   {
@@ -1622,7 +1622,7 @@ const packages: NpmClosure['packages'] = [
 
 export const PI_CLOSURE: NpmClosure = {
   version: '0.80.6',
-  revision: 'b77bf10e9a04fe3f',
+  revision: 'd6ff0228b84fa10c',
   entry: 'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
   packages,
 };

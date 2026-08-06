@@ -36,10 +36,11 @@ import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../../chat/agent-icon';
 import { AGENT_MODEL_OPTIONS } from '../agent-models';
 import { ServiceIcon } from '../service-icon';
+import type { ProviderAccountRouting } from './routing';
 
 export type ProviderBindingStatus =
   | { kind: 'unavailable-oauth'; agent: AgentKind }
-  | { kind: 'unavailable-translation-endpoint' }
+  | { kind: 'unavailable-endpoint-incomplete' }
   | { kind: 'unavailable-protocol' }
   | { kind: 'bound' }
   | { kind: 'no-provider' }
@@ -72,7 +73,7 @@ export interface ProviderAccountDetailViewModel {
   serviceLabel?: string;
   label: string;
   credential: ProviderCredentialViewModel;
-  endpoint?: { baseUrl: string; protocol: string };
+  routing?: ProviderAccountRouting;
   accountModel?: string;
   bindings: ProviderBindingViewModel[];
   boundAgents: AgentKind[];
@@ -184,10 +185,16 @@ export function AccountDetail({
               </Button>
             </DetailRow>
           )}
-          {account.endpoint ? (
+          {account.routing?.kind === 'pinned' ? (
             <DetailRow label={t('endpoint')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.endpoint.baseUrl} · {account.endpoint.protocol}
+                {account.routing.baseUrl} · {account.routing.protocol}
+              </span>
+            </DetailRow>
+          ) : account.routing?.kind === 'catalog' ? (
+            <DetailRow label={t('protocols')}>
+              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
+                {account.routing.protocols.join(' · ')}
               </span>
             </DetailRow>
           ) : null}
@@ -311,8 +318,8 @@ function bindingStatusLabel(
   switch (status.kind) {
     case 'unavailable-oauth':
       return t('unavailableOauth', { agent: tAgent(status.agent) });
-    case 'unavailable-translation-endpoint':
-      return t('unavailableTranslationEndpoint');
+    case 'unavailable-endpoint-incomplete':
+      return t('unavailableEndpointIncomplete');
     case 'unavailable-protocol':
       return t('unavailableProtocol');
     case 'bound':

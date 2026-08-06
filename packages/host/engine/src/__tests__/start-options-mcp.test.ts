@@ -1,5 +1,12 @@
 import type { PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
-import type { CustomMcpServer, McpServer, PluginProvider, SessionId } from '@linkcode/schema';
+import type {
+  Account,
+  AgentKind,
+  CustomMcpServer,
+  McpServer,
+  PluginProvider,
+  SessionId,
+} from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
@@ -146,6 +153,53 @@ describe('simulator MCP injection at session start', () => {
       unavailable.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
     );
     expect(resolved.mcpServers).toBeUndefined();
+  });
+});
+
+describe('account binding at session start', () => {
+  function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
+    const store = new InMemoryProviderConfigStore();
+    store.createAndBindAccount(agent, account);
+    return store;
+  }
+
+  const account = (overrides: Partial<Account>): Account => ({
+    id: 'acc_1',
+    label: 'Test',
+    credential: { type: 'api-key', key: 'sk-test' },
+    createdAt: 0,
+    ...overrides,
+  });
+
+  it('refuses the session when the bound account has no endpoint the agent speaks', async () => {
+    const anthropicOnly = account({
+      endpoint: { baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' },
+    });
+    const resolver = new SessionStartOptionsResolver(storeWith(anthropicOnly, 'codex'), undefined);
+
+    // Starting anyway would point codex at an endpoint that answers 404 on /responses.
+    await expect(
+      Effect.runPromise(resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION)),
+    ).rejects.toThrow('cannot back codex');
+  });
+
+  it('starts an account the pre-variant add flow pinned to one endpoint', async () => {
+    // Written by the old add flow for the `openai-api` catalog entry. It starts codex fine today,
+    // so honoring the pinned `openai-chat` protocol would break it on upgrade.
+    const upgraded = account({
+      service: 'openai-api',
+      endpoint: { baseUrl: 'https://api.openai.com/v1', protocol: 'openai-chat' },
+    });
+    const resolver = new SessionStartOptionsResolver(storeWith(upgraded, 'codex'), undefined);
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.config).toMatchObject({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1',
+      protocol: 'openai-responses',
+    });
   });
 });
 

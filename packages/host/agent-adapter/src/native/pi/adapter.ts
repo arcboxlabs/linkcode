@@ -144,12 +144,23 @@ function createConfiguredRegistry(
 
   const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
-  const provider = ref?.provider ?? fallbackProvider ?? modelRegistry.getAvailable()[0]?.provider;
+  // The model ref decides which provider pi routes through, so it wins; a resumed session's own
+  // last-routed provider comes next, being direct evidence rather than a catalog default; the
+  // resolved known provider only replaces the "first available provider" guess.
+  const provider =
+    ref?.provider ??
+    fallbackProvider ??
+    cred.knownProvider ??
+    modelRegistry.getAvailable()[0]?.provider;
   if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
   if (cred.baseUrl) {
+    // baseUrl override only: a models-less registerProvider rewrites the URL and leaves each
+    // model's wire at pi's built-in value, so this works exactly when that provider's built-in
+    // wire already matches the endpoint. Pointing a provider at a differently-shaped endpoint is
+    // not expressible without supplying full model metadata (see @linkcode/providers AGENTS.md).
     modelRegistry.registerProvider(provider, {
       baseUrl: cred.baseUrl,
       ...(key && { apiKey: key }),
