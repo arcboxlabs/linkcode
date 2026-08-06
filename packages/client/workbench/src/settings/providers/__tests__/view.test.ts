@@ -103,8 +103,9 @@ describe('view helpers', () => {
           label: 'Primary API',
           service: 'openai-api',
           serviceLabel: 'OpenAI API',
-          endpoint: 'https://api.openai.com/v1',
-          protocol: 'openai-chat',
+          // The stored endpoint is the catalog's own, so the row describes the service's shapes —
+          // the same answer the resolver gives, rather than a pin it will ignore.
+          protocols: ['openai-chat', 'openai-responses'],
           credentialType: 'api-key',
           boundAgents: ['claude-code'],
         },

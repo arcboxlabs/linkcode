@@ -85,6 +85,9 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         baseUrl: 'https://api.x.ai/v1',
         knownProvider: { opencode: 'xai', pi: 'xai' },
       },
+      // Same endpoint, Responses shape — the only one codex speaks. No known provider: the agents'
+      // own `xai` entries are chat-shaped, and opencode/pi prefer those.
+      'openai-responses': { baseUrl: 'https://api.x.ai/v1' },
     },
     secretPlaceholder: 'xai-…',
   },
@@ -117,6 +120,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         baseUrl: 'https://openrouter.ai/api/v1',
         knownProvider: { opencode: 'openrouter', pi: 'openrouter' },
       },
+      'openai-responses': { baseUrl: 'https://openrouter.ai/api/v1' },
       // The "Anthropic skin" is guaranteed only for Claude models.
       anthropic: { baseUrl: 'https://openrouter.ai/api' },
     },
@@ -133,6 +137,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         baseUrl: 'https://ai-gateway.vercel.sh/v1',
         knownProvider: { opencode: 'vercel', pi: 'vercel-ai-gateway' },
       },
+      'openai-responses': { baseUrl: 'https://ai-gateway.vercel.sh/v1' },
       // Anthropic-shaped endpoint; translates server-side, so it also serves non-Anthropic models.
       anthropic: { baseUrl: 'https://ai-gateway.vercel.sh' },
     },
@@ -144,6 +149,8 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     kind: 'endpoint',
     credentialType: 'auth-token',
     variants: {
+      // `/compat` serves chat completions only — Cloudflare's Responses route is a different path
+      // (`/openai/responses`), so there is deliberately no responses variant here.
       'openai-chat': {
         baseUrl: 'https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/compat',
         knownProvider: { opencode: 'cloudflare-ai-gateway', pi: 'cloudflare-ai-gateway' },

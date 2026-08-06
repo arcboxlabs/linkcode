@@ -172,9 +172,10 @@ function createConfiguredRegistry(
   }
   if (key && provider) authStorage.setRuntimeApiKey(provider, key);
   if (cred.baseUrl) {
-    // A provider pi already knows carries its own correct wire. For a guessed provider name the
-    // wire would be inherited from whatever that name spoke, which need not match this endpoint.
-    const api = cred.knownProvider === undefined ? piApi(cred.protocol) : undefined;
+    // Only the resolved known provider carries the right wire for this endpoint. Any other name —
+    // a resumed session's own provider, or the first-available guess — keeps pi's built-in `api`
+    // for that name, because a models-less registerProvider patches baseUrl and nothing else.
+    const api = provider === cred.knownProvider ? undefined : piApi(cred.protocol);
     modelRegistry.registerProvider(provider, {
       baseUrl: cred.baseUrl,
       ...(key && { apiKey: key }),

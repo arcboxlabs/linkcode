@@ -135,6 +135,43 @@ describe('resolveBinding: variant chosen per agent', () => {
     });
   });
 
+  it('reaches codex on every service whose endpoint serves the Responses API', () => {
+    // Verified against vendor docs 2026-08: xAI, OpenRouter and Vercel all serve POST /responses
+    // at the base URL declared here, so codex must have a target on each.
+    const cases = [
+      ['xai', 'https://api.x.ai/v1'],
+      ['openrouter', 'https://openrouter.ai/api/v1'],
+      ['vercel-gateway', 'https://ai-gateway.vercel.sh/v1'],
+    ] as const;
+    for (const [service, baseUrl] of cases) {
+      expect(resolveBinding(account({ service }), 'codex')).toEqual({
+        tier: 'native',
+        protocol: 'openai-responses',
+        baseUrl,
+      });
+    }
+    // Cloudflare's `/compat` path serves chat completions only — its Responses route is elsewhere.
+    expect(
+      resolveBinding(
+        account({
+          service: 'cloudflare-gateway',
+          endpointParams: { account_id: 'a', gateway_id: 'g' },
+        }),
+        'codex',
+      ),
+    ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
+  });
+
+  it('leaves opencode and pi on their known-provider variant when a responses one exists', () => {
+    // The added responses variants carry no knownProvider, so provider-routed agents are untouched.
+    for (const kind of ['opencode', 'pi'] as const) {
+      expect(resolveBinding(account({ service: 'xai' }), kind)).toMatchObject({
+        protocol: 'openai-chat',
+        knownProvider: 'xai',
+      });
+    }
+  });
+
   it('prefers a native anthropic variant over translation', () => {
     const openrouter = account({
       service: 'openrouter',
@@ -145,10 +182,11 @@ describe('resolveBinding: variant chosen per agent', () => {
       protocol: 'anthropic',
       baseUrl: 'https://openrouter.ai/api',
     });
-    // No responses variant: codex cannot reach this service at all.
+    // The same key reaches codex over the Responses shape at the same gateway.
     expect(resolveBinding(openrouter, 'codex')).toEqual({
-      tier: 'unavailable',
-      reason: 'protocol-unsupported',
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://openrouter.ai/api/v1',
     });
     // The known provider wins over the anthropic variant that protocol order would reach first.
     expect(resolveBinding(openrouter, 'opencode')).toEqual({
@@ -229,7 +267,11 @@ describe('resolveBinding: variant chosen per agent', () => {
 describe('catalog helpers', () => {
   it('reports every protocol shape a service serves', () => {
     expect(serviceProtocols('openai-api')).toEqual(['openai-chat', 'openai-responses']);
-    expect(serviceProtocols('openrouter')).toEqual(['anthropic', 'openai-chat']);
+    expect(serviceProtocols('openrouter')).toEqual([
+      'anthropic',
+      'openai-chat',
+      'openai-responses',
+    ]);
     expect(serviceProtocols('claude-sub')).toEqual([]);
     expect(serviceProtocols(undefined)).toEqual([]);
   });

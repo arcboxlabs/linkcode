@@ -27,13 +27,24 @@ Pure data plus pure functions: no hooks, no browser APIs, no I/O. Its only depen
 - **`Account.endpoint` only outranks the catalog when the user named it.** The pre-variant add flow
   wrote an endpoint onto *every* catalog account, so honoring all of them would pin existing
   accounts to one protocol forever — an upgraded OpenAI account would lose codex, which works today
-  because `OPENAI_BASE_URL` points at a host that does serve `/responses`. `isCatalogDerived`
+  because `OPENAI_BASE_URL` points at a host that does serve `/responses`. `pinnedEndpoint()`
   settles it by exact `baseUrl` match against the service's own variants: a match is the catalog's
   own output and is replaced by per-agent resolution; anything else was typed by a human (a custom
   account, or a catalog account edited through the custom form, which keeps its `service`) and is
   kept. Match on the URL, not on "the service declares this protocol" — the looser rule would
   silently discard a hand-typed proxy. A filled templated URL matches nothing and stays pinned;
   those accounts were never broken.
+  - **Every caller asks `pinnedEndpoint()`, never `Account.endpoint` directly.** It is exported for
+    exactly this reason: the client used the raw field once and immediately disagreed with the
+    resolver about the same account — showing a pinned endpoint for one that resolves per agent.
+    Display, edit-form prefill, and resolution have to answer the question identically.
+- **A missing variant is a claim about the vendor, so verify it.** Omitting `openai-responses`
+  refuses codex outright, and an unverified assumption that "that endpoint doesn't serve it anyway"
+  once shipped exactly that gap for xAI, OpenRouter and Vercel — all three do serve
+  `POST {baseUrl}/responses` (checked against vendor docs 2026-08). Cloudflare's `/compat` genuinely
+  does not; its Responses route is `/openai/responses`, a different path, which is why that entry
+  has no responses variant. Added responses variants deliberately carry no `knownProvider`, so
+  `preferredProtocols` keeps opencode and pi on the shape their own catalogs know.
 
 ## resolveBinding
 

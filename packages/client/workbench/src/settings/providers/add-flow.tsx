@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { EndpointService, ServiceDescriptor, ServiceGroup } from '@linkcode/providers';
 import {
+  pinnedEndpoint,
   SERVICE_CATALOG,
   serviceById,
   serviceProtocols,
@@ -490,8 +491,10 @@ function CustomAccountForm({
           : account?.credential.type === 'api-key'
             ? account.credential.key
             : '',
-      baseUrl: account?.endpoint?.baseUrl ?? '',
-      protocol: account?.endpoint?.protocol ?? '',
+      // Prefill only an endpoint that is actually honored: a catalog-derived one is ignored at
+      // resolve time, so showing it would invite the user to "keep" a value that does nothing.
+      baseUrl: (account && pinnedEndpoint(account)?.baseUrl) ?? '',
+      protocol: (account && pinnedEndpoint(account)?.protocol) ?? '',
       model: account?.model ?? '',
     },
   });

@@ -1,5 +1,6 @@
 import {
   detectedLoginSuggestions,
+  pinnedEndpoint,
   resolveBinding,
   serviceById,
   serviceProtocols,
@@ -142,8 +143,10 @@ export function providerAccountDetailViewModel(
   const boundAgents = boundAgentKinds(providers, account.id);
   const serviceLabel = serviceById(account.service)?.label;
   // A catalog account has no single endpoint — each agent resolves its own — so the detail pane
-  // lists the shapes the service serves instead.
-  const protocols = account.endpoint === undefined ? serviceProtocols(account.service) : [];
+  // lists the shapes the service serves instead. Ask the resolver what counts as pinned, or the
+  // pane describes an account differently from how it resolves.
+  const pinned = pinnedEndpoint(account);
+  const protocols = pinned ? [] : serviceProtocols(account.service);
   return {
     id: account.id,
     label: account.label,
@@ -153,7 +156,7 @@ export function providerAccountDetailViewModel(
     availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
-    ...(!(account.endpoint === undefined) && { endpoint: account.endpoint }),
+    ...(pinned !== undefined && { endpoint: pinned }),
     ...(protocols.length > 0 && { protocols }),
     ...(!(account.model === undefined) && { accountModel: account.model }),
     ...(!(boundAgents.length === 0) && {
@@ -168,7 +171,8 @@ function providerAccountListItem(
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountListItem {
   const serviceLabel = serviceById(account.service)?.label;
-  const protocols = account.endpoint === undefined ? serviceProtocols(account.service) : [];
+  const pinned = pinnedEndpoint(account);
+  const protocols = pinned ? [] : serviceProtocols(account.service);
   const auth =
     account.credential.type === 'oauth' ? runtimes?.[account.credential.agent]?.auth : undefined;
   return {
@@ -178,8 +182,8 @@ function providerAccountListItem(
     boundAgents: boundAgentKinds(providers, account.id),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
-    ...(account.endpoint !== undefined && { endpoint: account.endpoint.baseUrl }),
-    ...(account.endpoint !== undefined && { protocol: account.endpoint.protocol }),
+    ...(pinned !== undefined && { endpoint: pinned.baseUrl }),
+    ...(pinned !== undefined && { protocol: pinned.protocol }),
     ...(protocols.length > 0 && { protocols }),
     ...(auth !== undefined && {
       auth: {

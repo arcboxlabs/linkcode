@@ -54,12 +54,14 @@ export function resolveBinding(account: Account, kind: AgentKind): ResolvedBindi
   if (kind === 'grok-build') return resolveGrokBuild(account);
 
   const service = endpointServiceById(account.service);
-  // An endpoint the user named themselves outranks the catalog. One the pre-variant add flow
-  // derived from the catalog does not: honoring it would pin an existing account to a single
-  // protocol forever, which is how an upgraded OpenAI account would lose codex.
-  if (account.endpoint && !isCatalogDerived(account.endpoint, service)) {
-    const { protocol, baseUrl } = account.endpoint;
-    return bind(kind, protocol, baseUrl, knownProviderFor(service?.variants[protocol], kind));
+  const pinned = pinnedEndpoint(account);
+  if (pinned) {
+    return bind(
+      kind,
+      pinned.protocol,
+      pinned.baseUrl,
+      knownProviderFor(service?.variants[pinned.protocol], kind),
+    );
   }
   if (!service) {
     // Vendor unknown (pre-catalog bare key): keep it bindable everywhere, matching the pre-catalog
@@ -162,14 +164,18 @@ function knownProviderFor(
 }
 
 /**
- * Whether the catalog itself produces this endpoint for the account's service — i.e. whether the
- * pre-variant add flow wrote it, back when an account could only name one. Such an endpoint carries
- * no user intent, so per-agent resolution replaces it. A URL matching no variant was typed by the
- * user (a custom account, or a catalog account edited by hand) and is kept.
+ * The endpoint the user named, if any. A stored endpoint the catalog itself produces is not one:
+ * the pre-variant add flow wrote one onto every catalog account, back when an account could only
+ * name a single endpoint, and honoring those would pin existing accounts to one protocol forever.
+ * A URL matching no variant was typed by a human — a custom account, or a catalog account edited by
+ * hand — and is kept.
+ *
+ * Read this rather than `Account.endpoint` anywhere the answer is shown or acted on, or a caller
+ * will describe an account differently from how it actually resolves.
  */
-function isCatalogDerived(
-  endpoint: AccountEndpoint,
-  service: EndpointService | undefined,
-): boolean {
-  return service?.variants[endpoint.protocol]?.baseUrl === endpoint.baseUrl;
+export function pinnedEndpoint(account: Account): AccountEndpoint | undefined {
+  const { endpoint } = account;
+  if (!endpoint) return undefined;
+  const variant = endpointServiceById(account.service)?.variants[endpoint.protocol];
+  return variant?.baseUrl === endpoint.baseUrl ? undefined : endpoint;
 }
