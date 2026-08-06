@@ -11,6 +11,7 @@ import type {
 } from '@linkcode/schema';
 import { MessageIdSchema, textBlock } from '@linkcode/schema';
 import { describe, expect, it, vi } from 'vitest';
+import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -921,5 +922,85 @@ describe('engine session records', () => {
     await inject({ kind: 'session.list', clientReqId: 'r4' });
     expect(listedSessions(sent, 'r4')).toHaveLength(1);
     expect(await inner.load()).toHaveLength(1);
+  });
+});
+
+describe('session account attribution', () => {
+  function storeBoundTo(accountId: string, model: string): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, activeAccountId: accountId, model } },
+      accounts: [
+        {
+          id: accountId,
+          label: 'Bound',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-test' },
+          models: [{ id: model }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  it("records the account a run resolved to and reports the latest run's", async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_bound');
+    // Persisted per run, so a restart still knows what the session is talking to.
+    expect((await store.load())[0].runs[0].accountId).toBe('acc_bound');
+  });
+
+  it('honours an account the client pinned over the bound one', async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const pool = providers.getAccounts();
+    providers.update({
+      accounts: [
+        ...pool,
+        {
+          id: 'acc_pinned',
+          label: 'Pinned',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-other' },
+          models: [{ id: 'claude-sonnet-5' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+
+    // This is how picking a model that belongs to another account reaches the daemon.
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'claude-sonnet-5',
+        config: { accountId: 'acc_pinned' },
+      },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_pinned');
   });
 });

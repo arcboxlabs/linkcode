@@ -13,6 +13,7 @@ import type {
 } from '@linkcode/schema';
 import { Effect, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
+import { resolvedAccountId } from '../agent/provider-config';
 import type { SessionDriver } from '../automation';
 import type { EngineFailure } from '../failure';
 import { RequestError, toOperationFailure } from '../failure';
@@ -101,7 +102,7 @@ export class SessionLifecycleService {
         createdVia: resolved.createdVia,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now }],
+        runs: [{ startedAt: now, ...accountOfRun(resolved) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -176,7 +177,7 @@ export class SessionLifecycleService {
         origin: { type: 'imported', historyId, importedAt: now },
         createdAt: now,
         updatedAt: now,
-        runs: [{ historyId, startedAt: now }],
+        runs: [{ historyId, startedAt: now, ...accountOfRun(startOptions) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -252,7 +253,7 @@ export class SessionLifecycleService {
                   liveCursor.contentFingerprint,
                 )
               : branchCursor;
-          records.beginRun(sourceSessionId);
+          records.beginRun(sourceSessionId, resolvedAccountId(startOptions));
           yield* sessions.startLive(
             replyTo,
             source,
@@ -314,7 +315,7 @@ export class SessionLifecycleService {
           } else if (record.cwd) {
             yield* workspaceTouch(workspaces, record.cwd);
           }
-          record.runs.push({ historyId, startedAt: Date.now() });
+          record.runs.push({ historyId, startedAt: Date.now(), ...accountOfRun(startOptions) });
           yield* sessions.startLive(
             replyTo,
             record,
@@ -353,7 +354,7 @@ export class SessionLifecycleService {
         automation: options.automation,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now }],
+        runs: [{ startedAt: now, ...accountOfRun(startOptions) }],
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, (adapter) =>
@@ -424,4 +425,11 @@ function workspaceRegisterWorktree(
         publicMessage: 'Failed to persist managed worktree workspace',
       }),
   });
+}
+
+/** The run's account, spread into a `SessionRun` so an unresolved one stays absent rather than
+ * writing `undefined` into the record. */
+function accountOfRun(opts: StartOptions): { accountId?: string } {
+  const accountId = resolvedAccountId(opts);
+  return accountId === undefined ? {} : { accountId };
 }

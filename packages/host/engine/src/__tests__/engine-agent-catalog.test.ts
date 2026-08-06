@@ -62,6 +62,7 @@ describe('engine agent catalog', () => {
       cwd: '/repo',
       model: 'provider/model',
       config: {
+        accountId: 'catalog-account',
         apiKey: 'catalog-key',
         baseUrl: 'https://catalog.example.test',
         protocol: 'openai-chat',

@@ -102,7 +102,9 @@ function accountConfigBundle(
 ): { bundle: Record<string, unknown> } | { unavailable: BindingUnavailableReason } {
   const binding = resolveBinding(account, kind);
   if (binding.tier === 'unavailable') return { unavailable: binding.reason };
-  const bundle: Record<string, unknown> = {};
+  // Echoed back so the caller can record which account a run actually resolved to; `resolveAccount`
+  // reads the same key on the way in, which is how a client pins a session to one account.
+  const bundle: Record<string, unknown> = { accountId: account.id };
   const { credential, extraEnv } = account;
   if (credential.type === 'api-key') bundle.apiKey = credential.key;
   else if (credential.type === 'auth-token') bundle.authToken = credential.token;
@@ -111,6 +113,14 @@ function accountConfigBundle(
   if (binding.knownProvider !== undefined) bundle.knownProvider = binding.knownProvider;
   if (extraEnv) bundle.extraEnv = extraEnv;
   return { bundle };
+}
+
+/** The account a resolved `StartOptions` names — written by `accountConfigBundle`, or pinned by a
+ * client that picked a model belonging to a specific account. Callers record it per run; the rest of
+ * `config` carries secrets and must never be persisted. */
+export function resolvedAccountId(opts: StartOptions): string | undefined {
+  const id = opts.config?.accountId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
 
 export interface AppliedProviderDefaults {

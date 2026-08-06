@@ -45,6 +45,7 @@ describe('applyProviderDefaults account pool', () => {
   it('injects the credential from the account bound via activeAccountId', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
     expect(applyProviderDefaults(baseOpts, providers, [account]).options.config).toEqual({
+      accountId: 'acc_1',
       apiKey: 'sk-acc',
     });
   });
@@ -76,6 +77,7 @@ describe('applyProviderDefaults account pool', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'gw' } };
     const merged = applyProviderDefaults(baseOpts, providers, [gateway]);
     expect(merged.options.config).toEqual({
+      accountId: 'gw',
       authToken: 'or-tok',
       baseUrl: 'https://relay.example.com/v1',
       protocol: 'openai-responses',
@@ -107,6 +109,7 @@ describe('applyProviderDefaults account pool', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oa' } };
     // Codex overrides the base URL of its own Responses provider, so it carries no knownProvider.
     expect(applyProviderDefaults(baseOpts, providers, [openai]).options.config).toEqual({
+      accountId: 'oa',
       apiKey: 'sk-oa',
       baseUrl: 'https://api.openai.com/v1',
       protocol: 'openai-responses',
@@ -148,7 +151,10 @@ describe('applyProviderDefaults account pool', () => {
       createdAt: 0,
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
-    expect(applyProviderDefaults(baseOpts, providers, [oauth]).options.config).toEqual({});
+    // The account still resolves — it just contributes no secret, only its id.
+    expect(applyProviderDefaults(baseOpts, providers, [oauth]).options.config).toEqual({
+      accountId: 'oauth_1',
+    });
   });
 });
 

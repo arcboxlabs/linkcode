@@ -82,6 +82,7 @@ export class SessionRecordRegistry {
       createdVia: record.createdVia,
       automation: record.automation,
       historyId: latestHistoryId(record),
+      accountId: latestAccountId(record),
     }));
   }
 
@@ -137,10 +138,10 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
-  beginRun(sessionId: SessionId): void {
+  beginRun(sessionId: SessionId, accountId?: string): void {
     const record = this.records.get(sessionId);
     if (!record) return;
-    record.runs.push({ startedAt: Date.now() });
+    record.runs.push({ startedAt: Date.now(), ...(accountId !== undefined && { accountId }) });
     this.persist(record);
   }
 
@@ -208,6 +209,16 @@ function storeOperation<A>(
 
 function storeFailure(operation: string, publicMessage: string, cause: unknown): OperationError {
   return new OperationError({ subsystem: 'store', operation, publicMessage, cause });
+}
+
+/** The account the newest run resolved to. Older runs may name a different one — a rebind between
+ * runs is legitimate — so only the latest describes what a live session is actually talking to. */
+function latestAccountId(record: SessionRecord): string | undefined {
+  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
+    const accountId = record.runs[index].accountId;
+    if (accountId !== undefined) return accountId;
+  }
+  return undefined;
 }
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
