@@ -371,8 +371,8 @@ pnpm format:check
 ```
 
 Lint is single-threaded, and local and CI run the identical command: `--concurrency=off` plus a
-content-keyed cache, under the `NODE_OPTIONS=--max-old-space-size=8192` that the `lint` script sets
-inline (so local runs get it too — pnpm 11 ignores `node-options` in `.npmrc`).
+content-keyed cache. The cross-platform Node launcher gives ESLint an 8192 MB heap, so local runs
+get the same limit as CI (pnpm 11 ignores `node-options` in `.npmrc`).
 
 Multithread linting **duplicates** the typescript-eslint program per worker instead of splitting it.
 Every worker rebuilds the program set for each tsconfig project it touches, and because workers pull
@@ -398,8 +398,8 @@ RSS scales linearly with the worker count at a constant ~4.7 GB each. Two conseq
   3.3 s / 3.8 GB at `auto`, because nine workers each pay startup and each read the whole cache
   file. On a 36 GB machine `auto` wants more than the free RAM and degrades into swap thrash.
 
-`LINT_CONCURRENCY` overrides the default when you want to trade RAM for a faster cold run
-(`LINT_CONCURRENCY=4 pnpm lint`). Budget ~4.7 GB per worker, and never set it to `2`.
+`LINT_CONCURRENCY` overrides the default when you want to trade RAM for a faster cold run; set it to
+`4` in your shell before running `pnpm lint`. Budget ~4.7 GB per worker, and never set it to `2`.
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 

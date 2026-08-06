@@ -28,9 +28,7 @@ permissions:
   contents: read
 
 env:
-  # For the non-lint Node steps: `typecheck` builds the whole tsconfig solution in one heap,
-  # which does not fit in the 4096 default. Lint no longer relies on this — it sets its own,
-  # larger limit inline in package.json so local runs get it too.
+  # Non-lint Node steps still need more than the default 4096 MB heap; lint sets its own limit.
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
@@ -106,10 +104,7 @@ jobs:
       - name: Check formatting and imports
         run: pnpm format:check
 
-      # `pnpm lint` is single-threaded by default (CODE-468): multithread linting duplicates the
-      # typescript-eslint program per worker instead of splitting it, so each worker costs a full
-      # ~4.7 GB and the total scales linearly with the worker count. `lint:ci` no longer exists —
-      # local and CI run the identical command.
+      # Type-aware programs are duplicated per worker, so lint defaults to single-threaded.
       - name: Lint
         run: pnpm lint
 
