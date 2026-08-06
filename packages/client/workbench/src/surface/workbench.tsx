@@ -277,7 +277,7 @@ function WorkbenchSessionSurface({
   const threadOrder = useSidebarOrderStore((state) => state.threadOrder);
   const setGroupOrder = useSidebarOrderStore((state) => state.setGroupOrder);
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
-  const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
+  const lastHarness = useNewSessionDefaultsStore((state) => state.lastHarness);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const newSessionPreferredBranches = useNewSessionDefaultsStore(
@@ -591,7 +591,7 @@ function WorkbenchSessionSurface({
   const draft: NewSessionDraft | null = sessions.draft
     ? {
         initialWorkspaceId,
-        initialProvider: lastProvider ?? 'claude-code',
+        initialHarness: lastHarness ?? 'claude-code',
       }
     : null;
 

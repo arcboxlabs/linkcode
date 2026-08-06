@@ -1,7 +1,10 @@
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NEW_SESSION_DEFAULTS_STORAGE_KEY } from '../new-session-defaults-store';
 
-const STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v5';
+// Imported rather than restated: a hand-copied key drifted once, and the mismatch turned the
+// malformed-blob test below into a vacuous pass.
+const STORAGE_KEY = NEW_SESSION_DEFAULTS_STORAGE_KEY;
 const WORKSPACE_ID = WorkspaceIdSchema.parse('workspace-1');
 const stored = new Map<string, string>();
 const storage = {
@@ -75,7 +78,7 @@ describe('new-session defaults', () => {
       STORAGE_KEY,
       JSON.stringify({
         state: {
-          lastProvider: 'codex',
+          lastHarness: 'codex',
           lastWorkspaceId: WORKSPACE_ID,
           effortsByProvider: { codex: 'unsupported' },
         },
@@ -85,7 +88,7 @@ describe('new-session defaults', () => {
 
     const store = await loadStore();
 
-    expect(store.getState().lastProvider).toBeNull();
+    expect(store.getState().lastHarness).toBeNull();
     expect(store.getState().effortsByProvider).toEqual({});
     expect(store.getState().branchesByWorkspace).toEqual({});
   });

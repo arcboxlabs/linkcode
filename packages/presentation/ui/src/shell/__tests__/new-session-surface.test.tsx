@@ -56,7 +56,7 @@ const RE_PI_WIDE = /Pi Wide/;
 const RE_HIGH_EFFORT = /High/;
 const RE_LOW_EFFORT = /Low/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
-const RE_PROVIDER_CLAUDE_CODE_MENU = /provider.*Claude Code/;
+const RE_HARNESS_CLAUDE_CODE_MENU = /harness.*Claude Code/;
 const RE_MODEL_SONNET_5_MENU = /model.*Sonnet 5/;
 const RE_OPUS_5 = /Opus 5/;
 const RE_MODEL_MENU = /^model/;
@@ -122,7 +122,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={null}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: null }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: null }}
         mentionItems={[]}
         runtimeCues={{ codex: { state: 'needs-login', phase: 'idle' } }}
         onMentionQueryChange={vi.fn()}
@@ -147,7 +147,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         NewSessionBranchPickerComponent={BranchPicker}
         chatWorkspace={selection.chatWorkspace}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: selection.initialWorkspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: selection.initialWorkspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn()}
@@ -165,7 +165,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         NewSessionBranchPickerComponent={BranchPickerTest}
         chatWorkspace={null}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn()}
@@ -191,7 +191,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         NewSessionBranchPickerComponent={BranchPickerTest}
         chatWorkspace={null}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: PROJECT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn()}
@@ -220,7 +220,7 @@ describe('NewSessionSurface', () => {
         <NewSessionSurface
           chatWorkspace={CHAT_WORKSPACE}
           draft={{
-            initialProvider: provider,
+            initialHarness: provider,
             initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
           }}
           mentionItems={[]}
@@ -253,7 +253,7 @@ describe('NewSessionSurface', () => {
       render(
         <NewSessionSurface
           chatWorkspace={CHAT_WORKSPACE}
-          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          draft={{ initialHarness: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
           mentionItems={[]}
           onMentionQueryChange={vi.fn()}
           onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -270,7 +270,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -290,7 +290,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         // Nothing guesses a model any more, so the configured one has to be supplied.
         defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
-        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -313,7 +313,7 @@ describe('NewSessionSurface', () => {
       render(
         <NewSessionSurface
           chatWorkspace={CHAT_WORKSPACE}
-          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          draft={{ initialHarness: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
           mentionItems={[]}
           onMentionQueryChange={vi.fn()}
           onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -338,7 +338,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -377,7 +377,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         attachmentSupport={{ codex: true }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -424,7 +424,7 @@ describe('NewSessionSurface', () => {
         <NewSessionSurface
           attachmentSupport={{ codex: true }}
           chatWorkspace={CHAT_WORKSPACE}
-          draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
           mentionItems={[]}
           onMentionQueryChange={vi.fn()}
           onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -488,7 +488,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         attachmentSupport={{ codex: true }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -524,7 +524,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'grok-build', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'grok-build', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -548,7 +548,7 @@ describe('NewSessionSurface', () => {
       render(
         <NewSessionSurface
           chatWorkspace={CHAT_WORKSPACE}
-          draft={{ initialProvider: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+          draft={{ initialHarness: provider, initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
           mentionItems={[]}
           onMentionQueryChange={vi.fn()}
           onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -573,7 +573,7 @@ describe('NewSessionSurface', () => {
         // Nothing guesses a model any more, so the configured one has to be supplied.
         defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -586,7 +586,7 @@ describe('NewSessionSurface', () => {
 
     await user.click(screen.getByRole('button', { name: RE_SONNET_5 }));
     const providerItem = await screen.findByRole('menuitem', {
-      name: RE_PROVIDER_CLAUDE_CODE_MENU,
+      name: RE_HARNESS_CLAUDE_CODE_MENU,
     });
     expect(screen.getByRole('menuitem', { name: RE_MODEL_SONNET_5_MENU })).toBeTruthy();
     providerItem.focus();
@@ -616,7 +616,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         preferredEfforts={{ 'claude-code': 'medium' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -643,7 +643,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ 'claude-code': 'custom/claude-model' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -668,7 +668,7 @@ describe('NewSessionSurface', () => {
     const props = {
       chatWorkspace: CHAT_WORKSPACE,
       draft: {
-        initialProvider: 'claude-code' as const,
+        initialHarness: 'claude-code' as const,
         initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
       },
       mentionItems: [],
@@ -703,7 +703,7 @@ describe('NewSessionSurface', () => {
         // than shadowed by a second client-side memory.
         defaultModels={{ 'claude-code': 'claude-opus-4-8' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -732,7 +732,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         preferredEfforts={{ codex: 'ultra' }}
         defaultModels={{ codex: 'gpt-5.6-sol' }}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -758,7 +758,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ opencode: 'anthropic/claude-sonnet-4-6' }}
-        draft={{ initialProvider: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -784,7 +784,7 @@ describe('NewSessionSurface', () => {
         defaultModels={{ 'claude-code': 'configured/claude-model' }}
         preferredEfforts={{ 'claude-code': 'high' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -841,7 +841,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ 'claude-code': 'claude-opus-5' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -877,7 +877,7 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ 'claude-code': 'deepseek-v4-pro' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -903,7 +903,7 @@ describe('NewSessionSurface', () => {
         accountModels={{ 'claude-code': [] }}
         chatWorkspace={CHAT_WORKSPACE}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -929,7 +929,7 @@ describe('NewSessionSurface', () => {
         // Nothing guesses a model any more, so the configured one has to be supplied.
         defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
         draft={{
-          initialProvider: 'claude-code',
+          initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
         }}
         mentionItems={[]}
@@ -964,7 +964,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1000,7 +1000,7 @@ describe('NewSessionSurface', () => {
           },
         }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1026,7 +1026,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1053,7 +1053,7 @@ describe('NewSessionSurface', () => {
           pi: { ...PI_CONFIGURED_CATALOG, defaultModel: 'pi/basic' },
         }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1072,7 +1072,7 @@ describe('NewSessionSurface', () => {
         agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ pi: 'pi/wide' }}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1095,7 +1095,7 @@ describe('NewSessionSurface', () => {
         agentCatalogs={{ pi: modelless }}
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ pi: 'pi/wide' }}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1115,7 +1115,7 @@ describe('NewSessionSurface', () => {
         agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ pi: 'pi/basic' }}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1133,7 +1133,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1171,7 +1171,7 @@ describe('NewSessionSurface', () => {
           },
         }}
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
@@ -1220,7 +1220,7 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[{ id: 'package.json', label: 'package.json', value: 'package.json' }]}
         onMentionQueryChange={onMentionQueryChange}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}

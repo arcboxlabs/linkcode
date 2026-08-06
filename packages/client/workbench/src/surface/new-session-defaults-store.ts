@@ -9,9 +9,18 @@ import {
 import { z } from 'zod';
 import { create } from 'zustand';
 
+/**
+ * Exported so tests cannot drift from it — one did, and a silent key mismatch turned the
+ * malformed-blob test into a vacuous pass.
+ *
+ * v6 dropped `modelsByProvider` (the model pick moved to daemon config) and v7 renamed
+ * `lastProvider` to `lastHarness`; a stale blob is discarded by the schema either way.
+ */
+export const NEW_SESSION_DEFAULTS_STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v7';
+
 const PersistedNewSessionDefaultsSchema = z
   .object({
-    lastProvider: AgentKindSchema.nullable(),
+    lastHarness: AgentKindSchema.nullable(),
     lastWorkspaceId: WorkspaceIdSchema.nullable(),
     effortsByProvider: z.partialRecord(AgentKindSchema, EffortLevelSchema),
     branchesByWorkspace: z.record(z.string(), BranchSelectionSchema),
@@ -29,7 +38,7 @@ export interface NewSessionSelection {
 
 export interface NewSessionDefaultsState {
   /** Provider of the last successful new-session submit; null before the first (→ claude-code). */
-  lastProvider: AgentKind | null;
+  lastHarness: AgentKind | null;
   /** Workspace of the last successful submit; ids that no longer exist are skipped at resolve time. */
   lastWorkspaceId: WorkspaceId | null;
   /** Last effort accepted by LinkCode per provider; absent means defer to the provider default. */
@@ -70,14 +79,14 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
     PersistedNewSessionDefaults
   >(
     (set) => ({
-      lastProvider: null,
+      lastHarness: null,
       lastWorkspaceId: null,
       effortsByProvider: {},
       branchesByWorkspace: {},
       remember: (provider, workspaceId, selection, branch) =>
         set((state) => ({
           ...selectionPatch(state, provider, selection),
-          lastProvider: provider,
+          lastHarness: provider,
           lastWorkspaceId: workspaceId,
           branchesByWorkspace:
             branch === undefined
@@ -88,12 +97,10 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
         set((state) => selectionPatch(state, provider, selection)),
     }),
     {
-      // v6 drops `modelsByProvider`: the model pick now lives in daemon config, so a stale blob
-      // would resurrect a client-side memory that no longer has an owner.
-      name: 'linkcode.workbench.new-session-defaults:v6',
+      name: NEW_SESSION_DEFAULTS_STORAGE_KEY,
       schema: PersistedNewSessionDefaultsSchema,
       partialize: (state) => ({
-        lastProvider: state.lastProvider,
+        lastHarness: state.lastHarness,
         lastWorkspaceId: state.lastWorkspaceId,
         effortsByProvider: state.effortsByProvider,
         branchesByWorkspace: state.branchesByWorkspace,

@@ -145,7 +145,7 @@ export function ApprovalPolicyMenu({
   );
 }
 
-// Known workflow-mode glyphs; unknown provider modes fall back to a generic one.
+// Known workflow-mode glyphs; unknown harness modes fall back to a generic one.
 const MODE_CHIP_ICONS: Record<string, typeof ListTodoIcon> = {
   plan: ListTodoIcon,
   goal: TargetIcon,
@@ -182,7 +182,7 @@ export function SessionModeChip({
   );
 }
 
-/** Availability badge on a provider submenu item; nothing renders for a ready runtime. */
+/** Availability badge on a harness submenu item; nothing renders for a ready runtime. */
 function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
   if (!cue) return null;
@@ -213,8 +213,8 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
 
 export function ModelSelectorMenu({
   disabled,
-  provider,
-  selectableProviders,
+  harness,
+  selectableHarnesses,
   runtimeCues,
   modelOptions,
   effortOptions,
@@ -225,13 +225,13 @@ export function ModelSelectorMenu({
   onSelectEffort,
   onResetModel,
   onResetEffort,
-  onSelectProvider,
+  onSelectHarness,
 }: {
   disabled: boolean;
-  provider?: AgentKind;
-  /** Providers offered for selection; absent/empty when the session's provider is fixed. */
-  selectableProviders?: AgentKind[];
-  /** Runtime availability per provider: a cue renders as a muted badge on the submenu item. */
+  harness?: AgentKind;
+  /** Harnesses offered for selection; absent/empty when the session's harness is fixed. */
+  selectableHarnesses?: AgentKind[];
+  /** Runtime availability per harness: a cue renders as a muted badge on the submenu item. */
   runtimeCues?: AgentRuntimeCues;
   modelOptions?: ModelOption[];
   effortOptions?: EffortOption[];
@@ -242,11 +242,11 @@ export function ModelSelectorMenu({
   /** Carries the whole entry: a cross-account list needs the account alongside the id. */
   onSelectModel: (model: ModelOption) => void;
   onSelectEffort: (effort: EffortLevel) => void;
-  /** Draft-only escape hatch back to the provider/configured model default. */
+  /** Draft-only escape hatch back to the harness/configured model default. */
   onResetModel?: () => void;
-  /** Draft-only escape hatch back to the provider effort default. */
+  /** Draft-only escape hatch back to the harness effort default. */
   onResetEffort?: () => void;
-  onSelectProvider?: (provider: AgentKind) => void;
+  onSelectHarness?: (harness: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const selectedModel = resolveModel(modelOptions, selectedModelId, selectedAccountId);
@@ -254,18 +254,18 @@ export function ModelSelectorMenu({
   const selectedEffort =
     optionById(effortOptions, selectedEffortId) ??
     (selectedEffortId ? EFFORT_OPTIONS_BY_ID[selectedEffortId] : undefined);
-  const providers = selectableProviders ?? [];
+  const harnesses = selectableHarnesses ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
   const modelLabel = selectedModel?.label ?? selectedModelId ?? t('modelDefault');
   const effortLabel = selectedEffort?.label ?? t('effortDefault');
-  // A draft provider picker must keep the model axis visible even when that provider discovers
+  // A draft harness picker must keep the model axis visible even when that harness discovers
   // its concrete model only after session start (OpenCode/Pi). The live update replaces Default.
-  const showsModel = providers.length > 0 || hasModels || selectedModelId !== null;
+  const showsModel = harnesses.length > 0 || hasModels || selectedModelId !== null;
 
-  if (!hasEfforts && !showsModel && providers.length === 0) return null;
+  if (!hasEfforts && !showsModel && harnesses.length === 0) return null;
   const selectorLabels: string[] = [];
-  if (provider) selectorLabels.push(AGENT_LABELS[provider]);
+  if (harness) selectorLabels.push(AGENT_LABELS[harness]);
   if (showsModel) selectorLabels.push(modelLabel);
   if (hasEfforts) selectorLabels.push(`${t('effort')}: ${effortLabel}`);
 
@@ -276,7 +276,7 @@ export function ModelSelectorMenu({
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
-        {provider && providers.length > 0 ? <AgentIcon kind={provider} variant="brand" /> : null}
+        {harness && harnesses.length > 0 ? <AgentIcon kind={harness} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="flex items-center gap-2 font-normal text-muted-foreground">
@@ -290,23 +290,23 @@ export function ModelSelectorMenu({
         <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
-        {onSelectProvider && providers.length > 0 ? (
+        {onSelectHarness && harnesses.length > 0 ? (
           <MenuSub>
             <MenuSubTrigger>
-              <span>{t('provider')}</span>
+              <span>{t('harness')}</span>
               <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-muted-foreground">
-                {provider ? <AgentIcon kind={provider} variant="brand" /> : null}
+                {harness ? <AgentIcon kind={harness} variant="brand" /> : null}
                 <span className="truncate">
-                  {provider ? AGENT_LABELS[provider] : t('modelDefault')}
+                  {harness ? AGENT_LABELS[harness] : t('modelDefault')}
                 </span>
               </span>
             </MenuSubTrigger>
             <MenuSubPopup className="w-60">
               <MenuRadioGroup
-                value={provider ?? ''}
-                onValueChange={(value) => onSelectProvider(value as AgentKind)}
+                value={harness ?? ''}
+                onValueChange={(value) => onSelectHarness(value as AgentKind)}
               >
-                {providers.map((kind) => (
+                {harnesses.map((kind) => (
                   <MenuRadioItem key={kind} className="pe-2" closeOnClick value={kind}>
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2">

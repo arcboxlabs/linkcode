@@ -185,12 +185,12 @@ export interface ComposerProps {
   onResetModel?: () => void;
   /** Clears a draft's explicit effort override. Omitted for live sessions. */
   onResetEffort?: () => void;
-  /** Providers offered for selection (the new-session composer). Absent or empty means the
-   * provider is fixed — the trigger then hides the provider glyph and submenu. */
-  selectableProviders?: AgentKind[];
-  /** Runtime availability badges for the provider submenu (CODE-112). */
+  /** Harnesses offered for selection (the new-session composer). Absent or empty means the
+   * harness is fixed — the trigger then hides the harness glyph and submenu. */
+  selectableHarnesses?: AgentKind[];
+  /** Runtime availability badges for the harness submenu (CODE-112). */
   runtimeCues?: AgentRuntimeCues;
-  onProviderChange?: (provider: AgentKind) => Promise<void>;
+  onHarnessChange?: (harness: AgentKind) => Promise<void>;
   /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
   contextBar?: React.ReactNode;
   /** Opens a native file picker and returns the picked images, ready to stage. Absent (webview):
@@ -236,9 +236,9 @@ export function Composer({
   onEffortChange,
   onResetModel,
   onResetEffort,
-  selectableProviders,
+  selectableHarnesses,
   runtimeCues,
-  onProviderChange,
+  onHarnessChange,
   contextBar,
   onPickAttachmentFiles,
 }: ComposerProps): React.ReactNode {
@@ -1026,9 +1026,9 @@ export function Composer({
                     disabled={interactionDisabled}
                     effortOptions={effortOptions}
                     modelOptions={modelOptions}
-                    provider={agentKind}
+                    harness={agentKind}
                     runtimeCues={runtimeCues}
-                    selectableProviders={selectableProviders}
+                    selectableHarnesses={selectableHarnesses}
                     selectedAccountId={currentAccountId}
                     selectedEffortId={currentEffort ?? null}
                     selectedModelId={currentModel ?? null}
@@ -1036,10 +1036,10 @@ export function Composer({
                     onResetModel={onResetModel}
                     onSelectEffort={selectEffort}
                     onSelectModel={selectModel}
-                    onSelectProvider={
-                      onProviderChange
-                        ? (provider) => {
-                            void onProviderChange(provider).catch(noop);
+                    onSelectHarness={
+                      onHarnessChange
+                        ? (harness) => {
+                            void onHarnessChange(harness).catch(noop);
                           }
                         : undefined
                     }

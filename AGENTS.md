@@ -92,6 +92,7 @@ Large rewrites are encouraged when they're the right fix — replace subsystems 
 - Keep table-definition / schema modules free of hooks and browser APIs so they stay importable anywhere.
 - Directory names must describe responsibility, not incidental data. For example, a sidebar footer belongs with sidebar/workbench presentation, not in a `host/` folder just because it displays host state; a layout adapter belongs under layout, not a one-file pseudo-subsystem.
 - Terminology: the product term **Thread** is the code/wire term **`session`** — the rename is UI/i18n-only. Never rename `session` in wire or code identifiers.
+- Terminology: **"provider" means the account/service** (DeepSeek, OpenRouter) — never the agent. The agent is a **Harness**, so client-side UI text and identifiers use that (`selectableHarnesses`, `onHarnessChange`, `lastHarness`); `AgentKind` and every wire/daemon term stay as they are. The two meanings used to collide in adjacent UI — the composer's "provider" picker chose the *agent* while the Providers settings page meant accounts. `groupModelsByProvider` is the genuine exception: it groups by *model* provider.
 
 ## Tooling And Aliases
 

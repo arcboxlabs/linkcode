@@ -348,7 +348,7 @@ export const en = {
       attachmentUnsupportedAgent: "This agent doesn't support image attachments yet",
       attachmentReadFailed: 'Failed to read the file',
       approvalTitle: 'How should {agent} actions be approved?',
-      provider: 'Provider',
+      harness: 'Harness',
     },
     mode: {
       label: 'Mode',
@@ -768,9 +768,9 @@ export const en = {
       tabMarket: 'Market',
       tabMcp: 'MCP',
       tabSkills: 'Skills',
-      discoveryFailed: 'Could not read {provider} plugins: {reason}',
+      discoveryFailed: 'Could not read {harness} plugins: {reason}',
       discoveryFailedUnknown: 'discovery failed',
-      runtimeMissing: '{provider} was not detected; install it to manage its plugins here.',
+      runtimeMissing: '{harness} was not detected; install it to manage its plugins here.',
       installedEmptyHint: 'No plugins installed for this agent yet — pick one from Market.',
       marketEmptyHint: 'No installable entries in this agent’s plugin marketplace.',
       marketCount: '{count} available',
@@ -867,7 +867,7 @@ export const en = {
     },
     historyImport: {
       portalLabel: 'Import chat history',
-      panelTitle: 'Import chat history from {provider}',
+      panelTitle: 'Import chat history from {harness}',
       conversationCount: '{count, plural, one {# conversation} other {# conversations}}',
       refresh: 'Refresh',
       sortLabel: 'Sort order',
@@ -880,7 +880,7 @@ export const en = {
       importedBadge: 'Imported',
       open: 'Open',
       emptyTitle: 'No history yet',
-      emptyHint: 'This provider has no local conversation history on this machine.',
+      emptyHint: 'This harness has no local conversation history on this machine.',
       loadFailedTitle: 'Failed to load history',
       retry: 'Retry',
       showingLatest:
