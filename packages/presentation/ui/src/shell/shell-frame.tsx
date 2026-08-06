@@ -1,6 +1,5 @@
 import type {
   AgentKind,
-  AgentModelOption,
   BranchSelection,
   ContentBlock,
   EffortLevel,
@@ -12,6 +11,7 @@ import type {
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
+import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
 import type { ConversationComposerController } from './conversation-surface';
@@ -60,7 +60,10 @@ export interface ShellFrameProps
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** The models each agent may run on, picked on its bound account. An agent absent here has no
    * account bound and keeps falling back to whatever its adapter or the curated table advertises. */
-  accountModels: Readonly<Partial<Record<AgentKind, AgentModelOption[]>>> | null;
+  accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
+  /** The active session's own account's models — the whole live menu, since a running session's
+   * account is fixed at spawn. */
+  sessionModels?: ModelOption[];
   /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
@@ -136,6 +139,7 @@ export function ShellFrame({
   agentCatalogs,
   newSessionDefaultModels,
   accountModels,
+  sessionModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -249,7 +253,8 @@ export function ShellFrame({
             composer={conversationComposer}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
-            accountModels={active ? accountModels?.[active.kind] : undefined}
+            accountModels={sessionModels}
+            accountId={active?.accountId}
             attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}

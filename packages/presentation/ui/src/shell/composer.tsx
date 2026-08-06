@@ -32,6 +32,7 @@ import {
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
 import { effortOptionsForModel } from './agent-efforts';
+import type { ModelOption } from './agent-models';
 import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
@@ -174,7 +175,10 @@ export interface ComposerProps {
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   /** Sends the model switch (`set-model`); the active model is reflected from `model-update`, not
    * locally — a rejected switch keeps the previous model. */
-  onModelChange?: (model: string) => Promise<void>;
+  /** Receives the whole entry, so a cross-account pick names the account it belongs to. */
+  onModelChange?: (model: ModelOption) => Promise<void>;
+  /** The account the current model belongs to; disambiguates a list spanning several. */
+  currentAccountId?: string;
   /** Sends the reasoning-effort switch (`set-effort`); reflected from `effort-update`, same contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
   /** Clears a draft's explicit model override. Omitted for live sessions. */
@@ -228,6 +232,7 @@ export function Composer({
   onModeChange,
   onApprovalPolicyChange,
   onModelChange,
+  currentAccountId,
   onEffortChange,
   onResetModel,
   onResetEffort,
@@ -833,8 +838,8 @@ export function Composer({
 
   // Server-reflected like mode/policy: the pick shows once `model-update` / `effort-update` echoes
   // it back; a rejected switch leaves the previous value and the failure lands in the error banner.
-  function selectModel(modelId: string): void {
-    void onModelChange?.(modelId).catch(noop);
+  function selectModel(model: ModelOption): void {
+    void onModelChange?.(model).catch(noop);
   }
 
   function selectEffort(effort: EffortLevel): void {
@@ -1024,6 +1029,7 @@ export function Composer({
                     provider={agentKind}
                     runtimeCues={runtimeCues}
                     selectableProviders={selectableProviders}
+                    selectedAccountId={currentAccountId}
                     selectedEffortId={currentEffort ?? null}
                     selectedModelId={currentModel ?? null}
                     onResetEffort={onResetEffort}

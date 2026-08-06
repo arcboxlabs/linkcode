@@ -1,7 +1,6 @@
 import type {
   AgentInput,
   AgentKind,
-  AgentModelOption,
   AgentStartCatalog,
   BranchMode,
   BranchSelection,
@@ -36,6 +35,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
+import type { ModelOption } from './agent-models';
 import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
@@ -58,6 +58,8 @@ export interface NewSessionSubmission {
   workspaceId: WorkspaceId;
   /** Absent falls back to the agent's persisted pick; there is no "return to default" tier. */
   model?: string;
+  /** The account the picked model belongs to, pinning the session to it. */
+  accountId?: string;
   /** Null explicitly returns this provider to its default effort. */
   effort?: EffortLevel | null;
   approvalPolicyId?: string;
@@ -92,7 +94,7 @@ export interface NewSessionSurfaceProps {
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** The models each agent may run on, picked on its bound account. An agent absent here has no
    * account bound and falls back to its adapter catalog or the curated table. */
-  accountModels?: Readonly<Partial<Record<AgentKind, AgentModelOption[]>>> | null;
+  accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
   preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
@@ -168,6 +170,10 @@ export function NewSessionSurface({
   const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
+  /** The account each picked model belongs to; null once the pick is reset. */
+  const [selectedAccounts, setSelectedAccounts] = useState<
+    Partial<Record<AgentKind, string | null>>
+  >({});
   const [selectedEfforts, setSelectedEfforts] = useState<
     Partial<Record<AgentKind, EffortLevel | null>>
   >({});
@@ -196,12 +202,15 @@ export function NewSessionSurface({
   const localEffort = selectedEfforts[provider];
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  // The account's picked set is the user's own answer to which models this agent may run on, so it
-  // outranks the adapter catalog and the curated table both. An entry present here means an account
-  // is bound, which is also what makes a missing model fatal rather than the agent's own business.
-  const boundSet = accountModels?.[provider];
-  const pickable = boundSet ?? dynamicModels ?? AGENT_MODEL_OPTIONS[provider];
-  const modelOption = resolveModel(pickable, displayedModel);
+  // Every account that can back this agent contributes, so a pick chooses the account too. The set
+  // outranks the adapter catalog and the curated table both, and an entry present here means at
+  // least one account is bindable — which is what makes a missing model fatal rather than the
+  // agent's own business.
+  const bindableSet = accountModels?.[provider];
+  const pickable = bindableSet ?? dynamicModels ?? AGENT_MODEL_OPTIONS[provider];
+  const localAccount = selectedAccounts[provider];
+  const selectedAccountId = localAccount ?? undefined;
+  const modelOption = resolveModel(pickable, displayedModel, selectedAccountId);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
@@ -238,6 +247,10 @@ export function NewSessionSurface({
         cwd: selected.cwd,
         workspaceId: selected.workspaceId,
         model: localModel === null ? undefined : (selectedModel ?? undefined),
+        // Pins the session to the account whose entry was picked; without it the daemon would fall
+        // back to whichever account happens to be bound.
+        ...(localModel !== null &&
+          modelOption?.accountId !== undefined && { accountId: modelOption.accountId }),
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),
@@ -268,8 +281,11 @@ export function NewSessionSurface({
     return Promise.resolve();
   }
 
-  function handleModelChange(nextModel: string): Promise<void> {
-    setSelectedModels((current) => ({ ...current, [provider]: nextModel }));
+  function handleModelChange(next: ModelOption): Promise<void> {
+    setSelectedModels((current) => ({ ...current, [provider]: next.id }));
+    // The account is part of the pick: two accounts can serve the same id, and the session must
+    // start on the one whose entry was chosen.
+    setSelectedAccounts((current) => ({ ...current, [provider]: next.accountId ?? null }));
     return Promise.resolve();
   }
 
@@ -280,6 +296,7 @@ export function NewSessionSurface({
 
   function handleResetModel(): void {
     setSelectedModels((current) => ({ ...current, [provider]: null }));
+    setSelectedAccounts((current) => ({ ...current, [provider]: null }));
   }
 
   function handleResetEffort(): void {
@@ -367,11 +384,14 @@ export function NewSessionSurface({
             // With an account bound, its set is the only model source, so an unresolved model would
             // be refused by the daemon anyway — refuse here instead of after a round trip. An agent
             // with no account bound still resolves its own, and must not be blocked.
-            sendBlocked={cue !== undefined || (boundSet !== undefined && displayedModel === null)}
+            sendBlocked={
+              cue !== undefined || (bindableSet !== undefined && displayedModel === null)
+            }
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}
             agentModels={pickable ?? null}
+            currentAccountId={selectedAccountId}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
             selectableProviders={SELECTABLE_PROVIDERS}

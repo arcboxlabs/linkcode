@@ -31,6 +31,7 @@ import type {
   ComposerDirectiveControls,
   ConversationComposerController,
   CurrentPlan,
+  ModelOption,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
@@ -60,6 +61,7 @@ import { useMutation } from '../runtime/tayori';
 import {
   useAccountModelOptions,
   useConfiguredDefaultModels,
+  useSessionModelOptions,
 } from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
@@ -245,6 +247,8 @@ function WorkbenchSessionSurface({
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
   const accountModels = useAccountModelOptions();
+  // Scoped to the active session's own account: it was fixed at spawn and cannot change.
+  const sessionModels = useSessionModelOptions(active?.accountId);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -378,6 +382,7 @@ function WorkbenchSessionSurface({
       kind: submission.kind,
       cwd: submission.cwd,
       model: submission.model,
+      accountId: submission.accountId,
       effort: submission.effort ?? undefined,
       approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
@@ -448,14 +453,16 @@ function WorkbenchSessionSurface({
       .then(noop);
   }
 
-  function handleModelChange(model: string): Promise<void> {
+  function handleModelChange(model: ModelOption): Promise<void> {
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     const provider = active?.kind;
-    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(() => {
-      if (provider) rememberSelection(provider, { model });
+    return modelMutation.trigger({ sessionId: sessions.activeId, model: model.id }).then(() => {
+      // The account is not part of a live switch — it is fixed at spawn, and this menu only ever
+      // offers the session's own account's models.
+      if (provider) rememberSelection(provider, { model: model.id });
     });
   }
 
@@ -656,6 +663,7 @@ function WorkbenchSessionSurface({
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
       accountModels={accountModels}
+      sessionModels={sessionModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}

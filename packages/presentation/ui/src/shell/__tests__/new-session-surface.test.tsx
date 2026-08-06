@@ -58,6 +58,8 @@ const RE_LOW_EFFORT = /Low/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
 const RE_PROVIDER_CLAUDE_CODE_MENU = /provider.*Claude Code/;
 const RE_MODEL_SONNET_5_MENU = /model.*Sonnet 5/;
+const RE_OPUS_5 = /Opus 5/;
+const RE_MODEL_MENU = /^model/;
 const RE_MODEL_GPT_56_SOL_MENU = /model.*GPT-5\.6-Sol/;
 const RE_MODEL_DEFAULT_MENU = /model.*modelDefault/;
 const RE_MODEL_PI_SONNET_MENU = /model.*Pi Sonnet/;
@@ -810,6 +812,58 @@ describe('NewSessionSurface', () => {
     // No "back to the provider's own model" tier any more: an absent model defers to the
     // agent's persisted pick, which the daemon resolves.
     expect(submitted?.model).toBeUndefined();
+  });
+
+  it('starts on the account the picked model belongs to, not the one bound', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        accountModels={{
+          'claude-code': [
+            {
+              id: 'claude-opus-5',
+              label: 'Opus 5',
+              description: 'Anthropic',
+              accountId: 'acc_ant',
+            },
+            {
+              id: 'deepseek-v4-pro',
+              label: 'DeepSeek V4 Pro',
+              description: 'DeepSeek',
+              accountId: 'acc_ds',
+            },
+          ],
+        }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ 'claude-code': 'claude-opus-5' }}
+        draft={{
+          initialProvider: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    // Two accounts → one submenu each. Submenu triggers are keyboard-driven here: base-ui leaves
+    // them `pointer-events: none` in jsdom.
+    await user.click(screen.getByRole('button', { name: RE_OPUS_5 }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_MENU }));
+    (await screen.findByRole('menuitem', { name: 'DeepSeek' })).focus();
+    await user.keyboard('{ArrowRight}');
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'DeepSeek V4 Pro' }));
+    typeInComposer('hello');
+    await pressInComposer('Enter');
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'deepseek-v4-pro', accountId: 'acc_ds' }),
+      ),
+    );
   });
 
   it("offers only the bound account's picked models, ignoring the curated table", async () => {

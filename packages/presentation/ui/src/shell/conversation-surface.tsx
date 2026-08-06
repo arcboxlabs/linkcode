@@ -1,10 +1,4 @@
-import type {
-  AgentKind,
-  AgentModelOption,
-  ContentBlock,
-  EffortLevel,
-  QuestionOutcome,
-} from '@linkcode/schema';
+import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
 import type { StickToBottomContext } from 'use-stick-to-bottom';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
@@ -13,6 +7,7 @@ import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
+import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
@@ -29,7 +24,7 @@ export interface ConversationComposerController {
   directiveControls: ComposerDirectiveControls;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  onModelChange?: (model: string) => Promise<void>;
+  onModelChange?: (model: ModelOption) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
@@ -38,9 +33,12 @@ export interface ConversationSurfaceProps {
   composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
-  /** The models picked on this agent's bound account — the only ones it may switch to. Absent means
-   * no account is bound, so the adapter catalog or the curated table supplies the choices instead. */
-  accountModels?: AgentModelOption[];
+  /** The models picked on *this session's* account — the only ones it may switch to, because its
+   * account is fixed at spawn. Absent means no account backs it, so the adapter catalog or the
+   * curated table supplies the choices instead. */
+  accountModels?: ModelOption[];
+  /** The session's account, so a reflected model id resolves against the right entry. */
+  accountId?: string;
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
@@ -95,6 +93,7 @@ export function ConversationSurface({
   composer,
   agentKind,
   accountModels,
+  accountId,
   agentLabel,
   attachmentsSupported = false,
   cwd,
@@ -193,9 +192,10 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          // The account's picked set is the user's own answer to "which models may this run on",
-          // so it outranks both the adapter catalog and the curated table.
+          // The session account's picked set is the user's own answer to "which models may this run
+          // on", so it outranks both the adapter catalog and the curated table.
           agentModels={accountModels ?? conversation.availableModels}
+          currentAccountId={accountId}
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
           // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a

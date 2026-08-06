@@ -30,7 +30,7 @@ import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import { groupModelsByProvider, resolveModel } from './agent-models';
+import { groupModelsByProvider, modelChoiceKey, resolveModel } from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
 // Linear lookup: the policy/effort lists are a handful of entries at most.
@@ -219,6 +219,7 @@ export function ModelSelectorMenu({
   modelOptions,
   effortOptions,
   selectedModelId,
+  selectedAccountId,
   selectedEffortId,
   onSelectModel,
   onSelectEffort,
@@ -235,8 +236,11 @@ export function ModelSelectorMenu({
   modelOptions?: ModelOption[];
   effortOptions?: EffortOption[];
   selectedModelId: string | null;
+  /** Disambiguates the selection when the list spans accounts serving the same model id. */
+  selectedAccountId?: string;
   selectedEffortId: EffortLevel | null;
-  onSelectModel: (model: string) => void;
+  /** Carries the whole entry: a cross-account list needs the account alongside the id. */
+  onSelectModel: (model: ModelOption) => void;
   onSelectEffort: (effort: EffortLevel) => void;
   /** Draft-only escape hatch back to the provider/configured model default. */
   onResetModel?: () => void;
@@ -245,7 +249,7 @@ export function ModelSelectorMenu({
   onSelectProvider?: (provider: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const selectedModel = resolveModel(modelOptions, selectedModelId);
+  const selectedModel = resolveModel(modelOptions, selectedModelId, selectedAccountId);
   const providerGroups = groupModelsByProvider(modelOptions);
   const selectedEffort =
     optionById(effortOptions, selectedEffortId) ??
@@ -327,12 +331,22 @@ export function ModelSelectorMenu({
             </MenuSubTrigger>
             <MenuSubPopup className="w-56">
               <MenuRadioGroup
-                value={selectedModel?.id ?? selectedModelId ?? ''}
-                onValueChange={(value) => onSelectModel(String(value))}
+                value={selectedModel === undefined ? '' : modelChoiceKey(selectedModel)}
+                onValueChange={(value) => {
+                  // Keyed by (account, model), so map back to the entry rather than parsing it.
+                  const picked = modelOptions?.find(
+                    (option) => modelChoiceKey(option) === String(value),
+                  );
+                  if (picked) onSelectModel(picked);
+                }}
               >
                 {providerGroups === null ? (
                   modelOptions?.map((option) => (
-                    <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                    <MenuRadioItem
+                      key={modelChoiceKey(option)}
+                      closeOnClick
+                      value={modelChoiceKey(option)}
+                    >
                       <span className="flex min-w-0 flex-col">
                         <span>{option.label}</span>
                         {option.description ? (
@@ -346,7 +360,11 @@ export function ModelSelectorMenu({
                 ) : (
                   <>
                     {providerGroups.ungrouped.map((option) => (
-                      <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                      <MenuRadioItem
+                        key={modelChoiceKey(option)}
+                        closeOnClick
+                        value={modelChoiceKey(option)}
+                      >
                         {option.label}
                       </MenuRadioItem>
                     ))}
@@ -357,7 +375,11 @@ export function ModelSelectorMenu({
                         <MenuSubTrigger>{group.label}</MenuSubTrigger>
                         <MenuSubPopup className="w-56">
                           {group.options.map((option) => (
-                            <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                            <MenuRadioItem
+                              key={modelChoiceKey(option)}
+                              closeOnClick
+                              value={modelChoiceKey(option)}
+                            >
                               {option.label}
                             </MenuRadioItem>
                           ))}
