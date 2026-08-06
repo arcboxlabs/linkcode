@@ -38,6 +38,15 @@ Pure data plus pure functions: no hooks, no browser APIs, no I/O. Its only depen
     exactly this reason: the client used the raw field once and immediately disagreed with the
     resolver about the same account — showing a pinned endpoint for one that resolves per agent.
     Display, edit-form prefill, and resolution have to answer the question identically.
+- **`models` is service-level and spelled out, never derived.** One secret reaches one model list,
+  and the ids are identical whichever protocol shape an agent resolves to — so the list belongs to
+  the service, not the variant, and one fetch serves every agent bound to the account. The URL is
+  written out because deriving it from a variant's `baseUrl` + protocol is wrong wherever variants
+  sit on different paths: DeepSeek's `/anthropic` variant would give `/anthropic/v1/models` and
+  Vercel's bare-origin one a root `/models`, neither of which exists. `wire` picks the auth header
+  and response shape only. Absent means the service serves no list, and the account is freeform-only
+  — true for both Cloudflare entries, whose `/compat` route has no model-list path (docs + verified
+  live). Anthropic's list defaults to `limit=20`, so the full list must be asked for.
 - **A missing variant is a claim about the vendor, so verify it.** Omitting `openai-responses`
   refuses codex outright, and an unverified assumption that "that endpoint doesn't serve it anyway"
   once shipped exactly that gap for xAI, OpenRouter and Vercel — all three do serve
@@ -72,11 +81,18 @@ known provider" and fall through to current behavior, never fail a session.
 ## Not here yet
 
 Registering a **custom** provider for an endpoint no agent knows — opencode
-`provider.<id>.{npm, models}`, pi `registerProvider` with `models[]` — is unimplemented. pi's
-`models[]` requires `reasoning` / `input` / `cost` / `contextWindow` / `maxTokens`, which no
-`/v1/models` response carries and `contextWindow` feeds pi's compaction math, so the metadata source
-is a real decision. Until it lands, endpoints without a known provider keep the pre-existing
-behavior (baseUrl override on a guessed provider).
+`provider.<id>.{npm, models}`, pi `registerProvider` with `models[]` — is unimplemented. Endpoints
+without a known provider keep the pre-existing behavior (baseUrl override on a guessed provider).
+
+Metadata is **not** the blocker it was once recorded as: both agents accept a bare id and fill the
+rest themselves (checked against opencode's config schema, where every `Model` field is optional in
+v1 and v2, and pi's `modelFromJson`, which defaults `contextWindow` to 128000 and `maxTokens` to
+16384). The reason to still avoid declaring models is the opposite one — **declaring a model the
+agent already knows destroys good metadata.** pi's `applyModelsJson` replaces on id match, so
+redeclaring `deepseek-v4-pro` overwrites its real 1M context window with that 128000 default and
+makes the session compact constantly, silently. If custom registration is ever built, it must
+declare only ids the agent's own catalog lacks, and reach for pi's `modelOverrides` (a field-level
+patch that does not replace) whenever a known model needs one value changed.
 
 **Do not fake the gap by passing a wire hint.** pi's `ProviderConfigInput` accepts `api`, so
 `registerProvider({ baseUrl, api })` typechecks — and the SDK discards it on any call without
