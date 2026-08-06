@@ -32,11 +32,9 @@ export class SessionStartOptionsResolver {
     options: StartOptions,
     sessionId: SessionId,
   ): Effect.Effect<ResolvedStartOptions, RequestError | OperationError> {
-    const defaults = applyProviderDefaults(
-      options,
-      this.providers.get(),
-      this.providers.getAccounts(),
-    );
+    const providers = this.providers.get();
+    const defaults = applyProviderDefaults(options, providers, this.providers.getAccounts());
+    const accountBound = providers[options.kind]?.activeAccountId !== undefined;
     const { translator } = this;
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
@@ -48,6 +46,16 @@ export class SessionStartOptionsResolver {
           new RequestError({
             code: 'unsupported',
             message: `The bound account cannot back ${options.kind} (${defaults.unavailable})`,
+          }),
+        );
+      }
+      if (accountBound && defaults.options.model === undefined) {
+        // With an account bound, its selected set is the only model source and nothing falls back to
+        // the agent's own choice. Unbound agents keep running on whatever they resolve themselves.
+        return yield* Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: `No model selected for ${options.kind}`,
           }),
         );
       }

@@ -67,7 +67,6 @@ function catalogAccount(service: EndpointService, draft: CatalogDraft): Account 
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
     ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
   };
 }
 
@@ -94,13 +93,10 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
   const base =
     account === undefined
       ? newAccountBase(draft.label)
-      : (({
-          credential: _credential,
-          endpoint: _endpoint,
-          label: _label,
-          model: _model,
-          ...rest
-        }) => rest)(account);
+      : // `models` is deliberately kept: this form does not manage the picked set.
+        (({ credential: _credential, endpoint: _endpoint, label: _label, ...rest }) => rest)(
+          account,
+        );
   return {
     ...base,
     label: draft.label.trim(),
@@ -110,7 +106,6 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
         : { type: 'api-key', key: draft.secret },
     ...(draft.baseUrl.trim() &&
       protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
   };
 }
 
@@ -356,7 +351,6 @@ function OauthCreateForm({
 const CatalogDraftSchema = z.object({
   label: z.string().min(1),
   secret: z.string().min(1),
-  model: z.string(),
   placeholders: z.record(z.string(), z.string()),
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
@@ -398,7 +392,7 @@ function CatalogAccountForm({
     formState: { isSubmitting },
   } = useForm<CatalogDraft>({
     resolver: zodResolver(catalogDraftSchema(service)),
-    defaultValues: { label: serviceName, secret: '', model: '', placeholders: {} },
+    defaultValues: { label: serviceName, secret: '', placeholders: {} },
   });
 
   const secretLabel =
@@ -419,26 +413,16 @@ function CatalogAccountForm({
           <Input className="w-full" autoComplete="off" {...register(`placeholders.${key}`)} />
         </Field>
       ))}
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{secretLabel}</FieldLabel>
-            <Input
-              type="password"
-              className="w-full"
-              autoComplete="off"
-              placeholder={service.secretPlaceholder}
-              {...register('secret')}
-            />
-          </Field>
-        </div>
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{t('form.model')}</FieldLabel>
-            <Input className="w-full" autoComplete="off" {...register('model')} />
-          </Field>
-        </div>
-      </div>
+      <Field>
+        <FieldLabel>{secretLabel}</FieldLabel>
+        <Input
+          type="password"
+          className="w-full"
+          autoComplete="off"
+          placeholder={service.secretPlaceholder}
+          {...register('secret')}
+        />
+      </Field>
       <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
         {serviceProtocols(service.id).join(' · ')}
       </p>
@@ -457,7 +441,6 @@ const CustomDraftSchema = z.object({
   secret: z.string().min(1),
   baseUrl: z.string(),
   protocol: z.string(),
-  model: z.string(),
 });
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
@@ -495,7 +478,6 @@ function CustomAccountForm({
       // resolve time, so showing it would invite the user to "keep" a value that does nothing.
       baseUrl: (account && pinnedEndpoint(account)?.baseUrl) ?? '',
       protocol: (account && pinnedEndpoint(account)?.protocol) ?? '',
-      model: account?.model ?? '',
     },
   });
 
@@ -556,10 +538,6 @@ function CustomAccountForm({
           </Field>
         </div>
       </div>
-      <Field>
-        <FieldLabel>{t('form.model')}</FieldLabel>
-        <Input className="w-full" autoComplete="off" {...register('model')} />
-      </Field>
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {account === undefined ? t('form.submit') : t('form.save')}

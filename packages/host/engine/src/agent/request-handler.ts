@@ -1,5 +1,6 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
-import type { WirePayload } from '@linkcode/schema';
+import { modelListSource } from '@linkcode/providers';
+import type { AccountSecret, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -150,7 +151,11 @@ export class AgentRequestHandler {
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const models = await this.probeModels(payload.endpoint, payload.secret);
+              const source = modelListSource(payload.service);
+              if (!source) {
+                throw new Error(`${payload.service} serves no model list`);
+              }
+              const models = await this.probeModels(source, this.probeSecret(payload.credential));
               this.transport.send(
                 createWireMessage({
                   kind: 'config.probe-models.result',
@@ -204,6 +209,22 @@ export class AgentRequestHandler {
       default:
         return Effect.void;
     }
+  }
+
+  /** The secret to probe with. A saved account is named by id rather than shipping its secret back
+   * out to the client and in again; an oauth login holds none, so it cannot be probed. */
+  private probeSecret(
+    credential: Extract<AgentRequest, { kind: 'config.probe-models' }>['credential'],
+  ): AccountSecret {
+    if (credential.type === 'inline') return credential.secret;
+    const account = this.providers
+      .getAccounts()
+      .find((candidate) => candidate.id === credential.accountId);
+    if (!account) throw new Error('Account not found');
+    if (account.credential.type === 'oauth') {
+      throw new Error('A subscription login holds no secret to read the model list with');
+    }
+    return account.credential;
   }
 }
 

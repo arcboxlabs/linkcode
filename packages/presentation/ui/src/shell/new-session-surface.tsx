@@ -55,8 +55,8 @@ export interface NewSessionSubmission {
   cwd: string;
   /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
   workspaceId: WorkspaceId;
-  /** Null explicitly returns this provider to its configured/default model. */
-  model?: string | null;
+  /** Absent falls back to the agent's persisted pick; there is no "return to default" tier. */
+  model?: string;
   /** Null explicitly returns this provider to its default effort. */
   effort?: EffortLevel | null;
   approvalPolicyId?: string;
@@ -231,7 +231,7 @@ export function NewSessionSurface({
         kind: provider,
         cwd: selected.cwd,
         workspaceId: selected.workspaceId,
-        model: localModel === null ? null : (selectedModel ?? undefined),
+        model: localModel === null ? undefined : (selectedModel ?? undefined),
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),

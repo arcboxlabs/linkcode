@@ -5,6 +5,7 @@ import type { WirePayload } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { probeEndpointModels, requestModelListAtAddress } from '../agent/model-probe';
+import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { createSessionHarness } from './fixtures/session-harness';
 
 /** The probe is a real HTTP round-trip, so its reply lands after `inject`'s task settle. */
@@ -34,18 +35,29 @@ function baseUrl(server: Server): string {
   return `http://127.0.0.1:${port}`;
 }
 
-const localModelProbe: typeof probeEndpointModels = (endpoint, secret) =>
-  probeEndpointModels(endpoint, secret, (url, headers) =>
+let relay: Server | undefined;
+
+/** Sends the catalog's own path at the local relay, so the relay records which path the service
+ * descriptor resolved to while the real HTTP round-trip stays under test. */
+const localModelProbe: typeof probeEndpointModels = (source, secret) => {
+  const resolved = new URL(source.url);
+  const local = `${baseUrl(nullthrow(relay, 'relay not started'))}${resolved.pathname}${resolved.search}`;
+  return probeEndpointModels({ ...source, url: local }, secret, (url, headers) =>
     requestModelListAtAddress(url, headers, { address: '127.0.0.1', family: 4 }),
   );
+};
 
-function createHarness() {
-  return createSessionHarness(undefined, undefined, undefined, undefined, undefined, undefined, {
-    modelProbe: localModelProbe,
-  });
+function createHarness(providerStore?: InMemoryProviderConfigStore) {
+  return createSessionHarness(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    providerStore,
+    { modelProbe: localModelProbe },
+  );
 }
-
-let relay: Server | undefined;
 
 afterEach(async () => {
   const server = relay;
@@ -62,7 +74,7 @@ describe('config.probe-models', () => {
     const seen: string[] = [];
     relay = await startRelay((url) => {
       seen.push(url);
-      return url === '/v1/models'
+      return url === '/models'
         ? { status: 200, body: JSON.stringify({ data: [{ id: 'gpt-5' }, { id: 'gpt-5-mini' }] }) }
         : { status: 404, body: '{}' };
     });
@@ -72,8 +84,8 @@ describe('config.probe-models', () => {
     await h.inject({
       kind: 'config.probe-models',
       clientReqId: 'probe-1',
-      endpoint: { baseUrl: `${baseUrl(relay)}/v1`, protocol: 'openai-chat' },
-      secret: { type: 'api-key', key: 'sk-test' },
+      service: 'deepseek',
+      credential: { type: 'inline', secret: { type: 'api-key', key: 'sk-test' } },
     });
 
     await expect(replyFor(h.sent, 'probe-1')).resolves.toEqual({
@@ -81,7 +93,8 @@ describe('config.probe-models', () => {
       replyTo: 'probe-1',
       models: [{ id: 'gpt-5' }, { id: 'gpt-5-mini' }],
     });
-    expect(seen).toEqual(['/v1/models']);
+    // The service's own path, not one derived from a variant's baseUrl.
+    expect(seen).toEqual(['/models']);
   });
 
   it("relays the endpoint's own rejection to the client", async () => {
@@ -95,13 +108,65 @@ describe('config.probe-models', () => {
     await h.inject({
       kind: 'config.probe-models',
       clientReqId: 'probe-2',
-      endpoint: { baseUrl: baseUrl(relay), protocol: 'anthropic' },
-      secret: { type: 'api-key', key: 'bad' },
+      service: 'anthropic-api',
+      credential: { type: 'inline', secret: { type: 'api-key', key: 'bad' } },
     });
 
     const failed = await replyFor(h.sent, 'probe-2');
     if (failed.kind !== 'request.failed') throw new Error('no request.failed for probe-2');
     expect(failed.message).toContain('401');
     expect(failed.message).toContain('invalid api key');
+  });
+
+  it('refuses a service that serves no model list', async () => {
+    const h = createHarness();
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'config.probe-models',
+      clientReqId: 'probe-3',
+      service: 'cloudflare-gateway',
+      credential: { type: 'inline', secret: { type: 'auth-token', token: 'cf' } },
+    });
+
+    const failed = await replyFor(h.sent, 'probe-3');
+    if (failed.kind !== 'request.failed') throw new Error('no request.failed for probe-3');
+    expect(failed.message).toContain('serves no model list');
+  });
+
+  it('reads a saved account by id so its secret never travels through the client', async () => {
+    const seen: string[] = [];
+    relay = await startRelay((url) => {
+      seen.push(url);
+      return { status: 200, body: JSON.stringify({ data: [{ id: 'deepseek-v4-pro' }] }) };
+    });
+    const providerStore = new InMemoryProviderConfigStore();
+    providerStore.update({
+      accounts: [
+        {
+          id: 'acc_saved',
+          label: 'Saved',
+          service: 'deepseek',
+          credential: { type: 'api-key', key: 'sk-stored' },
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = createHarness(providerStore);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'config.probe-models',
+      clientReqId: 'probe-4',
+      service: 'deepseek',
+      credential: { type: 'account', accountId: 'acc_saved' },
+    });
+
+    await expect(replyFor(h.sent, 'probe-4')).resolves.toEqual({
+      kind: 'config.probe-models.result',
+      replyTo: 'probe-4',
+      models: [{ id: 'deepseek-v4-pro' }],
+    });
+    expect(seen).toEqual(['/models']);
   });
 });

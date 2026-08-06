@@ -64,9 +64,10 @@ export const StartOptionsSchema = z.object({
   cwd: z.string().min(1),
   /** Existing local branch and whether to use the original checkout or a managed worktree. */
   branch: BranchSelectionSchema.optional(),
-  /** Model id override (vendor-specific). Undefined applies the LinkCode-configured default;
-   * null explicitly defers to the agent/provider's own default. */
-  model: z.string().nullable().optional(),
+  /** Model id (vendor-specific). Undefined falls back to the agent's persisted pick
+   * (`ProviderConfig.model`); if that is unset too, the session refuses to start rather than
+   * letting the agent choose for itself. */
+  model: z.string().optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
   /** Initial reasoning effort, if the selected adapter supports effort. */

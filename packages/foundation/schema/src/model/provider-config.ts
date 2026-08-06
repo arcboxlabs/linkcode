@@ -7,8 +7,10 @@ import { AgentKindSchema } from './primitives';
 export const ProviderConfigSchema = z.object({
   /** Whether the agent is offered in the client's agent picker. */
   enabled: z.boolean().default(true),
-  /** Default model used when the client starts a session without specifying one. */
-  defaultModel: z.string().optional(),
+  /** The model this agent currently runs on, picked by the user from the bound account's set and
+   * persisted so it survives across sessions. Not a fallback default: unset means no session can
+   * start, because nothing else resolves a model. */
+  model: z.string().optional(),
   /** Legacy provider API key, superseded by the global account pool (`account.ts`) but kept so
    * pre-account configs still load; the resolver falls back to it when `activeAccountId` is unset. */
   apiKey: z.string().optional(),

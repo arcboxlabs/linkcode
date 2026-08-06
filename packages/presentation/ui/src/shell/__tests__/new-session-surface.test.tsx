@@ -768,7 +768,7 @@ describe('NewSessionSurface', () => {
     );
   });
 
-  it('can return remembered model and effort choices to provider defaults', async () => {
+  it('can return remembered model and effort choices to the configured ones', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
@@ -799,9 +799,11 @@ describe('NewSessionSurface', () => {
     typeInComposer('use provider defaults');
     await pressInComposer('Enter');
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
-    expect(onSubmit.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ model: null, effort: null }),
-    );
+    const submitted = onSubmit.mock.calls[0]?.[0];
+    expect(submitted).toEqual(expect.objectContaining({ effort: null }));
+    // No "back to the provider's own model" tier any more: an absent model defers to the
+    // agent's persisted pick, which the daemon resolves.
+    expect(submitted?.model).toBeUndefined();
   });
 
   it('submits a model only after the user explicitly selects it', async () => {

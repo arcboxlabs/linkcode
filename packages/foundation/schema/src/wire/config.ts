@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import {
-  AccountEndpointSchema,
   AccountModelSchema,
   AccountSchema,
   AccountSecretSchema,
@@ -38,14 +37,18 @@ export const configWireVariants = [
     agent: AgentKindSchema,
     account: AccountSchema,
   }),
-  /** Enumerate what an endpoint serves, before the account is saved: the daemon reads the
-   * endpoint's own model list with the given secret. The client cannot do this itself — the
-   * renderer's CSP blocks remote fetches, and only the daemon may hold the secret. */
+  /** Enumerate the ids a service serves. The daemon resolves the list URL from the service catalog
+   * and makes the call itself — the renderer's CSP blocks remote fetches, and the secret belongs on
+   * that side. `inline` carries a secret the add form has not saved yet; `account` names a saved one
+   * so its stored secret never travels back out to the client. */
   z.object({
     kind: z.literal('config.probe-models'),
     clientReqId: WireRequestIdSchema,
-    endpoint: AccountEndpointSchema,
-    secret: AccountSecretSchema,
+    service: z.string().min(1),
+    credential: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('inline'), secret: AccountSecretSchema }),
+      z.object({ type: z.literal('account'), accountId: z.string().min(1) }),
+    ]),
   }),
   z.object({
     kind: z.literal('config.probe-models.result'),

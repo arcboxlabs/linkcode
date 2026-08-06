@@ -74,7 +74,8 @@ export interface ProviderAccountDetailViewModel {
   label: string;
   credential: ProviderCredentialViewModel;
   routing?: ProviderAccountRouting;
-  accountModel?: string;
+  /** Model ids the user picked for this account — the only ones its pickers offer. */
+  accountModels?: string[];
   bindings: ProviderBindingViewModel[];
   boundAgents: AgentKind[];
   availableBindingCount: number;
@@ -198,10 +199,10 @@ export function AccountDetail({
               </span>
             </DetailRow>
           ) : null}
-          {account.accountModel !== undefined && account.accountModel !== '' ? (
+          {account.accountModels !== undefined && account.accountModels.length > 0 ? (
             <DetailRow label={t('accountModel')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.accountModel}
+                {account.accountModels.join(' · ')}
               </span>
             </DetailRow>
           ) : null}

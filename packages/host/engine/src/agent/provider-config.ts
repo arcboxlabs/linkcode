@@ -121,8 +121,8 @@ export interface AppliedProviderDefaults {
 }
 
 /** Apply the stored config to a session's StartOptions: resolve the bound account (or legacy
- * per-agent api key) and inject the credential/endpoint bundle into `config`; a resolved account's
- * `model` outranks the provider default. Returns a new object; never mutates the input. */
+ * per-agent api key), inject the credential/endpoint bundle into `config`, and fall back to the
+ * agent's persisted model pick. Returns a new object; never mutates the input. */
 export function applyProviderDefaults(
   opts: StartOptions,
   providers: ProvidersConfig,
@@ -133,10 +133,8 @@ export function applyProviderDefaults(
   if (!config && !account) return { options: opts };
 
   const next: StartOptions = { ...opts };
-  if (next.model === undefined) {
-    const model = account?.model ?? config?.defaultModel;
-    if (model !== undefined) next.model = model;
-  }
+  // The account holds the models the user may pick from; the pick itself is per agent.
+  if (next.model === undefined && config?.model !== undefined) next.model = config.model;
   if (account) {
     const resolved = accountConfigBundle(account, opts.kind);
     if ('unavailable' in resolved) return { options: next, unavailable: resolved.unavailable };

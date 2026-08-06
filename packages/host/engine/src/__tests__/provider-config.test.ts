@@ -10,13 +10,12 @@ describe('applyProviderDefaults', () => {
     expect(applyProviderDefaults(baseOpts, providers).options).toBe(baseOpts);
   });
 
-  it('fills the default model only when the client did not specify one', () => {
-    const providers: ProvidersConfig = { codex: { enabled: true, defaultModel: 'o4-mini' } };
+  it('fills the persisted pick only when the client did not specify one', () => {
+    const providers: ProvidersConfig = { codex: { enabled: true, model: 'o4-mini' } };
     expect(applyProviderDefaults(baseOpts, providers).options.model).toBe('o4-mini');
     expect(applyProviderDefaults({ ...baseOpts, model: 'gpt-4o' }, providers).options.model).toBe(
       'gpt-4o',
     );
-    expect(applyProviderDefaults({ ...baseOpts, model: null }, providers).options.model).toBeNull();
   });
 
   it('injects the api key into config, preserving existing config keys', () => {
@@ -27,7 +26,7 @@ describe('applyProviderDefaults', () => {
 
   it('does not mutate the input options', () => {
     const providers: ProvidersConfig = {
-      codex: { enabled: true, defaultModel: 'o4-mini', apiKey: 'sk' },
+      codex: { enabled: true, model: 'o4-mini', apiKey: 'sk' },
     };
     const opts: StartOptions = { kind: 'codex', cwd: '/repo' };
     applyProviderDefaults(opts, providers);
@@ -120,13 +119,16 @@ describe('applyProviderDefaults account pool', () => {
     expect(forOpencode.options.config).toMatchObject({ knownProvider: 'openai' });
   });
 
-  it('prefers the account model over the provider default model', () => {
+  it('takes the model from the agent, never from the bound account', () => {
+    // The account holds the set the pick came from; only `providers[kind].model` names the pick.
     const providers: ProvidersConfig = {
-      codex: { enabled: true, defaultModel: 'o4-mini', activeAccountId: 'acc_1' },
+      codex: { enabled: true, model: 'o4-mini', activeAccountId: 'acc_1' },
     };
     expect(
-      applyProviderDefaults(baseOpts, providers, [{ ...account, model: 'gpt-5' }]).options.model,
-    ).toBe('gpt-5');
+      applyProviderDefaults(baseOpts, providers, [
+        { ...account, models: [{ id: 'gpt-5' }, { id: 'o4-mini' }] },
+      ]).options.model,
+    ).toBe('o4-mini');
   });
 
   it('falls back to the legacy apiKey when the bound account id is stale', () => {
@@ -160,7 +162,7 @@ describe('accountBinding', () => {
 
   it('preserves unrelated providers and accounts while binding the selected agent', () => {
     const providers: ProvidersConfig = {
-      codex: { enabled: true, defaultModel: 'gpt-5' },
+      codex: { enabled: true, model: 'gpt-5' },
       opencode: { enabled: false, activeAccountId: 'acc_2' },
     };
     const other: Account = {
@@ -172,7 +174,7 @@ describe('accountBinding', () => {
 
     expect(accountBinding(providers, [other], 'codex', account)).toEqual({
       providers: {
-        codex: { enabled: true, defaultModel: 'gpt-5', activeAccountId: 'acc_1' },
+        codex: { enabled: true, model: 'gpt-5', activeAccountId: 'acc_1' },
         opencode: { enabled: false, activeAccountId: 'acc_2' },
       },
       accounts: [other, account],

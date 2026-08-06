@@ -32,12 +32,12 @@ describe('engine agent catalog', () => {
       label: 'Catalog account',
       credential: { type: 'api-key', key: 'catalog-key' },
       endpoint: { baseUrl: 'https://catalog.example.test', protocol: 'openai-chat' },
-      model: 'provider/model',
+      models: [{ id: 'provider/model' }],
       createdAt: 0,
     };
     providers.update({
       providers: {
-        'claude-code': { enabled: true, activeAccountId: account.id },
+        'claude-code': { enabled: true, activeAccountId: account.id, model: 'provider/model' },
       },
       accounts: [account],
     });

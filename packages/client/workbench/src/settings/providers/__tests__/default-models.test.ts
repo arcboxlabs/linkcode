@@ -27,45 +27,22 @@ afterEach(() => {
 });
 
 describe('configuredDefaultModels', () => {
-  it('uses an active account model before the provider default and ignores stale bindings', () => {
+  it('reads the per-agent pick and reports nothing for an agent that has none', () => {
     const providers = {
-      codex: {
-        enabled: true,
-        activeAccountId: 'account-1',
-        defaultModel: 'provider-model',
-      },
-      'claude-code': {
-        enabled: true,
-        activeAccountId: 'missing-account',
-        defaultModel: 'claude-provider-model',
-      },
+      codex: { enabled: true, activeAccountId: 'account-1', model: 'gpt-5.6-sol' },
+      // Bound but unpicked: no model to report, so a session start refuses rather than guessing.
+      'claude-code': { enabled: true, activeAccountId: 'account-1' },
     } satisfies ProvidersConfig;
-    const accounts = [
-      {
-        id: 'account-1',
-        label: 'Configured account',
-        credential: { type: 'oauth', agent: 'codex' },
-        model: 'account-model',
-        createdAt: 0,
-      },
-    ] satisfies Accounts;
 
-    expect(configuredDefaultModels(providers, accounts)).toEqual({
-      codex: 'account-model',
-      'claude-code': 'claude-provider-model',
-    });
+    expect(configuredDefaultModels(providers)).toEqual({ codex: 'gpt-5.6-sol' });
   });
 
-  it('keeps defaults unresolved until both configuration sources have loaded', () => {
+  it('keeps the pick unresolved until the provider config has loaded', () => {
     const { result, rerender } = renderHook(() => useConfiguredDefaultModels());
 
     expect(result.current).toBeNull();
 
     providersData = {};
-    rerender();
-    expect(result.current).toBeNull();
-
-    accountsData = [];
     rerender();
     expect(result.current).toEqual({});
   });

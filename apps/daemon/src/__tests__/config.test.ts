@@ -76,8 +76,9 @@ describe('loadConfig providers', () => {
 
     const config = loadConfig(vault);
 
+    // `defaultModel` carries over as the persisted pick; without that it would be silently stripped.
     expect(config.providers).toEqual({
-      'claude-code': { enabled: true, defaultModel: 'sonnet' },
+      'claude-code': { enabled: true, model: 'sonnet' },
     });
     expect(errorSpy).toHaveBeenCalled();
   });
@@ -234,6 +235,14 @@ describe('loadConfig accounts', () => {
 
     expect(config.accounts).toEqual([validAccount]);
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("carries a pre-selection account's single model over as its picked set", () => {
+    writeAccountsConfig([{ ...validAccount, model: 'deepseek-v4-pro' }]);
+
+    expect(loadConfig(vault).accounts).toEqual([
+      { ...validAccount, models: [{ id: 'deepseek-v4-pro' }] },
+    ]);
   });
 
   it('drops an account whose stored secret is gone, rather than half-loading it', () => {

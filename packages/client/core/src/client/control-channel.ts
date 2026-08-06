@@ -1,6 +1,5 @@
 import type {
   Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -579,14 +578,19 @@ export class ControlChannel {
     }));
   }
 
-  /** Ask the daemon what an endpoint serves, using a not-yet-saved secret: the account forms offer
-   * the answer as the model picker. The daemon must do it — the renderer's CSP blocks the fetch. */
-  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+  /** Ask the daemon which models a service serves, so the account forms can offer a real list to
+   * pick from. The daemon must do it — the renderer's CSP blocks the fetch, and it resolves the list
+   * URL from the service catalog itself. Pass a secret the add form has not saved yet, or the id of
+   * a saved account so its stored secret never leaves the daemon. */
+  probeAccountModels(
+    service: string,
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string },
+  ): Promise<AccountModel[]> {
     return this.sendCorrelated('accountModels', (clientReqId) => ({
       kind: 'config.probe-models',
       clientReqId,
-      endpoint,
-      secret,
+      service,
+      credential,
     }));
   }
 

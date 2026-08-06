@@ -10,7 +10,6 @@ import type {
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
   Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -291,12 +290,12 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.setAccounts(accounts));
   }
 
-  /** Enumerate what an endpoint serves, using a secret that is not saved yet. */
+  /** Enumerate the models a service serves, with an unsaved secret or a saved account's own. */
   probeAccountModels(
-    endpoint: AccountEndpoint,
-    secret: AccountSecret,
+    service: string,
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string },
   ): RequestResult<AccountModel[]> {
-    return toResult(this.raw.probeAccountModels(endpoint, secret));
+    return toResult(this.raw.probeAccountModels(service, credential));
   }
 
   /** Masked custom MCP servers (data plane) — env/header keys only, never a secret value. */

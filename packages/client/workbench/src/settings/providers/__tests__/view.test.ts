@@ -12,7 +12,7 @@ import {
 } from '../view';
 
 const providers: ProvidersConfig = {
-  'claude-code': { enabled: true, activeAccountId: 'acc_a', defaultModel: 'claude-opus-4-8' },
+  'claude-code': { enabled: true, activeAccountId: 'acc_a', model: 'claude-opus-4-8' },
   codex: { enabled: false, activeAccountId: 'acc_b' },
   opencode: { enabled: true },
 };
@@ -29,14 +29,14 @@ describe('binding transforms', () => {
 
   it('unbinds by dropping only activeAccountId', () => {
     const next = withBinding(providers, 'claude-code', undefined);
-    expect(next['claude-code']).toEqual({ enabled: true, defaultModel: 'claude-opus-4-8' });
+    expect(next['claude-code']).toEqual({ enabled: true, model: 'claude-opus-4-8' });
   });
 
   it('sets and clears the default model without touching the binding', () => {
     expect(withModel(providers, 'claude-code', 'claude-sonnet-5')['claude-code']).toEqual({
       enabled: true,
       activeAccountId: 'acc_a',
-      defaultModel: 'claude-sonnet-5',
+      model: 'claude-sonnet-5',
     });
     expect(withModel(providers, 'claude-code', undefined)['claude-code']).toEqual({
       enabled: true,
@@ -46,7 +46,7 @@ describe('binding transforms', () => {
 
   it('clears every binding of a removed account, identity-stable when none matched', () => {
     const next = withoutAccount(providers, 'acc_a');
-    expect(next['claude-code']).toEqual({ enabled: true, defaultModel: 'claude-opus-4-8' });
+    expect(next['claude-code']).toEqual({ enabled: true, model: 'claude-opus-4-8' });
     expect(next.codex).toEqual({ enabled: false, activeAccountId: 'acc_b' });
     expect(withoutAccount(providers, 'acc_missing')).toBe(providers);
   });
@@ -58,7 +58,7 @@ describe('view helpers', () => {
     const snippet = accountConfigSnippet(providers, 'acc_a');
     expect(JSON.parse(snippet)).toEqual({
       providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_a', defaultModel: 'claude-opus-4-8' },
+        'claude-code': { enabled: true, activeAccountId: 'acc_a', model: 'claude-opus-4-8' },
       },
     });
   });
@@ -156,7 +156,7 @@ describe('view helpers', () => {
       service: 'openrouter',
       credential: { type: 'api-key', key: 'old-secret' },
       endpoint: { baseUrl: 'https://old.example.com/v1', protocol: 'openai-chat' },
-      model: 'old-model',
+      models: [{ id: 'old-model' }],
       extraEnv: { GATEWAY_MODE: 'strict' },
     };
 
@@ -167,7 +167,6 @@ describe('view helpers', () => {
         secret: 'new-secret',
         baseUrl: 'https://new.example.com/v1',
         protocol: 'anthropic',
-        model: 'new-model',
       }),
     ).toEqual({
       id: 'acc_a',
@@ -176,7 +175,8 @@ describe('view helpers', () => {
       service: 'openrouter',
       credential: { type: 'auth-token', token: 'new-secret' },
       endpoint: { baseUrl: 'https://new.example.com/v1', protocol: 'anthropic' },
-      model: 'new-model',
+      // The picked set survives an edit: this form does not manage it.
+      models: [{ id: 'old-model' }],
       extraEnv: { GATEWAY_MODE: 'strict' },
     });
   });

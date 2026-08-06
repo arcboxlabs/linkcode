@@ -138,7 +138,7 @@ export function providerAccountDetailViewModel(
     return {
       kind,
       ...binding,
-      currentModel: providers?.[kind]?.defaultModel ?? '',
+      currentModel: providers?.[kind]?.model ?? '',
     };
   });
   const boundAgents = boundAgentKinds(providers, account.id);
@@ -154,7 +154,7 @@ export function providerAccountDetailViewModel(
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
     ...(routing !== undefined && { routing }),
-    ...(!(account.model === undefined) && { accountModel: account.model }),
+    ...(account.models !== undefined && { accountModels: account.models.map(({ id }) => id) }),
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
     }),
@@ -250,10 +250,10 @@ export function withModel(
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
   if (model === undefined) {
-    const { defaultModel: _cleared, ...rest } = entry;
+    const { model: _cleared, ...rest } = entry;
     return { ...providers, [kind]: rest };
   }
-  return { ...providers, [kind]: { ...entry, defaultModel: model } };
+  return { ...providers, [kind]: { ...entry, model } };
 }
 
 /** Drop every binding referencing a removed account; returns the input unchanged when none did. */
