@@ -36,6 +36,7 @@ import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../../chat/agent-icon';
 import { AGENT_MODEL_OPTIONS } from '../agent-models';
 import { ServiceIcon } from '../service-icon';
+import type { ProviderAccountRouting } from './routing';
 
 export type ProviderBindingStatus =
   | { kind: 'unavailable-oauth'; agent: AgentKind }
@@ -72,9 +73,7 @@ export interface ProviderAccountDetailViewModel {
   serviceLabel?: string;
   label: string;
   credential: ProviderCredentialViewModel;
-  endpoint?: { baseUrl: string; protocol: string };
-  /** Shapes the account's service serves, when no single endpoint is pinned. */
-  protocols?: string[];
+  routing?: ProviderAccountRouting;
   accountModel?: string;
   bindings: ProviderBindingViewModel[];
   boundAgents: AgentKind[];
@@ -186,16 +185,16 @@ export function AccountDetail({
               </Button>
             </DetailRow>
           )}
-          {account.endpoint ? (
+          {account.routing?.kind === 'pinned' ? (
             <DetailRow label={t('endpoint')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.endpoint.baseUrl} · {account.endpoint.protocol}
+                {account.routing.baseUrl} · {account.routing.protocol}
               </span>
             </DetailRow>
-          ) : account.protocols?.length ? (
+          ) : account.routing?.kind === 'catalog' ? (
             <DetailRow label={t('protocols')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.protocols.join(' · ')}
+                {account.routing.protocols.join(' · ')}
               </span>
             </DetailRow>
           ) : null}

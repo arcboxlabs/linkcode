@@ -8,16 +8,14 @@ import { ChevronRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ServiceIcon } from '../service-icon';
+import type { ProviderAccountRouting } from './routing';
 
 export interface ProviderAccountListItem {
   id: string;
   service?: string;
   label: string;
   serviceLabel?: string;
-  endpoint?: string;
-  protocol?: string;
-  /** Shapes the account's service serves, when no single endpoint is pinned. */
-  protocols?: string[];
+  routing?: ProviderAccountRouting;
   credentialType: 'api-key' | 'auth-token' | 'oauth';
   auth?: { loggedIn: boolean; email?: string };
   boundAgents: AgentKind[];
@@ -66,14 +64,24 @@ export function AccountList({
   const accountDetailLine = (account: ProviderAccountListItem): string => {
     if (account.auth?.loggedIn === true) return account.auth.email ?? t('loggedIn');
     if (account.auth) return t('loggedOut');
-    if (account.endpoint) return [account.endpoint, account.protocol].filter(Boolean).join(' · ');
-    return account.protocols?.join(' · ') ?? '';
+    switch (account.routing?.kind) {
+      case 'pinned':
+        return `${account.routing.baseUrl} · ${account.routing.protocol}`;
+      case 'catalog':
+        return account.routing.protocols.join(' · ');
+      default:
+        return '';
+    }
   };
 
   const needle = query.trim().toLowerCase();
   const rows = needle
     ? accounts.filter((account) =>
-        [account.label, account.serviceLabel ?? '', account.endpoint ?? '']
+        [
+          account.label,
+          account.serviceLabel ?? '',
+          account.routing?.kind === 'pinned' ? account.routing.baseUrl : '',
+        ]
           .join(' ')
           .toLowerCase()
           .includes(needle),
@@ -130,7 +138,7 @@ export function AccountList({
                   <span className="block truncate text-muted-foreground text-xs">
                     {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
                   </span>
-                  {account.auth !== undefined || account.endpoint !== undefined ? (
+                  {account.auth !== undefined || account.routing !== undefined ? (
                     <span className="block truncate text-muted-foreground text-xs">
                       {accountDetailLine(account)}
                     </span>

@@ -17,6 +17,7 @@ import type {
   ProviderAccountDetailViewModel,
   ProviderAccountListItem,
   ProviderAccountListViewModel,
+  ProviderAccountRouting,
   ProviderBindingStatus,
   ProviderBindingViewModel,
   ProviderCredentialViewModel,
@@ -142,11 +143,7 @@ export function providerAccountDetailViewModel(
   });
   const boundAgents = boundAgentKinds(providers, account.id);
   const serviceLabel = serviceById(account.service)?.label;
-  // A catalog account has no single endpoint — each agent resolves its own — so the detail pane
-  // lists the shapes the service serves instead. Ask the resolver what counts as pinned, or the
-  // pane describes an account differently from how it resolves.
-  const pinned = pinnedEndpoint(account);
-  const protocols = pinned ? [] : serviceProtocols(account.service);
+  const routing = accountRouting(account);
   return {
     id: account.id,
     label: account.label,
@@ -156,13 +153,25 @@ export function providerAccountDetailViewModel(
     availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
-    ...(pinned !== undefined && { endpoint: pinned }),
-    ...(protocols.length > 0 && { protocols }),
+    ...(routing !== undefined && { routing }),
     ...(!(account.model === undefined) && { accountModel: account.model }),
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
     }),
   };
+}
+
+/**
+ * How this account reaches its provider, as the one axis the UI renders. A catalog account has no
+ * single endpoint — each agent resolves its own — so it advertises the shapes the service serves;
+ * only a user-named endpoint is a pin. Asking the resolver keeps this answer identical to the one
+ * a session start will act on.
+ */
+function accountRouting(account: Account): ProviderAccountRouting | undefined {
+  const pinned = pinnedEndpoint(account);
+  if (pinned) return { kind: 'pinned', baseUrl: pinned.baseUrl, protocol: pinned.protocol };
+  const protocols = serviceProtocols(account.service);
+  return protocols.length > 0 ? { kind: 'catalog', protocols } : undefined;
 }
 
 function providerAccountListItem(
@@ -171,8 +180,7 @@ function providerAccountListItem(
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountListItem {
   const serviceLabel = serviceById(account.service)?.label;
-  const pinned = pinnedEndpoint(account);
-  const protocols = pinned ? [] : serviceProtocols(account.service);
+  const routing = accountRouting(account);
   const auth =
     account.credential.type === 'oauth' ? runtimes?.[account.credential.agent]?.auth : undefined;
   return {
@@ -182,9 +190,7 @@ function providerAccountListItem(
     boundAgents: boundAgentKinds(providers, account.id),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
-    ...(pinned !== undefined && { endpoint: pinned.baseUrl }),
-    ...(pinned !== undefined && { protocol: pinned.protocol }),
-    ...(protocols.length > 0 && { protocols }),
+    ...(routing !== undefined && { routing }),
     ...(auth !== undefined && {
       auth: {
         loggedIn: auth.loggedIn,
