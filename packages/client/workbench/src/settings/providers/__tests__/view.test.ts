@@ -167,6 +167,7 @@ describe('view helpers', () => {
         secret: 'new-secret',
         baseUrl: 'https://new.example.com/v1',
         protocol: 'anthropic',
+        models: [{ id: 'new-model' }],
       }),
     ).toEqual({
       id: 'acc_a',
@@ -175,8 +176,7 @@ describe('view helpers', () => {
       service: 'openrouter',
       credential: { type: 'auth-token', token: 'new-secret' },
       endpoint: { baseUrl: 'https://new.example.com/v1', protocol: 'anthropic' },
-      // The picked set survives an edit: this form does not manage it.
-      models: [{ id: 'old-model' }],
+      models: [{ id: 'new-model' }],
       extraEnv: { GATEWAY_MODE: 'strict' },
     });
   });

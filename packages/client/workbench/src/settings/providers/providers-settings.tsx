@@ -21,6 +21,7 @@ import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
@@ -48,6 +49,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
+  // The forms are presentation; only this page sits inside the data-plane provider tree.
+  const modelSources = useModelSources();
 
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
@@ -169,6 +172,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                 {view.kind === 'add-form' ? (
                   <AddAccountForm
                     serviceId={view.service}
+                    sources={modelSources}
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
@@ -184,6 +188,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                   view.editing ? (
                     <EditAccountForm
                       account={selected}
+                      sources={modelSources}
                       busy={saveAccounts.isMutating}
                       onBack={backToAccount}
                       onSubmit={(account) => {
