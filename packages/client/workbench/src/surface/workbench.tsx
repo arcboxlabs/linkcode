@@ -61,6 +61,7 @@ import { useMutation } from '../runtime/tayori';
 import {
   useAccountModelOptions,
   useConfiguredDefaultModels,
+  usePersistPickedModel,
   useSessionModelOptions,
 } from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
@@ -278,7 +279,6 @@ function WorkbenchSessionSurface({
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
   const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
-  const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const newSessionPreferredBranches = useNewSessionDefaultsStore(
     (state) => state.branchesByWorkspace,
@@ -286,6 +286,7 @@ function WorkbenchSessionSurface({
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
+  const persistPickedModel = usePersistPickedModel();
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
@@ -412,7 +413,18 @@ function WorkbenchSessionSurface({
           sdkClient.raw.eventsSnapshot(sessionId),
         );
         if (newlyConfirmed.model === undefined && newlyConfirmed.effort === undefined) return;
-        rememberSelection(submission.kind, newlyConfirmed);
+        if (newlyConfirmed.effort !== undefined) {
+          rememberSelection(submission.kind, { effort: newlyConfirmed.effort });
+        }
+        // The model lands in daemon config rather than a client store, together with the account it
+        // came from, so Settings shows the rebind and non-composer sessions inherit the pick.
+        if (newlyConfirmed.model) {
+          void persistPickedModel(
+            submission.kind,
+            newlyConfirmed.model,
+            submission.accountId,
+          ).catch(noop);
+        }
       })
       .catch(noop);
   }
@@ -460,9 +472,9 @@ function WorkbenchSessionSurface({
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     const provider = active?.kind;
     return modelMutation.trigger({ sessionId: sessions.activeId, model: model.id }).then(() => {
-      // The account is not part of a live switch — it is fixed at spawn, and this menu only ever
-      // offers the session's own account's models.
-      if (provider) rememberSelection(provider, { model: model.id });
+      // No account change: it is fixed at spawn, and this menu only ever offers the session's own
+      // account's models.
+      if (provider) void persistPickedModel(provider, model.id).catch(noop);
     });
   }
 
@@ -665,7 +677,6 @@ function WorkbenchSessionSurface({
       accountModels={accountModels}
       sessionModels={sessionModels}
       agentCatalogs={agentCatalogs}
-      newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       newSessionPreferredBranches={newSessionPreferredBranches}
       NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}

@@ -1,9 +1,10 @@
 import { resolveBinding } from '@linkcode/providers';
 import type { Account, Accounts, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
-import { getAccounts, getProviderConfig } from '@linkcode/sdk';
+import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
 import type { ModelOption } from '@linkcode/ui';
-import { useData } from '../../runtime/tayori';
+import { useData, useMutation } from '../../runtime/tayori';
+import { withModel } from './view';
 
 /** The model each agent currently runs on, as session start resolves it: the agent's persisted pick.
  * The bound account contributes the set that pick came from, never the pick itself. */
@@ -87,4 +88,25 @@ export function useAccountModelOptions(): Partial<Record<AgentKind, ModelOption[
 export function useSessionModelOptions(accountId: string | undefined): ModelOption[] | undefined {
   const { data: accounts } = useData(getAccounts, {});
   return accountModelOptionsFor(accounts, accountId);
+}
+
+/**
+ * Persist what an agent runs on. This is the only model memory: the daemon owns it, so Settings and
+ * the composer cannot disagree and a scheduled or script session inherits the same pick. Passing the
+ * account rebinds the agent to it — picking a model is also picking who serves it.
+ *
+ * Called once a selection is known to have been accepted, not on the menu click, so an abandoned
+ * draft never rewrites config and a provider that rejects a model leaves the previous one standing.
+ */
+export function usePersistPickedModel(): (
+  kind: AgentKind,
+  model: string,
+  accountId?: string,
+) => Promise<void> {
+  const { data: providers, mutate } = useData(getProviderConfig, {});
+  const save = useMutation(setProviderConfig);
+  return async (kind, model, accountId) => {
+    await save.trigger({ providers: withModel(providers ?? {}, kind, model, accountId) });
+    await mutate();
+  };
 }

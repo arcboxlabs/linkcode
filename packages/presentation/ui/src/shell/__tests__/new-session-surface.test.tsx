@@ -694,13 +694,14 @@ describe('NewSessionSurface', () => {
     expect(screen.getByRole('button', { name: RE_CONFIGURED_CLAUDE_MODEL })).toBeTruthy();
   });
 
-  it('shows and explicitly submits the last successful provider model without reselection', async () => {
+  it('shows and explicitly submits the configured model without reselection', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        defaultModels={{ 'claude-code': 'custom/claude-model' }}
-        preferredModels={{ 'claude-code': 'claude-opus-4-8' }}
+        // The configured value *is* the last accepted pick now: it is persisted daemon-side rather
+        // than shadowed by a second client-side memory.
+        defaultModels={{ 'claude-code': 'claude-opus-4-8' }}
         draft={{
           initialProvider: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
@@ -717,9 +718,10 @@ describe('NewSessionSurface', () => {
     typeInComposer('use my last model');
     await pressInComposer('Enter');
 
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' })),
-    );
+    // Shown but not re-sent: the daemon resolves the configured model, so specifying it again would
+    // only risk the two disagreeing.
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]?.model).toBeUndefined();
   });
 
   it('drops remembered Codex ultra when the fallback model switches to Luna', async () => {
@@ -729,7 +731,7 @@ describe('NewSessionSurface', () => {
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
         preferredEfforts={{ codex: 'ultra' }}
-        preferredModels={{ codex: 'gpt-5.6-sol' }}
+        defaultModels={{ codex: 'gpt-5.6-sol' }}
         draft={{ initialProvider: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
@@ -750,12 +752,12 @@ describe('NewSessionSurface', () => {
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('effort');
   });
 
-  it('submits a remembered dynamic-provider model even without a draft catalog', async () => {
+  it('shows a configured dynamic-provider model even without a draft catalog', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
-        preferredModels={{ opencode: 'anthropic/claude-sonnet-4-6' }}
+        defaultModels={{ opencode: 'anthropic/claude-sonnet-4-6' }}
         draft={{ initialProvider: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
@@ -769,11 +771,8 @@ describe('NewSessionSurface', () => {
     typeInComposer('use remembered dynamic model');
     await pressInComposer('Enter');
 
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'anthropic/claude-sonnet-4-6' }),
-      ),
-    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]?.model).toBeUndefined();
   });
 
   it('can return remembered model and effort choices to the configured ones', async () => {
@@ -784,7 +783,6 @@ describe('NewSessionSurface', () => {
         chatWorkspace={CHAT_WORKSPACE}
         defaultModels={{ 'claude-code': 'configured/claude-model' }}
         preferredEfforts={{ 'claude-code': 'high' }}
-        preferredModels={{ 'claude-code': 'claude-opus-4-8' }}
         draft={{
           initialProvider: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
@@ -796,6 +794,11 @@ describe('NewSessionSurface', () => {
         workspaces={[]}
       />,
     );
+
+    // Pick a model locally, so there is something to reset back to the configured one.
+    await user.click(screen.getByRole('button', { name: RE_CONFIGURED_CLAUDE_MODEL }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_MENU }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Opus 4.8' }));
 
     await user.click(screen.getByRole('button', { name: RE_OPUS_4_8 }));
     await user.click(await screen.findByRole('menuitem', { name: 'resetToDefault' }));
@@ -1124,7 +1127,7 @@ describe('NewSessionSurface', () => {
     expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
   });
 
-  it("lets a remembered pick outrank the agent's own default", async () => {
+  it("lets the configured model outrank the agent's own default", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
@@ -1135,18 +1138,18 @@ describe('NewSessionSurface', () => {
         onMentionQueryChange={vi.fn()}
         onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
         onSubmit={onSubmit}
-        preferredModels={{ pi: 'pi/basic' }}
+        defaultModels={{ pi: 'pi/basic' }}
         workspaces={[]}
       />,
     );
 
+    // The configured model wins the display over `catalog.defaultModel`; neither travels, since the
+    // daemon resolves the configured one itself.
     expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
     typeInComposer('use my last model');
     await pressInComposer('Enter');
-    // A remembered pick is an explicit choice, so unlike the catalog default it does travel.
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'pi/basic' })),
-    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]?.model).toBeUndefined();
   });
 
   it('submits compatible Pi catalog choices and suppresses stale effort for models without it', async () => {

@@ -256,18 +256,26 @@ export function withEnabled(
   return { ...providers, [kind]: { ...providers[kind], enabled } };
 }
 
-/** Set (or, with undefined, clear) an agent's default model. */
+/**
+ * Set (or, with undefined, clear) the model an agent runs on. Passing the account the model came
+ * from rebinds the agent to it, because a model and the account serving it are one choice — leaving
+ * the old binding in place would run the next session on an account that never listed this model.
+ */
 export function withModel(
   providers: ProvidersConfig,
   kind: AgentKind,
   model: string | undefined,
+  accountId?: string,
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
   if (model === undefined) {
     const { model: _cleared, ...rest } = entry;
     return { ...providers, [kind]: rest };
   }
-  return { ...providers, [kind]: { ...entry, model } };
+  return {
+    ...providers,
+    [kind]: { ...entry, model, ...(accountId !== undefined && { activeAccountId: accountId }) },
+  };
 }
 
 /** Drop every binding referencing a removed account; returns the input unchanged when none did. */

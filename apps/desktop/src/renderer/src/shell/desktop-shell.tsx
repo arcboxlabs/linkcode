@@ -82,7 +82,6 @@ export function DesktopShell({
   newSessionDefaultModels,
   accountModels,
   sessionModels,
-  newSessionPreferredModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -432,7 +431,6 @@ export function DesktopShell({
           agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
           accountModels={accountModels}
-          preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}
           NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}

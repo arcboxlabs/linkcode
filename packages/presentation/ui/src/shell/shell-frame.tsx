@@ -64,8 +64,6 @@ export interface ShellFrameProps
   /** The active session's own account's models — the whole live menu, since a running session's
    * account is fixed at spawn. */
   sessionModels?: ModelOption[];
-  /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
-  newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   newSessionPreferredBranches: Readonly<Record<string, BranchSelection>>;
@@ -140,7 +138,6 @@ export function ShellFrame({
   newSessionDefaultModels,
   accountModels,
   sessionModels,
-  newSessionPreferredModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -232,7 +229,6 @@ export function ShellFrame({
             agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
             accountModels={accountModels}
-            preferredModels={newSessionPreferredModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}
             NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}

@@ -13,7 +13,6 @@ const PersistedNewSessionDefaultsSchema = z
   .object({
     lastProvider: AgentKindSchema.nullable(),
     lastWorkspaceId: WorkspaceIdSchema.nullable(),
-    modelsByProvider: z.partialRecord(AgentKindSchema, z.string().min(1)),
     effortsByProvider: z.partialRecord(AgentKindSchema, EffortLevelSchema),
     branchesByWorkspace: z.record(z.string(), BranchSelectionSchema),
   })
@@ -21,7 +20,8 @@ const PersistedNewSessionDefaultsSchema = z
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
 
 export interface NewSessionSelection {
-  /** Null clears a remembered selection after an explicit reset or rejected reflection. */
+  /** Confirmed model, for callers that route it onward. This store does not persist it — the model
+   * an agent runs on lives in daemon config (`usePersistPickedModel`), so there is one owner. */
   model?: string | null;
   /** Null clears a remembered selection after an explicit reset or rejected reflection. */
   effort?: EffortLevel | null;
@@ -32,8 +32,6 @@ export interface NewSessionDefaultsState {
   lastProvider: AgentKind | null;
   /** Workspace of the last successful submit; ids that no longer exist are skipped at resolve time. */
   lastWorkspaceId: WorkspaceId | null;
-  /** Last model accepted by LinkCode per provider; absent means defer to configured defaults. */
-  modelsByProvider: Partial<Record<AgentKind, string>>;
   /** Last effort accepted by LinkCode per provider; absent means defer to the provider default. */
   effortsByProvider: Partial<Record<AgentKind, EffortLevel>>;
   /** Last explicitly selected branch per workspace. */
@@ -51,14 +49,7 @@ function selectionPatch(
   state: NewSessionDefaultsState,
   provider: AgentKind,
   selection: NewSessionSelection,
-): Pick<NewSessionDefaultsState, 'modelsByProvider' | 'effortsByProvider'> {
-  let modelsByProvider = state.modelsByProvider;
-  if (selection.model !== undefined) {
-    modelsByProvider = { ...modelsByProvider };
-    if (selection.model === null) Reflect.deleteProperty(modelsByProvider, provider);
-    else modelsByProvider[provider] = selection.model;
-  }
-
+): Pick<NewSessionDefaultsState, 'effortsByProvider'> {
   let effortsByProvider = state.effortsByProvider;
   if (selection.effort !== undefined) {
     effortsByProvider = { ...effortsByProvider };
@@ -66,10 +57,7 @@ function selectionPatch(
     else effortsByProvider[provider] = selection.effort;
   }
 
-  return {
-    modelsByProvider,
-    effortsByProvider,
-  };
+  return { effortsByProvider };
 }
 
 /** Persists the new-session page's defaults, so the next draft preselects the last-used picks. */
@@ -84,7 +72,6 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
     (set) => ({
       lastProvider: null,
       lastWorkspaceId: null,
-      modelsByProvider: {},
       effortsByProvider: {},
       branchesByWorkspace: {},
       remember: (provider, workspaceId, selection, branch) =>
@@ -101,12 +88,13 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
         set((state) => selectionPatch(state, provider, selection)),
     }),
     {
-      name: 'linkcode.workbench.new-session-defaults:v5',
+      // v6 drops `modelsByProvider`: the model pick now lives in daemon config, so a stale blob
+      // would resurrect a client-side memory that no longer has an owner.
+      name: 'linkcode.workbench.new-session-defaults:v6',
       schema: PersistedNewSessionDefaultsSchema,
       partialize: (state) => ({
         lastProvider: state.lastProvider,
         lastWorkspaceId: state.lastWorkspaceId,
-        modelsByProvider: state.modelsByProvider,
         effortsByProvider: state.effortsByProvider,
         branchesByWorkspace: state.branchesByWorkspace,
       }),

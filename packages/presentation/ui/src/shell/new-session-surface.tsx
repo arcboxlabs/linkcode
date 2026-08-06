@@ -95,8 +95,6 @@ export interface NewSessionSurfaceProps {
   /** The models each agent may run on, picked on its bound account. An agent absent here has no
    * account bound and falls back to its adapter catalog or the curated table. */
   accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
-  /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
-  preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Last successfully used branch and checkout mode per workspace. */
@@ -151,7 +149,6 @@ export function NewSessionSurface({
   agentCatalogs,
   defaultModels,
   accountModels,
-  preferredModels,
   preferredEfforts,
   preferredBranches,
   NewSessionBranchPickerComponent,
@@ -191,8 +188,7 @@ export function NewSessionSurface({
   const branchMode = selectedBranch?.mode ?? 'local';
   const catalog = agentCatalogs?.[provider];
   const localModel = selectedModels[provider];
-  const selectedModel =
-    localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
+  const selectedModel = localModel === undefined ? null : localModel;
   // The catalog default is what the agent's own config would start on, so it yields to anything the
   // user expressed through LinkCode. Nothing guesses past it: an unresolved model blocks the send
   // rather than starting a session on a model nobody chose.
