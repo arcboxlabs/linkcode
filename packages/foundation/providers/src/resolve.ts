@@ -1,4 +1,4 @@
-import type { Account, AccountProtocol, AgentKind } from '@linkcode/schema';
+import type { Account, AccountEndpoint, AccountProtocol, AgentKind } from '@linkcode/schema';
 import { AccountProtocolSchema } from '@linkcode/schema';
 import { never } from 'foxts/guard';
 import type { EndpointService, ServiceVariant } from './catalog';
@@ -54,9 +54,10 @@ export function resolveBinding(account: Account, kind: AgentKind): ResolvedBindi
   if (kind === 'grok-build') return resolveGrokBuild(account);
 
   const service = endpointServiceById(account.service);
-  // An explicit endpoint is the user's own choice (custom account) or a pre-variant account's
-  // pinned one; it outranks the catalog either way.
-  if (account.endpoint) {
+  // An endpoint the user named themselves outranks the catalog. One the pre-variant add flow
+  // derived from the catalog does not: honoring it would pin an existing account to a single
+  // protocol forever, which is how an upgraded OpenAI account would lose codex.
+  if (account.endpoint && !isCatalogDerived(account.endpoint, service)) {
     const { protocol, baseUrl } = account.endpoint;
     return bind(kind, protocol, baseUrl, knownProviderFor(service?.variants[protocol], kind));
   }
@@ -158,4 +159,17 @@ function knownProviderFor(
   kind: AgentKind,
 ): string | undefined {
   return variant?.knownProvider?.[kind];
+}
+
+/**
+ * Whether the catalog itself produces this endpoint for the account's service — i.e. whether the
+ * pre-variant add flow wrote it, back when an account could only name one. Such an endpoint carries
+ * no user intent, so per-agent resolution replaces it. A URL matching no variant was typed by the
+ * user (a custom account, or a catalog account edited by hand) and is kept.
+ */
+function isCatalogDerived(
+  endpoint: AccountEndpoint,
+  service: EndpointService | undefined,
+): boolean {
+  return service?.variants[endpoint.protocol]?.baseUrl === endpoint.baseUrl;
 }

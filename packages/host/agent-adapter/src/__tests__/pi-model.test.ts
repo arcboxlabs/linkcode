@@ -215,4 +215,34 @@ describe('Pi native resume', () => {
     expect(sdk.open).toHaveBeenCalledWith(file);
     expect(sdk.createOptions).toMatchObject({ cwd: '/saved/cwd', sessionManager: manager });
   });
+
+  it('injects the credential under the provider the session last routed through', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-resume-'));
+    vi.stubEnv('PI_CODING_AGENT_DIR', root);
+    mkdirSync(join(root, 'sessions', 'slug'), { recursive: true });
+    writeFileSync(join(root, 'sessions', 'slug', '2026_resume-id.jsonl'), '');
+    sdk.open.mockReturnValue({
+      getBranch: () => [{ type: 'model_change', provider: 'other', modelId: 'nulls' }],
+      getCwd: () => '/saved/cwd',
+    });
+    const adapter = new PiAdapter();
+    adapter.onEvent(noop);
+
+    await adapter.resumeHistory(
+      { historyId: asHistoryId('resume-id') },
+      {
+        kind: 'pi',
+        cwd: '/caller',
+        config: {
+          apiKey: 'account-key',
+          baseUrl: 'https://gateway.example.test/v1',
+          knownProvider: 'openai',
+        },
+      },
+    );
+
+    // The session's own last-routed provider outranks the account's catalog default: registering
+    // the key under `openai` would leave the model pi actually resumes without credentials.
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('other', 'account-key');
+  });
 });

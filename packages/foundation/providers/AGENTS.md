@@ -23,9 +23,17 @@ Pure data plus pure functions: no hooks, no browser APIs, no I/O. Its only depen
   automatic selection. Add a per-variant override only if a real service needs one.
 - **Variants are never user-selectable.** The add-account form asks for a secret (and any
   `{placeholder}` values); `resolveBinding` picks the variant per agent. An `Account` therefore
-  stores `service` + `endpointParams`, not a resolved URL. `Account.endpoint` means an explicitly
-  named endpoint — a custom account, or one written before variants existed — and outranks the
-  catalog.
+  stores `service` + `endpointParams`, not a resolved URL.
+- **`Account.endpoint` only outranks the catalog when the user named it.** The pre-variant add flow
+  wrote an endpoint onto *every* catalog account, so honoring all of them would pin existing
+  accounts to one protocol forever — an upgraded OpenAI account would lose codex, which works today
+  because `OPENAI_BASE_URL` points at a host that does serve `/responses`. `isCatalogDerived`
+  settles it by exact `baseUrl` match against the service's own variants: a match is the catalog's
+  own output and is replaced by per-agent resolution; anything else was typed by a human (a custom
+  account, or a catalog account edited through the custom form, which keeps its `service`) and is
+  kept. Match on the URL, not on "the service declares this protocol" — the looser rule would
+  silently discard a hand-typed proxy. A filled templated URL matches nothing and stays pinned;
+  those accounts were never broken.
 
 ## resolveBinding
 

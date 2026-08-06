@@ -159,12 +159,13 @@ function createConfiguredRegistry(
 
   const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
-  // The model ref decides which provider pi routes through, so it wins; the resolved known
-  // provider replaces the "first available provider" guess when no ref names one.
+  // The model ref decides which provider pi routes through, so it wins; a resumed session's own
+  // last-routed provider comes next, being direct evidence rather than a catalog default; the
+  // resolved known provider only replaces the "first available provider" guess.
   const provider =
     ref?.provider ??
-    cred.knownProvider ??
     fallbackProvider ??
+    cred.knownProvider ??
     modelRegistry.getAvailable()[0]?.provider;
   if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');

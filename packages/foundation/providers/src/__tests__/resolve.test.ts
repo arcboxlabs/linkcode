@@ -178,6 +178,39 @@ describe('resolveBinding: variant chosen per agent', () => {
     });
   });
 
+  it('re-resolves an account the pre-variant add flow pinned to one endpoint', () => {
+    // What the old add flow persisted for the `openai-api` catalog entry: the endpoint carries no
+    // user intent, and honoring it would refuse codex on an account that works today.
+    const upgraded = account({
+      service: 'openai-api',
+      endpoint: { baseUrl: 'https://api.openai.com/v1', protocol: 'openai-chat' },
+    });
+    expect(resolveBinding(upgraded, 'codex')).toEqual({
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://api.openai.com/v1',
+    });
+    // It also picks up the known-provider injection, like a freshly created account.
+    expect(resolveBinding(upgraded, 'opencode')).toMatchObject({ knownProvider: 'openai' });
+  });
+
+  it('keeps a pinned endpoint whose template the catalog cannot match', () => {
+    // The stored URL is filled while the variant is templated, so it matches nothing and stays
+    // pinned — the pre-variant behavior, which was never broken for these accounts.
+    const cloudflare = account({
+      service: 'cloudflare-gateway',
+      credential: { type: 'auth-token', token: 'cf' },
+      endpoint: {
+        baseUrl: 'https://gateway.ai.cloudflare.com/v1/8f3a/prod/compat',
+        protocol: 'openai-chat',
+      },
+    });
+    expect(resolveBinding(cloudflare, 'claude-code')).toMatchObject({
+      tier: 'translate',
+      baseUrl: 'https://gateway.ai.cloudflare.com/v1/8f3a/prod/compat',
+    });
+  });
+
   it('lets an explicit endpoint outrank the catalog while keeping the known provider', () => {
     const pinned = account({
       service: 'openrouter',
