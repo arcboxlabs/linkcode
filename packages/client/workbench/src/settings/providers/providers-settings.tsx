@@ -77,7 +77,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   };
 
   const handleSetBinding = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withBinding(providers ?? {}, kind, accountId));
+    void applyProviders(withBinding(providers ?? {}, kind, accountId, pool));
   };
 
   const handleSetModel = (kind: AgentKind, model: string | undefined): void => {

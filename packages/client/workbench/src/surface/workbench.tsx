@@ -57,7 +57,10 @@ import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
-import { useConfiguredDefaultModels } from '../settings/providers/default-models';
+import {
+  useAccountModelOptions,
+  useConfiguredDefaultModels,
+} from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { useSidebarOrderStore } from '../sidebar/order-store';
@@ -241,6 +244,7 @@ function WorkbenchSessionSurface({
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
+  const accountModels = useAccountModelOptions();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -651,6 +655,7 @@ function WorkbenchSessionSurface({
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
+      accountModels={accountModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}

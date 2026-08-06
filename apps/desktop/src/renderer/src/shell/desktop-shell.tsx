@@ -80,6 +80,7 @@ export function DesktopShell({
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
+  accountModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -429,6 +430,7 @@ export function DesktopShell({
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
+          accountModels={accountModels}
           preferredModels={newSessionPreferredModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}
@@ -453,6 +455,7 @@ export function DesktopShell({
           composer={conversationComposer}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          accountModels={active ? accountModels?.[active.kind] : undefined}
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}

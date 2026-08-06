@@ -1,6 +1,7 @@
 import type {
   AgentInput,
   AgentKind,
+  AgentModelOption,
   AgentStartCatalog,
   BranchMode,
   BranchSelection,
@@ -35,7 +36,7 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_DEFAULT_MODELS, AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -89,6 +90,9 @@ export interface NewSessionSurfaceProps {
   /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
    * built-in provider defaults fill missing kinds for standalone consumers. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
+  /** The models each agent may run on, picked on its bound account. An agent absent here has no
+   * account bound and falls back to its adapter catalog or the curated table. */
+  accountModels?: Readonly<Partial<Record<AgentKind, AgentModelOption[]>>> | null;
   /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
   preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last accepted effort per provider. Missing kinds retain the provider default. */
@@ -144,6 +148,7 @@ export function NewSessionSurface({
   attachmentSupport,
   agentCatalogs,
   defaultModels,
+  accountModels,
   preferredModels,
   preferredEfforts,
   preferredBranches,
@@ -182,20 +187,21 @@ export function NewSessionSurface({
   const localModel = selectedModels[provider];
   const selectedModel =
     localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
-  // The catalog default is what the agent's own config would start on, so it outranks the built-in
-  // guess but yields to anything the user expressed through LinkCode.
+  // The catalog default is what the agent's own config would start on, so it yields to anything the
+  // user expressed through LinkCode. Nothing guesses past it: an unresolved model blocks the send
+  // rather than starting a session on a model nobody chose.
   const displayedModel =
     selectedModel ??
-    (defaultModels === null
-      ? null
-      : (defaultModels?.[provider] ??
-        catalog?.defaultModel ??
-        AGENT_DEFAULT_MODELS[provider] ??
-        null));
+    (defaultModels === null ? null : (defaultModels?.[provider] ?? catalog?.defaultModel ?? null));
   const localEffort = selectedEfforts[provider];
   const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
+  // The account's picked set is the user's own answer to which models this agent may run on, so it
+  // outranks the adapter catalog and the curated table both. An entry present here means an account
+  // is bound, which is also what makes a missing model fatal rather than the agent's own business.
+  const boundSet = accountModels?.[provider];
+  const pickable = boundSet ?? dynamicModels ?? AGENT_MODEL_OPTIONS[provider];
+  const modelOption = resolveModel(pickable, displayedModel);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
@@ -358,11 +364,14 @@ export function NewSessionSurface({
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
-            sendBlocked={cue !== undefined}
+            // With an account bound, its set is the only model source, so an unresolved model would
+            // be refused by the daemon anyway — refuse here instead of after a round trip. An agent
+            // with no account bound still resolves its own, and must not be blocked.
+            sendBlocked={cue !== undefined || (boundSet !== undefined && displayedModel === null)}
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}
-            agentModels={dynamicModels}
+            agentModels={pickable ?? null}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
             selectableProviders={SELECTABLE_PROVIDERS}

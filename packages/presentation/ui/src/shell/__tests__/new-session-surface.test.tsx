@@ -4,6 +4,7 @@ import type { AgentStartCatalog } from '@linkcode/schema';
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { wait } from 'foxts/wait';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { NewSessionBranchPickerComponentProps } from '../new-session-branch-picker';
@@ -43,6 +44,7 @@ const PROJECT_WORKSPACE = {
 };
 const RE_MODEL_DEFAULT = /modelDefault/;
 const RE_SONNET_5 = /Sonnet 5/;
+const RE_DEEPSEEK_PRO = /DeepSeek V4 Pro/;
 const RE_CONFIGURED_CLAUDE_MODEL = /configured\/claude-model/;
 const RE_OPUS_4_8 = /Opus 4.8/;
 const RE_MEDIUM_EFFORT = /Medium/;
@@ -284,6 +286,8 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
+        // Nothing guesses a model any more, so the configured one has to be supplied.
+        defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
         draft={{ initialProvider: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
         onMentionQueryChange={vi.fn()}
@@ -564,6 +568,8 @@ describe('NewSessionSurface', () => {
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
+        // Nothing guesses a model any more, so the configured one has to be supplied.
+        defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
         draft={{
           initialProvider: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
@@ -806,12 +812,65 @@ describe('NewSessionSurface', () => {
     expect(submitted?.model).toBeUndefined();
   });
 
+  it("offers only the bound account's picked models, ignoring the curated table", async () => {
+    const user = userEvent.setup();
+    render(
+      <NewSessionSurface
+        accountModels={{ 'claude-code': [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }] }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultModels={{ 'claude-code': 'deepseek-v4-pro' }}
+        draft={{
+          initialProvider: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_DEEPSEEK_PRO }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_DEEPSEEK_PRO }));
+    expect(await screen.findByRole('menuitemradio', { name: 'DeepSeek V4 Pro' })).toBeTruthy();
+    // The curated Anthropic table would otherwise supply these for claude-code.
+    expect(screen.queryByRole('menuitemradio', { name: 'Opus 5' })).toBeNull();
+  });
+
+  it('refuses to send when an account is bound but no model is picked', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        // Bound with an empty set: the daemon would refuse this start, so the composer does too.
+        accountModels={{ 'claude-code': [] }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{
+          initialProvider: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    typeInComposer('hello');
+    await pressInComposer('Enter');
+    await wait(0);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('submits a model only after the user explicitly selects it', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
         chatWorkspace={CHAT_WORKSPACE}
+        // Nothing guesses a model any more, so the configured one has to be supplied.
+        defaultModels={{ 'claude-code': 'claude-sonnet-5' }}
         draft={{
           initialProvider: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,

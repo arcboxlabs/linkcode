@@ -32,6 +32,29 @@ describe('binding transforms', () => {
     expect(next['claude-code']).toEqual({ enabled: true, model: 'claude-opus-4-8' });
   });
 
+  it('drops a pick the newly bound account does not offer, and keeps one it does', () => {
+    const offers = (id: string, models: string[]): Accounts[number] => ({
+      id,
+      label: id,
+      credential: { type: 'api-key', key: 'k' },
+      models: models.map((model) => ({ id: model })),
+      createdAt: 0,
+    });
+    const pool = [offers('acc_keep', ['claude-opus-4-8']), offers('acc_drop', ['deepseek-v4-pro'])];
+
+    // Rebinding to an account that lists the pick leaves it alone.
+    expect(withBinding(providers, 'claude-code', 'acc_keep', pool)['claude-code']).toEqual({
+      enabled: true,
+      activeAccountId: 'acc_keep',
+      model: 'claude-opus-4-8',
+    });
+    // One that does not would otherwise start the next session on a model it never listed.
+    expect(withBinding(providers, 'claude-code', 'acc_drop', pool)['claude-code']).toEqual({
+      enabled: true,
+      activeAccountId: 'acc_drop',
+    });
+  });
+
   it('sets and clears the default model without touching the binding', () => {
     expect(withModel(providers, 'claude-code', 'claude-sonnet-5')['claude-code']).toEqual({
       enabled: true,

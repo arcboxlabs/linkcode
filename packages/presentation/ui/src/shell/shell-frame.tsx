@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  AgentModelOption,
   BranchSelection,
   ContentBlock,
   EffortLevel,
@@ -57,6 +58,9 @@ export interface ShellFrameProps
   agentCatalogs?: AgentStartCatalogs;
   /** Effective daemon-configured default models for new sessions; null while unresolved. */
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
+  /** The models each agent may run on, picked on its bound account. An agent absent here has no
+   * account bound and keeps falling back to whatever its adapter or the curated table advertises. */
+  accountModels: Readonly<Partial<Record<AgentKind, AgentModelOption[]>>> | null;
   /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
   newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
   /** Last effort accepted by LinkCode per provider for new sessions. */
@@ -131,6 +135,7 @@ export function ShellFrame({
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
+  accountModels,
   newSessionPreferredModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -222,6 +227,7 @@ export function ShellFrame({
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
+            accountModels={accountModels}
             preferredModels={newSessionPreferredModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}
@@ -243,6 +249,7 @@ export function ShellFrame({
             composer={conversationComposer}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
+            accountModels={active ? accountModels?.[active.kind] : undefined}
             attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}

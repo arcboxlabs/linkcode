@@ -219,18 +219,32 @@ export function providerAccountListViewModel(
   };
 }
 
-/** Bind (or, with undefined, unbind) an agent's active account; other fields survive untouched. */
+/**
+ * Bind (or, with undefined, unbind) an agent's active account; other fields survive untouched — with
+ * one exception. The pick lives per agent while the set it came from lives on the account, so a
+ * rebind can orphan it. Dropping a pick the new account does not offer leaves the agent unpicked,
+ * which blocks its sends until the user chooses again; keeping it would run the next session on a
+ * model that account never listed.
+ */
 export function withBinding(
   providers: ProvidersConfig,
   kind: AgentKind,
   accountId: string | undefined,
+  accounts: Accounts = [],
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
   if (accountId === undefined) {
     const { activeAccountId: _cleared, ...rest } = entry;
     return { ...providers, [kind]: rest };
   }
-  return { ...providers, [kind]: { ...entry, activeAccountId: accountId } };
+  const offered = accounts.find((candidate) => candidate.id === accountId)?.models;
+  const orphaned =
+    entry.model !== undefined && !(offered ?? []).some(({ id }) => id === entry.model);
+  const { model: _dropped, ...kept } = entry;
+  return {
+    ...providers,
+    [kind]: { ...(orphaned ? kept : entry), activeAccountId: accountId },
+  };
 }
 
 /** Toggle whether the agent is offered in the client's agent picker. */

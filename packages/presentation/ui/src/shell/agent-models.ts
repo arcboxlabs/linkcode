@@ -56,14 +56,6 @@ export function resolveModel(
   );
 }
 
-/** Verified provider defaults used before a session exists to reflect its served model. A saved
- * account/provider default supplied by the workbench takes precedence over these values. */
-export const AGENT_DEFAULT_MODELS: Readonly<Partial<Record<AgentKind, string>>> = {
-  'claude-code': 'claude-sonnet-5',
-  codex: 'gpt-5.6-sol',
-  'grok-build': 'grok-4.5',
-};
-
 const CODEX_BASE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] satisfies EffortLevel[];
 
 /**

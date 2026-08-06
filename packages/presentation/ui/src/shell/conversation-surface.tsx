@@ -1,4 +1,10 @@
-import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
+import type {
+  AgentKind,
+  AgentModelOption,
+  ContentBlock,
+  EffortLevel,
+  QuestionOutcome,
+} from '@linkcode/schema';
 import { useRef } from 'react';
 import type { StickToBottomContext } from 'use-stick-to-bottom';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
@@ -32,6 +38,9 @@ export interface ConversationSurfaceProps {
   composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** The models picked on this agent's bound account — the only ones it may switch to. Absent means
+   * no account is bound, so the adapter catalog or the curated table supplies the choices instead. */
+  accountModels?: AgentModelOption[];
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
@@ -85,6 +94,7 @@ export function ConversationSurface({
   conversation,
   composer,
   agentKind,
+  accountModels,
   agentLabel,
   attachmentsSupported = false,
   cwd,
@@ -183,7 +193,9 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          agentModels={conversation.availableModels}
+          // The account's picked set is the user's own answer to "which models may this run on",
+          // so it outranks both the adapter catalog and the curated table.
+          agentModels={accountModels ?? conversation.availableModels}
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
           // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a
