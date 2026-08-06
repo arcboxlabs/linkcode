@@ -85,6 +85,14 @@ describe('view helpers', () => {
         service: 'claude-sub',
         credential: { type: 'oauth', agent: 'claude-code' },
       },
+      {
+        id: 'acc_c',
+        label: 'Proxy',
+        createdAt: 3,
+        service: 'openrouter',
+        endpoint: { baseUrl: 'https://proxy.internal/v1', protocol: 'openai-chat' },
+        credential: { type: 'auth-token', token: 'tok' },
+      },
     ];
     const runtimes: AgentRuntimes = {
       'claude-code': {
@@ -117,6 +125,21 @@ describe('view helpers', () => {
           credentialType: 'oauth',
           auth: { loggedIn: true, email: 'claude@example.com' },
           boundAgents: ['codex'],
+        },
+        {
+          id: 'acc_c',
+          label: 'Proxy',
+          service: 'openrouter',
+          serviceLabel: 'OpenRouter',
+          // A URL the catalog never produces is the user's own, so it stays pinned and the row
+          // reports that one endpoint rather than the service's shapes.
+          routing: {
+            kind: 'pinned',
+            baseUrl: 'https://proxy.internal/v1',
+            protocol: 'openai-chat',
+          },
+          credentialType: 'auth-token',
+          boundAgents: [],
         },
       ],
       detectedLogins: [{ service: 'chatgpt-sub', label: 'ChatGPT', email: 'codex@example.com' }],
