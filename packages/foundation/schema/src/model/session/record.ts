@@ -79,8 +79,8 @@ export const SessionInfoSchema = z.object({
   automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
-  /** Latest run's account. The model menu of a live session scopes to it, because the account
-   * cannot change mid-session. */
+  /** Latest run's account — what the session is talking to now. Picking a model from another
+   * account relaunches the session on it, which starts a new run. */
   accountId: z.string().min(1).optional(),
   /** Provider-history operations supported by this session's adapter/runtime. */
   historyCapabilities: AgentHistoryCapabilitiesSchema.optional(),
