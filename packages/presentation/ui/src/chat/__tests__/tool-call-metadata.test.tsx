@@ -352,6 +352,11 @@ describe('tool metadata policy', () => {
     expect(container.querySelector('[data-brand="linear"]')).not.toBeNull();
 
     cleanup();
+    // Failure keeps the brand glyph — the red status label carries the state.
+    const failed = render(<ToolCallItem toolCall={{ ...toolCall, status: 'failed' }} />);
+    expect(failed.container.querySelector('[data-brand="linear"]')).not.toBeNull();
+
+    cleanup();
     const unbranded = render(
       <ToolCallItem toolCall={{ ...toolCall, title: 'mcp__f5fcc7d5-d616__get_issue' }} />,
     );
