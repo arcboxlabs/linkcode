@@ -8,7 +8,7 @@ import { CheckIcon, ChevronDownIcon, CopyIcon, PencilIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
-import { CommandBrandGlyph } from './command-brand';
+import { CommandBrandGlyph, commandBrandChipStyle } from './command-brand';
 import { useCatalogCommand } from './command-catalog';
 import { ContentBlockView } from './content-block-view';
 import { positionalBlockEntries } from './content-derived-keys';
@@ -175,7 +175,7 @@ export function UserMessage({
             <div className={collapsible && !expanded ? 'line-clamp-[20]' : undefined}>
               {echo && echoedCommand ? (
                 <p>
-                  <Chip variant="info">
+                  <Chip style={commandBrandChipStyle(echoedCommand)} variant="info">
                     <CommandBrandGlyph className="size-3.5" command={echoedCommand} />/{echo.name}
                   </Chip>
                   {echo.args ? <span className="ms-1.5">{echo.args}</span> : null}

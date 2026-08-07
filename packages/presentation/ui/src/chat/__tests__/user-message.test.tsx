@@ -137,7 +137,12 @@ describe('UserMessage', () => {
       isStreaming: false,
     });
     const commands = [
-      { name: 'documents', displayName: 'Documents', iconDataUri: 'data:image/png;base64,cG5n' },
+      {
+        name: 'documents',
+        displayName: 'Documents',
+        iconDataUri: 'data:image/png;base64,cG5n',
+        brandColor: '#2563EB',
+      },
     ];
 
     const { container } = render(
@@ -145,9 +150,13 @@ describe('UserMessage', () => {
         <UserMessage item={echo('/documents quarterly summary')} />
       </CommandCatalogProvider>,
     );
-    expect(screen.getByText('/documents')).toBeDefined();
+    const chip = screen.getByText('/documents');
+    expect(chip).toBeDefined();
     expect(screen.getByText('quarterly summary')).toBeDefined();
     expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,cG5n');
+    // The provider's brandColor tints the chip; both mixes keep the brand hue.
+    expect(chip.style.backgroundColor).toContain('rgb(37, 99, 235)');
+    expect(chip.style.color).toContain('color-mix');
 
     cleanup();
     const plain = render(
