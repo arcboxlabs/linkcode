@@ -1,0 +1,333 @@
+name: Release Brand Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Exact client ref to build
+        type: string
+        required: true
+      matrix_json:
+        description: Matrix JSON; empty reads vars.BRAND_BUILD_MATRIX
+        type: string
+        required: false
+        default: ""
+      build:
+        description: Render and build every brand/platform target
+        type: boolean
+        required: true
+        default: false
+      sign:
+        description: Sign/notarize desktop and mobile artifacts
+        type: boolean
+        required: true
+        default: false
+      upload:
+        description: Upload only after every signed artifact and provenance gate succeeds
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: release-brand-matrix-${{ inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Validate matrix
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    outputs:
+      brands: ${{ steps.matrix.outputs.brands }}
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - name: Validate request shape
+        env:
+          CLIENT_REF: ${{ inputs.ref }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$CLIENT_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be an exact lowercase 40-hex client commit"
+            exit 1
+          fi
+          if [ "$CLIENT_REF" != "$WORKFLOW_SHA" ]; then
+            echo "::error::ref must equal github.sha so workflow code, release-environment policy, and built client use one commit"
+            exit 1
+          fi
+          if ${{ (inputs.sign && !inputs.build) || (inputs.upload && !inputs.sign) || (inputs.matrix_json != '' && inputs.build) }}; then
+            echo "::error::sign requires build=true; upload requires sign=true; matrix_json is plan-only and build requests must use the reviewed BRAND_BUILD_MATRIX variable"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Verify exact client checkout
+        env:
+          CLIENT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CLIENT_REF"
+
+      - name: Build strict matrix plan
+        id: matrix
+        env:
+          BRAND_BUILD_MATRIX: ${{ inputs.matrix_json || vars.BRAND_BUILD_MATRIX }}
+        run: node .github/scripts/brand-matrix.cjs --build "${{ inputs.build }}" --sign "${{ inputs.sign }}" --upload "${{ inputs.upload }}"
+
+  render-inputs:
+    name: Validate immutable render inputs
+    if: ${{ inputs.build }}
+    needs: prepare
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    env:
+      CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
+      CONFIG_PUBLISHER_TOKEN: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+      CONFIG_RELEASE_KEYRINGS: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+      CONFIG_RELEASE_REVISION: ${{ vars.CONFIG_RELEASE_REVISION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - run: node .github/scripts/release-inputs.cjs --phase render --platform desktop
+
+  signing-inputs:
+    name: Validate signing inputs
+    if: ${{ inputs.sign }}
+    needs: prepare
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    env:
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CODE_SIGNING_ACCOUNT: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT }}
+      AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
+      AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      MACOS_CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+      MACOS_CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+      POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+      POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+      SENTRY_DSN_MOBILE: ${{ secrets.SENTRY_DSN_MOBILE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - run: node .github/scripts/release-inputs.cjs --phase sign --platform desktop
+      - run: node .github/scripts/release-inputs.cjs --phase sign --platform mobile
+      - if: ${{ inputs.upload }}
+        run: node .github/scripts/release-inputs.cjs --phase upload --platform mobile
+
+  render:
+    name: Render ${{ matrix.brandId }}
+    if: ${{ inputs.build }}
+    needs: [prepare, render-inputs]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Render desktop bundle and identity
+        uses: ./.github/actions/render-release-config
+        with:
+          app: desktop
+          brand-artifacts: true
+          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
+          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+          release-manifest: ${{ toJSON(matrix.releaseManifests.desktop) }}
+
+      - name: Render mobile bundles and identities
+        uses: ./.github/actions/render-release-config
+        with:
+          app: mobile
+          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
+          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+          release-manifest-ios: ${{ toJSON(matrix.releaseManifests.ios) }}
+          release-manifest-android: ${{ toJSON(matrix.releaseManifests.android) }}
+
+      - name: Stage immutable release inputs
+        env:
+          COMPLIANCE_ANDROID: ${{ toJSON(matrix.compliance.android) }}
+          COMPLIANCE_DESKTOP: ${{ toJSON(matrix.compliance.desktop) }}
+          COMPLIANCE_IOS: ${{ toJSON(matrix.compliance.ios) }}
+          MANIFEST_ANDROID: ${{ toJSON(matrix.releaseManifests.android) }}
+          MANIFEST_DESKTOP: ${{ toJSON(matrix.releaseManifests.desktop) }}
+          MANIFEST_IOS: ${{ toJSON(matrix.releaseManifests.ios) }}
+          MOBILE_DISTRIBUTION: ${{ toJSON(matrix.distribution.mobile) }}
+        run: |
+          set -euo pipefail
+          mkdir release-inputs
+          cp "$RUNNER_TEMP/config-render-desktop/source/packages/config-structural/brands.manifest.yaml" release-inputs/
+          printf '%s' "$MANIFEST_DESKTOP" > release-inputs/release-manifest.desktop.json
+          printf '%s' "$MANIFEST_IOS" > release-inputs/release-manifest.ios.json
+          printf '%s' "$MANIFEST_ANDROID" > release-inputs/release-manifest.android.json
+          printf '%s' "$COMPLIANCE_DESKTOP" > release-inputs/compliance.desktop.json
+          printf '%s' "$COMPLIANCE_IOS" > release-inputs/compliance.ios.json
+          printf '%s' "$COMPLIANCE_ANDROID" > release-inputs/compliance.android.json
+          if [ "$MOBILE_DISTRIBUTION" != null ]; then
+            jq -cn \
+              --arg brand '${{ matrix.brandId }}' \
+              --arg channel '${{ matrix.channel }}' \
+              --argjson distribution "$MOBILE_DISTRIBUTION" \
+              '$distribution + {brandId: $brand, channel: $channel, mobileReleaseFormatVersion: 1}' \
+              > apps/mobile/generated/mobile-release.json
+            cp apps/mobile/generated/mobile-release.json release-inputs/
+          fi
+
+      - name: Gate rendered defaults and store compliance
+        run: |
+          set -euo pipefail
+          mkdir release-inputs/preflight
+          for platform in desktop ios android; do
+            printf 'validated=%s/%s\n' '${{ matrix.brandId }}' "$platform" \
+              > "release-inputs/preflight/${platform}.txt"
+            if [ "$platform" = desktop ]; then
+              bundle=apps/desktop/generated/config-build-bundle.json
+              identity=apps/desktop/generated/brand-identity.json
+            else
+              bundle="apps/mobile/src/runtime/config/bundled.generated.${platform}.ts"
+              identity="apps/mobile/generated/brand-identity.${platform}.json"
+            fi
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root release-inputs/preflight \
+              --artifact "${platform}.txt" \
+              --bundle "$bundle" \
+              --brand-identity "$identity" \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --release-manifest "release-inputs/release-manifest.${platform}.json" \
+              --compliance "release-inputs/compliance.${platform}.json" \
+              --out "${platform}.provenance.json"
+          done
+
+      - name: Upload isolated rendered inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: |
+            apps/desktop/generated
+            apps/mobile/generated
+            apps/mobile/src/runtime/config/bundled.generated.ios.ts
+            apps/mobile/src/runtime/config/bundled.generated.android.ts
+            release-inputs
+          if-no-files-found: error
+          retention-days: 1
+
+  desktop:
+    name: Desktop ${{ matrix.brandId }}
+    if: ${{ inputs.build && !cancelled() && needs.render.result == 'success' && (needs.signing-inputs.result == 'success' || needs.signing-inputs.result == 'skipped') }}
+    needs: [prepare, render, signing-inputs]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    uses: ./.github/workflows/build-desktop.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      ref: ${{ inputs.ref }}
+      sign: ${{ inputs.sign }}
+      brand_id: ${{ matrix.brandId }}
+      rendered_artifact: brand-render-${{ matrix.brandId }}
+      update_url: ${{ matrix.distribution.desktop.updateUrl || '' }}
+
+  mobile-validation:
+    name: Mobile validation ${{ matrix.brandId }}
+    if: ${{ inputs.build && !inputs.sign && !cancelled() && needs.render.result == 'success' }}
+    needs: [prepare, render]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup-eas
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: .
+      - name: Verify production Hermes exports
+        run: pnpm -F @linkcode/mobile smoke:export
+      - name: Verify credential-free native generation
+        working-directory: apps/mobile
+        run: |
+          CI=1 EXPO_NO_TELEMETRY=1 pnpm exec expo prebuild --clean --no-install --platform android
+          test -f android/app/build.gradle
+          rm -rf android
+          CI=1 EXPO_NO_TELEMETRY=1 pnpm exec expo prebuild --clean --no-install --platform ios
+          test -f ios/Podfile
+      - name: Record isolated validation evidence
+        run: |
+          mkdir -p "release-validation/${{ matrix.brandId }}"
+          for platform in ios android; do
+            printf '%s=production-hermes+prebuild\n' "$platform" \
+              > "release-validation/${{ matrix.brandId }}/validation.${platform}.txt"
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root "release-validation/${{ matrix.brandId }}" \
+              --artifact "validation.${platform}.txt" \
+              --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
+              --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --release-manifest "release-inputs/release-manifest.${platform}.json" \
+              --compliance "release-inputs/compliance.${platform}.json" \
+              --out "release-provenance.${platform}.json"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: brand-validation-${{ matrix.brandId }}
+          path: release-validation/${{ matrix.brandId }}
+          if-no-files-found: error
+          retention-days: 7
+
+  mobile:
+    name: Mobile ${{ matrix.brandId }}
+    if: ${{ inputs.sign && !cancelled() && needs.render.result == 'success' && needs.signing-inputs.result == 'success' }}
+    needs: [prepare, render, signing-inputs]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    uses: ./.github/workflows/build-mobile.yml
+    secrets: inherit
+    with:
+      ref: ${{ inputs.ref }}
+      brand_id: ${{ matrix.brandId }}
+      rendered_artifact: brand-render-${{ matrix.brandId }}
+      submit: false
