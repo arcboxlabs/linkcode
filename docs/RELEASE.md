@@ -4,15 +4,18 @@ How to cut, sign, notarize, and publish the Electron desktop app, plus the packa
 
 ## Release surface
 
-- Six GitHub Actions workflows, one script module, and one composite action own the release path:
+- Seven GitHub Actions workflows, three script modules, and two composite actions own the release path:
   - `.github/workflows/ci.yml` ("CI") — runs on every PR.
   - `.github/workflows/release-please.yml` ("Release Please") — maintains release PRs after pushes to `master`; it never tags or publishes.
   - `.github/workflows/finalize-releases.yml` ("Finalize Releases") — after a successful `master` CI, turns a merged release PR into a draft Release and pushes its validated tag.
   - `.github/workflows/build-desktop.yml` ("Build Desktop") — reusable packaging workflow; **not** PR-triggered.
   - `.github/workflows/release-desktop.yml` ("Release Desktop") — tag-triggered publish.
   - `.github/workflows/build-mobile.yml` ("Build Mobile") — manual Android/iOS production builds on GitHub runners, with optional EAS Submit.
+  - `.github/workflows/release-brand-matrix.yml` ("Release Brand Matrix") — strict brand × Desktop/iOS/Android orchestration, isolated artifacts, compliance, provenance, and optional signing/upload.
   - `.github/scripts/release-automation.cjs` — tested Octokit policy for candidate resolution, recovery, and Release preflight checks.
+  - `.github/scripts/brand-matrix.cjs` / `release-inputs.cjs` — fail-closed matrix and release-input validation.
   - `.github/actions/build-sidecar` — composite action that builds the PTY sidecar per arch.
+  - `.github/actions/render-release-config` — renders only through the exact publisher/source commits pinned by each release manifest.
 - All jobs run on **Blacksmith** runners, not stock GitHub: `blacksmith-2vcpu-ubuntu-2404` (CI + the publish job), and the `build-desktop` matrix uses `blacksmith-6vcpu-macos-26` (arm64/M4; Xcode 26 so `actool >= 26` compiles `mac.icon` into `Assets.car`), `blacksmith-4vcpu-windows-2025` (VS Build Tools, enough for NSIS), and `blacksmith-4vcpu-ubuntu-2204` (older glibc for broader AppImage compatibility).
 
 ## CI topology & merge gates
@@ -96,6 +99,91 @@ Inputs live in the GitHub **`release` environment** and a missing value fails th
 - `CONFIG_RELEASE_MANIFEST_DESKTOP` / `CONFIG_RELEASE_MANIFEST_IOS` / `CONFIG_RELEASE_MANIFEST_ANDROID` (vars) — release-render manifest v1 JSON per target (produced by the publisher's release flow), pinning `publisherGitSha`, `sourceGitSha`, brand/platform/channel, telemetry endpoint, input digests, and the expected published snapshot digest.
 
 Enforcement: `LINKCODE_REQUIRE_CONFIG_BUNDLE=1` (set for signed desktop builds) makes the Vite main build fail without `apps/desktop/generated/config-build-bundle.json` and makes `verify-artifacts.mts` require the staged asar copy, which is always byte-compared against the generated render. Mobile gates twice: `pnpm -F @linkcode/mobile config:verify-release` before `eas build`, and the `eas-build-pre-install` hook inside the EAS project archive rejects the committed `{ bundle: null }` sentinel on production profiles (the root `.easignore` — which replaces `.gitignore` for EAS archiving — deliberately lets the generated modules into the archive).
+
+## Brand × platform release matrix
+
+`release-brand-matrix.yml` is manually dispatched against the exact lowercase 40-hex commit that
+loaded the workflow (`inputs.ref == github.sha`), so protected workflow code, environment ref policy,
+local actions, and client source have one trust root. Plan-only requests
+may supply `matrix_json`; every build must use the reviewed repository Actions variable
+`BRAND_BUILD_MATRIX`. `build`, `sign`, and `upload` are independent, monotonic gates: signing requires a build,
+and upload requires signing. The default (`false` for all three) only validates the matrix and
+needs no credential. `build: true, sign: false` renders one immutable target set per brand, creates
+unsigned Desktop packages, and validates production-Hermes exports plus iOS/Android prebuilds.
+Nothing is signed or submitted in that path.
+
+The JSON root contains `brandBuildMatrixVersion: 1` and a non-empty `brands` array. Every brand has
+exactly `brandId`, `channel`, `releaseManifests`, `compliance`, and `distribution`:
+
+- `releaseManifests.desktop|ios|android` are complete release-render manifest v1 objects. The three
+  targets must share publisher/source commits, config revision, revision digest, and public-keyring
+  digest; target brand/platform/channel mismatches are rejected.
+- `compliance.desktop|ios|android` has a lexicographically sorted `disclosedFeatures` array and a
+  checklist with all five keys set to `true`: `configurableFeaturesDisclosed`,
+  `dataPracticesReviewed`, `noExecutableCode`, `permissionsReviewed`, and `storeMetadataReviewed`.
+- `distribution.desktop` may be `null` only for plan validation. Every build requires an object containing
+  `credentialSecretPrefix`, `r2Bucket`, `r2Prefix`, and `updateUrl`. Both URL and prefix must end in
+  the same brand/channel path; prefixes in one bucket must not overlap, and credential prefixes must be unique across brands.
+- `distribution.mobile` may be `null` only for plan validation. Every build requires `easProjectId`, its
+  exact `https://u.expo.dev/<id>` URL, iOS `appleTeamId`/`ascAppId`, and Android
+  `track: "internal"`. EAS project IDs and App Store Connect app IDs must be unique across brands.
+
+After publisher rendering, the gate extracts the actual bundled defaults and requires the
+feature/module keys to match `disclosedFeatures` exactly. Review-like keys outside that disclosure
+surface, executable-code key segments (`script`, `code`, `wasm`, `plugin`, `command`, and binary
+variants), executable URL/file suffixes, and script-like strings fail before any signing starts.
+This configuration layer is data-only: it cannot fetch/execute a module or silently enable a
+store-review mode. A mobile distribution overlay can set only EAS project/update routing, Apple
+team/App Store Connect IDs, and the internal Android track; all other fields are rejected.
+
+Every uploaded build has a canonical `release-provenance.<platform>.json`. Each listed artifact is
+bound by its own SHA-256 and size to the exact `brands.manifest.yaml` SHA-256, config revision ID,
+canonical bundled-defaults SHA-256, config snapshot SHA-256, source/publisher commits, and release
+manifest SHA-256, while the sidecar also records the exact client commit. Publish jobs re-hash the
+artifacts and all immutable inputs before upload. The sidecar is written with create-only semantics after all checks pass.
+Brand render jobs, artifact names, runner workspaces, validation roots, credential pairs, and R2
+prefixes are separate. Render jobs preserve successful sibling evidence when another row fails,
+while aggregate build and publish-preflight jobs require every brand's five provenance sidecars and
+upload inputs before any store submission or R2 upload can begin.
+
+### Required Actions configuration and least privilege
+
+Secrets and render vars below are read only from the protected `release` environment;
+`BRAND_BUILD_MATRIX` is a repository Actions var because it contains no credential and the
+credential-free plan job does not enter an environment. The scripts report every missing name and
+never default a signing or upload input:
+
+- Vars: `BRAND_BUILD_MATRIX`, `CONFIG_PUBLISHER_REPO`, `CONFIG_RELEASE_REVISION`,
+  `CONFIG_RELEASE_KEYRINGS`, and `POSTHOG_HOST`. Revision/keyring values are exact JSON bytes already digest-pinned by each
+  release manifest.
+- Config source: secret `CONFIG_PUBLISHER_TOKEN`, a fine-grained token with **Contents: read** only
+  on `CONFIG_PUBLISHER_REPO`; no write or organization scope.
+- macOS Desktop: `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_API_KEY_BASE64`,
+  `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, and `APPLE_TEAM_ID`. The App Store Connect API key needs
+  only Developer ID notarization access; it must not have app-management or finance roles.
+- Windows Desktop: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_PUBLISHER_NAME`,
+  `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, and `AZURE_CERTIFICATE_PROFILE`. The Azure
+  app has only the Trusted Signing certificate-profile signer role and an OIDC subject restricted
+  to this repository's `release` environment; no client secret exists.
+- Desktop observability: `SENTRY_DSN_DESKTOP` and the shared `POSTHOG_PROJECT_TOKEN` plus
+  `POSTHOG_HOST` var. These are required publishable identifiers, not signing credentials.
+- Mobile: `EXPO_TOKEN`, `SENTRY_AUTH_TOKEN`, `SENTRY_DSN_MOBILE`, and
+  `POSTHOG_PROJECT_TOKEN`. Issue `EXPO_TOKEN` to a robot account with access only to the matrix's EAS projects;
+  scope the Sentry token to source-map upload for the one mobile project. The DSN and PostHog values
+  are publishable identifiers but remain protected release inputs.
+  Native certificates, provisioning profiles, Android keystores, App Store Connect keys, and Google
+  Play service accounts stay EAS-managed and project-scoped. Submissions stop at TestFlight and the
+  Play internal track; this workflow never submits to App Review or promotes a Play release.
+- Desktop upload: `<PREFIX>_R2_ACCOUNT_ID`, `<PREFIX>_R2_ACCESS_KEY_ID`, and
+  `<PREFIX>_R2_SECRET_ACCESS_KEY` for each matrix `credentialSecretPrefix`. Each key pair is scoped to
+  that brand's one `r2Bucket/r2Prefix` with object read/write/list only; it must not access another
+  brand prefix or permit bucket/account administration. `<PREFIX>_R2_ACCOUNT_ID` is exactly the
+  lowercase 32-hex Cloudflare account ID; URL-like or otherwise malformed values fail before AWS CLI runs.
+
+Do not store private signing material, access tokens, or service-account JSON in
+`BRAND_BUILD_MATRIX`, repository files, artifacts, or Actions vars. Protect the `release`
+environment with required reviewers and exact deployment ref rules before enabling `sign` or
+`upload`.
 
 ## Packaging inputs (staging & version pins)
 
