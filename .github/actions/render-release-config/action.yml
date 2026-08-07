@@ -25,6 +25,10 @@ inputs:
     description: Public keyrings JSON content (vars.CONFIG_RELEASE_KEYRINGS)
     required: false
     default: ""
+  brand-artifacts:
+    description: Render the desktop brand identity, assets, and builder overlay
+    required: false
+    default: "false"
   release-manifest:
     description: Desktop release-render manifest JSON content (app == desktop)
     required: false
@@ -52,6 +56,7 @@ runs:
         MANIFEST_DESKTOP: ${{ inputs.release-manifest }}
         MANIFEST_IOS: ${{ inputs.release-manifest-ios }}
         MANIFEST_ANDROID: ${{ inputs.release-manifest-android }}
+        BRAND_ARTIFACTS: ${{ inputs.brand-artifacts }}
       run: |
         set -euo pipefail
 
@@ -73,7 +78,7 @@ runs:
           exit 1
         fi
 
-        work="$RUNNER_TEMP/config-render"
+        work="$RUNNER_TEMP/config-render-$APP"
         mkdir -p "$work"
         printf '%s' "$REVISION_JSON" > "$work/revision.json"
         printf '%s' "$KEYRINGS_JSON" > "$work/keyrings.json"
@@ -144,8 +149,15 @@ runs:
           --telemetry-endpoint "$telemetry"
         )
         if [ "$APP" = desktop ]; then
+          brand_args=()
+          if [ "$BRAND_ARTIFACTS" = true ]; then
+            brand_args=(--brand-artifacts)
+          elif [ "$BRAND_ARTIFACTS" != false ]; then
+            echo "::error::brand-artifacts must be true or false"
+            exit 1
+          fi
           pnpm -F @linkcode/desktop config:render "${common_args[@]}" \
-            --release-manifest "$work/manifest-desktop.json"
+            --release-manifest "$work/manifest-desktop.json" "${brand_args[@]}"
         else
           pnpm -F @linkcode/mobile config:render "${common_args[@]}" \
             --release-manifest-ios "$work/manifest-ios.json" \
