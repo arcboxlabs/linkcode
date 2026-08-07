@@ -39,6 +39,9 @@ export const SessionRunSchema = z.object({
   /** The account this run resolved to. Credentials and base URL are injected once at spawn, so the
    * account is fixed for the run's lifetime and a later rebind does not move it. */
   accountId: z.string().min(1).optional(),
+  /** The model this run resolved to. Recorded with the account because the two are one choice, and
+   * read back on relaunch: a thread keeps its own pick instead of adopting a default that moved. */
+  model: z.string().min(1).optional(),
   startedAt: TimestampSchema,
   endedAt: TimestampSchema.optional(),
 });

@@ -6,6 +6,8 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionRun,
+  StartOptions,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
@@ -140,14 +142,10 @@ export class SessionRecordRegistry {
 
   /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
    * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. */
-  beginRun(sessionId: SessionId, accountId?: string, historyId?: AgentHistoryId): void {
+  beginRun(sessionId: SessionId, run: Omit<SessionRun, 'startedAt' | 'endedAt'> = {}): void {
     const record = this.records.get(sessionId);
     if (!record) return;
-    record.runs.push({
-      startedAt: Date.now(),
-      ...(accountId !== undefined && { accountId }),
-      ...(historyId !== undefined && { historyId }),
-    });
+    record.runs.push({ startedAt: Date.now(), ...definedFields(run) });
     this.persist(record);
   }
 
@@ -182,6 +180,23 @@ export class SessionRecordRegistry {
   accountId(sessionId: SessionId): string | undefined {
     const record = this.records.get(sessionId);
     return record ? latestAccountId(record) : undefined;
+  }
+
+  /**
+   * What the newest run resolved to, shaped as a start-options override. A relaunch applies this so
+   * the thread keeps its own model and account; the daemon's configured default answers for new and
+   * unpinned sessions only, and may have moved since this one started.
+   */
+  pinnedOptions(sessionId: SessionId): Pick<StartOptions, 'model' | 'config'> | undefined {
+    const record = this.records.get(sessionId);
+    if (!record) return undefined;
+    const accountId = latestAccountId(record);
+    const model = latestModel(record);
+    if (accountId === undefined && model === undefined) return undefined;
+    return {
+      ...(model !== undefined && { model }),
+      ...(accountId !== undefined && { config: { accountId } }),
+    };
   }
 
   /** The in-memory record is authoritative while running; persistence is best-effort. */
@@ -231,6 +246,21 @@ function latestAccountId(record: SessionRecord): string | undefined {
     if (accountId !== undefined) return accountId;
   }
   return undefined;
+}
+
+function latestModel(record: SessionRecord): string | undefined {
+  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
+    const model = record.runs[index].model;
+    if (model !== undefined) return model;
+  }
+  return undefined;
+}
+
+/** Spreading an explicit `undefined` would write the key into the persisted record. */
+function definedFields<T extends object>(fields: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
 }
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {

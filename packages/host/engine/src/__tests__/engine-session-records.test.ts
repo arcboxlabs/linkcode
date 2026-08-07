@@ -10,6 +10,7 @@ import type {
   WorkspaceId,
 } from '@linkcode/schema';
 import { MessageIdSchema, textBlock } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import type { SessionStore } from '../session/session-store';
@@ -1002,6 +1003,60 @@ describe('session account attribution', () => {
     await h.inject({ kind: 'session.list', clientReqId: 'r2' });
 
     expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_pinned');
+  });
+});
+
+describe('a session keeps its own pick', () => {
+  it('resumes on the run’s account and model after the daemon default moved', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: 'acc_first', model: 'model-first' },
+      },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Settings moves the agent's default to the other account while the thread sleeps.
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: 'acc_second', model: 'model-second' },
+      },
+    });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.model).toBe('model-first');
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-first');
+    expect((await store.load())[0].runs.at(-1)?.accountId).toBe('acc_first');
   });
 });
 

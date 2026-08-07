@@ -104,7 +104,7 @@ export class SessionLifecycleService {
         createdVia: resolved.createdVia,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now, ...accountOfRun(resolved) }],
+        runs: [{ startedAt: now, ...runOf(resolved) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -179,7 +179,7 @@ export class SessionLifecycleService {
         origin: { type: 'imported', historyId, importedAt: now },
         createdAt: now,
         updatedAt: now,
-        runs: [{ historyId, startedAt: now, ...accountOfRun(startOptions) }],
+        runs: [{ historyId, startedAt: now, ...runOf(startOptions) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -402,14 +402,19 @@ export class SessionLifecycleService {
     );
   }
 
-  /** Resolve the options an existing record relaunches under. `override` is how a caller pins a
-   * model or account other than the daemon's current defaults. */
+  /**
+   * Resolve the options an existing record relaunches under. Absent an explicit `override`, the
+   * thread's own last run supplies the model and account: the daemon's configured default answers
+   * for new and unpinned sessions, and adopting it here would silently move a running thread to
+   * whatever Settings now says.
+   */
   private resolveForRecord(
     record: SessionRecord,
     override?: Pick<StartOptions, 'model' | 'config'>,
   ): Effect.Effect<ResolvedStartOptions, EngineFailure> {
+    const pinned = override ?? this.records.pinnedOptions(record.sessionId);
     return this.startOptions.resolve(
-      { kind: record.kind, cwd: record.cwd, ...override },
+      { kind: record.kind, cwd: record.cwd, ...pinned },
       record.sessionId,
     );
   }
@@ -430,7 +435,7 @@ export class SessionLifecycleService {
   ): Effect.Effect<void, EngineFailure> {
     const { historyId, ...startOptions } = options;
     return Effect.suspend(() => {
-      this.records.beginRun(record.sessionId, resolvedAccountId(resolved.options), historyId);
+      this.records.beginRun(record.sessionId, { ...runOf(resolved.options), historyId });
       return this.sessions.startLive(
         replyTo,
         record,
@@ -477,7 +482,7 @@ export class SessionLifecycleService {
         automation: options.automation,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now, ...accountOfRun(startOptions) }],
+        runs: [{ startedAt: now, ...runOf(startOptions) }],
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, (adapter) =>
@@ -550,9 +555,12 @@ function workspaceRegisterWorktree(
   });
 }
 
-/** The run's account, spread into a `SessionRun` so an unresolved one stays absent rather than
- * writing `undefined` into the record. */
-function accountOfRun(opts: StartOptions): { accountId?: string } {
+/** What a run resolved to, spread into a `SessionRun`. Unresolved fields stay absent rather than
+ * writing `undefined` into the record, and are what a later relaunch reads back to stay put. */
+function runOf(opts: StartOptions): { accountId?: string; model?: string } {
   const accountId = resolvedAccountId(opts);
-  return accountId === undefined ? {} : { accountId };
+  return {
+    ...(accountId !== undefined && { accountId }),
+    ...(opts.model !== undefined && { model: opts.model }),
+  };
 }
