@@ -3,6 +3,8 @@ import { ConfigCore, createNobleConfigCrypto, decodeBase64Url } from '@linkcode/
 import { describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line import-x/no-relative-packages -- Keep immutable conformance data out of production exports.
 import fixture from '../../../../../../packages/foundation/common/src/config/__fixtures__/contract-v1.json';
+// eslint-disable-next-line import-x/no-relative-packages -- Keep immutable conformance data out of production exports.
+import handoffFixture from '../../../../../../packages/foundation/common/src/config/__fixtures__/emergency-handoff-v1.json';
 import type { AtomicKeyValueStorage, ConfigFetch } from '../adapters';
 import { createConfigNetwork, createConfigStorage, resolveMobileConfigPlatform } from '../adapters';
 
@@ -87,6 +89,49 @@ describe('mobile configuration adapters', () => {
     },
   );
 
+  it.each(['ios', 'android'] as const)(
+    'keeps emergency state available through main-channel outage, restart, and release on %s',
+    async (os) => {
+      const storage = new MemoryAtomicStorage();
+      const firstEmergencyFetch = emergencyFixtureFetch('killSwitch', 'forcedMinimum');
+      const first = createEmergencyFixtureCore(os, storage, firstEmergencyFetch);
+
+      await first.initialize();
+      await expect(first.refresh()).resolves.toMatchObject({ status: 'error' });
+      await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+      await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+      expect(first.get('feature.aiAssist')).toBe(false);
+      expect(first.getState().emergency).toMatchObject({
+        emergencyVersion: '2',
+        forceMinVersion: '2.4.0',
+      });
+      expect(firstEmergencyFetch.mock.calls[0]?.[0]).toBe(
+        'https://emergency.example.test/v1/acme/desktop/emergency.json',
+      );
+
+      const releaseFetch = emergencyFixtureFetch('release');
+      const restarted = createEmergencyFixtureCore(os, storage, releaseFetch);
+      await expect(restarted.initialize()).resolves.toMatchObject({
+        emergency: { emergencyVersion: '2', forceMinVersion: '2.4.0' },
+      });
+      expect(restarted.get('feature.aiAssist')).toBe(false);
+      await expect(restarted.refresh()).resolves.toMatchObject({ status: 'error' });
+      await expect(restarted.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+      expect(restarted.get('feature.aiAssist')).toBe(true);
+      expect(restarted.getState().emergency).toMatchObject({
+        disabledFeatures: [],
+        emergencyVersion: '3',
+        forceMinVersion: null,
+      });
+
+      const offline = createEmergencyFixtureCore(os, storage, rejectingFetch);
+      await expect(offline.initialize()).resolves.toMatchObject({
+        emergency: { disabledFeatures: [], emergencyVersion: '3', forceMinVersion: null },
+      });
+      expect(offline.get('feature.aiAssist')).toBe(true);
+    },
+  );
+
   it('forwards ETags and preserves exact response bytes', async () => {
     const body = new Uint8Array([0, 127, 128, 255]);
     const fetch: ConfigFetch = vi.fn(() => Promise.resolve(response(body, 200, '"next"')));
@@ -162,6 +207,25 @@ function createFixtureCore(
   });
 }
 
+function createEmergencyFixtureCore(
+  os: 'android' | 'ios',
+  storage: AtomicKeyValueStorage,
+  emergencyFetch: ConfigFetch,
+) {
+  return new ConfigCore({
+    context: { appVersion: '2.5.0', locale: 'ZH_cn', os },
+    crypto: createNobleConfigCrypto(() => DEVICE_ID),
+    definitions,
+    emergencyKeyring: handoffFixture.keys.emergency,
+    emergencyNetwork: createConfigNetwork('https://emergency.example.test', emergencyFetch),
+    maximumSchemaVersion: 1,
+    network: createConfigNetwork('https://normal.example.test', rejectingFetch),
+    normalKeyring: fixture.keys.normal,
+    storage: createConfigStorage(storage),
+    target: { brandId: 'acme', channel: 'canary', platform: 'desktop' },
+  });
+}
+
 function fixtureFetch(): ReturnType<typeof vi.fn<ConfigFetch>> {
   return vi.fn<ConfigFetch>((url) => {
     if (url.endsWith('/latest.json')) {
@@ -173,6 +237,23 @@ function fixtureFetch(): ReturnType<typeof vi.fn<ConfigFetch>> {
       );
     }
     return Promise.resolve(response(new Uint8Array(), 404));
+  });
+}
+
+function emergencyFixtureFetch(
+  ...names: Array<keyof typeof handoffFixture.documents>
+): ReturnType<typeof vi.fn<ConfigFetch>> {
+  let index = 0;
+  return vi.fn<ConfigFetch>(() => {
+    const name = names.at(index++);
+    if (!name) return Promise.reject(new Error('offline'));
+    return Promise.resolve(
+      response(
+        jsonBytes(handoffFixture.documents[name].document),
+        200,
+        `"emergency-${handoffFixture.documents[name].document.emergencyVersion}"`,
+      ),
+    );
   });
 }
 
