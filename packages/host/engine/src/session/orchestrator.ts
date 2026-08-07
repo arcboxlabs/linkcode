@@ -2,6 +2,7 @@ import type { AdapterFactory, AgentAdapter, BrowserToolsetFactory } from '@linkc
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
+  AgentHistoryCapabilities,
   AgentInput,
   ContentBlock,
   McpWarning,
@@ -71,6 +72,12 @@ export class SessionOrchestrator {
   isBusy(sessionId: SessionId): boolean {
     const session = this.sessions.get(sessionId);
     return session !== undefined && (session.turnInputActive || session.status === 'running');
+  }
+
+  /** The running adapter's history capabilities — asked of the live instance rather than a fresh
+   * one, so a caller about to tear it down learns what *this* session can do. */
+  historyCapabilities(sessionId: SessionId): AgentHistoryCapabilities | undefined {
+    return this.sessions.get(sessionId)?.adapter.historyCapabilities;
   }
 
   replay(sessionId: SessionId): void {

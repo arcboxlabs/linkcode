@@ -178,6 +178,12 @@ export class SessionRecordRegistry {
     return record ? latestHistoryId(record) : undefined;
   }
 
+  /** The account the newest run resolved to — what a live session is actually talking to. */
+  accountId(sessionId: SessionId): string | undefined {
+    const record = this.records.get(sessionId);
+    return record ? latestAccountId(record) : undefined;
+  }
+
   /** The in-memory record is authoritative while running; persistence is best-effort. */
   private persist(record: SessionRecord): void {
     record.updatedAt = Date.now();

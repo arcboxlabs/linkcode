@@ -323,6 +323,85 @@ export class SessionLifecycleService {
     );
   }
 
+  /**
+   * Point a live session at a model belonging to `accountId`. Credentials and base URL are injected
+   * once at spawn, so a cross-account switch cannot happen in place: it is a relaunch under the same
+   * id that resumes the transcript. A switch within the session's own account stays in place, which
+   * is why the error channel is the adapter's untyped one rather than {@link EngineFailure}.
+   */
+  switchModel(
+    sessionId: SessionId,
+    model: string,
+    accountId: string,
+  ): Effect.Effect<void, unknown> {
+    return this.sessionSemaphore(sessionId).withPermit(
+      Effect.suspend(() => {
+        const record = this.records.get(sessionId);
+        if (!record) {
+          return Effect.fail(
+            new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+          );
+        }
+        if (!this.sessions.has(sessionId)) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: `Session is not running: ${sessionId}`,
+            }),
+          );
+        }
+        if (this.records.accountId(sessionId) === accountId) {
+          return this.sessions.sendInput(sessionId, { type: 'set-model', model, accountId });
+        }
+        if (this.sessions.isBusy(sessionId)) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The session is busy; switch accounts once the turn has finished',
+            }),
+          );
+        }
+        // Relaunching without a transcript would silently start a fresh conversation in place of
+        // the one on screen. Losing the thread is worse than refusing the switch.
+        const historyId = this.records.historyId(sessionId);
+        if (historyId === undefined) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The session has no provider transcript to carry to another account',
+            }),
+          );
+        }
+        // Asked before the teardown below: a refusal from `history.resume` would arrive with the
+        // old adapter already gone.
+        if (this.sessions.historyCapabilities(sessionId)?.resume !== true) {
+          return Effect.fail(
+            new RequestError({
+              code: 'unsupported',
+              message: `${record.kind}: switching account needs history resume, which it does not support`,
+            }),
+          );
+        }
+
+        const { sessions } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
+        const resumeStrategy = this.resumeStrategy.bind(this);
+        return Effect.gen(function* () {
+          const resolved = yield* resolveForRecord(record, { model, config: { accountId } });
+          yield* sessions.stopForReplacement(sessionId);
+          yield* launchRun(
+            undefined,
+            record,
+            resolved,
+            resumeStrategy(historyId, resolved.options),
+            { historyId, registerRecord: false },
+          );
+        });
+      }),
+    );
+  }
+
   /** Resolve the options an existing record relaunches under. `override` is how a caller pins a
    * model or account other than the daemon's current defaults. */
   private resolveForRecord(

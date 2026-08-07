@@ -170,8 +170,14 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
    * adapters that advertise policies via `approval-policy-update` accept this; others reject it. */
   z.object({ type: z.literal('set-approval-policy'), policyId: ApprovalPolicyIdSchema }),
   /** Switch the model for the session, going forward (vendor-specific id). Only adapters that
-   * support changing the model on an already-running session accept this; others reject it. */
-  z.object({ type: z.literal('set-model'), model: z.string().min(1) }),
+   * support changing the model on an already-running session accept this; others reject it.
+   * `accountId` names the account the model was picked from; switching to a different one restarts
+   * the session and resumes its transcript, because credentials are injected once at spawn. */
+  z.object({
+    type: z.literal('set-model'),
+    model: z.string().min(1),
+    accountId: z.string().min(1).optional(),
+  }),
   /** Switch the reasoning-effort level for the session, going forward. Same acceptance rule as
    * `set-model`: only adapters that can rebind effort on a live session accept this. */
   z.object({ type: z.literal('set-effort'), effort: EffortLevelSchema }),

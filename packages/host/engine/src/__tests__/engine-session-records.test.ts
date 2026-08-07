@@ -1004,3 +1004,159 @@ describe('session account attribution', () => {
     expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_pinned');
   });
 });
+
+class ResumelessAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: false,
+  };
+}
+
+describe('live account switching', () => {
+  /** Two accounts an agent can bind, one of them currently bound. */
+  function twoAccountStore(): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: 'acc_first', model: 'model-first' },
+      },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  async function liveSession(
+    makeAdapter?: () => FakeAdapter,
+    options: { withTranscript?: boolean } = {},
+  ) {
+    const { withTranscript = true } = options;
+    const store = new InMemorySessionStore();
+    const h = harness(store, makeAdapter, undefined, undefined, undefined, twoAccountStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    if (withTranscript) {
+      h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-live') });
+      await tick();
+    }
+    return { ...h, store, sessionId };
+  }
+
+  function switchTo(
+    h: Awaited<ReturnType<typeof liveSession>>,
+    accountId: string,
+    model: string,
+    clientReqId = 'switch',
+  ) {
+    return h.inject({
+      kind: 'agent.input',
+      clientReqId,
+      sessionId: h.sessionId,
+      input: { type: 'set-model', model, accountId },
+    });
+  }
+
+  it('relaunches on the new account, resuming the transcript under the same id', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    // A fresh adapter, resumed from the transcript the old one had established.
+    expect(h.adapters).toHaveLength(2);
+    expect(h.adapters[0].stopped).toBe(true);
+    expect(h.adapters[1].resumedFrom).toBe('native-live');
+    expect(h.adapters[1].resumedWith?.model).toBe('model-second');
+    expect(h.adapters[1].resumedWith?.config?.apiKey).toBe('sk-second');
+
+    const runs = (await h.store.load())[0].runs;
+    expect(runs).toHaveLength(2);
+    expect(runs[1].accountId).toBe('acc_second');
+
+    await h.inject({ kind: 'session.list', clientReqId: 'listed' });
+    expect(listedSessions(h.sent, 'listed')[0]?.accountId).toBe('acc_second');
+  });
+
+  it('forwards a pick on the session’s own account in place, recording no new run', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_first', 'model-first');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].sentInputs).toContainEqual({
+      type: 'set-model',
+      model: 'model-first',
+      accountId: 'acc_first',
+    });
+    expect((await h.store.load())[0].runs).toHaveLength(1);
+  });
+
+  it('refuses a switch while a turn is running', async () => {
+    const h = await liveSession();
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+    await tick();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session is busy; switch accounts once the turn has finished',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses a switch on a session with no provider transcript rather than starting fresh', async () => {
+    const h = await liveSession(undefined, { withTranscript: false });
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session has no provider transcript to carry to another account',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses before teardown when the agent cannot resume, leaving the session live', async () => {
+    const h = await liveSession(() => new ResumelessAdapter());
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'unsupported',
+      message: 'claude-code: switching account needs history resume, which it does not support',
+    });
+    // The whole point of checking first: the session it refused to move is still running.
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].stopped).toBe(false);
+  });
+});

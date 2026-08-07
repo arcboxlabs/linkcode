@@ -38,15 +38,21 @@ export class SessionRequestHandler {
           payload.clientReqId,
           this.lifecycle.start(payload.clientReqId, payload.opts),
         );
-      case 'agent.input':
+      case 'agent.input': {
+        const { input, sessionId } = payload;
+        // A model pick naming an account can mean a relaunch on that account, which lifecycle owns.
+        // Both paths answer with the same plain ack, so the client's contract is unchanged.
+        const applied =
+          input.type === 'set-model' && input.accountId !== undefined
+            ? this.lifecycle.switchModel(sessionId, input.model, input.accountId)
+            : this.sessions.sendInput(sessionId, input);
         return this.responder.reply(
           payload.clientReqId,
-          this.sessions
-            .sendInput(payload.sessionId, payload.input)
-            .pipe(
-              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-            ),
+          applied.pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
         );
+      }
       case 'session.stop':
         return this.responder.reply(
           payload.clientReqId,
