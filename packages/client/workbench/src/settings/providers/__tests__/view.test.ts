@@ -6,7 +6,8 @@ import {
   boundAgentKinds,
   maskSecret,
   providerAccountListViewModel,
-  withBinding,
+  withAccountEnabled,
+  withDefaultAccount,
   withModel,
   withoutAccount,
 } from '../view';
@@ -17,18 +18,18 @@ const providers: ProvidersConfig = {
   opencode: { enabled: true },
 };
 
-describe('binding transforms', () => {
-  it('binds while preserving the entry and defaults enabled for a fresh kind', () => {
-    const next = withBinding(providers, 'codex', 'acc_a');
+describe('provider config transforms', () => {
+  it('sets the default while preserving the entry and defaults enabled for a fresh kind', () => {
+    const next = withDefaultAccount(providers, 'codex', 'acc_a');
     expect(next.codex).toEqual({ enabled: false, activeAccountId: 'acc_a' });
-    expect(withBinding(providers, 'pi', 'acc_a').pi).toEqual({
+    expect(withDefaultAccount(providers, 'pi', 'acc_a').pi).toEqual({
       enabled: true,
       activeAccountId: 'acc_a',
     });
   });
 
-  it('unbinds by dropping only activeAccountId', () => {
-    const next = withBinding(providers, 'claude-code', undefined);
+  it('clears the default by dropping only activeAccountId', () => {
+    const next = withDefaultAccount(providers, 'claude-code', undefined);
     expect(next['claude-code']).toEqual({ enabled: true, model: 'claude-opus-4-8' });
   });
 
@@ -42,14 +43,14 @@ describe('binding transforms', () => {
     });
     const pool = [offers('acc_keep', ['claude-opus-4-8']), offers('acc_drop', ['deepseek-v4-pro'])];
 
-    // Rebinding to an account that lists the pick leaves it alone.
-    expect(withBinding(providers, 'claude-code', 'acc_keep', pool)['claude-code']).toEqual({
+    // Moving the default to an account that lists the pick leaves it alone.
+    expect(withDefaultAccount(providers, 'claude-code', 'acc_keep', pool)['claude-code']).toEqual({
       enabled: true,
       activeAccountId: 'acc_keep',
       model: 'claude-opus-4-8',
     });
     // One that does not would otherwise start the next session on a model it never listed.
-    expect(withBinding(providers, 'claude-code', 'acc_drop', pool)['claude-code']).toEqual({
+    expect(withDefaultAccount(providers, 'claude-code', 'acc_drop', pool)['claude-code']).toEqual({
       enabled: true,
       activeAccountId: 'acc_drop',
     });
@@ -65,6 +66,39 @@ describe('binding transforms', () => {
       enabled: true,
       activeAccountId: 'acc_a',
     });
+  });
+
+  it('materializes the enabled list from what is bindable on the first disable', () => {
+    const pool: Accounts = [
+      { id: 'acc_a', label: 'A', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+      { id: 'acc_b', label: 'B', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+    ];
+
+    // Absent means "all bindable", so disabling one has to write the rest down explicitly.
+    const disabled = withAccountEnabled(providers, 'opencode', 'acc_a', false, pool);
+    expect(disabled.opencode?.enabledAccountIds).toEqual(['acc_b']);
+    // Re-enabling puts it back without duplicating.
+    const reEnabled = withAccountEnabled(disabled, 'opencode', 'acc_a', true, pool);
+    expect(reEnabled.opencode?.enabledAccountIds).toEqual(['acc_b', 'acc_a']);
+  });
+
+  it('clears the default when the account serving it is disabled', () => {
+    const pool: Accounts = [
+      { id: 'acc_a', label: 'A', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+    ];
+    // Leaving it would keep resolving unpinned sessions onto an account just removed from the menu.
+    const next = withAccountEnabled(providers, 'claude-code', 'acc_a', false, pool);
+    expect(next['claude-code']?.activeAccountId).toBeUndefined();
+    expect(next['claude-code']?.enabledAccountIds).toEqual([]);
+  });
+
+  it('leaves the default alone when a non-default account is disabled', () => {
+    const pool: Accounts = [
+      { id: 'acc_a', label: 'A', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+      { id: 'acc_b', label: 'B', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+    ];
+    const next = withAccountEnabled(providers, 'claude-code', 'acc_b', false, pool);
+    expect(next['claude-code']?.activeAccountId).toBe('acc_a');
   });
 
   it('clears every binding of a removed account, identity-stable when none matched', () => {

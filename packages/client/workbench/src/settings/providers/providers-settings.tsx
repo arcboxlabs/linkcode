@@ -26,7 +26,8 @@ import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
   providerAccountListViewModel,
-  withBinding,
+  withAccountEnabled,
+  withDefaultAccount,
   withModel,
   withoutAccount,
 } from './view';
@@ -76,8 +77,13 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     void mutateProviders();
   };
 
-  const handleSetBinding = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withBinding(providers ?? {}, kind, accountId, pool));
+  const handleSetDefaultAccount = (kind: AgentKind, accountId: string | undefined): void => {
+    void applyProviders(withDefaultAccount(providers ?? {}, kind, accountId, pool));
+  };
+
+  const handleSetAccountEnabled = (kind: AgentKind, enabled: boolean): void => {
+    if (!selected) return;
+    void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
   const handleSetModel = (kind: AgentKind, model: string | undefined): void => {
@@ -199,7 +205,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     <AccountDetail
                       account={selectedDetail}
                       busy={busy}
-                      onSetBinding={handleSetBinding}
+                      onSetAccountEnabled={handleSetAccountEnabled}
+                      onSetDefaultAccount={handleSetDefaultAccount}
                       onSetModel={handleSetModel}
                       onEdit={startEdit}
                       onRemove={() => {

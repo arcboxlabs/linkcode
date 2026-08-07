@@ -61,7 +61,6 @@ import { useMutation } from '../runtime/tayori';
 import {
   useAccountModelOptions,
   useConfiguredDefaultModels,
-  usePersistPickedModel,
 } from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
@@ -283,7 +282,6 @@ function WorkbenchSessionSurface({
   const onboarding = useAgentRuntimeOnboarding();
   const rememberNewSessionDefaults = useNewSessionDefaultsStore((state) => state.remember);
   const rememberSelection = useNewSessionDefaultsStore((state) => state.rememberSelection);
-  const persistPickedModel = usePersistPickedModel();
   const [previewExpandedKeys, addPreviewExpanded, removePreviewExpanded] = useSet<string>();
   const threadGroups = useMemo<ThreadGroupViewModel[]>(() => {
     const { pinnedGroup, rest } = extractPinnedGroup(sessions.sessions, pinnedSessionIds);
@@ -409,18 +407,10 @@ function WorkbenchSessionSurface({
           startupSelection,
           sdkClient.raw.eventsSnapshot(sessionId),
         );
-        if (newlyConfirmed.model === undefined && newlyConfirmed.effort === undefined) return;
+        // The model is not remembered here: the session carries its own pick, and the agent's
+        // default is a deliberate Settings choice that starting one thread must not overwrite.
         if (newlyConfirmed.effort !== undefined) {
           rememberSelection(submission.kind, { effort: newlyConfirmed.effort });
-        }
-        // The model lands in daemon config rather than a client store, together with the account it
-        // came from, so Settings shows the rebind and non-composer sessions inherit the pick.
-        if (newlyConfirmed.model) {
-          void persistPickedModel(
-            submission.kind,
-            newlyConfirmed.model,
-            submission.accountId,
-          ).catch(noop);
         }
       })
       .catch(noop);
@@ -467,18 +457,15 @@ function WorkbenchSessionSurface({
     onClearError();
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
-    const provider = active?.kind;
+    // The engine records the accepted pick on the session's own run, so it survives a relaunch
+    // without touching the agent's configured default.
     return modelMutation
       .trigger({
         sessionId: sessions.activeId,
         model: model.id,
         ...(model.accountId !== undefined && { accountId: model.accountId }),
       })
-      .then(() => {
-        // Persisting the account too is what makes the switch outlive the running adapter: a later
-        // resume resolves from this config, not from the run it is reviving.
-        if (provider) void persistPickedModel(provider, model.id, model.accountId).catch(noop);
-      });
+      .then(noop);
   }
 
   function handleEffortChange(effort: EffortLevel): Promise<void> {

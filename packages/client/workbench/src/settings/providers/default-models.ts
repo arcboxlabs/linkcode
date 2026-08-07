@@ -1,13 +1,12 @@
 import { resolveBinding } from '@linkcode/providers';
 import type { Account, Accounts, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
-import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
+import { getAccounts, getProviderConfig } from '@linkcode/sdk';
 import type { ModelOption } from '@linkcode/ui';
-import { useData, useMutation } from '../../runtime/tayori';
-import { withModel } from './view';
+import { useData } from '../../runtime/tayori';
 
-/** The model each agent currently runs on, as session start resolves it: the agent's persisted pick.
- * The bound account contributes the set that pick came from, never the pick itself. */
+/** Each agent's configured default model — what a session starts on when nothing picked one, and
+ * what automation and scheduled runs always use. A running thread keeps its own pick instead. */
 export function configuredDefaultModels(
   providers: ProvidersConfig | undefined,
 ): Partial<Record<AgentKind, string>> {
@@ -28,9 +27,9 @@ export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>>
 }
 
 /**
- * Every model this agent could run on: the picked sets of *all* accounts it can bind, not just the
- * one bound now. Choosing a model therefore also chooses its account, which is what lets one agent
- * reach several providers without a trip through Settings. Live sessions read the same list — a
+ * Every model this agent offers: the picked sets of each account that can back it *and* is enabled
+ * for it. Choosing a model therefore also chooses its account, which is what lets one agent reach
+ * several providers without a trip through Settings. Live sessions read the same list — a
  * cross-account pick there restarts the thread on that account rather than rebinding in place.
  *
  * `description` carries the account label so `groupModelsByProvider` renders one submenu per
@@ -38,13 +37,15 @@ export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>>
  * legitimately serve the same model id.
  *
  * Present-but-empty and absent mean different things, and callers rely on the difference. An entry
- * exists whenever at least one account can back the agent, so `[]` says "bindable, nothing picked
+ * exists whenever at least one account can back the agent, so `[]` says "available, nothing picked
  * yet" and blocks sends the way the daemon does. Absent says "no account can back this agent", where
  * it still resolves its own model — pickers fall through to the adapter catalog or the curated table,
- * and nothing blocks.
+ * and nothing blocks. Disabling every account for an agent therefore blocks it rather than silently
+ * handing it back to the adapter's own choice.
  */
 export function accountModelOptions(
   accounts: Accounts | undefined,
+  providers?: ProvidersConfig,
 ): Partial<Record<AgentKind, ModelOption[]>> {
   const options: Partial<Record<AgentKind, ModelOption[]>> = {};
   for (const kind of AgentKindSchema.options) {
@@ -52,9 +53,23 @@ export function accountModelOptions(
       (account) => resolveBinding(account, kind).tier !== 'unavailable',
     );
     if (bindable.length === 0) continue;
-    options[kind] = bindable.flatMap((account) => modelOptionsOf(account));
+    const enabled = providers?.[kind]?.enabledAccountIds;
+    const offered =
+      enabled === undefined ? bindable : bindable.filter((account) => enabled.includes(account.id));
+    options[kind] = offered.flatMap((account) => modelOptionsOf(account));
   }
   return options;
+}
+
+/** Whether this account's models are offered for this agent. Absent list means every bindable one,
+ * so a newly added account is offered without a visit to Settings. */
+export function accountEnabledFor(
+  providers: ProvidersConfig | undefined,
+  kind: AgentKind,
+  accountId: string,
+): boolean {
+  const enabled = providers?.[kind]?.enabledAccountIds;
+  return enabled === undefined || enabled.includes(accountId);
 }
 
 function modelOptionsOf(account: Account): ModelOption[] {
@@ -66,31 +81,11 @@ function modelOptionsOf(account: Account): ModelOption[] {
   }));
 }
 
-/** `null` until the account pool has loaded, so a picker never briefly offers a set that is not
- * actually available. */
+/** `null` until both daemon-owned sources have loaded, so a picker never briefly offers a set that
+ * is not actually available — or one the enabled list would have narrowed. */
 export function useAccountModelOptions(): Partial<Record<AgentKind, ModelOption[]>> | null {
   const { data: accounts } = useData(getAccounts, {});
-  if (accounts === undefined) return null;
-  return accountModelOptions(accounts);
-}
-
-/**
- * Persist what an agent runs on. This is the only model memory: the daemon owns it, so Settings and
- * the composer cannot disagree and a scheduled or script session inherits the same pick. Passing the
- * account rebinds the agent to it — picking a model is also picking who serves it.
- *
- * Called once a selection is known to have been accepted, not on the menu click, so an abandoned
- * draft never rewrites config and a provider that rejects a model leaves the previous one standing.
- */
-export function usePersistPickedModel(): (
-  kind: AgentKind,
-  model: string,
-  accountId?: string,
-) => Promise<void> {
-  const { data: providers, mutate } = useData(getProviderConfig, {});
-  const save = useMutation(setProviderConfig);
-  return async (kind, model, accountId) => {
-    await save.trigger({ providers: withModel(providers ?? {}, kind, model, accountId) });
-    await mutate();
-  };
+  const { data: providers } = useData(getProviderConfig, {});
+  if (accounts === undefined || providers === undefined) return null;
+  return accountModelOptions(accounts, providers);
 }

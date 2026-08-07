@@ -109,6 +109,27 @@ describe('accountModelOptions', () => {
     ).toEqual([]);
   });
 
+  it('offers only the accounts enabled for that agent, and every bindable one when unset', () => {
+    const pool = [anthropicAccount, deepseekAccount];
+    // Both can back claude-code, and an absent list means the user has narrowed nothing.
+    expect(accountModelOptions(pool, {})['claude-code']).toHaveLength(
+      accountModelOptions(pool)['claude-code']?.length ?? 0,
+    );
+
+    const narrowed = accountModelOptions(pool, {
+      'claude-code': { enabled: true, enabledAccountIds: ['acc_deepseek'] },
+    })['claude-code'];
+    expect(new Set(narrowed?.map((option) => option.accountId))).toEqual(new Set(['acc_deepseek']));
+
+    // Disabling every account leaves it present-and-empty, which blocks sending rather than
+    // silently handing the choice back to the agent.
+    expect(
+      accountModelOptions(pool, { 'claude-code': { enabled: true, enabledAccountIds: [] } })[
+        'claude-code'
+      ],
+    ).toEqual([]);
+  });
+
   it('keeps same-id models from two accounts as separate, identifiable entries', () => {
     const shared = { ...anthropicAccount, id: 'acc_other', label: 'Work key' };
     const options = accountModelOptions([anthropicAccount, shared])['claude-code'] ?? [];
@@ -117,12 +138,18 @@ describe('accountModelOptions', () => {
     expect(new Set(options.map(modelChoiceKey)).size).toBe(2);
   });
 
-  it('stays unresolved until the account pool has loaded', () => {
+  it('stays unresolved until both the account pool and the enabled lists have loaded', () => {
     const { result, rerender } = renderHook(() => useAccountModelOptions());
 
     expect(result.current).toBeNull();
 
+    // Accounts alone are not enough: the enabled list narrows them, so offering the unnarrowed set
+    // would briefly show models the user disabled.
     accountsData = [];
+    rerender();
+    expect(result.current).toBeNull();
+
+    providersData = {};
     rerender();
     expect(result.current).toEqual({});
   });
