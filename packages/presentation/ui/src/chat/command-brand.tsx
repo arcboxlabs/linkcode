@@ -35,6 +35,19 @@ export function CommandBrandGlyph({
   return <BookTextIcon aria-hidden className={cn('shrink-0 opacity-80', className)} />;
 }
 
+/** Brand tint for a valid command chip, mirroring the Badge info scale: hue from the provider's
+ * brandColor, text pulled toward the theme foreground so dark brand colors stay legible on dark
+ * surfaces (and light ones on light). Inline style — the color only exists at runtime. */
+export function commandBrandChipStyle(
+  command: Pick<AgentCommand, 'brandColor'> | undefined,
+): React.CSSProperties | undefined {
+  if (!command?.brandColor) return undefined;
+  return {
+    backgroundColor: `color-mix(in srgb, ${command.brandColor} 12%, transparent)`,
+    color: `color-mix(in srgb, var(--foreground) 25%, ${command.brandColor})`,
+  };
+}
+
 export function CommandCatalogProvider({
   commands,
   children,

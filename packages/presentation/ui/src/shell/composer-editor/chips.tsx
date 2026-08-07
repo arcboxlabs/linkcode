@@ -8,7 +8,7 @@ import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { fileBasename } from '../../chat/artifacts/file-kind';
-import { CommandBrandGlyph } from '../../chat/command-brand';
+import { CommandBrandGlyph, commandBrandChipStyle } from '../../chat/command-brand';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
 import { Chip } from '../../chat/link-chip';
 import { cn } from '../../lib/cn';
@@ -36,6 +36,8 @@ interface DirectiveChipProps {
   children: React.ReactNode;
   nodeKey: NodeKey;
   reason?: string;
+  /** Runtime brand tint overriding the variant palette (a provider's command color). */
+  style?: React.CSSProperties;
   variant: keyof typeof SELECTED_RING_CLASS;
 }
 
@@ -45,6 +47,7 @@ function DirectiveChip({
   children,
   nodeKey,
   reason,
+  style,
   variant,
 }: DirectiveChipProps): React.ReactNode {
   const [editor] = useLexicalComposerContext();
@@ -83,6 +86,7 @@ function DirectiveChip({
       className={cn(selected && SELECTED_RING_CLASS[variant])}
       data-selected={selected || undefined}
       render={<button disabled={disabled} type="button" />}
+      style={style}
       variant={variant}
       onKeyDownCapture={keepEnterActivationLocal}
       onMouseDown={(event) => event.preventDefault()}
@@ -159,6 +163,7 @@ export function CommandChip({
     <DirectiveChip
       nodeKey={nodeKey}
       reason={reason}
+      style={reason ? undefined : commandBrandChipStyle(command)}
       variant={
         status === 'unknown' ? 'error' : status === 'unsupported' || placement ? 'warning' : 'info'
       }
