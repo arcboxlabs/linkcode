@@ -230,9 +230,12 @@ function ActivityRunIcon({
     : running
       ? 'text-foreground'
       : 'text-muted-foreground';
-  // A brand glyph never wears the destructive tint — a red Linear logo reads as the
-  // integration itself being broken; failures fall back to the category glyph.
-  if (brand && !failed) return <IntegrationIcon brand={brand} className={tint} />;
+  // A brand glyph persists through failure (the red failure clause carries the state) but
+  // never wears the destructive tint — a red Linear logo reads as the integration itself
+  // being broken.
+  if (brand) {
+    return <IntegrationIcon brand={brand} className={failed ? 'text-muted-foreground' : tint} />;
+  }
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
   return <Icon className={cn('size-3.5 shrink-0', tint)} />;
 }

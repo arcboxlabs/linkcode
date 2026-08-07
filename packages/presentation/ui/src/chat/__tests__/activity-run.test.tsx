@@ -610,8 +610,11 @@ describe('ActivityRun', () => {
       </ArtifactHostActionsProvider>,
     );
     const failedHeader = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
-    // The failure state falls back to the category glyph; the label still names the brand.
-    expect(failedHeader.querySelector('[data-brand]')).toBeNull();
+    // The brand glyph persists through failure, but never in the destructive tint — the red
+    // failure clause carries the state.
+    const failedGlyph = failedHeader.querySelector('[data-brand="linear"]');
+    expect(failedGlyph).not.toBeNull();
+    expect(failedGlyph?.classList.contains('text-destructive-foreground')).toBe(false);
     expect(failedHeader.textContent).toContain('An action failed');
     expect(failedHeader.textContent).toContain('Used Linear 2 times');
   });
