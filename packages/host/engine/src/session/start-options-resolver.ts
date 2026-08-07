@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { CustomMcpServerService } from '../agent/custom-mcp-service';
 import type { ProviderConfigStore } from '../agent/provider-config';
-import { applyProviderDefaults } from '../agent/provider-config';
+import { applyProviderDefaults, resolvedAccountId } from '../agent/provider-config';
 import type { TranslatorService } from '../agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from '../agent/translator';
 import { OperationError, RequestError } from '../failure';
@@ -34,7 +34,10 @@ export class SessionStartOptionsResolver {
   ): Effect.Effect<ResolvedStartOptions, RequestError | OperationError> {
     const providers = this.providers.get();
     const defaults = applyProviderDefaults(options, providers, this.providers.getAccounts());
-    const accountBound = providers[options.kind]?.activeAccountId !== undefined;
+    // Whether an account actually resolved — the caller's pin or, failing that, the agent's
+    // configured default. Asking that rather than "is a default set" also covers a pinned session
+    // on an agent with no default at all.
+    const accountResolved = resolvedAccountId(defaults.options) !== undefined;
     const { translator } = this;
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
@@ -45,13 +48,13 @@ export class SessionStartOptionsResolver {
         return yield* Effect.fail(
           new RequestError({
             code: 'unsupported',
-            message: `The bound account cannot back ${options.kind} (${defaults.unavailable})`,
+            message: `The account cannot back ${options.kind} (${defaults.unavailable})`,
           }),
         );
       }
-      if (accountBound && defaults.options.model === undefined) {
-        // With an account bound, its selected set is the only model source and nothing falls back to
-        // the agent's own choice. Unbound agents keep running on whatever they resolve themselves.
+      if (accountResolved && defaults.options.model === undefined) {
+        // With an account in play, its selected set is the only model source and nothing falls back
+        // to the agent's own choice. Agents with no account keep resolving their own.
         return yield* Effect.fail(
           new RequestError({
             code: 'unsupported',

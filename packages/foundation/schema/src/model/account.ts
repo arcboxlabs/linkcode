@@ -3,9 +3,10 @@ import { AgentKindSchema, TimestampSchema } from './primitives';
 
 /**
  * A model-provider credential in the global account pool (data plane). The daemon persists these
- * in ~/.linkcode/config.json (0600) and injects the agent's bound account (`activeAccountId`) into
- * the adapter at session start. One credential can back several agents — natively when its
- * endpoint speaks the agent's protocol, via conversion otherwise.
+ * in ~/.linkcode/config.json (0600) and injects one into the adapter at session start: whichever
+ * `StartOptions.config.accountId` names, or the agent's `activeAccountId` when nothing does. One
+ * credential can back several agents — natively when its endpoint speaks the agent's protocol, via
+ * conversion otherwise — and several accounts can serve one agent at the same time.
  */
 
 /** What an endpoint speaks on the wire; decides native-routing vs. conversion. */
