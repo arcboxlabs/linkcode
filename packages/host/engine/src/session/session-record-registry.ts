@@ -138,10 +138,16 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
-  beginRun(sessionId: SessionId, accountId?: string): void {
+  /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
+   * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. */
+  beginRun(sessionId: SessionId, accountId?: string, historyId?: AgentHistoryId): void {
     const record = this.records.get(sessionId);
     if (!record) return;
-    record.runs.push({ startedAt: Date.now(), ...(accountId !== undefined && { accountId }) });
+    record.runs.push({
+      startedAt: Date.now(),
+      ...(accountId !== undefined && { accountId }),
+      ...(historyId !== undefined && { historyId }),
+    });
     this.persist(record);
   }
 

@@ -1,5 +1,7 @@
+import type { AgentAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryId,
+  AgentInput,
   AgentKind,
   ContentBlock,
   MessageId,
@@ -23,7 +25,7 @@ import type { HistoryService } from './history-service';
 import { decodeLiveBranchCursor } from './live-session';
 import type { SessionOrchestrator } from './orchestrator';
 import type { SessionRecordRegistry } from './session-record-registry';
-import type { SessionStartOptionsResolver } from './start-options-resolver';
+import type { ResolvedStartOptions, SessionStartOptionsResolver } from './start-options-resolver';
 
 type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
 
@@ -236,12 +238,11 @@ export class SessionLifecycleService {
           );
         }
 
-        const { history, records, sessions, startOptions: resolver } = this;
+        const { history, sessions } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
-          const { options: startOptions, warnings } = yield* resolver.resolve(
-            { kind: source.kind, cwd: source.cwd },
-            sourceSessionId,
-          );
+          const resolved = yield* resolveForRecord(source);
           yield* sessions.stopForReplacement(sourceSessionId);
           const resolvedBranchCursor =
             liveCursor.type === 'live'
@@ -253,17 +254,16 @@ export class SessionLifecycleService {
                   liveCursor.contentFingerprint,
                 )
               : branchCursor;
-          records.beginRun(sourceSessionId, resolvedAccountId(startOptions));
-          yield* sessions.startLive(
+          yield* launchRun(
             replyTo,
             source,
+            resolved,
             (adapter) =>
               history.branch(
                 adapter,
                 { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
-                startOptions,
+                resolved.options,
               ),
-            warnings,
             {
               initialInput: { type: 'prompt', content },
               registerRecord: false,
@@ -299,13 +299,13 @@ export class SessionLifecycleService {
         // A never-prompted session has no provider transcript to resume from (the adapter only mints one
         // on the first prompt); waking it is a fresh start under the same LinkCode id.
         const historyId = this.records.historyId(sessionId);
-        const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
+        const { workspaces, worktrees } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
+        const resumeStrategy = this.resumeStrategy.bind(this);
         return Effect.gen(function* () {
           yield* worktrees.verifyResume(sessionId);
-          const { options: startOptions, warnings } = yield* resolver.resolve(
-            { kind: record.kind, cwd: record.cwd },
-            sessionId,
-          );
+          const resolved = yield* resolveForRecord(record);
           // Register before starting so a persistence failure cannot follow a successful
           // `session.started` reply with a contradictory request failure.
           const worktree = worktrees.get(sessionId);
@@ -315,19 +315,63 @@ export class SessionLifecycleService {
           } else if (record.cwd) {
             yield* workspaceTouch(workspaces, record.cwd);
           }
-          record.runs.push({ historyId, startedAt: Date.now(), ...accountOfRun(startOptions) });
-          yield* sessions.startLive(
-            replyTo,
-            record,
-            (adapter) =>
-              historyId === undefined
-                ? sessions.startAdapter(adapter, startOptions)
-                : history.resume(adapter, historyId, startOptions),
-            warnings,
-          );
+          yield* launchRun(replyTo, record, resolved, resumeStrategy(historyId, resolved.options), {
+            historyId,
+          });
         });
       }),
     );
+  }
+
+  /** Resolve the options an existing record relaunches under. `override` is how a caller pins a
+   * model or account other than the daemon's current defaults. */
+  private resolveForRecord(
+    record: SessionRecord,
+    override?: Pick<StartOptions, 'model' | 'config'>,
+  ): Effect.Effect<ResolvedStartOptions, EngineFailure> {
+    return this.startOptions.resolve(
+      { kind: record.kind, cwd: record.cwd, ...override },
+      record.sessionId,
+    );
+  }
+
+  /** Record the run this launch begins, then bind the record to a fresh adapter. Every relaunch of
+   * an existing record goes through here, so `runs` has exactly one writer. */
+  private launchRun(
+    replyTo: string | undefined,
+    record: SessionRecord,
+    resolved: ResolvedStartOptions,
+    startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+    options: {
+      historyId?: AgentHistoryId;
+      initialInput?: AgentInput;
+      registerRecord?: boolean;
+      rewindMessageId?: MessageId;
+    } = {},
+  ): Effect.Effect<void, EngineFailure> {
+    const { historyId, ...startOptions } = options;
+    return Effect.suspend(() => {
+      this.records.beginRun(record.sessionId, resolvedAccountId(resolved.options), historyId);
+      return this.sessions.startLive(
+        replyTo,
+        record,
+        startAdapter,
+        resolved.warnings,
+        startOptions,
+      );
+    });
+  }
+
+  /** Wake an adapter onto an existing transcript, or start it fresh when there is none to resume. */
+  private resumeStrategy(
+    historyId: AgentHistoryId | undefined,
+    options: StartOptions,
+  ): (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure> {
+    const { history, sessions } = this;
+    return (adapter) =>
+      historyId === undefined
+        ? sessions.startAdapter(adapter, options)
+        : history.resume(adapter, historyId, options);
   }
 
   private createAutomationSession(options: {
