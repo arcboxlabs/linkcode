@@ -12,8 +12,10 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 // stripping, Node >= 24) only when the extension is spelled out.
 import {
   applyBrandExpoConfig,
+  applyBrandReleaseConfig,
   deriveExpoBrandOverlay,
   parseExpoBrandOverlay,
+  parseExpoBrandReleaseConfig,
   serializeExpoBrandOverlay,
 } from './src/build/expo-brand.ts';
 
@@ -58,5 +60,13 @@ function loadGeneratedBrand(): ReturnType<typeof parseExpoBrandOverlay> | null {
 export default ({ config }: ConfigContext): ExpoConfig => {
   const base = config as ExpoConfig;
   const overlay = loadGeneratedBrand();
-  return overlay === null ? base : applyBrandExpoConfig(base, overlay);
+  const releasePath = join(__dirname, 'generated', 'mobile-release.json');
+  if (overlay === null) {
+    if (existsSync(releasePath)) throw new Error('mobile-release.json requires a rendered brand');
+    return base;
+  }
+  const branded = applyBrandExpoConfig(base, overlay);
+  if (!existsSync(releasePath)) return branded;
+  const release = parseExpoBrandReleaseConfig(JSON.parse(readFileSync(releasePath, 'utf8')));
+  return applyBrandReleaseConfig(branded, overlay, release);
 };

@@ -4,8 +4,10 @@ import baseAppJson from '../../../app.json';
 import type { ExpoBrandableConfig } from '../expo-brand';
 import {
   applyBrandExpoConfig,
+  applyBrandReleaseConfig,
   deriveExpoBrandOverlay,
   parseExpoBrandOverlay,
+  parseExpoBrandReleaseConfig,
   serializeExpoBrandOverlay,
 } from '../expo-brand';
 
@@ -176,5 +178,32 @@ describe('applyBrandExpoConfig', () => {
 
   it('is deterministic', () => {
     expect(applyBrandExpoConfig(BASE, ACME)).toStrictEqual(branded);
+  });
+});
+
+describe('brand release config', () => {
+  const release = parseExpoBrandReleaseConfig({
+    android: { track: 'internal' },
+    brandId: 'acme',
+    channel: 'stable',
+    easProjectId: '11111111-1111-4111-8111-111111111111',
+    ios: { appleTeamId: 'ABC1234567', ascAppId: '1234567890' },
+    mobileReleaseFormatVersion: 1,
+    updatesUrl: 'https://u.expo.dev/11111111-1111-4111-8111-111111111111',
+  });
+
+  it('injects only the brand-scoped EAS/update delivery binding', () => {
+    const branded = applyBrandReleaseConfig(applyBrandExpoConfig(BASE, ACME), ACME, release);
+    expect(branded.extra).toStrictEqual({ eas: { projectId: release.easProjectId } });
+    expect(branded.updates?.url).toBe(release.updatesUrl);
+    expect(branded.ios?.appleTeamId).toBe(release.ios.appleTeamId);
+  });
+
+  it('rejects cross-brand bindings, unknown fields, and non-internal delivery', () => {
+    expect(() => applyBrandReleaseConfig(BASE, ZENITH, release)).toThrow(/does not match/);
+    expect(() => parseExpoBrandReleaseConfig({ ...release, executable: 'payload' })).toThrow(/exactly/);
+    expect(() =>
+      parseExpoBrandReleaseConfig({ ...release, android: { track: 'production' } }),
+    ).toThrow(/must be internal/);
   });
 });
