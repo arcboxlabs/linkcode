@@ -221,9 +221,9 @@ export function cancelTurn(
 }
 
 export function setModel(
-  options: Options<{ sessionId: SessionId; model: string }>,
+  options: Options<{ sessionId: SessionId; model: string; accountId?: string }>,
 ): RequestResult<{ ok: true }> {
-  return resolveClient(options).setModel(options.sessionId, options.model);
+  return resolveClient(options).setModel(options.sessionId, options.model, options.accountId);
 }
 
 export function setEffort(

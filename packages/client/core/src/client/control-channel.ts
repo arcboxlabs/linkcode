@@ -266,9 +266,15 @@ export class ControlChannel {
     }));
   }
 
-  /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
-  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
-    return this.send(sessionId, { type: 'set-model', model });
+  /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session.
+   * `accountId` names the account the model came from: picking one the session isn't running on
+   * restarts it on that account and resumes the transcript. */
+  setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {
+    return this.send(sessionId, {
+      type: 'set-model',
+      model,
+      ...(accountId !== undefined && { accountId }),
+    });
   }
 
   /** Switch the session's reasoning-effort level, going forward. Same acceptance rule as setModel. */

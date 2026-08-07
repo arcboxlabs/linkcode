@@ -333,6 +333,7 @@ export const en = {
       effortDefault: 'Default',
       effortShort: 'Def.',
       model: 'Model',
+      modelSwitchRestarts: 'Switching account restarts this thread and resumes it',
       effort: 'Effort',
       resetToDefault: 'Reset to default',
       add: 'Add',

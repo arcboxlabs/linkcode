@@ -242,8 +242,8 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.cancel(sessionId));
   }
 
-  setModel(sessionId: SessionId, model: string): RequestResult<{ ok: true }> {
-    return toResult(this.raw.setModel(sessionId, model));
+  setModel(sessionId: SessionId, model: string, accountId?: string): RequestResult<{ ok: true }> {
+    return toResult(this.raw.setModel(sessionId, model, accountId));
   }
 
   setEffort(sessionId: SessionId, effort: EffortLevel): RequestResult<{ ok: true }> {

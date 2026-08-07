@@ -61,9 +61,6 @@ export interface ShellFrameProps
   /** The models each agent may run on, picked on its bound account. An agent absent here has no
    * account bound and keeps falling back to whatever its adapter or the curated table advertises. */
   accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
-  /** The active session's own account's models — the whole live menu, since a running session's
-   * account is fixed at spawn. */
-  sessionModels?: ModelOption[];
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   newSessionPreferredBranches: Readonly<Record<string, BranchSelection>>;
@@ -137,7 +134,6 @@ export function ShellFrame({
   agentCatalogs,
   newSessionDefaultModels,
   accountModels,
-  sessionModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -249,7 +245,7 @@ export function ShellFrame({
             composer={conversationComposer}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
-            accountModels={sessionModels}
+            accountModels={active ? accountModels?.[active.kind] : undefined}
             accountId={active?.accountId}
             attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}

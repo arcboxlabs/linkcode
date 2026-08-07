@@ -33,9 +33,8 @@ export interface ConversationSurfaceProps {
   composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
-  /** The models picked on *this session's* account — the only ones it may switch to, because its
-   * account is fixed at spawn. Absent means no account backs it, so the adapter catalog or the
-   * curated table supplies the choices instead. */
+  /** Every model this session's agent may run on, across all accounts it can bind. Absent means no
+   * account backs it, so the adapter catalog or the curated table supplies the choices instead. */
   accountModels?: ModelOption[];
   /** The session's account, so a reflected model id resolves against the right entry. */
   accountId?: string;
@@ -196,6 +195,9 @@ export function ConversationSurface({
           // on", so it outranks both the adapter catalog and the curated table.
           agentModels={accountModels ?? conversation.availableModels}
           currentAccountId={accountId}
+          // Live thread: leaving its account means relaunching the agent, which the menu says out
+          // loud rather than letting a process restart happen invisibly.
+          accountSwitchRestarts
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
           // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a

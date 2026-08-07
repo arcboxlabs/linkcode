@@ -792,8 +792,8 @@ export class LinkCodeClient {
     return this.control.setSubscriptionMode(mode);
   }
 
-  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
-    return this.control.setModel(sessionId, model);
+  setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {
+    return this.control.setModel(sessionId, model, accountId);
   }
 
   setEffort(sessionId: SessionId, effort: EffortLevel): Promise<RequestAck> {

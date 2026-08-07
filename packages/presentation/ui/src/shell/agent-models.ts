@@ -30,6 +30,20 @@ export function modelChoiceKey(option: ModelOption): string {
   return `${option.accountId ?? ''}:${option.id}`;
 }
 
+/** Whether picking this entry leaves the account a session is currently running on. Credentials and
+ * base URL are injected once at spawn, so such a pick relaunches the agent rather than rebinding it
+ * in place. Unknown accounts on either side mean the question doesn't apply. */
+export function switchesAccount(
+  option: ModelOption,
+  currentAccountId: string | undefined,
+): boolean {
+  return (
+    currentAccountId !== undefined &&
+    option.accountId !== undefined &&
+    option.accountId !== currentAccountId
+  );
+}
+
 /** Group a catalog by its provider subtitle (`description`, per the adapter convention above),
  * preserving catalog order within groups and first-appearance order across them. Returns null
  * below two distinct providers — a single-provider list reads better flat. */

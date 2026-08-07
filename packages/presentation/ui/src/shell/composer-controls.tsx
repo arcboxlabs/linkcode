@@ -30,7 +30,12 @@ import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import { groupModelsByProvider, modelChoiceKey, resolveModel } from './agent-models';
+import {
+  groupModelsByProvider,
+  modelChoiceKey,
+  resolveModel,
+  switchesAccount,
+} from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
 // Linear lookup: the policy/effort lists are a handful of entries at most.
@@ -211,6 +216,28 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   );
 }
 
+/** One model entry. `description` is the account label the flat list needs to disambiguate; a
+ * provider submenu already names it and passes none. */
+function ModelMenuItem({
+  option,
+  description,
+  restartHint,
+}: {
+  option: ModelOption;
+  description?: string;
+  restartHint?: string;
+}): React.ReactNode {
+  return (
+    <MenuRadioItem closeOnClick value={modelChoiceKey(option)}>
+      <span className="flex min-w-0 flex-col">
+        <span>{option.label}</span>
+        {description ? <span className="text-muted-foreground text-xs">{description}</span> : null}
+        {restartHint ? <span className="text-2xs text-label-tertiary">{restartHint}</span> : null}
+      </span>
+    </MenuRadioItem>
+  );
+}
+
 export function ModelSelectorMenu({
   disabled,
   harness,
@@ -220,6 +247,7 @@ export function ModelSelectorMenu({
   effortOptions,
   selectedModelId,
   selectedAccountId,
+  accountSwitchRestarts = false,
   selectedEffortId,
   onSelectModel,
   onSelectEffort,
@@ -238,6 +266,9 @@ export function ModelSelectorMenu({
   selectedModelId: string | null;
   /** Disambiguates the selection when the list spans accounts serving the same model id. */
   selectedAccountId?: string;
+  /** Live sessions only: credentials are injected at spawn, so leaving `selectedAccountId` relaunches
+   * the agent. Entries from another account say so; a draft has nothing to restart. */
+  accountSwitchRestarts?: boolean;
   selectedEffortId: EffortLevel | null;
   /** Carries the whole entry: a cross-account list needs the account alongside the id. */
   onSelectModel: (model: ModelOption) => void;
@@ -251,6 +282,10 @@ export function ModelSelectorMenu({
   const t = useTranslations('workbench.composer');
   const selectedModel = resolveModel(modelOptions, selectedModelId, selectedAccountId);
   const providerGroups = groupModelsByProvider(modelOptions);
+  const restartHintFor = (option: ModelOption): string | undefined =>
+    accountSwitchRestarts && switchesAccount(option, selectedAccountId)
+      ? t('modelSwitchRestarts')
+      : undefined;
   const selectedEffort =
     optionById(effortOptions, selectedEffortId) ??
     (selectedEffortId ? EFFORT_OPTIONS_BY_ID[selectedEffortId] : undefined);
@@ -342,31 +377,21 @@ export function ModelSelectorMenu({
               >
                 {providerGroups === null ? (
                   modelOptions?.map((option) => (
-                    <MenuRadioItem
+                    <ModelMenuItem
                       key={modelChoiceKey(option)}
-                      closeOnClick
-                      value={modelChoiceKey(option)}
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span>{option.label}</span>
-                        {option.description ? (
-                          <span className="text-muted-foreground text-xs">
-                            {option.description}
-                          </span>
-                        ) : null}
-                      </span>
-                    </MenuRadioItem>
+                      description={option.description}
+                      option={option}
+                      restartHint={restartHintFor(option)}
+                    />
                   ))
                 ) : (
                   <>
                     {providerGroups.ungrouped.map((option) => (
-                      <MenuRadioItem
+                      <ModelMenuItem
                         key={modelChoiceKey(option)}
-                        closeOnClick
-                        value={modelChoiceKey(option)}
-                      >
-                        {option.label}
-                      </MenuRadioItem>
+                        option={option}
+                        restartHint={restartHintFor(option)}
+                      />
                     ))}
                     {/* One submenu per provider; the trigger names the provider, so items drop
                      * the subtitle the flat list needs for disambiguation. */}
@@ -375,13 +400,11 @@ export function ModelSelectorMenu({
                         <MenuSubTrigger>{group.label}</MenuSubTrigger>
                         <MenuSubPopup className="w-56">
                           {group.options.map((option) => (
-                            <MenuRadioItem
+                            <ModelMenuItem
                               key={modelChoiceKey(option)}
-                              closeOnClick
-                              value={modelChoiceKey(option)}
-                            >
-                              {option.label}
-                            </MenuRadioItem>
+                              option={option}
+                              restartHint={restartHintFor(option)}
+                            />
                           ))}
                         </MenuSubPopup>
                       </MenuSub>

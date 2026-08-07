@@ -7,7 +7,6 @@ import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   accountModelOptions,
-  accountModelOptionsFor,
   configuredDefaultModels,
   useAccountModelOptions,
   useConfiguredDefaultModels,
@@ -116,16 +115,6 @@ describe('accountModelOptions', () => {
 
     expect(options).toHaveLength(2);
     expect(new Set(options.map(modelChoiceKey)).size).toBe(2);
-  });
-
-  it('scopes to one account for a live session, whose account cannot change', () => {
-    const accounts = [anthropicAccount, deepseekAccount];
-    expect(accountModelOptionsFor(accounts, 'acc_deepseek')?.map(({ id }) => id)).toEqual([
-      'deepseek-v4-pro',
-      'deepseek-v4-flash',
-    ]);
-    expect(accountModelOptionsFor(accounts, 'gone')).toBeUndefined();
-    expect(accountModelOptionsFor(accounts, undefined)).toBeUndefined();
   });
 
   it('stays unresolved until the account pool has loaded', () => {

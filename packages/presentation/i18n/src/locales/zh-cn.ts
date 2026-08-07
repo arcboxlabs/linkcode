@@ -323,6 +323,7 @@ export const zhCN = {
       effortDefault: '默认',
       effortShort: '默认',
       model: '模型',
+      modelSwitchRestarts: '切换账号将重启并恢复此对话',
       effort: '推理强度',
       resetToDefault: '恢复默认设置',
       add: '添加',

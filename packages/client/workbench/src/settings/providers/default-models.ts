@@ -28,9 +28,10 @@ export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>>
 }
 
 /**
- * Every model a new session of this agent could run on: the picked sets of *all* accounts the agent
- * can bind, not just the one bound now. Choosing a model therefore also chooses its account, which
- * is what lets one agent reach several providers without a trip through Settings.
+ * Every model this agent could run on: the picked sets of *all* accounts it can bind, not just the
+ * one bound now. Choosing a model therefore also chooses its account, which is what lets one agent
+ * reach several providers without a trip through Settings. Live sessions read the same list — a
+ * cross-account pick there restarts the thread on that account rather than rebinding in place.
  *
  * `description` carries the account label so `groupModelsByProvider` renders one submenu per
  * account, and `accountId` rides along so the pick names the account it came from — two accounts
@@ -56,17 +57,6 @@ export function accountModelOptions(
   return options;
 }
 
-/** One account's picked models. A live session's menu uses this: its account is fixed at spawn, so
- * offering another account's models would advertise a switch the adapter cannot make. */
-export function accountModelOptionsFor(
-  accounts: Accounts | undefined,
-  accountId: string | undefined,
-): ModelOption[] | undefined {
-  if (accountId === undefined) return undefined;
-  const account = accounts?.find((candidate) => candidate.id === accountId);
-  return account === undefined ? undefined : modelOptionsOf(account);
-}
-
 function modelOptionsOf(account: Account): ModelOption[] {
   return (account.models ?? []).map(({ id, label }) => ({
     id,
@@ -82,12 +72,6 @@ export function useAccountModelOptions(): Partial<Record<AgentKind, ModelOption[
   const { data: accounts } = useData(getAccounts, {});
   if (accounts === undefined) return null;
   return accountModelOptions(accounts);
-}
-
-/** The models a live session may switch between — its own account's, and only those. */
-export function useSessionModelOptions(accountId: string | undefined): ModelOption[] | undefined {
-  const { data: accounts } = useData(getAccounts, {});
-  return accountModelOptionsFor(accounts, accountId);
 }
 
 /**

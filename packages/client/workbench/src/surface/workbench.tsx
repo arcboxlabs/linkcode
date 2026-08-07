@@ -62,7 +62,6 @@ import {
   useAccountModelOptions,
   useConfiguredDefaultModels,
   usePersistPickedModel,
-  useSessionModelOptions,
 } from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
@@ -248,8 +247,6 @@ function WorkbenchSessionSurface({
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
   const accountModels = useAccountModelOptions();
-  // Scoped to the active session's own account: it was fixed at spawn and cannot change.
-  const sessionModels = useSessionModelOptions(active?.accountId);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -471,11 +468,17 @@ function WorkbenchSessionSurface({
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
     const provider = active?.kind;
-    return modelMutation.trigger({ sessionId: sessions.activeId, model: model.id }).then(() => {
-      // No account change: it is fixed at spawn, and this menu only ever offers the session's own
-      // account's models.
-      if (provider) void persistPickedModel(provider, model.id).catch(noop);
-    });
+    return modelMutation
+      .trigger({
+        sessionId: sessions.activeId,
+        model: model.id,
+        ...(model.accountId !== undefined && { accountId: model.accountId }),
+      })
+      .then(() => {
+        // Persisting the account too is what makes the switch outlive the running adapter: a later
+        // resume resolves from this config, not from the run it is reviving.
+        if (provider) void persistPickedModel(provider, model.id, model.accountId).catch(noop);
+      });
   }
 
   function handleEffortChange(effort: EffortLevel): Promise<void> {
@@ -675,7 +678,6 @@ function WorkbenchSessionSurface({
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
       accountModels={accountModels}
-      sessionModels={sessionModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       newSessionPreferredBranches={newSessionPreferredBranches}

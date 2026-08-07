@@ -179,6 +179,8 @@ export interface ComposerProps {
   onModelChange?: (model: ModelOption) => Promise<void>;
   /** The account the current model belongs to; disambiguates a list spanning several. */
   currentAccountId?: string;
+  /** Live sessions only: mark entries from another account, whose pick restarts the thread. */
+  accountSwitchRestarts?: boolean;
   /** Sends the reasoning-effort switch (`set-effort`); reflected from `effort-update`, same contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
   /** Clears a draft's explicit model override. Omitted for live sessions. */
@@ -233,6 +235,7 @@ export function Composer({
   onApprovalPolicyChange,
   onModelChange,
   currentAccountId,
+  accountSwitchRestarts = false,
   onEffortChange,
   onResetModel,
   onResetEffort,
@@ -1029,6 +1032,7 @@ export function Composer({
                     harness={agentKind}
                     runtimeCues={runtimeCues}
                     selectableHarnesses={selectableHarnesses}
+                    accountSwitchRestarts={accountSwitchRestarts}
                     selectedAccountId={currentAccountId}
                     selectedEffortId={currentEffort ?? null}
                     selectedModelId={currentModel ?? null}
