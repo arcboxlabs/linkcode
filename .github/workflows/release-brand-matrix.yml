@@ -331,3 +331,221 @@ jobs:
       brand_id: ${{ matrix.brandId }}
       rendered_artifact: brand-render-${{ matrix.brandId }}
       submit: false
+
+  publish-preflight:
+    name: Publish preflight ${{ matrix.brandId }}
+    if: ${{ inputs.upload && !cancelled() && needs.desktop.result == 'success' && needs.mobile.result == 'success' }}
+    needs: [prepare, desktop, mobile]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      R2_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      R2_ACCOUNT_ID: ${{ secrets[format('{0}_R2_ACCOUNT_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_R2_SECRET_ACCESS_KEY', matrix.distribution.desktop.credentialSecretPrefix)] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Validate every upload credential
+        run: |
+          set -euo pipefail
+          node .github/scripts/release-inputs.cjs --phase upload --platform desktop
+          node .github/scripts/release-inputs.cjs --phase upload --platform mobile
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: .
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: desktop-${{ matrix.brandId }}-*
+          merge-multiple: true
+          path: publish-preflight/${{ matrix.brandId }}/desktop
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: mobile-${{ matrix.brandId }}-*
+          merge-multiple: true
+          path: publish-preflight/${{ matrix.brandId }}/mobile
+      - name: Re-hash every signed artifact and immutable binding
+        run: |
+          set -euo pipefail
+          for runner_platform in mac win linux; do
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root "publish-preflight/${{ matrix.brandId }}/desktop" \
+              --verify "publish-preflight/${{ matrix.brandId }}/desktop/release-provenance.${runner_platform}.json" \
+              --bundle apps/desktop/generated/config-build-bundle.json \
+              --brand-identity apps/desktop/generated/brand-identity.json \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --expected-brand '${{ matrix.brandId }}' \
+              --expected-platform desktop \
+              --release-manifest release-inputs/release-manifest.desktop.json \
+              --signed
+          done
+          for platform in ios android; do
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root "publish-preflight/${{ matrix.brandId }}/mobile" \
+              --verify "publish-preflight/${{ matrix.brandId }}/mobile/release-provenance.${platform}.json" \
+              --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
+              --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --expected-brand '${{ matrix.brandId }}' \
+              --expected-platform "$platform" \
+              --release-manifest "release-inputs/release-manifest.${platform}.json" \
+              --signed
+          done
+
+  publish-mobile:
+    name: Publish mobile ${{ matrix.brandId }}
+    if: ${{ inputs.upload && !cancelled() && needs.desktop.result == 'success' && needs.mobile.result == 'success' && needs.publish-preflight.result == 'success' }}
+    needs: [prepare, desktop, mobile, publish-preflight]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/setup-eas
+      - run: pnpm install --frozen-lockfile
+      - name: Validate upload inputs
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: node .github/scripts/release-inputs.cjs --phase upload --platform mobile
+      - name: Fetch brand release inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: .
+      - name: Fetch signed mobile artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: mobile-${{ matrix.brandId }}-*
+          merge-multiple: true
+          path: artifacts/${{ matrix.brandId }}
+      - name: Require provenance and apply internal-store destinations
+        run: |
+          set -euo pipefail
+          for platform in ios android; do
+            test -s "artifacts/${{ matrix.brandId }}/release-provenance.${platform}.json"
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root "artifacts/${{ matrix.brandId }}" \
+              --verify "artifacts/${{ matrix.brandId }}/release-provenance.${platform}.json" \
+              --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
+              --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --expected-brand '${{ matrix.brandId }}' \
+              --expected-platform "$platform" \
+              --release-manifest "release-inputs/release-manifest.${platform}.json" \
+              --signed
+          done
+          release=release-inputs/mobile-release.json
+          asc_app_id="$(jq -er .ios.ascAppId "$release")"
+          apple_team_id="$(jq -er .ios.appleTeamId "$release")"
+          android_track="$(jq -er .android.track "$release")"
+          ios_bundle_id="$(jq -er .applicationId apps/mobile/generated/brand-identity.ios.json)"
+          tmp="$(mktemp)"
+          jq --arg asc "$asc_app_id" --arg team "$apple_team_id" --arg track "$android_track" --arg bundle "$ios_bundle_id" \
+            '.submit.production.ios.ascAppId = $asc
+             | .submit.production.ios.appleTeamId = $team
+             | .submit.production.ios.bundleIdentifier = $bundle
+             | del(.submit.production.ios.metadataPath)
+             | .submit.production.android.track = $track' \
+            apps/mobile/eas.json > "$tmp"
+          mv "$tmp" apps/mobile/eas.json
+      - name: Submit only to TestFlight and Play internal
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          eas submit --platform ios --profile production \
+            --path "$GITHUB_WORKSPACE/artifacts/${{ matrix.brandId }}/linkcode-ios.ipa" \
+            --non-interactive --wait
+          eas submit --platform android --profile production \
+            --path "$GITHUB_WORKSPACE/artifacts/${{ matrix.brandId }}/linkcode-android.aab" \
+            --non-interactive --wait
+
+  publish-desktop:
+    name: Publish desktop ${{ matrix.brandId }}
+    if: ${{ inputs.upload && !cancelled() && needs.desktop.result == 'success' && needs.mobile.result == 'success' && needs.publish-preflight.result == 'success' }}
+    needs: [prepare, desktop, mobile, publish-preflight]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_R2_SECRET_ACCESS_KEY', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      R2_ACCOUNT_ID: ${{ secrets[format('{0}_R2_ACCOUNT_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Validate upload inputs
+        env:
+          R2_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+        run: node .github/scripts/release-inputs.cjs --phase upload --platform desktop
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: .
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: desktop-${{ matrix.brandId }}-*
+          merge-multiple: true
+          path: artifacts/${{ matrix.brandId }}
+      - name: Require per-platform provenance
+        run: |
+          set -euo pipefail
+          for platform in mac win linux; do
+            test -s "artifacts/${{ matrix.brandId }}/release-provenance.${platform}.json"
+            pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+              --artifact-root "artifacts/${{ matrix.brandId }}" \
+              --verify "artifacts/${{ matrix.brandId }}/release-provenance.${platform}.json" \
+              --bundle apps/desktop/generated/config-build-bundle.json \
+              --brand-identity apps/desktop/generated/brand-identity.json \
+              --brand-manifest release-inputs/brands.manifest.yaml \
+              --client-git-sha '${{ inputs.ref }}' \
+              --expected-brand '${{ matrix.brandId }}' \
+              --expected-platform desktop \
+              --release-manifest release-inputs/release-manifest.desktop.json \
+              --signed
+          done
+      - name: Upload only this brand prefix
+        env:
+          AWS_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+        run: |
+          aws s3 sync "artifacts/${{ matrix.brandId }}/" \
+            "s3://${{ matrix.distribution.desktop.r2Bucket }}/${{ matrix.distribution.desktop.r2Prefix }}/" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --no-progress
