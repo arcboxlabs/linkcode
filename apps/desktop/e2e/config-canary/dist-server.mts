@@ -8,6 +8,7 @@ import type { PilotFixtureStep } from './fixture.mts';
 import {
   baseline,
   canary,
+  emergencyBytes,
   fixture,
   pointerBytes,
   rollback,
@@ -27,9 +28,16 @@ export type ServerMode =
   | 'tampered-pointer'
   | 'tampered-snapshot';
 
+export type EmergencyServerMode =
+  | 'equivocation'
+  | 'forced-minimum'
+  | 'kill-switch'
+  | 'offline'
+  | 'release';
+
 export interface DistRequest {
   readonly ifNoneMatch: string | null;
-  readonly mode: ServerMode;
+  readonly mode: EmergencyServerMode | ServerMode;
   readonly path: string;
   readonly status: 200 | 304 | 404 | 'disconnected';
 }
@@ -140,6 +148,55 @@ export function startDistServer(
       }
       requests.push({ ifNoneMatch, mode, path, status: 404 });
       response.writeHead(404).end();
+    },
+  );
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => resolve({ requests, server }));
+  });
+}
+
+export function startEmergencyServer(
+  tls: { cert: string; key: string },
+  port: number,
+  getMode: () => EmergencyServerMode,
+): Promise<DistServer> {
+  const requests: DistRequest[] = [];
+  const server = createServer(
+    { cert: readFileSync(tls.cert), key: readFileSync(tls.key) },
+    (request, response) => {
+      const mode = getMode();
+      const path = new URL(request.url ?? '/', `https://127.0.0.1:${port}`).pathname;
+      const header = request.headers['if-none-match'];
+      const ifNoneMatch = typeof header === 'string' ? header : null;
+      if (mode === 'offline') {
+        requests.push({ ifNoneMatch, mode, path, status: 'disconnected' });
+        request.socket.destroy();
+        return;
+      }
+      if (path !== '/v1/acme/desktop/emergency.json') {
+        requests.push({ ifNoneMatch, mode, path, status: 404 });
+        response.writeHead(404).end();
+        return;
+      }
+      const name =
+        mode === 'kill-switch' ? 'killSwitch' : mode === 'forced-minimum' ? 'forcedMinimum' : mode;
+      const bytes = emergencyBytes(name);
+      const etag = `"emergency-${mode}"`;
+      if (ifNoneMatch === etag) {
+        requests.push({ ifNoneMatch, mode, path, status: 304 });
+        response.writeHead(304, { etag }).end();
+        return;
+      }
+      requests.push({ ifNoneMatch, mode, path, status: 200 });
+      response
+        .writeHead(200, {
+          'cache-control': 'public, max-age=60, must-revalidate',
+          'content-length': bytes.byteLength,
+          'content-type': 'application/json',
+          etag,
+        })
+        .end(bytes);
     },
   );
   return new Promise((resolve, reject) => {

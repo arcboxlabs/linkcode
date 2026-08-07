@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { asyncRetry } from 'foxts/async-retry';
 
 const STORAGE_KEY = 'linkcode-config:v1:normal:acme:desktop:canary';
+const EMERGENCY_STORAGE_KEY = 'linkcode-config:v1:emergency:acme:desktop';
 
 export interface ConfigState {
   readonly highWater?: { readonly payloadSha256: string; readonly version: string };
@@ -17,19 +18,29 @@ export interface ConfigStateFile {
   readonly value: ConfigState;
 }
 
-function statePath(home: string): string {
+function statePath(home: string, storageKey: string): string {
   return join(
     home,
     '.config',
     'LinkCode Development',
     'config',
-    `${Buffer.from(STORAGE_KEY).toString('base64url')}.json`,
+    `${Buffer.from(storageKey).toString('base64url')}.json`,
   );
 }
 
 export async function readConfigState(home: string): Promise<ConfigStateFile | null> {
   try {
-    const raw = await readFile(statePath(home), 'utf8');
+    const raw = await readFile(statePath(home, STORAGE_KEY), 'utf8');
+    return { raw, value: JSON.parse(raw) as ConfigState };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export async function readEmergencyState(home: string): Promise<ConfigStateFile | null> {
+  try {
+    const raw = await readFile(statePath(home, EMERGENCY_STORAGE_KEY), 'utf8');
     return { raw, value: JSON.parse(raw) as ConfigState };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -58,5 +69,5 @@ export function waitForConfigState(
 }
 
 export function writeCorruptConfigState(home: string): Promise<void> {
-  return writeFile(statePath(home), '{"lkg":"corrupted', 'utf8');
+  return writeFile(statePath(home, STORAGE_KEY), '{"lkg":"corrupted', 'utf8');
 }
