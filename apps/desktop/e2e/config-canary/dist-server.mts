@@ -86,6 +86,7 @@ for (const step of fixture.steps) {
   assert(!existing || existing.equals(bytes), `conflicting fixture path ${step.snapshotPath}`);
   snapshotArtifacts.set(step.snapshotPath, bytes);
 }
+const emergencyPath = `/v1/${fixture.target.brandId}/desktop/emergency.json`;
 
 function pointerResponse(mode: ServerMode, path: string): PointerArtifact | null {
   if (mode === 'offline') return null;
@@ -174,7 +175,7 @@ export function startEmergencyServer(
         request.socket.destroy();
         return;
       }
-      if (path !== '/v1/acme/desktop/emergency.json') {
+      if (path !== emergencyPath) {
         requests.push({ ifNoneMatch, mode, path, status: 404 });
         response.writeHead(404).end();
         return;

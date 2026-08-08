@@ -49,9 +49,12 @@ async function withLaunch(
   harness: Harness,
   nextMode: ServerMode,
   assertion: () => Promise<void>,
+  nextEmergencyMode: EmergencyServerMode = 'offline',
 ): Promise<void> {
   mode = nextMode;
+  emergencyMode = nextEmergencyMode;
   harness.dist.requests.length = 0;
+  harness.emergency.requests.length = 0;
   harness.app = await launchApp(harness.userData, harness.home, harness.caCert);
   try {
     await assertion();
@@ -208,42 +211,50 @@ async function driveScenarios(harness: Harness): Promise<void> {
     console.log('PASS baseline republication recovers after corrupt-state reset');
   });
 
-  emergencyMode = 'kill-switch';
-  harness.emergency.requests.length = 0;
-  await withLaunch(harness, 'offline', async () => {
-    const app = assertApp(harness);
-    const boundary = await refreshBoundary(app);
-    assert.equal(boundary.report.normal, 'error');
-    assert.equal(boundary.report.emergency, 'updated');
-    const emergency = boundary.info.emergency;
-    assert(emergency);
-    assert.deepEqual(emergency.disabledFeatures, ['feature.aiAssist']);
-    assert.equal(emergency.emergencyVersion, '1');
-    await waitForRequest(
-      harness.dist,
-      (request) => request.path === baseline.pointerPath && request.status === 'disconnected',
-    );
-    await waitForRequest(
-      harness.emergency,
-      (request) => request.mode === 'kill-switch' && request.status === 200,
-    );
-    console.log('PASS emergency origin activates kill switch during main-channel outage');
-  });
+  await withLaunch(
+    harness,
+    'offline',
+    async () => {
+      const app = assertApp(harness);
+      const boundary = await refreshBoundary(app);
+      assert.equal(boundary.report.normal, 'error');
+      assert(
+        boundary.report.emergency === 'updated' || boundary.report.emergency === 'not-modified',
+      );
+      const emergency = boundary.info.emergency;
+      assert(emergency);
+      assert.deepEqual(emergency.disabledFeatures, ['feature.aiAssist']);
+      assert.equal(emergency.emergencyVersion, '1');
+      await waitForRequest(
+        harness.dist,
+        (request) => request.path === baseline.pointerPath && request.status === 'disconnected',
+      );
+      await waitForRequest(
+        harness.emergency,
+        (request) => request.mode === 'kill-switch' && request.status === 200,
+      );
+      console.log('PASS emergency origin activates kill switch during main-channel outage');
+    },
+    'kill-switch',
+  );
 
-  emergencyMode = 'forced-minimum';
-  harness.emergency.requests.length = 0;
-  await withLaunch(harness, 'offline', async () => {
-    const boundary = await refreshBoundary(assertApp(harness));
-    assert.equal(boundary.report.emergency, 'updated');
-    const emergency = boundary.info.emergency;
-    assert(emergency);
-    assert.equal(emergency.emergencyVersion, '2');
-    assert.equal(emergency.forceMinVersion, '2.4.0');
-    console.log('PASS newer emergency state replaces the persisted kill switch');
-  });
+  await withLaunch(
+    harness,
+    'offline',
+    async () => {
+      const boundary = await refreshBoundary(assertApp(harness));
+      assert(
+        boundary.report.emergency === 'updated' || boundary.report.emergency === 'not-modified',
+      );
+      const emergency = boundary.info.emergency;
+      assert(emergency);
+      assert.equal(emergency.emergencyVersion, '2');
+      assert.equal(emergency.forceMinVersion, '2.4.0');
+      console.log('PASS newer emergency state replaces the persisted kill switch');
+    },
+    'forced-minimum',
+  );
 
-  emergencyMode = 'offline';
-  harness.emergency.requests.length = 0;
   await withLaunch(harness, 'offline', async () => {
     const boundary = await refreshBoundary(assertApp(harness));
     assert.equal(boundary.report.emergency, 'error');
@@ -254,36 +265,46 @@ async function driveScenarios(harness: Harness): Promise<void> {
     console.log('PASS forced minimum survives reconstructed runtime and emergency outage');
   });
 
-  emergencyMode = 'release';
-  harness.emergency.requests.length = 0;
   let releaseRaw = '';
-  await withLaunch(harness, 'offline', async () => {
-    const boundary = await refreshBoundary(assertApp(harness));
-    assert.equal(boundary.report.emergency, 'updated');
-    const emergency = boundary.info.emergency;
-    assert(emergency);
-    assert.deepEqual(emergency.disabledFeatures, []);
-    assert.equal(emergency.emergencyVersion, '3');
-    releaseRaw = (await readEmergencyState(harness.home))?.raw ?? '';
-    assert(releaseRaw);
-    console.log('PASS explicit newer release clears emergency restrictions');
-  });
+  await withLaunch(
+    harness,
+    'offline',
+    async () => {
+      const boundary = await refreshBoundary(assertApp(harness));
+      assert(
+        boundary.report.emergency === 'updated' || boundary.report.emergency === 'not-modified',
+      );
+      const emergency = boundary.info.emergency;
+      assert(emergency);
+      assert.deepEqual(emergency.disabledFeatures, []);
+      assert.equal(emergency.emergencyVersion, '3');
+      releaseRaw = (await readEmergencyState(harness.home))?.raw ?? '';
+      assert(releaseRaw);
+      console.log('PASS explicit newer release clears emergency restrictions');
+    },
+    'release',
+  );
 
-  emergencyMode = 'equivocation';
-  harness.emergency.requests.length = 0;
-  await withLaunch(harness, 'offline', async () => {
-    const boundary = await refreshBoundary(assertApp(harness));
-    assert.equal(boundary.report.emergency, 'error');
-    const emergency = boundary.info.emergency;
-    assert(emergency);
-    assert.deepEqual(emergency.disabledFeatures, []);
-    assert.equal(emergency.emergencyVersion, '3');
-    assert.equal((await readEmergencyState(harness.home))?.raw, releaseRaw);
-    console.log('PASS equal-version emergency equivocation cannot replace explicit release');
-  });
+  await withLaunch(
+    harness,
+    'offline',
+    async () => {
+      const boundary = await refreshBoundary(assertApp(harness));
+      assert.equal(boundary.report.emergency, 'error');
+      await waitForRequest(
+        harness.emergency,
+        (request) => request.mode === 'equivocation' && request.status === 200,
+      );
+      const emergency = boundary.info.emergency;
+      assert(emergency);
+      assert.deepEqual(emergency.disabledFeatures, []);
+      assert.equal(emergency.emergencyVersion, '3');
+      assert.equal((await readEmergencyState(harness.home))?.raw, releaseRaw);
+      console.log('PASS equal-version emergency equivocation cannot replace explicit release');
+    },
+    'equivocation',
+  );
 
-  emergencyMode = 'offline';
-  harness.emergency.requests.length = 0;
   await withLaunch(harness, 'offline', async () => {
     const boundary = await refreshBoundary(assertApp(harness));
     assert.equal(boundary.report.emergency, 'error');

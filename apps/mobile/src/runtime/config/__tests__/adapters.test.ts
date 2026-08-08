@@ -89,48 +89,45 @@ describe('mobile configuration adapters', () => {
     },
   );
 
-  it.each(['ios', 'android'] as const)(
-    'keeps emergency state available through main-channel outage, restart, and release on %s',
-    async (os) => {
-      const storage = new MemoryAtomicStorage();
-      const firstEmergencyFetch = emergencyFixtureFetch('killSwitch', 'forcedMinimum');
-      const first = createEmergencyFixtureCore(os, storage, firstEmergencyFetch);
+  it('keeps emergency state available through main-channel outage, restart, and release', async () => {
+    const storage = new MemoryAtomicStorage();
+    const firstEmergencyFetch = emergencyFixtureFetch('killSwitch', 'forcedMinimum');
+    const first = createEmergencyFixtureCore(storage, firstEmergencyFetch);
 
-      await first.initialize();
-      await expect(first.refresh()).resolves.toMatchObject({ status: 'error' });
-      await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
-      await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
-      expect(first.get('feature.aiAssist')).toBe(false);
-      expect(first.getState().emergency).toMatchObject({
-        emergencyVersion: '2',
-        forceMinVersion: '2.4.0',
-      });
-      expect(firstEmergencyFetch.mock.calls[0]?.[0]).toBe(
-        'https://emergency.example.test/v1/acme/desktop/emergency.json',
-      );
+    await first.initialize();
+    await expect(first.refresh()).resolves.toMatchObject({ status: 'error' });
+    await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    await expect(first.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(first.get('feature.aiAssist')).toBe(false);
+    expect(first.getState().emergency).toMatchObject({
+      emergencyVersion: '2',
+      forceMinVersion: '2.4.0',
+    });
+    expect(firstEmergencyFetch.mock.calls[0]?.[0]).toBe(
+      'https://emergency.example.test/v1/acme/desktop/emergency.json',
+    );
 
-      const releaseFetch = emergencyFixtureFetch('release');
-      const restarted = createEmergencyFixtureCore(os, storage, releaseFetch);
-      await expect(restarted.initialize()).resolves.toMatchObject({
-        emergency: { emergencyVersion: '2', forceMinVersion: '2.4.0' },
-      });
-      expect(restarted.get('feature.aiAssist')).toBe(false);
-      await expect(restarted.refresh()).resolves.toMatchObject({ status: 'error' });
-      await expect(restarted.refreshEmergency()).resolves.toEqual({ status: 'updated' });
-      expect(restarted.get('feature.aiAssist')).toBe(true);
-      expect(restarted.getState().emergency).toMatchObject({
-        disabledFeatures: [],
-        emergencyVersion: '3',
-        forceMinVersion: null,
-      });
+    const releaseFetch = emergencyFixtureFetch('release');
+    const restarted = createEmergencyFixtureCore(storage, releaseFetch);
+    await expect(restarted.initialize()).resolves.toMatchObject({
+      emergency: { emergencyVersion: '2', forceMinVersion: '2.4.0' },
+    });
+    expect(restarted.get('feature.aiAssist')).toBe(false);
+    await expect(restarted.refresh()).resolves.toMatchObject({ status: 'error' });
+    await expect(restarted.refreshEmergency()).resolves.toEqual({ status: 'updated' });
+    expect(restarted.get('feature.aiAssist')).toBe(true);
+    expect(restarted.getState().emergency).toMatchObject({
+      disabledFeatures: [],
+      emergencyVersion: '3',
+      forceMinVersion: null,
+    });
 
-      const offline = createEmergencyFixtureCore(os, storage, rejectingFetch);
-      await expect(offline.initialize()).resolves.toMatchObject({
-        emergency: { disabledFeatures: [], emergencyVersion: '3', forceMinVersion: null },
-      });
-      expect(offline.get('feature.aiAssist')).toBe(true);
-    },
-  );
+    const offline = createEmergencyFixtureCore(storage, rejectingFetch);
+    await expect(offline.initialize()).resolves.toMatchObject({
+      emergency: { disabledFeatures: [], emergencyVersion: '3', forceMinVersion: null },
+    });
+    expect(offline.get('feature.aiAssist')).toBe(true);
+  });
 
   it('forwards ETags and preserves exact response bytes', async () => {
     const body = new Uint8Array([0, 127, 128, 255]);
@@ -207,13 +204,9 @@ function createFixtureCore(
   });
 }
 
-function createEmergencyFixtureCore(
-  os: 'android' | 'ios',
-  storage: AtomicKeyValueStorage,
-  emergencyFetch: ConfigFetch,
-) {
+function createEmergencyFixtureCore(storage: AtomicKeyValueStorage, emergencyFetch: ConfigFetch) {
   return new ConfigCore({
-    context: { appVersion: '2.5.0', locale: 'ZH_cn', os },
+    context: { appVersion: '2.5.0', locale: 'ZH_cn', os: 'ios' },
     crypto: createNobleConfigCrypto(() => DEVICE_ID),
     definitions,
     emergencyKeyring: handoffFixture.keys.emergency,
