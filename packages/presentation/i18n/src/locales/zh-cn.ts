@@ -184,10 +184,12 @@ export const zhCN = {
         think: '正在思考',
         fetch: '正在抓取',
         other: '正在调用集成',
+        integrationBrand: '正在调用 {brand}',
       },
       settled: {
         files: '{count, plural, =1 {进行了一项文件改动} other {进行了 # 项文件改动}}',
         integration: '{count, plural, =1 {调用了一次集成} other {调用了 # 次集成}}',
+        integrationBrand: '{count, plural, =1 {调用了一次 {brand}} other {调用了 # 次 {brand}}}',
         command: '{count, plural, =1 {执行了一条命令} other {执行了 # 条命令}}',
         explore: '{count, plural, =1 {探索了一次} other {探索了 # 次}}',
         thinking: '思考',
@@ -195,6 +197,7 @@ export const zhCN = {
       settledMany: {
         files: '进行了多项文件改动',
         integration: '调用了多个集成',
+        integrationBrand: '多次调用 {brand}',
         command: '执行了多条命令',
         explore: '进行了多次探索',
       },

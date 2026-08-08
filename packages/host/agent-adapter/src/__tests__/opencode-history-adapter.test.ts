@@ -54,6 +54,18 @@ class HistoryTestAdapter extends OpenCodeAdapter {
   }
 }
 
+function toolPart(id: string, tool: string) {
+  return {
+    id,
+    sessionID: 'ses-1',
+    messageID: 'msg-a1',
+    type: 'tool',
+    callID: `call-${id}`,
+    tool,
+    state: { status: 'completed', input: {}, output: 'ok', time: { start: 0, end: 1 } },
+  };
+}
+
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
     id: 'ses-1',
@@ -199,6 +211,7 @@ describe('OpenCodeAdapter.readHistory', () => {
         ),
         messages: vi.fn(() => Promise.resolve({ data: [user, assistant, reverted] })),
       },
+      config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     });
 
     const adapter = new HistoryTestAdapter();
@@ -220,6 +233,35 @@ describe('OpenCodeAdapter.readHistory', () => {
     });
     expect(page2.cursor).toBeUndefined();
   });
+
+  it('retitles MCP tools from the engine hint and config-declared servers alike', async () => {
+    const assistant = {
+      info: { id: 'msg-a1', sessionID: 'ses-1', role: 'assistant', time: { created: 20 } },
+      parts: [
+        // Engine-injected server (simulator endpoint) — absent from the session's config.
+        toolPart('prt-t1', 'linkcode-sim_sim_tap'),
+        // Config-declared server — resolved without any hint.
+        toolPart('prt-t2', 'notion_search_pages'),
+        toolPart('prt-t3', 'bash'),
+      ],
+    };
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: makeSession() })),
+        messages: vi.fn(() => Promise.resolve({ data: [assistant] })),
+      },
+      config: { get: vi.fn(() => Promise.resolve({ data: { mcp: { notion: {} } } })) },
+    });
+
+    const result = await new HistoryTestAdapter().readHistory({
+      historyId: 'ses-1' as AgentHistoryId,
+      mcpServerNames: ['linkcode-sim'],
+    });
+    const titles = result.events.map((e) =>
+      e.event.type === 'tool-call' ? e.event.toolCall.title : e.event.type,
+    );
+    expect(titles).toEqual(['mcp__linkcode-sim__sim_tap', 'mcp__notion__search_pages', 'bash']);
+  });
 });
 
 function makeLiveClient(resumedSession: Session | null) {
@@ -234,6 +276,7 @@ function makeLiveClient(resumedSession: Session | null) {
       promptAsync: vi.fn(() => Promise.resolve({ data: null })),
     },
     command: { list: vi.fn(() => Promise.resolve({ data: [] })) },
+    config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     event: { subscribe: vi.fn(() => Promise.resolve({ stream })) },
   };
 }

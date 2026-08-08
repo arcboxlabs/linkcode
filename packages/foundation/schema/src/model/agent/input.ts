@@ -94,6 +94,17 @@ export const AgentCommandSchema = z.object({
   /** Alternate names that invoke the same command (claude-code, e.g. `/cost` → `/usage`), no
    * leading slash. Input matching accepts them; menus display only the canonical `name`. */
   aliases: z.array(z.string().min(1)).optional(),
+  /** Provider-supplied human name (codex plugin skills: "Documents"), shown beside `name`. */
+  displayName: z.string().min(1).optional(),
+  /** Small brand icon embedded as a data URI — size-capped at adapter ingest (per icon and in
+   * aggregate per catalog), so consumers can render it directly (no asset endpoint exists for
+   * command icons). */
+  iconDataUri: z.string().startsWith('data:image/').optional(),
+  /** Brand accent for icon fallbacks (menu initial chips). */
+  brandColor: z
+    .string()
+    .regex(/^#[0-9A-F]{6}$/i)
+    .optional(),
 });
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 

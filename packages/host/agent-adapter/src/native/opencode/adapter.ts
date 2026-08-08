@@ -7,7 +7,6 @@ import type {
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentModelOption,
@@ -32,7 +31,7 @@ import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
-import type { AgentStartCatalogOptions } from '../../adapter';
+import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -47,6 +46,7 @@ import {
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
+  opencodeMcpTitle,
   opencodeSessionToHistorySession,
   toolCallFromPart,
 } from './history';
@@ -259,6 +259,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Tool part id by provider `callID`: asks cite tools via `tool.callID` but the card was
    * announced under the PART id — this map re-joins them. Cleared at each turn settle. */
   private readonly toolPartIdByCallId = new Map<string, string>();
+  /** MCP server names this session can call (injected StartOptions servers plus the instance's
+   * own configured ones) — the only key that splits opencode's flat `server_tool` MCP tool
+   * names back into the shared `mcp__<server>__<tool>` slug (history.ts). */
+  private mcpServerNames: readonly string[] = [];
   /** Message ids reported with `role: 'user'` — their parts must be skipped: the server streams
    * `message.part.updated` for the user's own prompt text too (observed live on 1.17.11), and
    * replaying it would double-render the prompt as an agent bubble. Cleared at each turn settle. */
@@ -376,6 +380,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.fetchModelCatalog(),
       this.fetchCommandCatalog(),
       this.fetchAgentCatalog(opts.approvalPolicyId ?? resumedAgent),
+      this.collectMcpServerNames(opts.mcpServers),
     ]);
     if (opts.approvalPolicyId && this.currentAgent && this.currentAgent !== opts.approvalPolicyId) {
       this.emitError(
@@ -687,7 +692,21 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     };
   }
 
-  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  /** Resolve the session's MCP server names: injected StartOptions servers plus the merged
+   * config's `mcp` keys — a pure config read. Deliberately NOT `mcp.status`, whose lazy init
+   * connects every configured server (spawning stdio children, dialing dead remotes for up to
+   * the 30s-per-transport timeout). Best-effort: a failed read keeps the injected set. */
+  private async collectMcpServerNames(injected: StartOptions['mcpServers']): Promise<void> {
+    const names = new Set((injected ?? []).map((server) => server.name));
+    this.mcpServerNames = [...names];
+    if (!this.client) return;
+    const config = await this.client.config.get({ directory: this.directory });
+    if (!config.data?.mcp) return;
+    for (const name of Object.keys(config.data.mcp)) names.add(name);
+    this.mcpServerNames = [...names];
+  }
+
+  override async readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const { session, events } = await this.withHistoryClient(async (client) => {
@@ -702,11 +721,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         throw new Error(`opencode: history '${opts.historyId}' was not found`);
       }
       okOrThrow(messages, 'opencode: session.messages');
+      // Best-effort MCP server names so replayed MCP tool titles converge with live ones — a
+      // pure config read, never `mcp.status` (its lazy init would spawn/dial every configured
+      // server from the shared history instance). Config-declared servers resolve, including
+      // disabled ones; engine-injected servers exist only on a session's own live instance, so
+      // the caller's `mcpServerNames` hint is the only way their calls resolve here.
+      const names = new Set(opts.mcpServerNames);
+      const config = await client.config.get({ directory: got.data.directory });
+      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
       return {
         session: opencodeSessionToHistorySession(got.data),
         events: mapOpencodeHistoryEvents(
           opts.historyId,
           filterRevertedMessages(messages.data ?? [], got.data.revert),
+          [...names],
         ),
       };
     });
@@ -1045,11 +1073,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         ? { type: 'command' as const, command, cwd: this.directory, toolCallId: linkedToolCallId }
         : undefined;
     const toolCallId = linkedToolCallId ?? (commandSubject ? undefined : nextToolCallId());
+    // Asks cite MCP tools by their flat provider name — retitle like the tool cards so the ask
+    // and the call it gates wear the same identity.
+    const permissionTitle =
+      opencodeMcpTitle(props.permission, this.mcpServerNames) ?? props.permission;
     if (!linkedToolCallId && toolCallId) {
       this.emitTool({
         toolCallId,
-        title: props.permission,
-        kind: toolKindFromName(props.permission),
+        title: permissionTitle,
+        kind: toolKindFromName(permissionTitle),
         status: 'in_progress',
         rawInput,
         locations: locationsFromToolInput(rawInput),
@@ -1057,7 +1089,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     const outcome = await this.requestPermission(
       {
-        title: props.permission,
+        title: permissionTitle,
         subject: commandSubject ?? {
           type: 'tool-call',
           toolCallId: toolCallId ?? nextToolCallId(),
@@ -1181,7 +1213,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         this.toolPartIdByCallId.set(part.callID, part.id);
         // History emits one full snapshot. Live terminal output appends separately, so repeated
         // cumulative part updates do not retransmit an ever-growing content array.
-        const toolCall = toolCallFromPart(part);
+        const toolCall = toolCallFromPart(part, this.mcpServerNames);
         if (toolCall.status === 'completed' || toolCall.status === 'failed') {
           for (const content of toolCall.content) this.appendToolContent(part.id, content);
           this.emitTool({ ...toolCall, content: undefined });

@@ -104,6 +104,7 @@ catalog:
   "@svgr/plugin-jsx": ^8.1.0
   "@proj-airi/lobe-icons": ^1.0.19
   "@iconify-json/material-icon-theme": ^1.2.69
+  "@iconify-json/simple-icons": ^1.2.92
 
 minimumReleaseAgeExclude:
   # React canary snapshots publish daily; the renderers pin one exact snapshot (CODE-457).

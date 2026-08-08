@@ -46,4 +46,28 @@ describe('buildComposerCommandGroups slash catalog', () => {
   it('has no slash results when the catalog is empty', () => {
     expect(slashGroups([])).toEqual([]);
   });
+
+  it('shows the display name beside the description and matches queries against it', () => {
+    const branded: AgentCommand[] = [
+      {
+        name: 'documents',
+        description: 'Create and edit files',
+        displayName: 'Documents',
+        brandColor: '#2563EB',
+      },
+      { name: 'sync-linear', displayName: 'Linear' },
+    ];
+
+    const [group] = slashGroups(branded);
+    const commandEntries = group.items.filter((item) => item.kind === 'command');
+    expect(commandEntries[0].hint).toBe('Documents · Create and edit files');
+    expect(commandEntries[1].hint).toBe('Linear');
+
+    const [filtered] = slashGroups(branded, 'linear');
+    const values = filtered.items.reduce<string[]>((names, item) => {
+      if (item.kind === 'command') names.push(item.value);
+      return names;
+    }, []);
+    expect(values).toEqual(['sync-linear']);
+  });
 });

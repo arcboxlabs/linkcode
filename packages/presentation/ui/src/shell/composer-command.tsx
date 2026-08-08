@@ -18,6 +18,7 @@ import {
   SlidersHorizontalIcon,
   TargetIcon,
 } from 'lucide-react';
+import { CommandBrandGlyph } from '../chat/command-brand';
 import type { FileIconComponent } from '../lib/file-icon';
 import { fileIconFor } from '../lib/file-icon';
 
@@ -186,16 +187,24 @@ export function buildComposerCommandGroups({
   const commandItems: ComposerCommandEntry[] = [];
   if (commandSource === 'slash') {
     for (const command of agentCommands) {
-      // Aliases match too (typing /cost surfaces /usage); selection inserts the canonical name.
+      // Aliases and display names match too (typing /cost surfaces /usage); selection inserts
+      // the canonical name.
       if (
         !matchesQuery(command.name, command.name, command.description, commandQuery) &&
+        !command.displayName?.toLowerCase().includes(commandQuery) &&
         !command.aliases?.some((alias) => alias.toLowerCase().includes(commandQuery))
       ) {
         continue;
       }
+      const hint =
+        command.displayName === undefined
+          ? (command.description ?? command.argumentHint)
+          : [command.displayName, command.description ?? command.argumentHint]
+              .filter((part) => part !== undefined)
+              .join(' · ');
       commandItems.push({
         command,
-        hint: command.description ?? command.argumentHint,
+        hint,
         icon: BookTextIcon,
         id: `command:${command.name}`,
         kind: 'command',
@@ -233,6 +242,9 @@ export function buildComposerCommandGroups({
 }
 
 function CommandIcon({ entry }: { entry: ComposerCommandEntry }): React.ReactNode {
+  if (entry.kind === 'command') {
+    return <CommandBrandGlyph className="size-4" command={entry.command} />;
+  }
   const Icon = entry.icon;
   if (!Icon) return null;
   return (
