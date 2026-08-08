@@ -15,6 +15,7 @@ export * from './brand-assets';
 export * from './config-brand-render';
 export * from './config-build-render';
 export { executableSearchLocations } from './executable-locations';
+export * from './release-artifact';
 export * from './windows-path';
 
 /** Parse a JSON file, or `null` when it is missing, unreadable, or malformed. */

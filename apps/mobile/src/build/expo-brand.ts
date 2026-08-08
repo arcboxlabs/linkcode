@@ -16,6 +16,16 @@ export interface ExpoBrandOverlay {
   readonly urlScheme: string;
 }
 
+export interface ExpoBrandReleaseConfig {
+  readonly android: { readonly track: 'internal' };
+  readonly brandId: string;
+  readonly channel: string;
+  readonly easProjectId: string;
+  readonly ios: { readonly appleTeamId: string; readonly ascAppId: string };
+  readonly mobileReleaseFormatVersion: 1;
+  readonly updatesUrl: string;
+}
+
 /** Staged brand icon, relative to apps/mobile (where app.config.ts resolves asset paths). */
 export const MOBILE_BRAND_ICON_PATH = './generated/brand-assets/icon.png';
 
@@ -103,6 +113,77 @@ export function parseExpoBrandOverlay(value: unknown): ExpoBrandOverlay {
     }
   }
   return record as unknown as ExpoBrandOverlay;
+}
+
+const RELEASE_KEYS = [
+  'android',
+  'brandId',
+  'channel',
+  'easProjectId',
+  'ios',
+  'mobileReleaseFormatVersion',
+  'updatesUrl',
+] as const;
+const RE_EAS_PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RE_APPLE_TEAM_ID = /^[A-Z0-9]{10}$/;
+const RE_ASC_APP_ID = /^\d+$/;
+
+export function parseExpoBrandReleaseConfig(value: unknown): ExpoBrandReleaseConfig {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail('Expo brand release config must be a JSON object');
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.length !== RELEASE_KEYS.length || keys.some((key, index) => key !== RELEASE_KEYS[index])) {
+    fail(`Expo brand release config must contain exactly: ${RELEASE_KEYS.join(', ')}`);
+  }
+  if (record.mobileReleaseFormatVersion !== 1) fail('Expo brand release config version must be 1');
+  for (const field of ['brandId', 'channel', 'easProjectId', 'updatesUrl']) {
+    if (typeof record[field] !== 'string' || record[field] === '') fail(`Expo brand release ${field} is required`);
+  }
+  if (!RE_EAS_PROJECT_ID.test(record.easProjectId as string)) fail('Expo brand release easProjectId is invalid');
+  if (record.updatesUrl !== `https://u.expo.dev/${record.easProjectId as string}`) {
+    fail('Expo brand release updatesUrl must match easProjectId');
+  }
+  if (typeof record.ios !== 'object' || record.ios === null || Array.isArray(record.ios)) {
+    fail('Expo brand release ios is invalid');
+  }
+  const ios = record.ios as Record<string, unknown>;
+  if (
+    Object.keys(ios).sort().join(',') !== 'appleTeamId,ascAppId' ||
+    typeof ios.appleTeamId !== 'string' ||
+    !RE_APPLE_TEAM_ID.test(ios.appleTeamId) ||
+    typeof ios.ascAppId !== 'string' ||
+    !RE_ASC_APP_ID.test(ios.ascAppId)
+  ) {
+    fail('Expo brand release ios identifiers are invalid');
+  }
+  if (
+    typeof record.android !== 'object' ||
+    record.android === null ||
+    Array.isArray(record.android) ||
+    Object.keys(record.android).join(',') !== 'track' ||
+    (record.android as { track?: unknown }).track !== 'internal'
+  ) {
+    fail('Expo brand release Android track must be internal');
+  }
+  return record as unknown as ExpoBrandReleaseConfig;
+}
+
+export function applyBrandReleaseConfig(
+  config: ExpoBrandableConfig,
+  overlay: ExpoBrandOverlay,
+  release: ExpoBrandReleaseConfig,
+): ExpoBrandableConfig {
+  if (release.brandId !== overlay.brandId || release.channel !== overlay.channel) {
+    fail(`Expo brand release target ${release.brandId}/${release.channel} does not match ${overlay.brandId}/${overlay.channel}`);
+  }
+  return {
+    ...config,
+    extra: { ...config.extra, eas: { projectId: release.easProjectId } },
+    ios: { ...config.ios, appleTeamId: release.ios.appleTeamId },
+    updates: { ...config.updates, url: release.updatesUrl },
+  };
 }
 
 /** The default product name as it appears in user-facing template strings of the base config
