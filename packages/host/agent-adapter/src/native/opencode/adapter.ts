@@ -7,7 +7,6 @@ import type {
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentModelOption,
@@ -32,7 +31,7 @@ import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
-import type { AgentStartCatalogOptions } from '../../adapter';
+import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
@@ -707,7 +706,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.mcpServerNames = [...names];
   }
 
-  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  override async readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const { session, events } = await this.withHistoryClient(async (client) => {
@@ -725,15 +724,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // Best-effort MCP server names so replayed MCP tool titles converge with live ones — a
       // pure config read, never `mcp.status` (its lazy init would spawn/dial every configured
       // server from the shared history instance). Config-declared servers resolve, including
-      // disabled ones; StartOptions-injected servers existed only on the session's own live
-      // instance, so their calls replay under the flat name.
+      // disabled ones; engine-injected servers exist only on a session's own live instance, so
+      // the caller's `mcpServerNames` hint is the only way their calls resolve here.
+      const names = new Set(opts.mcpServerNames);
       const config = await client.config.get({ directory: got.data.directory });
+      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
       return {
         session: opencodeSessionToHistorySession(got.data),
         events: mapOpencodeHistoryEvents(
           opts.historyId,
           filterRevertedMessages(messages.data ?? [], got.data.revert),
-          config.data?.mcp ? Object.keys(config.data.mcp) : [],
+          [...names],
         ),
       };
     });

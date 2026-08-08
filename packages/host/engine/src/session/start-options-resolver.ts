@@ -1,4 +1,4 @@
-import type { McpWarning, SessionId, StartOptions } from '@linkcode/schema';
+import type { AgentKind, McpWarning, SessionId, StartOptions } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { CustomMcpServerService } from '../agent/custom-mcp-service';
@@ -9,7 +9,7 @@ import { translationUpstream, withTranslatorEndpoint } from '../agent/translator
 import { OperationError, RequestError } from '../failure';
 import type { PluginService } from '../plugin/service';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
-import { MCP_CAPABLE_AGENT_KINDS } from './mcp-capability';
+import { MCP_CAPABLE_AGENT_KINDS, SIMULATOR_MCP_SERVER_NAME } from './mcp-capability';
 
 export interface ResolvedStartOptions {
   readonly options: StartOptions;
@@ -78,6 +78,16 @@ export class SessionStartOptionsResolver {
         warnings: custom.warnings,
       };
     });
+  }
+
+  /** The server names `resolve` would inject for this kind, as a hint for cold history reads:
+   * injected servers never appear in the agent's own config, so a replayed MCP call cannot
+   * resolve its server without this set. */
+  injectedMcpServerNames(kind: AgentKind): string[] {
+    if (!MCP_CAPABLE_AGENT_KINDS.has(kind)) return [];
+    const names = (this.customMcp?.listEnabled() ?? []).map((entry) => entry.server.name);
+    if (this.simulatorMcp) names.push(SIMULATOR_MCP_SERVER_NAME);
+    return names;
   }
 
   /** Fold enabled custom MCP servers into the session's server list, warning instead of

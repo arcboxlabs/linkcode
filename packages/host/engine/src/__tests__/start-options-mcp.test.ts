@@ -156,6 +156,19 @@ describe('simulator MCP injection at session start', () => {
   });
 });
 
+describe('injectedMcpServerNames', () => {
+  it('names the servers resolve would inject, and nothing for MCP-incapable kinds', () => {
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      provider(ENDPOINT),
+      customService(customEntry('github'), customEntry('disabled-one', false)),
+    );
+    expect(resolver.injectedMcpServerNames('opencode')).toEqual(['github', 'linkcode-sim']);
+    expect(resolver.injectedMcpServerNames('pi')).toEqual([]);
+  });
+});
+
 describe('account binding at session start', () => {
   function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
     const store = new InMemoryProviderConfigStore();
