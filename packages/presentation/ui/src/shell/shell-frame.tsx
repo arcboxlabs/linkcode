@@ -58,6 +58,8 @@ export interface ShellFrameProps
   agentCatalogs?: AgentStartCatalogs;
   /** Effective daemon-configured default models for new sessions; null while unresolved. */
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
+  /** The account each agent falls back to when a session names none. */
+  newSessionDefaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
   /** The models each agent may run on, picked on its bound account. An agent absent here has no
    * account bound and keeps falling back to whatever its adapter or the curated table advertises. */
   accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
@@ -133,6 +135,7 @@ export function ShellFrame({
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
+  newSessionDefaultAccounts,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -224,6 +227,7 @@ export function ShellFrame({
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
+            defaultAccounts={newSessionDefaultAccounts}
             accountModels={accountModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}

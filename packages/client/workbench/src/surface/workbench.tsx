@@ -60,6 +60,7 @@ import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
 import {
   useAccountModelOptions,
+  useConfiguredDefaultAccounts,
   useConfiguredDefaultModels,
 } from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
@@ -245,6 +246,7 @@ function WorkbenchSessionSurface({
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
+  const newSessionDefaultAccounts = useConfiguredDefaultAccounts();
   const accountModels = useAccountModelOptions();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
@@ -664,6 +666,7 @@ function WorkbenchSessionSurface({
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
+      newSessionDefaultAccounts={newSessionDefaultAccounts}
       accountModels={accountModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredEfforts={newSessionPreferredEfforts}

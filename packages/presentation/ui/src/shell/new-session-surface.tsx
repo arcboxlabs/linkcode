@@ -92,8 +92,12 @@ export interface NewSessionSurfaceProps {
   /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
    * built-in harness defaults fill missing kinds for standalone consumers. */
   defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
-  /** The models each agent may run on, picked on its bound account. An agent absent here has no
-   * account bound and falls back to its adapter catalog or the curated table. */
+  /** The account each agent falls back to when a session names none. Its presence is what makes an
+   * agent resolve *through* an account: absent, the agent runs on its own CLI login and keeps its
+   * own catalog on offer. */
+  defaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** The models each agent offers, from every account enabled for it. An agent absent here has no
+   * account that can back it and falls back to its adapter catalog or the curated table. */
   accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last accepted effort per harness. Missing kinds retain the harness default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
@@ -134,6 +138,22 @@ function workspaceById(
   return null;
 }
 
+/**
+ * The models a draft may pick from. An agent resolving through an account offers that account world
+ * alone. One running on its own login keeps its own catalog and merely *gains* the accounts as extra
+ * options — replacing it would let a key added for one agent hijack another's menu, and agents that
+ * accept any endpoint (opencode, pi) treat every account as bindable.
+ */
+function pickableModels(
+  accountSet: ModelOption[] | undefined,
+  ownCatalog: ModelOption[] | undefined,
+  { throughAccount }: { throughAccount: boolean },
+): ModelOption[] | undefined {
+  if (throughAccount) return accountSet;
+  if (accountSet === undefined) return ownCatalog;
+  return ownCatalog === undefined ? accountSet : [...accountSet, ...ownCatalog];
+}
+
 /** Unified new-session page: heading + shared `Composer` + workspace context bar. Model, effort,
  * and workflow-mode picks ride into the submission; the session reflects them from then on. */
 export function NewSessionSurface({
@@ -148,6 +168,7 @@ export function NewSessionSurface({
   attachmentSupport,
   agentCatalogs,
   defaultModels,
+  defaultAccounts,
   accountModels,
   preferredEfforts,
   preferredBranches,
@@ -189,23 +210,29 @@ export function NewSessionSurface({
   const catalog = agentCatalogs?.[harness];
   const localModel = selectedModels[harness];
   const selectedModel = localModel === undefined ? null : localModel;
-  // The catalog default is what the agent's own config would start on, so it yields to anything the
-  // user expressed through LinkCode. Nothing guesses past it: an unresolved model blocks the send
-  // rather than starting a session on a model nobody chose.
+  // A default account means the agent resolves through one, and then its enabled accounts' picked
+  // sets are the only model source — the adapter's own default is not a candidate at all, and
+  // offering it would show a model the daemon then refuses. Without one the agent runs on its own
+  // login and keeps deciding for itself.
+  const defaultAccountId = defaultAccounts?.[harness];
+  const throughAccount = defaultAccountId !== undefined;
   const displayedModel =
     selectedModel ??
-    (defaultModels === null ? null : (defaultModels?.[harness] ?? catalog?.defaultModel ?? null));
+    (defaultModels === null
+      ? null
+      : (defaultModels?.[harness] ?? (throughAccount ? null : (catalog?.defaultModel ?? null))));
   const localEffort = selectedEfforts[harness];
   const effort = localEffort === undefined ? (preferredEfforts?.[harness] ?? null) : localEffort;
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  // Every account that can back this agent contributes, so a pick chooses the account too. The set
-  // outranks the adapter catalog and the curated table both, and an entry present here means at
-  // least one account is bindable — which is what makes a missing model fatal rather than the
-  // agent's own business.
-  const bindableSet = accountModels?.[harness];
-  const pickable = bindableSet ?? dynamicModels ?? AGENT_MODEL_OPTIONS[harness];
+  const accountSet = accountModels?.[harness];
+  const pickable = pickableModels(accountSet, dynamicModels ?? AGENT_MODEL_OPTIONS[harness], {
+    throughAccount,
+  });
   const localAccount = selectedAccounts[harness];
-  const selectedAccountId = localAccount ?? undefined;
+  // Untouched, the draft reads against the agent's own default account, so a model id two accounts
+  // both serve resolves to the right entry instead of whichever comes first in the pool.
+  const selectedAccountId =
+    localAccount === undefined ? defaultAccountId : (localAccount ?? undefined);
   const modelOption = resolveModel(pickable, displayedModel, selectedAccountId);
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
@@ -243,10 +270,10 @@ export function NewSessionSurface({
         cwd: selected.cwd,
         workspaceId: selected.workspaceId,
         model: localModel === null ? undefined : (selectedModel ?? undefined),
-        // Pins the session to the account whose entry was picked; without it the daemon would fall
-        // back to whichever account happens to be bound.
-        ...(localModel !== null &&
-          modelOption?.accountId !== undefined && { accountId: modelOption.accountId }),
+        // Only an account the user actually picked pins the session. Deriving one from an untouched
+        // draft would pin whichever account happens to list that model id first, quietly overriding
+        // the agent's own default when two accounts serve the same id.
+        ...(typeof localAccount === 'string' && { accountId: localAccount }),
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),
@@ -377,12 +404,10 @@ export function NewSessionSurface({
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
-            // With an account bound, its set is the only model source, so an unresolved model would
-            // be refused by the daemon anyway — refuse here instead of after a round trip. An agent
-            // with no account bound still resolves its own, and must not be blocked.
-            sendBlocked={
-              cue !== undefined || (bindableSet !== undefined && displayedModel === null)
-            }
+            // Mirrors the daemon: once an account resolves, its set is the only model source, so an
+            // unresolved model would be refused anyway — refuse here instead of after a round trip.
+            // An agent with no account resolving still picks its own model, and must not be blocked.
+            sendBlocked={cue !== undefined || (throughAccount && displayedModel === null)}
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}

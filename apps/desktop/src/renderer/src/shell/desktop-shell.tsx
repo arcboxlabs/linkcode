@@ -80,6 +80,7 @@ export function DesktopShell({
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
+  newSessionDefaultAccounts,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -429,6 +430,7 @@ export function DesktopShell({
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
           defaultModels={newSessionDefaultModels}
+          defaultAccounts={newSessionDefaultAccounts}
           accountModels={accountModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}

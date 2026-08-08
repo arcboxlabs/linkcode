@@ -26,6 +26,27 @@ export function useConfiguredDefaultModels(): Partial<Record<AgentKind, string>>
   return configuredDefaultModels(providers);
 }
 
+/** The account each agent falls back to when a session names none. An agent absent here resolves
+ * its own credentials, so nothing about it is the account world's business. */
+export function configuredDefaultAccounts(
+  providers: ProvidersConfig | undefined,
+): Partial<Record<AgentKind, string>> {
+  const defaults: Partial<Record<AgentKind, string>> = {};
+  for (const kind of AgentKindSchema.options) {
+    const accountId = providers?.[kind]?.activeAccountId;
+    if (accountId !== undefined) defaults[kind] = accountId;
+  }
+  return defaults;
+}
+
+/** Undefined until the config has loaded, so a draft never briefly treats an agent as running on
+ * its own login when it actually resolves through an account. */
+export function useConfiguredDefaultAccounts(): Partial<Record<AgentKind, string>> | undefined {
+  const { data: providers } = useData(getProviderConfig, {});
+  if (providers === undefined) return undefined;
+  return configuredDefaultAccounts(providers);
+}
+
 /**
  * Every model this agent offers: the picked sets of each account that can back it *and* is enabled
  * for it. Choosing a model therefore also chooses its account, which is what lets one agent reach

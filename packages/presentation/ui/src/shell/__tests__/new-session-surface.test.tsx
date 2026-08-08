@@ -869,12 +869,13 @@ describe('NewSessionSurface', () => {
     );
   });
 
-  it("offers only the bound account's picked models, ignoring the curated table", async () => {
+  it("offers only the account world's picked models once an agent resolves through one", async () => {
     const user = userEvent.setup();
     render(
       <NewSessionSurface
         accountModels={{ 'claude-code': [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }] }}
         chatWorkspace={CHAT_WORKSPACE}
+        defaultAccounts={{ 'claude-code': 'acc_deepseek' }}
         defaultModels={{ 'claude-code': 'deepseek-v4-pro' }}
         draft={{
           initialHarness: 'claude-code',
@@ -895,13 +896,14 @@ describe('NewSessionSurface', () => {
     expect(screen.queryByRole('menuitemradio', { name: 'Opus 5' })).toBeNull();
   });
 
-  it('refuses to send when an account is bound but no model is picked', async () => {
+  it('refuses to send when an agent resolves through an account but no model is picked', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
-        // Bound with an empty set: the daemon would refuse this start, so the composer does too.
+        // An account resolves with an empty set: the daemon would refuse this start, so does this.
         accountModels={{ 'claude-code': [] }}
         chatWorkspace={CHAT_WORKSPACE}
+        defaultAccounts={{ 'claude-code': 'acc_empty' }}
         draft={{
           initialHarness: 'claude-code',
           initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
@@ -918,6 +920,93 @@ describe('NewSessionSurface', () => {
     await pressInComposer('Enter');
     await wait(0);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('keeps an agent’s own catalog on offer when no account resolves for it', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        // opencode and pi accept any endpoint, so every account is "bindable" to them. A key added
+        // for another agent must not replace the models this one advertises for itself.
+        accountModels={{ pi: [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }] }}
+        agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_MENU }));
+    expect(await screen.findByRole('menuitemradio', { name: 'DeepSeek V4 Pro' })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: RE_PI_SONNET })).toBeTruthy();
+
+    // And it stays sendable: with no account resolving, the agent picks its own model.
+    await user.keyboard('{Escape}');
+    typeInComposer('hello');
+    await pressInComposer('Enter');
+    await wait(0);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let an adapter default unblock a send the daemon would refuse', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        accountModels={{ pi: [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }] }}
+        // The account world is authoritative here, so `pi/basic` is not a candidate — showing it
+        // would pass the gate and then fail at the daemon with "No model selected".
+        agentCatalogs={{ pi: { ...PI_CONFIGURED_CATALOG, defaultModel: 'pi/basic' } }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultAccounts={{ pi: 'acc_deepseek' }}
+        draft={{ initialHarness: 'pi', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    typeInComposer('hello');
+    await pressInComposer('Enter');
+    await wait(0);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('pins no account on an untouched draft, leaving the agent’s default authoritative', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const shared = (accountId: string) => ({ id: 'shared-model', label: 'Shared', accountId });
+    render(
+      <NewSessionSurface
+        // Two accounts serving one model id: deriving a pin from the draft would silently pick
+        // whichever appears first, overriding the account the user actually made default.
+        accountModels={{ 'claude-code': [shared('acc_relay'), shared('acc_direct')] }}
+        chatWorkspace={CHAT_WORKSPACE}
+        defaultAccounts={{ 'claude-code': 'acc_direct' }}
+        defaultModels={{ 'claude-code': 'shared-model' }}
+        draft={{
+          initialHarness: 'claude-code',
+          initialWorkspaceId: CHAT_WORKSPACE.workspaceId,
+        }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        workspaces={[]}
+      />,
+    );
+
+    typeInComposer('hello');
+    await pressInComposer('Enter');
+    await wait(0);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('accountId');
   });
 
   it('submits a model only after the user explicitly selects it', async () => {
