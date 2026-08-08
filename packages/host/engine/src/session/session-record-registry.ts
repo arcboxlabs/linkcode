@@ -132,6 +132,17 @@ export class SessionRecordRegistry {
     this.onChanged(sessionId, 'updated');
   }
 
+  /** Record the model the newest run is now on. A pick accepted mid-run never launches anything, so
+   * without this a relaunch replays the model the run started with and silently drops it. Not an
+   * identity change — `SessionInfo` does not project the model — so it notifies nobody. */
+  setRunModel(sessionId: SessionId, model: string): void {
+    const record = this.records.get(sessionId);
+    const run = record?.runs.at(-1);
+    if (!record || !run || run.model === model) return;
+    run.model = model;
+    this.persist(record);
+  }
+
   sealCurrentRun(sessionId: SessionId): void {
     const record = this.records.get(sessionId);
     const run = record?.runs.at(-1);

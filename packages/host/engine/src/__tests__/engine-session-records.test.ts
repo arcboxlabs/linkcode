@@ -1007,6 +1007,110 @@ describe('session account attribution', () => {
 });
 
 describe('a session keeps its own pick', () => {
+  it('replays a model picked mid-run, not the one the run launched with', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: 'acc_one', model: 'model-a' },
+      },
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'model-a' }, { id: 'model-b' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+
+    // Same account, so this switches in place and launches nothing — the ordinary way a user
+    // changes model. The adapter reflects the id it actually serves.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'pick',
+      sessionId,
+      input: { type: 'set-model', model: 'model-b', accountId: 'acc_one' },
+    });
+    h.adapters[0].emit({ type: 'model-update', model: 'model-b' });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('model-b');
+  });
+
+  it('falls back to the agent’s default when the pinned account has been deleted', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    const surviving = {
+      id: 'acc_default',
+      label: 'Default',
+      service: 'anthropic-api' as const,
+      credential: { type: 'api-key' as const, key: 'sk-default' },
+      models: [{ id: 'model-default' }],
+      createdAt: 0,
+    };
+    providers.update({
+      providers: {
+        'claude-code': { enabled: true, activeAccountId: 'acc_default', model: 'model-default' },
+      },
+      accounts: [
+        surviving,
+        {
+          id: 'acc_doomed',
+          label: 'Doomed',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-doomed' },
+          models: [{ id: 'model-doomed' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'model-doomed',
+        config: { accountId: 'acc_doomed' },
+      },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // The run's pin now names an account that no longer exists. Replaying it verbatim would start
+    // the agent with no credential at all, and the thread could never recover.
+    providers.update({ accounts: [surviving] });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-default');
+    expect(resumed.resumedWith?.config?.accountId).toBe('acc_default');
+  });
+
   it('resumes on the run’s account and model after the daemon default moved', async () => {
     const providers = new InMemoryProviderConfigStore();
     providers.update({

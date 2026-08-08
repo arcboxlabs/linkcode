@@ -77,8 +77,10 @@ export function accountBinding(
 
 /**
  * Resolve the session's account: explicit `opts.config.accountId`, else the agent's
- * `activeAccountId`. Undefined when neither resolves or the id is stale (account deleted) —
- * the caller then falls back to the legacy `providers[kind].apiKey`.
+ * `activeAccountId`. A requested id that no longer resolves falls through to that default rather
+ * than stranding the session — a relaunch replays a pin recorded on the run, and the account it
+ * names can be deleted in between. Undefined when neither resolves, which leaves the caller on the
+ * legacy `providers[kind].apiKey`.
  */
 function resolveAccount(
   opts: StartOptions,
@@ -87,9 +89,12 @@ function resolveAccount(
 ): Account | undefined {
   const requestedId =
     typeof opts.config?.accountId === 'string' ? opts.config.accountId : undefined;
-  const id = requestedId ?? config?.activeAccountId;
-  if (id === undefined) return undefined;
-  return accounts.find((account) => account.id === id);
+  for (const id of [requestedId, config?.activeAccountId]) {
+    if (id === undefined) continue;
+    const account = accounts.find((candidate) => candidate.id === id);
+    if (account) return account;
+  }
+  return undefined;
 }
 
 /** The adapter-facing bundle an account contributes to `StartOptions.config`; each adapter maps
@@ -149,9 +154,16 @@ export function applyProviderDefaults(
     const resolved = accountConfigBundle(account, opts.kind);
     if ('unavailable' in resolved) return { options: next, unavailable: resolved.unavailable };
     next.config = { ...next.config, ...resolved.bundle };
-  } else if (config?.apiKey !== undefined) {
-    // Legacy: no account bound — fall back to the provider's bare api key.
-    next.config = { ...next.config, apiKey: config.apiKey };
+  } else {
+    // Nothing resolved, so an id left in `config` would claim an account the session does not have:
+    // `resolvedAccountId` reads it, the caller treats the account as bound, and the session starts
+    // with no credential at all.
+    if (typeof next.config?.accountId === 'string') {
+      const { accountId: _stale, ...rest } = next.config;
+      next.config = rest;
+    }
+    // Legacy: no account at all — fall back to the provider's bare api key.
+    if (config?.apiKey !== undefined) next.config = { ...next.config, apiKey: config.apiKey };
   }
   return { options: next };
 }
