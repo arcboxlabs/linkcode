@@ -44,7 +44,7 @@ function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdA
   return { id: `acc_${crypto.randomUUID()}`, label: label.trim(), createdAt: Date.now() };
 }
 
-export function oauthAccount(
+function oauthAccount(
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
   label: string,
   models: AccountModel[] = [],

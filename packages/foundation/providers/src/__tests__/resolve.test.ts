@@ -2,7 +2,7 @@ import type { Account, AgentKind, AgentRuntimes } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { endpointServiceById, modelListSource, serviceById } from '../catalog';
-import { detectedLoginSuggestions } from '../detected-logins';
+import { detectedLogins } from '../detected-logins';
 import { resolveBinding, serviceProtocols } from '../resolve';
 import { fillTemplate, templatePlaceholders } from '../template';
 
@@ -313,7 +313,7 @@ describe('catalog helpers', () => {
     );
   });
 
-  it('suggests detected CLI logins the pool does not represent yet', () => {
+  it('reports detected CLI logins the pool does not represent yet', () => {
     const runtimes: AgentRuntimes = {
       'claude-code': {
         status: 'available',
@@ -321,13 +321,13 @@ describe('catalog helpers', () => {
       },
       codex: { status: 'available', auth: { loggedIn: false } },
     };
-    const suggested = detectedLoginSuggestions([], runtimes);
-    expect(suggested.map(({ service, auth }) => [service.id, auth.email])).toEqual([
+    const detected = detectedLogins([], runtimes);
+    expect(detected.map(({ service, auth }) => [service.id, auth.email])).toEqual([
       ['claude-sub', 'x@y.z'],
     ]);
-    // An existing oauth account for the agent absorbs the suggestion; unprobed runtimes yield none.
+    // An existing oauth account for the agent absorbs it; unprobed runtimes yield none.
     const claudeSub = account({ credential: { type: 'oauth', agent: 'claude-code' } });
-    expect(detectedLoginSuggestions([claudeSub], runtimes)).toEqual([]);
-    expect(detectedLoginSuggestions([], undefined)).toEqual([]);
+    expect(detectedLogins([claudeSub], runtimes)).toEqual([]);
+    expect(detectedLogins([], undefined)).toEqual([]);
   });
 });

@@ -1,10 +1,4 @@
-import {
-  detectedLoginSuggestions,
-  pinnedEndpoint,
-  resolveBinding,
-  serviceById,
-  serviceProtocols,
-} from '@linkcode/providers';
+import { pinnedEndpoint, resolveBinding, serviceById, serviceProtocols } from '@linkcode/providers';
 import type {
   Account,
   Accounts,
@@ -202,7 +196,7 @@ function providerAccountListItem(
   };
 }
 
-/** Precomputed account rows and detected-login suggestions for the presentation-only list. */
+/** Precomputed account rows for the presentation-only list. */
 export function providerAccountListViewModel(
   accounts: Accounts,
   providers: ProvidersConfig | undefined,
@@ -210,11 +204,6 @@ export function providerAccountListViewModel(
 ): ProviderAccountListViewModel {
   return {
     accounts: accounts.map((account) => providerAccountListItem(account, providers, runtimes)),
-    detectedLogins: detectedLoginSuggestions(accounts, runtimes).map(({ service, auth }) => ({
-      service: service.id,
-      label: service.label,
-      ...(auth.email !== undefined && { email: auth.email }),
-    })),
     bindingCount: AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId !== undefined)
       .length,
     agentCount: AGENT_KINDS.length,

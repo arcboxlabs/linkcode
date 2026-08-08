@@ -21,15 +21,8 @@ export interface ProviderAccountListItem {
   boundAgents: AgentKind[];
 }
 
-export interface DetectedProviderLoginItem {
-  service: string;
-  label: string;
-  email?: string;
-}
-
 export interface ProviderAccountListViewModel {
   accounts: ProviderAccountListItem[];
-  detectedLogins: DetectedProviderLoginItem[];
   bindingCount: number;
   agentCount: number;
 }
@@ -37,19 +30,15 @@ export interface ProviderAccountListViewModel {
 /** The Providers page's single account list; account management opens outside the list. */
 export function AccountList({
   accounts,
-  detectedLogins,
   bindingCount,
   agentCount,
   loading,
   onSelect,
   onAdd,
-  onAdoptDetected,
 }: ProviderAccountListViewModel & {
   loading: boolean;
   onSelect: (id: string) => void;
   onAdd: () => void;
-  /** One-click adopt a detected CLI login into the pool (a suggestion card, not a pool member). */
-  onAdoptDetected: (serviceId: string) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
@@ -176,47 +165,12 @@ export function AccountList({
               {t('noMatches')}
             </li>
           ) : null}
-          {!loading && needle === '' && accounts.length === 0 && detectedLogins.length === 0 ? (
+          {!loading && needle === '' && accounts.length === 0 ? (
             <li className="flex flex-col items-center gap-1 px-6 py-12 text-center">
               <span className="font-medium text-sm">{t('emptyTitle')}</span>
               <span className="max-w-sm text-muted-foreground text-xs">{t('emptyHint')}</span>
             </li>
           ) : null}
-          {!loading && needle === ''
-            ? detectedLogins.map((login) => (
-                <li key={login.service}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-                    onClick={() => onAdoptDetected(login.service)}
-                  >
-                    <ServiceIcon
-                      service={login.service}
-                      label={login.label}
-                      className="size-10 border-dashed"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate font-medium text-sm">
-                          {t(`serviceName.${login.service}`)}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full text-muted-foreground"
-                        >
-                          {t('detected')}
-                        </Badge>
-                      </span>
-                      <span className="block truncate text-muted-foreground text-xs">
-                        {login.email ?? t('loggedIn')}
-                      </span>
-                    </span>
-                    <PlusIcon className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                </li>
-              ))
-            : null}
         </ul>
       </Card>
     </div>

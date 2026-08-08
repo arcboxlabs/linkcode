@@ -1011,7 +1011,6 @@ export const en = {
       noMatches: 'No matching accounts.',
       emptyTitle: 'No accounts yet',
       emptyHint: 'Add a subscription, API key, AI gateway, or custom endpoint.',
-      detected: 'Detected',
       accountMenu: 'Account actions',
       edit: 'Edit account',
       backToAccount: 'Back to account details',

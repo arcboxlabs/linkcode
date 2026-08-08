@@ -199,7 +199,6 @@ describe('view helpers', () => {
           boundAgents: [],
         },
       ],
-      detectedLogins: [{ service: 'chatgpt-sub', label: 'ChatGPT', email: 'codex@example.com' }],
       bindingCount: 2,
       agentCount: 5,
     });

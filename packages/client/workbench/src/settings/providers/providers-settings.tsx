@@ -20,7 +20,7 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
-import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { AddAccountForm, EditAccountForm, ServiceCatalogView } from './add-flow';
 import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
 import {
@@ -109,13 +109,6 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     select(account.id);
   };
 
-  // One-click adoption of a detected CLI login: same account the oauth form would create.
-  const handleAdoptDetected = (serviceId: string): void => {
-    const service = serviceById(serviceId);
-    if (service?.kind !== 'oauth') return;
-    void handleAdd(oauthAccount(service, t(`serviceName.${service.id}`)));
-  };
-
   const handleRemove = async (): Promise<void> => {
     if (!selected) return;
     const cleared = withoutAccount(providers ?? {}, selected.id);
@@ -139,13 +132,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
       <p className="text-muted-foreground text-sm">{t('hint')}</p>
-      <AccountList
-        {...accountList}
-        loading={accountsLoading}
-        onSelect={select}
-        onAdd={startAdd}
-        onAdoptDetected={handleAdoptDetected}
-      />
+      <AccountList {...accountList} loading={accountsLoading} onSelect={select} onAdd={startAdd} />
       <Dialog
         open={dialogOpen}
         disablePointerDismissal={busy}
