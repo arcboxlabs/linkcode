@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { effortOptionsForModel } from '../shell/agent-efforts';
-import { AGENT_MODEL_OPTIONS, groupModelsByProvider, resolveModel } from '../shell/agent-models';
+import {
+  AGENT_MODEL_OPTIONS,
+  groupModelsByProvider,
+  pickableModels,
+  resolveModel,
+  switchesAccount,
+} from '../shell/agent-models';
 
 const claude = AGENT_MODEL_OPTIONS['claude-code'];
 const codex = AGENT_MODEL_OPTIONS.codex;
@@ -23,6 +29,40 @@ describe('resolveModel', () => {
     expect(resolveModel(claude, null)).toBeUndefined();
     expect(resolveModel(claude, 'not-a-model')).toBeUndefined();
     expect(resolveModel(undefined, 'claude-opus-4-8')).toBeUndefined();
+  });
+});
+
+describe('pickableModels', () => {
+  const account = [{ id: 'deepseek-v4-pro', label: 'DeepSeek', accountId: 'acc_x' }];
+  const own = [{ id: 'opencode/native', label: 'Native' }];
+
+  it('keeps an agent’s own catalog when it does not resolve through an account', () => {
+    // opencode and pi accept any endpoint, so a key added for another agent is "bindable" to them;
+    // replacing here would hand an unrelated vendor's models to a thread on its own CLI login.
+    expect(pickableModels(account, own, { throughAccount: false })).toEqual([...account, ...own]);
+    expect(pickableModels(undefined, own, { throughAccount: false })).toEqual(own);
+    expect(pickableModels(account, null, { throughAccount: false })).toEqual(account);
+  });
+
+  it('lets the account world stand alone once one resolves', () => {
+    expect(pickableModels(account, own, { throughAccount: true })).toEqual(account);
+    // Present-and-empty is a real answer — "this account offers nothing" — not a missing one.
+    expect(pickableModels([], own, { throughAccount: true })).toEqual([]);
+  });
+});
+
+describe('switchesAccount', () => {
+  const onSecond = { id: 'model-a', label: 'A', accountId: 'acc_second' };
+
+  it('flags an entry from an account the session is not running on', () => {
+    expect(switchesAccount(onSecond, 'acc_first')).toBe(true);
+    expect(switchesAccount(onSecond, 'acc_second')).toBe(false);
+  });
+
+  it('stays false when either side has no account to compare', () => {
+    // A draft has no running account, and a curated-table entry belongs to none.
+    expect(switchesAccount(onSecond, undefined)).toBe(false);
+    expect(switchesAccount({ id: 'model-a', label: 'A' }, 'acc_first')).toBe(false);
   });
 });
 

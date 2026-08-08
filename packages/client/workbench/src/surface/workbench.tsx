@@ -31,6 +31,7 @@ import type {
   ComposerDirectiveControls,
   ConversationComposerController,
   CurrentPlan,
+  ModelOption,
   NewSessionDraft,
   NewSessionSubmission,
   PermissionDecision,
@@ -57,7 +58,11 @@ import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
-import { useConfiguredDefaultModels } from '../settings/providers/default-models';
+import {
+  useAccountModelOptions,
+  useConfiguredDefaultAccounts,
+  useConfiguredDefaultModels,
+} from '../settings/providers/default-models';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { useSidebarOrderStore } from '../sidebar/order-store';
@@ -241,6 +246,8 @@ function WorkbenchSessionSurface({
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const newSessionDefaultModels = useConfiguredDefaultModels();
+  const newSessionDefaultAccounts = useConfiguredDefaultAccounts();
+  const accountModels = useAccountModelOptions();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -268,9 +275,8 @@ function WorkbenchSessionSurface({
   const threadOrder = useSidebarOrderStore((state) => state.threadOrder);
   const setGroupOrder = useSidebarOrderStore((state) => state.setGroupOrder);
   const setThreadOrder = useSidebarOrderStore((state) => state.setThreadOrder);
-  const lastProvider = useNewSessionDefaultsStore((state) => state.lastProvider);
+  const lastHarness = useNewSessionDefaultsStore((state) => state.lastHarness);
   const lastWorkspaceId = useNewSessionDefaultsStore((state) => state.lastWorkspaceId);
-  const newSessionPreferredModels = useNewSessionDefaultsStore((state) => state.modelsByProvider);
   const newSessionPreferredEfforts = useNewSessionDefaultsStore((state) => state.effortsByProvider);
   const newSessionPreferredBranches = useNewSessionDefaultsStore(
     (state) => state.branchesByWorkspace,
@@ -374,6 +380,7 @@ function WorkbenchSessionSurface({
       kind: submission.kind,
       cwd: submission.cwd,
       model: submission.model,
+      accountId: submission.accountId,
       effort: submission.effort ?? undefined,
       approvalPolicyId: submission.approvalPolicyId,
       modeId: submission.modeId,
@@ -402,8 +409,11 @@ function WorkbenchSessionSurface({
           startupSelection,
           sdkClient.raw.eventsSnapshot(sessionId),
         );
-        if (newlyConfirmed.model === undefined && newlyConfirmed.effort === undefined) return;
-        rememberSelection(submission.kind, newlyConfirmed);
+        // The model is not remembered here: the session carries its own pick, and the agent's
+        // default is a deliberate Settings choice that starting one thread must not overwrite.
+        if (newlyConfirmed.effort !== undefined) {
+          rememberSelection(submission.kind, { effort: newlyConfirmed.effort });
+        }
       })
       .catch(noop);
   }
@@ -444,15 +454,20 @@ function WorkbenchSessionSurface({
       .then(noop);
   }
 
-  function handleModelChange(model: string): Promise<void> {
+  function handleModelChange(model: ModelOption): Promise<void> {
     if (!sessions.activeId) return Promise.reject(new Error('No active session'));
     onClearError();
     // Let the rejection propagate: the composer awaits it to decide whether to reflect the pick.
     // onError (wired into modelMutation above) still reports the failure via the error banner.
-    const provider = active?.kind;
-    return modelMutation.trigger({ sessionId: sessions.activeId, model }).then(() => {
-      if (provider) rememberSelection(provider, { model });
-    });
+    // The engine records the accepted pick on the session's own run, so it survives a relaunch
+    // without touching the agent's configured default.
+    return modelMutation
+      .trigger({
+        sessionId: sessions.activeId,
+        model: model.id,
+        ...(model.accountId !== undefined && { accountId: model.accountId }),
+      })
+      .then(noop);
   }
 
   function handleEffortChange(effort: EffortLevel): Promise<void> {
@@ -568,7 +583,7 @@ function WorkbenchSessionSurface({
   const draft: NewSessionDraft | null = sessions.draft
     ? {
         initialWorkspaceId,
-        initialProvider: lastProvider ?? 'claude-code',
+        initialHarness: lastHarness ?? 'claude-code',
       }
     : null;
 
@@ -651,8 +666,9 @@ function WorkbenchSessionSurface({
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       newSessionDefaultModels={newSessionDefaultModels}
+      newSessionDefaultAccounts={newSessionDefaultAccounts}
+      accountModels={accountModels}
       agentCatalogs={agentCatalogs}
-      newSessionPreferredModels={newSessionPreferredModels}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       newSessionPreferredBranches={newSessionPreferredBranches}
       NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}

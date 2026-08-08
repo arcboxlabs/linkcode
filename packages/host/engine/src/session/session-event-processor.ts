@@ -102,6 +102,11 @@ export class SessionEventProcessor {
         case 'session-ref':
           this.records.bindHistoryId(sessionId, event.historyId);
           break;
+        // Adapters emit this only once a switch is accepted, and with the id they actually serve —
+        // so recording it here, rather than where a pick is sent, is what a relaunch should replay.
+        case 'model-update':
+          this.records.setRunModel(sessionId, event.model);
+          break;
         case 'title-update':
           this.records.setProviderTitle(sessionId, event.title);
           break;

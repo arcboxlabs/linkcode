@@ -3,6 +3,7 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP } from 'node:net';
+import type { ServiceModelList } from '@linkcode/providers';
 import type { AccountEndpoint, AccountModel, AccountSecret } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { z } from 'zod';
@@ -88,7 +89,9 @@ export type ModelListRequest = (
 ) => Promise<ModelListResponse>;
 export type ModelProbe = typeof probeEndpointModels;
 
-export function modelListUrl(endpoint: AccountEndpoint): string {
+/** A custom account names its own endpoint, so its list path can only be guessed from the protocol.
+ * Catalog services never come through here — they carry an explicit URL (`@linkcode/providers`). */
+export function modelListUrlFromEndpoint(endpoint: AccountEndpoint): string {
   const url = new URL(endpoint.baseUrl);
   if (url.username || url.password || url.search || url.hash) {
     throw new Error('Model detection endpoint cannot contain credentials, a query, or a fragment');
@@ -100,11 +103,11 @@ export function modelListUrl(endpoint: AccountEndpoint): string {
 }
 
 export function modelListHeaders(
-  endpoint: AccountEndpoint,
+  wire: ServiceModelList['wire'],
   secret: AccountSecret,
 ): Record<string, string> {
   const headers: Record<string, string> = { accept: 'application/json' };
-  if (endpoint.protocol === 'anthropic') {
+  if (wire === 'anthropic') {
     headers['anthropic-version'] = ANTHROPIC_VERSION;
     // An Anthropic-shaped gateway authenticates with whichever header its own credential is.
     if (secret.type === 'api-key') headers['x-api-key'] = secret.key;
@@ -246,21 +249,21 @@ export function requestModelListAtAddress(
   });
 }
 
-/** Model ids the endpoint advertises, deduped, in the order it listed them. Rejects with a
+/** Model ids the source advertises, deduped, in the order it listed them. Rejects with a
  * user-facing message (status + the vendor's own reason) — the dialog shows it verbatim. */
 export async function probeEndpointModels(
-  endpoint: AccountEndpoint,
+  source: ServiceModelList,
   secret: AccountSecret,
   request: ModelListRequest = requestPublicModelList,
 ): Promise<AccountModel[]> {
-  const url = new URL(modelListUrl(endpoint));
+  const url = new URL(source.url);
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort(new Error('Model detection timed out'));
   }, PROBE_TIMEOUT_MS);
   let response: ModelListResponse;
   try {
-    response = await request(url, modelListHeaders(endpoint, secret), controller.signal);
+    response = await request(url, modelListHeaders(source.wire, secret), controller.signal);
   } finally {
     clearTimeout(timeout);
   }

@@ -2,9 +2,15 @@
 
 import type { Accounts, ProvidersConfig } from '@linkcode/schema';
 import { getProviderConfig } from '@linkcode/sdk';
+import { modelChoiceKey } from '@linkcode/ui';
 import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { configuredDefaultModels, useConfiguredDefaultModels } from '../default-models';
+import {
+  accountModelOptions,
+  configuredDefaultModels,
+  useAccountModelOptions,
+  useConfiguredDefaultModels,
+} from '../default-models';
 
 const { useDataMock } = vi.hoisted(() => ({ useDataMock: vi.fn() }));
 
@@ -27,45 +33,123 @@ afterEach(() => {
 });
 
 describe('configuredDefaultModels', () => {
-  it('uses an active account model before the provider default and ignores stale bindings', () => {
+  it('reads the per-agent pick and reports nothing for an agent that has none', () => {
     const providers = {
-      codex: {
-        enabled: true,
-        activeAccountId: 'account-1',
-        defaultModel: 'provider-model',
-      },
-      'claude-code': {
-        enabled: true,
-        activeAccountId: 'missing-account',
-        defaultModel: 'claude-provider-model',
-      },
+      codex: { enabled: true, activeAccountId: 'account-1', model: 'gpt-5.6-sol' },
+      // Bound but unpicked: no model to report, so a session start refuses rather than guessing.
+      'claude-code': { enabled: true, activeAccountId: 'account-1' },
     } satisfies ProvidersConfig;
-    const accounts = [
-      {
-        id: 'account-1',
-        label: 'Configured account',
-        credential: { type: 'oauth', agent: 'codex' },
-        model: 'account-model',
-        createdAt: 0,
-      },
-    ] satisfies Accounts;
 
-    expect(configuredDefaultModels(providers, accounts)).toEqual({
-      codex: 'account-model',
-      'claude-code': 'claude-provider-model',
-    });
+    expect(configuredDefaultModels(providers)).toEqual({ codex: 'gpt-5.6-sol' });
   });
 
-  it('keeps defaults unresolved until both configuration sources have loaded', () => {
+  it('keeps the pick unresolved until the provider config has loaded', () => {
     const { result, rerender } = renderHook(() => useConfiguredDefaultModels());
 
     expect(result.current).toBeNull();
 
     providersData = {};
     rerender();
+    expect(result.current).toEqual({});
+  });
+});
+
+const anthropicAccount = {
+  id: 'acc_anthropic',
+  label: 'Anthropic',
+  service: 'anthropic-api',
+  credential: { type: 'api-key', key: 'k' },
+  models: [{ id: 'claude-opus-5', label: 'Opus 5' }],
+  createdAt: 0,
+} satisfies Accounts[number];
+
+const deepseekAccount = {
+  id: 'acc_deepseek',
+  label: 'DeepSeek',
+  service: 'deepseek',
+  credential: { type: 'api-key', key: 'k' },
+  models: [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }, { id: 'deepseek-v4-flash' }],
+  createdAt: 0,
+} satisfies Accounts[number];
+
+describe('accountModelOptions', () => {
+  it('spans every account that can back the agent, tagged with the account it came from', () => {
+    const options = accountModelOptions([anthropicAccount, deepseekAccount]);
+
+    // claude-code speaks both: Anthropic natively, DeepSeek through its Anthropic-shaped endpoint.
+    expect(options['claude-code']).toEqual([
+      {
+        id: 'claude-opus-5',
+        label: 'Opus 5',
+        description: 'Anthropic',
+        accountId: 'acc_anthropic',
+      },
+      {
+        id: 'deepseek-v4-pro',
+        label: 'DeepSeek V4 Pro',
+        description: 'DeepSeek',
+        accountId: 'acc_deepseek',
+      },
+      {
+        id: 'deepseek-v4-flash',
+        // A relay ships bare ids; the id doubles as the label rather than rendering blank.
+        label: 'deepseek-v4-flash',
+        description: 'DeepSeek',
+        accountId: 'acc_deepseek',
+      },
+    ]);
+  });
+
+  it('omits an agent no account can back, and keeps a bindable-but-unpicked one empty', () => {
+    // grok-build only accepts an xAI account, so neither of these can back it.
+    expect(accountModelOptions([anthropicAccount, deepseekAccount])['grok-build']).toBeUndefined();
+    // Bindable with nothing ticked: present-and-empty, which is what blocks sending.
+    expect(
+      accountModelOptions([{ ...anthropicAccount, models: undefined }])['claude-code'],
+    ).toEqual([]);
+  });
+
+  it('offers only the accounts enabled for that agent, and every bindable one when unset', () => {
+    const pool = [anthropicAccount, deepseekAccount];
+    // Both can back claude-code, and an absent list means the user has narrowed nothing.
+    expect(accountModelOptions(pool, {})['claude-code']).toHaveLength(
+      accountModelOptions(pool)['claude-code']?.length ?? 0,
+    );
+
+    const narrowed = accountModelOptions(pool, {
+      'claude-code': { enabled: true, enabledAccountIds: ['acc_deepseek'] },
+    })['claude-code'];
+    expect(new Set(narrowed?.map((option) => option.accountId))).toEqual(new Set(['acc_deepseek']));
+
+    // Disabling every account leaves it present-and-empty, which blocks sending rather than
+    // silently handing the choice back to the agent.
+    expect(
+      accountModelOptions(pool, { 'claude-code': { enabled: true, enabledAccountIds: [] } })[
+        'claude-code'
+      ],
+    ).toEqual([]);
+  });
+
+  it('keeps same-id models from two accounts as separate, identifiable entries', () => {
+    const shared = { ...anthropicAccount, id: 'acc_other', label: 'Work key' };
+    const options = accountModelOptions([anthropicAccount, shared])['claude-code'] ?? [];
+
+    expect(options).toHaveLength(2);
+    expect(new Set(options.map(modelChoiceKey)).size).toBe(2);
+  });
+
+  it('stays unresolved until both the account pool and the enabled lists have loaded', () => {
+    const { result, rerender } = renderHook(() => useAccountModelOptions());
+
     expect(result.current).toBeNull();
 
+    // Accounts alone are not enough: the enabled list narrows them, so offering the unnarrowed set
+    // would briefly show models the user disabled.
     accountsData = [];
+    rerender();
+    expect(result.current).toBeNull();
+
+    providersData = {};
     rerender();
     expect(result.current).toEqual({});
   });

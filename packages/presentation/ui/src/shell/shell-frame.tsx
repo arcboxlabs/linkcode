@@ -11,6 +11,7 @@ import type {
 } from '@linkcode/schema';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
+import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
 import type { ConversationComposerController } from './conversation-surface';
@@ -57,8 +58,11 @@ export interface ShellFrameProps
   agentCatalogs?: AgentStartCatalogs;
   /** Effective daemon-configured default models for new sessions; null while unresolved. */
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
-  /** Last model accepted by LinkCode per provider, submitted as a new-session override. */
-  newSessionPreferredModels: Readonly<Partial<Record<AgentKind, string>>>;
+  /** The account each agent falls back to when a session names none. */
+  newSessionDefaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
+  /** The models each agent may run on, pooled from the accounts enabled for it. An agent absent here
+   * has no account that can back it and falls back to its adapter or the curated table. */
+  accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   newSessionPreferredBranches: Readonly<Record<string, BranchSelection>>;
@@ -131,7 +135,8 @@ export function ShellFrame({
   attachmentSupport,
   agentCatalogs,
   newSessionDefaultModels,
-  newSessionPreferredModels,
+  newSessionDefaultAccounts,
+  accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -222,7 +227,8 @@ export function ShellFrame({
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
             defaultModels={newSessionDefaultModels}
-            preferredModels={newSessionPreferredModels}
+            defaultAccounts={newSessionDefaultAccounts}
+            accountModels={accountModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}
             NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
@@ -243,6 +249,8 @@ export function ShellFrame({
             composer={conversationComposer}
             agentKind={active?.kind}
             agentLabel={active ? active.kind : undefined}
+            accountModels={active ? accountModels?.[active.kind] : undefined}
+            accountId={active?.accountId}
             attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}

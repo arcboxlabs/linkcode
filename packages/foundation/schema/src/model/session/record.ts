@@ -36,6 +36,12 @@ export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
  * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref). */
 export const SessionRunSchema = z.object({
   historyId: AgentHistoryIdSchema.optional(),
+  /** The account this run resolved to. Credentials and base URL are injected once at spawn, so the
+   * account is fixed for the run's lifetime and a later rebind does not move it. */
+  accountId: z.string().min(1).optional(),
+  /** The model this run resolved to. Recorded with the account because the two are one choice, and
+   * read back on relaunch: a thread keeps its own pick instead of adopting a default that moved. */
+  model: z.string().min(1).optional(),
   startedAt: TimestampSchema,
   endedAt: TimestampSchema.optional(),
 });
@@ -76,6 +82,9 @@ export const SessionInfoSchema = z.object({
   automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
+  /** Latest run's account — what the session is talking to now. Picking a model from another
+   * account relaunches the session on it, which starts a new run. */
+  accountId: z.string().min(1).optional(),
   /** Provider-history operations supported by this session's adapter/runtime. */
   historyCapabilities: AgentHistoryCapabilitiesSchema.optional(),
 });

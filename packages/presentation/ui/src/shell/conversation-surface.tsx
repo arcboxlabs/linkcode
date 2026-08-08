@@ -7,6 +7,8 @@ import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
+import type { ModelOption } from './agent-models';
+import { pickableModels } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
@@ -23,7 +25,7 @@ export interface ConversationComposerController {
   directiveControls: ComposerDirectiveControls;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  onModelChange?: (model: string) => Promise<void>;
+  onModelChange?: (model: ModelOption) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
@@ -32,6 +34,11 @@ export interface ConversationSurfaceProps {
   composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** Every model this session's agent may run on, across all accounts it can bind. Absent means no
+   * account backs it, so the adapter catalog or the curated table supplies the choices instead. */
+  accountModels?: ModelOption[];
+  /** The session's account, so a reflected model id resolves against the right entry. */
+  accountId?: string;
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
@@ -85,6 +92,8 @@ export function ConversationSurface({
   conversation,
   composer,
   agentKind,
+  accountModels,
+  accountId,
   agentLabel,
   attachmentsSupported = false,
   cwd,
@@ -183,7 +192,16 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          agentModels={conversation.availableModels}
+          // The session account's picked set is the user's own answer to "which models may this run
+          // on", so it outranks the adapter catalog — but only for a thread that resolved through an
+          // account at all. One on its own CLI login keeps its own catalog on offer.
+          agentModels={pickableModels(accountModels, conversation.availableModels, {
+            throughAccount: accountId !== undefined,
+          })}
+          currentAccountId={accountId}
+          // Live thread: leaving its account means relaunching the agent, which the menu says out
+          // loud rather than letting a process restart happen invisibly.
+          accountSwitchRestarts
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
           // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a

@@ -48,7 +48,9 @@ export interface WorkbenchSessions {
   create: (opts: {
     kind: AgentKind;
     cwd: string;
-    model?: string | null;
+    model?: string;
+    /** Pins the session to the account the picked model belongs to. */
+    accountId?: string;
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;
@@ -193,7 +195,9 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   async function create(opts: {
     kind: AgentKind;
     cwd: string;
-    model?: string | null;
+    model?: string;
+    /** Pins the session to the account the picked model belongs to. */
+    accountId?: string;
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;
@@ -203,11 +207,15 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     // Captured now: by resolve time the surface still shows the draft, and the recorded
     // transition should be draft → new thread.
     const from = currentLocation;
+    // Pins the session to the account the picked model belongs to. The daemon merges its own
+    // credential bundle over this, so only the account choice travels from the client.
+    const { accountId, ...rest } = opts;
+    const startOptions = accountId === undefined ? rest : { ...rest, config: { accountId } };
     // Rejections propagate to the caller (the new-session page stays up); onError above still
     // reports them via the error banner.
     let sessionId: SessionId;
     try {
-      const result = await createMutation.trigger({ opts });
+      const result = await createMutation.trigger({ opts: startOptions });
       sessionId = result.sessionId;
       showMcpWarnings(result.mcpWarnings, tMcpWarnings);
     } catch (error) {

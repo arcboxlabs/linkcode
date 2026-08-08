@@ -37,6 +37,9 @@ export class FakeAdapter implements AgentAdapter {
 
   startedWith: StartOptions | null = null;
   resumedFrom: string | null = null;
+  /** The options a resume was spawned with — a relaunch carries its model/credentials here, not
+   * through `startedWith`. */
+  resumedWith: StartOptions | null = null;
   stopped = false;
   readonly sentInputs: AgentInput[] = [];
   private readonly listeners = new Set<(event: AgentEvent) => void>();
@@ -67,8 +70,9 @@ export class FakeAdapter implements AgentAdapter {
     });
   }
 
-  resumeHistory(opts: AgentHistoryResumeOptions): Promise<void> {
+  resumeHistory(opts: AgentHistoryResumeOptions, startOpts: StartOptions): Promise<void> {
     this.resumedFrom = opts.historyId;
+    this.resumedWith = startOpts;
     return Promise.resolve();
   }
 

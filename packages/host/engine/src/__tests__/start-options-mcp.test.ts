@@ -160,6 +160,11 @@ describe('account binding at session start', () => {
   function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
     const store = new InMemoryProviderConfigStore();
     store.createAndBindAccount(agent, account);
+    // A bound agent without a picked model refuses to start; these cases are about endpoints.
+    const providers = store.get();
+    store.update({
+      providers: { ...providers, [agent]: { ...providers[agent], model: 'picked-model' } },
+    });
     return store;
   }
 
@@ -169,6 +174,22 @@ describe('account binding at session start', () => {
     credential: { type: 'api-key', key: 'sk-test' },
     createdAt: 0,
     ...overrides,
+  });
+
+  it('refuses a bound agent with no picked model, but lets an unbound one resolve its own', async () => {
+    const store = new InMemoryProviderConfigStore();
+    store.createAndBindAccount('codex', account({ service: 'openai-api' }));
+    const bound = new SessionStartOptionsResolver(store, undefined);
+    await expect(
+      Effect.runPromise(bound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION)),
+    ).rejects.toThrow('No model selected for codex');
+
+    // Nothing bound: the agent still runs on whatever it resolves for itself.
+    const unbound = new SessionStartOptionsResolver(new InMemoryProviderConfigStore(), undefined);
+    const { options } = await Effect.runPromise(
+      unbound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.model).toBeUndefined();
   });
 
   it('refuses the session when the bound account has no endpoint the agent speaks', async () => {

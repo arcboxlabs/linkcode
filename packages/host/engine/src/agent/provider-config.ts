@@ -77,8 +77,10 @@ export function accountBinding(
 
 /**
  * Resolve the session's account: explicit `opts.config.accountId`, else the agent's
- * `activeAccountId`. Undefined when neither resolves or the id is stale (account deleted) —
- * the caller then falls back to the legacy `providers[kind].apiKey`.
+ * `activeAccountId`. A requested id that no longer resolves falls through to that default rather
+ * than stranding the session — a relaunch replays a pin recorded on the run, and the account it
+ * names can be deleted in between. Undefined when neither resolves, which leaves the caller on the
+ * legacy `providers[kind].apiKey`.
  */
 function resolveAccount(
   opts: StartOptions,
@@ -87,9 +89,12 @@ function resolveAccount(
 ): Account | undefined {
   const requestedId =
     typeof opts.config?.accountId === 'string' ? opts.config.accountId : undefined;
-  const id = requestedId ?? config?.activeAccountId;
-  if (id === undefined) return undefined;
-  return accounts.find((account) => account.id === id);
+  for (const id of [requestedId, config?.activeAccountId]) {
+    if (id === undefined) continue;
+    const account = accounts.find((candidate) => candidate.id === id);
+    if (account) return account;
+  }
+  return undefined;
 }
 
 /** The adapter-facing bundle an account contributes to `StartOptions.config`; each adapter maps
@@ -102,7 +107,9 @@ function accountConfigBundle(
 ): { bundle: Record<string, unknown> } | { unavailable: BindingUnavailableReason } {
   const binding = resolveBinding(account, kind);
   if (binding.tier === 'unavailable') return { unavailable: binding.reason };
-  const bundle: Record<string, unknown> = {};
+  // Echoed back so the caller can record which account a run actually resolved to; `resolveAccount`
+  // reads the same key on the way in, which is how a client pins a session to one account.
+  const bundle: Record<string, unknown> = { accountId: account.id };
   const { credential, extraEnv } = account;
   if (credential.type === 'api-key') bundle.apiKey = credential.key;
   else if (credential.type === 'auth-token') bundle.authToken = credential.token;
@@ -113,6 +120,14 @@ function accountConfigBundle(
   return { bundle };
 }
 
+/** The account a resolved `StartOptions` names — written by `accountConfigBundle`, or pinned by a
+ * client that picked a model belonging to a specific account. Callers record it per run; the rest of
+ * `config` carries secrets and must never be persisted. */
+export function resolvedAccountId(opts: StartOptions): string | undefined {
+  const id = opts.config?.accountId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
 export interface AppliedProviderDefaults {
   readonly options: StartOptions;
   /** Why the bound account cannot back this agent. A session must refuse to start rather than
@@ -121,8 +136,8 @@ export interface AppliedProviderDefaults {
 }
 
 /** Apply the stored config to a session's StartOptions: resolve the bound account (or legacy
- * per-agent api key) and inject the credential/endpoint bundle into `config`; a resolved account's
- * `model` outranks the provider default. Returns a new object; never mutates the input. */
+ * per-agent api key), inject the credential/endpoint bundle into `config`, and fall back to the
+ * agent's persisted model pick. Returns a new object; never mutates the input. */
 export function applyProviderDefaults(
   opts: StartOptions,
   providers: ProvidersConfig,
@@ -133,17 +148,22 @@ export function applyProviderDefaults(
   if (!config && !account) return { options: opts };
 
   const next: StartOptions = { ...opts };
-  if (next.model === undefined) {
-    const model = account?.model ?? config?.defaultModel;
-    if (model !== undefined) next.model = model;
-  }
+  // The account holds the models the user may pick from; the pick itself is per agent.
+  if (next.model === undefined && config?.model !== undefined) next.model = config.model;
   if (account) {
     const resolved = accountConfigBundle(account, opts.kind);
     if ('unavailable' in resolved) return { options: next, unavailable: resolved.unavailable };
     next.config = { ...next.config, ...resolved.bundle };
-  } else if (config?.apiKey !== undefined) {
-    // Legacy: no account bound — fall back to the provider's bare api key.
-    next.config = { ...next.config, apiKey: config.apiKey };
+  } else {
+    // Nothing resolved, so an id left in `config` would claim an account the session does not have:
+    // `resolvedAccountId` reads it, the caller treats the account as bound, and the session starts
+    // with no credential at all.
+    if (typeof next.config?.accountId === 'string') {
+      const { accountId: _stale, ...rest } = next.config;
+      next.config = rest;
+    }
+    // Legacy: no account at all — fall back to the provider's bare api key.
+    if (config?.apiKey !== undefined) next.config = { ...next.config, apiKey: config.apiKey };
   }
   return { options: next };
 }

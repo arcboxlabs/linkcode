@@ -18,10 +18,11 @@ import type {
   ProviderAccountListItem,
   ProviderAccountListViewModel,
   ProviderAccountRouting,
-  ProviderBindingStatus,
-  ProviderBindingViewModel,
+  ProviderAgentStatus,
+  ProviderAgentViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
+import { accountEnabledFor } from './default-models';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
@@ -33,7 +34,7 @@ export function maskSecret(secret: string): string {
   return `${secret.slice(0, 6)}…${secret.slice(-4)}`;
 }
 
-/** Agents whose active provider is this account, in stable agent order. */
+/** Agents that fall back to this account when nothing names one, in stable agent order. */
 export function boundAgentKinds(
   providers: ProvidersConfig | undefined,
   accountId: string,
@@ -86,42 +87,39 @@ function credentialViewModel(
   };
 }
 
-function bindingStatus(
+function agentStatus(
   account: Account,
   accountLabels: ReadonlyMap<string, string>,
   kind: AgentKind,
   providers: ProvidersConfig | undefined,
-): { bound: boolean; status: ProviderBindingStatus; tier: ProviderBindingViewModel['tier'] } {
+): Omit<ProviderAgentViewModel, 'kind' | 'defaultModel'> {
   const availability = resolveBinding(account, kind);
-  const boundId = providers?.[kind]?.activeAccountId;
-  const bound = boundId === account.id;
+  const defaultId = providers?.[kind]?.activeAccountId;
+  const isDefault = defaultId === account.id;
+  const enabled = accountEnabledFor(providers, kind, account.id);
   if (availability.tier === 'unavailable') {
-    if (availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth') {
-      return {
-        bound,
-        tier: availability.tier,
-        status: { kind: 'unavailable-oauth', agent: account.credential.agent },
-      };
-    }
-    return {
-      bound,
-      tier: availability.tier,
-      status: {
-        kind:
-          availability.reason === 'endpoint-incomplete'
-            ? 'unavailable-endpoint-incomplete'
-            : 'unavailable-protocol',
-      },
-    };
+    const status: ProviderAgentStatus =
+      availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth'
+        ? { kind: 'unavailable-oauth', agent: account.credential.agent }
+        : {
+            kind:
+              availability.reason === 'endpoint-incomplete'
+                ? 'unavailable-endpoint-incomplete'
+                : 'unavailable-protocol',
+          };
+    return { tier: availability.tier, enabled: false, isDefault: false, status };
   }
   return {
-    bound,
     tier: availability.tier,
-    status: bound
-      ? { kind: 'bound' }
-      : boundId === undefined
-        ? { kind: 'no-provider' }
-        : { kind: 'bound-elsewhere', accountLabel: accountLabels.get(boundId) ?? boundId },
+    enabled,
+    isDefault,
+    status: !enabled
+      ? { kind: 'disabled' }
+      : isDefault
+        ? { kind: 'default' }
+        : defaultId === undefined
+          ? { kind: 'enabled-no-default' }
+          : { kind: 'enabled', defaultLabel: accountLabels.get(defaultId) ?? defaultId },
   };
 }
 
@@ -133,12 +131,13 @@ export function providerAccountDetailViewModel(
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountDetailViewModel {
   const accountLabels = new Map(accounts.map((candidate) => [candidate.id, candidate.label]));
-  const bindings = AGENT_KINDS.map((kind): ProviderBindingViewModel => {
-    const binding = bindingStatus(account, accountLabels, kind, providers);
+  const agents = AGENT_KINDS.map((kind): ProviderAgentViewModel => {
+    const status = agentStatus(account, accountLabels, kind, providers);
+    // Only the default account's row edits the default model — the pick belongs to that pairing.
     return {
       kind,
-      ...binding,
-      currentModel: providers?.[kind]?.defaultModel ?? '',
+      ...status,
+      ...(status.isDefault && { defaultModel: providers?.[kind]?.model ?? '' }),
     };
   });
   const boundAgents = boundAgentKinds(providers, account.id);
@@ -148,13 +147,16 @@ export function providerAccountDetailViewModel(
     id: account.id,
     label: account.label,
     credential: credentialViewModel(account, runtimes),
-    bindings,
+    agents,
     boundAgents,
-    availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
+    enabledAgentCount: agents.filter((agent) => agent.enabled).length,
+    availableAgentCount: agents.filter((agent) => agent.tier !== 'unavailable').length,
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
     ...(routing !== undefined && { routing }),
-    ...(!(account.model === undefined) && { accountModel: account.model }),
+    ...(account.models !== undefined && {
+      accountModels: account.models.map(({ id, label }) => ({ id, label: label ?? id })),
+    }),
     ...(!(boundAgents.length === 0) && {
       configPreview: accountConfigSnippet(providers, account.id),
     }),
@@ -219,18 +221,64 @@ export function providerAccountListViewModel(
   };
 }
 
-/** Bind (or, with undefined, unbind) an agent's active account; other fields survive untouched. */
-export function withBinding(
+/**
+ * Set (or, with undefined, clear) the account an agent falls back to when nothing names one. Other
+ * fields survive untouched — with one exception. The default model lives per agent while the set it
+ * came from lives on the account, so moving the default can orphan it. Dropping a model the new
+ * account does not offer leaves the agent unpicked, which blocks its unpinned sends until the user
+ * chooses again; keeping it would run the next one on a model that account never listed.
+ */
+export function withDefaultAccount(
   providers: ProvidersConfig,
   kind: AgentKind,
   accountId: string | undefined,
+  accounts: Accounts = [],
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
   if (accountId === undefined) {
     const { activeAccountId: _cleared, ...rest } = entry;
     return { ...providers, [kind]: rest };
   }
-  return { ...providers, [kind]: { ...entry, activeAccountId: accountId } };
+  const offered = accounts.find((candidate) => candidate.id === accountId)?.models;
+  const orphaned =
+    entry.model !== undefined && !(offered ?? []).some(({ id }) => id === entry.model);
+  const { model: _dropped, ...kept } = entry;
+  return {
+    ...providers,
+    [kind]: { ...(orphaned ? kept : entry), activeAccountId: accountId },
+  };
+}
+
+/**
+ * Show or hide one account's models in an agent's pickers. Absent `enabledAccountIds` means every
+ * bindable account, so the first disable has to materialize the list from what is bindable *now* —
+ * otherwise hiding one account would read as "only this one", hiding every other account too. Once
+ * the list exists it is authoritative, so an account added later stays out until enabled.
+ *
+ * Disabling the agent's default account also clears the default: leaving it would keep resolving
+ * unpinned sessions onto an account the user just removed from the menu.
+ */
+export function withAccountEnabled(
+  providers: ProvidersConfig,
+  kind: AgentKind,
+  accountId: string,
+  enabled: boolean,
+  accounts: Accounts = [],
+): ProvidersConfig {
+  const entry = providers[kind] ?? { enabled: true };
+  const current =
+    entry.enabledAccountIds ??
+    accounts.reduce<string[]>((ids, account) => {
+      if (resolveBinding(account, kind).tier !== 'unavailable') ids.push(account.id);
+      return ids;
+    }, []);
+  const next = enabled
+    ? [...new Set([...current, accountId])]
+    : current.filter((id) => id !== accountId);
+  const withList: ProvidersConfig = { ...providers, [kind]: { ...entry, enabledAccountIds: next } };
+  return enabled || entry.activeAccountId !== accountId
+    ? withList
+    : withDefaultAccount(withList, kind, undefined);
 }
 
 /** Toggle whether the agent is offered in the client's agent picker. */
@@ -242,18 +290,26 @@ export function withEnabled(
   return { ...providers, [kind]: { ...providers[kind], enabled } };
 }
 
-/** Set (or, with undefined, clear) an agent's default model. */
+/**
+ * Set (or, with undefined, clear) the model an agent runs on. Passing the account the model came
+ * from rebinds the agent to it, because a model and the account serving it are one choice — leaving
+ * the old binding in place would run the next session on an account that never listed this model.
+ */
 export function withModel(
   providers: ProvidersConfig,
   kind: AgentKind,
   model: string | undefined,
+  accountId?: string,
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
   if (model === undefined) {
-    const { defaultModel: _cleared, ...rest } = entry;
+    const { model: _cleared, ...rest } = entry;
     return { ...providers, [kind]: rest };
   }
-  return { ...providers, [kind]: { ...entry, defaultModel: model } };
+  return {
+    ...providers,
+    [kind]: { ...entry, model, ...(accountId !== undefined && { activeAccountId: accountId }) },
+  };
 }
 
 /** Drop every binding referencing a removed account; returns the input unchanged when none did. */

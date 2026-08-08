@@ -121,7 +121,7 @@ describe('dev mock transport', () => {
     expect(replyText).toContain('Hello mocked daemon');
 
     const providers = {
-      codex: { enabled: true, defaultModel: 'mock-model' },
+      codex: { enabled: true, model: 'mock-model' },
     } satisfies ProvidersConfig;
     await client.setProviderConfig(providers);
     expect(await client.getProviderConfig()).toEqual(providers);
@@ -147,7 +147,7 @@ describe('dev mock transport', () => {
       { ...boundAccount, label: 'Updated relay' },
     ]);
     expect(await client.getProviderConfig()).toEqual({
-      codex: { enabled: true, defaultModel: 'mock-model', activeAccountId: 'acc_2' },
+      codex: { enabled: true, model: 'mock-model', activeAccountId: 'acc_2' },
     });
 
     client.dispose();

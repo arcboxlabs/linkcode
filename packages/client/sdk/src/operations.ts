@@ -7,7 +7,6 @@ import type {
 } from '@linkcode/client-core';
 import type {
   Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -222,9 +221,9 @@ export function cancelTurn(
 }
 
 export function setModel(
-  options: Options<{ sessionId: SessionId; model: string }>,
+  options: Options<{ sessionId: SessionId; model: string; accountId?: string }>,
 ): RequestResult<{ ok: true }> {
-  return resolveClient(options).setModel(options.sessionId, options.model);
+  return resolveClient(options).setModel(options.sessionId, options.model, options.accountId);
 }
 
 export function setEffort(
@@ -278,9 +277,12 @@ export function setAccounts(options: Options<{ accounts: Accounts }>): RequestRe
 }
 
 export function probeAccountModels(
-  options: Options<{ endpoint: AccountEndpoint; secret: AccountSecret }>,
+  options: Options<{
+    service: string;
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string };
+  }>,
 ): RequestResult<AccountModel[]> {
-  return resolveClient(options).probeAccountModels(options.endpoint, options.secret);
+  return resolveClient(options).probeAccountModels(options.service, options.credential);
 }
 
 /** Masked custom MCP servers — env/header keys only, never a secret value. */

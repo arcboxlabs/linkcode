@@ -21,11 +21,13 @@ import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
   providerAccountListViewModel,
-  withBinding,
+  withAccountEnabled,
+  withDefaultAccount,
   withModel,
   withoutAccount,
 } from './view';
@@ -48,6 +50,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
+  // The forms are presentation; only this page sits inside the data-plane provider tree.
+  const modelSources = useModelSources();
 
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
@@ -73,8 +77,13 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     void mutateProviders();
   };
 
-  const handleSetBinding = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withBinding(providers ?? {}, kind, accountId));
+  const handleSetDefaultAccount = (kind: AgentKind, accountId: string | undefined): void => {
+    void applyProviders(withDefaultAccount(providers ?? {}, kind, accountId, pool));
+  };
+
+  const handleSetAccountEnabled = (kind: AgentKind, enabled: boolean): void => {
+    if (!selected) return;
+    void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
   const handleSetModel = (kind: AgentKind, model: string | undefined): void => {
@@ -169,6 +178,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                 {view.kind === 'add-form' ? (
                   <AddAccountForm
                     serviceId={view.service}
+                    sources={modelSources}
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
@@ -184,6 +194,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                   view.editing ? (
                     <EditAccountForm
                       account={selected}
+                      sources={modelSources}
                       busy={saveAccounts.isMutating}
                       onBack={backToAccount}
                       onSubmit={(account) => {
@@ -194,7 +205,8 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     <AccountDetail
                       account={selectedDetail}
                       busy={busy}
-                      onSetBinding={handleSetBinding}
+                      onSetAccountEnabled={handleSetAccountEnabled}
+                      onSetDefaultAccount={handleSetDefaultAccount}
                       onSetModel={handleSetModel}
                       onEdit={startEdit}
                       onRemove={() => {

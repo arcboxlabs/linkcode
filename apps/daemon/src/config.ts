@@ -211,7 +211,7 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
     // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
     const attached = withAccountSecret(store, value);
     migrated ||= attached.migrated;
-    const account = AccountSchema.safeParse(attached.value);
+    const account = AccountSchema.safeParse(withPickedModels(attached.value));
     if (!account.success) {
       logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
@@ -219,6 +219,25 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
     accounts.push(account.data);
   }
   return { value: accounts, migrated };
+}
+
+/** Pre-selection configs stored one free-text model per account; carry it over as the picked set,
+ * or zod strips the unknown key and the user silently loses their model. Idempotent. */
+function withPickedModels(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const { model, ...rest } = value as { model?: unknown; models?: unknown };
+  if (typeof model !== 'string' || model === '' || rest.models !== undefined) return rest;
+  return { ...rest, models: [{ id: model }] };
+}
+
+/** Same carry-over for the per-agent default, which is now the persisted pick. */
+function withPickedModel(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const { defaultModel, ...rest } = value as { defaultModel?: unknown; model?: unknown };
+  if (typeof defaultModel !== 'string' || defaultModel === '' || rest.model !== undefined) {
+    return rest;
+  }
+  return { ...rest, model: defaultModel };
 }
 
 /**
@@ -270,7 +289,7 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
     }
     const attached = withProviderSecret(store, kind.data, value);
     migrated ||= attached.migrated;
-    const config = ProviderConfigSchema.safeParse(attached.value);
+    const config = ProviderConfigSchema.safeParse(withPickedModel(attached.value));
     if (!config.success) {
       logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;
