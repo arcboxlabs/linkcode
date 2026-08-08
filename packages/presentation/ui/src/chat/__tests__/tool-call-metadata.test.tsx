@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ToolCall } from '@linkcode/schema';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   hasToolBody,
@@ -9,6 +9,7 @@ import {
   toolCallContextSummary,
   toolCallHeaderSummary,
   toolCallMetadata,
+  toolCallSearchCounts,
 } from '../../tool-utils';
 import { ToolCallBody, ToolCallItem } from '../tool-call-item';
 
@@ -32,7 +33,7 @@ afterEach(() => {
 });
 
 describe('tool metadata policy', () => {
-  it('previews search results while hiding adapter request and timing fields', () => {
+  it('keeps the raw search query in the body card only, without metadata badges', () => {
     const toolCall: ToolCall = {
       toolCallId: 'search-1',
       title: 'Search renderers',
@@ -50,12 +51,18 @@ describe('tool metadata policy', () => {
       content: [],
     };
 
+    expect(toolCallMetadata(toolCall)).toEqual([
+      { key: 'query', value: 'tool-call' },
+      { key: 'matches', value: '2' },
+      { key: 'files', value: '2' },
+    ]);
+    expect(toolCallSearchCounts(toolCall)).toEqual({ matches: 2, files: 2 });
+
     const { container } = render(<ToolCallBody toolCall={toolCall} />);
 
-    expect(screen.getByText('query')).toBeDefined();
-    expect(screen.getAllByText('tool-call')).toHaveLength(2);
-    expect(screen.getByText('matches')).toBeDefined();
-    expect(screen.getByText('files')).toBeDefined();
+    // The raw query renders once, as the result card's title — never as a badge.
+    expect(screen.queryByText('query')).toBeNull();
+    expect(screen.getAllByText('tool-call')).toHaveLength(1);
     expect(container.querySelector('pre')?.textContent).toContain(
       'packages/presentation/ui/src/chat/tool.tsx',
     );
@@ -64,6 +71,70 @@ describe('tool metadata policy', () => {
     );
     expect(container.textContent).not.toContain('elapsedMs');
     expect(container.textContent).not.toContain('glob');
+  });
+
+  it('summarizes search headers from real Claude envelope counts', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'search-claude',
+      title: 'Grep',
+      kind: 'search',
+      status: 'completed',
+      rawInput: { pattern: 'permission-request|tool-call|plan' },
+      rawOutput: { mode: 'files_with_matches', numFiles: 3, numMatches: 12 },
+      content: [{ type: 'content', content: { type: 'text', text: 'a.ts\nb.ts\nc.ts' } }],
+    };
+
+    expect(toolCallSearchCounts(toolCall)).toEqual({ matches: 12, files: 3 });
+    expect(toolCallMetadata(toolCall)).toEqual([
+      { key: 'query', value: 'permission-request|tool-call|plan' },
+      { key: 'matches', value: '12' },
+      { key: 'files', value: '3' },
+    ]);
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('· searchSummary.matches · searchSummary.files')).toBeDefined();
+    expect(screen.queryByText('permission-request|tool-call|plan')).toBeNull();
+  });
+
+  it('keeps MCP server identity beside search counts', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'search-mcp',
+      title: 'mcp__repo__search_files',
+      kind: 'search',
+      status: 'completed',
+      rawInput: { pattern: 'ToolCallItem' },
+      rawOutput: { numFiles: 3, numMatches: 12 },
+      content: [{ type: 'content', content: { type: 'text', text: 'a.ts\nb.ts\nc.ts' } }],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('· repo · searchSummary.matches · searchSummary.files')).toBeDefined();
+    expect(screen.getByText('search_files')).toBeDefined();
+    expect(screen.queryByText('ToolCallItem')).toBeNull();
+  });
+
+  it('keeps an output-less search query in an expandable body card', () => {
+    const toolCall: ToolCall = {
+      toolCallId: 'search-empty',
+      title: 'Grep',
+      kind: 'search',
+      status: 'in_progress',
+      rawInput: { pattern: 'permission-request|tool-call|plan' },
+      content: [],
+    };
+
+    expect(hasToolBody(toolCall)).toBe(true);
+
+    const { container } = render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(container.querySelector('button')?.textContent).not.toContain(
+      'permission-request|tool-call|plan',
+    );
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('permission-request|tool-call|plan')).toBeDefined();
+    expect(container.querySelector('pre')).toBeNull();
   });
 
   it('previews an allowlisted fetch response without exposing its envelopes', () => {
@@ -329,7 +400,8 @@ describe('tool metadata policy', () => {
 
     expect(calls.map(toolCallHeaderSummary)).toEqual([
       { label: 'README.md:3', tooltip: 'README.md:3' },
-      { label: 'ToolCallBody' },
+      // Search queries are raw machine strings and never summarize the header.
+      undefined,
       { label: 'old.ts → new.ts', tooltip: 'old.ts → new.ts' },
       { label: 'pnpm test' },
     ]);

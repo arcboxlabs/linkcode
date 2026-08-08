@@ -22,6 +22,7 @@ function makeRepo(): string {
   git(cwd, 'init', '-b', 'main');
   git(cwd, 'config', 'user.email', 'test@test');
   git(cwd, 'config', 'user.name', 'test');
+  git(cwd, 'config', 'commit.gpgsign', 'false');
   writeFileSync(join(cwd, 'file.txt'), 'one\n');
   git(cwd, 'add', '--all');
   git(cwd, 'commit', '-m', 'initial');

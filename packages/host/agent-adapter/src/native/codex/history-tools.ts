@@ -74,6 +74,21 @@ export function codexToolAnnounce(
 
   // function_call: JSON-encoded `arguments`.
   const args = parseArguments(payload);
+  const mcp = codexMcpToolName(payload);
+  if (mcp) {
+    // Converge with the live adapter's `mcp__<server>__<tool>` slug (and its kind) so a
+    // replayed MCP call renders like the live turn did.
+    return {
+      toolCall: {
+        toolCallId: callId,
+        title: `mcp__${mcp.server}__${mcp.tool}`,
+        kind: 'other',
+        status: 'in_progress',
+        content: [],
+        rawInput: args,
+      },
+    };
+  }
   if (name === 'update_plan') {
     const plan = planFromArgs(args);
     if (plan) return { plan };
@@ -112,6 +127,31 @@ export function codexToolAnnounce(
       rawInput: args,
     },
   };
+}
+
+const MCP_NAMESPACE_PREFIX = 'mcp__';
+const PLUGIN_APPS_NAMESPACE_PREFIX = 'codex_apps__';
+
+/** Rollout MCP rows are `function_call`s whose sibling `namespace` is `mcp__<server>` (observed
+ * with a stray trailing `__` on some rows); `name` is the bare tool. Plugin apps namespace as
+ * `mcp__codex_apps__<app>` with one leading `_` on the tool name — surface the app as the
+ * server, like the live adapter does. Built-ins carry no namespace or a non-`mcp__` one.
+ * (Verified against real 0.131–0.146 rollouts, 2026-08.) */
+function codexMcpToolName(
+  payload: Record<string, unknown>,
+): { server: string; tool: string } | undefined {
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  if (!namespace || !name || !namespace.startsWith(MCP_NAMESPACE_PREFIX)) return undefined;
+  let server = namespace.slice(MCP_NAMESPACE_PREFIX.length);
+  let tool = name;
+  if (server.startsWith(PLUGIN_APPS_NAMESPACE_PREFIX)) {
+    server = server.slice(PLUGIN_APPS_NAMESPACE_PREFIX.length);
+    if (tool[0] === '_') tool = tool.slice(1);
+  } else if (server.endsWith('__')) {
+    server = server.slice(0, -2);
+  }
+  return server.length > 0 && tool.length > 0 ? { server, tool } : undefined;
 }
 
 /** Settle an output row into the final snapshot, keeping the announce's diff content for edits and

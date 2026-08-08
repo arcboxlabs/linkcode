@@ -1,5 +1,5 @@
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
-import { PencilIcon, SearchIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
+import { PencilIcon, SparklesIcon, TelescopeIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
@@ -189,7 +189,7 @@ const ACTIVITY_ICONS: Record<
   files: PencilIcon,
   integration: WrenchIcon,
   command: TerminalIcon,
-  explore: SearchIcon,
+  explore: TelescopeIcon,
   thinking: SparklesIcon,
 };
 
