@@ -15,6 +15,9 @@ export default defineConfig({
     ...(generatedConfig && {
       'import.meta.env.MAIN_VITE_CONFIG_BOOTSTRAP': JSON.stringify(generatedConfig.bootstrapJson),
     }),
+    ...(generatedConfig?.brandIdentityJson !== undefined && {
+      'import.meta.env.MAIN_VITE_BRAND_IDENTITY': JSON.stringify(generatedConfig.brandIdentityJson),
+    }),
   },
   envPrefix: ['MAIN_VITE_', 'VITE_'],
   resolve: {

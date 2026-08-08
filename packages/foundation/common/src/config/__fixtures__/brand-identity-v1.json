@@ -1,0 +1,15 @@
+{
+  "applicationId": "dev.arcbox.acme.desktop",
+  "assetsPath": "brands/acme",
+  "brandId": "acme",
+  "brandIdentityVersion": 1,
+  "channel": "stable",
+  "displayName": "Acme Studio",
+  "platform": "desktop",
+  "provenance": {
+    "manifestSchemaVersion": 1,
+    "sourceGitSha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "storageNamespace": "Acme Studio",
+  "urlScheme": "acme"
+}

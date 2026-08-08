@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import crossSpawn from 'cross-spawn';
+import { assertStagedConfigMatchesGenerated } from './package-config.mts';
 import { mergeUpdateFeeds } from './update-feed.mts';
 
 const HOST_PLATFORM: Partial<Record<NodeJS.Platform, BuilderPlatform>> = {
@@ -159,10 +160,35 @@ function updateFeedName(arch: BuilderArch): string {
   return arch === 'arm64' ? 'latest-linux-arm64.yml' : 'latest-linux.yml';
 }
 
+/** Identity-owned builder fields; a passthrough `-c.` override of these on a branded build would
+ * silently re-brand the artifact, so they are refused outright. */
+const IDENTITY_OVERRIDE_RE = /^-c\.(?:appId|productName|protocols)\b/;
+
 function build(): void {
   // Both extend the shared electron-builder.yml base; each adds its own deep-link scheme (release
   // `linkcode://`, dev shell `linkcode-dev://`). The base is never passed directly — it has none.
-  const config = devshell ? 'electron-builder.devshell.yml' : 'electron-builder.release.yml';
+  const branded = assertStagedConfigMatchesGenerated(desktopDir);
+  if (branded && devshell) {
+    // out/ already embeds the branded bootstrap+identity; packing it as a dev shell would mix
+    // the LinkCode Development shell identity with another brand's runtime identity.
+    throw new Error(
+      'apps/desktop/generated holds a rendered brand config; delete it (or package without ' +
+        '--devshell) — a dev shell must not embed another brand',
+    );
+  }
+  const brandConfig = join(desktopDir, 'out', 'config', 'electron-builder.brand.json');
+  if (branded) {
+    const rejected = passthrough.find((arg) => IDENTITY_OVERRIDE_RE.test(arg));
+    if (rejected !== undefined) {
+      throw new Error(`branded builds refuse identity overrides: ${rejected}`);
+    }
+  }
+  const config = devshell
+    ? 'electron-builder.devshell.yml'
+    : branded
+      ? brandConfig
+      : 'electron-builder.release.yml';
+  const brandIcon = join(desktopDir, 'out', 'config', 'brand-assets', 'icon.png');
   const feeds = new Map<string, string>();
   for (const arch of stagedArches()) {
     const target = materializeStaging(arch);
@@ -180,15 +206,17 @@ function build(): void {
         '--projectDir',
         target,
         '--config',
-        join(desktopDir, config),
+        branded ? config : join(desktopDir, config),
         // projectDir is the staging dir, so config-relative paths would resolve under it; redirect
-        // output back to where CI/verify-artifacts expect it and icons to the shared repo-root assets.
+        // output back to where CI/verify-artifacts expect it and icons to the shared repo-root
+        // assets — or, on branded builds, to the staged brand assets only.
         `-c.directories.output=${releaseDir}`,
-        `-c.mac.icon=${join(assetsDir, 'linkcode.icon')}`,
-        `-c.win.icon=${join(assetsDir, 'icon.png')}`,
+        `-c.mac.icon=${branded ? brandIcon : join(assetsDir, 'linkcode.icon')}`,
+        `-c.win.icon=${branded ? brandIcon : join(assetsDir, 'icon.png')}`,
         // A directory of per-size PNGs — app-builder-lib 26+ won't expand a single PNG into a size
         // set, so a lone raster installs only hicolor/1024x1024 (unindexed → GNOME fallback icon).
-        `-c.linux.icon=${join(assetsDir, 'linux-icons')}`,
+        // Branded builds ship the single brand raster for now (launcher may fall back on GNOME).
+        `-c.linux.icon=${branded ? brandIcon : join(assetsDir, 'linux-icons')}`,
         ...(devshell ? ['--dir'] : []),
         ...passthrough,
       ],

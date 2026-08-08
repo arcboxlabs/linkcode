@@ -3,6 +3,7 @@ import { parseProfileName } from '@linkcode/schema/daemon-runtime';
 import { workspacesDirName } from '@linkcode/schema/product';
 import { app, dialog } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { deriveDesktopBrandBase, parseDesktopBrandIdentity } from './brand';
 
 /**
  * The desktop identity is two orthogonal axes; every OS-facing surface (app name, `userData`,
@@ -39,7 +40,13 @@ function resolveProfile(): string | undefined {
 /** The requested profile; `undefined` is the default universe (every pre-profile install). */
 export const PROFILE = resolveProfile();
 
-const BASE_NAME = CHANNEL === 'development' ? 'LinkCode Development' : 'LinkCode';
+/** Build-time brand identity (CODE-558): null on default LinkCode builds. A malformed inlined
+ * artifact throws here and aborts boot — a branded build must never fall back to LinkCode. */
+const BRAND = parseDesktopBrandIdentity(import.meta.env.MAIN_VITE_BRAND_IDENTITY);
+const BRAND_BASE = BRAND === null ? null : deriveDesktopBrandBase(BRAND, CHANNEL);
+
+const BASE_NAME =
+  BRAND_BASE?.appName ?? (CHANNEL === 'development' ? 'LinkCode Development' : 'LinkCode');
 
 export const APP_NAME = PROFILE === undefined ? BASE_NAME : `${BASE_NAME} (${PROFILE})`;
 
@@ -49,11 +56,31 @@ export const APP_NAME = PROFILE === undefined ? BASE_NAME : `${BASE_NAME} (${PRO
  * profile get distinct ids for the same isolation rationale as `APP_NAME`.
  */
 const BASE_ID =
-  CHANNEL === 'development'
+  BRAND_BASE?.appId ??
+  (CHANNEL === 'development'
     ? 'com.arcboxlabs.linkcode.desktop.development'
-    : 'com.arcboxlabs.linkcode.desktop';
+    : 'com.arcboxlabs.linkcode.desktop');
 
 export const APP_ID = PROFILE === undefined ? BASE_ID : `${BASE_ID}.${PROFILE}`;
+
+/**
+ * The brand's on-disk storage universe (`userData` directory name, see identity.ts). Without a
+ * brand this is exactly APP_NAME — the pre-CODE-558 value, so existing installs keep their data.
+ * With a brand it is the publisher's storageNamespace (channel/profile-forked like APP_NAME);
+ * each brand only ever resolves its own namespace and never migrates or reads another's.
+ */
+const STORAGE_BASE = BRAND_BASE?.storageDirName ?? BASE_NAME;
+
+export const STORAGE_DIR_NAME =
+  PROFILE === undefined ? STORAGE_BASE : `${STORAGE_BASE} (${PROFILE})`;
+
+/**
+ * OAuth deep-link protocol (see cloud-auth/client.ts): brand-owned when a brand identity is
+ * embedded, split per channel so a development build never fights the installed release over
+ * the OS-global scheme.
+ */
+export const CLOUD_AUTH_SCHEME =
+  BRAND_BASE?.authScheme ?? (CHANNEL === 'development' ? 'linkcode-dev' : 'linkcode');
 
 /** The channel's workspace directory (`~/LinkCode`, `~/LinkCode Development`) — shared across
  * that channel's profiles on purpose, but never across channels (CODE-460). Must agree with the
