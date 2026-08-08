@@ -110,7 +110,6 @@ client configuration or new build.
 | `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` | `apps/desktop/scripts/stage-sidecar.mts` | `aarch64-linux-gnu-gcc` for the linux-arm64 sidecar cross-build. |
 | `NODE_OPTIONS` | `.github/workflows/ci.yml` | `--max-old-space-size=4096` for every CI job. |
 | `POSTHOG_HOST` | desktop/mobile build workflows | Organization Actions variable mapped to the platform-specific PostHog host for production bundles. |
-| `BRAND_BUILD_MATRIX` | `release-brand-matrix.yml` | Repository Actions var containing the reviewed strict brand × platform JSON matrix. A manual `matrix_json` input may replace it only for plan validation; builds reject that override. It contains only public release bindings and destination identifiers, never credentials. |
 | `CONFIG_PUBLISHER_REPO`, `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS` | release workflows | Protected `release` environment vars. Repository name plus exact revision/public-keyring JSON bytes; release manifests digest-bind the JSON inputs. |
 
 ## Release-only secrets

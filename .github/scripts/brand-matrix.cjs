@@ -294,6 +294,7 @@ function strictBoolean(value, name) {
 }
 
 function runCli(argv = process.argv.slice(2), env = process.env) {
+  const { createHash } = require('node:crypto');
   const { appendFileSync, readFileSync } = require('node:fs');
   const { parseArgs } = require('node:util');
   const { values } = parseArgs({
@@ -306,15 +307,14 @@ function runCli(argv = process.argv.slice(2), env = process.env) {
     },
     strict: true,
   });
-  const text = values['matrix-file']
-    ? readFileSync(values['matrix-file'], 'utf8')
-    : env.BRAND_BUILD_MATRIX;
-  if (!text) fail('BRAND_BUILD_MATRIX', 'must be set or supplied with --matrix-file');
+  if (!values['matrix-file']) fail('--matrix-file', 'is required');
+  const bytes = readFileSync(values['matrix-file']);
+  const text = bytes.toString('utf8');
   let matrix;
   try {
     matrix = JSON.parse(text);
   } catch {
-    fail('BRAND_BUILD_MATRIX', 'must be valid JSON');
+    fail('--matrix-file', 'must contain valid JSON');
   }
   const plan = buildMatrixPlan(matrix, {
     build: strictBoolean(values.build, '--build'),
@@ -323,6 +323,7 @@ function runCli(argv = process.argv.slice(2), env = process.env) {
   });
   const outputs = [
     `brands=${JSON.stringify(plan.brands)}`,
+    `delivery_descriptor_sha256=${createHash('sha256').update(bytes).digest('hex')}`,
     `targets=${JSON.stringify(plan.targets)}`,
   ];
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `${outputs.join('\n')}\n`);
@@ -338,4 +339,5 @@ module.exports = {
   PLATFORMS,
   buildMatrixPlan,
   parseBrandBuildMatrix,
+  runCli,
 };

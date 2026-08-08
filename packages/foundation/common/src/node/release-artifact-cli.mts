@@ -12,10 +12,13 @@ import {
 const USAGE = `Usage: release-artifact
   --artifact-root <dir> --artifact <relative-file> [--artifact <relative-file> ...]
   --bundle <json-or-generated-ts> --brand-identity <json> --brand-manifest <yaml>
-  --release-manifest <json> --compliance <json> --client-git-sha <sha> --out <json> [--signed]
+  --delivery-descriptor <json> --release-manifest <json> --compliance <json>
+  --expected-delivery-sha256 <sha256> --client-git-sha <sha> --out <json> [--signed]
   release-artifact --artifact-root <dir> --verify <provenance.json>
-  --bundle <json-or-generated-ts> --brand-identity <json> --brand-manifest <yaml> --release-manifest <json>
-  --client-git-sha <sha> --expected-brand <id> --expected-platform <platform> [--signed]`;
+  --bundle <json-or-generated-ts> --brand-identity <json> --brand-manifest <yaml>
+  --delivery-descriptor <json> --release-manifest <json> --client-git-sha <sha>
+  --expected-brand <id> --expected-delivery-sha256 <sha256>
+  --expected-platform <platform> [--signed]`;
 
 function bail(message: string): never {
   throw new TypeError(`release-artifact: ${message}\n\n${USAGE}`);
@@ -105,7 +108,9 @@ async function main(): Promise<void> {
       bundle: { type: 'string' },
       'client-git-sha': { type: 'string' },
       compliance: { type: 'string' },
+      'delivery-descriptor': { type: 'string' },
       'expected-brand': { type: 'string' },
+      'expected-delivery-sha256': { type: 'string' },
       'expected-platform': { type: 'string' },
       out: { type: 'string' },
       'release-manifest': { type: 'string' },
@@ -134,6 +139,8 @@ async function main(): Promise<void> {
       brandId: required('expected-brand'),
       bundle: parsed.bundle,
       clientGitSha: required('client-git-sha'),
+      deliveryDescriptorBytes: await readFile(required('delivery-descriptor')),
+      expectedDeliveryDescriptorSha256: required('expected-delivery-sha256'),
       platform: required('expected-platform'),
       provenance: input.value,
       releaseManifest: releaseManifest(releaseInput.value),
@@ -159,6 +166,8 @@ async function main(): Promise<void> {
     bundle: parsed.bundle,
     clientGitSha: required('client-git-sha'),
     compliance: compliance(complianceInput.value),
+    deliveryDescriptorBytes: await readFile(required('delivery-descriptor')),
+    expectedDeliveryDescriptorSha256: required('expected-delivery-sha256'),
     releaseManifest: releaseManifest(releaseInput.value),
     releaseManifestBytes: releaseInput.bytes,
     signed: values.signed,

@@ -1,7 +1,11 @@
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import matrixModule from './brand-matrix.cjs';
 
-const { buildMatrixPlan, parseBrandBuildMatrix } = matrixModule;
+const { buildMatrixPlan, parseBrandBuildMatrix, runCli } = matrixModule;
 const RE_WRONG_BRAND = /must target acme\/ios\/canary/;
 const RE_WRONG_PLATFORM = /must target acme\/android\/canary/;
 const RE_UNCHECKED = /noExecutableCode: must be true/;
@@ -207,5 +211,18 @@ describe('parseBrandBuildMatrix', () => {
     const divergent = matrix(brand());
     divergent.brands[0].releaseManifests.ios.sourceGitSha = gitSha('f');
     expect(() => parseBrandBuildMatrix(divergent)).toThrow(RE_DIVERGENT_SOURCE);
+  });
+
+  it('emits the digest of the exact matrix-file bytes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'brand-matrix-'));
+    const matrixPath = join(root, 'matrix.json');
+    const outputPath = join(root, 'github-output');
+    const bytes = `${JSON.stringify(matrix(brand()))}\n`;
+    await writeFile(matrixPath, bytes);
+    runCli(['--matrix-file', matrixPath], { GITHUB_OUTPUT: outputPath });
+    const output = await readFile(outputPath, 'utf8');
+    expect(output).toContain(
+      `delivery_descriptor_sha256=${createHash('sha256').update(bytes).digest('hex')}\n`,
+    );
   });
 });

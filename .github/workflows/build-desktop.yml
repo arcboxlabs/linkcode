@@ -7,7 +7,7 @@
 name: Build Desktop
 
 on:
-  # Invoked by release-desktop.yml (caller must use `secrets: inherit`).
+  # Release-environment secrets resolve in the called jobs; callers need not forward all secrets.
   workflow_call:
     inputs:
       ref:
@@ -22,6 +22,11 @@ on:
         default: false
       brand_id:
         description: Brand id for isolated artifact names; empty keeps the default release flow
+        type: string
+        required: false
+        default: ""
+      delivery_descriptor_sha256:
+        description: Expected SHA-256 of the committed brand delivery matrix
         type: string
         required: false
         default: ""
@@ -302,6 +307,8 @@ jobs:
             --brand-identity apps/desktop/generated/brand-identity.json \
             --brand-manifest release-inputs/brands.manifest.yaml \
             --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ inputs.delivery_descriptor_sha256 }}' \
             --release-manifest release-inputs/release-manifest.desktop.json \
             --compliance release-inputs/compliance.desktop.json \
             --out "release-provenance.${{ matrix.platform }}.json" \
