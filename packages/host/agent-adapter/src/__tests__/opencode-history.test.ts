@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
+  opencodeMcpToolName,
   opencodeSessionToHistorySession,
   toolCallFromPart,
 } from '../native/opencode/history';
@@ -143,6 +144,48 @@ describe('toolCallFromPart', () => {
     expect(toolCallFromPart(part).status).toBe('in_progress');
     part.state = { status: 'pending', input: {}, raw: '' };
     expect(toolCallFromPart(part).status).toBe('pending');
+  });
+
+  it('retitles tools from known MCP servers to the shared mcp slug', () => {
+    const part = completedToolPart('prt-t1', 'msg-a1');
+    part.tool = 'linear_list_issues';
+    expect(toolCallFromPart(part, ['linear'])).toMatchObject({
+      title: 'mcp__linear__list_issues',
+    });
+    // Without the server list the flat provider name stays — same as before normalization.
+    expect(toolCallFromPart(part)).toMatchObject({ title: 'linear_list_issues' });
+  });
+});
+
+describe('opencodeMcpToolName', () => {
+  it('splits on the sanitized server prefix, longest match first', () => {
+    expect(opencodeMcpToolName('linear_list_issues', ['linear'])).toEqual({
+      server: 'linear',
+      tool: 'list_issues',
+    });
+    expect(opencodeMcpToolName('linear_beta_x', ['linear', 'linear_beta'])).toEqual({
+      server: 'linear_beta',
+      tool: 'x',
+    });
+  });
+
+  it('matches servers through opencode sanitization (non [A-Za-z0-9_-] chars become _)', () => {
+    expect(opencodeMcpToolName('claude_ai_Gmail_search', ['claude.ai Gmail'])).toEqual({
+      server: 'claude.ai Gmail',
+      tool: 'search',
+    });
+    // Hyphens survive sanitization, so a hyphenated server only matches its own exact prefix.
+    expect(opencodeMcpToolName('my-server_fetch', ['my-server'])).toEqual({
+      server: 'my-server',
+      tool: 'fetch',
+    });
+  });
+
+  it('never matches builtins, foreign prefixes, or empty tool remainders', () => {
+    expect(opencodeMcpToolName('bash', ['linear'])).toBeUndefined();
+    expect(opencodeMcpToolName('github_search', ['git'])).toBeUndefined();
+    expect(opencodeMcpToolName('linear_', ['linear'])).toBeUndefined();
+    expect(opencodeMcpToolName('linear_list_issues', [])).toBeUndefined();
   });
 });
 

@@ -51,13 +51,48 @@ export function toolStateContent(state: ToolPartState): ToolCallContent[] {
   return [];
 }
 
+const OPENCODE_TOOL_NAME_SANITIZE_RE = /[^\w-]/g;
+
+/** opencode's model-facing MCP tool name is `sanitize(server)_sanitize(tool)` — a flat single-
+ * underscore join with every char outside [A-Za-z0-9_-] mapped to `_`, and no server field on
+ * the part (anomalyco/opencode 1.18.15 `McpCatalog.toolName`). The join is only reversible
+ * against the configured server names; the longest sanitized prefix wins. The flat namespace is
+ * shared with underscore builtins (`apply_patch`) and custom `<file>_<export>` tools, so a
+ * server named like such a prefix retitles them — inherent to the join, cosmetic only. */
+export function opencodeMcpToolName(
+  tool: string,
+  mcpServers: readonly string[],
+): { server: string; tool: string } | undefined {
+  let match: { server: string; tool: string } | undefined;
+  let matchedLength = 0;
+  for (const server of mcpServers) {
+    const prefix = `${server.replace(OPENCODE_TOOL_NAME_SANITIZE_RE, '_')}_`;
+    if (prefix.length <= matchedLength || tool.length <= prefix.length) continue;
+    if (tool.startsWith(prefix)) {
+      match = { server, tool: tool.slice(prefix.length) };
+      matchedLength = prefix.length;
+    }
+  }
+  return match;
+}
+
+/** The shared cross-agent `mcp__<server>__<tool>` title slug for a flat opencode tool name,
+ * when it resolves to a known server. */
+export function opencodeMcpTitle(tool: string, mcpServers: readonly string[]): string | undefined {
+  const mcp = opencodeMcpToolName(tool, mcpServers);
+  return mcp && `mcp__${mcp.server}__${mcp.tool}`;
+}
+
 /** A tool part as the full ToolCall snapshot. Live stream (`emitTool`) and history replay share
- * this one mapping, keyed by the part id, so cold and live tool cards converge by id. */
-export function toolCallFromPart(part: ToolPart): ToolCall {
+ * this one mapping, keyed by the part id, so cold and live tool cards converge by id. A tool
+ * from a known MCP server takes the shared `mcp__<server>__<tool>` title slug, like claude-code
+ * and codex, so server context, brand glyphs, and integration groups light up downstream. */
+export function toolCallFromPart(part: ToolPart, mcpServers: readonly string[] = []): ToolCall {
+  const title = opencodeMcpTitle(part.tool, mcpServers) ?? part.tool;
   return {
     toolCallId: part.id,
-    title: part.tool,
-    kind: toolKindFromName(part.tool),
+    title,
+    kind: toolKindFromName(title),
     status: mapOpencodeToolStatus(part.state.status),
     content: toolStateContent(part.state),
     rawInput: part.state.input,
@@ -107,6 +142,7 @@ export function filterRevertedMessages(
 export function mapOpencodeHistoryEvents(
   historyId: AgentHistoryId,
   messages: OpencodeMessageWithParts[],
+  mcpServers: readonly string[] = [],
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
   for (const { info, parts } of messages) {
@@ -149,7 +185,7 @@ export function mapOpencodeHistoryEvents(
             historyId,
             itemId: part.id,
             ts,
-            event: { type: 'tool-call', toolCall: toolCallFromPart(part) },
+            event: { type: 'tool-call', toolCall: toolCallFromPart(part, mcpServers) },
           });
           break;
         default:

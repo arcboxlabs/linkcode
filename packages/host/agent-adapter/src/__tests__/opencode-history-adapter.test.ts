@@ -199,6 +199,7 @@ describe('OpenCodeAdapter.readHistory', () => {
         ),
         messages: vi.fn(() => Promise.resolve({ data: [user, assistant, reverted] })),
       },
+      config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     });
 
     const adapter = new HistoryTestAdapter();
@@ -234,6 +235,7 @@ function makeLiveClient(resumedSession: Session | null) {
       promptAsync: vi.fn(() => Promise.resolve({ data: null })),
     },
     command: { list: vi.fn(() => Promise.resolve({ data: [] })) },
+    config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     event: { subscribe: vi.fn(() => Promise.resolve({ stream })) },
   };
 }

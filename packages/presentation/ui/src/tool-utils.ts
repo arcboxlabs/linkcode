@@ -48,9 +48,10 @@ export interface McpToolName {
   tool: string;
 }
 
-/** Splits Claude Code's `mcp__<server>__<tool>` slug on the first `__` after the prefix (server
- * keys never contain `__`; tool names may). Non-matching titles — including other adapters' MCP
- * formats — return undefined and display verbatim. */
+/** Splits the shared `mcp__<server>__<tool>` slug (claude-code's native form; codex and
+ * opencode normalize to it adapter-side) on the first `__` after the prefix — a user-chosen
+ * server key containing `__` mis-splits, a known cosmetic limit. Non-matching titles return
+ * undefined and display verbatim. */
 export function mcpToolName(title: string): McpToolName | undefined {
   if (!title.startsWith('mcp__')) return undefined;
   const rest = title.slice(5);
