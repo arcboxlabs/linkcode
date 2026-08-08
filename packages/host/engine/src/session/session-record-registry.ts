@@ -147,6 +147,10 @@ export class SessionRecordRegistry {
     if (!record) return;
     record.runs.push({ startedAt: Date.now(), ...definedFields(run) });
     this.persist(record);
+    // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
+    // must revalidate. Nothing else announces a relaunch: it sends no `session.started`, and a
+    // resumed run already carries the historyId that would otherwise notify via `bindHistoryId`.
+    this.onChanged(sessionId, 'updated');
   }
 
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {

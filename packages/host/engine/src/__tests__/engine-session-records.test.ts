@@ -1150,6 +1150,13 @@ describe('live account switching', () => {
     expect(runs).toHaveLength(2);
     expect(runs[1].accountId).toBe('acc_second');
 
+    // The relaunch sends no `session.started` and re-reports the historyId the record already has,
+    // so without this cue clients keep listing the previous account indefinitely.
+    expect(h.sent).toContainEqual({
+      kind: 'session.changed',
+      sessionId: h.sessionId,
+      reason: 'updated',
+    });
     await h.inject({ kind: 'session.list', clientReqId: 'listed' });
     expect(listedSessions(h.sent, 'listed')[0]?.accountId).toBe('acc_second');
   });

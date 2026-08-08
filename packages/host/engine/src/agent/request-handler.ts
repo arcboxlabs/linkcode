@@ -155,7 +155,10 @@ export class AgentRequestHandler {
               if (!source) {
                 throw new Error(`${payload.service} serves no model list`);
               }
-              const models = await this.probeModels(source, this.probeSecret(payload.credential));
+              const models = await this.probeModels(
+                source,
+                this.probeSecret(payload.service, payload.credential),
+              );
               this.transport.send(
                 createWireMessage({
                   kind: 'config.probe-models.result',
@@ -211,9 +214,17 @@ export class AgentRequestHandler {
     }
   }
 
-  /** The secret to probe with. A saved account is named by id rather than shipping its secret back
-   * out to the client and in again; an oauth login holds none, so it cannot be probed. */
+  /**
+   * The secret to probe with. A saved account is named by id rather than shipping its secret back
+   * out to the client and in again; an oauth login holds none, so it cannot be probed.
+   *
+   * The destination and the credential arrive as two independent client-chosen fields, so the
+   * account must belong to the service being probed — otherwise a request could aim one vendor's
+   * key at another vendor's endpoint. An account with no service is refused for the same reason:
+   * only catalog services are probeable, so nothing it could legitimately match.
+   */
   private probeSecret(
+    service: string,
     credential: Extract<AgentRequest, { kind: 'config.probe-models' }>['credential'],
   ): AccountSecret {
     if (credential.type === 'inline') return credential.secret;
@@ -221,6 +232,9 @@ export class AgentRequestHandler {
       .getAccounts()
       .find((candidate) => candidate.id === credential.accountId);
     if (!account) throw new Error('Account not found');
+    if (account.service !== service) {
+      throw new Error('That account does not belong to the service being probed');
+    }
     if (account.credential.type === 'oauth') {
       throw new Error('A subscription login holds no secret to read the model list with');
     }

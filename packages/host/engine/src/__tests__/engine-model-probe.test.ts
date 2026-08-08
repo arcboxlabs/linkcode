@@ -169,4 +169,58 @@ describe('config.probe-models', () => {
     });
     expect(seen).toEqual(['/models']);
   });
+
+  it('refuses to send an account secret to a service it does not belong to', async () => {
+    const reached: string[] = [];
+    relay = await startRelay((url) => {
+      reached.push(url);
+      return { status: 200, body: JSON.stringify({ data: [] }) };
+    });
+    const providerStore = new InMemoryProviderConfigStore();
+    providerStore.update({
+      accounts: [
+        {
+          id: 'acc_anthropic',
+          label: 'Anthropic',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-anthropic' },
+          createdAt: 0,
+        },
+        {
+          id: 'acc_custom',
+          label: 'Custom',
+          credential: { type: 'api-key', key: 'sk-custom' },
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = createHarness(providerStore);
+    await h.engine.start();
+
+    // The destination and the credential are independent client-chosen fields; pairing them freely
+    // would hand one vendor's key to another.
+    await h.inject({
+      kind: 'config.probe-models',
+      clientReqId: 'probe-5',
+      service: 'openrouter',
+      credential: { type: 'account', accountId: 'acc_anthropic' },
+    });
+    const crossed = await replyFor(h.sent, 'probe-5');
+    if (crossed.kind !== 'request.failed') throw new Error('no request.failed for probe-5');
+    expect(crossed.message).toContain('does not belong to the service being probed');
+
+    // A pre-catalog account names no service, so nothing it could legitimately match.
+    await h.inject({
+      kind: 'config.probe-models',
+      clientReqId: 'probe-6',
+      service: 'deepseek',
+      credential: { type: 'account', accountId: 'acc_custom' },
+    });
+    const serviceless = await replyFor(h.sent, 'probe-6');
+    if (serviceless.kind !== 'request.failed') throw new Error('no request.failed for probe-6');
+    expect(serviceless.message).toContain('does not belong to the service being probed');
+
+    // Neither request may reach the wire at all.
+    expect(reached).toEqual([]);
+  });
 });
