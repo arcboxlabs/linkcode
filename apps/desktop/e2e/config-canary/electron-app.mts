@@ -5,13 +5,14 @@ import { join, resolve as resolvePath } from 'node:path';
 import type { ElectronApplication } from 'playwright-core';
 import { _electron } from 'playwright-core';
 
-import { fixture } from './fixture.mts';
+import { emergencyFixture, fixture } from './fixture.mts';
 
 const require = createRequire(import.meta.url);
 const desktopDir = resolvePath(import.meta.dirname, '../..');
 const electronBinary = require('electron') as unknown as string;
 
 export const PORT = 44100 + (process.pid % 1000);
+export const EMERGENCY_PORT = PORT + 1000;
 
 export function generateTlsMaterial(directory: string): { cert: string; key: string } {
   const key = join(directory, 'key.pem');
@@ -49,8 +50,8 @@ export function buildDesktopWithBootstrap(): void {
     brandId: fixture.target.brandId,
     channel: fixture.target.channel,
     defaults: fixture.bootstrapDefaults,
-    emergencyEndpoint: null,
-    emergencyPublicKeys: {},
+    emergencyEndpoint: `https://127.0.0.1:${EMERGENCY_PORT}`,
+    emergencyPublicKeys: emergencyFixture.keys.emergency,
     endpoint: `https://127.0.0.1:${PORT}`,
     maximumSchemaVersion: fixture.maximumSchemaVersion,
     publicKeys: fixture.keys,

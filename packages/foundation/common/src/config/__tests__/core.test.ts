@@ -177,6 +177,58 @@ describe('ConfigCore normal state machine', () => {
     expect(setup.normal.requests).toHaveLength(5);
   });
 
+  it.each([
+    ['404', { status: 404 }],
+    ['missing body', { status: 200 }],
+  ] as const)(
+    'retains trusted high-water when the snapshot response is %s',
+    async (_name, fault) => {
+      const setup = makeSetup({
+        normalResponses: [ok(pointerBytes('normal'), '"p100"'), fault],
+      });
+      await setup.core.initialize();
+
+      await expectError(setup.core.refresh(), 'fetch');
+      expect(setup.core.getState()).toMatchObject({ configVersion: null, source: 'defaults' });
+      expect(setup.normal.requests).toHaveLength(2);
+      const stored = JSON.parse(
+        setup.storage.values.get('linkcode-config:v1:normal:acme:desktop:canary') ?? '{}',
+      ) as { highWater?: { version?: string }; lkg?: unknown; trusted?: unknown };
+      expect(stored.highWater?.version).toBe('100');
+      expect(stored.trusted).toBeDefined();
+      expect(stored.lkg).toBeUndefined();
+    },
+  );
+
+  it('rejects a stale intermediary 200 and preserves accepted state through a stale 304', async () => {
+    const setup = makeSetup({
+      normalResponses: [
+        ok(pointerBytes('rollback'), '"fresh"'),
+        ok(snapshotBytes('previous')),
+        ok(pointerBytes('normal'), '"stale"'),
+        { status: 304 },
+      ],
+    });
+    await setup.core.initialize();
+    await expect(setup.core.refresh()).resolves.toEqual({ status: 'updated' });
+    const acceptedState = setup.core.getState();
+    const acceptedRaw = setup.storage.values.get('linkcode-config:v1:normal:acme:desktop:canary');
+
+    await expectError(setup.core.refresh(), 'replay');
+    expect(setup.normal.requests).toHaveLength(3);
+    expect(setup.core.getState()).toEqual(acceptedState);
+    expect(setup.storage.values.get('linkcode-config:v1:normal:acme:desktop:canary')).toBe(
+      acceptedRaw,
+    );
+
+    await expect(setup.core.refresh()).resolves.toEqual({ status: 'not-modified' });
+    expect(setup.normal.requests[3]?.request).toEqual({ etag: '"fresh"' });
+    expect(setup.core.getState()).toEqual(acceptedState);
+    expect(setup.storage.values.get('linkcode-config:v1:normal:acme:desktop:canary')).toBe(
+      acceptedRaw,
+    );
+  });
+
   it('rejects a pointer 304 when no trusted pointer exists', async () => {
     const setup = makeSetup({ normalResponses: [{ status: 304 }] });
     await setup.core.initialize();
