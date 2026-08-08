@@ -24,9 +24,28 @@ interface PilotFixture {
   readonly target: { brandId: string; channel: string; platform: string };
 }
 
+interface EmergencyFixture {
+  readonly documents: Readonly<
+    Record<
+      'equivocation' | 'forcedMinimum' | 'killSwitch' | 'release',
+      { readonly document: Readonly<Record<string, unknown>> }
+    >
+  >;
+  readonly keys: { readonly emergency: Readonly<Record<string, string>> };
+}
+
 export const fixture = JSON.parse(
   readFileSync(join(import.meta.dirname, '../fixtures/pilot-e2e-v1.json'), 'utf8'),
 ) as PilotFixture;
+export const emergencyFixture = JSON.parse(
+  readFileSync(
+    join(
+      import.meta.dirname,
+      '../../../../packages/foundation/common/src/config/__fixtures__/emergency-handoff-v1.json',
+    ),
+    'utf8',
+  ),
+) as EmergencyFixture;
 
 function fixtureStep(name: PilotFixtureStep['name']): PilotFixtureStep {
   const found = fixture.steps.find((step) => step.name === name);
@@ -44,6 +63,9 @@ export function pointerBytes(step: PilotFixtureStep): Buffer {
 }
 export function snapshotBytes(step: PilotFixtureStep): Buffer {
   return Buffer.from(step.snapshotBase64Url, 'base64url');
+}
+export function emergencyBytes(name: keyof EmergencyFixture['documents']): Buffer {
+  return Buffer.from(JSON.stringify(emergencyFixture.documents[name].document), 'utf8');
 }
 
 // Same byte length keeps the JSON canonical while invalidating the Ed25519 signature.
