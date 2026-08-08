@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/arcboxlabs/linkcode/compare/v0.22.0...v0.23.0) (2026-08-08)
+
+
+### Features
+
+* **config:** generate branded desktop and mobile identity ([#428](https://github.com/arcboxlabs/linkcode/issues/428)) ([a50ea0f](https://github.com/arcboxlabs/linkcode/commit/a50ea0fe2701748bd44ba309207c62ddd0c6a821))
+
 ## [0.22.0](https://github.com/arcboxlabs/linkcode/compare/v0.21.0...v0.22.0) (2026-08-06)
 
 
