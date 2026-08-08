@@ -30,6 +30,24 @@ export function modelChoiceKey(option: ModelOption): string {
   return `${option.accountId ?? ''}:${option.id}`;
 }
 
+/**
+ * The models a surface may offer. An agent resolving *through* an account offers that account world
+ * alone. One running on its own login keeps its own catalog and merely *gains* the accounts as extra
+ * options — replacing it would let a key added for one agent hijack another's menu, since agents
+ * that accept any endpoint (opencode, pi) treat every account as bindable.
+ */
+export function pickableModels(
+  accountSet: ModelOption[] | null | undefined,
+  ownCatalog: ModelOption[] | null | undefined,
+  { throughAccount }: { throughAccount: boolean },
+): ModelOption[] | undefined {
+  // Null and absent both mean "this source offers nothing"; only present-and-empty is a real set.
+  if (throughAccount) return accountSet ?? undefined;
+  if (accountSet === null || accountSet === undefined) return ownCatalog ?? undefined;
+  if (ownCatalog === null || ownCatalog === undefined) return accountSet;
+  return [...accountSet, ...ownCatalog];
+}
+
 /** Whether picking this entry leaves the account a session is currently running on. Credentials and
  * base URL are injected once at spawn, so such a pick relaunches the agent rather than rebinding it
  * in place. Unknown accounts on either side mean the question doesn't apply. */

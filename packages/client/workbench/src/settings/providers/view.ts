@@ -252,7 +252,8 @@ export function withDefaultAccount(
 /**
  * Show or hide one account's models in an agent's pickers. Absent `enabledAccountIds` means every
  * bindable account, so the first disable has to materialize the list from what is bindable *now* —
- * an account added later then joins the explicit list rather than being silently excluded.
+ * otherwise hiding one account would read as "only this one", hiding every other account too. Once
+ * the list exists it is authoritative, so an account added later stays out until enabled.
  *
  * Disabling the agent's default account also clears the default: leaving it would keep resolving
  * unpinned sessions onto an account the user just removed from the menu.

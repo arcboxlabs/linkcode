@@ -57,12 +57,11 @@ export function useConfiguredDefaultAccounts(): Partial<Record<AgentKind, string
  * account, and `accountId` rides along so the pick names the account it came from — two accounts
  * legitimately serve the same model id.
  *
- * Present-but-empty and absent mean different things, and callers rely on the difference. An entry
- * exists whenever at least one account can back the agent, so `[]` says "available, nothing picked
- * yet" and blocks sends the way the daemon does. Absent says "no account can back this agent", where
- * it still resolves its own model — pickers fall through to the adapter catalog or the curated table,
- * and nothing blocks. Disabling every account for an agent therefore blocks it rather than silently
- * handing it back to the adapter's own choice.
+ * Present-but-empty and absent still differ — `[]` is "an account could back this, nothing picked
+ * yet", absent is "no account can back it at all" — but neither decides on its own whether a send is
+ * allowed. That question is the agent's default account (`activeAccountId`), which is what the
+ * composer and the daemon both key on, and what decides whether this set replaces the agent's own
+ * catalog or merely adds to it.
  */
 export function accountModelOptions(
   accounts: Accounts | undefined,

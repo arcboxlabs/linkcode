@@ -60,8 +60,8 @@ export interface ShellFrameProps
   newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
   /** The account each agent falls back to when a session names none. */
   newSessionDefaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
-  /** The models each agent may run on, picked on its bound account. An agent absent here has no
-   * account bound and keeps falling back to whatever its adapter or the curated table advertises. */
+  /** The models each agent may run on, pooled from the accounts enabled for it. An agent absent here
+   * has no account that can back it and falls back to its adapter or the curated table. */
   accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;

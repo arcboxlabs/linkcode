@@ -36,7 +36,7 @@ import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import type { ModelOption } from './agent-models';
-import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import { AGENT_MODEL_OPTIONS, pickableModels, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -136,22 +136,6 @@ function workspaceById(
     if (workspace.workspaceId === workspaceId) return workspace;
   }
   return null;
-}
-
-/**
- * The models a draft may pick from. An agent resolving through an account offers that account world
- * alone. One running on its own login keeps its own catalog and merely *gains* the accounts as extra
- * options — replacing it would let a key added for one agent hijack another's menu, and agents that
- * accept any endpoint (opencode, pi) treat every account as bindable.
- */
-function pickableModels(
-  accountSet: ModelOption[] | undefined,
-  ownCatalog: ModelOption[] | undefined,
-  { throughAccount }: { throughAccount: boolean },
-): ModelOption[] | undefined {
-  if (throughAccount) return accountSet;
-  if (accountSet === undefined) return ownCatalog;
-  return ownCatalog === undefined ? accountSet : [...accountSet, ...ownCatalog];
 }
 
 /** Unified new-session page: heading + shared `Composer` + workspace context bar. Model, effort,
