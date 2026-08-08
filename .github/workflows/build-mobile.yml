@@ -16,6 +16,11 @@ on:
         type: string
         required: false
         default: ""
+      delivery_descriptor_sha256:
+        description: Expected SHA-256 of the committed brand delivery matrix
+        type: string
+        required: false
+        default: ""
       rendered_artifact:
         description: Pre-rendered brand/config artifact from the matrix workflow
         type: string
@@ -217,6 +222,8 @@ jobs:
             --brand-identity "apps/mobile/generated/brand-identity.${{ matrix.platform }}.json" \
             --brand-manifest release-inputs/brands.manifest.yaml \
             --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ inputs.delivery_descriptor_sha256 }}' \
             --release-manifest "release-inputs/release-manifest.${{ matrix.platform }}.json" \
             --compliance "release-inputs/compliance.${{ matrix.platform }}.json" \
             --out "release-provenance.${{ matrix.platform }}.json" \

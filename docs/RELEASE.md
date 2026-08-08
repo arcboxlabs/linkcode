@@ -103,14 +103,16 @@ Enforcement: `LINKCODE_REQUIRE_CONFIG_BUNDLE=1` (set for signed desktop builds) 
 ## Brand × platform release matrix
 
 `release-brand-matrix.yml` is manually dispatched against the exact lowercase 40-hex commit that
-loaded the workflow (`inputs.ref == github.sha`), so protected workflow code, environment ref policy,
-local actions, and client source have one trust root. Plan-only requests
-may supply `matrix_json`; every build must use the reviewed repository Actions variable
-`BRAND_BUILD_MATRIX`. `build`, `sign`, and `upload` are independent, monotonic gates: signing requires a build,
-and upload requires signing. The default (`false` for all three) only validates the matrix and
-needs no credential. `build: true, sign: false` renders one immutable target set per brand, creates
-unsigned Desktop packages, and validates production-Hermes exports plus iOS/Android prebuilds.
-Nothing is signed or submitted in that path.
+loaded the workflow (`inputs.ref == github.sha`) and rejects commits not already reachable from
+`master`, so protected workflow code, environment ref policy, local actions, and client source have
+one trust root. Plan-only requests may supply `matrix_json`; every build instead requires a
+`matrix_file` directly under `.github/release/brand-matrices/` in that same reviewed commit. Add or
+update the complete matrix through a PR before dispatching a release; Actions variables are not a
+release-plan authority. `build`, `sign`, and `upload` are independent, monotonic gates: signing
+requires a build, and upload requires signing. The default (`false` for all three) only validates
+the selected matrix and needs no credential. `build: true, sign: false` renders one immutable target
+set per brand, creates unsigned Desktop packages, and validates production-Hermes exports plus
+iOS/Android prebuilds. Nothing is signed or submitted in that path.
 
 The JSON root contains `brandBuildMatrixVersion: 1` and a non-empty `brands` array. Every brand has
 exactly `brandId`, `channel`, `releaseManifests`, `compliance`, and `distribution`:
@@ -139,8 +141,9 @@ team/App Store Connect IDs, and the internal Android track; all other fields are
 Every uploaded build has a canonical `release-provenance.<platform>.json`. Each listed artifact is
 bound by its own SHA-256 and size to the exact `brands.manifest.yaml` SHA-256, config revision ID,
 canonical bundled-defaults SHA-256, config snapshot SHA-256, source/publisher commits, and release
-manifest SHA-256, while the sidecar also records the exact client commit. Publish jobs re-hash the
-artifacts and all immutable inputs before upload. The sidecar is written with create-only semantics after all checks pass.
+manifest SHA-256, while the sidecar also records the exact client commit and committed matrix-file
+SHA-256. Publish jobs re-hash the artifacts and all immutable inputs before upload. The sidecar is
+written with create-only semantics after all checks pass.
 Brand render jobs, artifact names, runner workspaces, validation roots, credential pairs, and R2
 prefixes are separate. Render jobs preserve successful sibling evidence when another row fails,
 while aggregate build and publish-preflight jobs require every brand's five provenance sidecars and
@@ -148,14 +151,12 @@ upload inputs before any store submission or R2 upload can begin.
 
 ### Required Actions configuration and least privilege
 
-Secrets and render vars below are read only from the protected `release` environment;
-`BRAND_BUILD_MATRIX` is a repository Actions var because it contains no credential and the
-credential-free plan job does not enter an environment. The scripts report every missing name and
-never default a signing or upload input:
+Secrets and render vars below are read only from the protected `release` environment. The scripts
+report every missing name and never default a signing or upload input:
 
-- Vars: `BRAND_BUILD_MATRIX`, `CONFIG_PUBLISHER_REPO`, `CONFIG_RELEASE_REVISION`,
-  `CONFIG_RELEASE_KEYRINGS`, and `POSTHOG_HOST`. Revision/keyring values are exact JSON bytes already digest-pinned by each
-  release manifest.
+- Vars: `CONFIG_PUBLISHER_REPO`, `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS`, and
+  `POSTHOG_HOST`. Revision/keyring values are exact JSON bytes already digest-pinned by each release
+  manifest.
 - Config source: secret `CONFIG_PUBLISHER_TOKEN`, a fine-grained token with **Contents: read** only
   on `CONFIG_PUBLISHER_REPO`; no write or organization scope.
 - macOS Desktop: `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_API_KEY_BASE64`,
@@ -180,10 +181,9 @@ never default a signing or upload input:
   brand prefix or permit bucket/account administration. `<PREFIX>_R2_ACCOUNT_ID` is exactly the
   lowercase 32-hex Cloudflare account ID; URL-like or otherwise malformed values fail before AWS CLI runs.
 
-Do not store private signing material, access tokens, or service-account JSON in
-`BRAND_BUILD_MATRIX`, repository files, artifacts, or Actions vars. Protect the `release`
-environment with required reviewers and exact deployment ref rules before enabling `sign` or
-`upload`.
+Do not store private signing material, access tokens, or service-account JSON in the committed
+matrix, repository files, artifacts, or Actions vars. Protect the `release` environment with
+required reviewers and exact deployment ref rules before enabling `sign` or `upload`.
 
 ## Packaging inputs (staging & version pins)
 

@@ -40,6 +40,7 @@ export interface ReleaseArtifactProvenance {
   readonly channel: string;
   readonly clientGitSha: string;
   readonly configSnapshotSha256: string;
+  readonly deliveryDescriptorSha256: string;
   readonly platform: string;
   readonly publisherGitSha: string;
   readonly releaseArtifactProvenanceVersion: 1;
@@ -53,6 +54,17 @@ const RE_SHA256 = /^[0-9a-f]{64}$/;
 
 function sha256(bytes: string | Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function deliveryDescriptorSha256(bytes: Uint8Array, expected: string): string {
+  if (!RE_SHA256.test(expected)) {
+    throw new TypeError('expectedDeliveryDescriptorSha256 must be a lowercase SHA-256 digest');
+  }
+  const actual = sha256(bytes);
+  if (actual !== expected) {
+    throw new Error('delivery descriptor does not match the reviewed release matrix');
+  }
+  return actual;
 }
 
 function assertReleaseBinding(bundle: ConfigBuildBundle, manifest: ReleaseManifestBinding): void {
@@ -105,6 +117,8 @@ export async function createReleaseArtifactProvenance(input: {
   readonly bundle: ConfigBuildBundle;
   readonly clientGitSha: string;
   readonly compliance: StoreComplianceDeclaration;
+  readonly deliveryDescriptorBytes: Uint8Array;
+  readonly expectedDeliveryDescriptorSha256: string;
   readonly releaseManifest: ReleaseManifestBinding;
   readonly releaseManifestBytes: Uint8Array;
   readonly signed: boolean;
@@ -124,6 +138,10 @@ export async function createReleaseArtifactProvenance(input: {
   const defaults = jsonValue(configBuildBundleDefaults(input.bundle));
   const defaultsSha256 = sha256(canonicalizeJson(defaults));
   const brandManifestSha256 = sha256(input.brandManifestBytes);
+  const deliverySha256 = deliveryDescriptorSha256(
+    input.deliveryDescriptorBytes,
+    input.expectedDeliveryDescriptorSha256,
+  );
   const files = await Promise.all(
     [...input.artifactPaths].sort().map((path) => artifactFile(input.artifactRoot, path)),
   );
@@ -138,6 +156,7 @@ export async function createReleaseArtifactProvenance(input: {
     channel: input.bundle.channel,
     clientGitSha: input.clientGitSha,
     configSnapshotSha256: input.bundle.snapshot.sha256,
+    deliveryDescriptorSha256: deliverySha256,
     platform: input.bundle.platform,
     publisherGitSha: input.releaseManifest.publisherGitSha,
     releaseArtifactProvenanceVersion: 1,
@@ -159,6 +178,7 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
     'channel',
     'clientGitSha',
     'configSnapshotSha256',
+    'deliveryDescriptorSha256',
     'platform',
     'publisherGitSha',
     'releaseArtifactProvenanceVersion',
@@ -182,6 +202,8 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
     !RE_GIT_SHA.test(provenance.clientGitSha) ||
     typeof provenance.configSnapshotSha256 !== 'string' ||
     !RE_SHA256.test(provenance.configSnapshotSha256) ||
+    typeof provenance.deliveryDescriptorSha256 !== 'string' ||
+    !RE_SHA256.test(provenance.deliveryDescriptorSha256) ||
     typeof provenance.releaseManifestSha256 !== 'string' ||
     !RE_SHA256.test(provenance.releaseManifestSha256) ||
     typeof provenance.publisherGitSha !== 'string' ||
@@ -251,6 +273,7 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
     channel: provenance.channel,
     clientGitSha: provenance.clientGitSha,
     configSnapshotSha256: provenance.configSnapshotSha256,
+    deliveryDescriptorSha256: provenance.deliveryDescriptorSha256,
     platform: provenance.platform,
     publisherGitSha: provenance.publisherGitSha,
     releaseArtifactProvenanceVersion: 1,
@@ -267,6 +290,8 @@ export async function verifyReleaseArtifactProvenance(input: {
   readonly brandId: string;
   readonly bundle: ConfigBuildBundle;
   readonly clientGitSha: string;
+  readonly deliveryDescriptorBytes: Uint8Array;
+  readonly expectedDeliveryDescriptorSha256: string;
   readonly platform: string;
   readonly provenance: unknown;
   readonly releaseManifest: ReleaseManifestBinding;
@@ -283,6 +308,10 @@ export async function verifyReleaseArtifactProvenance(input: {
   const defaultsSha256 = sha256(
     canonicalizeJson(jsonValue(configBuildBundleDefaults(input.bundle))),
   );
+  const deliverySha256 = deliveryDescriptorSha256(
+    input.deliveryDescriptorBytes,
+    input.expectedDeliveryDescriptorSha256,
+  );
   if (
     provenance.brandId !== input.brandId ||
     provenance.channel !== input.bundle.channel ||
@@ -290,6 +319,7 @@ export async function verifyReleaseArtifactProvenance(input: {
     provenance.signed !== input.signed ||
     provenance.clientGitSha !== input.clientGitSha ||
     provenance.configSnapshotSha256 !== input.bundle.snapshot.sha256 ||
+    provenance.deliveryDescriptorSha256 !== deliverySha256 ||
     provenance.publisherGitSha !== input.releaseManifest.publisherGitSha ||
     provenance.releaseManifestSha256 !== sha256(input.releaseManifestBytes) ||
     provenance.sourceGitSha !== input.bundle.provenance.sourceGitSha

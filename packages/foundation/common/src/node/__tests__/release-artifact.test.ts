@@ -49,6 +49,10 @@ const releaseManifest = {
 const RE_SHA256 = /^[0-9a-f]{64}$/;
 const RE_EXISTS = /EEXIST/;
 const clientGitSha = 'f'.repeat(40);
+const deliveryDescriptorBytes = new TextEncoder().encode('{"brand":"acme"}');
+const expectedDeliveryDescriptorSha256 = createHash('sha256')
+  .update(deliveryDescriptorBytes)
+  .digest('hex');
 
 describe('release artifact provenance', () => {
   it('binds each isolated artifact to the manifest, revision, and defaults digests', async () => {
@@ -62,6 +66,8 @@ describe('release artifact provenance', () => {
       bundle,
       clientGitSha,
       compliance,
+      deliveryDescriptorBytes,
+      expectedDeliveryDescriptorSha256,
       releaseManifest,
       releaseManifestBytes: new TextEncoder().encode('{}'),
       signed: false,
@@ -78,6 +84,7 @@ describe('release artifact provenance', () => {
     });
     expect(provenance.artifacts[0]?.brandManifestSha256).toMatch(RE_SHA256);
     expect(provenance.artifacts[0]?.defaultsSha256).toMatch(RE_SHA256);
+    expect(provenance.deliveryDescriptorSha256).toBe(expectedDeliveryDescriptorSha256);
     expect(provenance.artifacts[0]?.brandManifestSha256).toBe(
       createHash('sha256').update('brands: [acme]').digest('hex'),
     );
@@ -209,6 +216,8 @@ describe('release artifact provenance', () => {
       bundle,
       clientGitSha,
       compliance,
+      deliveryDescriptorBytes,
+      expectedDeliveryDescriptorSha256,
       releaseManifest,
       releaseManifestBytes: new Uint8Array(),
       signed: false,
@@ -234,6 +243,7 @@ describe('release artifact provenance', () => {
       channel: 'canary',
       clientGitSha,
       configSnapshotSha256: 'a'.repeat(64),
+      deliveryDescriptorSha256: 'e'.repeat(64),
       platform: 'ios',
       publisherGitSha: 'b'.repeat(40),
       releaseArtifactProvenanceVersion: 1,
@@ -261,6 +271,8 @@ describe('release artifact provenance', () => {
       bundle,
       clientGitSha,
       compliance,
+      deliveryDescriptorBytes,
+      expectedDeliveryDescriptorSha256,
       releaseManifest,
       releaseManifestBytes: new TextEncoder().encode('{}'),
       signed: true,
@@ -273,6 +285,8 @@ describe('release artifact provenance', () => {
         brandId: bundle.brandId,
         bundle,
         clientGitSha,
+        deliveryDescriptorBytes,
+        expectedDeliveryDescriptorSha256,
         platform: bundle.platform,
         provenance,
         releaseManifest,
@@ -285,9 +299,28 @@ describe('release artifact provenance', () => {
         artifactRoot: root,
         brandIdentity: identity,
         brandManifestBytes: new TextEncoder().encode('brands: [acme]'),
+        brandId: bundle.brandId,
+        bundle,
+        clientGitSha,
+        deliveryDescriptorBytes: new TextEncoder().encode('{"brand":"zenith"}'),
+        expectedDeliveryDescriptorSha256,
+        platform: bundle.platform,
+        provenance,
+        releaseManifest,
+        releaseManifestBytes: new TextEncoder().encode('{}'),
+        signed: true,
+      }),
+    ).rejects.toThrow('reviewed release matrix');
+    await expect(
+      verifyReleaseArtifactProvenance({
+        artifactRoot: root,
+        brandIdentity: identity,
+        brandManifestBytes: new TextEncoder().encode('brands: [acme]'),
         brandId: 'zenith',
         bundle,
         clientGitSha,
+        deliveryDescriptorBytes,
+        expectedDeliveryDescriptorSha256,
         platform: bundle.platform,
         provenance,
         releaseManifest,
@@ -303,6 +336,8 @@ describe('release artifact provenance', () => {
         brandId: bundle.brandId,
         bundle,
         clientGitSha,
+        deliveryDescriptorBytes,
+        expectedDeliveryDescriptorSha256,
         platform: bundle.platform,
         provenance,
         releaseManifest,
@@ -319,6 +354,8 @@ describe('release artifact provenance', () => {
         brandId: bundle.brandId,
         bundle,
         clientGitSha,
+        deliveryDescriptorBytes,
+        expectedDeliveryDescriptorSha256,
         platform: bundle.platform,
         provenance,
         releaseManifest,
