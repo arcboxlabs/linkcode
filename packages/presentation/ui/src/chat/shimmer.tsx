@@ -27,7 +27,8 @@ export function Shimmer({
       style={
         {
           backgroundImage:
-            'linear-gradient(90deg, transparent 35%, var(--color-background), transparent 65%), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))',
+            // --color-* are @theme-inline-only (no runtime custom properties); use the :root vars.
+            'linear-gradient(90deg, transparent 35%, var(--background), transparent 65%), linear-gradient(var(--muted-foreground), var(--muted-foreground))',
           backgroundRepeat: 'no-repeat',
         } satisfies React.CSSProperties
       }
