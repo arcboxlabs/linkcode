@@ -47,6 +47,26 @@ function toolEvent(id: string, rawOutputLength: number): AgentHistoryEvent {
   };
 }
 
+/** The freeform-exec settle shape: the whole command output in `content`, an exit code in
+ * `rawOutput` — the payload the budget must not undercount. */
+function execEvent(id: string, outputLength: number): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: id,
+        title: id,
+        kind: 'execute',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'A'.repeat(outputLength) } }],
+        rawOutput: 0,
+      },
+    },
+  };
+}
+
 function itemIds(page: { events: AgentHistoryEvent[] }): Array<string | undefined> {
   return page.events.map((event) => event.itemId);
 }
@@ -107,6 +127,17 @@ describe('sliceHistoryEventPage', () => {
     expect(first.cursor).toBe('2');
     const rest = sliceHistoryEventPage(events, 2, 1000);
     expect(itemIds(rest)).toEqual(['tool-2']);
+    expect(rest.cursor).toBeUndefined();
+  });
+
+  it('counts tool content toward the page budget — exec bodies ride content, not rawOutput (CODE-576)', () => {
+    const large = Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.6);
+    const events = [execEvent('exec-1', large), textEvent('text-1'), execEvent('exec-2', large)];
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['exec-1', 'text-1']);
+    expect(first.cursor).toBe('2');
+    const rest = sliceHistoryEventPage(events, 2, 1000);
+    expect(itemIds(rest)).toEqual(['exec-2']);
     expect(rest.cursor).toBeUndefined();
   });
 });

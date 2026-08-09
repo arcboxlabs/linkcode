@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import type { AgentHistoryEvent, AgentHistoryId, MessageId, Timestamp } from '@linkcode/schema';
 import { MAX_ATTACHMENT_TOTAL_BASE64_LENGTH, textBlock } from '@linkcode/schema';
 import { clamp } from 'foxts/clamp';
@@ -38,12 +39,12 @@ export function cursorFromTotal(
 }
 
 /** Payload one replayed event embeds beyond its fixed structure: user-message attachments
- * (base64) and a tool call's raw result (serialized) — MCP results ride there and are unbounded
- * on the provider side. */
+ * (base64 — ASCII, so string length is byte length) and a tool call's whole serialized payload —
+ * command output and diffs ride `content`, MCP results `rawOutput`, and none are bounded by the
+ * event's shape. Measured in UTF-8 bytes, which is what the transport frames. */
 function eventPayloadLength(event: AgentHistoryEvent): number {
   if (event.event.type === 'tool-call') {
-    const raw = event.event.toolCall.rawOutput;
-    return raw === undefined ? 0 : JSON.stringify(raw).length;
+    return Buffer.byteLength(JSON.stringify(event.event.toolCall), 'utf8');
   }
   if (event.event.type !== 'user-message') return 0;
   let total = 0;
@@ -56,13 +57,13 @@ function eventPayloadLength(event: AgentHistoryEvent): number {
   return total;
 }
 
-/** Page slice bounded by event count AND aggregate embedded payload (attachments + tool raw
- * results). One `history.read.result` travels as a single logical transport message, and the
+/** Page slice bounded by event count AND aggregate embedded payload (attachments + tool
+ * payloads). One `history.read.result` travels as a single logical transport message, and the
  * tunnel silently drops any message its reassembly buffer cannot hold — so payload-heavy
  * transcripts must fan across cursor pages instead of concentrating into one reply. The budget is
  * `MAX_ATTACHMENT_TOTAL_BASE64_LENGTH` (what transports already size a maximal prompt's frame
- * for); a page's first event always ships, since per-prompt attachment caps and the adapters'
- * per-result caps keep any single event within that budget on its own. */
+ * for); a page's first event always ships — per-prompt attachment caps, provider-side tool-output
+ * truncation, and the codex per-MCP-result cap keep single events within budget in practice. */
 export function sliceHistoryEventPage(
   events: readonly AgentHistoryEvent[],
   offset: number,

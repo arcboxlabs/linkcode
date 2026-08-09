@@ -699,10 +699,10 @@ describe('mapCodexHistoryEvents', () => {
     });
   });
 
-  it('does not synthesize an end row for a response-backed MCP call (CODE-576)', () => {
+  it('reconciles a response-backed MCP call with its end row instead of a third card (CODE-576)', () => {
     // Legacy direct-MCP rollouts persist all three rows for one call, in this observed order;
-    // the announce/settle pair is the replay — a synthesized end row would emit a third snapshot
-    // whose failed status the trailing output settle then overwrites.
+    // the announce/settle pair is the replay, but the end row alone carries the structured
+    // failure verdict (`isError`/`Err`) — it must win over the settle's output-text heuristic.
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
         type: 'function_call',
@@ -721,12 +721,31 @@ describe('mapCodexHistoryEvents', () => {
         },
       },
       responseItem({ type: 'function_call_output', call_id: 'call_dual1', output: 'no results' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1"}',
+        call_id: 'call_dual2',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_dual2',
+          invocation: { server: 'node_repl', tool: 'js' },
+          result: { Ok: { content: [{ type: 'text', text: '1' }] } },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_dual2', output: '1' }),
     ]);
 
     const tools = toolCalls(events);
     expect(tools.map((tool) => [tool.toolCallId, tool.title, tool.status])).toEqual([
       ['call_dual1', 'mcp__github__search_issues', 'in_progress'],
-      ['call_dual1', 'mcp__github__search_issues', 'completed'],
+      ['call_dual1', 'mcp__github__search_issues', 'failed'],
+      ['call_dual2', 'mcp__node_repl__js', 'in_progress'],
+      ['call_dual2', 'mcp__node_repl__js', 'completed'],
     ]);
   });
 
@@ -743,16 +762,29 @@ describe('mapCodexHistoryEvents', () => {
           },
         },
       },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'exec-cjk',
+          invocation: { server: 'github', tool: 'fetch_file' },
+          // Under the cap in UTF-16 code units but over it in UTF-8 bytes (3 bytes per CJK char)
+          // — the transport frames bytes, so this must also drop.
+          result: { Ok: { content: [{ type: 'text', text: '猫'.repeat(100 * 1024) }] } },
+        },
+      },
     ]);
 
     const tools = toolCalls(events);
-    expect(tools).toHaveLength(1);
+    expect(tools).toHaveLength(2);
     expect(tools[0]).toMatchObject({
       toolCallId: 'exec-huge',
       title: 'mcp__github__fetch_file',
       status: 'failed',
     });
     expect(tools[0].rawOutput).toBeUndefined();
+    expect(tools[1]).toMatchObject({ toolCallId: 'exec-cjk', status: 'completed' });
+    expect(tools[1].rawOutput).toBeUndefined();
   });
 
   it('unwraps the code-mode Script envelope and fails a failed script (CODE-576)', () => {

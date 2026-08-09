@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
 import { isRecord, recordField, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
@@ -176,7 +177,16 @@ function codexMcpToolName(
 /** One replayed event must fit a history page's transport budget on its own
  * (`sliceHistoryEventPage`); MCP results are provider-unbounded (real rollouts carry multi-MB
  * ones), so oversized results replay status-only. */
-const MCP_RESULT_MAX_JSON_LENGTH = 256 * 1024;
+const MCP_RESULT_MAX_JSON_BYTES = 256 * 1024;
+
+/** Whether an `mcp_tool_call_end` row records a failure. `result` is a serialized Rust Result —
+ * `{Ok: CallToolResult}` / `{Err: string}` — and an Ok carrying `isError` is still a failed call
+ * (mirrors McpToolCallEndEvent::is_success). */
+export function codexMcpEndFailed(payload: Record<string, unknown>): boolean {
+  const result = recordField(payload, 'result');
+  const ok = result?.Ok;
+  return result?.Err !== undefined || (isRecord(ok) && ok.isError === true);
+}
 
 /**
  * An `event_msg mcp_tool_call_end` row settled into the live `mcpToolCall` item shape. Codex
@@ -191,21 +201,18 @@ export function codexMcpEndToolCall(payload: Record<string, unknown>): ToolCall 
   const server = stringField(invocation, 'server');
   const tool = stringField(invocation, 'tool');
   if (!server || !tool) return undefined;
-  // `result` is a serialized Rust Result — `{Ok: CallToolResult}` / `{Err: string}` — and an Ok
-  // carrying `isError` is still a failed call (mirrors McpToolCallEndEvent::is_success).
   const result = recordField(payload, 'result');
-  const ok = result?.Ok;
-  const failed = result?.Err !== undefined || (isRecord(ok) && ok.isError === true);
-  const raw = ok ?? result?.Err;
+  const raw = result?.Ok ?? result?.Err;
   return {
     toolCallId: callId,
     title: codexMcpSlug(server, tool),
     kind: 'other',
-    status: failed ? 'failed' : 'completed',
+    status: codexMcpEndFailed(payload) ? 'failed' : 'completed',
     content: [],
     rawInput: invocation.arguments,
     rawOutput:
-      raw !== undefined && JSON.stringify(raw).length <= MCP_RESULT_MAX_JSON_LENGTH
+      raw !== undefined &&
+      Buffer.byteLength(JSON.stringify(raw), 'utf8') <= MCP_RESULT_MAX_JSON_BYTES
         ? raw
         : undefined,
   };

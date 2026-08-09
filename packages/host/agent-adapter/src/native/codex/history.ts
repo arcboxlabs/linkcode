@@ -31,7 +31,12 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
-import { codexMcpEndToolCall, codexToolAnnounce, codexToolSettle } from './history-tools';
+import {
+  codexMcpEndFailed,
+  codexMcpEndToolCall,
+  codexToolAnnounce,
+  codexToolSettle,
+} from './history-tools';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 const DATA_IMAGE_RE = /^data:([^;,]+);base64,(.*)$/;
@@ -492,6 +497,9 @@ export function mapCodexHistoryEvents(
   const persistedMcpIdentities = collectCodexMcpIdentities(rows);
   const promptTexts = collectCodexPromptTexts(rows);
   const respondedCallIds = collectRespondedToolCallIds(rows);
+  /** Response-backed calls whose end row recorded a failure: the response output settle cannot
+   * see `isError`/`Err`, so the end row's verdict must win over the settle's text heuristic. */
+  const mcpEndFailures = new Set<string>();
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
   let currentTurnId: string | null = null;
@@ -534,10 +542,21 @@ export function mapCodexHistoryEvents(
     if (stringField(row, 'type') === 'event_msg') {
       const payload = recordField(row, 'payload');
       if (payload && stringField(payload, 'type') === 'mcp_tool_call_end') {
-        // Response-backed calls already replay through the announce/settle pair — see
-        // collectRespondedToolCallIds.
         const callId = stringField(payload, 'call_id');
-        if (callId === undefined || respondedCallIds.has(callId)) return;
+        if (callId === undefined) return;
+        if (respondedCallIds.has(callId)) {
+          // Response-backed calls already replay through the announce/settle pair — only the end
+          // row's failure verdict carries over (observed order announce → end → output, but a
+          // late end row corrects an already-settled card too).
+          if (codexMcpEndFailed(payload)) {
+            mcpEndFailures.add(callId);
+            const existing = announced.get(callId);
+            if (existing && existing.status !== 'in_progress') {
+              events.push(recordToolEvent({ ...existing, status: 'failed' }));
+            }
+          }
+          return;
+        }
         const toolCall = codexMcpEndToolCall(payload);
         if (toolCall) events.push(recordToolEvent(toolCall));
       }
@@ -562,7 +581,10 @@ export function mapCodexHistoryEvents(
       }
       if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
         if (planCalls.has(callId)) return;
-        events.push(recordToolEvent(codexToolSettle(callId, payload, announced.get(callId))));
+        const settled = codexToolSettle(callId, payload, announced.get(callId));
+        events.push(
+          recordToolEvent(mcpEndFailures.has(callId) ? { ...settled, status: 'failed' } : settled),
+        );
         return;
       }
     }
