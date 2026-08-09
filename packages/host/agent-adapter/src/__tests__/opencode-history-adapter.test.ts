@@ -262,6 +262,33 @@ describe('OpenCodeAdapter.readHistory', () => {
     );
     expect(titles).toEqual(['mcp__linkcode-sim__sim_tap', 'mcp__notion__search_pages', 'bash']);
   });
+
+  it('keeps the transcript readable when the config read rejects (fetch throws on a dead server)', async () => {
+    const assistant = {
+      info: { id: 'msg-a1', sessionID: 'ses-1', role: 'assistant', time: { created: 20 } },
+      parts: [
+        toolPart('prt-t1', 'linkcode-sim_sim_tap'),
+        toolPart('prt-t2', 'notion_search_pages'),
+      ],
+    };
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: makeSession() })),
+        messages: vi.fn(() => Promise.resolve({ data: [assistant] })),
+      },
+      config: { get: vi.fn(() => Promise.reject(new TypeError('fetch failed'))) },
+    });
+
+    const result = await new HistoryTestAdapter().readHistory({
+      historyId: 'ses-1' as AgentHistoryId,
+      mcpServerNames: ['linkcode-sim'],
+    });
+    const titles = result.events.map((e) =>
+      e.event.type === 'tool-call' ? e.event.toolCall.title : e.event.type,
+    );
+    // The engine hint still resolves; the config-declared server degrades to its raw title.
+    expect(titles).toEqual(['mcp__linkcode-sim__sim_tap', 'notion_search_pages']);
+  });
 });
 
 function makeLiveClient(resumedSession: Session | null) {

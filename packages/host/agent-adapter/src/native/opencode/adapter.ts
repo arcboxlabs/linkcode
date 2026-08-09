@@ -121,9 +121,9 @@ async function canonicalDirectory(cwd: string): Promise<string> {
   }
 }
 
-/** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
- * passes `throwOnError`), so every RPC result must be checked — an unchecked failure silently
- * reads as success. Throws with the error detail when the result carries one. */
+/** The generated client resolves non-2xx responses as `{error}` (nothing here passes
+ * `throwOnError`), so every RPC result must be checked — an unchecked failure silently reads as
+ * success. Transport-level failures are the exception: fetch itself rejects on a dead server. */
 function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T {
   if (result.error === undefined) return result;
   let detail: string;
@@ -718,10 +718,13 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const names = new Set((injected ?? []).map((server) => server.name));
     this.mcpServerNames = [...names];
     if (!this.client) return;
-    const config = await this.client.config.get({ directory: this.directory });
-    if (!config.data?.mcp) return;
-    for (const name of Object.keys(config.data.mcp)) names.add(name);
-    this.mcpServerNames = [...names];
+    try {
+      const config = await this.client.config.get({ directory: this.directory });
+      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      this.mcpServerNames = [...names];
+    } catch {
+      // fetch rejects on a dead server — retitling is never worth failing the session for.
+    }
   }
 
   override async readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
@@ -745,8 +748,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // disabled ones; engine-injected servers exist only on a session's own live instance, so
       // the caller's `mcpServerNames` hint is the only way their calls resolve here.
       const names = new Set(opts.mcpServerNames);
-      const config = await client.config.get({ directory: got.data.directory });
-      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      try {
+        const config = await client.config.get({ directory: got.data.directory });
+        for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      } catch {
+        // fetch rejects on a dead server — the read proceeds with the caller's hint set.
+      }
       return {
         session: opencodeSessionToHistorySession(got.data),
         events: mapOpencodeHistoryEvents(
