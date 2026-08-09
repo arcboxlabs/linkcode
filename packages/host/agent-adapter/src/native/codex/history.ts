@@ -31,7 +31,7 @@ import {
   textHistoryEvent,
   timestampMs,
 } from '../../history-util';
-import { codexToolAnnounce, codexToolSettle } from './history-tools';
+import { codexMcpEndToolCall, codexToolAnnounce, codexToolSettle } from './history-tools';
 
 const WHITESPACE_RUN_RE = /\s+/g;
 const DATA_IMAGE_RE = /^data:([^;,]+);base64,(.*)$/;
@@ -66,13 +66,18 @@ function base64ByteLength(data: string): number {
 /** Codex persists machine-injected context as ordinary user-role messages recognizable only by
  * their leading marker; they must not replay as user bubbles or become a title preview. The XML
  * wrappers are the pre-0.14x shapes; codex 0.144 heads the AGENTS.md part with the prose markers
- * instead (all verbatim in the 0.144.1 binary). Match markers exactly — a real user message could
- * begin with `<` or `#` too. */
+ * instead (all verbatim in the 0.144.1 binary). 0.144.6 injects each skill invocation's SKILL.md
+ * as a `<skill>` row beside the typed `$name args` prompt, plus `<recommended_plugins>`;
+ * `<codex_internal_context` keeps its attributes, so no closing `>`. Match markers exactly —
+ * a real user message could begin with `<` or `#` too. */
 const SYNTHETIC_USER_MARKERS = [
   '<environment_context>',
   '<user_instructions>',
   '<turn_aborted>',
   '<apps_instructions>',
+  '<skill>',
+  '<recommended_plugins>',
+  '<codex_internal_context',
   '# AGENTS.md instructions',
   'These AGENTS.md instructions replace all previously provided AGENTS.md instructions.',
   'The previously provided AGENTS.md instructions no longer apply.',
@@ -453,14 +458,31 @@ const CODEX_TOOL_OUTPUT_TYPES = new Set([
   'local_shell_call_output',
 ]);
 
-/**
- * Replays the rollout as the event stream the live turn emitted: text plus tool announce/settle
- * pairs correlated by `call_id`, mapped to the live presentation shapes by `history-tools.ts`.
- * Message history ids are NOT converged with the live app-server item ids because rollout message
- * rows carry no id — the seed relies on the `uptoSeq` cut. Known lossiness
- * (CODE-97): reasoning stays unreplayable (`encrypted_content` only), and replayed edit diffs are
- * reconstructed from the `*** Begin Patch` envelope, not the app-server's richer live unified diff.
- */
+/** call_ids already carried by response_item announce/output rows. Legacy direct-MCP rollouts
+ * persist announce + output + `mcp_tool_call_end` for ONE call (observed order: announce, end,
+ * output) — synthesizing the end row too would emit a third snapshot whose structured status the
+ * trailing output settle then overwrites (a failed `isError` result degrades to `completed`). */
+function collectRespondedToolCallIds(rows: JsonRecord[]): Set<string> {
+  const callIds = new Set<string>();
+  for (const row of rows) {
+    if (stringField(row, 'type') !== 'response_item') continue;
+    const payload = recordField(row, 'payload');
+    if (!payload) continue;
+    const payloadType = stringField(payload, 'type');
+    if (
+      payloadType === undefined ||
+      (!CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType) && !CODEX_TOOL_OUTPUT_TYPES.has(payloadType))
+    ) {
+      continue;
+    }
+    const callId = stringField(payload, 'call_id');
+    if (callId) callIds.add(callId);
+  }
+  return callIds;
+}
+
+/** Replays the rollout into live presentation shapes. MCP end-only calls retain their live
+ * `call_id`; message and other response rows rely on the `uptoSeq` cut because their ids diverge. */
 export function mapCodexHistoryEvents(
   historyId: AgentHistoryId,
   rows: JsonRecord[],
@@ -469,6 +491,7 @@ export function mapCodexHistoryEvents(
   const announced = new Map<string, ToolCall>();
   const persistedMcpIdentities = collectCodexMcpIdentities(rows);
   const promptTexts = collectCodexPromptTexts(rows);
+  const respondedCallIds = collectRespondedToolCallIds(rows);
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
   let currentTurnId: string | null = null;
@@ -506,6 +529,18 @@ export function mapCodexHistoryEvents(
         ts: timestampMs(row.timestamp),
         event: { type: 'compaction', compactionId, ...(summary && { summary }) },
       });
+      return;
+    }
+    if (stringField(row, 'type') === 'event_msg') {
+      const payload = recordField(row, 'payload');
+      if (payload && stringField(payload, 'type') === 'mcp_tool_call_end') {
+        // Response-backed calls already replay through the announce/settle pair — see
+        // collectRespondedToolCallIds.
+        const callId = stringField(payload, 'call_id');
+        if (callId === undefined || respondedCallIds.has(callId)) return;
+        const toolCall = codexMcpEndToolCall(payload);
+        if (toolCall) events.push(recordToolEvent(toolCall));
+      }
       return;
     }
     if (stringField(row, 'type') !== 'response_item') return;

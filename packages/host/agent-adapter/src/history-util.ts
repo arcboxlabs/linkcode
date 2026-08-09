@@ -37,8 +37,14 @@ export function cursorFromTotal(
   return offset + limit < totalCount ? String(offset + limit) : undefined;
 }
 
-/** Base64 payload one replayed event embeds — user messages are where attachments ride. */
-function eventAttachmentLength(event: AgentHistoryEvent): number {
+/** Payload one replayed event embeds beyond its fixed structure: user-message attachments
+ * (base64) and a tool call's raw result (serialized) — MCP results ride there and are unbounded
+ * on the provider side. */
+function eventPayloadLength(event: AgentHistoryEvent): number {
+  if (event.event.type === 'tool-call') {
+    const raw = event.event.toolCall.rawOutput;
+    return raw === undefined ? 0 : JSON.stringify(raw).length;
+  }
   if (event.event.type !== 'user-message') return 0;
   let total = 0;
   for (const block of event.event.content) {
@@ -50,13 +56,13 @@ function eventAttachmentLength(event: AgentHistoryEvent): number {
   return total;
 }
 
-/** Page slice bounded by event count AND aggregate embedded-attachment payload. One
- * `history.read.result` travels as a single logical transport message, and the tunnel silently
- * drops any message its reassembly buffer cannot hold — so image-heavy transcripts must fan
- * across cursor pages instead of concentrating attachments into one reply. The budget is
+/** Page slice bounded by event count AND aggregate embedded payload (attachments + tool raw
+ * results). One `history.read.result` travels as a single logical transport message, and the
+ * tunnel silently drops any message its reassembly buffer cannot hold — so payload-heavy
+ * transcripts must fan across cursor pages instead of concentrating into one reply. The budget is
  * `MAX_ATTACHMENT_TOTAL_BASE64_LENGTH` (what transports already size a maximal prompt's frame
- * for); a page's first event always ships, since per-prompt caps keep any single event within
- * that budget on its own. */
+ * for); a page's first event always ships, since per-prompt attachment caps and the adapters'
+ * per-result caps keep any single event within that budget on its own. */
 export function sliceHistoryEventPage(
   events: readonly AgentHistoryEvent[],
   offset: number,
@@ -65,11 +71,11 @@ export function sliceHistoryEventPage(
   const page: AgentHistoryEvent[] = [];
   let payloadLength = 0;
   for (let index = offset; index < events.length && page.length < limit; index += 1) {
-    const attachmentLength = eventAttachmentLength(events[index]);
-    if (page.length > 0 && payloadLength + attachmentLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
+    const eventLength = eventPayloadLength(events[index]);
+    if (page.length > 0 && payloadLength + eventLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
       break;
     }
-    payloadLength += attachmentLength;
+    payloadLength += eventLength;
     page.push(events[index]);
   }
   const next = offset + page.length;

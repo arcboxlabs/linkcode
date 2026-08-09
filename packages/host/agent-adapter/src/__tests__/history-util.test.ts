@@ -29,6 +29,24 @@ function imageEvent(id: string, base64Length: number): AgentHistoryEvent {
   };
 }
 
+function toolEvent(id: string, rawOutputLength: number): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: id,
+        title: id,
+        kind: 'other',
+        status: 'completed',
+        content: [],
+        rawOutput: 'A'.repeat(rawOutputLength),
+      },
+    },
+  };
+}
+
 function itemIds(page: { events: AgentHistoryEvent[] }): Array<string | undefined> {
   return page.events.map((event) => event.itemId);
 }
@@ -79,5 +97,16 @@ describe('sliceHistoryEventPage', () => {
     const page = sliceHistoryEventPage([textEvent('a')], 5, 1000);
     expect(page.events).toEqual([]);
     expect(page.cursor).toBeUndefined();
+  });
+
+  it('counts tool raw results toward the page budget (CODE-576)', () => {
+    const large = Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.6);
+    const events = [toolEvent('tool-1', large), textEvent('text-1'), toolEvent('tool-2', large)];
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['tool-1', 'text-1']);
+    expect(first.cursor).toBe('2');
+    const rest = sliceHistoryEventPage(events, 2, 1000);
+    expect(itemIds(rest)).toEqual(['tool-2']);
+    expect(rest.cursor).toBeUndefined();
   });
 });

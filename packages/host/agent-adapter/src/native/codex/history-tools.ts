@@ -1,5 +1,5 @@
 import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
-import { isRecord, stringField, textFromUnknown } from '../../history-util';
+import { isRecord, recordField, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
 import {
   CODEX_PLAN_ID,
@@ -173,6 +173,44 @@ function codexMcpToolName(
   return server.length > 0 && tool.length > 0 ? { server, tool } : undefined;
 }
 
+/** One replayed event must fit a history page's transport budget on its own
+ * (`sliceHistoryEventPage`); MCP results are provider-unbounded (real rollouts carry multi-MB
+ * ones), so oversized results replay status-only. */
+const MCP_RESULT_MAX_JSON_LENGTH = 256 * 1024;
+
+/**
+ * An `event_msg mcp_tool_call_end` row settled into the live `mcpToolCall` item shape. Codex
+ * persists nested code-mode MCP calls ONLY as this event (no response_item), and its `call_id` IS
+ * the live item id, so replayed and live cards converge by id — codex's own ThreadHistoryBuilder
+ * rebuilds thread items from this same row. (Verified against codex-rs rust-v0.144.6.)
+ */
+export function codexMcpEndToolCall(payload: Record<string, unknown>): ToolCall | undefined {
+  const callId = stringField(payload, 'call_id');
+  const invocation = recordField(payload, 'invocation');
+  if (!callId || !invocation) return undefined;
+  const server = stringField(invocation, 'server');
+  const tool = stringField(invocation, 'tool');
+  if (!server || !tool) return undefined;
+  // `result` is a serialized Rust Result — `{Ok: CallToolResult}` / `{Err: string}` — and an Ok
+  // carrying `isError` is still a failed call (mirrors McpToolCallEndEvent::is_success).
+  const result = recordField(payload, 'result');
+  const ok = result?.Ok;
+  const failed = result?.Err !== undefined || (isRecord(ok) && ok.isError === true);
+  const raw = ok ?? result?.Err;
+  return {
+    toolCallId: callId,
+    title: codexMcpSlug(server, tool),
+    kind: 'other',
+    status: failed ? 'failed' : 'completed',
+    content: [],
+    rawInput: invocation.arguments,
+    rawOutput:
+      raw !== undefined && JSON.stringify(raw).length <= MCP_RESULT_MAX_JSON_LENGTH
+        ? raw
+        : undefined,
+  };
+}
+
 /** Settle an output row into the final snapshot, keeping the announce's diff content for edits and
  * unwrapping the freeform-exec output envelope for everything else. */
 export function codexToolSettle(
@@ -234,11 +272,17 @@ const OUTPUT_MARKER = '\nOutput:\n';
 /** Declined runs persist `<tool> failed for \`cmd\`: reason` — anchored so a command whose own
  * output happens to contain the phrase is not misread as a decline. */
 const DECLINED_OUTPUT_RE = /^\w+ failed for `/;
+/** The code-mode script envelope (`prepend_script_status` in codex-rs): a status line, a wall-time
+ * line, then the body. Array-part outputs join with an artifact newline — consumed by the `\n?`. */
+const SCRIPT_ENVELOPE_RE =
+  /^Script (completed|failed|terminated|running with cell ID [^\n]*)\nWall time [^\n]*\nOutput:\n\n?/;
 
 /**
  * Unwrap the freeform-exec output envelope (`Chunk ID: … / Process exited with code N /
- * Output:\n<body>`; apply_patch uses `Exit code: N`). Cancelled runs persist `aborted by user
- * after Ns` and declined ones `<tool> failed for \`…\`: …` — both settle as failed with the raw
+ * Output:\n<body>`; apply_patch uses `Exit code: N`) and the code-mode script envelope
+ * (`Script <status> / Wall time Ns / Output:\n<body>`, failed on a failed/terminated script).
+ * Cancelled runs persist `aborted by user after Ns`, declined ones `<tool> failed for \`…\`: …`,
+ * and unapplied patches `apply_patch verification failed: …` — all settle as failed with the raw
  * text as the record.
  */
 function parseCodexToolOutput(output: string): {
@@ -246,8 +290,21 @@ function parseCodexToolOutput(output: string): {
   exitCode?: number;
   failed: boolean;
 } {
-  if (output.startsWith('aborted by user') || DECLINED_OUTPUT_RE.test(output)) {
+  if (
+    output.startsWith('aborted by user') ||
+    output.startsWith('apply_patch verification failed') ||
+    DECLINED_OUTPUT_RE.test(output)
+  ) {
     return { body: output, failed: true };
+  }
+  if (output.startsWith('Script ')) {
+    const envelope = SCRIPT_ENVELOPE_RE.exec(output);
+    if (envelope) {
+      return {
+        body: output.slice(envelope[0].length),
+        failed: envelope[1] === 'failed' || envelope[1] === 'terminated',
+      };
+    }
   }
   if (output.startsWith('Chunk ID:') || output.startsWith('Exit code:')) {
     const exitMatch = EXIT_CODE_RE.exec(output);
