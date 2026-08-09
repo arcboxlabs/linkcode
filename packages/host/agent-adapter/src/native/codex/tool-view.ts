@@ -21,7 +21,7 @@ export function textContent(text: string): ToolCallContent[] {
   return [{ type: 'content', content: { type: 'text', text } }];
 }
 
-export const CODEX_PLUGIN_APPS_SERVER = 'codex_apps';
+const CODEX_PLUGIN_APPS_SERVER = 'codex_apps';
 
 /** The `mcp__<server>__<tool>` slug — the UI's server/tool join key. Plugin apps mount under the
  * one `codex_apps` server with the plugin as the tool's first dot segment; surface it as server. */
