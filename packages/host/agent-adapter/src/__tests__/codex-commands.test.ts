@@ -387,6 +387,28 @@ describe('codex skill icons', () => {
     expect(await skillIconDataUri(join(dir, 'icon.bmp'))).toBeUndefined();
   });
 
+  it('rejects SVG icons carrying active content, keeping fragment-ref-only ones', async () => {
+    const dir = await dirPromise;
+    const svg = async (name: string, body: string) => {
+      const path = join(dir, name);
+      await writeFile(path, `<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`);
+      return skillIconDataUri(path);
+    };
+
+    expect(
+      await svg('scripted.svg', '<script>fetch("https://x.example")</script>'),
+    ).toBeUndefined();
+    expect(await svg('handler.svg', '<rect onload="alert(1)"/>')).toBeUndefined();
+    expect(await svg('external.svg', '<use href="https://x.example/a.svg#i"/>')).toBeUndefined();
+    expect(await svg('foreign.svg', '<foreignObject><div/></foreignObject>')).toBeUndefined();
+    expect(
+      await svg(
+        'clean.svg',
+        '<defs><linearGradient id="g"/></defs><rect fill="url(#g)"/><use xlink:href="#g"/>',
+      ),
+    ).toBeDefined();
+  });
+
   it('publishes the embedded icon on the catalog while keeping paths private', async () => {
     const dir = await dirPromise;
     const iconPath = join(dir, 'documents.svg');

@@ -138,9 +138,14 @@ const SKILL_ICON_MIME: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
+/** SVG that would execute or fetch if ever parsed as a document (scripts, foreignObject, event
+ * handlers, javascript: URLs, non-fragment refs) — inert inside `<img>`, rejected for depth. */
+const SVG_ACTIVE_CONTENT_RE =
+  /<\s*(?:script|foreignObject)\b|\bon[a-z]+\s*=|javascript:|\b(?:xlink:)?href\s*=\s*["'](?!#)/i;
+
 /** Embed a skill's icon file as a `data:image/*` URI, or nothing when the file is missing,
- * unreasonably large, or not a known image type. The path comes from the user's own codex
- * install; failures degrade to the glyph fallback, never to an error. */
+ * unreasonably large, not a known image type, or an SVG carrying active content. The path comes
+ * from the user's own codex install; failures degrade to the glyph fallback, never to an error. */
 export async function skillIconDataUri(iconPath: string): Promise<string | undefined> {
   const mime = SKILL_ICON_MIME[extname(iconPath).toLowerCase()];
   if (!mime) return undefined;
@@ -148,6 +153,9 @@ export async function skillIconDataUri(iconPath: string): Promise<string | undef
     const info = await stat(iconPath);
     if (!info.isFile() || info.size === 0 || info.size > SKILL_ICON_MAX_BYTES) return undefined;
     const data = await readFile(iconPath);
+    if (mime === 'image/svg+xml' && SVG_ACTIVE_CONTENT_RE.test(data.toString('utf8'))) {
+      return undefined;
+    }
     return `data:${mime};base64,${data.toString('base64')}`;
   } catch {
     return undefined;
