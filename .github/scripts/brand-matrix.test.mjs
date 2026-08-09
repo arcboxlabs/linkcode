@@ -19,6 +19,7 @@ const RE_DIVERGENT_SOURCE = /all platforms must share sourceGitSha/;
 const RE_SHARED_DESTINATION = /R2 prefixes in one bucket must not overlap/;
 const RE_SHARED_CREDENTIALS = /credentialSecretPrefix: must be unique/;
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
+const ACTIONS_EXPRESSION = String.fromCodePoint(36);
 
 function sha(character) {
   return character.repeat(64);
@@ -81,6 +82,31 @@ function matrix(...brands) {
 }
 
 describe('parseBrandBuildMatrix', () => {
+  it('pins the CODE-561 credential-free pilot to two brands and all platforms', async () => {
+    const pilot = JSON.parse(
+      await readFile(
+        new URL('../release/brand-matrices/code-561-pilot.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    const plan = buildMatrixPlan(pilot);
+
+    expect(plan.targets.include.map(({ brandId, platform }) => `${brandId}/${platform}`)).toEqual([
+      'acme/desktop',
+      'acme/ios',
+      'acme/android',
+      'zenith/desktop',
+      'zenith/ios',
+      'zenith/android',
+    ]);
+    expect(
+      new Set(pilot.brands.map((entry) => entry.releaseManifests.desktop.publisherGitSha)),
+    ).toEqual(new Set(['e4a0624abbc8ed1cac4948fa90239176a83cb96e']));
+    expect(
+      pilot.brands.every((entry) => Object.values(entry.distribution).every((x) => x === null)),
+    ).toBe(true);
+  });
+
   it('builds the complete brand by platform plan', () => {
     const input = matrix(brand('acme'), brand('zenith'));
     const plan = buildMatrixPlan(input);
@@ -239,10 +265,19 @@ describe('release brand matrix workflow', () => {
     );
 
     expect(validation).toContain('needs: prepare');
+    expect(validation).toContain(
+      `matrix: ${ACTIONS_EXPRESSION}{{ fromJSON(needs.prepare.outputs.targets) }}`,
+    );
     expect(validation).toContain('xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary');
     expect(validation).toContain('pnpm -F @linkcode/mobile smoke:export');
-    expect(validation).toContain('expo prebuild --clean --no-install --platform android');
-    expect(validation).toContain('expo prebuild --clean --no-install --platform ios');
+    expect(validation).toContain(
+      `expo prebuild --clean --no-install --platform '${ACTIONS_EXPRESSION}{{ matrix.platform }}'`,
+    );
+    expect(validation).toContain("matrix.platform == 'desktop'");
+    expect(validation).toContain("matrix.platform != 'desktop'");
+    expect(validation).toContain(
+      `credential-free-${ACTIONS_EXPRESSION}{{ matrix.brandId }}-${ACTIONS_EXPRESSION}{{ matrix.platform }}`,
+    );
     expect(validation).toContain('"local-static-origin"');
     expect(validation).toContain('providerDeploymentId:null');
     expect(validation).not.toContain('environment: release');
@@ -260,24 +295,50 @@ describe('release brand matrix workflow', () => {
       workflow.indexOf('  render-inputs:'),
     );
 
-    expect(preflight).toContain('environment: release');
+    expect(preflight).not.toContain('environment:');
     expect(preflight).toContain('protection_rules');
     expect(preflight).toContain('required_reviewers');
     expect(preflight).toContain('deployment_branch_policy');
-    expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/release"');
-    expect(preflight).toContain('inputs.sign');
-    expect(preflight).not.toContain('inputs.build');
+    expect(preflight).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/environments/pilot-nonproduction"',
+    );
+    expect(preflight).toContain('secrets.PILOT_ENVIRONMENT_ADMIN_TOKEN');
+    expect(preflight).toContain('inputs.build');
     const renderInputs = workflow.slice(
       workflow.indexOf('  render-inputs:'),
       workflow.indexOf('  signing-inputs:'),
     );
-    expect(renderInputs).toContain('needs: prepare');
-    expect(renderInputs).not.toContain('release-environment-preflight');
+    expect(renderInputs).toContain('needs: [prepare, release-environment-preflight]');
+    expect(renderInputs).toContain('environment: pilot-nonproduction');
     const signingInputs = workflow.slice(
       workflow.indexOf('  signing-inputs:'),
       workflow.indexOf('  render:'),
     );
     expect(signingInputs).toContain('needs: [prepare, release-environment-preflight]');
+    expect(signingInputs).toContain('environment: pilot-nonproduction');
+    expect(workflow).not.toContain('environment: release');
+    expect(workflow.split('release_environment: pilot-nonproduction')).toHaveLength(3);
+  });
+
+  it('passes the isolated pilot environment through reusable signing workflows', async () => {
+    const [desktop, mobile] = await Promise.all([
+      readFile(new URL('../workflows/build-desktop.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../workflows/build-mobile.yml', import.meta.url), 'utf8'),
+    ]);
+
+    expect(desktop).toContain('release_environment:');
+    expect(desktop).toContain(
+      `environment: ${ACTIONS_EXPRESSION}{{ inputs.release_environment || 'release' }}`,
+    );
+    expect(desktop).toContain(
+      `environment: ${ACTIONS_EXPRESSION}{{ inputs.sign && (inputs.release_environment || 'release') || '' }}`,
+    );
+    expect(mobile).toContain('release_environment:');
+    expect(
+      mobile.split(
+        `environment: ${ACTIONS_EXPRESSION}{{ inputs.release_environment || 'release' }}`,
+      ),
+    ).toHaveLength(4);
   });
 
   it('binds credential-free desktop recovery evidence to immutable release inputs', async () => {
