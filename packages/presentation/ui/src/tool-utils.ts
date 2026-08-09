@@ -200,9 +200,10 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
       if (file) return { label: file.label, tooltip: file.tooltip };
       break;
     }
-    // Search queries are raw machine strings (regexes, select: lists) — the localized header
-    // composes counts via toolCallSearchCounts instead, and the query stays in the body card.
+    // A counted settle humanizes in the localized header and the raw query stays in the body
+    // card; an uncounted search (WebSearch, in-progress) keeps the query — its only context.
     case 'search':
+      if (!toolCallSearchCounts(toolCall)) label = toolCallSearchQuery(toolCall);
       break;
     case 'fetch':
       label = toolCallFetchUrl(toolCall);

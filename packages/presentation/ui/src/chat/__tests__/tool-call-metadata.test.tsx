@@ -115,7 +115,7 @@ describe('tool metadata policy', () => {
     expect(screen.queryByText('ToolCallItem')).toBeNull();
   });
 
-  it('keeps an output-less search query in an expandable body card', () => {
+  it('keeps an uncounted search query in the header and its expandable body card', () => {
     const toolCall: ToolCall = {
       toolCallId: 'search-empty',
       title: 'Grep',
@@ -129,12 +129,31 @@ describe('tool metadata policy', () => {
 
     const { container } = render(<ToolCallItem toolCall={toolCall} />);
 
-    expect(container.querySelector('button')?.textContent).not.toContain(
+    // No counts yet — the query is the only header context an in-progress search has.
+    expect(container.querySelector('button')?.textContent).toContain(
       'permission-request|tool-call|plan',
     );
     fireEvent.click(screen.getByRole('button'));
     expect(screen.getByText('permission-request|tool-call|plan')).toBeDefined();
     expect(container.querySelector('pre')).toBeNull();
+  });
+
+  it('falls back to the query for search tools that never report counts', () => {
+    // WebSearch classifies as `kind: search` but its envelope carries no numMatches/numFiles —
+    // without the query fallback its header would collapse to a bare tool name.
+    const toolCall: ToolCall = {
+      toolCallId: 'search-web',
+      title: 'WebSearch',
+      kind: 'search',
+      status: 'completed',
+      rawInput: { query: 'linkcode release notes' },
+      rawOutput: { durationSeconds: 3 },
+      content: [{ type: 'content', content: { type: 'text', text: 'Release 0.4 shipped.' } }],
+    };
+
+    render(<ToolCallItem toolCall={toolCall} />);
+
+    expect(screen.getByText('· linkcode release notes')).toBeDefined();
   });
 
   it('previews an allowlisted fetch response without exposing its envelopes', () => {
@@ -400,8 +419,8 @@ describe('tool metadata policy', () => {
 
     expect(calls.map(toolCallHeaderSummary)).toEqual([
       { label: 'README.md:3', tooltip: 'README.md:3' },
-      // Search queries are raw machine strings and never summarize the header.
-      undefined,
+      // An uncounted search keeps its query; counted settles humanize instead (tests above).
+      { label: 'ToolCallBody' },
       { label: 'old.ts → new.ts', tooltip: 'old.ts → new.ts' },
       { label: 'pnpm test' },
     ]);

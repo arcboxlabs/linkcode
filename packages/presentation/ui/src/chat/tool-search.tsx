@@ -3,8 +3,7 @@ import { mcpToolName } from '../tool-utils';
 import type { ToolSearchPresentation } from './tool-result-content';
 
 /** A ToolSearch settle: the loaded tools as one inline line (the humanized header already says
- * what happened, so the body is only the result). MCP slugs shed their `mcp__<server>__` envelope
- * like tool headers do, keeping the server as a muted suffix. */
+ * what happened); MCP slugs shed their envelope, keeping the server as a muted suffix. */
 export function ToolSearchResult({
   presentation,
 }: {
