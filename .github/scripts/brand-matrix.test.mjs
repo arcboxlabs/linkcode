@@ -285,7 +285,7 @@ describe('release brand matrix workflow', () => {
     expect(validation).not.toContain('release-environment-preflight');
   });
 
-  it('fails closed unless the live-pilot environment is protected', async () => {
+  it('fails closed unless the release environment is protected', async () => {
     const workflow = await readFile(
       new URL('../workflows/release-brand-matrix.yml', import.meta.url),
       'utf8',
@@ -299,28 +299,26 @@ describe('release brand matrix workflow', () => {
     expect(preflight).toContain('protection_rules');
     expect(preflight).toContain('required_reviewers');
     expect(preflight).toContain('deployment_branch_policy');
-    expect(preflight).toContain(
-      'gh api "repos/$GITHUB_REPOSITORY/environments/pilot-nonproduction"',
-    );
-    expect(preflight).toContain('secrets.PILOT_ENVIRONMENT_ADMIN_TOKEN');
+    expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/release"');
+    expect(preflight).toContain('secrets.RELEASE_ENVIRONMENT_ADMIN_TOKEN');
     expect(preflight).toContain('inputs.build');
     const renderInputs = workflow.slice(
       workflow.indexOf('  render-inputs:'),
       workflow.indexOf('  signing-inputs:'),
     );
     expect(renderInputs).toContain('needs: [prepare, release-environment-preflight]');
-    expect(renderInputs).toContain('environment: pilot-nonproduction');
+    expect(renderInputs).toContain('environment: release');
     const signingInputs = workflow.slice(
       workflow.indexOf('  signing-inputs:'),
       workflow.indexOf('  render:'),
     );
     expect(signingInputs).toContain('needs: [prepare, release-environment-preflight]');
-    expect(signingInputs).toContain('environment: pilot-nonproduction');
-    expect(workflow).not.toContain('environment: release');
-    expect(workflow.split('release_environment: pilot-nonproduction')).toHaveLength(3);
+    expect(signingInputs).toContain('environment: release');
+    expect(workflow.split('    environment: release')).toHaveLength(7);
+    expect(workflow.split('release_environment: release')).toHaveLength(3);
   });
 
-  it('passes the isolated pilot environment through reusable signing workflows', async () => {
+  it('passes the release environment through reusable signing workflows', async () => {
     const [desktop, mobile] = await Promise.all([
       readFile(new URL('../workflows/build-desktop.yml', import.meta.url), 'utf8'),
       readFile(new URL('../workflows/build-mobile.yml', import.meta.url), 'utf8'),
