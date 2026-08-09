@@ -40,6 +40,11 @@ on:
         type: string
         required: false
         default: ""
+      release_environment:
+        description: GitHub environment that owns signing and publisher credentials
+        type: string
+        required: false
+        default: release
   # CI builds on PRs — unsigned.
   # pull_request:
   #   paths:
@@ -87,7 +92,7 @@ jobs:
     name: Render immutable config
     if: ${{ inputs.sign && inputs.rendered_artifact == '' }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ inputs.release_environment || 'release' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -132,7 +137,7 @@ jobs:
     if: ${{ !cancelled() && (needs.render-config.result == 'success' || needs.render-config.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     # Signing is gated by the `release` environment (secrets + tag policy); '' = no environment.
-    environment: ${{ inputs.sign && 'release' || '' }}
+    environment: ${{ inputs.sign && (inputs.release_environment || 'release') || '' }}
     strategy:
       fail-fast: false
       # Runners resolve through repo/org `vars` (ArcBox pins Blacksmith labels there); forks
