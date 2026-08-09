@@ -201,29 +201,29 @@ jobs:
           retention-days: 7
 
   release-environment-preflight:
-    name: Protected live-pilot preflight
+    name: Protected release environment preflight
     if: ${{ inputs.build }}
     needs: prepare
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
-      - name: Require protected nonproduction release environment
+      - name: Require protected release environment
         env:
-          GH_TOKEN: ${{ secrets.PILOT_ENVIRONMENT_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_ENVIRONMENT_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::PILOT_ENVIRONMENT_ADMIN_TOKEN is required to inspect environment protection"
+            echo "::error::RELEASE_ENVIRONMENT_ADMIN_TOKEN is required to inspect environment protection"
             exit 1
           fi
-          environment="$RUNNER_TEMP/pilot-environment.json"
-          gh api "repos/$GITHUB_REPOSITORY/environments/pilot-nonproduction" > "$environment"
+          environment="$RUNNER_TEMP/release-environment.json"
+          gh api "repos/$GITHUB_REPOSITORY/environments/release" > "$environment"
           if ! jq -e '
-            .name == "pilot-nonproduction" and
+            .name == "release" and
             ([.protection_rules[]? | select(.type == "required_reviewers") | .reviewers | length] | any(. > 0)) and
             (.deployment_branch_policy != null) and
             (.deployment_branch_policy.protected_branches == true or .deployment_branch_policy.custom_branch_policies == true)
           ' "$environment" >/dev/null; then
-            echo "::error::pilot-nonproduction must require reviewers and a deployment branch policy before a live pilot"
+            echo "::error::release must require reviewers and a deployment branch policy before release work"
             exit 1
           fi
 
@@ -232,7 +232,7 @@ jobs:
     if: ${{ inputs.build }}
     needs: [prepare, release-environment-preflight]
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     env:
       CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
       CONFIG_PUBLISHER_TOKEN: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
@@ -249,7 +249,7 @@ jobs:
     if: ${{ inputs.sign }}
     needs: [prepare, release-environment-preflight]
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     env:
       APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -286,7 +286,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -415,7 +415,7 @@ jobs:
       sign: ${{ inputs.sign }}
       brand_id: ${{ matrix.brandId }}
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
-      release_environment: pilot-nonproduction
+      release_environment: release
       rendered_artifact: brand-render-${{ matrix.brandId }}
       update_url: ${{ matrix.distribution.desktop.updateUrl || '' }}
 
@@ -554,7 +554,7 @@ jobs:
       ref: ${{ inputs.ref }}
       brand_id: ${{ matrix.brandId }}
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
-      release_environment: pilot-nonproduction
+      release_environment: release
       rendered_artifact: brand-render-${{ matrix.brandId }}
       submit: false
 
@@ -566,7 +566,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       R2_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
@@ -646,7 +646,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -722,7 +722,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: pilot-nonproduction
+    environment: release
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_R2_SECRET_ACCESS_KEY', matrix.distribution.desktop.credentialSecretPrefix)] }}
