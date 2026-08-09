@@ -226,3 +226,84 @@ describe('parseBrandBuildMatrix', () => {
     );
   });
 });
+
+describe('release brand matrix workflow', () => {
+  it('keeps local runtime validation independent of provider and signing inputs', async () => {
+    const workflow = await readFile(
+      new URL('../workflows/release-brand-matrix.yml', import.meta.url),
+      'utf8',
+    );
+    const validation = workflow.slice(
+      workflow.indexOf('  credential-free-validation:'),
+      workflow.indexOf('  release-environment-preflight:'),
+    );
+
+    expect(validation).toContain('needs: prepare');
+    expect(validation).toContain('xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary');
+    expect(validation).toContain('pnpm -F @linkcode/mobile smoke:export');
+    expect(validation).toContain('expo prebuild --clean --no-install --platform android');
+    expect(validation).toContain('expo prebuild --clean --no-install --platform ios');
+    expect(validation).toContain('"local-static-origin"');
+    expect(validation).toContain('providerDeploymentId:null');
+    expect(validation).not.toContain('environment: release');
+    expect(validation).not.toContain('secrets.');
+    expect(validation).not.toContain('release-environment-preflight');
+  });
+
+  it('fails closed unless the live-pilot environment is protected', async () => {
+    const workflow = await readFile(
+      new URL('../workflows/release-brand-matrix.yml', import.meta.url),
+      'utf8',
+    );
+    const preflight = workflow.slice(
+      workflow.indexOf('  release-environment-preflight:'),
+      workflow.indexOf('  render-inputs:'),
+    );
+
+    expect(preflight).toContain('environment: release');
+    expect(preflight).toContain('protection_rules');
+    expect(preflight).toContain('required_reviewers');
+    expect(preflight).toContain('deployment_branch_policy');
+    expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/release"');
+    expect(preflight).toContain('inputs.sign');
+    expect(preflight).not.toContain('inputs.build');
+    const renderInputs = workflow.slice(
+      workflow.indexOf('  render-inputs:'),
+      workflow.indexOf('  signing-inputs:'),
+    );
+    expect(renderInputs).toContain('needs: prepare');
+    expect(renderInputs).not.toContain('release-environment-preflight');
+    const signingInputs = workflow.slice(
+      workflow.indexOf('  signing-inputs:'),
+      workflow.indexOf('  render:'),
+    );
+    expect(signingInputs).toContain('needs: [prepare, release-environment-preflight]');
+  });
+
+  it('binds credential-free desktop recovery evidence to immutable release inputs', async () => {
+    const workflow = await readFile(
+      new URL('../workflows/release-brand-matrix.yml', import.meta.url),
+      'utf8',
+    );
+    const desktopValidation = workflow.slice(
+      workflow.indexOf('  desktop-validation:'),
+      workflow.indexOf('  mobile-validation:'),
+    );
+
+    expect(desktopValidation).toContain('inputs.build && !inputs.sign');
+    expect(desktopValidation).toContain('xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary');
+    expect(desktopValidation).toContain(
+      '54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39',
+    );
+    expect(desktopValidation).toContain('"normal":["1","2","3","4"]');
+    expect(desktopValidation).toContain('"emergency":["1","2","3"]');
+    expect(desktopValidation).toContain('"kind":"local-static-origin"');
+    expect(desktopValidation).toContain('"providerDeploymentId":null');
+    expect(desktopValidation).toContain('--expected-delivery-sha256');
+    expect(desktopValidation).toContain(
+      '--release-manifest release-inputs/release-manifest.desktop.json',
+    );
+    expect(desktopValidation).toContain('--out release-provenance.desktop.json');
+    expect(desktopValidation).not.toContain('environment: release');
+  });
+});
