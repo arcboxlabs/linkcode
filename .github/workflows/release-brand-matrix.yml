@@ -39,6 +39,7 @@ concurrency:
 
 permissions:
   contents: read
+  deployments: read
 
 jobs:
   prepare:
@@ -126,6 +127,84 @@ jobs:
             --sign "${{ inputs.sign }}" \
             --upload "${{ inputs.upload }}"
 
+  credential-free-validation:
+    name: Credential-free runtime validation
+    needs: prepare
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Exercise Electron recovery with Xvfb
+        run: |
+          set -euo pipefail
+          pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+          printf '%s  %s\n' \
+            '54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39' \
+            'apps/desktop/e2e/fixtures/pilot-e2e-v1.json' | sha256sum --check --strict
+          xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary
+      - name: Exercise production Hermes and native generation
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          set -euo pipefail
+          pnpm -F @linkcode/mobile smoke:export
+          pnpm --dir apps/mobile exec expo prebuild --clean --no-install --platform android
+          test -f apps/mobile/android/app/build.gradle
+          rm -rf apps/mobile/android
+          pnpm --dir apps/mobile exec expo prebuild --clean --no-install --platform ios
+          test -f apps/mobile/ios/Podfile
+          rm -rf apps/mobile/ios
+      - name: Record local-only evidence
+        env:
+          CLIENT_REF: ${{ inputs.ref }}
+          DELIVERY_SHA256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
+        run: |
+          mkdir -p credential-free-evidence
+          jq -cn \
+            --arg clientGitSha "$CLIENT_REF" \
+            --arg deliveryDescriptorSha256 "$DELIVERY_SHA256" \
+            '{clientGitSha:$clientGitSha,deliveryDescriptorSha256:$deliveryDescriptorSha256,deploymentIdentity:{kind:"local-static-origin",providerDeploymentId:null},evidenceVersion:1,pilotFixtureSha256:"54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39",runtimes:["electron+xvfb","production-hermes+android-prebuild","production-hermes+ios-prebuild"]}' \
+            > credential-free-evidence/runtime-validation.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: credential-free-runtime-validation
+          path: credential-free-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+  release-environment-preflight:
+    name: Protected live-pilot preflight
+    if: ${{ inputs.sign }}
+    needs: prepare
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    environment: release
+    steps:
+      - name: Require protected nonproduction release environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment="$RUNNER_TEMP/release-environment.json"
+          gh api "repos/$GITHUB_REPOSITORY/environments/release" > "$environment"
+          if ! jq -e '
+            ([.protection_rules[]?.type] | index("required_reviewers") != null) and
+            (.deployment_branch_policy != null)
+          ' "$environment" >/dev/null; then
+            echo "::error::release must require reviewers and a deployment branch policy before a live pilot"
+            exit 1
+          fi
+
   render-inputs:
     name: Validate immutable render inputs
     if: ${{ inputs.build }}
@@ -146,7 +225,7 @@ jobs:
   signing-inputs:
     name: Validate signing inputs
     if: ${{ inputs.sign }}
-    needs: prepare
+    needs: [prepare, release-environment-preflight]
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     environment: release
     env:
@@ -316,6 +395,75 @@ jobs:
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
       rendered_artifact: brand-render-${{ matrix.brandId }}
       update_url: ${{ matrix.distribution.desktop.updateUrl || '' }}
+
+  desktop-validation:
+    name: Desktop validation ${{ matrix.brandId }}
+    if: ${{ inputs.build && !inputs.sign && !cancelled() && needs.render.result == 'success' }}
+    needs: [prepare, render]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          run_install: false
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Install Electron system dependencies
+        run: pnpm -F @linkcode/desktop exec playwright-core install-deps chromium
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: brand-render-${{ matrix.brandId }}
+          path: .
+      - name: Verify real Electron configuration recovery
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' \
+            '54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39' \
+            'apps/desktop/e2e/fixtures/pilot-e2e-v1.json' | sha256sum --check --strict
+          rendered="$RUNNER_TEMP/rendered-desktop-${{ matrix.brandId }}"
+          mv apps/desktop/generated "$rendered"
+          status=0
+          xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary || status=$?
+          if [ -e apps/desktop/generated ]; then
+            echo "::error::the fixture build created release-rendered output"
+            exit 1
+          fi
+          mv "$rendered" apps/desktop/generated
+          exit "$status"
+      - name: Record isolated validation evidence
+        run: |
+          set -euo pipefail
+          root="release-validation/${{ matrix.brandId }}"
+          mkdir -p "$root"
+          printf '%s\n' '{"activationVersions":{"emergency":["1","2","3"],"normal":["1","2","3","4"]},"consumer":"desktop","deploymentIdentity":{"kind":"local-static-origin","providerDeploymentId":null},"drills":["emergency-kill-switch","emergency-release","offline-startup","pointer-and-snapshot-tamper","replay-rejection","rollback","roll-forward"],"evidenceVersion":1,"pilotFixtureSha256":"54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39","runtime":"electron+xvfb"}' \
+            > "$root/validation.desktop.json"
+          pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+            --artifact-root "$root" \
+            --artifact validation.desktop.json \
+            --bundle apps/desktop/generated/config-build-bundle.json \
+            --brand-identity apps/desktop/generated/brand-identity.json \
+            --brand-manifest release-inputs/brands.manifest.yaml \
+            --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
+            --release-manifest release-inputs/release-manifest.desktop.json \
+            --compliance release-inputs/compliance.desktop.json \
+            --out release-provenance.desktop.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: brand-validation-desktop-${{ matrix.brandId }}
+          path: release-validation/${{ matrix.brandId }}
+          if-no-files-found: error
+          retention-days: 7
 
   mobile-validation:
     name: Mobile validation ${{ matrix.brandId }}
