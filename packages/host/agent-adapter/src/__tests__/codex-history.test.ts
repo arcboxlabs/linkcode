@@ -445,6 +445,13 @@ describe('mapCodexHistoryEvents', () => {
       }),
       responseItem({
         type: 'function_call',
+        namespace: 'mcp__repo__prod',
+        name: 'search_files',
+        arguments: '{}',
+        call_id: 'call_mcp4',
+      }),
+      responseItem({
+        type: 'function_call',
         namespace: 'collaboration',
         name: 'send_message',
         arguments: '{}',
@@ -458,6 +465,8 @@ describe('mapCodexHistoryEvents', () => {
       ['call_mcp1', 'mcp__node_repl__js'],
       ['call_mcp2', 'mcp__computer_use__click'],
       ['call_mcp3', 'mcp__linear__save_comment'],
+      // A `__`-bearing server name would mis-split the slug — the raw dotted title survives.
+      ['call_mcp4', 'repo__prod.search_files'],
       ['call_builtin', 'send_message'],
     ]);
     expect(tools[0].kind).toBe('other');
