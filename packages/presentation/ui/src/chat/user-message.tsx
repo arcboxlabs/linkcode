@@ -24,9 +24,10 @@ const COPY_FEEDBACK_MS = 2000;
 
 const RE_WHITESPACE = /\s/;
 
-/** A command echo is exactly what the composer sent: `/name` and optional argument text. */
+/** A command echo is exactly what the composer sent: `/name` and optional single-line argument
+ * text. Multi-line arguments keep block rendering — a bare span would collapse their newlines. */
 function commandEcho(text: string): { name: string; args: string } | undefined {
-  if (text[0] !== '/') return undefined;
+  if (text[0] !== '/' || text.includes('\n')) return undefined;
   const body = text.slice(1);
   const nameEnd = body.search(RE_WHITESPACE);
   if (nameEnd === 0 || body.length === 0) return undefined;

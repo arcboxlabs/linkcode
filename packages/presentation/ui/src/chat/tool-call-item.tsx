@@ -104,8 +104,8 @@ export function ToolCallItem({
   const searchCounts = toolSearch ? undefined : toolCallSearchCounts(toolCall);
   let title = mcp?.tool ?? toolCall.title;
   let summary = toolCallContextSummary(toolCall);
-  // Header glyph priority: caller-supplied plugin icon, then the ToolSearch toolbox, then the
-  // integration's brand glyph, then the kind icon; state glyphs still override inside ToolIcon.
+  // Glyph priority: caller-supplied plugin icon, ToolSearch toolbox, integration brand, kind
+  // icon. State glyphs override inside ToolIcon — except failed, which keeps a supplied glyph.
   const brand = mcp ? integrationBrand(mcp.server) : undefined;
   let headerIcon = icon;
   if (toolSearch && !headerIcon) {

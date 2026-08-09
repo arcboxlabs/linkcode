@@ -166,5 +166,15 @@ describe('UserMessage', () => {
     );
     expect(plain.container.querySelector('img')).toBeNull();
     expect(screen.getByText('/usr/bin/env is a path, not a command')).toBeDefined();
+
+    // Multi-line arguments keep block rendering — a chip + bare span would collapse newlines.
+    cleanup();
+    const multiline = render(
+      <CommandCatalogProvider commands={commands}>
+        <UserMessage item={echo('/documents summarize this:\nline one\nline two')} />
+      </CommandCatalogProvider>,
+    );
+    expect(multiline.container.querySelector('img')).toBeNull();
+    expect(screen.queryByText('/documents')).toBeNull();
   });
 });
