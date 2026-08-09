@@ -3,6 +3,7 @@ import { isRecord, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
 import {
   CODEX_PLAN_ID,
+  codexMcpSlug,
   codexPlanEntries,
   execToolCall,
   fileChangeToolCall,
@@ -81,7 +82,7 @@ export function codexToolAnnounce(
     return {
       toolCall: {
         toolCallId: callId,
-        title: `mcp__${mcp.server}__${mcp.tool}`,
+        title: codexMcpSlug(mcp.server, mcp.tool),
         kind: 'other',
         status: 'in_progress',
         content: [],
@@ -132,11 +133,8 @@ export function codexToolAnnounce(
 const MCP_NAMESPACE_PREFIX = 'mcp__';
 const PLUGIN_APPS_NAMESPACE_PREFIX = 'codex_apps__';
 
-/** Rollout MCP rows are `function_call`s whose sibling `namespace` is `mcp__<server>` (observed
- * with a stray trailing `__` on some rows); `name` is the bare tool. Plugin apps namespace as
- * `mcp__codex_apps__<app>` with one leading `_` on the tool name — surface the app as the
- * server, like the live adapter does. Built-ins carry no namespace or a non-`mcp__` one.
- * (Verified against real 0.131–0.146 rollouts, 2026-08.) */
+/** Rollout MCP rows: `namespace` is `mcp__<server>` (a stray trailing `__` on some real rows),
+ * `name` the bare tool; plugin apps namespace as `mcp__codex_apps__<app>` with a `_`-led tool. */
 function codexMcpToolName(
   payload: Record<string, unknown>,
 ): { server: string; tool: string } | undefined {

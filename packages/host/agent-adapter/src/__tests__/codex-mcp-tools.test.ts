@@ -70,6 +70,10 @@ describe('CodexAdapter mcpToolCall items', () => {
     server.notify('item/started', {
       item: { type: 'mcpToolCall', id: 'mcp-3', server: 'codex_apps', tool: 'dotless' },
     });
+    // Codex accepts `__` in server names; the slug would mis-split, so the raw title survives.
+    server.notify('item/started', {
+      item: { type: 'mcpToolCall', id: 'mcp-4', server: 'repo__prod', tool: 'search_files' },
+    });
     server.notify('turn/completed', { turn: { id: 'turn-1', status: 'completed' } });
 
     // Announce + teardown settle both re-emit the full snapshot; the title must be stable.
@@ -77,6 +81,7 @@ describe('CodexAdapter mcpToolCall items', () => {
       'mcp__linear__list_issues',
       'mcp__context7__resolve_library',
       'mcp__codex_apps__dotless',
+      'repo__prod.search_files',
     ]);
   });
 });
