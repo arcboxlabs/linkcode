@@ -84,5 +84,5 @@ export function IntegrationIcon({
   className?: string;
 }): React.ReactNode {
   const Glyph = INTEGRATION_GLYPHS[brand];
-  return <Glyph className={cn('size-3.5 shrink-0', className)} data-brand={brand} />;
+  return <Glyph aria-hidden className={cn('size-3.5 shrink-0', className)} data-brand={brand} />;
 }
