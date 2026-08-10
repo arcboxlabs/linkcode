@@ -6,59 +6,64 @@ import {
   boundAgentKinds,
   maskSecret,
   providerAccountListViewModel,
-  withBinding,
-  withModel,
+  withAccountEnabled,
   withoutAccount,
 } from '../view';
 
 const providers: ProvidersConfig = {
-  'claude-code': { enabled: true, activeAccountId: 'acc_a', defaultModel: 'claude-opus-4-8' },
-  codex: { enabled: false, activeAccountId: 'acc_b' },
+  'claude-code': { enabled: true, enabledAccountIds: ['acc_a'] },
+  codex: { enabled: false, enabledAccountIds: ['acc_b'] },
   opencode: { enabled: true },
 };
 
-describe('binding transforms', () => {
-  it('binds while preserving the entry and defaults enabled for a fresh kind', () => {
-    const next = withBinding(providers, 'codex', 'acc_a');
-    expect(next.codex).toEqual({ enabled: false, activeAccountId: 'acc_a' });
-    expect(withBinding(providers, 'pi', 'acc_a').pi).toEqual({
-      enabled: true,
-      activeAccountId: 'acc_a',
-    });
+describe('provider config transforms', () => {
+  it('materializes the enabled list from what is bindable on the first disable', () => {
+    const pool: Accounts = [
+      { id: 'acc_a', label: 'A', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+      { id: 'acc_b', label: 'B', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+    ];
+
+    // Absent means "all bindable", so disabling one has to write the rest down explicitly.
+    const disabled = withAccountEnabled(providers, 'opencode', 'acc_a', false, pool);
+    expect(disabled.opencode?.enabledAccountIds).toEqual(['acc_b']);
+    // Re-enabling puts it back without duplicating.
+    const reEnabled = withAccountEnabled(disabled, 'opencode', 'acc_a', true, pool);
+    expect(reEnabled.opencode?.enabledAccountIds).toEqual(['acc_b', 'acc_a']);
   });
 
-  it('unbinds by dropping only activeAccountId', () => {
-    const next = withBinding(providers, 'claude-code', undefined);
-    expect(next['claude-code']).toEqual({ enabled: true, defaultModel: 'claude-opus-4-8' });
+  it('empties the enabled list rather than dropping it, which would re-offer everything', () => {
+    const pool: Accounts = [
+      { id: 'acc_a', label: 'A', credential: { type: 'api-key', key: 'k' }, createdAt: 0 },
+    ];
+    const next = withAccountEnabled(providers, 'claude-code', 'acc_a', false, pool);
+    expect(next['claude-code']?.enabledAccountIds).toEqual([]);
   });
 
-  it('sets and clears the default model without touching the binding', () => {
-    expect(withModel(providers, 'claude-code', 'claude-sonnet-5')['claude-code']).toEqual({
-      enabled: true,
-      activeAccountId: 'acc_a',
-      defaultModel: 'claude-sonnet-5',
-    });
-    expect(withModel(providers, 'claude-code', undefined)['claude-code']).toEqual({
-      enabled: true,
-      activeAccountId: 'acc_a',
-    });
-  });
-
-  it('clears every binding of a removed account, identity-stable when none matched', () => {
+  it('drops a removed account from every enabled list, identity-stable when none named it', () => {
     const next = withoutAccount(providers, 'acc_a');
-    expect(next['claude-code']).toEqual({ enabled: true, defaultModel: 'claude-opus-4-8' });
-    expect(next.codex).toEqual({ enabled: false, activeAccountId: 'acc_b' });
+    expect(next['claude-code']).toEqual({ enabled: true, enabledAccountIds: [] });
+    expect(next.codex).toEqual({ enabled: false, enabledAccountIds: ['acc_b'] });
     expect(withoutAccount(providers, 'acc_missing')).toBe(providers);
   });
 });
 
 describe('view helpers', () => {
-  it('lists bound agents in stable order and renders the config snippet from them', () => {
-    expect(boundAgentKinds(providers, 'acc_a')).toEqual(['claude-code']);
-    const snippet = accountConfigSnippet(providers, 'acc_a');
+  it('lists the agents offering this account in stable order, and snippets them', () => {
+    const anthropic: Accounts[number] = {
+      id: 'acc_a',
+      label: 'Anthropic',
+      service: 'anthropic-api',
+      credential: { type: 'api-key', key: 'k' },
+      createdAt: 0,
+    };
+    // `opencode` and `pi` name no list, which means every bindable account — including this one.
+    // `codex` lists only `acc_b`, and `grok-build` takes no endpoint at all.
+    expect(boundAgentKinds(anthropic, providers)).toEqual(['claude-code', 'opencode', 'pi']);
+    const snippet = accountConfigSnippet(anthropic, providers);
     expect(JSON.parse(snippet)).toEqual({
       providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_a', defaultModel: 'claude-opus-4-8' },
+        'claude-code': { enabled: true, enabledAccountIds: ['acc_a'] },
+        opencode: { enabled: true },
       },
     });
   });
@@ -115,7 +120,9 @@ describe('view helpers', () => {
           // the same answer the resolver gives, rather than a pin it will ignore.
           routing: { kind: 'catalog', protocols: ['openai-chat', 'openai-responses'] },
           credentialType: 'api-key',
-          boundAgents: ['claude-code'],
+          // Enabled for claude-code by name, and for the two endpoint-agnostic agents by an absent
+          // list; codex lists only acc_b, and grok-build takes no endpoint at all.
+          boundAgents: ['claude-code', 'opencode', 'pi'],
         },
         {
           id: 'acc_b',
@@ -124,7 +131,8 @@ describe('view helpers', () => {
           serviceLabel: 'Claude',
           credentialType: 'oauth',
           auth: { loggedIn: true, email: 'claude@example.com' },
-          boundAgents: ['codex'],
+          // An oauth login serves only its own agent, and claude-code's list does not name it.
+          boundAgents: [],
         },
         {
           id: 'acc_c',
@@ -139,12 +147,9 @@ describe('view helpers', () => {
             protocol: 'openai-chat',
           },
           credentialType: 'auth-token',
-          boundAgents: [],
+          boundAgents: ['opencode', 'pi'],
         },
       ],
-      detectedLogins: [{ service: 'chatgpt-sub', label: 'ChatGPT', email: 'codex@example.com' }],
-      bindingCount: 2,
-      agentCount: 5,
     });
   });
 
@@ -156,7 +161,7 @@ describe('view helpers', () => {
       service: 'openrouter',
       credential: { type: 'api-key', key: 'old-secret' },
       endpoint: { baseUrl: 'https://old.example.com/v1', protocol: 'openai-chat' },
-      model: 'old-model',
+      models: [{ id: 'old-model' }],
       extraEnv: { GATEWAY_MODE: 'strict' },
     };
 
@@ -167,7 +172,7 @@ describe('view helpers', () => {
         secret: 'new-secret',
         baseUrl: 'https://new.example.com/v1',
         protocol: 'anthropic',
-        model: 'new-model',
+        models: [{ id: 'new-model' }],
       }),
     ).toEqual({
       id: 'acc_a',
@@ -176,7 +181,7 @@ describe('view helpers', () => {
       service: 'openrouter',
       credential: { type: 'auth-token', token: 'new-secret' },
       endpoint: { baseUrl: 'https://new.example.com/v1', protocol: 'anthropic' },
-      model: 'new-model',
+      models: [{ id: 'new-model' }],
       extraEnv: { GATEWAY_MODE: 'strict' },
     });
   });

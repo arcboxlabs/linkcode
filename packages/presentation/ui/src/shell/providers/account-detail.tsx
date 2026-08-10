@@ -12,13 +12,6 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from 'coss-ui/components/select';
 import { Switch } from 'coss-ui/components/switch';
 import { useClipboard } from 'foxact/use-clipboard';
 import {
@@ -34,24 +27,23 @@ import {
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../../chat/agent-icon';
-import { AGENT_MODEL_OPTIONS } from '../agent-models';
 import { ServiceIcon } from '../service-icon';
 import type { ProviderAccountRouting } from './routing';
 
-export type ProviderBindingStatus =
+export type ProviderAgentStatus =
   | { kind: 'unavailable-oauth'; agent: AgentKind }
   | { kind: 'unavailable-endpoint-incomplete' }
   | { kind: 'unavailable-protocol' }
-  | { kind: 'bound' }
-  | { kind: 'no-provider' }
-  | { kind: 'bound-elsewhere'; accountLabel: string };
+  | { kind: 'disabled' };
 
-export interface ProviderBindingViewModel {
+/** One agent row in an account's dialog: whether this account's models are offered to that agent.
+ * That is the whole state — nothing here is a default, and the switch says it without help. */
+export interface ProviderAgentViewModel {
   kind: AgentKind;
   tier: 'native' | 'translate' | 'unavailable';
-  status: ProviderBindingStatus;
-  bound: boolean;
-  currentModel: string;
+  /** Only a reason the row cannot be, or is not, on. Absent means enabled and available. */
+  status?: ProviderAgentStatus;
+  enabled: boolean;
 }
 
 export type ProviderCredentialViewModel =
@@ -74,10 +66,13 @@ export interface ProviderAccountDetailViewModel {
   label: string;
   credential: ProviderCredentialViewModel;
   routing?: ProviderAccountRouting;
-  accountModel?: string;
-  bindings: ProviderBindingViewModel[];
+  /** Models the user picked for this account — the only ones its pickers offer. */
+  accountModels?: Array<{ id: string; label: string }>;
+  agents: ProviderAgentViewModel[];
+  /** Agents that fall back to this account; named in the removal warning. */
   boundAgents: AgentKind[];
-  availableBindingCount: number;
+  enabledAgentCount: number;
+  availableAgentCount: number;
   configPreview?: string;
 }
 
@@ -100,16 +95,15 @@ function DetailRow({
 export function AccountDetail({
   account,
   busy,
-  onSetBinding,
-  onSetModel,
+  onSetAccountEnabled,
   onEdit,
   onRemove,
 }: {
   account: ProviderAccountDetailViewModel;
   /** A providers/accounts write is in flight — hold the switches. */
   busy: boolean;
-  onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
-  onSetModel: (kind: AgentKind, model: string | undefined) => void;
+  /** Show or hide this account's models in that agent's pickers. */
+  onSetAccountEnabled: (kind: AgentKind, enabled: boolean) => void;
   onEdit: () => void;
   onRemove: () => void;
 }): React.ReactNode {
@@ -198,10 +192,10 @@ export function AccountDetail({
               </span>
             </DetailRow>
           ) : null}
-          {account.accountModel !== undefined && account.accountModel !== '' ? (
+          {account.accountModels !== undefined && account.accountModels.length > 0 ? (
             <DetailRow label={t('accountModel')}>
               <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-                {account.accountModel}
+                {account.accountModels.map(({ id }) => id).join(' · ')}
               </span>
             </DetailRow>
           ) : null}
@@ -215,20 +209,18 @@ export function AccountDetail({
           </h3>
           <span className="text-muted-foreground text-xs">
             {t('connectionsEnabled', {
-              bound: account.boundAgents.length,
-              available: account.availableBindingCount,
+              bound: account.enabledAgentCount,
+              available: account.availableAgentCount,
             })}
           </span>
         </div>
         <div className="rounded-lg border border-border">
-          {account.bindings.map((binding) => (
-            <BindingRow
-              key={binding.kind}
-              accountId={account.id}
-              binding={binding}
+          {account.agents.map((agent) => (
+            <AgentRow
+              key={agent.kind}
+              agent={agent}
               busy={busy}
-              onSetBinding={onSetBinding}
-              onSetModel={onSetModel}
+              onSetAccountEnabled={onSetAccountEnabled}
             />
           ))}
         </div>
@@ -310,10 +302,10 @@ function OauthRows({
   );
 }
 
-function bindingStatusLabel(
+function agentStatusLabel(
   t: ReturnType<typeof useTranslations<'settings.providers'>>,
   tAgent: ReturnType<typeof useTranslations<'workbench.agentKind'>>,
-  status: ProviderBindingStatus,
+  status: ProviderAgentStatus,
 ): string {
   switch (status.kind) {
     case 'unavailable-oauth':
@@ -322,107 +314,50 @@ function bindingStatusLabel(
       return t('unavailableEndpointIncomplete');
     case 'unavailable-protocol':
       return t('unavailableProtocol');
-    case 'bound':
-      return t('boundNote');
-    case 'no-provider':
-      return t('noProvider');
-    case 'bound-elsewhere':
-      return t('boundElsewhere', { label: status.accountLabel });
+    case 'disabled':
+      return t('accountDisabled');
     default:
       return status satisfies never;
   }
 }
 
-function BindingRow({
-  accountId,
-  binding,
+/** One agent's row: whether this account's models appear in that agent's pickers. */
+function AgentRow({
+  agent,
   busy,
-  onSetBinding,
-  onSetModel,
+  onSetAccountEnabled,
 }: {
-  accountId: string;
-  binding: ProviderBindingViewModel;
+  agent: ProviderAgentViewModel;
   busy: boolean;
-  onSetBinding: (kind: AgentKind, accountId: string | undefined) => void;
-  onSetModel: (kind: AgentKind, model: string | undefined) => void;
+  onSetAccountEnabled: (kind: AgentKind, enabled: boolean) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
 
-  const unavailable = binding.tier === 'unavailable';
-  const status = bindingStatusLabel(t, tAgent, binding.status);
-  const note = binding.tier === 'translate' ? `${t('translateNote')} · ${status}` : status;
-  const modelOptions = AGENT_MODEL_OPTIONS[binding.kind];
+  const unavailable = agent.tier === 'unavailable';
+  const status = agent.status && agentStatusLabel(t, tAgent, agent.status);
+  const note =
+    agent.tier === 'translate' ? [t('translateNote'), status].filter(Boolean).join(' · ') : status;
 
   return (
     <div
       className={`flex items-center gap-3 border-border border-t px-3 py-2.5 first:border-t-0 ${unavailable ? 'opacity-50' : ''}`}
     >
-      <AgentIcon kind={binding.kind} />
+      <AgentIcon kind={agent.kind} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{tAgent(binding.kind)}</span>
-          {binding.tier === 'translate' ? (
+          <span className="font-medium text-sm">{tAgent(agent.kind)}</span>
+          {agent.tier === 'translate' ? (
             <Badge variant="outline">{t('translateBadge')}</Badge>
           ) : null}
         </div>
-        <p className="truncate text-muted-foreground text-xs">{note}</p>
+        {note ? <p className="truncate text-muted-foreground text-xs">{note}</p> : null}
       </div>
-      {modelOptions && binding.bound ? (
-        <ModelSelect
-          options={
-            modelOptions.some((option) => option.id === binding.currentModel) ||
-            binding.currentModel === ''
-              ? modelOptions
-              : [...modelOptions, { id: binding.currentModel, label: binding.currentModel }]
-          }
-          value={binding.currentModel}
-          disabled={busy}
-          onChange={(model) => onSetModel(binding.kind, model === '' ? undefined : model)}
-        />
-      ) : null}
       <Switch
-        checked={binding.bound}
+        checked={agent.enabled}
         disabled={unavailable || busy}
-        onCheckedChange={(checked) => onSetBinding(binding.kind, checked ? accountId : undefined)}
+        onCheckedChange={(checked) => onSetAccountEnabled(agent.kind, checked)}
       />
     </div>
-  );
-}
-
-function ModelSelect({
-  options,
-  value,
-  disabled,
-  onChange,
-}: {
-  options: Array<{ id: string; label: string }>;
-  value: string;
-  disabled: boolean;
-  onChange: (model: string) => void;
-}): React.ReactNode {
-  const t = useTranslations('settings.providers');
-  const items = [
-    { value: '', label: t('modelDefault') },
-    ...options.map((option) => ({ value: option.id, label: option.label })),
-  ];
-  return (
-    <Select
-      items={items}
-      value={value}
-      disabled={disabled}
-      onValueChange={(next) => onChange(typeof next === 'string' ? next : '')}
-    >
-      <SelectTrigger size="sm" className="w-36">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
   );
 }

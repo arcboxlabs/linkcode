@@ -1,5 +1,5 @@
 import {
-  detectedLoginSuggestions,
+  accountEnabledFor,
   pinnedEndpoint,
   resolveBinding,
   serviceById,
@@ -18,8 +18,8 @@ import type {
   ProviderAccountListItem,
   ProviderAccountListViewModel,
   ProviderAccountRouting,
-  ProviderBindingStatus,
-  ProviderBindingViewModel,
+  ProviderAgentStatus,
+  ProviderAgentViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
 
@@ -33,21 +33,26 @@ export function maskSecret(secret: string): string {
   return `${secret.slice(0, 6)}…${secret.slice(-4)}`;
 }
 
-/** Agents whose active provider is this account, in stable agent order. */
+/** Agents whose pickers offer this account's models, in stable agent order. Enablement alone is not
+ * enough — an absent list enables every agent, including the ones this account cannot back. */
 export function boundAgentKinds(
+  account: Account,
   providers: ProvidersConfig | undefined,
-  accountId: string,
 ): AgentKind[] {
-  return AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId === accountId);
+  return AGENT_KINDS.filter(
+    (kind) =>
+      resolveBinding(account, kind).tier !== 'unavailable' &&
+      accountEnabledFor(providers, kind, account.id),
+  );
 }
 
 /** The `providers` slice this account writes into `~/.linkcode/config.json`, pretty-printed for
  * the detail pane preview. Contains no secret (the account itself holds the credential). */
 export function accountConfigSnippet(
+  account: Account,
   providers: ProvidersConfig | undefined,
-  accountId: string,
 ): string {
-  const bound = boundAgentKinds(providers, accountId);
+  const bound = boundAgentKinds(account, providers);
   const slice: Record<string, unknown> = {};
   for (const kind of bound) slice[kind] = providers?.[kind];
   return JSON.stringify({ providers: slice }, null, 2);
@@ -86,77 +91,61 @@ function credentialViewModel(
   };
 }
 
-function bindingStatus(
+function agentStatus(
   account: Account,
-  accountLabels: ReadonlyMap<string, string>,
   kind: AgentKind,
   providers: ProvidersConfig | undefined,
-): { bound: boolean; status: ProviderBindingStatus; tier: ProviderBindingViewModel['tier'] } {
+): Omit<ProviderAgentViewModel, 'kind'> {
   const availability = resolveBinding(account, kind);
-  const boundId = providers?.[kind]?.activeAccountId;
-  const bound = boundId === account.id;
   if (availability.tier === 'unavailable') {
-    if (availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth') {
-      return {
-        bound,
-        tier: availability.tier,
-        status: { kind: 'unavailable-oauth', agent: account.credential.agent },
-      };
-    }
-    return {
-      bound,
-      tier: availability.tier,
-      status: {
-        kind:
-          availability.reason === 'endpoint-incomplete'
-            ? 'unavailable-endpoint-incomplete'
-            : 'unavailable-protocol',
-      },
-    };
+    const status: ProviderAgentStatus =
+      availability.reason === 'oauth-other-agent' && account.credential.type === 'oauth'
+        ? { kind: 'unavailable-oauth', agent: account.credential.agent }
+        : {
+            kind:
+              availability.reason === 'endpoint-incomplete'
+                ? 'unavailable-endpoint-incomplete'
+                : 'unavailable-protocol',
+          };
+    return { tier: availability.tier, enabled: false, status };
   }
+  // Enabled is the whole state, and the switch already shows it — only a reason to be off earns text.
+  const enabled = accountEnabledFor(providers, kind, account.id);
   return {
-    bound,
     tier: availability.tier,
-    status: bound
-      ? { kind: 'bound' }
-      : boundId === undefined
-        ? { kind: 'no-provider' }
-        : { kind: 'bound-elsewhere', accountLabel: accountLabels.get(boundId) ?? boundId },
+    enabled,
+    ...(!enabled && { status: { kind: 'disabled' } }),
   };
 }
 
 /** Selected account plus precomputed binding rows; UI owns only rendering and local interaction. */
 export function providerAccountDetailViewModel(
   account: Account,
-  accounts: Accounts,
   providers: ProvidersConfig | undefined,
   runtimes: AgentRuntimes | undefined,
 ): ProviderAccountDetailViewModel {
-  const accountLabels = new Map(accounts.map((candidate) => [candidate.id, candidate.label]));
-  const bindings = AGENT_KINDS.map((kind): ProviderBindingViewModel => {
-    const binding = bindingStatus(account, accountLabels, kind, providers);
-    return {
-      kind,
-      ...binding,
-      currentModel: providers?.[kind]?.defaultModel ?? '',
-    };
-  });
-  const boundAgents = boundAgentKinds(providers, account.id);
+  const agents = AGENT_KINDS.map(
+    (kind): ProviderAgentViewModel => ({ kind, ...agentStatus(account, kind, providers) }),
+  );
+  const boundAgents = boundAgentKinds(account, providers);
   const serviceLabel = serviceById(account.service)?.label;
   const routing = accountRouting(account);
   return {
     id: account.id,
     label: account.label,
     credential: credentialViewModel(account, runtimes),
-    bindings,
+    agents,
     boundAgents,
-    availableBindingCount: bindings.filter((binding) => binding.tier !== 'unavailable').length,
+    enabledAgentCount: agents.filter((agent) => agent.enabled).length,
+    availableAgentCount: agents.filter((agent) => agent.tier !== 'unavailable').length,
     ...(!(account.service === undefined) && { service: account.service }),
     ...(!(serviceLabel === undefined) && { serviceLabel }),
     ...(routing !== undefined && { routing }),
-    ...(!(account.model === undefined) && { accountModel: account.model }),
+    ...(account.models !== undefined && {
+      accountModels: account.models.map(({ id, label }) => ({ id, label: label ?? id })),
+    }),
     ...(!(boundAgents.length === 0) && {
-      configPreview: accountConfigSnippet(providers, account.id),
+      configPreview: accountConfigSnippet(account, providers),
     }),
   };
 }
@@ -187,7 +176,7 @@ function providerAccountListItem(
     id: account.id,
     label: account.label,
     credentialType: account.credential.type,
-    boundAgents: boundAgentKinds(providers, account.id),
+    boundAgents: boundAgentKinds(account, providers),
     ...(account.service !== undefined && { service: account.service }),
     ...(serviceLabel !== undefined && { serviceLabel }),
     ...(routing !== undefined && { routing }),
@@ -200,7 +189,7 @@ function providerAccountListItem(
   };
 }
 
-/** Precomputed account rows and detected-login suggestions for the presentation-only list. */
+/** Precomputed account rows for the presentation-only list. */
 export function providerAccountListViewModel(
   accounts: Accounts,
   providers: ProvidersConfig | undefined,
@@ -208,29 +197,33 @@ export function providerAccountListViewModel(
 ): ProviderAccountListViewModel {
   return {
     accounts: accounts.map((account) => providerAccountListItem(account, providers, runtimes)),
-    detectedLogins: detectedLoginSuggestions(accounts, runtimes).map(({ service, auth }) => ({
-      service: service.id,
-      label: service.label,
-      ...(auth.email !== undefined && { email: auth.email }),
-    })),
-    bindingCount: AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId !== undefined)
-      .length,
-    agentCount: AGENT_KINDS.length,
   };
 }
 
-/** Bind (or, with undefined, unbind) an agent's active account; other fields survive untouched. */
-export function withBinding(
+/**
+ * Show or hide one account's models in an agent's pickers. Absent `enabledAccountIds` means every
+ * bindable account, so the first disable has to materialize the list from what is bindable *now* —
+ * otherwise hiding one account would read as "only this one", hiding every other account too. Once
+ * the list exists it is authoritative, so an account added later stays out until enabled.
+ */
+export function withAccountEnabled(
   providers: ProvidersConfig,
   kind: AgentKind,
-  accountId: string | undefined,
+  accountId: string,
+  enabled: boolean,
+  accounts: Accounts = [],
 ): ProvidersConfig {
   const entry = providers[kind] ?? { enabled: true };
-  if (accountId === undefined) {
-    const { activeAccountId: _cleared, ...rest } = entry;
-    return { ...providers, [kind]: rest };
-  }
-  return { ...providers, [kind]: { ...entry, activeAccountId: accountId } };
+  const current =
+    entry.enabledAccountIds ??
+    accounts.reduce<string[]>((ids, account) => {
+      if (resolveBinding(account, kind).tier !== 'unavailable') ids.push(account.id);
+      return ids;
+    }, []);
+  const next = enabled
+    ? [...new Set([...current, accountId])]
+    : current.filter((id) => id !== accountId);
+  return { ...providers, [kind]: { ...entry, enabledAccountIds: next } };
 }
 
 /** Toggle whether the agent is offered in the client's agent picker. */
@@ -242,30 +235,20 @@ export function withEnabled(
   return { ...providers, [kind]: { ...providers[kind], enabled } };
 }
 
-/** Set (or, with undefined, clear) an agent's default model. */
-export function withModel(
-  providers: ProvidersConfig,
-  kind: AgentKind,
-  model: string | undefined,
-): ProvidersConfig {
-  const entry = providers[kind] ?? { enabled: true };
-  if (model === undefined) {
-    const { defaultModel: _cleared, ...rest } = entry;
-    return { ...providers, [kind]: rest };
-  }
-  return { ...providers, [kind]: { ...entry, defaultModel: model } };
-}
-
-/** Drop every binding referencing a removed account; returns the input unchanged when none did. */
+/** Drop a removed account from every enabled list; returns the input unchanged when none named it.
+ * An agent left with an absent list would silently re-offer every bindable account, so a list that
+ * loses its last entry stays present and empty. */
 export function withoutAccount(providers: ProvidersConfig, accountId: string): ProvidersConfig {
   let changed = false;
   const next: ProvidersConfig = {};
   for (const kind of AGENT_KINDS) {
     const entry = providers[kind];
     if (entry === undefined) continue;
-    if (entry.activeAccountId === accountId) {
-      const { activeAccountId: _cleared, ...rest } = entry;
-      next[kind] = rest;
+    if (entry.enabledAccountIds?.includes(accountId)) {
+      next[kind] = {
+        ...entry,
+        enabledAccountIds: entry.enabledAccountIds.filter((id) => id !== accountId),
+      };
       changed = true;
     } else {
       next[kind] = entry;

@@ -1,12 +1,6 @@
 import { serviceById } from '@linkcode/providers';
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import {
-  createAndBindAccount,
-  getAccounts,
-  getProviderConfig,
-  setAccounts,
-  setProviderConfig,
-} from '@linkcode/sdk';
+import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
 import { AccountDetail, AccountList } from '@linkcode/ui';
 import {
   Dialog,
@@ -20,13 +14,13 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
-import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
+import { AddAccountForm, EditAccountForm, ServiceCatalogView } from './add-flow';
+import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
   providerAccountListViewModel,
-  withBinding,
-  withModel,
+  withAccountEnabled,
   withoutAccount,
 } from './view';
 
@@ -45,9 +39,10 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
   const onboarding = useAgentRuntimeOnboarding();
-  const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
+  // The forms are presentation; only this page sits inside the data-plane provider tree.
+  const modelSources = useModelSources();
 
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
@@ -61,11 +56,11 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const pool = accounts ?? [];
   const accountsById = new Map(pool.map((account) => [account.id, account]));
   const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
-  const busy = bindAccount.isMutating || saveAccounts.isMutating || saveProviders.isMutating;
+  const busy = saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
       ? undefined
-      : providerAccountDetailViewModel(selected, pool, providers, runtimes);
+      : providerAccountDetailViewModel(selected, providers, runtimes);
   const accountList = providerAccountListViewModel(pool, providers, runtimes);
 
   const applyProviders = async (next: ProvidersConfig): Promise<void> => {
@@ -73,22 +68,16 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     void mutateProviders();
   };
 
-  const handleSetBinding = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withBinding(providers ?? {}, kind, accountId));
+  const handleSetAccountEnabled = (kind: AgentKind, enabled: boolean): void => {
+    if (!selected) return;
+    void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
-  const handleSetModel = (kind: AgentKind, model: string | undefined): void => {
-    void applyProviders(withModel(providers ?? {}, kind, model));
-  };
-
+  // Every account joins the pool the same way. A subscription used to bind itself to its agent on
+  // the way in; with no default to claim, adding one is adding one.
   const handleAdd = async (account: Account): Promise<void> => {
-    if (account.credential.type === 'oauth') {
-      await bindAccount.trigger({ agent: account.credential.agent, account });
-      await Promise.all([mutateAccounts(), mutateProviders()]);
-    } else {
-      await saveAccounts.trigger({ accounts: [...pool, account] });
-      await mutateAccounts();
-    }
+    await saveAccounts.trigger({ accounts: [...pool, account] });
+    await mutateAccounts();
     closeDialog();
   };
 
@@ -98,13 +87,6 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     });
     await mutateAccounts();
     select(account.id);
-  };
-
-  // One-click adoption of a detected CLI login: same account the oauth form would create.
-  const handleAdoptDetected = (serviceId: string): void => {
-    const service = serviceById(serviceId);
-    if (service?.kind !== 'oauth') return;
-    void handleAdd(oauthAccount(service, t(`serviceName.${service.id}`)));
   };
 
   const handleRemove = async (): Promise<void> => {
@@ -130,13 +112,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
       <p className="text-muted-foreground text-sm">{t('hint')}</p>
-      <AccountList
-        {...accountList}
-        loading={accountsLoading}
-        onSelect={select}
-        onAdd={startAdd}
-        onAdoptDetected={handleAdoptDetected}
-      />
+      <AccountList {...accountList} loading={accountsLoading} onSelect={select} onAdd={startAdd} />
       <Dialog
         open={dialogOpen}
         disablePointerDismissal={busy}
@@ -169,6 +145,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                 {view.kind === 'add-form' ? (
                   <AddAccountForm
                     serviceId={view.service}
+                    sources={modelSources}
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
@@ -184,6 +161,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                   view.editing ? (
                     <EditAccountForm
                       account={selected}
+                      sources={modelSources}
                       busy={saveAccounts.isMutating}
                       onBack={backToAccount}
                       onSubmit={(account) => {
@@ -194,8 +172,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     <AccountDetail
                       account={selectedDetail}
                       busy={busy}
-                      onSetBinding={handleSetBinding}
-                      onSetModel={handleSetModel}
+                      onSetAccountEnabled={handleSetAccountEnabled}
                       onEdit={startEdit}
                       onRemove={() => {
                         void handleRemove();

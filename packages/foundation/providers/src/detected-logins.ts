@@ -2,21 +2,21 @@ import type { Accounts, AgentAuthStatus, AgentRuntimes } from '@linkcode/schema'
 import type { ServiceDescriptor } from './catalog';
 import { SERVICE_CATALOG } from './catalog';
 
-export interface DetectedLoginSuggestion {
+export interface DetectedLogin {
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>;
   auth: AgentAuthStatus;
 }
 
 /**
- * CLI logins the runtime probe sees that the pool does not represent yet, offered as one-click
- * "detected" cards: `loggedIn: true` with no oauth account for that agent. The pool stays
- * explicit user state — this is a suggestion, not an implicit member.
+ * CLI logins the runtime probe sees that the pool does not represent yet: `loggedIn: true` with no
+ * oauth account for that agent. The host adopts each one into the pool, so a delegated subscription
+ * reaches the model pickers on the same footing as a key the user typed.
  */
-export function detectedLoginSuggestions(
+export function detectedLogins(
   accounts: Accounts,
   runtimes: AgentRuntimes | undefined,
-): DetectedLoginSuggestion[] {
-  const suggestions: DetectedLoginSuggestion[] = [];
+): DetectedLogin[] {
+  const suggestions: DetectedLogin[] = [];
   for (const service of SERVICE_CATALOG) {
     if (service.kind !== 'oauth') continue;
     const auth = runtimes?.[service.agent]?.auth;

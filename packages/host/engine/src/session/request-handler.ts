@@ -38,15 +38,19 @@ export class SessionRequestHandler {
           payload.clientReqId,
           this.lifecycle.start(payload.clientReqId, payload.opts),
         );
-      case 'agent.input':
+      case 'agent.input': {
+        const { input, sessionId } = payload;
+        // Lifecycle owns inputs that outlive the adapter holding them: it records an accepted pick on
+        // the run, and a model pick naming another account is a relaunch. Every path answers with the
+        // same plain ack, so the client's contract is one request either way.
+        const applied = this.lifecycle.applyInput(sessionId, input);
         return this.responder.reply(
           payload.clientReqId,
-          this.sessions
-            .sendInput(payload.sessionId, payload.input)
-            .pipe(
-              Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-            ),
+          applied.pipe(
+            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
+          ),
         );
+      }
       case 'session.stop':
         return this.responder.reply(
           payload.clientReqId,

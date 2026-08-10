@@ -1,9 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { effortOptionsForModel } from '../shell/agent-efforts';
-import { AGENT_MODEL_OPTIONS, groupModelsByProvider, resolveModel } from '../shell/agent-models';
+import type { ModelOption } from '../shell/agent-models';
+import { groupModelsByProvider, resolveModel, switchesAccount } from '../shell/agent-models';
 
-const claude = AGENT_MODEL_OPTIONS['claude-code'];
-const codex = AGENT_MODEL_OPTIONS.codex;
+// Ids and aliases straight from `CURATED_AGENT_MODELS`; the prefix rules under test are about the
+// shape of the ids a provider serves, not about where the list came from.
+const claude: ModelOption[] = [
+  { id: 'claude-opus-5', label: 'Opus 5' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+];
+// Codex advertises per-model effort levels on its live catalog; these mirror `model/list`.
+const codex: ModelOption[] = [
+  {
+    id: 'gpt-5.6-sol',
+    label: 'GPT-5.6-Sol',
+    effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+  },
+  { id: 'gpt-5.4', label: 'GPT-5.4' },
+  {
+    id: 'gpt-5.6-luna',
+    label: 'GPT-5.6-Luna',
+    effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini' },
+];
 
 describe('resolveModel', () => {
   it('resolves an exact catalog id', () => {
@@ -23,6 +44,21 @@ describe('resolveModel', () => {
     expect(resolveModel(claude, null)).toBeUndefined();
     expect(resolveModel(claude, 'not-a-model')).toBeUndefined();
     expect(resolveModel(undefined, 'claude-opus-4-8')).toBeUndefined();
+  });
+});
+
+describe('switchesAccount', () => {
+  const onSecond = { id: 'model-a', label: 'A', accountId: 'acc_second' };
+
+  it('flags an entry from an account the session is not running on', () => {
+    expect(switchesAccount(onSecond, 'acc_first')).toBe(true);
+    expect(switchesAccount(onSecond, 'acc_second')).toBe(false);
+  });
+
+  it('stays false when either side has no account to compare', () => {
+    // A draft has no running account, and a curated-table entry belongs to none.
+    expect(switchesAccount(onSecond, undefined)).toBe(false);
+    expect(switchesAccount({ id: 'model-a', label: 'A' }, 'acc_first')).toBe(false);
   });
 });
 

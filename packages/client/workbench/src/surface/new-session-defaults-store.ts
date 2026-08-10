@@ -9,11 +9,19 @@ import {
 import { z } from 'zod';
 import { create } from 'zustand';
 
+/**
+ * Exported so tests cannot drift from it — one did, and a silent key mismatch turned the
+ * malformed-blob test into a vacuous pass.
+ *
+ * v6 dropped `modelsByProvider` (the model pick moved to daemon config) and v7 renamed
+ * `lastProvider` to `lastHarness`; a stale blob is discarded by the schema either way.
+ */
+export const NEW_SESSION_DEFAULTS_STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v7';
+
 const PersistedNewSessionDefaultsSchema = z
   .object({
-    lastProvider: AgentKindSchema.nullable(),
+    lastHarness: AgentKindSchema.nullable(),
     lastWorkspaceId: WorkspaceIdSchema.nullable(),
-    modelsByProvider: z.partialRecord(AgentKindSchema, z.string().min(1)),
     effortsByProvider: z.partialRecord(AgentKindSchema, EffortLevelSchema),
     branchesByWorkspace: z.record(z.string(), BranchSelectionSchema),
   })
@@ -21,19 +29,18 @@ const PersistedNewSessionDefaultsSchema = z
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
 
 export interface NewSessionSelection {
-  /** Null clears a remembered selection after an explicit reset or rejected reflection. */
+  /** Confirmed model, for callers that route it onward. This store does not persist it — the daemon
+   * owns both answers: `providers[kind].model` for the agent's default, the thread's run for a pick. */
   model?: string | null;
   /** Null clears a remembered selection after an explicit reset or rejected reflection. */
   effort?: EffortLevel | null;
 }
 
 export interface NewSessionDefaultsState {
-  /** Provider of the last successful new-session submit; null before the first (→ claude-code). */
-  lastProvider: AgentKind | null;
+  /** Harness of the last successful new-session submit; null before the first (→ claude-code). */
+  lastHarness: AgentKind | null;
   /** Workspace of the last successful submit; ids that no longer exist are skipped at resolve time. */
   lastWorkspaceId: WorkspaceId | null;
-  /** Last model accepted by LinkCode per provider; absent means defer to configured defaults. */
-  modelsByProvider: Partial<Record<AgentKind, string>>;
   /** Last effort accepted by LinkCode per provider; absent means defer to the provider default. */
   effortsByProvider: Partial<Record<AgentKind, EffortLevel>>;
   /** Last explicitly selected branch per workspace. */
@@ -51,14 +58,7 @@ function selectionPatch(
   state: NewSessionDefaultsState,
   provider: AgentKind,
   selection: NewSessionSelection,
-): Pick<NewSessionDefaultsState, 'modelsByProvider' | 'effortsByProvider'> {
-  let modelsByProvider = state.modelsByProvider;
-  if (selection.model !== undefined) {
-    modelsByProvider = { ...modelsByProvider };
-    if (selection.model === null) Reflect.deleteProperty(modelsByProvider, provider);
-    else modelsByProvider[provider] = selection.model;
-  }
-
+): Pick<NewSessionDefaultsState, 'effortsByProvider'> {
   let effortsByProvider = state.effortsByProvider;
   if (selection.effort !== undefined) {
     effortsByProvider = { ...effortsByProvider };
@@ -66,10 +66,7 @@ function selectionPatch(
     else effortsByProvider[provider] = selection.effort;
   }
 
-  return {
-    modelsByProvider,
-    effortsByProvider,
-  };
+  return { effortsByProvider };
 }
 
 /** Persists the new-session page's defaults, so the next draft preselects the last-used picks. */
@@ -82,15 +79,14 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
     PersistedNewSessionDefaults
   >(
     (set) => ({
-      lastProvider: null,
+      lastHarness: null,
       lastWorkspaceId: null,
-      modelsByProvider: {},
       effortsByProvider: {},
       branchesByWorkspace: {},
       remember: (provider, workspaceId, selection, branch) =>
         set((state) => ({
           ...selectionPatch(state, provider, selection),
-          lastProvider: provider,
+          lastHarness: provider,
           lastWorkspaceId: workspaceId,
           branchesByWorkspace:
             branch === undefined
@@ -101,12 +97,11 @@ export const useNewSessionDefaultsStore = create<NewSessionDefaultsState>()(
         set((state) => selectionPatch(state, provider, selection)),
     }),
     {
-      name: 'linkcode.workbench.new-session-defaults:v5',
+      name: NEW_SESSION_DEFAULTS_STORAGE_KEY,
       schema: PersistedNewSessionDefaultsSchema,
       partialize: (state) => ({
-        lastProvider: state.lastProvider,
+        lastHarness: state.lastHarness,
         lastWorkspaceId: state.lastWorkspaceId,
-        modelsByProvider: state.modelsByProvider,
         effortsByProvider: state.effortsByProvider,
         branchesByWorkspace: state.branchesByWorkspace,
       }),

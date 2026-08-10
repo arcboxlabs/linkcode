@@ -10,7 +10,9 @@ import type {
   WorkspaceId,
 } from '@linkcode/schema';
 import { MessageIdSchema, textBlock } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { describe, expect, it, vi } from 'vitest';
+import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -22,6 +24,15 @@ import {
   startedSessionId as startedId,
   settleEngineTasks as tick,
 } from './fixtures/session-harness';
+
+/** An adapter that takes the input and then refuses it, like one asked for an unsupported level. */
+class PickyAdapter extends FakeAdapter {
+  override send(input: Parameters<FakeAdapter['send']>[0]) {
+    return super.send(input).then(() => {
+      throw new Error('claude-code: effort refused');
+    });
+  }
+}
 
 class CwdlessHistoryAdapter extends FakeAdapter {
   override readHistory(opts: AgentHistoryReadOptions) {
@@ -921,5 +932,491 @@ describe('engine session records', () => {
     await inject({ kind: 'session.list', clientReqId: 'r4' });
     expect(listedSessions(sent, 'r4')).toHaveLength(1);
     expect(await inner.load()).toHaveLength(1);
+  });
+});
+
+describe('session account attribution', () => {
+  function storeBoundTo(accountId: string, model: string): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: [accountId] } },
+      accounts: [
+        {
+          id: accountId,
+          label: 'Bound',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-test' },
+          models: [{ id: model }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  it("records the account a run resolved to and reports the latest run's", async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_bound');
+    // Persisted per run, so a restart still knows what the session is talking to.
+    expect((await store.load())[0].runs[0].accountId).toBe('acc_bound');
+  });
+
+  it('honours an account the client pinned over the bound one', async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const pool = providers.getAccounts();
+    providers.update({
+      accounts: [
+        ...pool,
+        {
+          id: 'acc_pinned',
+          label: 'Pinned',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-other' },
+          models: [{ id: 'claude-sonnet-5' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+
+    // This is how picking a model that belongs to another account reaches the daemon.
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'claude-sonnet-5',
+        accountId: 'acc_pinned',
+      },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_pinned');
+  });
+});
+
+describe('a session keeps its own pick', () => {
+  it('replays a model picked mid-run, not the one the run launched with', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_one'] } },
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'model-a' }, { id: 'model-b' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+
+    // Same account, so this switches in place and launches nothing — the ordinary way a user
+    // changes model. The accepted pick is what gets recorded, not anything the adapter reflects.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'pick',
+      sessionId,
+      input: { type: 'set-model', model: 'model-b', accountId: 'acc_one' },
+    });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('model-b');
+  });
+
+  it('leaves a model the adapter resolved for itself out of the pin', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({ providers: { 'claude-code': { enabled: true } } });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // What the CLI resolved on its own, reflected at launch: display state, not a choice anyone made.
+    h.adapters[0].emit({ type: 'model-update', model: 'adapter-choice' });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Recording that reflection would pin the thread to its first launch, and the head of the
+    // agent's list could never reach it again.
+    providers.update({
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'configured' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('configured');
+    expect((await store.load())[0].runs[0].model).toBeUndefined();
+  });
+
+  it('replays the effort and approval tier picked on the live session', async () => {
+    const h = harness(new InMemorySessionStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // Both axes live on the adapter, so a relaunch is where they get lost.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'xhigh' },
+    });
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'policy',
+      sessionId,
+      input: { type: 'set-approval-policy', policyId: 'acceptEdits' },
+    });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.effort).toBe('xhigh');
+    expect(resumed.resumedWith?.approvalPolicyId).toBe('acceptEdits');
+  });
+
+  it('records nothing when the session refuses the pick', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new PickyAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'max' },
+    });
+    await tick();
+
+    expect(h.adapters[0].sentInputs).toContainEqual({ type: 'set-effort', effort: 'max' });
+    expect((await store.load())[0].runs[0].effort).toBeUndefined();
+  });
+
+  it('falls back to the agent’s default when the pinned account has been deleted', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    const surviving = {
+      id: 'acc_default',
+      label: 'Default',
+      service: 'anthropic-api' as const,
+      credential: { type: 'api-key' as const, key: 'sk-default' },
+      models: [{ id: 'model-default' }],
+      createdAt: 0,
+    };
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_default'] } },
+      accounts: [
+        surviving,
+        {
+          id: 'acc_doomed',
+          label: 'Doomed',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-doomed' },
+          models: [{ id: 'model-doomed' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'model-doomed',
+        accountId: 'acc_doomed',
+      },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // The run's pin now names an account that no longer exists. Replaying it verbatim would start
+    // the agent with no credential at all, and the thread could never recover.
+    providers.update({ accounts: [surviving] });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-default');
+    // The new run records the account that actually backed it, so the thread's pin recovers too.
+    await h.inject({ kind: 'session.list', clientReqId: 'r4' });
+    expect(listedSessions(h.sent, 'r4')[0]?.accountId).toBe('acc_default');
+  });
+
+  it('resumes on the run’s account and model after the daemon default moved', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Settings narrows the agent to the other account while the thread sleeps, moving the head of
+    // its list — the only thing an unpinned start would resolve to.
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_second'] } },
+    });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.model).toBe('model-first');
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-first');
+    expect((await store.load())[0].runs.at(-1)?.accountId).toBe('acc_first');
+  });
+});
+
+class ResumelessAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: false,
+  };
+}
+
+describe('live account switching', () => {
+  /** Two accounts an agent can bind, one of them currently bound. */
+  function twoAccountStore(): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  async function liveSession(
+    makeAdapter?: () => FakeAdapter,
+    options: { withTranscript?: boolean } = {},
+  ) {
+    const { withTranscript = true } = options;
+    const store = new InMemorySessionStore();
+    const h = harness(store, makeAdapter, undefined, undefined, undefined, twoAccountStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    if (withTranscript) {
+      h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-live') });
+      await tick();
+    }
+    return { ...h, store, sessionId };
+  }
+
+  function switchTo(
+    h: Awaited<ReturnType<typeof liveSession>>,
+    accountId: string,
+    model: string,
+    clientReqId = 'switch',
+  ) {
+    return h.inject({
+      kind: 'agent.input',
+      clientReqId,
+      sessionId: h.sessionId,
+      input: { type: 'set-model', model, accountId },
+    });
+  }
+
+  it('relaunches on the new account, resuming the transcript under the same id', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    // A fresh adapter, resumed from the transcript the old one had established.
+    expect(h.adapters).toHaveLength(2);
+    expect(h.adapters[0].stopped).toBe(true);
+    expect(h.adapters[1].resumedFrom).toBe('native-live');
+    expect(h.adapters[1].resumedWith?.model).toBe('model-second');
+    expect(h.adapters[1].resumedWith?.config?.apiKey).toBe('sk-second');
+
+    const runs = (await h.store.load())[0].runs;
+    expect(runs).toHaveLength(2);
+    expect(runs[1].accountId).toBe('acc_second');
+
+    // The relaunch sends no `session.started` and re-reports the historyId the record already has,
+    // so without this cue clients keep listing the previous account indefinitely.
+    expect(h.sent).toContainEqual({
+      kind: 'session.changed',
+      sessionId: h.sessionId,
+      reason: 'updated',
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'listed' });
+    expect(listedSessions(h.sent, 'listed')[0]?.accountId).toBe('acc_second');
+  });
+
+  it('forwards a pick on the session’s own account in place, recording no new run', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_first', 'model-first');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].sentInputs).toContainEqual({
+      type: 'set-model',
+      model: 'model-first',
+      accountId: 'acc_first',
+    });
+    expect((await h.store.load())[0].runs).toHaveLength(1);
+  });
+
+  it('refuses a switch while a turn is running', async () => {
+    const h = await liveSession();
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+    await tick();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session is busy; switch accounts once the turn has finished',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses a switch on a session with no provider transcript rather than starting fresh', async () => {
+    const h = await liveSession(undefined, { withTranscript: false });
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session has no provider transcript to carry to another account',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses before teardown when the agent cannot resume, leaving the session live', async () => {
+    const h = await liveSession(() => new ResumelessAdapter());
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'unsupported',
+      message: 'claude-code: switching account needs history resume, which it does not support',
+    });
+    // The whole point of checking first: the session it refused to move is still running.
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].stopped).toBe(false);
   });
 });

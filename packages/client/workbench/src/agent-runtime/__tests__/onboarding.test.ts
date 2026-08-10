@@ -244,12 +244,12 @@ describe('deriveAgentRuntimeCues', () => {
     ).toEqual({});
   });
 
-  it('suppresses the login cue for a bound key account, but not for a bound oauth one', () => {
+  it('suppresses the login cue for an enabled key account, but not for an oauth one', () => {
     const runtimes: AgentRuntimes = {
       'claude-code': { status: 'available', source: 'detected', auth: { loggedIn: false } },
     };
     const providers: ProvidersConfig = {
-      'claude-code': { enabled: true, activeAccountId: 'acc_1' },
+      'claude-code': { enabled: true, enabledAccountIds: ['acc_1'] },
     };
     const relay: Accounts = [
       {
@@ -273,7 +273,7 @@ describe('deriveAgentRuntimeCues', () => {
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {}, providers, delegated)).toEqual({
       'claude-code': { state: 'needs-login', phase: 'idle' },
     });
-    // A stale binding (account deleted) leaves nothing injected either.
+    // An enabled list naming an account that no longer exists leaves nothing injected either.
     expect(deriveAgentRuntimeCues(runtimes, ASSETS, {}, {}, {}, providers, [])).toEqual({
       'claude-code': { state: 'needs-login', phase: 'idle' },
     });

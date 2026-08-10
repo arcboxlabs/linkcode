@@ -1,6 +1,4 @@
 import type {
-  Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -793,8 +791,8 @@ export class LinkCodeClient {
     return this.control.setSubscriptionMode(mode);
   }
 
-  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
-    return this.control.setModel(sessionId, model);
+  setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {
+    return this.control.setModel(sessionId, model, accountId);
   }
 
   setEffort(sessionId: SessionId, effort: EffortLevel): Promise<RequestAck> {
@@ -841,9 +839,12 @@ export class LinkCodeClient {
     return this.control.getAccounts();
   }
 
-  /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
-  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
-    return this.control.probeAccountModels(endpoint, secret);
+  /** Models a service serves, read daemon-side with an unsaved secret or a saved account's own. */
+  probeAccountModels(
+    service: string,
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string },
+  ): Promise<AccountModel[]> {
+    return this.control.probeAccountModels(service, credential);
   }
 
   /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
@@ -1131,10 +1132,6 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
-  }
-
-  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
-    return this.control.createAndBindAccount(agent, account);
   }
 
   setAccounts(accounts: Accounts): Promise<RequestAck> {

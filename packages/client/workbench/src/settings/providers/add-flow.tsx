@@ -1,13 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { EndpointService, ServiceDescriptor, ServiceGroup } from '@linkcode/providers';
 import {
+  modelListSource,
   pinnedEndpoint,
   SERVICE_CATALOG,
   serviceById,
   serviceProtocols,
   templatePlaceholders,
 } from '@linkcode/providers';
-import type { Account, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import type { Account, AccountModel, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import { AccountModelSchema } from '@linkcode/schema';
 import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
@@ -27,6 +29,8 @@ import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
+import type { ModelSources } from './model-selection';
+import { ModelSelection } from './model-selection';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -40,14 +44,16 @@ function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdA
   return { id: `acc_${crypto.randomUUID()}`, label: label.trim(), createdAt: Date.now() };
 }
 
-export function oauthAccount(
+function oauthAccount(
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
   label: string,
+  models: AccountModel[] = [],
 ): Account {
   return {
     ...newAccountBase(label),
     service: service.id,
     credential: { type: 'oauth', agent: service.agent },
+    ...(models.length > 0 && { models }),
   };
 }
 
@@ -67,7 +73,7 @@ function catalogAccount(service: EndpointService, draft: CatalogDraft): Account 
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
     ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
+    ...(draft.models.length > 0 && { models: draft.models }),
   };
 }
 
@@ -98,7 +104,7 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
           credential: _credential,
           endpoint: _endpoint,
           label: _label,
-          model: _model,
+          models: _models,
           ...rest
         }) => rest)(account);
   return {
@@ -110,7 +116,7 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
         : { type: 'api-key', key: draft.secret },
     ...(draft.baseUrl.trim() &&
       protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
+    ...(draft.models.length > 0 && { models: draft.models }),
   };
 }
 
@@ -157,6 +163,7 @@ export function ServiceCatalogView({
 /** Step two: the per-service seeded form (or the free-form one for `custom`). */
 export function AddAccountForm({
   serviceId,
+  sources,
   runtimes,
   onboarding,
   busy,
@@ -164,6 +171,7 @@ export function AddAccountForm({
   onSubmit,
 }: {
   serviceId: string;
+  sources?: ModelSources;
   runtimes: AgentRuntimes | undefined;
   onboarding: AgentRuntimeOnboarding;
   busy: boolean;
@@ -188,15 +196,16 @@ export function AddAccountForm({
       {service.kind === 'oauth' ? (
         <OauthCreateForm
           service={service}
+          sources={sources}
           runtimes={runtimes}
           onboarding={onboarding}
           busy={busy}
           onSubmit={onSubmit}
         />
       ) : service.kind === 'endpoint' ? (
-        <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
+        <CatalogAccountForm service={service} sources={sources} busy={busy} onSubmit={onSubmit} />
       ) : (
-        <CustomAccountForm busy={busy} onSubmit={onSubmit} />
+        <CustomAccountForm sources={sources} busy={busy} onSubmit={onSubmit} />
       )}
     </div>
   );
@@ -205,11 +214,13 @@ export function AddAccountForm({
 /** Existing-account editor shown inside the account management dialog. */
 export function EditAccountForm({
   account,
+  sources,
   busy,
   onBack,
   onSubmit,
 }: {
   account: Account;
+  sources?: ModelSources;
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
@@ -231,44 +242,70 @@ export function EditAccountForm({
         </h3>
       </div>
       {account.credential.type === 'oauth' ? (
-        <OauthEditForm account={account} busy={busy} onSubmit={onSubmit} />
+        <OauthEditForm account={account} sources={sources} busy={busy} onSubmit={onSubmit} />
       ) : (
-        <CustomAccountForm account={account} busy={busy} onSubmit={onSubmit} />
+        <CustomAccountForm account={account} sources={sources} busy={busy} onSubmit={onSubmit} />
       )}
     </div>
   );
 }
 
-const OauthEditDraftSchema = z.object({ label: z.string().min(1) });
+const OauthEditDraftSchema = z.object({
+  label: z.string().min(1),
+  models: z.array(AccountModelSchema),
+});
 type OauthEditDraft = z.infer<typeof OauthEditDraftSchema>;
 
 function OauthEditForm({
   account,
+  sources,
   busy,
   onSubmit,
 }: {
   account: Account;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const {
     register,
+    control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<OauthEditDraft>({
     resolver: zodResolver(OauthEditDraftSchema),
-    defaultValues: { label: account.label },
+    defaultValues: { label: account.label, models: account.models ?? [] },
   });
+  const agent = account.credential.type === 'oauth' ? account.credential.agent : undefined;
+  const fetchModels = agent === undefined || !sources ? undefined : () => sources.oauth(agent);
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit({ ...account, label: draft.label.trim() }))}
+      onSubmit={handleSubmit((draft) =>
+        onSubmit({
+          ...account,
+          label: draft.label.trim(),
+          ...(draft.models.length > 0 ? { models: draft.models } : { models: undefined }),
+        }),
+      )}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('label')} />
       </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <p className="text-muted-foreground text-xs">{t('oauthEditHint')}</p>
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
@@ -282,12 +319,14 @@ function OauthEditForm({
 /** Subscription accounts are persisted only after the agent CLI login succeeds. */
 function OauthCreateForm({
   service,
+  sources,
   runtimes,
   onboarding,
   busy,
   onSubmit,
 }: {
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>;
+  sources?: ModelSources;
   runtimes: AgentRuntimes | undefined;
   onboarding: AgentRuntimeOnboarding;
   busy: boolean;
@@ -296,6 +335,8 @@ function OauthCreateForm({
   const t = useTranslations('settings.providers');
   const serviceName = t(`serviceName.${service.id}`);
   const [label, setLabel] = useState(serviceName);
+  const [models, setModels] = useState<AccountModel[]>([]);
+  const fetchModels = sources ? () => sources.oauth(service.agent) : undefined;
   const auth = runtimes?.[service.agent]?.auth;
   const loggedIn = auth?.loggedIn === true;
   const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
@@ -314,6 +355,12 @@ function OauthCreateForm({
           onChange={(event) => setLabel(event.target.value)}
         />
       </Field>
+      <ModelSelection
+        disabled={busy || loginInProgress}
+        onChange={setModels}
+        onFetch={fetchModels}
+        selected={models}
+      />
       {loggedIn ? (
         <>
           <p className="text-muted-foreground text-xs">
@@ -326,7 +373,7 @@ function OauthCreateForm({
               type="button"
               size="sm"
               disabled={busy || label.trim() === ''}
-              onClick={() => onSubmit(oauthAccount(service, label))}
+              onClick={() => onSubmit(oauthAccount(service, label, models))}
             >
               {t('form.submit')}
             </Button>
@@ -342,7 +389,7 @@ function OauthCreateForm({
             busy || label.trim() === ''
               ? undefined
               : (kind) => {
-                  onboarding.login(kind, () => onSubmit(oauthAccount(service, label)));
+                  onboarding.login(kind, () => onSubmit(oauthAccount(service, label, models)));
                 }
           }
           onSubmitLoginCode={onboarding.submitLoginCode}
@@ -356,8 +403,8 @@ function OauthCreateForm({
 const CatalogDraftSchema = z.object({
   label: z.string().min(1),
   secret: z.string().min(1),
-  model: z.string(),
   placeholders: z.record(z.string(), z.string()),
+  models: z.array(AccountModelSchema),
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
@@ -381,10 +428,12 @@ function placeholderLabel(key: string): string {
 
 function CatalogAccountForm({
   service,
+  sources,
   busy,
   onSubmit,
 }: {
   service: EndpointService;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -394,15 +443,33 @@ function CatalogAccountForm({
 
   const {
     register,
+    control,
+    getValues,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<CatalogDraft>({
     resolver: zodResolver(catalogDraftSchema(service)),
-    defaultValues: { label: serviceName, secret: '', model: '', placeholders: {} },
+    defaultValues: { label: serviceName, secret: '', placeholders: {}, models: [] },
   });
 
   const secretLabel =
     service.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');
+
+  /** The secret is read at click time rather than watched: the button stays enabled and says what
+   * is missing, instead of subscribing the whole form to every keystroke. */
+  const fetchModels =
+    sources && service.models
+      ? async (): Promise<AccountModel[]> => {
+          const secret = getValues('secret');
+          if (!secret) throw new Error(t('models.secretFirst'));
+          return sources.probeInline(
+            service.id,
+            service.credentialType === 'auth-token'
+              ? { type: 'auth-token', token: secret }
+              : { type: 'api-key', key: secret },
+          );
+        }
+      : undefined;
 
   return (
     <form
@@ -419,26 +486,28 @@ function CatalogAccountForm({
           <Input className="w-full" autoComplete="off" {...register(`placeholders.${key}`)} />
         </Field>
       ))}
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{secretLabel}</FieldLabel>
-            <Input
-              type="password"
-              className="w-full"
-              autoComplete="off"
-              placeholder={service.secretPlaceholder}
-              {...register('secret')}
-            />
-          </Field>
-        </div>
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{t('form.model')}</FieldLabel>
-            <Input className="w-full" autoComplete="off" {...register('model')} />
-          </Field>
-        </div>
-      </div>
+      <Field>
+        <FieldLabel>{secretLabel}</FieldLabel>
+        <Input
+          type="password"
+          className="w-full"
+          autoComplete="off"
+          placeholder={service.secretPlaceholder}
+          {...register('secret')}
+        />
+      </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
         {serviceProtocols(service.id).join(' · ')}
       </p>
@@ -457,17 +526,19 @@ const CustomDraftSchema = z.object({
   secret: z.string().min(1),
   baseUrl: z.string(),
   protocol: z.string(),
-  model: z.string(),
+  models: z.array(AccountModelSchema),
 });
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
 function CustomAccountForm({
   account,
+  sources,
   busy,
   onSubmit,
 }: {
   account?: Account;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -495,9 +566,19 @@ function CustomAccountForm({
       // resolve time, so showing it would invite the user to "keep" a value that does nothing.
       baseUrl: (account && pinnedEndpoint(account)?.baseUrl) ?? '',
       protocol: (account && pinnedEndpoint(account)?.protocol) ?? '',
-      model: account?.model ?? '',
+      models: account?.models ?? [],
     },
   });
+  // A saved account is probed by id so its stored secret stays on the daemon side. A custom account
+  // names no service, so nothing can list its models and the set stays freeform.
+  const service = account?.service;
+  const fetchModels =
+    sources !== undefined &&
+    account !== undefined &&
+    service !== undefined &&
+    modelListSource(service) !== undefined
+      ? (): Promise<AccountModel[]> => sources.probeAccount(service, account.id)
+      : undefined;
 
   const typeItems = [
     { value: 'api-key', label: t('credentialApiKey') },
@@ -556,10 +637,18 @@ function CustomAccountForm({
           </Field>
         </div>
       </div>
-      <Field>
-        <FieldLabel>{t('form.model')}</FieldLabel>
-        <Input className="w-full" autoComplete="off" {...register('model')} />
-      </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {account === undefined ? t('form.submit') : t('form.save')}

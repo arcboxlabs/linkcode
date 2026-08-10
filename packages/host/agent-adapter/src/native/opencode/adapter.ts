@@ -148,6 +148,17 @@ function parseModelRef(model: string): { providerID: string; modelID: string } |
   return { providerID, modelID };
 }
 
+/** A selected model id is the vendor's own, taken from the service's model list and carrying no
+ * provider — opencode routes only by `providerID/modelID`, so qualify it with the endpoint's id in
+ * opencode's catalog. Without a known provider a bare id stays unroutable and is rejected. */
+function resolveModelRef(
+  model: string,
+  knownProvider: string | undefined,
+): { providerID: string; modelID: string } | undefined {
+  if (model.includes('/')) return parseModelRef(model);
+  return knownProvider === undefined ? undefined : { providerID: knownProvider, modelID: model };
+}
+
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 type OpencodeProviderList = NonNullable<
@@ -384,7 +395,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     // A resumed session record confirms its current model. A fresh override is confirmed only when
     // the running server advertises that exact ref; a request or failed catalog is not acceptance.
-    if (opts.model && (opts.model === resumedModel || availableModels?.has(opts.model))) {
+    // Compare as resolved refs: a picked id is the vendor's own and carries no provider, while the
+    // catalog and the session record are always `providerID/modelID`.
+    const requested = this.model();
+    const advertised =
+      requested === undefined
+        ? false
+        : availableModels?.has(`${requested.providerID}/${requested.modelID}`) === true;
+    if (opts.model && (advertised || opts.model === resumedModel)) {
       this.emitModel(opts.model);
     }
     void this.consumeEvents();
@@ -760,9 +778,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * the legacy bus — the immediate reflect below is the only confirmation channel there is. */
   protected override onSetModel(model: string): Promise<void> {
     invariant(this.opts, 'opencode: session not started');
-    const parsed = parseModelRef(model);
+    const parsed = resolveModelRef(model, readAgentCredential(this.opts.config).knownProvider);
     if (!parsed) {
-      // Storing an unparseable ref would emit a "successful" model-update while every following
+      // Storing an unroutable ref would emit a "successful" model-update while every following
       // prompt silently omits the model field and keeps running on the previous one.
       return Promise.reject(
         new Error(`opencode: model must be 'providerID/modelID' (got '${model}')`),
@@ -821,7 +839,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   private model(): { providerID: string; modelID: string } | undefined {
-    return this.opts?.model ? parseModelRef(this.opts.model) : undefined;
+    if (!this.opts?.model) return undefined;
+    return resolveModelRef(this.opts.model, readAgentCredential(this.opts.config).knownProvider);
   }
 
   /** Runs for the whole session, dispatching every SSE event and replacing a stream the server
@@ -964,7 +983,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     ) {
       return;
     }
-    this.emitModel(model);
+    // opencode always reports `providerID/modelID`. When that is the pick resolved, reflect the
+    // pick verbatim instead — the client matches against the ids the user selected, which are bare.
+    const requested = this.model();
+    const routedThePick =
+      requested !== undefined && `${requested.providerID}/${requested.modelID}` === model;
+    this.emitModel(routedThePick && this.opts?.model ? this.opts.model : model);
   }
 
   /** Turn settle on `session.idle`, guarded on liveness AND `turnStarted`: an abort's duplicate
