@@ -37,7 +37,7 @@ describe('engine agent catalog', () => {
     };
     providers.update({
       providers: {
-        'claude-code': { enabled: true, activeAccountId: account.id, model: 'provider/model' },
+        'claude-code': { enabled: true, enabledAccountIds: [account.id] },
       },
       accounts: [account],
     });

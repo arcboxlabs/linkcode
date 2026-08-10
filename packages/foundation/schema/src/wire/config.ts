@@ -1,12 +1,6 @@
 import { z } from 'zod';
-import {
-  AccountModelSchema,
-  AccountSchema,
-  AccountSecretSchema,
-  AccountsSchema,
-} from '../model/account';
+import { AccountModelSchema, AccountSecretSchema, AccountsSchema } from '../model/account';
 import { CustomMcpServerPatchOpSchema, CustomMcpServerPublicSchema } from '../model/custom-mcp';
-import { AgentKindSchema } from '../model/primitives';
 import { ProvidersConfigSchema } from '../model/provider-config';
 import { WireRequestIdSchema } from './request';
 
@@ -30,12 +24,6 @@ export const configWireVariants = [
     accounts: AccountsSchema.optional(),
     /** Patch ops against the stored custom MCP servers; omitted when untouched. */
     customMcpServers: z.array(CustomMcpServerPatchOpSchema).optional(),
-  }),
-  z.object({
-    kind: z.literal('config.account.create-and-bind'),
-    clientReqId: WireRequestIdSchema,
-    agent: AgentKindSchema,
-    account: AccountSchema,
   }),
   /** Enumerate the ids a service serves. The daemon resolves the list URL from the service catalog
    * and makes the call itself — the renderer's CSP blocks remote fetches, and the secret belongs on

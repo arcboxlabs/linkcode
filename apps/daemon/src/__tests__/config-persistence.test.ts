@@ -100,17 +100,17 @@ describe('provider config persistence', () => {
     const store = createProviderConfigStore(createInMemoryVault(), {}, []);
 
     store.update({
-      providers: { codex: { enabled: true, activeAccountId: oauthAccount.id } },
+      providers: { codex: { enabled: true, enabledAccountIds: [oauthAccount.id] } },
       accounts: [oauthAccount],
     });
 
     expect(readConfig()).toEqual({
       hostname: '127.0.0.2',
-      providers: { codex: { enabled: true, activeAccountId: oauthAccount.id } },
+      providers: { codex: { enabled: true, enabledAccountIds: [oauthAccount.id] } },
       accounts: [oauthAccount],
     });
     expect(store.get()).toEqual({
-      codex: { enabled: true, activeAccountId: oauthAccount.id },
+      codex: { enabled: true, enabledAccountIds: [oauthAccount.id] },
     });
     expect(store.getAccounts()).toEqual([oauthAccount]);
     expect(statSync(config).mode & 0o777).toBe(0o600);

@@ -1,4 +1,4 @@
-import { resolveBinding } from '@linkcode/providers';
+import { enabledAccounts, resolveBinding } from '@linkcode/providers';
 import type { AgentKind, AgentRuntimeAvailability } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setProviderConfig } from '@linkcode/sdk';
 import { AgentIcon, AgentOnboardingCard, SettingsCard } from '@linkcode/ui';
@@ -44,14 +44,15 @@ export function AgentsSettingsPanel({
       <SettingsCard>
         {AGENT_KINDS.map((kind) => {
           const runtime = runtimes?.[kind];
-          const boundId = providers?.[kind]?.activeAccountId;
-          const boundAccount = accounts?.find((account) => account.id === boundId);
+          // The first enabled account is what a start that names none resolves to, so it is the one
+          // worth naming here; the rest are alternatives its model menu offers.
+          const boundAccount = enabledAccounts(accounts ?? [], providers, kind)[0];
           const enabled = providers?.[kind]?.enabled ?? true;
           // A disabled agent's runtime gaps don't matter — no card, just the badge.
           const cue = enabled ? onboarding.cues[kind] : undefined;
           const translated =
             boundAccount !== undefined && resolveBinding(boundAccount, kind).tier === 'translate';
-          // With no bound account the agent follows the CLI login — show who that is when probed.
+          // With no enabled account the agent follows the CLI login — show who that is when probed.
           const cliIdentity =
             boundAccount === undefined && runtime?.auth?.loggedIn === true
               ? runtime.auth.email
@@ -70,7 +71,7 @@ export function AgentsSettingsPanel({
                     variant="ghost"
                     size="sm"
                     className="-mx-2 h-auto px-2 py-0.5 font-normal text-muted-foreground text-xs"
-                    onClick={() => onOpenProviders(boundId)}
+                    onClick={() => onOpenProviders(boundAccount?.id)}
                   >
                     {boundAccount ? boundAccount.label : t('followCli')}
                     {translated ? ` · ${t('translated')}` : ''}

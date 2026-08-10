@@ -1,5 +1,4 @@
 import type {
-  Account,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -572,15 +571,6 @@ export class ControlChannel {
       kind: 'config.set',
       clientReqId,
       providers,
-    }));
-  }
-
-  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
-    return this.sendCorrelated('ack', (clientReqId) => ({
-      kind: 'config.account.create-and-bind',
-      clientReqId,
-      agent,
-      account,
     }));
   }
 

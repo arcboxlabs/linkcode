@@ -230,14 +230,28 @@ function withPickedModels(value: unknown): unknown {
   return { ...rest, models: [{ id: model }] };
 }
 
-/** Same carry-over for the per-agent default, which is now the persisted pick. */
-function withPickedModel(value: unknown): unknown {
+/**
+ * An agent's only per-account state is now which accounts it offers, so the default account and
+ * default model are dropped on read — zod would strip them anyway. The default account is folded
+ * into the enabled list first: it was necessarily an account the user meant this agent to use, and
+ * an explicit list that omitted it would silently take it away.
+ */
+function withEnabledAccounts(value: unknown): unknown {
   if (typeof value !== 'object' || value === null) return value;
-  const { defaultModel, ...rest } = value as { defaultModel?: unknown; model?: unknown };
-  if (typeof defaultModel !== 'string' || defaultModel === '' || rest.model !== undefined) {
-    return rest;
-  }
-  return { ...rest, model: defaultModel };
+  const {
+    activeAccountId,
+    defaultModel: _model,
+    model: _pick,
+    ...rest
+  } = value as { activeAccountId?: unknown; defaultModel?: unknown; model?: unknown } & {
+    enabledAccountIds?: unknown;
+  };
+  if (typeof activeAccountId !== 'string' || activeAccountId === '') return rest;
+  const enabled = rest.enabledAccountIds;
+  if (!Array.isArray(enabled)) return rest;
+  return enabled.includes(activeAccountId)
+    ? rest
+    : { ...rest, enabledAccountIds: [...enabled, activeAccountId] };
 }
 
 /**
@@ -289,7 +303,7 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
     }
     const attached = withProviderSecret(store, kind.data, value);
     migrated ||= attached.migrated;
-    const config = ProviderConfigSchema.safeParse(withPickedModel(attached.value));
+    const config = ProviderConfigSchema.safeParse(withEnabledAccounts(attached.value));
     if (!config.success) {
       logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;

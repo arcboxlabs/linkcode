@@ -1,11 +1,10 @@
 import type { BindingUnavailableReason } from '@linkcode/providers';
-import { resolveBinding } from '@linkcode/providers';
+import { enabledAccounts, resolveBinding } from '@linkcode/providers';
 import type {
   Account,
   Accounts,
   AgentKind,
   CustomMcpServer,
-  ProviderConfig,
   ProvidersConfig,
   StartOptions,
 } from '@linkcode/schema';
@@ -17,13 +16,12 @@ import type {
  */
 export interface ProviderConfigStore {
   get(): ProvidersConfig;
-  /** The global account pool bound by `providers[kind].activeAccountId`. */
+  /** The global account pool an agent draws on through `providers[kind].enabledAccountIds`. */
   getAccounts(): Accounts;
   update(next: { providers?: ProvidersConfig; accounts?: Accounts }): void | Promise<void>;
   /** LinkCode-owned custom MCP servers (full plaintext — masking is the data plane's job). */
   getCustomMcpServers(): CustomMcpServer[];
   setCustomMcpServers(next: CustomMcpServer[]): void | Promise<void>;
-  createAndBindAccount(agent: AgentKind, account: Account): void | Promise<void>;
 }
 
 export class InMemoryProviderConfigStore implements ProviderConfigStore {
@@ -51,48 +49,26 @@ export class InMemoryProviderConfigStore implements ProviderConfigStore {
   setCustomMcpServers(next: CustomMcpServer[]): void {
     this.customMcpServers = next;
   }
-
-  createAndBindAccount(agent: AgentKind, account: Account): void {
-    const next = accountBinding(this.providers, this.accounts, agent, account);
-    this.providers = next.providers;
-    this.accounts = next.accounts;
-  }
-}
-
-export function accountBinding(
-  providers: ProvidersConfig,
-  accounts: Accounts,
-  agent: AgentKind,
-  account: Account,
-): { providers: ProvidersConfig; accounts: Accounts } {
-  const entry = providers[agent] ?? { enabled: true };
-  const exists = accounts.some((candidate) => candidate.id === account.id);
-  return {
-    providers: { ...providers, [agent]: { ...entry, activeAccountId: account.id } },
-    accounts: exists
-      ? accounts.map((candidate) => (candidate.id === account.id ? account : candidate))
-      : [...accounts, account],
-  };
 }
 
 /**
- * Resolve the session's account: explicit `opts.accountId`, else the agent's `activeAccountId`. A
- * requested id that no longer resolves falls through to that default rather than stranding the
- * session — a relaunch replays a pin recorded on the run, and the account it names can be deleted in
- * between. Undefined when neither resolves, which leaves the caller on the legacy
- * `providers[kind].apiKey`.
+ * Resolve the session's account: explicit `opts.accountId`, else the first account enabled for the
+ * agent. A requested id that no longer resolves falls through to that first one rather than
+ * stranding the session — a relaunch replays a pin recorded on the run, and the account it names can
+ * be deleted in between. Undefined when the agent has no enabled account at all, which leaves the
+ * caller on the legacy `providers[kind].apiKey` and then on the agent's own login.
  */
 function resolveAccount(
   opts: StartOptions,
-  config: ProviderConfig | undefined,
+  providers: ProvidersConfig,
+  kind: AgentKind,
   accounts: Accounts,
 ): Account | undefined {
-  for (const id of [opts.accountId, config?.activeAccountId]) {
-    if (id === undefined) continue;
-    const account = accounts.find((candidate) => candidate.id === id);
-    if (account) return account;
-  }
-  return undefined;
+  const requested =
+    opts.accountId === undefined
+      ? undefined
+      : accounts.find((candidate) => candidate.id === opts.accountId);
+  return requested ?? enabledAccounts(accounts, providers, kind)[0];
 }
 
 /** The adapter-facing bundle an account contributes to `StartOptions.config`; each adapter maps
@@ -128,22 +104,24 @@ export interface AppliedProviderDefaults {
 }
 
 /** Apply the stored config to a session's StartOptions: resolve the account (or legacy per-agent api
- * key), inject the credential/endpoint bundle into `config`, and fall back to the agent's persisted
- * model pick. Returns a new object; never mutates the input. */
+ * key), inject the credential/endpoint bundle into `config`, and fall back to that account's first
+ * picked model. Returns a new object; never mutates the input. */
 export function applyProviderDefaults(
   opts: StartOptions,
   providers: ProvidersConfig,
   accounts: Accounts = [],
 ): AppliedProviderDefaults {
   const config = providers[opts.kind];
-  const account = resolveAccount(opts, config, accounts);
+  const account = resolveAccount(opts, providers, opts.kind, accounts);
   // The request's pick never survives resolution: `config` carries what the adapter reads, and the
   // account that actually resolved is this function's answer. A stale id therefore cannot travel
   // downstream and read back as an account the session does not have.
   const { accountId: _requested, ...next } = { ...opts };
-  // The account holds the models the user may pick from; the pick itself is per agent.
-  if (next.model === undefined && config?.model !== undefined) next.model = config.model;
   if (account) {
+    // Nothing is stored as this agent's default model — the account's first pick *is* it, which is
+    // the entry the client shows for an untouched draft. Deriving it on both sides keeps a request
+    // that names no model starting on what the user was looking at.
+    if (next.model === undefined) next.model = account.models?.[0]?.id;
     const resolved = accountConfigBundle(account, opts.kind);
     if ('unavailable' in resolved) return { options: next, unavailable: resolved.unavailable };
     return {

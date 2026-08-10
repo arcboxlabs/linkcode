@@ -7,21 +7,19 @@ import { AgentKindSchema } from './primitives';
 export const ProviderConfigSchema = z.object({
   /** Whether the agent is offered in the client's agent picker. */
   enabled: z.boolean().default(true),
-  /** The model this agent currently runs on, picked by the user from the bound account's set and
-   * persisted so it survives across sessions. Not a fallback default: unset means no session can
-   * start, because nothing else resolves a model. */
-  model: z.string().optional(),
   /** Legacy provider API key, superseded by the global account pool (`account.ts`) but kept so
-   * pre-account configs still load; the resolver falls back to it when `activeAccountId` is unset. */
+   * pre-account configs still load; the resolver falls back to it when no account resolves. */
   apiKey: z.string().optional(),
-  /** Id of the pooled `Account` this agent falls back to when nothing names one: automation,
-   * schedules, and IM-created threads, plus a new session started without picking a model.
-   * Sessions started from a picker carry their own account and never consult this. */
-  activeAccountId: z.string().optional(),
-  /** The accounts whose models this agent offers in its pickers. **Absent means every bindable
+  /**
+   * The accounts whose models this agent offers in its pickers. **Absent means every bindable
    * account**, so an added account is offered without a trip through Settings; an explicit list is
    * the user narrowing it. Availability still gates it — listing an account that cannot back this
-   * agent offers nothing. */
+   * agent offers nothing.
+   *
+   * This is an agent's only per-account state. There is no default account and no default model:
+   * a request that names neither resolves to the head of `enabledAccountModels`, which the client
+   * shows and the daemon starts on, so neither side can invent an answer the other disagrees with.
+   */
   enabledAccountIds: z.array(z.string().min(1)).optional(),
 });
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;

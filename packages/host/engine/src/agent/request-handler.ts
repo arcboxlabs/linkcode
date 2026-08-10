@@ -23,7 +23,6 @@ type AgentRequest = Extract<
       | 'agent.catalog'
       | 'config.get'
       | 'config.set'
-      | 'config.account.create-and-bind'
       | 'config.probe-models'
       | 'agent-login.start'
       | 'agent-login.submit-code'
@@ -137,15 +136,6 @@ export class AgentRequestHandler {
           ),
         );
       }
-      case 'config.account.create-and-bind':
-        return this.responder.reply(
-          payload.clientReqId,
-          updateProviderConfig('config.account.create-and-bind', () =>
-            this.providers.createAndBindAccount(payload.agent, payload.account),
-          ).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
-        );
       case 'config.probe-models':
         return this.responder.reply(
           payload.clientReqId,

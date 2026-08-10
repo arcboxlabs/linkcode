@@ -939,7 +939,7 @@ describe('session account attribution', () => {
   function storeBoundTo(accountId: string, model: string): InMemoryProviderConfigStore {
     const providers = new InMemoryProviderConfigStore();
     providers.update({
-      providers: { 'claude-code': { enabled: true, activeAccountId: accountId, model } },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: [accountId] } },
       accounts: [
         {
           id: accountId,
@@ -1019,9 +1019,7 @@ describe('a session keeps its own pick', () => {
   it('replays a model picked mid-run, not the one the run launched with', async () => {
     const providers = new InMemoryProviderConfigStore();
     providers.update({
-      providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_one', model: 'model-a' },
-      },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_one'] } },
       accounts: [
         {
           id: 'acc_one',
@@ -1077,9 +1075,20 @@ describe('a session keeps its own pick', () => {
     await tick();
     await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
 
-    // Recording that reflection would pin the thread to its first launch, and the agent's default
-    // could never reach it again.
-    providers.update({ providers: { 'claude-code': { enabled: true, model: 'configured' } } });
+    // Recording that reflection would pin the thread to its first launch, and the head of the
+    // agent's list could never reach it again.
+    providers.update({
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'configured' }],
+          createdAt: 0,
+        },
+      ],
+    });
     await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
 
     expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('configured');
@@ -1152,9 +1161,7 @@ describe('a session keeps its own pick', () => {
       createdAt: 0,
     };
     providers.update({
-      providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_default', model: 'model-default' },
-      },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_default'] } },
       accounts: [
         surviving,
         {
@@ -1206,9 +1213,7 @@ describe('a session keeps its own pick', () => {
   it('resumes on the run’s account and model after the daemon default moved', async () => {
     const providers = new InMemoryProviderConfigStore();
     providers.update({
-      providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_first', model: 'model-first' },
-      },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
       accounts: [
         {
           id: 'acc_first',
@@ -1241,11 +1246,10 @@ describe('a session keeps its own pick', () => {
     await tick();
     await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
 
-    // Settings moves the agent's default to the other account while the thread sleeps.
+    // Settings narrows the agent to the other account while the thread sleeps, moving the head of
+    // its list — the only thing an unpinned start would resolve to.
     providers.update({
-      providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_second', model: 'model-second' },
-      },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_second'] } },
     });
     await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
 
@@ -1269,9 +1273,7 @@ describe('live account switching', () => {
   function twoAccountStore(): InMemoryProviderConfigStore {
     const providers = new InMemoryProviderConfigStore();
     providers.update({
-      providers: {
-        'claude-code': { enabled: true, activeAccountId: 'acc_first', model: 'model-first' },
-      },
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
       accounts: [
         {
           id: 'acc_first',

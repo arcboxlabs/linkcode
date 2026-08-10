@@ -76,11 +76,25 @@ describe('loadConfig providers', () => {
 
     const config = loadConfig(vault);
 
-    // `defaultModel` carries over as the persisted pick; without that it would be silently stripped.
-    expect(config.providers).toEqual({
-      'claude-code': { enabled: true, model: 'sonnet' },
-    });
+    // Neither default survives: an agent's only per-account state is which accounts it offers.
+    expect(config.providers).toEqual({ 'claude-code': { enabled: true } });
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('keeps the old default account by enabling it, and drops both default models', () => {
+    writeConfig({
+      // A narrowed list that omits the default would silently take that account away on upgrade.
+      'claude-code': { enabled: true, activeAccountId: 'acc_a', enabledAccountIds: ['acc_b'] },
+      codex: { enabled: true, activeAccountId: 'acc_a', model: 'gpt-5.6-sol' },
+      opencode: { enabled: true, activeAccountId: 'acc_a', enabledAccountIds: ['acc_a'] },
+    });
+
+    expect(loadConfig(vault).providers).toEqual({
+      'claude-code': { enabled: true, enabledAccountIds: ['acc_b', 'acc_a'] },
+      // No list to join: absent already means every bindable account, this one included.
+      codex: { enabled: true },
+      opencode: { enabled: true, enabledAccountIds: ['acc_a'] },
+    });
   });
 
   it('drops an entry keyed by an unknown agent kind, logging the error', () => {
@@ -287,13 +301,13 @@ describe('saveProviderConfiguration', () => {
 
     saveProviderConfiguration(
       vault,
-      { codex: { enabled: true, activeAccountId: 'acc_1', apiKey: 'sk-provider' } },
+      { codex: { enabled: true, enabledAccountIds: ['acc_1'], apiKey: 'sk-provider' } },
       [validAccount],
     );
 
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       hostname: '127.0.0.1',
-      providers: { codex: { enabled: true, activeAccountId: 'acc_1' } },
+      providers: { codex: { enabled: true, enabledAccountIds: ['acc_1'] } },
       accounts: [{ ...validAccount, credential: { type: 'api-key' } }],
     });
     expect(vault.refs.get('provider:codex')).toBe('sk-provider');

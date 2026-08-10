@@ -9,7 +9,6 @@ import type {
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
 import type {
-  Account,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -274,10 +273,6 @@ export class LinkCodeSdkClient {
   /** Persist the daemon-owned provider config (data plane). */
   setProviderConfig(providers: ProvidersConfig): RequestResult<{ ok: true }> {
     return toResult(this.raw.setProviderConfig(providers));
-  }
-
-  createAndBindAccount(agent: AgentKind, account: Account): RequestResult<{ ok: true }> {
-    return toResult(this.raw.createAndBindAccount(agent, account));
   }
 
   /** Read the daemon-owned global account pool (data plane). */
