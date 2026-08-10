@@ -38,8 +38,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
-  deployments: read
 
 jobs:
   prepare:
@@ -208,13 +208,9 @@ jobs:
     steps:
       - name: Require protected release environment
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_ENVIRONMENT_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::RELEASE_ENVIRONMENT_ADMIN_TOKEN is required to inspect environment protection"
-            exit 1
-          fi
           environment="$RUNNER_TEMP/release-environment.json"
           gh api "repos/$GITHUB_REPOSITORY/environments/release" > "$environment"
           if ! jq -e '
@@ -234,8 +230,6 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     environment: release
     env:
-      CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
-      CONFIG_PUBLISHER_TOKEN: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
       CONFIG_RELEASE_KEYRINGS: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
       CONFIG_RELEASE_REVISION: ${{ vars.CONFIG_RELEASE_REVISION }}
     steps:
@@ -288,9 +282,40 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     environment: release
     steps:
+      - name: Require organization App credentials
+        env:
+          BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+          BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read arcboxlabs/linkcodehq and arcboxlabs/linkcode-config"
+            exit 1
+          fi
+
+      - name: Mint publisher read token
+        id: publisher-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcodehq
+          permission-contents: read
+
+      - name: Mint config source read token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcode-config
+          permission-contents: read
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
@@ -309,8 +334,9 @@ jobs:
         with:
           app: desktop
           brand-artifacts: true
-          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
-          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-token: ${{ steps.source-token.outputs.token }}
+          source-root: examples/acme-zenith
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest: ${{ toJSON(matrix.releaseManifests.desktop) }}
@@ -319,8 +345,9 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: mobile
-          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
-          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-token: ${{ steps.source-token.outputs.token }}
+          source-root: examples/acme-zenith
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest-ios: ${{ toJSON(matrix.releaseManifests.ios) }}
@@ -341,7 +368,7 @@ jobs:
           set -euo pipefail
           mkdir release-inputs
           git cat-file blob "$CLIENT_REF:$MATRIX_FILE" > release-inputs/brand-build-matrix.json
-          cp "$RUNNER_TEMP/config-render-desktop/source/packages/config-structural/brands.manifest.yaml" release-inputs/
+          cp "$RUNNER_TEMP/config-render-desktop/source/examples/acme-zenith/brands.manifest.yaml" release-inputs/
           printf '%s' "$MANIFEST_DESKTOP" > release-inputs/release-manifest.desktop.json
           printf '%s' "$MANIFEST_IOS" > release-inputs/release-manifest.ios.json
           printf '%s' "$MANIFEST_ANDROID" > release-inputs/release-manifest.android.json

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import inputsModule from './release-inputs.cjs';
 
 const { validateReleaseInputs } = inputsModule;
-const RE_RENDER_MISSING = /var CONFIG_PUBLISHER_REPO.*secret CONFIG_PUBLISHER_TOKEN/;
+const RE_RENDER_MISSING = /var CONFIG_RELEASE_KEYRINGS.*var CONFIG_RELEASE_REVISION/;
 const RE_MOBILE_SIGNING =
   /secret EXPO_TOKEN.*secret POSTHOG_PROJECT_TOKEN.*var POSTHOG_HOST.*secret SENTRY_AUTH_TOKEN.*secret SENTRY_DSN_MOBILE/;
 const RE_DESKTOP_UPLOAD = /R2_ACCESS_KEY_ID.*R2_ACCOUNT_ID.*R2_SECRET_ACCESS_KEY/;
@@ -10,7 +10,7 @@ const RE_INVALID_KEY = /must encode an App Store Connect \.p8 key/;
 const RE_INVALID_ACCOUNT = /must be a lowercase 32-hex Cloudflare account ID/;
 
 describe('validateReleaseInputs', () => {
-  it('reports absent render vars and secrets by exact GitHub name', () => {
+  it('reports absent render vars by exact GitHub name', () => {
     expect(() => validateReleaseInputs({ env: {}, phase: 'render', platform: 'desktop' })).toThrow(
       RE_RENDER_MISSING,
     );

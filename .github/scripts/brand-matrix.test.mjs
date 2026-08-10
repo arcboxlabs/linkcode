@@ -101,7 +101,17 @@ describe('parseBrandBuildMatrix', () => {
     ]);
     expect(
       new Set(pilot.brands.map((entry) => entry.releaseManifests.desktop.publisherGitSha)),
-    ).toEqual(new Set(['e4a0624abbc8ed1cac4948fa90239176a83cb96e']));
+    ).toEqual(new Set(['986d9f21403df53bc932f511eb1b5f0bb634d48d']));
+    expect(
+      new Set(pilot.brands.map((entry) => entry.releaseManifests.desktop.sourceGitSha)),
+    ).toEqual(new Set(['a1ed4d666721c3aed0d563aaea42fce8b5f945b5']));
+    expect(
+      pilot.brands.every(
+        (entry) =>
+          entry.releaseManifests.desktop.publisherGitSha !==
+          entry.releaseManifests.desktop.sourceGitSha,
+      ),
+    ).toBe(true);
     expect(
       pilot.brands.every((entry) => Object.values(entry.distribution).every((x) => x === null)),
     ).toBe(true);
@@ -300,7 +310,9 @@ describe('release brand matrix workflow', () => {
     expect(preflight).toContain('required_reviewers');
     expect(preflight).toContain('deployment_branch_policy');
     expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/release"');
-    expect(preflight).toContain('secrets.RELEASE_ENVIRONMENT_ADMIN_TOKEN');
+    expect(preflight).toContain(`GH_TOKEN: ${ACTIONS_EXPRESSION}{{ github.token }}`);
+    expect(preflight).not.toContain('RELEASE_ENVIRONMENT_ADMIN_TOKEN');
+    expect(workflow).toContain('actions: read');
     expect(preflight).toContain('inputs.build');
     const renderInputs = workflow.slice(
       workflow.indexOf('  render-inputs:'),
@@ -337,6 +349,56 @@ describe('release brand matrix workflow', () => {
         `environment: ${ACTIONS_EXPRESSION}{{ inputs.release_environment || 'release' }}`,
       ),
     ).toHaveLength(4);
+  });
+
+  it('mints scoped read tokens before any selected client checkout', async () => {
+    const [action, desktop, mobile, workflow] = await Promise.all([
+      readFile(new URL('../actions/render-release-config/action.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../workflows/build-desktop.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../workflows/build-mobile.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../workflows/release-brand-matrix.yml', import.meta.url), 'utf8'),
+    ]);
+    const appTokenAction =
+      'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1';
+
+    expect(action).toContain('publisher-token:');
+    expect(action).toContain('source-token:');
+    expect(action).not.toContain(appTokenAction);
+    expect(action).not.toContain('github-app-private-key');
+    expect(action).not.toContain('BOT_APP_PRIVATE_KEY');
+    expect(action).toContain('publisher_repo=arcboxlabs/linkcodehq');
+    expect(action).toContain('source_repo=arcboxlabs/linkcode-config');
+    expect(action).toContain('default: "."');
+    expect(action).toContain('.|examples/acme-zenith)');
+    expect(action).toContain('cmp -s');
+    expect(action).toContain('http.followRedirects=false');
+    expect(action).toContain('must be exact lowercase 40-hex commits');
+    expect(action).toContain('must not contain symbolic links');
+    expect(action).not.toContain('CONFIG_PUBLISHER_REPO');
+    expect(action).not.toContain('CONFIG_PUBLISHER_TOKEN');
+
+    const renderJobs = [
+      desktop.slice(desktop.indexOf('  render-config:'), desktop.indexOf('  build:')),
+      mobile.slice(mobile.indexOf('  render-config:'), mobile.indexOf('  build:')),
+      workflow.slice(workflow.indexOf('  render:'), workflow.indexOf('  desktop:')),
+    ];
+    for (const renderJob of renderJobs) {
+      expect(renderJob.split(appTokenAction)).toHaveLength(3);
+      expect(renderJob.split('owner: arcboxlabs')).toHaveLength(3);
+      expect(renderJob).toContain('repositories: linkcodehq');
+      expect(renderJob).toContain('repositories: linkcode-config');
+      expect(renderJob.split('permission-contents: read')).toHaveLength(3);
+      expect(renderJob).toContain(
+        `publisher-token: ${ACTIONS_EXPRESSION}{{ steps.publisher-token.outputs.token }}`,
+      );
+      expect(renderJob).toContain(
+        `source-token: ${ACTIONS_EXPRESSION}{{ steps.source-token.outputs.token }}`,
+      );
+      expect(renderJob.indexOf(appTokenAction)).toBeLessThan(
+        renderJob.indexOf('actions/checkout@'),
+      );
+    }
+    expect(workflow.split('source-root: examples/acme-zenith')).toHaveLength(3);
   });
 
   it('binds credential-free desktop recovery evidence to immutable release inputs', async () => {
