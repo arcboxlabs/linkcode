@@ -1,5 +1,5 @@
-import { resolveBinding } from '@linkcode/providers';
-import type { Account, Accounts, AgentKind, ProvidersConfig } from '@linkcode/schema';
+import { enabledAccountModels, resolveBinding } from '@linkcode/providers';
+import type { Accounts, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
 import { getAccounts, getProviderConfig } from '@linkcode/sdk';
 import type { ModelOption } from '@linkcode/ui';
@@ -67,38 +67,19 @@ export function accountModelOptions(
   accounts: Accounts | undefined,
   providers?: ProvidersConfig,
 ): Partial<Record<AgentKind, ModelOption[]>> {
+  const pool = accounts ?? [];
   const options: Partial<Record<AgentKind, ModelOption[]>> = {};
   for (const kind of AgentKindSchema.options) {
-    const bindable = (accounts ?? []).filter(
-      (account) => resolveBinding(account, kind).tier !== 'unavailable',
-    );
-    if (bindable.length === 0) continue;
-    const enabled = providers?.[kind]?.enabledAccountIds;
-    const offered =
-      enabled === undefined ? bindable : bindable.filter((account) => enabled.includes(account.id));
-    options[kind] = offered.flatMap((account) => modelOptionsOf(account));
+    const bindable = pool.some((account) => resolveBinding(account, kind).tier !== 'unavailable');
+    if (!bindable) continue;
+    options[kind] = enabledAccountModels(pool, providers, kind).map(({ account, model }) => ({
+      id: model.id,
+      label: model.label ?? model.id,
+      description: account.label,
+      accountId: account.id,
+    }));
   }
   return options;
-}
-
-/** Whether this account's models are offered for this agent. Absent list means every bindable one,
- * so a newly added account is offered without a visit to Settings. */
-export function accountEnabledFor(
-  providers: ProvidersConfig | undefined,
-  kind: AgentKind,
-  accountId: string,
-): boolean {
-  const enabled = providers?.[kind]?.enabledAccountIds;
-  return enabled === undefined || enabled.includes(accountId);
-}
-
-function modelOptionsOf(account: Account): ModelOption[] {
-  return (account.models ?? []).map(({ id, label }) => ({
-    id,
-    label: label ?? id,
-    description: account.label,
-    accountId: account.id,
-  }));
 }
 
 /** `null` until both daemon-owned sources have loaded, so a picker never briefly offers a set that

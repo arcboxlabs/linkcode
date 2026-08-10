@@ -1,4 +1,10 @@
-import { pinnedEndpoint, resolveBinding, serviceById, serviceProtocols } from '@linkcode/providers';
+import {
+  accountEnabledFor,
+  pinnedEndpoint,
+  resolveBinding,
+  serviceById,
+  serviceProtocols,
+} from '@linkcode/providers';
 import type {
   Account,
   Accounts,
@@ -16,7 +22,6 @@ import type {
   ProviderAgentViewModel,
   ProviderCredentialViewModel,
 } from '@linkcode/ui';
-import { accountEnabledFor } from './default-models';
 
 /** Pure view helpers for the Providers page — no hooks, unit-testable. */
 
