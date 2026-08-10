@@ -6,8 +6,6 @@ const PLATFORMS = new Set(['desktop', 'mobile']);
 const RE_R2_ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const INPUTS = {
   render: [
-    ['var', 'CONFIG_PUBLISHER_REPO'],
-    ['secret', 'CONFIG_PUBLISHER_TOKEN'],
     ['var', 'CONFIG_RELEASE_KEYRINGS'],
     ['var', 'CONFIG_RELEASE_REVISION'],
   ],

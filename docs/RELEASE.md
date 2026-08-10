@@ -89,12 +89,21 @@ Desktop signing and R2 secrets live in the repo's GitHub **`release` Environment
 
 ## Immutable config bundle (build-time render)
 
-Signed desktop builds and every mobile store build embed an immutable config bundle (bootstrap endpoints, public keyrings, bundled defaults) rendered at build time by the config publisher — the client never re-implements rendering. The `render-config` job in `build-desktop.yml` (signed builds only) and `build-mobile.yml` (always) calls `.github/actions/render-release-config`, which checks out the publisher and structural source at the **exact commits pinned by the release-render manifest**, renders through `pnpm -F @linkcode/<app> config:render`, and verifies the manifest's digest bindings (revision bytes, public keyring bytes, target identity, telemetry endpoint, expected snapshot SHA-256). Nothing falls back to a mutable ref, a global install, or stale generated output.
+Signed desktop builds and every mobile store build embed an immutable config bundle (bootstrap endpoints, public keyrings, bundled defaults) rendered at build time by the config publisher — the client never re-implements rendering. The `render-config` job in `build-desktop.yml` (signed builds only) and `build-mobile.yml` (always) calls `.github/actions/render-release-config`, which checks out publisher code from fixed `arcboxlabs/linkcodehq` at `publisherGitSha` and structural data from fixed `arcboxlabs/linkcode-config` at the independent `sourceGitSha`. It renders through `pnpm -F @linkcode/<app> config:render` and verifies the manifest's digest bindings (revision bytes, public keyring bytes, target identity, telemetry endpoint, expected snapshot SHA-256). Nothing falls back to a mutable ref, a configurable repository, a global install, or stale generated output.
+
+Each checkout uses its own short-lived installation token minted from the organization secrets
+`BOT_APP_ID` and `BOT_APP_PRIVATE_KEY`. Trusted workflow steps mint these tokens before checking out
+the selected client ref; client-controlled actions receive only repository-scoped read tokens,
+never the App private key. Each token requests only Contents read and is explicitly limited to
+`linkcodehq` or `linkcode-config`. The App must be installed on both private repositories. Missing
+secrets or installation access fail before rendering; no long-lived config-read token is used.
+
+Production rendering reads the root of `linkcode-config` and fails closed while production data is
+absent. Workflow code may select only that root or the reviewed `examples/acme-zenith` root used by
+the nonproduction pilot; configuration data cannot supply a repository or path.
 
 Inputs live in the GitHub **`release` environment** and a missing value fails the build with an actionable error:
 
-- `CONFIG_PUBLISHER_REPO` (var) — `owner/name` of the private config publisher repository.
-- `CONFIG_PUBLISHER_TOKEN` (secret) — read token for that repository.
 - `CONFIG_RELEASE_REVISION` / `CONFIG_RELEASE_KEYRINGS` (vars) — exact revision-metadata and public-keyrings JSON bytes; the manifest pins their SHA-256s, so drifted content fails closed. Public keys only — private keys never enter this repo or its CI.
 - `CONFIG_RELEASE_MANIFEST_DESKTOP` / `CONFIG_RELEASE_MANIFEST_IOS` / `CONFIG_RELEASE_MANIFEST_ANDROID` (vars) — release-render manifest v1 JSON per target (produced by the publisher's release flow), pinning `publisherGitSha`, `sourceGitSha`, brand/platform/channel, telemetry endpoint, input digests, and the expected published snapshot digest.
 
@@ -113,6 +122,13 @@ requires a build, and upload requires signing. The default (`false` for all thre
 the selected matrix and needs no credential. `build: true, sign: false` renders one immutable target
 set per brand, creates unsigned Desktop packages, and validates production-Hermes exports plus
 iOS/Android prebuilds. Nothing is signed or submitted in that path.
+
+The committed `code-561-pilot.json` is deterministic nonproduction evidence only. It pins
+publisher `986d9f21403df53bc932f511eb1b5f0bb634d48d`, source
+`a1ed4d666721c3aed0d563aaea42fce8b5f945b5`, and the source root
+`examples/acme-zenith`. The render action byte-compares that root's generated schema mirror with
+the canonical schema in the pinned publisher checkout before parsing. Acme and Zenith, their
+`.invalid` endpoints, and this example root are not production brand data.
 
 The JSON root contains `brandBuildMatrixVersion: 1` and a non-empty `brands` array. Every brand has
 exactly `brandId`, `channel`, `releaseManifests`, `compliance`, and `distribution`:
@@ -151,14 +167,17 @@ upload inputs before any store submission or R2 upload can begin.
 
 ### Required Actions configuration and least privilege
 
-Secrets and render vars below are read only from the protected `release` environment. The scripts
-report every missing name and never default a signing or upload input:
+Signing secrets and render vars below are read from the protected `release` environment; the bot
+credentials are organization secrets. Trusted workflow steps report missing bot credentials before
+checking out selected client code, and the input scripts report missing render, signing, or upload
+values without receiving those bot credentials:
 
-- Vars: `CONFIG_PUBLISHER_REPO`, `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS`, and
-  `POSTHOG_HOST`. Revision/keyring values are exact JSON bytes already digest-pinned by each release
-  manifest.
-- Config source: secret `CONFIG_PUBLISHER_TOKEN`, a fine-grained token with **Contents: read** only
-  on `CONFIG_PUBLISHER_REPO`; no write or organization scope.
+- Vars: `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS`, and `POSTHOG_HOST`.
+  Revision/keyring values are exact JSON bytes already digest-pinned by each release manifest.
+- Config checkouts: organization secrets `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY` mint separate,
+  short-lived installation tokens with **Contents: read** only on `arcboxlabs/linkcodehq` and
+  `arcboxlabs/linkcode-config`. The workflow fixes both repository identities and requests no write
+  or organization permission.
 - macOS Desktop: `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD`, `APPLE_API_KEY_BASE64`,
   `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, and `APPLE_TEAM_ID`. The App Store Connect API key needs
   only Developer ID notarization access; it must not have app-management or finance roles.
@@ -184,6 +203,8 @@ report every missing name and never default a signing or upload input:
 Do not store private signing material, access tokens, or service-account JSON in the committed
 matrix, repository files, artifacts, or Actions vars. Protect the `release` environment with
 required reviewers and exact deployment ref rules before enabling `sign` or `upload`.
+The environment preflight reads protection metadata with the built-in `GITHUB_TOKEN` and explicit
+`actions: read`; this metadata-only token cannot approve or bypass an environment review.
 
 ## Packaging inputs (staging & version pins)
 

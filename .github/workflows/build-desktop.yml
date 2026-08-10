@@ -94,17 +94,48 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     environment: ${{ inputs.release_environment || 'release' }}
     steps:
+      - name: Require organization App credentials
+        env:
+          BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+          BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read arcboxlabs/linkcodehq and arcboxlabs/linkcode-config"
+            exit 1
+          fi
+
+      - name: Mint publisher read token
+        id: publisher-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcodehq
+          permission-contents: read
+
+      - name: Mint config source read token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcode-config
+          permission-contents: read
+
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
           cache: true
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -116,14 +147,14 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: desktop
-          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
-          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-token: ${{ steps.source-token.outputs.token }}
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest: ${{ vars.CONFIG_RELEASE_MANIFEST_DESKTOP }}
 
       - name: Upload rendered bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: desktop-config-bundle
           path: apps/desktop/generated/config-build-bundle.json
