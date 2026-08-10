@@ -35,11 +35,22 @@ export function enabledAccountModels(
   providers: ProvidersConfig | undefined,
   kind: AgentKind,
 ): EnabledAccountModel[] {
-  const offered: EnabledAccountModel[] = [];
-  for (const account of accounts) {
-    if (resolveBinding(account, kind).tier === 'unavailable') continue;
-    if (!accountEnabledFor(providers, kind, account.id)) continue;
-    for (const model of account.models ?? []) offered.push({ account, model });
-  }
-  return offered;
+  return enabledAccounts(accounts, providers, kind).flatMap((account) =>
+    (account.models ?? []).map((model) => ({ account, model })),
+  );
+}
+
+/** The accounts this agent may resolve to, in pool order. An account with no picked model is still
+ * one of them: it contributes nothing to the pickers, but it can still back a session pinned to it,
+ * and its credential is still what a signed-out CLI would run on. */
+export function enabledAccounts(
+  accounts: Accounts,
+  providers: ProvidersConfig | undefined,
+  kind: AgentKind,
+): Account[] {
+  return accounts.filter(
+    (account) =>
+      resolveBinding(account, kind).tier !== 'unavailable' &&
+      accountEnabledFor(providers, kind, account.id),
+  );
 }

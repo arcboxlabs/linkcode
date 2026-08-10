@@ -14,7 +14,7 @@ export {
 export type { DetectedLogin } from './detected-logins';
 export { detectedLogins } from './detected-logins';
 export type { EnabledAccountModel } from './enabled-models';
-export { accountEnabledFor, enabledAccountModels } from './enabled-models';
+export { accountEnabledFor, enabledAccountModels, enabledAccounts } from './enabled-models';
 export type { BindingTier, BindingUnavailableReason, ResolvedBinding } from './resolve';
 export { pinnedEndpoint, resolveBinding, serviceProtocols } from './resolve';
 export { fillTemplate, isTemplateFilled, templatePlaceholders } from './template';

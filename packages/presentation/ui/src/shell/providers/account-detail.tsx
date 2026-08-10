@@ -12,13 +12,6 @@ import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from 'coss-ui/components/collapsible';
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from 'coss-ui/components/select';
 import { Switch } from 'coss-ui/components/switch';
 import { useClipboard } from 'foxact/use-clipboard';
 import {
@@ -29,13 +22,11 @@ import {
   EyeOffIcon,
   MoreHorizontalIcon,
   PencilIcon,
-  StarIcon,
   Trash2Icon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../../chat/agent-icon';
-import { AGENT_MODEL_OPTIONS } from '../agent-models';
 import { ServiceIcon } from '../service-icon';
 import type { ProviderAccountRouting } from './routing';
 
@@ -43,21 +34,16 @@ export type ProviderAgentStatus =
   | { kind: 'unavailable-oauth'; agent: AgentKind }
   | { kind: 'unavailable-endpoint-incomplete' }
   | { kind: 'unavailable-protocol' }
-  | { kind: 'disabled' }
-  | { kind: 'default' }
-  | { kind: 'enabled-no-default' }
-  | { kind: 'enabled'; defaultLabel: string };
+  | { kind: 'disabled' };
 
-/** One agent row in an account's dialog: whether this account's models are offered to that agent,
- * and whether it is also the agent's fallback for sessions that name no account. */
+/** One agent row in an account's dialog: whether this account's models are offered to that agent.
+ * That is the whole state — nothing here is a default, and the switch says it without help. */
 export interface ProviderAgentViewModel {
   kind: AgentKind;
   tier: 'native' | 'translate' | 'unavailable';
-  status: ProviderAgentStatus;
+  /** Only a reason the row cannot be, or is not, on. Absent means enabled and available. */
+  status?: ProviderAgentStatus;
   enabled: boolean;
-  isDefault: boolean;
-  /** The agent's default model, present only on the row of the account that serves it. */
-  defaultModel?: string;
 }
 
 export type ProviderCredentialViewModel =
@@ -110,8 +96,6 @@ export function AccountDetail({
   account,
   busy,
   onSetAccountEnabled,
-  onSetDefaultAccount,
-  onSetModel,
   onEdit,
   onRemove,
 }: {
@@ -120,9 +104,6 @@ export function AccountDetail({
   busy: boolean;
   /** Show or hide this account's models in that agent's pickers. */
   onSetAccountEnabled: (kind: AgentKind, enabled: boolean) => void;
-  /** Make this account the agent's fallback, or clear it with undefined. */
-  onSetDefaultAccount: (kind: AgentKind, accountId: string | undefined) => void;
-  onSetModel: (kind: AgentKind, model: string | undefined) => void;
   onEdit: () => void;
   onRemove: () => void;
 }): React.ReactNode {
@@ -237,13 +218,9 @@ export function AccountDetail({
           {account.agents.map((agent) => (
             <AgentRow
               key={agent.kind}
-              accountId={account.id}
-              accountModels={account.accountModels ?? []}
               agent={agent}
               busy={busy}
               onSetAccountEnabled={onSetAccountEnabled}
-              onSetDefaultAccount={onSetDefaultAccount}
-              onSetModel={onSetModel}
             />
           ))}
         </div>
@@ -339,50 +316,28 @@ function agentStatusLabel(
       return t('unavailableProtocol');
     case 'disabled':
       return t('accountDisabled');
-    case 'default':
-      return t('accountDefault');
-    case 'enabled-no-default':
-      return t('accountEnabledNoDefault');
-    case 'enabled':
-      return t('accountEnabled', { label: status.defaultLabel });
     default:
       return status satisfies never;
   }
 }
 
-/**
- * One agent's row. The switch decides whether this account's models appear in that agent's pickers;
- * the star makes it the fallback for sessions that name no account (automation, schedules, IM), and
- * only that pairing edits the default model.
- */
+/** One agent's row: whether this account's models appear in that agent's pickers. */
 function AgentRow({
-  accountId,
-  accountModels,
   agent,
   busy,
   onSetAccountEnabled,
-  onSetDefaultAccount,
-  onSetModel,
 }: {
-  accountId: string;
-  accountModels: Array<{ id: string; label: string }>;
   agent: ProviderAgentViewModel;
   busy: boolean;
   onSetAccountEnabled: (kind: AgentKind, enabled: boolean) => void;
-  onSetDefaultAccount: (kind: AgentKind, accountId: string | undefined) => void;
-  onSetModel: (kind: AgentKind, model: string | undefined) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const tAgent = useTranslations('workbench.agentKind');
 
   const unavailable = agent.tier === 'unavailable';
-  const status = agentStatusLabel(t, tAgent, agent.status);
-  const note = agent.tier === 'translate' ? `${t('translateNote')} · ${status}` : status;
-  // An account with no listed models still serves the agent's own catalog, so fall back to the
-  // curated table rather than offering an empty select.
-  const modelOptions =
-    accountModels.length > 0 ? accountModels : (AGENT_MODEL_OPTIONS[agent.kind] ?? []);
-  const defaultModel = agent.defaultModel;
+  const status = agent.status && agentStatusLabel(t, tAgent, agent.status);
+  const note =
+    agent.tier === 'translate' ? [t('translateNote'), status].filter(Boolean).join(' · ') : status;
 
   return (
     <div
@@ -396,74 +351,13 @@ function AgentRow({
             <Badge variant="outline">{t('translateBadge')}</Badge>
           ) : null}
         </div>
-        <p className="truncate text-muted-foreground text-xs">{note}</p>
+        {note ? <p className="truncate text-muted-foreground text-xs">{note}</p> : null}
       </div>
-      {defaultModel !== undefined && modelOptions.length > 0 ? (
-        <ModelSelect
-          options={
-            defaultModel === '' || modelOptions.some((option) => option.id === defaultModel)
-              ? modelOptions
-              : [...modelOptions, { id: defaultModel, label: defaultModel }]
-          }
-          value={defaultModel}
-          disabled={busy}
-          onChange={(model) => onSetModel(agent.kind, model === '' ? undefined : model)}
-        />
-      ) : null}
-      <Button
-        aria-label={agent.isDefault ? t('clearDefaultAccount') : t('setDefaultAccount')}
-        aria-pressed={agent.isDefault}
-        disabled={unavailable || !agent.enabled || busy}
-        onClick={() => onSetDefaultAccount(agent.kind, agent.isDefault ? undefined : accountId)}
-        size="icon-sm"
-        title={agent.isDefault ? t('clearDefaultAccount') : t('setDefaultAccount')}
-        type="button"
-        variant="ghost"
-      >
-        <StarIcon className={`size-4 ${agent.isDefault ? 'fill-current' : ''}`} />
-      </Button>
       <Switch
         checked={agent.enabled}
         disabled={unavailable || busy}
         onCheckedChange={(checked) => onSetAccountEnabled(agent.kind, checked)}
       />
     </div>
-  );
-}
-
-function ModelSelect({
-  options,
-  value,
-  disabled,
-  onChange,
-}: {
-  options: Array<{ id: string; label: string }>;
-  value: string;
-  disabled: boolean;
-  onChange: (model: string) => void;
-}): React.ReactNode {
-  const t = useTranslations('settings.providers');
-  const items = [
-    { value: '', label: t('modelDefault') },
-    ...options.map((option) => ({ value: option.id, label: option.label })),
-  ];
-  return (
-    <Select
-      items={items}
-      value={value}
-      disabled={disabled}
-      onValueChange={(next) => onChange(typeof next === 'string' ? next : '')}
-    >
-      <SelectTrigger size="sm" className="w-36">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
   );
 }

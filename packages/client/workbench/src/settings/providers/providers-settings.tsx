@@ -1,12 +1,6 @@
 import { serviceById } from '@linkcode/providers';
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import {
-  createAndBindAccount,
-  getAccounts,
-  getProviderConfig,
-  setAccounts,
-  setProviderConfig,
-} from '@linkcode/sdk';
+import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
 import { AccountDetail, AccountList } from '@linkcode/ui';
 import {
   Dialog,
@@ -27,8 +21,6 @@ import {
   providerAccountDetailViewModel,
   providerAccountListViewModel,
   withAccountEnabled,
-  withDefaultAccount,
-  withModel,
   withoutAccount,
 } from './view';
 
@@ -47,7 +39,6 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
   const onboarding = useAgentRuntimeOnboarding();
-  const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
   // The forms are presentation; only this page sits inside the data-plane provider tree.
@@ -65,11 +56,11 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const pool = accounts ?? [];
   const accountsById = new Map(pool.map((account) => [account.id, account]));
   const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
-  const busy = bindAccount.isMutating || saveAccounts.isMutating || saveProviders.isMutating;
+  const busy = saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
       ? undefined
-      : providerAccountDetailViewModel(selected, pool, providers, runtimes);
+      : providerAccountDetailViewModel(selected, providers, runtimes);
   const accountList = providerAccountListViewModel(pool, providers, runtimes);
 
   const applyProviders = async (next: ProvidersConfig): Promise<void> => {
@@ -77,27 +68,16 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     void mutateProviders();
   };
 
-  const handleSetDefaultAccount = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withDefaultAccount(providers ?? {}, kind, accountId, pool));
-  };
-
   const handleSetAccountEnabled = (kind: AgentKind, enabled: boolean): void => {
     if (!selected) return;
     void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
-  const handleSetModel = (kind: AgentKind, model: string | undefined): void => {
-    void applyProviders(withModel(providers ?? {}, kind, model));
-  };
-
+  // Every account joins the pool the same way. A subscription used to bind itself to its agent on
+  // the way in; with no default to claim, adding one is adding one.
   const handleAdd = async (account: Account): Promise<void> => {
-    if (account.credential.type === 'oauth') {
-      await bindAccount.trigger({ agent: account.credential.agent, account });
-      await Promise.all([mutateAccounts(), mutateProviders()]);
-    } else {
-      await saveAccounts.trigger({ accounts: [...pool, account] });
-      await mutateAccounts();
-    }
+    await saveAccounts.trigger({ accounts: [...pool, account] });
+    await mutateAccounts();
     closeDialog();
   };
 
@@ -193,8 +173,6 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                       account={selectedDetail}
                       busy={busy}
                       onSetAccountEnabled={handleSetAccountEnabled}
-                      onSetDefaultAccount={handleSetDefaultAccount}
-                      onSetModel={handleSetModel}
                       onEdit={startEdit}
                       onRemove={() => {
                         void handleRemove();
