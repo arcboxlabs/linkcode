@@ -43,6 +43,12 @@ export const sessionRuns = sqliteTable(
     /** Position within the session's run list — array order is part of the record. */
     seq: integer('seq').notNull(),
     historyId: text('history_id'),
+    /** What the thread is set to, replayed on relaunch (`SessionRunSchema`). Every one of these must
+     * round-trip, or a restart silently moves the thread back onto the agent's configured default. */
+    accountId: text('account_id'),
+    model: text('model'),
+    effort: text('effort'),
+    approvalPolicyId: text('approval_policy_id'),
     startedAt: integer('started_at').notNull(),
     endedAt: integer('ended_at'),
   },
