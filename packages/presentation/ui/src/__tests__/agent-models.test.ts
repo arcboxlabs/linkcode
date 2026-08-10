@@ -3,7 +3,6 @@ import { effortOptionsForModel } from '../shell/agent-efforts';
 import {
   AGENT_MODEL_OPTIONS,
   groupModelsByProvider,
-  pickableModels,
   resolveModel,
   switchesAccount,
 } from '../shell/agent-models';
@@ -29,25 +28,6 @@ describe('resolveModel', () => {
     expect(resolveModel(claude, null)).toBeUndefined();
     expect(resolveModel(claude, 'not-a-model')).toBeUndefined();
     expect(resolveModel(undefined, 'claude-opus-4-8')).toBeUndefined();
-  });
-});
-
-describe('pickableModels', () => {
-  const account = [{ id: 'deepseek-v4-pro', label: 'DeepSeek', accountId: 'acc_x' }];
-  const own = [{ id: 'opencode/native', label: 'Native' }];
-
-  it('keeps an agent’s own catalog when it does not resolve through an account', () => {
-    // opencode and pi accept any endpoint, so a key added for another agent is "bindable" to them;
-    // replacing here would hand an unrelated vendor's models to a thread on its own CLI login.
-    expect(pickableModels(account, own, { throughAccount: false })).toEqual([...account, ...own]);
-    expect(pickableModels(undefined, own, { throughAccount: false })).toEqual(own);
-    expect(pickableModels(account, null, { throughAccount: false })).toEqual(account);
-  });
-
-  it('lets the account world stand alone once one resolves', () => {
-    expect(pickableModels(account, own, { throughAccount: true })).toEqual(account);
-    // Present-and-empty is a real answer — "this account offers nothing" — not a missing one.
-    expect(pickableModels([], own, { throughAccount: true })).toEqual([]);
   });
 });
 

@@ -79,8 +79,6 @@ export function DesktopShell({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  newSessionDefaultModels,
-  newSessionDefaultAccounts,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -429,8 +427,6 @@ export function DesktopShell({
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
-          defaultModels={newSessionDefaultModels}
-          defaultAccounts={newSessionDefaultAccounts}
           accountModels={accountModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}

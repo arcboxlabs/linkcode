@@ -36,7 +36,7 @@ import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import type { ModelOption } from './agent-models';
-import { AGENT_MODEL_OPTIONS, pickableModels, resolveModel } from './agent-models';
+import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -89,15 +89,8 @@ export interface NewSessionSurfaceProps {
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
-  /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
-   * built-in harness defaults fill missing kinds for standalone consumers. */
-  defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
-  /** The account each agent falls back to when a session names none. Its presence is what makes an
-   * agent resolve *through* an account: absent, the agent runs on its own CLI login and keeps its
-   * own catalog on offer. */
-  defaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
-  /** The models each agent offers, from every account enabled for it. An agent absent here has no
-   * account that can back it and falls back to its adapter catalog or the curated table. */
+  /** The models each agent offers, from every account enabled for it. They lead the picker and their
+   * head is the agent's default; the agent's own catalog follows for a run on its own login. */
   accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last accepted effort per harness. Missing kinds retain the harness default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
@@ -151,8 +144,6 @@ export function NewSessionSurface({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  defaultModels,
-  defaultAccounts,
   accountModels,
   preferredEfforts,
   preferredBranches,
@@ -194,30 +185,29 @@ export function NewSessionSurface({
   const catalog = agentCatalogs?.[harness];
   const localModel = selectedModels[harness];
   const selectedModel = localModel === undefined ? null : localModel;
-  // A default account means the agent resolves through one, and then its enabled accounts' picked
-  // sets are the only model source — the adapter's own default is not a candidate at all, and
-  // offering it would show a model the daemon then refuses. Without one the agent runs on its own
-  // login and keeps deciding for itself.
-  const defaultAccountId = defaultAccounts?.[harness];
-  const throughAccount = defaultAccountId !== undefined;
-  const displayedModel =
-    selectedModel ??
-    (defaultModels === null
-      ? null
-      : (defaultModels?.[harness] ?? (throughAccount ? null : (catalog?.defaultModel ?? null))));
   const localEffort = selectedEfforts[harness];
   const effort = localEffort === undefined ? (preferredEfforts?.[harness] ?? null) : localEffort;
   const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const accountSet = accountModels?.[harness];
-  const pickable = pickableModels(accountSet, dynamicModels ?? AGENT_MODEL_OPTIONS[harness], {
-    throughAccount,
-  });
+  // The accounts' picked models first, then whatever the agent offers on its own login. There is no
+  // configured default: an untouched draft shows the head of the account part, which is the same
+  // entry the daemon derives, so the two agree on what "unpicked" means. With no account the agent
+  // resolves for itself, and only its own advertised default is an honest thing to show — the
+  // curated table's first row would name a model the session may well not start on.
+  const ownCatalog = dynamicModels ?? AGENT_MODEL_OPTIONS[harness] ?? [];
+  const accountSet = accountModels?.[harness] ?? [];
+  const pickable: ModelOption[] = [...accountSet, ...ownCatalog];
   const localAccount = selectedAccounts[harness];
-  // Untouched, the draft reads against the agent's own default account, so a model id two accounts
-  // both serve resolves to the right entry instead of whichever comes first in the pool.
-  const selectedAccountId =
-    localAccount === undefined ? defaultAccountId : (localAccount ?? undefined);
-  const modelOption = resolveModel(pickable, displayedModel, selectedAccountId);
+  // `null` is "the accounts have not loaded", so there is no head yet: showing the agent's own
+  // default would flip to an account model the moment they arrive.
+  const head =
+    accountModels === null
+      ? undefined
+      : (accountSet[0] ?? resolveModel(ownCatalog, catalog?.defaultModel ?? null));
+  const modelOption =
+    selectedModel === null
+      ? head
+      : resolveModel(pickable, selectedModel, localAccount ?? undefined);
+  const displayedModel = selectedModel ?? modelOption?.id ?? catalog?.defaultModel ?? null;
   const effortLevels = modelOption?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
@@ -388,15 +378,15 @@ export function NewSessionSurface({
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
-            // Mirrors the daemon: once an account resolves, its set is the only model source, so an
-            // unresolved model would be refused anyway — refuse here instead of after a round trip.
-            // An agent with no account resolving still picks its own model, and must not be blocked.
-            sendBlocked={cue !== undefined || (throughAccount && displayedModel === null)}
+            // Only the runtime gates sending. An empty list is not a refusal: an agent with no
+            // account still resolves its own model, and the one case the daemon does refuse — an
+            // account pinned with nothing picked — reports itself rather than greying the button.
+            sendBlocked={cue !== undefined}
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}
-            agentModels={pickable ?? null}
-            currentAccountId={selectedAccountId}
+            agentModels={pickable.length > 0 ? pickable : null}
+            currentAccountId={modelOption?.accountId}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
             selectableHarnesses={SELECTABLE_HARNESSES}

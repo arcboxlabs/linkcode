@@ -56,12 +56,8 @@ export interface ShellFrameProps
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
-  /** Effective daemon-configured default models for new sessions; null while unresolved. */
-  newSessionDefaultModels: Readonly<Partial<Record<AgentKind, string>>> | null;
-  /** The account each agent falls back to when a session names none. */
-  newSessionDefaultAccounts?: Readonly<Partial<Record<AgentKind, string>>>;
-  /** The models each agent may run on, pooled from the accounts enabled for it. An agent absent here
-   * has no account that can back it and falls back to its adapter or the curated table. */
+  /** The models each agent may run on, pooled from the accounts enabled for it, in the order the
+   * pickers offer them — the head is the agent's default. */
   accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
   /** Last effort accepted by LinkCode per provider for new sessions. */
   newSessionPreferredEfforts: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
@@ -134,8 +130,6 @@ export function ShellFrame({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  newSessionDefaultModels,
-  newSessionDefaultAccounts,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -226,8 +220,6 @@ export function ShellFrame({
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
-            defaultModels={newSessionDefaultModels}
-            defaultAccounts={newSessionDefaultAccounts}
             accountModels={accountModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}

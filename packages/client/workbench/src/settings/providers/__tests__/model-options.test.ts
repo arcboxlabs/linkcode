@@ -5,12 +5,7 @@ import { getProviderConfig } from '@linkcode/sdk';
 import { modelChoiceKey } from '@linkcode/ui';
 import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  accountModelOptions,
-  configuredDefaultModels,
-  useAccountModelOptions,
-  useConfiguredDefaultModels,
-} from '../default-models';
+import { accountModelOptions, useAccountModelOptions } from '../model-options';
 
 const { useDataMock } = vi.hoisted(() => ({ useDataMock: vi.fn() }));
 
@@ -30,28 +25,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useDataMock.mockReset();
-});
-
-describe('configuredDefaultModels', () => {
-  it('reads the per-agent pick and reports nothing for an agent that has none', () => {
-    const providers = {
-      codex: { enabled: true, activeAccountId: 'account-1', model: 'gpt-5.6-sol' },
-      // Bound but unpicked: no model to report, so a session start refuses rather than guessing.
-      'claude-code': { enabled: true, activeAccountId: 'account-1' },
-    } satisfies ProvidersConfig;
-
-    expect(configuredDefaultModels(providers)).toEqual({ codex: 'gpt-5.6-sol' });
-  });
-
-  it('keeps the pick unresolved until the provider config has loaded', () => {
-    const { result, rerender } = renderHook(() => useConfiguredDefaultModels());
-
-    expect(result.current).toBeNull();
-
-    providersData = {};
-    rerender();
-    expect(result.current).toEqual({});
-  });
 });
 
 const anthropicAccount = {

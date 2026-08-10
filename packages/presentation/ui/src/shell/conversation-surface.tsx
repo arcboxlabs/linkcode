@@ -8,7 +8,6 @@ import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
 import type { ModelOption } from './agent-models';
-import { pickableModels } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
@@ -192,12 +191,9 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          // The session account's picked set is the user's own answer to "which models may this run
-          // on", so it outranks the adapter catalog — but only for a thread that resolved through an
-          // account at all. One on its own CLI login keeps its own catalog on offer.
-          agentModels={pickableModels(accountModels, conversation.availableModels, {
-            throughAccount: accountId !== undefined,
-          })}
+          // Same list as a draft: the accounts' picked models lead, and whatever the agent resolves
+          // on its own login follows. A cross-account pick here relaunches the thread.
+          agentModels={[...(accountModels ?? []), ...(conversation.availableModels ?? [])]}
           currentAccountId={accountId}
           // Live thread: leaving its account means relaunching the agent, which the menu says out
           // loud rather than letting a process restart happen invisibly.

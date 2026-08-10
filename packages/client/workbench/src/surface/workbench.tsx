@@ -58,11 +58,7 @@ import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useMutation } from '../runtime/tayori';
-import {
-  useAccountModelOptions,
-  useConfiguredDefaultAccounts,
-  useConfiguredDefaultModels,
-} from '../settings/providers/default-models';
+import { useAccountModelOptions } from '../settings/providers/model-options';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { useSidebarOrderStore } from '../sidebar/order-store';
@@ -245,8 +241,6 @@ function WorkbenchSessionSurface({
   const active = sessions.active;
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
-  const newSessionDefaultModels = useConfiguredDefaultModels();
-  const newSessionDefaultAccounts = useConfiguredDefaultAccounts();
   const accountModels = useAccountModelOptions();
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
@@ -665,8 +659,6 @@ function WorkbenchSessionSurface({
       draft={draft}
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
-      newSessionDefaultModels={newSessionDefaultModels}
-      newSessionDefaultAccounts={newSessionDefaultAccounts}
       accountModels={accountModels}
       agentCatalogs={agentCatalogs}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
