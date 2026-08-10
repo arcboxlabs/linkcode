@@ -4,6 +4,33 @@
 name: Build Mobile
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        type: string
+        required: false
+        default: ""
+      brand_id:
+        description: Brand id for isolated artifact names
+        type: string
+        required: false
+        default: ""
+      delivery_descriptor_sha256:
+        description: Expected SHA-256 of the committed brand delivery matrix
+        type: string
+        required: false
+        default: ""
+      rendered_artifact:
+        description: Pre-rendered brand/config artifact from the matrix workflow
+        type: string
+        required: false
+        default: ""
+      submit:
+        description: Upload to TestFlight and Google Play internal testing
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       submit:
@@ -13,7 +40,7 @@ on:
         default: false
 
 concurrency:
-  group: build-mobile-production
+  group: build-mobile-production-${{ inputs.brand_id || 'linkcode' }}
   cancel-in-progress: false
 
 permissions:
@@ -31,9 +58,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Check submit configuration
-        if: ${{ inputs.submit }}
+        if: ${{ inputs.submit && inputs.rendered_artifact == '' }}
         run: |
           asc_app_id="$(jq -r '.submit.production.ios.ascAppId // empty' apps/mobile/eas.json)"
           if [ -z "$asc_app_id" ]; then
@@ -47,12 +76,15 @@ jobs:
   render-config:
     name: Render immutable config
     needs: preflight
+    if: ${{ inputs.rendered_artifact == '' }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
     environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
@@ -82,6 +114,7 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     needs: [preflight, render-config]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.render-config.result == 'success' || needs.render-config.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     environment: release
@@ -120,6 +153,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
@@ -161,8 +196,8 @@ jobs:
       - name: Fetch generated config modules
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: mobile-config-modules
-          path: apps/mobile/src/runtime/config
+          name: ${{ inputs.rendered_artifact || 'mobile-config-modules' }}
+          path: ${{ inputs.rendered_artifact != '' && '.' || 'apps/mobile/src/runtime/config' }}
 
       - name: Verify release config modules
         run: pnpm -F @linkcode/mobile config:verify-release
@@ -177,11 +212,30 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: eas build --local --platform "${{ matrix.platform }}" --profile production --output "$RUNNER_TEMP/linkcode-${{ matrix.platform }}.${{ matrix.extension }}" --non-interactive
 
+      - name: Write artifact provenance
+        if: ${{ inputs.rendered_artifact != '' }}
+        run: |
+          pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+            --artifact-root "$RUNNER_TEMP" \
+            --artifact "linkcode-${{ matrix.platform }}.${{ matrix.extension }}" \
+            --bundle "apps/mobile/src/runtime/config/bundled.generated.${{ matrix.platform }}.ts" \
+            --brand-identity "apps/mobile/generated/brand-identity.${{ matrix.platform }}.json" \
+            --brand-manifest release-inputs/brands.manifest.yaml \
+            --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ inputs.delivery_descriptor_sha256 }}' \
+            --release-manifest "release-inputs/release-manifest.${{ matrix.platform }}.json" \
+            --compliance "release-inputs/compliance.${{ matrix.platform }}.json" \
+            --out "release-provenance.${{ matrix.platform }}.json" \
+            --signed
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: mobile-${{ matrix.platform }}
-          path: ${{ runner.temp }}/linkcode-${{ matrix.platform }}.${{ matrix.extension }}
+          name: ${{ inputs.brand_id != '' && format('mobile-{0}-{1}', inputs.brand_id, matrix.platform) || format('mobile-{0}', matrix.platform) }}
+          path: |
+            ${{ runner.temp }}/linkcode-${{ matrix.platform }}.${{ matrix.extension }}
+            ${{ runner.temp }}/release-provenance.${{ matrix.platform }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -196,14 +250,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # - platform: android
-          #   extension: aab
           - platform: ios
             extension: ipa
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
@@ -214,7 +268,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: mobile-${{ matrix.platform }}
+          name: ${{ inputs.brand_id != '' && format('mobile-{0}-{1}', inputs.brand_id, matrix.platform) || format('mobile-{0}', matrix.platform) }}
           path: ${{ runner.temp }}
 
       - name: Submit artifact
