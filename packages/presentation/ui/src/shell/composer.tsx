@@ -33,7 +33,7 @@ import {
 import { cn } from '../lib/cn';
 import { effortOptionsForModel } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {
@@ -158,9 +158,9 @@ export interface ComposerProps {
   /** Executable directive contract. Loading slash catalogs accept typed commands for host-side
    * validation; ready catalogs are authoritative, including an empty catalog. */
   directiveControls: ComposerDirectiveControls;
-  /** The session's adapter-advertised model catalog, reflected from `available-models-update`
-   * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
-   * empty or absent falls back to that table. */
+  /** Every model this composer may offer, already assembled by the caller from the accounts enabled
+   * for the agent. Absent or empty means no picker: nothing here falls back to a table, or an
+   * account switch could not take a model off the menu. */
   agentModels?: AgentModelOption[] | null;
   /** A promise defers draft clearing until the caller accepts the submission. */
   onSend: (content: ContentBlock[]) => ComposerSubmissionResult;
@@ -797,14 +797,9 @@ export function Composer({
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
-  // The adapter-advertised catalog wins over the static table: an install-dependent agent
-  // (opencode) knows its own reachable models; the table only covers curated vendor lists.
-  const modelOptions =
-    agentModels && agentModels.length > 0
-      ? agentModels
-      : agentKind
-        ? AGENT_MODEL_OPTIONS[agentKind]
-        : undefined;
+  // What the caller offers and nothing else: every model reaches this menu through an account
+  // enabled for the agent, so a fallback table here would put back a row no switch can remove.
+  const modelOptions = agentModels ?? undefined;
   const effortOptions = effortOptionsForModel(
     agentKind,
     resolveModel(modelOptions, currentModel ?? null),

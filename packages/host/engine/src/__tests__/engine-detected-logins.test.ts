@@ -1,3 +1,4 @@
+import { CURATED_AGENT_MODELS } from '@linkcode/providers';
 import type { AgentRuntimes } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -36,14 +37,17 @@ describe('detected-login adoption', () => {
     await engine.start();
     await vi.waitFor(() => expect(providerStore.getAccounts()).toHaveLength(1));
 
-    // The pool grew and nothing else did: no binding, no model, so no session changes what it runs on.
+    // Seeded with the curated list, because the pickers offer `Account.models` and nothing else —
+    // an account with none is a switch that reveals nothing.
     expect(providerStore.getAccounts()[0]).toEqual({
       id: expect.stringMatching(ACCOUNT_ID_RE),
       label: 'Claude',
       service: 'claude-sub',
       credential: { type: 'oauth', agent: 'claude-code' },
+      models: CURATED_AGENT_MODELS['claude-code'],
       createdAt: expect.any(Number),
     });
+    // Nothing else grew: no enabled list narrowed, so no session changes what it runs on.
     expect(providerStore.get()).toEqual({});
     await engine.stop();
   });

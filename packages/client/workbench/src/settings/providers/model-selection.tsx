@@ -1,6 +1,6 @@
+import { CURATED_AGENT_MODELS } from '@linkcode/providers';
 import type { AccountModel, AccountSecret, AgentKind } from '@linkcode/schema';
 import { getAgentCatalog, probeAccountModels } from '@linkcode/sdk';
-import { AGENT_MODEL_OPTIONS } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Checkbox } from 'coss-ui/components/checkbox';
 import { Input } from 'coss-ui/components/input';
@@ -49,7 +49,10 @@ export function useModelSources(): ModelSources {
       probe.trigger({ service, credential: { type: 'account', accountId } }),
     async oauth(agent) {
       if (agent === 'claude-code') {
-        return (AGENT_MODEL_OPTIONS[agent] ?? []).map(({ id, label }) => ({ id, label }));
+        return (CURATED_AGENT_MODELS[agent] ?? []).map(({ id, label }) => ({
+          id,
+          label: label ?? id,
+        }));
       }
       const { models } = await fetchCatalog.trigger({ agentKind: agent });
       return models.map(({ id, label }) => ({ id, label }));

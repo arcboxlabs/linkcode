@@ -191,9 +191,10 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          // Same list as a draft: the accounts' picked models lead, and whatever the agent resolves
-          // on its own login follows. A cross-account pick here relaunches the thread.
-          agentModels={[...(accountModels ?? []), ...(conversation.availableModels ?? [])]}
+          // Same list as a draft: only models from accounts enabled for this agent. The adapter's
+          // own catalog is not offered, so the account switches govern this menu too. A
+          // cross-account pick here relaunches the thread.
+          agentModels={accountModels ?? null}
           currentAccountId={accountId}
           // Live thread: leaving its account means relaunching the agent, which the menu says out
           // loud rather than letting a process restart happen invisibly.

@@ -61,7 +61,6 @@ const RE_MODEL_SONNET_5_MENU = /model.*Sonnet 5/;
 const RE_OPUS_5 = /Opus 5/;
 const RE_MODEL_MENU = /^model/;
 const RE_MODEL_GPT_56_SOL_MENU = /model.*GPT-5\.6-Sol/;
-const RE_MODEL_DEFAULT_MENU = /model.*modelDefault/;
 const RE_MODEL_PI_SONNET_MENU = /model.*Pi Sonnet/;
 const RE_EFFORT_DEFAULT_MENU = /effort.*effortDefault/;
 const RE_APPROVAL_DEFAULT = /Default/;
@@ -81,6 +80,25 @@ const PI_CONFIGURED_CATALOG: AgentStartCatalog = {
   defaultPolicyId: 'default',
   defaultModel: 'pi/sonnet',
   defaultEffort: 'high',
+};
+
+/** Codex's per-model effort levels, as `model/list` advertises them: Sol takes `ultra`, Luna does
+ * not. The account carries the ids; only the catalog knows what each can run at. */
+const CODEX_EFFORT_CATALOG: AgentStartCatalog = {
+  models: [
+    {
+      id: 'gpt-5.6-sol',
+      label: 'GPT-5.6-Sol',
+      effortLevels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    },
+    {
+      id: 'gpt-5.6-luna',
+      label: 'GPT-5.6-Luna',
+      effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    },
+  ],
+  policies: [],
+  defaultModel: 'gpt-5.6-sol',
 };
 
 /** An account offering `pi/wide`: it heads the list, so it is displayed while the catalog still
@@ -716,8 +734,14 @@ describe('NewSessionSurface', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
-        // Only a default model, so the curated table still supplies both entries' effort levels.
-        agentCatalogs={{ codex: { models: [], policies: [], defaultModel: 'gpt-5.6-sol' } }}
+        // The account offers both; the catalog supplies each one's effort levels.
+        accountModels={{
+          codex: [
+            { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
+            { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
+          ],
+        }}
+        agentCatalogs={{ codex: CODEX_EFFORT_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
         preferredEfforts={{ codex: 'ultra' }}
         draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
@@ -779,6 +803,7 @@ describe('NewSessionSurface', () => {
         accountModels={{
           'claude-code': [
             { id: 'configured/claude-model', label: 'configured/claude-model', accountId: 'acc_x' },
+            { id: 'claude-opus-4-8', label: 'Opus 4.8', accountId: 'acc_x' },
           ],
         }}
         chatWorkspace={CHAT_WORKSPACE}
@@ -867,7 +892,7 @@ describe('NewSessionSurface', () => {
     );
   });
 
-  it("offers the accounts' models ahead of the agent's own catalog, and heads the list with one", async () => {
+  it("offers the accounts' models and nothing else, heading the list with one", async () => {
     const user = userEvent.setup();
     render(
       <NewSessionSurface
@@ -885,12 +910,13 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    // The account model heads the list, so it is what an untouched draft shows — ahead of the
-    // curated Anthropic table, which stays on offer for a run on the agent's own login.
+    // The account's model heads the list, so it is what an untouched draft shows. The curated
+    // Anthropic table is not on offer beside it: a model no enabled account carries would be a row
+    // the account switches cannot take away.
     await user.click(screen.getByRole('button', { name: RE_DEEPSEEK_PRO }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_MENU }));
-    expect(await screen.findByRole('menuitemradio', { name: 'DeepSeek V4 Pro' })).toBeTruthy();
-    expect(screen.getByRole('menuitemradio', { name: 'Opus 5' })).toBeTruthy();
+    expect(await screen.findByRole('menuitemradio', { name: RE_DEEPSEEK_PRO })).toBeTruthy();
+    expect(screen.queryByRole('menuitemradio', { name: RE_OPUS_5 })).toBeNull();
   });
 
   it('sends with no model when an account offers none, leaving the agent to resolve its own', async () => {
@@ -916,13 +942,13 @@ describe('NewSessionSurface', () => {
     expect(onSubmit.mock.calls[0]?.[0]?.model).toBeUndefined();
   });
 
-  it("keeps an agent’s own catalog on offer alongside the accounts'", async () => {
+  it("leaves an agent's own catalog off the menu, and still sends without one", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
-        // opencode and pi accept any endpoint, so every account is "bindable" to them. A key added
-        // for another agent must not replace the models this one advertises for itself.
+        // opencode and pi accept any endpoint, so every account is "bindable" to them — but only the
+        // enabled ones reach the menu, and what the adapter advertises for itself never does.
         accountModels={{ pi: [{ id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' }] }}
         agentCatalogs={{ pi: PI_CONFIGURED_CATALOG }}
         chatWorkspace={CHAT_WORKSPACE}
@@ -937,8 +963,8 @@ describe('NewSessionSurface', () => {
 
     await user.click(screen.getByRole('button', { name: RE_DEEPSEEK_PRO }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_MENU }));
-    expect(await screen.findByRole('menuitemradio', { name: 'DeepSeek V4 Pro' })).toBeTruthy();
-    expect(screen.getByRole('menuitemradio', { name: RE_PI_SONNET })).toBeTruthy();
+    expect(await screen.findByRole('menuitemradio', { name: RE_DEEPSEEK_PRO })).toBeTruthy();
+    expect(screen.queryByRole('menuitemradio', { name: RE_PI_SONNET })).toBeNull();
 
     await user.keyboard('{Escape}');
     typeInComposer('hello');
@@ -980,7 +1006,12 @@ describe('NewSessionSurface', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
-        accountModels={{ 'claude-code': [{ id: 'claude-sonnet-5', label: 'Sonnet 5' }] }}
+        accountModels={{
+          'claude-code': [
+            { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+            { id: 'claude-opus-5', label: 'Opus 5' },
+          ],
+        }}
         chatWorkspace={CHAT_WORKSPACE}
         draft={{
           initialHarness: 'claude-code',
@@ -996,7 +1027,7 @@ describe('NewSessionSurface', () => {
 
     await user.click(screen.getByRole('button', { name: RE_SONNET_5 }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_SONNET_5_MENU }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Opus 5' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: RE_OPUS_5 }));
     typeInComposer('hello');
     await pressInComposer('Enter');
 
@@ -1089,7 +1120,9 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: RE_PI_SONNET })).toBeTruthy();
+    // No account is enabled for pi, so it offers no model to show — but the effort axis still
+    // reports what the agent's own default model will run at.
+    expect(screen.queryByRole('button', { name: RE_PI_SONNET })).toBeNull();
     expect(screen.getByRole('button', { name: RE_HIGH_EFFORT })).toBeTruthy();
 
     typeInComposer('untouched pickers');
@@ -1116,7 +1149,7 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: RE_PI_BASIC })).toBeTruthy();
+    // `pi/basic` takes no effort at all, so the catalog's own default cannot apply to it.
     expect(screen.queryByRole('button', { name: RE_HIGH_EFFORT })).toBeNull();
   });
 
@@ -1193,6 +1226,13 @@ describe('NewSessionSurface', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
+        // The account offers the ids; the catalog says what each can run at.
+        accountModels={{
+          pi: [
+            { id: 'pi/sonnet', label: 'Pi Sonnet' },
+            { id: 'pi/basic', label: 'Pi Basic' },
+          ],
+        }}
         agentCatalogs={{
           pi: {
             models: [
@@ -1216,9 +1256,11 @@ describe('NewSessionSurface', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: RE_MODEL_DEFAULT }));
-    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_DEFAULT_MENU }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Sonnet' }));
+    // `pi/sonnet` heads the account's list, so it is already displayed; picking it makes it an
+    // explicit choice that travels with the submission.
+    await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
+    await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_PI_SONNET_MENU }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: RE_PI_SONNET }));
     await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByRole('menuitem', { name: RE_EFFORT_DEFAULT_MENU }));
     fireEvent.click(await screen.findByRole('menuitemradio', { name: 'High' }));
@@ -1239,7 +1281,7 @@ describe('NewSessionSurface', () => {
     onSubmit.mockClear();
     await user.click(screen.getByRole('button', { name: RE_PI_SONNET }));
     await user.click(await screen.findByRole('menuitem', { name: RE_MODEL_PI_SONNET_MENU }));
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Pi Basic' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: RE_PI_BASIC }));
     typeInComposer('no stale effort');
     await pressInComposer('Enter');
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());

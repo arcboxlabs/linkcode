@@ -1,4 +1,4 @@
-import { detectedLogins } from '@linkcode/providers';
+import { CURATED_AGENT_MODELS, detectedLogins } from '@linkcode/providers';
 import type { Account, AgentRuntimes } from '@linkcode/schema';
 import { Clock, Effect } from 'effect';
 import { OperationError } from '../failure';
@@ -25,15 +25,20 @@ export function adoptDetectedLogins(
         // the two and lose either side's accounts.
         async try() {
           const accounts = providers.getAccounts();
-          const adopted = detectedLogins(accounts, runtimes).map(
-            ({ service }): Account => ({
+          const adopted = detectedLogins(accounts, runtimes).map(({ service }): Account => {
+            // Seeded with the curated list, because an account with no models is an account whose
+            // switch reveals nothing — the pickers offer `Account.models` and nothing else. Settings
+            // can refresh it from the live catalog where the service serves one.
+            const models = CURATED_AGENT_MODELS[service.agent];
+            return {
               id: `acc_${crypto.randomUUID()}`,
               label: service.label,
               service: service.id,
               credential: { type: 'oauth', agent: service.agent },
+              ...(models !== undefined && { models }),
               createdAt,
-            }),
-          );
+            };
+          });
           if (adopted.length === 0) return [];
           await providers.update({ accounts: [...accounts, ...adopted] });
           return adopted;

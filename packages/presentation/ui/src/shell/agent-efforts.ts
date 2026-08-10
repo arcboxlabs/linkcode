@@ -20,7 +20,7 @@ export const EFFORT_OPTIONS_BY_ID: Readonly<Record<EffortLevel, EffortOption>> =
 };
 
 /**
- * Reasoning-effort choices, keyed by adapter — same discipline as `AGENT_MODEL_OPTIONS`: only
+ * Reasoning-effort choices, keyed by adapter — same discipline as `CURATED_AGENT_MODELS`: only
  * adapters with a verified live effort switch get an entry.
  * claude-code: `max` can't ride the live flag-settings channel, so the adapter restarts the
  * process and resumes in place (entering and leaving — the startup flag outranks flag-settings);

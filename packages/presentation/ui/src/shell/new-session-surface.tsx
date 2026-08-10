@@ -36,7 +36,7 @@ import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
 import type { ModelOption } from './agent-models';
-import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -187,37 +187,33 @@ export function NewSessionSurface({
   const selectedModel = localModel === undefined ? null : localModel;
   const localEffort = selectedEfforts[harness];
   const effort = localEffort === undefined ? (preferredEfforts?.[harness] ?? null) : localEffort;
-  const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  // The accounts' picked models first, then whatever the agent offers on its own login. There is no
-  // configured default: an untouched draft shows the head of the account part, which is the same
-  // entry the daemon derives, so the two agree on what "unpicked" means. With no account the agent
-  // resolves for itself, and only its own advertised default is an honest thing to show — the
-  // curated table's first row would name a model the session may well not start on.
-  const ownCatalog = dynamicModels ?? AGENT_MODEL_OPTIONS[harness] ?? [];
-  const accountSet = accountModels?.[harness] ?? [];
-  const pickable: ModelOption[] = [...accountSet, ...ownCatalog];
+  // Every offered model comes from an account enabled for this agent, and its head is what an
+  // untouched draft runs on — the same entry the daemon derives. The agent's own catalog is
+  // deliberately absent: a model nobody enabled an account for is not on offer, so the account
+  // switches govern this menu completely rather than sitting beside a list they cannot reach.
+  const pickable: ModelOption[] = accountModels?.[harness] ?? [];
   const localAccount = selectedAccounts[harness];
-  // `null` is "the accounts have not loaded", so there is no head yet: showing the agent's own
-  // default would flip to an account model the moment they arrive.
-  const head =
-    accountModels === null
-      ? undefined
-      : (accountSet[0] ?? resolveModel(ownCatalog, catalog?.defaultModel ?? null));
+  // `null` is "the accounts have not loaded", so there is no head yet.
   const modelOption =
     selectedModel === null
-      ? head
+      ? accountModels === null
+        ? undefined
+        : pickable[0]
       : resolveModel(pickable, selectedModel, localAccount ?? undefined);
-  const displayedModel = selectedModel ?? modelOption?.id ?? catalog?.defaultModel ?? null;
-  const effortLevels = modelOption?.effortLevels;
+  const displayedModel = selectedModel ?? modelOption?.id ?? null;
+  // Effort follows the model the session will actually run on, which is the agent's own default
+  // whenever nothing here is offered — the axis stays truthful even with no model to show.
+  const effortModel = displayedModel ?? catalog?.defaultModel ?? null;
+  const effortLevels = resolveModel(catalog?.models, effortModel)?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
   // A catalog effort paired with a default model belongs to that model: once something else picks
   // the model, that model's own advertised default is the honest value. A catalog that names no
   // default model (claude-code, whose effort setting is model-independent) keeps applying.
   const catalogEffort =
-    catalog?.defaultModel === undefined || catalog.defaultModel === displayedModel
+    catalog?.defaultModel === undefined || catalog.defaultModel === effortModel
       ? catalog?.defaultEffort
-      : modelOption?.defaultEffort;
+      : resolveModel(catalog.models, effortModel)?.defaultEffort;
   const displayedEffort =
     constrainedEffort ??
     (catalogEffort !== undefined &&
