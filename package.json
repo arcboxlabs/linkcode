@@ -56,7 +56,7 @@
     "jsdom": "^29.1.1",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "turbo": "^2.10.7",
+    "turbo": "^2.10.8",
     "typescript": "catalog:",
     "unplugin-icons": "catalog:",
     "vite": "catalog:",
