@@ -29,15 +29,15 @@ const PersistedNewSessionDefaultsSchema = z
 type PersistedNewSessionDefaults = z.infer<typeof PersistedNewSessionDefaultsSchema>;
 
 export interface NewSessionSelection {
-  /** Confirmed model, for callers that route it onward. This store does not persist it — the model
-   * an agent runs on lives in daemon config (`usePersistPickedModel`), so there is one owner. */
+  /** Confirmed model, for callers that route it onward. This store does not persist it — the daemon
+   * owns both answers: `providers[kind].model` for the agent's default, the thread's run for a pick. */
   model?: string | null;
   /** Null clears a remembered selection after an explicit reset or rejected reflection. */
   effort?: EffortLevel | null;
 }
 
 export interface NewSessionDefaultsState {
-  /** Provider of the last successful new-session submit; null before the first (→ claude-code). */
+  /** Harness of the last successful new-session submit; null before the first (→ claude-code). */
   lastHarness: AgentKind | null;
   /** Workspace of the last successful submit; ids that no longer exist are skipped at resolve time. */
   lastWorkspaceId: WorkspaceId | null;
