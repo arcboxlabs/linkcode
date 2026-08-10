@@ -977,8 +977,6 @@ export const zhCN = {
       title: '账号与 Provider',
       hint: '把订阅、AI 网关或自定义端点接入你的智能体;一个账号可接入多个智能体,每个智能体同一时刻使用一个账号。',
       searchPlaceholder: '搜索账号…',
-      accountCount: '{count} 个账号',
-      boundCount: '{bound} / {total} 智能体经账号运行',
       addAccount: '添加账号',
       customService: '自定义端点',
       noMatches: '没有匹配的账号。',

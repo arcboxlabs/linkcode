@@ -1003,8 +1003,6 @@ export const en = {
       title: 'Accounts & providers',
       hint: 'Connect subscriptions, AI gateways, or custom endpoints to your agents; one account can back several agents, and each agent uses one account at a time.',
       searchPlaceholder: 'Search accounts…',
-      accountCount: '{count, plural, one {# account} other {# accounts}}',
-      boundCount: '{bound} / {total} agents run through an account',
       addAccount: 'Add account',
       customService: 'Custom endpoint',
       noMatches: 'No matching accounts.',

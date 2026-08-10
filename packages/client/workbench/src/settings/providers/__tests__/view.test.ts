@@ -199,8 +199,6 @@ describe('view helpers', () => {
           boundAgents: [],
         },
       ],
-      bindingCount: 2,
-      agentCount: 5,
     });
   });
 

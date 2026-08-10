@@ -204,9 +204,6 @@ export function providerAccountListViewModel(
 ): ProviderAccountListViewModel {
   return {
     accounts: accounts.map((account) => providerAccountListItem(account, providers, runtimes)),
-    bindingCount: AGENT_KINDS.filter((kind) => providers?.[kind]?.activeAccountId !== undefined)
-      .length,
-    agentCount: AGENT_KINDS.length,
   };
 }
 

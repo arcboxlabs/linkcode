@@ -23,15 +23,11 @@ export interface ProviderAccountListItem {
 
 export interface ProviderAccountListViewModel {
   accounts: ProviderAccountListItem[];
-  bindingCount: number;
-  agentCount: number;
 }
 
 /** The Providers page's single account list; account management opens outside the list. */
 export function AccountList({
   accounts,
-  bindingCount,
-  agentCount,
   loading,
   onSelect,
   onAdd,
@@ -78,15 +74,7 @@ export function AccountList({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-sm">
-            {t('accountCount', { count: accounts.length })}
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {t('boundCount', { bound: bindingCount, total: agentCount })}
-          </span>
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex gap-2">
           <Input
             className="min-w-0 flex-1 sm:w-56"
