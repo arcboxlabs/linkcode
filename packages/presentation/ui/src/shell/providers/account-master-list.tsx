@@ -138,22 +138,14 @@ export function AccountList({
                       </span>
                     ) : null}
                   </span>
+                  {/* Naming no agent is not a defect — the account's models still reach every
+                      picker it is enabled for — so the row says nothing rather than "not connected". */}
                   <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
-                    {account.boundAgents.length === 0 ? (
-                      <Badge
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full border-dashed text-muted-foreground"
-                      >
-                        {t('unbound')}
+                    {account.boundAgents.map((kind) => (
+                      <Badge key={kind} variant="outline" size="sm" className="rounded-full">
+                        {tAgent(kind)}
                       </Badge>
-                    ) : (
-                      account.boundAgents.map((kind) => (
-                        <Badge key={kind} variant="outline" size="sm" className="rounded-full">
-                          {tAgent(kind)}
-                        </Badge>
-                      ))
-                    )}
+                    ))}
                   </span>
                   <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
                 </button>
