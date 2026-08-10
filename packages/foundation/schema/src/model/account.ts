@@ -4,7 +4,7 @@ import { AgentKindSchema, TimestampSchema } from './primitives';
 /**
  * A model-provider credential in the global account pool (data plane). The daemon persists these
  * in ~/.linkcode/config.json (0600) and injects one into the adapter at session start: whichever
- * `StartOptions.config.accountId` names, or the agent's `activeAccountId` when nothing does. One
+ * `StartOptions.accountId` names, or the agent's `activeAccountId` when nothing does. One
  * credential can back several agents — natively when its endpoint speaks the agent's protocol, via
  * conversion otherwise — and several accounts can serve one agent at the same time.
  */
@@ -49,7 +49,7 @@ export const AccountModelSchema = z.object({
 export type AccountModel = z.infer<typeof AccountModelSchema>;
 
 export const AccountSchema = z.object({
-  /** Stable id referenced by `providers[kind].activeAccountId` and `StartOptions.config.accountId`. */
+  /** Stable id referenced by `providers[kind].activeAccountId` and `StartOptions.accountId`. */
   id: z.string().min(1),
   /** User-facing name. */
   label: z.string().min(1),

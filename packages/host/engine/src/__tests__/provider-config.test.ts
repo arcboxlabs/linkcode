@@ -7,7 +7,7 @@ const baseOpts: StartOptions = { kind: 'codex', cwd: '/repo' };
 describe('applyProviderDefaults', () => {
   it('returns the input untouched when no config exists for the kind', () => {
     const providers: ProvidersConfig = { 'claude-code': { enabled: true, apiKey: 'sk-x' } };
-    expect(applyProviderDefaults(baseOpts, providers).options).toBe(baseOpts);
+    expect(applyProviderDefaults(baseOpts, providers).options).toEqual(baseOpts);
   });
 
   it('fills the persisted pick only when the client did not specify one', () => {
@@ -44,13 +44,14 @@ describe('applyProviderDefaults account pool', () => {
 
   it('injects the credential from the account bound via activeAccountId', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
-    expect(applyProviderDefaults(baseOpts, providers, [account]).options.config).toEqual({
-      accountId: 'acc_1',
-      apiKey: 'sk-acc',
-    });
+    const merged = applyProviderDefaults(baseOpts, providers, [account]);
+    expect(merged.options.config).toEqual({ apiKey: 'sk-acc' });
+    // Reported, not echoed into the adapter-facing config: the caller records what actually backed
+    // the run, and nothing downstream can mistake a request for a resolution.
+    expect(merged.accountId).toBe('acc_1');
   });
 
-  it('lets an explicit opts.config.accountId override activeAccountId', () => {
+  it('lets an explicit opts.accountId override activeAccountId, and consumes it', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'acc_1' } };
     const other: Account = {
       id: 'acc_2',
@@ -58,12 +59,24 @@ describe('applyProviderDefaults account pool', () => {
       credential: { type: 'api-key', key: 'sk-other' },
       createdAt: 0,
     };
-    const merged = applyProviderDefaults(
-      { ...baseOpts, config: { accountId: 'acc_2' } },
-      providers,
-      [account, other],
-    );
+    const merged = applyProviderDefaults({ ...baseOpts, accountId: 'acc_2' }, providers, [
+      account,
+      other,
+    ]);
     expect(merged.options.config).toMatchObject({ apiKey: 'sk-other' });
+    expect(merged.accountId).toBe('acc_2');
+    expect(merged.options.accountId).toBeUndefined();
+  });
+
+  it('reports no account for a requested id that no longer resolves, whatever the agent has', () => {
+    const stale: StartOptions = { ...baseOpts, accountId: 'deleted' };
+    // No entry for the kind at all: the request's own id is the only account-shaped thing in play,
+    // and it must not survive as one.
+    for (const providers of [{}, { codex: { enabled: true } }] satisfies ProvidersConfig[]) {
+      const merged = applyProviderDefaults(stale, providers, [account]);
+      expect(merged.accountId).toBeUndefined();
+      expect(merged.options.accountId).toBeUndefined();
+    }
   });
 
   it('injects authToken, baseUrl and protocol for an auth-token account with an endpoint', () => {
@@ -77,7 +90,6 @@ describe('applyProviderDefaults account pool', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'gw' } };
     const merged = applyProviderDefaults(baseOpts, providers, [gateway]);
     expect(merged.options.config).toEqual({
-      accountId: 'gw',
       authToken: 'or-tok',
       baseUrl: 'https://relay.example.com/v1',
       protocol: 'openai-responses',
@@ -109,7 +121,6 @@ describe('applyProviderDefaults account pool', () => {
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oa' } };
     // Codex overrides the base URL of its own Responses provider, so it carries no knownProvider.
     expect(applyProviderDefaults(baseOpts, providers, [openai]).options.config).toEqual({
-      accountId: 'oa',
       apiKey: 'sk-oa',
       baseUrl: 'https://api.openai.com/v1',
       protocol: 'openai-responses',
@@ -151,10 +162,10 @@ describe('applyProviderDefaults account pool', () => {
       createdAt: 0,
     };
     const providers: ProvidersConfig = { codex: { enabled: true, activeAccountId: 'oauth_1' } };
-    // The account still resolves — it just contributes no secret, only its id.
-    expect(applyProviderDefaults(baseOpts, providers, [oauth]).options.config).toEqual({
-      accountId: 'oauth_1',
-    });
+    // The account still resolves — it just contributes nothing for the adapter to read.
+    const merged = applyProviderDefaults(baseOpts, providers, [oauth]);
+    expect(merged.options.config).toEqual({});
+    expect(merged.accountId).toBe('oauth_1');
   });
 });
 

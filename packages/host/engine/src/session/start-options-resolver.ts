@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { CustomMcpServerService } from '../agent/custom-mcp-service';
 import type { ProviderConfigStore } from '../agent/provider-config';
-import { applyProviderDefaults, resolvedAccountId } from '../agent/provider-config';
+import { applyProviderDefaults } from '../agent/provider-config';
 import type { TranslatorService } from '../agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from '../agent/translator';
 import { OperationError, RequestError } from '../failure';
@@ -13,6 +13,8 @@ import { MCP_CAPABLE_AGENT_KINDS } from './mcp-capability';
 
 export interface ResolvedStartOptions {
   readonly options: StartOptions;
+  /** The account backing this run, recorded per run so a relaunch stays on it. */
+  readonly accountId?: string;
   /** Custom-MCP injection advisories, delivered on the `session.started` reply. */
   readonly warnings: McpWarning[];
 }
@@ -34,10 +36,11 @@ export class SessionStartOptionsResolver {
   ): Effect.Effect<ResolvedStartOptions, RequestError | OperationError> {
     const providers = this.providers.get();
     const defaults = applyProviderDefaults(options, providers, this.providers.getAccounts());
-    // Whether an account actually resolved — the caller's pin or, failing that, the agent's
+    // Whether an account actually resolved — the request's pick or, failing that, the agent's
     // configured default. Asking that rather than "is a default set" also covers a pinned session
     // on an agent with no default at all.
-    const accountResolved = resolvedAccountId(defaults.options) !== undefined;
+    const { accountId } = defaults;
+    const account = accountId === undefined ? {} : { accountId };
     const { translator } = this;
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
@@ -52,7 +55,7 @@ export class SessionStartOptionsResolver {
           }),
         );
       }
-      if (accountResolved && defaults.options.model === undefined) {
+      if (accountId !== undefined && defaults.options.model === undefined) {
         // With an account in play, its selected set is the only model source and nothing falls back
         // to the agent's own choice. Agents with no account keep resolving their own.
         return yield* Effect.fail(
@@ -65,7 +68,7 @@ export class SessionStartOptionsResolver {
       const custom = yield* withCustomMcpServers(defaults.options);
       const resolved = withSimulatorMcp(custom.options, sessionId);
       const upstream = translationUpstream(resolved);
-      if (!upstream) return { options: resolved, warnings: custom.warnings };
+      if (!upstream) return { options: resolved, ...account, warnings: custom.warnings };
       if (!translator) {
         return yield* Effect.fail(
           new RequestError({
@@ -86,6 +89,7 @@ export class SessionStartOptionsResolver {
       });
       return {
         options: withTranslatorEndpoint(resolved, url),
+        ...account,
         warnings: custom.warnings,
       };
     });
@@ -93,7 +97,9 @@ export class SessionStartOptionsResolver {
 
   /** Fold enabled custom MCP servers into the session's server list, warning instead of
    * silently dropping: unsupported agent kinds and name collisions are user-visible facts. */
-  private withCustomMcpServers(options: StartOptions): Effect.Effect<ResolvedStartOptions> {
+  private withCustomMcpServers(
+    options: StartOptions,
+  ): Effect.Effect<{ options: StartOptions; warnings: McpWarning[] }> {
     const warnings: McpWarning[] = [];
     const enabled = this.customMcp?.listEnabled() ?? [];
     if (enabled.length === 0) return Effect.succeed({ options, warnings });

@@ -40,12 +40,10 @@ export class SessionRequestHandler {
         );
       case 'agent.input': {
         const { input, sessionId } = payload;
-        // A model pick naming an account can mean a relaunch on that account, which lifecycle owns.
-        // Both paths answer with the same plain ack, so the client's contract is unchanged.
-        const applied =
-          input.type === 'set-model' && input.accountId !== undefined
-            ? this.lifecycle.switchModel(sessionId, input.model, input.accountId)
-            : this.sessions.sendInput(sessionId, input);
+        // Lifecycle owns inputs that outlive the adapter holding them: it records an accepted pick on
+        // the run, and a model pick naming another account is a relaunch. Every path answers with the
+        // same plain ack, so the client's contract is one request either way.
+        const applied = this.lifecycle.applyInput(sessionId, input);
         return this.responder.reply(
           payload.clientReqId,
           applied.pipe(

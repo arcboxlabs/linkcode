@@ -11,11 +11,23 @@ import type {
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { OperationError } from '../failure';
 import type { SessionStore } from './session-store';
 
 const TITLE_MAX_LENGTH = 80;
 type RunTask = (effect: Effect.Effect<void>) => void;
+
+/** The fields of a run that say what the thread is *set to*, as opposed to how the run went. */
+type SessionPinnedRun = Pick<SessionRun, 'accountId' | 'model' | 'effort' | 'approvalPolicyId'>;
+
+/** The same choices shaped as start options, which is how a relaunch replays them. `Pick` over
+ * `StartOptions` is the guarantee: a pinned field that a launch cannot accept fails typecheck. */
+export type SessionPin = Pick<StartOptions, keyof SessionPinnedRun>;
+
+/** A pick accepted on a live session; absent fields leave the run's current value alone. The account
+ * is not among them — credentials are injected at spawn, so moving accounts is a new run. */
+export type SessionRunIntent = Omit<SessionPinnedRun, 'accountId'>;
 
 export class SessionRecordRegistry {
   private readonly records = new Map<SessionId, SessionRecord>();
@@ -84,7 +96,7 @@ export class SessionRecordRegistry {
       createdVia: record.createdVia,
       automation: record.automation,
       historyId: latestHistoryId(record),
-      accountId: latestAccountId(record),
+      accountId: latestRunValue(record, 'accountId'),
     }));
   }
 
@@ -132,14 +144,26 @@ export class SessionRecordRegistry {
     this.onChanged(sessionId, 'updated');
   }
 
-  /** Record the model the newest run is now on. A pick accepted mid-run never launches anything, so
-   * without this a relaunch replays the model the run started with and silently drops it. Not an
-   * identity change — `SessionInfo` does not project the model — so it notifies nobody. */
-  setRunModel(sessionId: SessionId, model: string): void {
+  /**
+   * Record a pick the session accepted, on the newest run. A pick accepted mid-run launches nothing,
+   * so without this a relaunch replays what the run started with and silently drops it. Callers write
+   * only picks — never a value an adapter resolved for itself, which would pin the thread to its own
+   * first launch. Not an identity change — `SessionInfo` projects none of these — so it notifies
+   * nobody.
+   */
+  setRunIntent(sessionId: SessionId, intent: SessionRunIntent): void {
     const record = this.records.get(sessionId);
     const run = record?.runs.at(-1);
-    if (!record || !run || run.model === model) return;
-    run.model = model;
+    if (!record || !run) return;
+    const {
+      model = run.model,
+      effort = run.effort,
+      approvalPolicyId = run.approvalPolicyId,
+    } = intent;
+    if (model === run.model && effort === run.effort && approvalPolicyId === run.approvalPolicyId) {
+      return;
+    }
+    Object.assign(run, definedFields({ model, effort, approvalPolicyId }));
     this.persist(record);
   }
 
@@ -194,24 +218,24 @@ export class SessionRecordRegistry {
   /** The account the newest run resolved to — what a live session is actually talking to. */
   accountId(sessionId: SessionId): string | undefined {
     const record = this.records.get(sessionId);
-    return record ? latestAccountId(record) : undefined;
+    return record ? latestRunValue(record, 'accountId') : undefined;
   }
 
   /**
-   * What the newest run resolved to, shaped as a start-options override. A relaunch applies this so
-   * the thread keeps its own model and account; the daemon's configured default answers for new and
-   * unpinned sessions only, and may have moved since this one started.
+   * What the thread is set to, shaped as a start-options override. A relaunch applies this so the
+   * thread keeps its own choices; the daemon's configured default answers for new and unpinned
+   * sessions only, and may have moved since this one started.
    */
-  pinnedOptions(sessionId: SessionId): Pick<StartOptions, 'model' | 'config'> | undefined {
+  pinnedOptions(sessionId: SessionId): SessionPin | undefined {
     const record = this.records.get(sessionId);
     if (!record) return undefined;
-    const accountId = latestAccountId(record);
-    const model = latestModel(record);
-    if (accountId === undefined && model === undefined) return undefined;
-    return {
-      ...(model !== undefined && { model }),
-      ...(accountId !== undefined && { config: { accountId } }),
-    };
+    const pin = definedFields({
+      accountId: latestRunValue(record, 'accountId'),
+      model: latestRunValue(record, 'model'),
+      effort: latestRunValue(record, 'effort'),
+      approvalPolicyId: latestRunValue(record, 'approvalPolicyId'),
+    });
+    return isObjectEmpty(pin) ? undefined : pin;
   }
 
   /** The in-memory record is authoritative while running; persistence is best-effort. */
@@ -253,20 +277,15 @@ function storeFailure(operation: string, publicMessage: string, cause: unknown):
   return new OperationError({ subsystem: 'store', operation, publicMessage, cause });
 }
 
-/** The account the newest run resolved to. Older runs may name a different one — a rebind between
- * runs is legitimate — so only the latest describes what a live session is actually talking to. */
-function latestAccountId(record: SessionRecord): string | undefined {
+/** The newest run that answers for `key`. Older runs may name a different value — a change between
+ * runs is legitimate — so only the latest describes what a live session is actually on. */
+function latestRunValue<K extends keyof SessionPinnedRun>(
+  record: SessionRecord,
+  key: K,
+): SessionRun[K] {
   for (let index = record.runs.length - 1; index >= 0; index -= 1) {
-    const accountId = record.runs[index].accountId;
-    if (accountId !== undefined) return accountId;
-  }
-  return undefined;
-}
-
-function latestModel(record: SessionRecord): string | undefined {
-  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
-    const model = record.runs[index].model;
-    if (model !== undefined) return model;
+    const value = record.runs[index][key];
+    if (value !== undefined) return value;
   }
   return undefined;
 }

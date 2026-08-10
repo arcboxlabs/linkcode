@@ -68,6 +68,11 @@ export const StartOptionsSchema = z.object({
    * (`ProviderConfig.model`); if that is unset too, the session refuses to start rather than
    * letting the agent choose for itself. */
   model: z.string().optional(),
+  /** The account the model was picked from, which outranks the agent's `activeAccountId` fallback.
+   * A request only: resolution consumes it, injects the credential bundle into `config`, and reports
+   * the account that actually resolved separately — so an id naming a deleted account can never read
+   * back as "an account is backing this run". */
+  accountId: z.string().min(1).optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
   /** Initial reasoning effort, if the selected adapter supports effort. */

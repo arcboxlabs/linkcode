@@ -25,6 +25,15 @@ import {
   settleEngineTasks as tick,
 } from './fixtures/session-harness';
 
+/** An adapter that takes the input and then refuses it, like one asked for an unsupported level. */
+class PickyAdapter extends FakeAdapter {
+  override send(input: Parameters<FakeAdapter['send']>[0]) {
+    return super.send(input).then(() => {
+      throw new Error('claude-code: effort refused');
+    });
+  }
+}
+
 class CwdlessHistoryAdapter extends FakeAdapter {
   override readHistory(opts: AgentHistoryReadOptions) {
     return Promise.resolve({
@@ -997,7 +1006,7 @@ describe('session account attribution', () => {
         kind: 'claude-code',
         cwd: '/repo',
         model: 'claude-sonnet-5',
-        config: { accountId: 'acc_pinned' },
+        accountId: 'acc_pinned',
       },
     });
     await h.inject({ kind: 'session.list', clientReqId: 'r2' });
@@ -1036,19 +1045,100 @@ describe('a session keeps its own pick', () => {
     h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
 
     // Same account, so this switches in place and launches nothing — the ordinary way a user
-    // changes model. The adapter reflects the id it actually serves.
+    // changes model. The accepted pick is what gets recorded, not anything the adapter reflects.
     await h.inject({
       kind: 'agent.input',
       clientReqId: 'pick',
       sessionId,
       input: { type: 'set-model', model: 'model-b', accountId: 'acc_one' },
     });
-    h.adapters[0].emit({ type: 'model-update', model: 'model-b' });
     await tick();
     await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
     await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
 
     expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('model-b');
+  });
+
+  it('leaves a model the adapter resolved for itself out of the pin', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({ providers: { 'claude-code': { enabled: true } } });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // What the CLI resolved on its own, reflected at launch: display state, not a choice anyone made.
+    h.adapters[0].emit({ type: 'model-update', model: 'adapter-choice' });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Recording that reflection would pin the thread to its first launch, and the agent's default
+    // could never reach it again.
+    providers.update({ providers: { 'claude-code': { enabled: true, model: 'configured' } } });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('configured');
+    expect((await store.load())[0].runs[0].model).toBeUndefined();
+  });
+
+  it('replays the effort and approval tier picked on the live session', async () => {
+    const h = harness(new InMemorySessionStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // Both axes live on the adapter, so a relaunch is where they get lost.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'xhigh' },
+    });
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'policy',
+      sessionId,
+      input: { type: 'set-approval-policy', policyId: 'acceptEdits' },
+    });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.effort).toBe('xhigh');
+    expect(resumed.resumedWith?.approvalPolicyId).toBe('acceptEdits');
+  });
+
+  it('records nothing when the session refuses the pick', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new PickyAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'max' },
+    });
+    await tick();
+
+    expect(h.adapters[0].sentInputs).toContainEqual({ type: 'set-effort', effort: 'max' });
+    expect((await store.load())[0].runs[0].effort).toBeUndefined();
   });
 
   it('falls back to the agent’s default when the pinned account has been deleted', async () => {
@@ -1093,7 +1183,7 @@ describe('a session keeps its own pick', () => {
         kind: 'claude-code',
         cwd: '/repo',
         model: 'model-doomed',
-        config: { accountId: 'acc_doomed' },
+        accountId: 'acc_doomed',
       },
     });
     const sessionId = startedId(h.sent, 'r1');
@@ -1108,7 +1198,9 @@ describe('a session keeps its own pick', () => {
 
     const resumed = nullthrow(h.adapters.at(-1));
     expect(resumed.resumedWith?.config?.apiKey).toBe('sk-default');
-    expect(resumed.resumedWith?.config?.accountId).toBe('acc_default');
+    // The new run records the account that actually backed it, so the thread's pin recovers too.
+    await h.inject({ kind: 'session.list', clientReqId: 'r4' });
+    expect(listedSessions(h.sent, 'r4')[0]?.accountId).toBe('acc_default');
   });
 
   it('resumes on the run’s account and model after the daemon default moved', async () => {
