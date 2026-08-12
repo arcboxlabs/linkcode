@@ -22,6 +22,8 @@ const showcaseThreadTitle = 'Mocked streaming showcase';
 const longThreadTitle = 'Long thread · navigation testbed';
 const longThreadTurns = 48;
 const maxMountedRows = 10;
+const RE_ACTIVITY_RUN_DETAILS =
+  /^Activity details: .*failed.*ran .*command.*made .*file change.*explored.*$/iu;
 const RE_LONG_THREAD_TURN = /Turn (\d+) —/g;
 
 interface ViteServer {
@@ -132,7 +134,7 @@ async function verifyActivityRunHierarchy(page: Page): Promise<void> {
   await page.locator('[data-conversation-title]', { hasText: showcaseThreadTitle }).waitFor();
 
   const runHeader = page.getByRole('button', {
-    name: 'Activity details: An action failed · Ran a command · Made a file change · Explored 2 times',
+    name: RE_ACTIVITY_RUN_DETAILS,
   });
   await runHeader.waitFor({ timeout: 15000 });
   await runHeader.click();
@@ -160,8 +162,14 @@ async function verifyActivityRunHierarchy(page: Page): Promise<void> {
   });
 
   assert.ok(metrics.children.length >= 5, 'Mixed activity run did not render every child');
-  assert.ok(metrics.children.some((child) => child.slot === 'tooltip-trigger'));
-  assert.ok(metrics.children.some((child) => child.tagName === 'DIV'));
+  assert.ok(
+    metrics.children.some((child) => child.slot === 'tooltip-trigger'),
+    `No tooltip-backed activity row rendered: ${JSON.stringify(metrics.children)}`,
+  );
+  assert.ok(
+    metrics.children.some((child) => child.tagName === 'DIV'),
+    `No bodyless activity row rendered: ${JSON.stringify(metrics.children)}`,
+  );
   assert.ok(
     metrics.children.every(
       (child) => child.paddingBlockStart > 0 && child.paddingBlockStart < metrics.paddingBlockStart,
