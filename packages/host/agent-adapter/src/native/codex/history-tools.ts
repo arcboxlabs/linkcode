@@ -76,7 +76,7 @@ export function codexToolAnnounce(
 
   // function_call: JSON-encoded `arguments`.
   const args = parseArguments(payload);
-  const mcp = persistedMcpIdentity ?? codexMcpToolName(payload);
+  const mcp = codexReplayMcpIdentity(payload, persistedMcpIdentity);
   if (mcp) {
     // Converge with the live adapter's `mcp__<server>__<tool>` slug (and its kind) so a
     // replayed MCP call renders like the live turn did.
@@ -132,9 +132,32 @@ export function codexToolAnnounce(
 }
 
 const MCP_NAMESPACE_PREFIX = 'mcp__';
-const PLUGIN_APPS_NAMESPACE_PREFIX = 'codex_apps__';
+const PLUGIN_APPS_SERVER = 'codex_apps';
+const PLUGIN_APPS_NAMESPACE_PREFIX = `${PLUGIN_APPS_SERVER}__`;
 
-/** Callable names are lossy; use them only when a completed MCP identity was not persisted. */
+function codexReplayMcpIdentity(
+  payload: Record<string, unknown>,
+  persisted: { server: string; tool: string } | undefined,
+): { server: string; tool: string } | undefined {
+  const callable = codexMcpToolName(payload);
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  // Legacy Codex Apps persisted `github_create_issue`; only the callable retained its connector
+  // boundary.
+  if (
+    callable &&
+    persisted?.server === PLUGIN_APPS_SERVER &&
+    !persisted.tool.includes('.') &&
+    namespace?.startsWith(`${MCP_NAMESPACE_PREFIX}${PLUGIN_APPS_NAMESPACE_PREFIX}`) &&
+    name?.[0] === '_' &&
+    persisted.tool === `${callable.server}_${callable.tool}`
+  ) {
+    return callable;
+  }
+  return persisted ?? callable;
+}
+
+/** Callable names are lossy; raw completed identities take precedence outside the legacy case. */
 function codexMcpToolName(
   payload: Record<string, unknown>,
 ): { server: string; tool: string } | undefined {
