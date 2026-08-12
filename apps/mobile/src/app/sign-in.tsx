@@ -2,13 +2,103 @@ import { BrandMark } from '@mobile/components/shell/brand-mark';
 import { signInToCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { isAppleSignInCancel, signInWithApple } from '@mobile/runtime/cloud/idp';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { Redirect, useRouter } from 'expo-router';
-import { noop } from 'foxact/noop';
-import { Button, Spinner } from 'heroui-native';
-import { useEffect, useState } from 'react';
-import { Text, useColorScheme, View } from 'react-native';
+import { Color, Redirect, useRouter } from 'expo-router';
+import { useEffect } from 'foxact/use-abortable-effect';
+import { Button } from 'heroui-native';
+import { useState } from 'react';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
+
+const iosColors = {
+  accent: Platform.OS === 'ios' ? Color.ios.systemBlue : undefined,
+};
+
+const iosStyles = StyleSheet.create({
+  screen: Platform.OS === 'ios' ? { backgroundColor: Color.ios.systemBackground } : {},
+  label: Platform.OS === 'ios' ? { color: Color.ios.label } : {},
+  secondaryLabel: Platform.OS === 'ios' ? { color: Color.ios.secondaryLabel } : {},
+  danger: Platform.OS === 'ios' ? { color: Color.ios.systemRed } : {},
+  primaryButton: Platform.OS === 'ios' ? { backgroundColor: Color.ios.systemBlue } : {},
+  primaryButtonLabel: Platform.OS === 'ios' ? { color: 'white' } : {},
+  secondaryButton: Platform.OS === 'ios' ? { backgroundColor: Color.ios.secondarySystemFill } : {},
+  accentLabel: Platform.OS === 'ios' ? { color: Color.ios.systemBlue } : {},
+});
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    alignItems: 'center',
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+  },
+  content: {
+    gap: 48,
+    maxWidth: 420,
+    width: '100%',
+  },
+  hero: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+    lineHeight: 41,
+  },
+  tagline: {
+    fontSize: 17,
+    lineHeight: 22,
+    maxWidth: 320,
+  },
+  actions: {
+    gap: 12,
+  },
+  status: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 18,
+  },
+  error: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  appleButton: {
+    height: 50,
+    width: '100%',
+  },
+  authButton: {
+    borderRadius: 13,
+    height: 'auto',
+    minHeight: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  manualButton: {
+    borderRadius: 13,
+    height: 'auto',
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  buttonLabel: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+});
 
 /**
  * First-run welcome: native Apple sign-in when available, browser OAuth otherwise,
@@ -22,21 +112,30 @@ export default function SignInScreen() {
   const account = useCloudAccount();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(noop);
+  useEffect((signal) => {
+    void AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (!signal.aborted) setAppleAvailable(available);
+      })
+      .catch(() => {
+        if (!signal.aborted) setAppleAvailable(false);
+      });
   }, []);
 
-  if (account.status === 'loading') {
+  if (account.status === 'signed-in') return <Redirect href="/connect" />;
+  if (appleAvailable === null || account.status === 'loading') {
     return (
-      <View className="flex-1 items-center justify-center gap-6 bg-background">
-        <BrandMark />
-        <Spinner />
+      <View
+        className="flex-1 items-center justify-center gap-6 bg-background"
+        style={iosStyles.screen}
+      >
+        <BrandMark size={80} />
+        <ActivityIndicator accessibilityRole="progressbar" color={iosColors.accent} />
       </View>
     );
   }
-  if (account.status === 'signed-in') return <Redirect href="/connect" />;
 
   const run = async (flow: () => Promise<void>) => {
     setBusy(true);
@@ -44,57 +143,124 @@ export default function SignInScreen() {
     try {
       await flow();
     } catch (error) {
-      if (!isAppleSignInCancel(error)) setFailed(true);
+      if (!isAppleSignInCancel(error)) {
+        setFailed(true);
+        AccessibilityInfo.announceForAccessibility(t('error'));
+      }
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <View
-      className="flex-1 bg-background px-6"
-      style={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}
+    <ScrollView
+      className="flex-1 bg-background"
+      style={iosStyles.screen}
+      contentContainerStyle={[
+        styles.scrollContent,
+        Platform.OS === 'android' && {
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 24,
+        },
+      ]}
+      contentInsetAdjustmentBehavior="automatic"
     >
-      <View className="flex-1 items-center justify-center gap-4">
-        <BrandMark />
-        <Text className="font-bold text-[34px] text-foreground">LinkCode</Text>
-        <Text className="text-center text-body text-muted" style={{ maxWidth: 300 }}>
-          {t('tagline')}
-        </Text>
-      </View>
-      <View className="gap-3">
-        {failed ? <Text className="text-center text-danger text-subhead">{t('error')}</Text> : null}
-        {appleAvailable ? (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={
-              colorScheme === 'dark'
-                ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-            }
-            cornerRadius={26}
-            // The docs require an explicit width and height via style; the
-            // flex column happens to stretch it, but don't rely on that.
-            style={{ height: 52, width: '100%', opacity: busy ? 0.5 : 1 }}
+      <View style={styles.content}>
+        <View style={styles.hero}>
+          <BrandMark size={80} />
+          <Text
+            accessibilityRole="header"
+            className="font-bold text-foreground"
+            dynamicTypeRamp="largeTitle"
+            style={[styles.title, iosStyles.label]}
+          >
+            LinkCode
+          </Text>
+          <Text
+            className="text-center text-muted"
+            dynamicTypeRamp="body"
+            style={[styles.tagline, iosStyles.secondaryLabel]}
+          >
+            {t('tagline')}
+          </Text>
+        </View>
+
+        <View style={styles.actions}>
+          <View style={styles.status}>
+            {busy ? (
+              <ActivityIndicator
+                accessibilityRole="progressbar"
+                color={iosColors.accent}
+                size="small"
+              />
+            ) : failed ? (
+              <Text
+                accessibilityRole="alert"
+                className="text-center text-danger"
+                dynamicTypeRamp="footnote"
+                selectable
+                style={[styles.error, iosStyles.danger]}
+              >
+                {t('error')}
+              </Text>
+            ) : null}
+          </View>
+
+          {appleAvailable ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              accessibilityState={{ disabled: busy, busy }}
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={
+                colorScheme === 'dark'
+                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+              }
+              cornerRadius={13}
+              pointerEvents={busy ? 'none' : 'auto'}
+              style={[styles.appleButton, busy && styles.disabled]}
+              onPress={() => {
+                if (!busy) void run(signInWithApple);
+              }}
+            />
+          ) : null}
+          <Button
+            animation={{ scale: false }}
+            isDisabled={busy}
+            size="md"
+            style={[
+              styles.authButton,
+              appleAvailable ? iosStyles.secondaryButton : iosStyles.primaryButton,
+            ]}
+            variant={appleAvailable ? 'secondary' : 'primary'}
             onPress={() => {
-              if (!busy) void run(signInWithApple);
+              void run(signInToCloud);
             }}
-          />
-        ) : null}
-        <Button
-          size="lg"
-          variant={appleAvailable ? 'secondary' : 'primary'}
-          isDisabled={busy}
-          onPress={() => {
-            void run(signInToCloud);
-          }}
-        >
-          <Button.Label>{appleAvailable ? t('other') : t('signIn')}</Button.Label>
-        </Button>
-        <Button variant="ghost" onPress={() => router.replace('/connect')}>
-          <Button.Label>{t('skip')}</Button.Label>
-        </Button>
+          >
+            <Button.Label
+              dynamicTypeRamp="body"
+              style={[
+                styles.buttonLabel,
+                appleAvailable ? iosStyles.label : iosStyles.primaryButtonLabel,
+              ]}
+            >
+              {appleAvailable ? t('other') : t('signIn')}
+            </Button.Label>
+          </Button>
+          <Button
+            animation={{ scale: false }}
+            style={styles.manualButton}
+            variant="ghost"
+            onPress={() => router.replace('/connect')}
+          >
+            <Button.Label
+              dynamicTypeRamp="body"
+              style={[styles.buttonLabel, iosStyles.accentLabel]}
+            >
+              {t('skip')}
+            </Button.Label>
+          </Button>
+        </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }

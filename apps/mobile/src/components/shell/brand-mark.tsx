@@ -13,11 +13,12 @@ export function BrandMark({ size = 96 }: { size?: number }): React.ReactNode {
         width: size,
         height: size,
         borderRadius: size * 0.22,
+        borderCurve: 'continuous',
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'rgba(0, 0, 0, 0.1)',
       }}
     >
-      <Image source={icon} style={{ width: size, height: size }} />
+      <Image accessible={false} alt="" source={icon} style={{ width: size, height: size }} />
     </View>
   );
 }
