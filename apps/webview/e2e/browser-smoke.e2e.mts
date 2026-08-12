@@ -18,6 +18,7 @@ const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('
 const newSessionDefaultsKey = 'linkcode.workbench.new-session-defaults:v7';
 const mockThreadTitle = 'Wire the workbench to the daemon';
 const mockChatThreadTitle = 'Prototype without git';
+const showcaseThreadTitle = 'Mocked streaming showcase';
 const longThreadTitle = 'Long thread · navigation testbed';
 const longThreadTurns = 48;
 const maxMountedRows = 10;
@@ -124,6 +125,49 @@ async function verifyNewChatIsolation(page: Page, appErrors: string[]): Promise<
     `New chat rendered the previous conversation after submission: ${JSON.stringify(titles)}`,
   );
   assertNoApplicationErrors(appErrors);
+}
+
+async function verifyActivityRunHierarchy(page: Page): Promise<void> {
+  await page.locator('[data-thread-title]', { hasText: showcaseThreadTitle }).click();
+  await page.locator('[data-conversation-title]', { hasText: showcaseThreadTitle }).waitFor();
+
+  const runHeader = page.getByRole('button', {
+    name: 'Activity details: An action failed · Ran a command · Made a file change · Explored 2 times',
+  });
+  await runHeader.waitFor({ timeout: 15000 });
+  await runHeader.click();
+
+  const metrics = await runHeader.evaluate((header) => {
+    const group = header.closest('[data-slot="collapsible"]');
+    const body = group?.querySelector(
+      ':scope > [data-slot="collapsible-panel"] [data-slot="scroll-area-content"] > div',
+    );
+    if (!(body instanceof HTMLElement)) throw new Error('Missing expanded activity body');
+
+    const children = [...body.children].map((row) => {
+      const child = row.firstElementChild;
+      if (!(child instanceof HTMLElement)) throw new Error('Missing activity child header');
+      return {
+        paddingBlockStart: Number.parseFloat(getComputedStyle(child).paddingBlockStart),
+        slot: child.dataset.slot,
+        tagName: child.tagName,
+      };
+    });
+    return {
+      children,
+      paddingBlockStart: Number.parseFloat(getComputedStyle(header).paddingBlockStart),
+    };
+  });
+
+  assert.ok(metrics.children.length >= 5, 'Mixed activity run did not render every child');
+  assert.ok(metrics.children.some((child) => child.slot === 'tooltip-trigger'));
+  assert.ok(metrics.children.some((child) => child.tagName === 'DIV'));
+  assert.ok(
+    metrics.children.every(
+      (child) => child.paddingBlockStart > 0 && child.paddingBlockStart < metrics.paddingBlockStart,
+    ),
+    `Activity children were not denser than the group: ${JSON.stringify(metrics)}`,
+  );
 }
 
 async function verifyLongThreadVirtualization(page: Page): Promise<void> {
@@ -372,6 +416,7 @@ async function verifyMockEntry(browser: Browser): Promise<void> {
     const recoveryPrompt = `${firstPrompt}-after-reload`;
     await sendPrompt(page, recoveryPrompt, appErrors);
     await verifyNewChatIsolation(page, appErrors);
+    await verifyActivityRunHierarchy(page);
     await verifyLongThreadVirtualization(page);
     assertNoApplicationErrors(appErrors);
     await page.close();

@@ -701,6 +701,13 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           rawInput: { path: 'packages/presentation/ui/src/chat/activity-groups.ts' },
         },
         {
+          toolCallId: 'mock-activity-read-bodyless',
+          title: 'Inspect activity boundaries',
+          kind: 'read',
+          status: 'completed',
+          content: [],
+        },
+        {
           toolCallId: 'mock-activity-execute-failed',
           title: 'Run compact activity check',
           kind: 'execute',
