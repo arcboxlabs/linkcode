@@ -23,6 +23,7 @@ export type CodexToolAnnounce = { toolCall: ToolCall } | { plan: Plan };
 export function codexToolAnnounce(
   callId: string,
   payload: Record<string, unknown>,
+  persistedMcpIdentity?: { server: string; tool: string },
 ): CodexToolAnnounce {
   const payloadType = stringField(payload, 'type');
   const name = stringField(payload, 'name');
@@ -75,7 +76,7 @@ export function codexToolAnnounce(
 
   // function_call: JSON-encoded `arguments`.
   const args = parseArguments(payload);
-  const mcp = codexMcpToolName(payload);
+  const mcp = persistedMcpIdentity ?? codexMcpToolName(payload);
   if (mcp) {
     // Converge with the live adapter's `mcp__<server>__<tool>` slug (and its kind) so a
     // replayed MCP call renders like the live turn did.
@@ -133,8 +134,7 @@ export function codexToolAnnounce(
 const MCP_NAMESPACE_PREFIX = 'mcp__';
 const PLUGIN_APPS_NAMESPACE_PREFIX = 'codex_apps__';
 
-/** Rollout MCP rows: `namespace` is `mcp__<server>` (a stray trailing `__` on some real rows),
- * `name` the bare tool; plugin apps namespace as `mcp__codex_apps__<app>` with a `_`-led tool. */
+/** Callable names are lossy; use them only when a completed MCP identity was not persisted. */
 function codexMcpToolName(
   payload: Record<string, unknown>,
 ): { server: string; tool: string } | undefined {
@@ -146,8 +146,6 @@ function codexMcpToolName(
   if (server.startsWith(PLUGIN_APPS_NAMESPACE_PREFIX)) {
     server = server.slice(PLUGIN_APPS_NAMESPACE_PREFIX.length);
     if (tool[0] === '_') tool = tool.slice(1);
-  } else if (server.endsWith('__')) {
-    server = server.slice(0, -2);
   }
   return server.length > 0 && tool.length > 0 ? { server, tool } : undefined;
 }

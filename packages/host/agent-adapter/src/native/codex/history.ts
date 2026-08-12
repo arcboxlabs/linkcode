@@ -456,8 +456,8 @@ const CODEX_TOOL_OUTPUT_TYPES = new Set([
 /**
  * Replays the rollout as the event stream the live turn emitted: text plus tool announce/settle
  * pairs correlated by `call_id`, mapped to the live presentation shapes by `history-tools.ts`.
- * History ids are NOT converged with the live app-server item ids (the rollout persists only
- * `call_id`; message rows carry no id) — the seed relies on the `uptoSeq` cut. Known lossiness
+ * Message history ids are NOT converged with the live app-server item ids because rollout message
+ * rows carry no id — the seed relies on the `uptoSeq` cut. Known lossiness
  * (CODE-97): reasoning stays unreplayable (`encrypted_content` only), and replayed edit diffs are
  * reconstructed from the `*** Begin Patch` envelope, not the app-server's richer live unified diff.
  */
@@ -467,6 +467,7 @@ export function mapCodexHistoryEvents(
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
   const announced = new Map<string, ToolCall>();
+  const persistedMcpIdentities = collectCodexMcpIdentities(rows);
   const promptTexts = collectCodexPromptTexts(rows);
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
@@ -515,7 +516,7 @@ export function mapCodexHistoryEvents(
     const callId = stringField(payload, 'call_id');
     if (payloadType !== undefined && callId !== undefined) {
       if (CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType)) {
-        const mapped = codexToolAnnounce(callId, payload);
+        const mapped = codexToolAnnounce(callId, payload, persistedMcpIdentities.get(callId));
         if ('plan' in mapped) {
           planCalls.add(callId);
           events.push({ historyId, itemId: callId, event: { type: 'plan', plan: mapped.plan } });
@@ -551,6 +552,35 @@ export function mapCodexHistoryEvents(
     }
   });
   return events;
+}
+
+function collectCodexMcpIdentities(
+  rows: JsonRecord[],
+): Map<string, { server: string; tool: string }> {
+  const identities = new Map<string, { server: string; tool: string }>();
+  for (const row of rows) {
+    if (stringField(row, 'type') !== 'event_msg') continue;
+    const payload = recordField(row, 'payload');
+    if (!payload) continue;
+    if (stringField(payload, 'type') === 'item_completed') {
+      const item = recordField(payload, 'item');
+      if (!item || stringField(item, 'type') !== 'McpToolCall') continue;
+      const callId = stringField(item, 'id');
+      const server = stringField(item, 'server');
+      const tool = stringField(item, 'tool');
+      if (callId && server && tool) identities.set(callId, { server, tool });
+      continue;
+    }
+    if (stringField(payload, 'type') !== 'mcp_tool_call_end') continue;
+    const callId = stringField(payload, 'call_id');
+    const invocation = recordField(payload, 'invocation');
+    const server = invocation ? stringField(invocation, 'server') : undefined;
+    const tool = invocation ? stringField(invocation, 'tool') : undefined;
+    if (callId && server && tool && !identities.has(callId)) {
+      identities.set(callId, { server, tool });
+    }
+  }
+  return identities;
 }
 
 function idFromFilename(path: string): string {
