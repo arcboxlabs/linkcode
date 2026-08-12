@@ -93,6 +93,20 @@ describe('tool search presentation', () => {
     expect(screen.getByText('No matching deferred tools found')).toBeDefined();
   });
 
+  it('preserves line breaks in prose messages', () => {
+    const message = 'Connection failed\nRetry later';
+    const toolCall = toolSearch({
+      content: [{ type: 'content', content: { type: 'text', text: message } }],
+    });
+
+    const { container } = render(<ToolCallBody toolCall={toolCall} />);
+    const paragraph = container.querySelector('p');
+
+    expect(paragraph?.textContent).toBe(message);
+    expect(paragraph?.classList.contains('whitespace-pre-wrap')).toBe(true);
+    expect(paragraph?.classList.contains('break-words')).toBe(true);
+  });
+
   it('keeps neutral wording when a settled selection has no recoverable result rows', () => {
     // The cold-history shape: completed, but the SDK stripped the tool_use_result rows.
     const toolCall = toolSearch({ content: [] });

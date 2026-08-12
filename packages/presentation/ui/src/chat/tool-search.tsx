@@ -11,7 +11,9 @@ export function ToolSearchResult({
 }): React.ReactNode {
   const { names, message } = presentation;
   if (names.length === 0) {
-    return message ? <p className="text-muted-foreground text-sm">{message}</p> : null;
+    return message ? (
+      <p className="whitespace-pre-wrap break-words text-muted-foreground text-sm">{message}</p>
+    ) : null;
   }
   return (
     <p className="min-w-0 break-words font-mono text-xs leading-relaxed">
