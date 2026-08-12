@@ -528,6 +528,86 @@ describe('mapCodexHistoryEvents', () => {
     ]);
   });
 
+  it('recovers only matching legacy dotless Codex Apps callable identities', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__github',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_legacy_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_legacy_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_legacy_app', output: 'created' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_mismatched_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_mismatched_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_mismatched_app',
+        output: 'created',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_modern_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_modern_app',
+          invocation: { server: 'codex_apps', tool: 'linear_create_issue', arguments: {} },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call_modern_app',
+            server: 'codex_apps',
+            tool: 'github.create_issue',
+            arguments: {},
+            status: 'completed',
+          },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_modern_app', output: 'created' }),
+    ]);
+
+    expect(toolCalls(events).map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
+    ]);
+  });
+
   it('settles an aborted run and a declined run as failed with the raw text as the record', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
