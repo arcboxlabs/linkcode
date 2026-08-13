@@ -27,8 +27,11 @@ import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useTranslations } from 'use-intl';
+
+const USES_INLINE_NAVIGATION_TITLE =
+  Platform.OS === 'ios' && Number.parseInt(Platform.Version, 10) >= 26;
 
 /** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
 type SearchBarChangeEvent = Parameters<
@@ -54,7 +57,7 @@ export default function ThreadsRoute(): React.ReactNode {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerLargeTitle: true,
+          headerLargeTitleEnabled: !USES_INLINE_NAVIGATION_TITLE,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           headerRight:
@@ -77,7 +80,7 @@ export default function ThreadsRoute(): React.ReactNode {
 }
 
 /** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
- * native search bar stacked under the large title. Empty workspace groups are hidden — the sheet
+ * native search bar stacked below the navigation bar. Empty workspace groups are hidden — the sheet
  * is where they surface. */
 function ThreadsScreen({
   sheetOpen,
@@ -151,8 +154,8 @@ function ThreadsScreen({
 
   return (
     <>
-      {/* `stacked` keeps the field under the large title instead of collapsing into the iOS 26
-          toolbar; the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
+      {/* `stacked` keeps the field below either title style instead of moving into the iOS 26 toolbar;
+          the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
       <Stack.SearchBar
         placeholder={t('searchPlaceholder')}
         placement="stacked"
