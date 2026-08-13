@@ -29,3 +29,11 @@ appId: com.arcboxlabs.linkcode.mobile
 # manual form: a simulator that has been used before carries saved hosts and remembers whether the
 # form was open, and either would make this flow depend on leftover state.
 - assertVisible: 'Sign in to reach your machines from anywhere through LinkCode Cloud.'
+
+# Skip pushes host setup above sign-in so the native back affordance returns to the OOBE instead of
+# revealing an older copy of the same Connect screen.
+- tapOn:
+    point: '6%,8%'
+- assertVisible: 'Sign in with Apple'
+- assertVisible: 'More sign-in options'
+- assertNotVisible: 'Connect to a host'

@@ -250,7 +250,7 @@ export default function SignInScreen() {
             animation={{ scale: false }}
             style={styles.manualButton}
             variant="ghost"
-            onPress={() => router.replace('/connect')}
+            onPress={() => router.push('/connect')}
           >
             <Button.Label
               dynamicTypeRamp="body"
