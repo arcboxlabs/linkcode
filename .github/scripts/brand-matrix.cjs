@@ -131,8 +131,8 @@ function desktopDistribution(value, path, brandId, channel) {
     distribution.credentialEnvironment,
     `${path}.credentialEnvironment`,
   );
-  if (credentialEnvironment !== `release-${brandId}`) {
-    fail(`${path}.credentialEnvironment`, `must equal release-${brandId}`);
+  if (credentialEnvironment !== 'release') {
+    fail(`${path}.credentialEnvironment`, 'must equal release');
   }
   const r2Bucket = string(distribution.r2Bucket, `${path}.r2Bucket`, RE_BUCKET);
   const r2Prefix = string(distribution.r2Prefix, `${path}.r2Prefix`, RE_R2_PREFIX);

@@ -239,9 +239,6 @@ jobs:
             fi
           }
           check_environment release true
-          while IFS= read -r environment; do
-            check_environment "$environment" false
-          done < <(jq -r '.include[].distribution.desktop.credentialEnvironment' <<<"$BRANDS_JSON")
 
   render-inputs:
     name: Validate immutable render inputs

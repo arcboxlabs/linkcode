@@ -151,9 +151,9 @@ nonproduction fixture; no other path is accepted.
   checklist with all five keys set to `true`: `configurableFeaturesDisclosed`,
   `dataPracticesReviewed`, `noExecutableCode`, `permissionsReviewed`, and `storeMetadataReviewed`.
 - `distribution.desktop` may be `null` only for plan validation. Every build requires an object containing
-  `credentialEnvironment`, `r2Bucket`, `r2Prefix`, and `updateUrl`. The environment must be exactly
-  `release-<brandId>`. Both URL and prefix must end in the same brand/channel path, and prefixes in
-  one bucket must not overlap.
+  `credentialEnvironment`, `r2Bucket`, `r2Prefix`, and `updateUrl`. `credentialEnvironment` must be
+  exactly `release`; no per-brand Environment is part of this contract. Both URL and prefix must end
+  in the same brand/channel path, and prefixes in one bucket must not overlap.
 - `distribution.mobile` may be `null` only for plan validation. Every build requires `easProjectId`, its
   exact `https://u.expo.dev/<id>` URL, iOS `appleTeamId`/`ascAppId`, and Android
   `track: "internal"`. EAS project IDs and App Store Connect app IDs must be unique across brands.
@@ -179,9 +179,9 @@ upload inputs before any store submission or R2 upload can begin.
 
 ### Required Actions configuration and least privilege
 
-Render vars below are read from the protected `release` environment. Signing, upload, store, and
-observability inputs are read from the protected `release-<brandId>` environment selected by the
-reviewed matrix. The bot credentials are organization secrets. Trusted workflow steps report
+Render vars, signing, upload, store, and observability inputs are read from the single protected
+`release` Environment. The reviewed matrix must name that exact Environment for every row. The bot
+credentials are organization secrets. Trusted workflow steps report
 missing bot credentials before checking out selected client code, and the input scripts report
 missing render, signing, or upload values without receiving those bot credentials:
 
@@ -201,8 +201,8 @@ missing render, signing, or upload values without receiving those bot credential
 - Windows Desktop: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_PUBLISHER_NAME`,
   `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, and `AZURE_CERTIFICATE_PROFILE`. The Azure
   app has only the Trusted Signing certificate-profile signer role and an OIDC subject restricted
-  to this repository's matching `release-<brandId>` environment; no client secret exists.
-- Desktop observability in `release-<brandId>`: `SENTRY_DSN_DESKTOP` and
+  to this repository's `release` Environment; no client secret exists.
+- Desktop observability in `release`: `SENTRY_DSN_DESKTOP` and
   `POSTHOG_PROJECT_TOKEN` plus the `POSTHOG_HOST` var. These are required publishable identifiers,
   not signing credentials.
 - Mobile: `EXPO_TOKEN`, `SENTRY_AUTH_TOKEN`, `SENTRY_DSN_MOBILE`, and
@@ -212,17 +212,16 @@ missing render, signing, or upload values without receiving those bot credential
   Native certificates, provisioning profiles, Android keystores, App Store Connect keys, and Google
   Play service accounts stay EAS-managed and project-scoped. Submissions stop at TestFlight and the
   Play internal track; this workflow never submits to App Review or promotes a Play release.
-- Desktop upload: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in each brand's
-  `release-<brandId>` environment. Each key pair is scoped to that brand's one `r2Bucket/r2Prefix`
-  with object read/write/list only; it must not access another brand prefix or permit
+- Desktop upload: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in `release`.
+  Scope the key pair to the exact `r2Bucket/r2Prefix` destinations in the reviewed matrix with
+  object read/write/list only; it must not permit
   bucket/account administration. `R2_ACCOUNT_ID` is exactly the
   lowercase 32-hex Cloudflare account ID; URL-like or otherwise malformed values fail before AWS CLI runs.
 
 Do not store private signing material, access tokens, or service-account JSON in the committed
 matrix, repository files, artifacts, or Actions vars. Protect `release` with required reviewers and
-only exact `master` plus `v*.*.*` custom deployment policies. Protect every `release-<brandId>`
-environment with required reviewers and only the exact `master` custom deployment policy before
-enabling `build`, `sign`, or `upload`.
+only exact `master` plus `v*.*.*` custom deployment policies before enabling `build`, `sign`, or
+`upload`. No additional release Environment is required by the brand-matrix workflow.
 The environment preflight reads protection metadata with the built-in `GITHUB_TOKEN` and explicit
 `actions: read`; this metadata-only token cannot approve or bypass an environment review.
 
