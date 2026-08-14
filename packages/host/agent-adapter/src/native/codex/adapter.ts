@@ -1,6 +1,6 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { extname } from 'node:path';
+import { extname, resolve } from 'node:path';
 import type {
   AgentCommand,
   AgentHistoryBranchOptions,
@@ -138,10 +138,42 @@ const SKILL_ICON_MIME: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
+const GIF_87A_MAGIC = Buffer.from('GIF87a');
+const GIF_89A_MAGIC = Buffer.from('GIF89a');
+const JPEG_MAGIC = Buffer.from([255, 216, 255]);
+const PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const RIFF_MAGIC = Buffer.from('RIFF');
+const WEBP_MAGIC = Buffer.from('WEBP');
+const SVG_ROOT_RE = /^\s*(?:<\?xml[\s\S]*?\?>\s*)?<svg(?:\s|>)/i;
+
 /** SVG that would execute or fetch if ever parsed as a document (scripts, foreignObject, event
  * handlers, javascript: URLs, non-fragment refs) — inert inside `<img>`, rejected for depth. */
 const SVG_ACTIVE_CONTENT_RE =
   /<\s*(?:script|foreignObject)\b|\bon[a-z]+\s*=|javascript:|\b(?:xlink:)?href\s*=\s*["'](?!#)/i;
+
+function hasMagic(data: Buffer, magic: Buffer, offset = 0): boolean {
+  return (
+    data.length >= offset + magic.length &&
+    data.subarray(offset, offset + magic.length).equals(magic)
+  );
+}
+
+function isSkillIconContent(mime: string, data: Buffer): boolean {
+  switch (mime) {
+    case 'image/gif':
+      return hasMagic(data, GIF_87A_MAGIC) || hasMagic(data, GIF_89A_MAGIC);
+    case 'image/jpeg':
+      return hasMagic(data, JPEG_MAGIC);
+    case 'image/png':
+      return hasMagic(data, PNG_MAGIC);
+    case 'image/svg+xml':
+      return SVG_ROOT_RE.test(data.toString('utf8'));
+    case 'image/webp':
+      return hasMagic(data, RIFF_MAGIC) && hasMagic(data, WEBP_MAGIC, 8);
+    default:
+      return false;
+  }
+}
 
 /** Embed a skill's icon file as a `data:image/*` URI, or nothing when the file is missing,
  * unreasonably large, not a known image type, or an SVG carrying active content. The path comes
@@ -150,9 +182,19 @@ export async function skillIconDataUri(iconPath: string): Promise<string | undef
   const mime = SKILL_ICON_MIME[extname(iconPath).toLowerCase()];
   if (!mime) return undefined;
   try {
-    const info = await stat(iconPath);
+    const resolvedPath = resolve(iconPath);
+    // Any canonical mismatch means the file or one of its parent directories traverses a symlink.
+    if ((await realpath(resolvedPath)) !== resolvedPath) return undefined;
+    const info = await stat(resolvedPath);
     if (!info.isFile() || info.size === 0 || info.size > SKILL_ICON_MAX_BYTES) return undefined;
-    const data = await readFile(iconPath);
+    const data = await readFile(resolvedPath);
+    if (
+      data.length === 0 ||
+      data.length > SKILL_ICON_MAX_BYTES ||
+      !isSkillIconContent(mime, data)
+    ) {
+      return undefined;
+    }
     if (mime === 'image/svg+xml' && SVG_ACTIVE_CONTENT_RE.test(data.toString('utf8'))) {
       return undefined;
     }

@@ -334,7 +334,10 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     await adapter.start({
       kind: 'opencode',
       cwd: '/tmp/repo',
-      mcpServers: [{ type: 'http', name: 'linear', url: 'http://127.0.0.1:7777/mcp' }],
+      mcpServers: [
+        { type: 'http', name: 'linear', url: 'http://127.0.0.1:7777/mcp' },
+        { type: 'http', name: 'repo__prod', url: 'http://127.0.0.1:7779/mcp' },
+      ],
     });
 
     const part = (id: string, tool: string) => ({
@@ -363,15 +366,30 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       type: 'message.part.updated',
       properties: { sessionID: 'sess-1', time: 2, part: part('prt-builtin', 'bash') },
     });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-mcp-ambiguous',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 3,
+        part: part('prt-mcp-ambiguous', 'repo__prod_search_files'),
+      },
+    });
 
     await vi.waitFor(() => {
-      expect(events.filter((event) => event.type === 'tool-call')).toHaveLength(3);
+      expect(events.filter((event) => event.type === 'tool-call')).toHaveLength(4);
     });
     const titles = events.reduce<string[]>((all, event) => {
       if (event.type === 'tool-call') all.push(event.toolCall.title);
       return all;
     }, []);
-    expect(titles).toEqual(['mcp__linear__list_issues', 'mcp__notion__search_pages', 'bash']);
+    expect(titles).toEqual([
+      'mcp__linear__list_issues',
+      'mcp__notion__search_pages',
+      'bash',
+      'repo__prod_search_files',
+    ]);
   });
 
   it('skips parts of a user message, so the prompt text is not replayed as agent output', async () => {

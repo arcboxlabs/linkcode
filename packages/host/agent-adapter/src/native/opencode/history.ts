@@ -80,7 +80,8 @@ export function opencodeMcpToolName(
  * when it resolves to a known server. */
 export function opencodeMcpTitle(tool: string, mcpServers: readonly string[]): string | undefined {
   const mcp = opencodeMcpToolName(tool, mcpServers);
-  return mcp && `mcp__${mcp.server}__${mcp.tool}`;
+  // The shared slug splits on the first `__`; keep the provider's verbatim title when ambiguous.
+  return mcp && !mcp.server.includes('__') ? `mcp__${mcp.server}__${mcp.tool}` : undefined;
 }
 
 /** A tool part as the full ToolCall snapshot. Live stream (`emitTool`) and history replay share

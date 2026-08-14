@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
@@ -365,8 +365,12 @@ describe('CodexAdapter slash commands', () => {
   });
 });
 
+async function createIconTempDir(): Promise<string> {
+  return realpath(await mkdtemp(join(tmpdir(), 'codex-skill-icon-')));
+}
+
 describe('codex skill icons', () => {
-  const dirPromise = mkdtemp(join(tmpdir(), 'codex-skill-icon-'));
+  const dirPromise = createIconTempDir();
   afterAll(async () => {
     await rm(await dirPromise, { force: true, recursive: true });
   });
@@ -378,13 +382,30 @@ describe('codex skill icons', () => {
     await writeFile(iconPath, iconBytes);
     const oversizedPath = join(dir, 'oversized.png');
     await writeFile(oversizedPath, Buffer.alloc(33 * 1024, 1));
+    const fakePngPath = join(dir, 'fake.png');
+    await writeFile(fakePngPath, 'not an image');
+    const wrongExtensionPath = join(dir, 'wrong-extension.jpg');
+    await writeFile(wrongExtensionPath, iconBytes);
 
     expect(await skillIconDataUri(iconPath)).toBe(
       `data:image/png;base64,${iconBytes.toString('base64')}`,
     );
     expect(await skillIconDataUri(oversizedPath)).toBeUndefined();
+    expect(await skillIconDataUri(fakePngPath)).toBeUndefined();
+    expect(await skillIconDataUri(wrongExtensionPath)).toBeUndefined();
     expect(await skillIconDataUri(join(dir, 'missing.png'))).toBeUndefined();
     expect(await skillIconDataUri(join(dir, 'icon.bmp'))).toBeUndefined();
+  });
+
+  it('rejects icons reached through a symlinked parent directory', async () => {
+    const dir = await dirPromise;
+    const assetsDir = join(dir, 'real-assets');
+    await mkdir(assetsDir);
+    await writeFile(join(assetsDir, 'icon.png'), Buffer.from('89504E470D0A1A0A', 'hex'));
+    const linkedDir = join(dir, 'linked-assets');
+    await symlink(assetsDir, linkedDir, process.platform === 'win32' ? 'junction' : 'dir');
+
+    expect(await skillIconDataUri(join(linkedDir, 'icon.png'))).toBeUndefined();
   });
 
   it('rejects SVG icons carrying active content, keeping fragment-ref-only ones', async () => {

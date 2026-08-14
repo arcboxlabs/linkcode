@@ -243,6 +243,7 @@ describe('OpenCodeAdapter.readHistory', () => {
         // Config-declared server — resolved without any hint.
         toolPart('prt-t2', 'notion_search_pages'),
         toolPart('prt-t3', 'bash'),
+        toolPart('prt-t4', 'repo__prod_search_files'),
       ],
     };
     sdkMock.createOpencodeClient = () => ({
@@ -255,12 +256,17 @@ describe('OpenCodeAdapter.readHistory', () => {
 
     const result = await new HistoryTestAdapter().readHistory({
       historyId: 'ses-1' as AgentHistoryId,
-      mcpServerNames: ['linkcode-sim'],
+      mcpServerNames: ['linkcode-sim', 'repo__prod'],
     });
     const titles = result.events.map((e) =>
       e.event.type === 'tool-call' ? e.event.toolCall.title : e.event.type,
     );
-    expect(titles).toEqual(['mcp__linkcode-sim__sim_tap', 'mcp__notion__search_pages', 'bash']);
+    expect(titles).toEqual([
+      'mcp__linkcode-sim__sim_tap',
+      'mcp__notion__search_pages',
+      'bash',
+      'repo__prod_search_files',
+    ]);
   });
 
   it('keeps the transcript readable when the config read rejects (fetch throws on a dead server)', async () => {
