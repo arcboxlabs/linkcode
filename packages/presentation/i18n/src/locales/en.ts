@@ -156,6 +156,18 @@ export const en = {
       failed: 'Failed',
       expand: 'Expand',
       collapse: 'Collapse',
+      toolSearch: {
+        select: 'Tool selection',
+        selecting: 'Selecting tools',
+        selected: 'Selected {count, plural, one {a tool} other {# tools}}',
+        search: 'Tool search',
+        searching: 'Searching for tools',
+        searched: 'Searched for tools',
+      },
+      searchSummary: {
+        matches: '{count, plural, one {a match} other {# matches}}',
+        files: '{count, plural, one {a file} other {# files}}',
+      },
     },
     subagent: {
       label: 'Subagent',

@@ -60,7 +60,13 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { CODEX_PLAN_ID, codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
+import {
+  CODEX_PLAN_ID,
+  codexMcpSlug,
+  codexPlanEntries,
+  execToolCall,
+  fileChangeToolCall,
+} from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
@@ -1279,11 +1285,12 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'mcpToolCall': {
-        const server = stringField(item, 'server') ?? 'mcp';
-        const tool = stringField(item, 'tool') ?? 'tool';
         this.emitTool({
           toolCallId: id,
-          title: `${server}.${tool}`,
+          title: codexMcpSlug(
+            stringField(item, 'server') ?? 'mcp',
+            stringField(item, 'tool') ?? 'tool',
+          ),
           kind: 'other',
           status: mapCodexItemStatus(stringField(item, 'status')),
           content: [],

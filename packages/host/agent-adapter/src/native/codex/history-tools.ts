@@ -3,6 +3,7 @@ import { isRecord, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
 import {
   CODEX_PLAN_ID,
+  codexMcpSlug,
   codexPlanEntries,
   execToolCall,
   fileChangeToolCall,
@@ -22,6 +23,7 @@ export type CodexToolAnnounce = { toolCall: ToolCall } | { plan: Plan };
 export function codexToolAnnounce(
   callId: string,
   payload: Record<string, unknown>,
+  persistedMcpIdentity?: { server: string; tool: string },
 ): CodexToolAnnounce {
   const payloadType = stringField(payload, 'type');
   const name = stringField(payload, 'name');
@@ -74,6 +76,21 @@ export function codexToolAnnounce(
 
   // function_call: JSON-encoded `arguments`.
   const args = parseArguments(payload);
+  const mcp = codexReplayMcpIdentity(payload, persistedMcpIdentity);
+  if (mcp) {
+    // Converge with the live adapter's `mcp__<server>__<tool>` slug (and its kind) so a
+    // replayed MCP call renders like the live turn did.
+    return {
+      toolCall: {
+        toolCallId: callId,
+        title: codexMcpSlug(mcp.server, mcp.tool),
+        kind: 'other',
+        status: 'in_progress',
+        content: [],
+        rawInput: args,
+      },
+    };
+  }
   if (name === 'update_plan') {
     const plan = planFromArgs(args);
     if (plan) return { plan };
@@ -112,6 +129,48 @@ export function codexToolAnnounce(
       rawInput: args,
     },
   };
+}
+
+const MCP_NAMESPACE_PREFIX = 'mcp__';
+const PLUGIN_APPS_SERVER = 'codex_apps';
+const PLUGIN_APPS_NAMESPACE_PREFIX = `${PLUGIN_APPS_SERVER}__`;
+
+function codexReplayMcpIdentity(
+  payload: Record<string, unknown>,
+  persisted: { server: string; tool: string } | undefined,
+): { server: string; tool: string } | undefined {
+  const callable = codexMcpToolName(payload);
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  // Legacy Codex Apps persisted `github_create_issue`; only the callable retained its connector
+  // boundary.
+  if (
+    callable &&
+    persisted?.server === PLUGIN_APPS_SERVER &&
+    !persisted.tool.includes('.') &&
+    namespace?.startsWith(`${MCP_NAMESPACE_PREFIX}${PLUGIN_APPS_NAMESPACE_PREFIX}`) &&
+    name?.[0] === '_' &&
+    persisted.tool === `${callable.server}_${callable.tool}`
+  ) {
+    return callable;
+  }
+  return persisted ?? callable;
+}
+
+/** Callable names are lossy; raw completed identities take precedence outside the legacy case. */
+function codexMcpToolName(
+  payload: Record<string, unknown>,
+): { server: string; tool: string } | undefined {
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  if (!namespace || !name || !namespace.startsWith(MCP_NAMESPACE_PREFIX)) return undefined;
+  let server = namespace.slice(MCP_NAMESPACE_PREFIX.length);
+  let tool = name;
+  if (server.startsWith(PLUGIN_APPS_NAMESPACE_PREFIX)) {
+    server = server.slice(PLUGIN_APPS_NAMESPACE_PREFIX.length);
+    if (tool[0] === '_') tool = tool.slice(1);
+  }
+  return server.length > 0 && tool.length > 0 ? { server, tool } : undefined;
 }
 
 /** Settle an output row into the final snapshot, keeping the announce's diff content for edits and
