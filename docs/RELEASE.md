@@ -140,7 +140,9 @@ the canonical schema in the pinned publisher checkout before parsing. Acme and Z
 `.invalid` endpoints, and this example root are not production brand data.
 
 The JSON root contains `brandBuildMatrixVersion: 1` and a non-empty `brands` array. Every brand has
-exactly `brandId`, `channel`, `releaseManifests`, `compliance`, and `distribution`:
+exactly `brandId`, `channel`, `sourceRoot`, `releaseManifests`, `compliance`, and `distribution`.
+`sourceRoot` is either `.` for reviewed production data or `examples/acme-zenith` for the pinned
+nonproduction fixture; no other path is accepted.
 
 - `releaseManifests.desktop|ios|android` are complete release-render manifest v1 objects. The three
   targets must share publisher/source commits, config revision, revision digest, and public-keyring
@@ -149,8 +151,9 @@ exactly `brandId`, `channel`, `releaseManifests`, `compliance`, and `distributio
   checklist with all five keys set to `true`: `configurableFeaturesDisclosed`,
   `dataPracticesReviewed`, `noExecutableCode`, `permissionsReviewed`, and `storeMetadataReviewed`.
 - `distribution.desktop` may be `null` only for plan validation. Every build requires an object containing
-  `credentialSecretPrefix`, `r2Bucket`, `r2Prefix`, and `updateUrl`. Both URL and prefix must end in
-  the same brand/channel path; prefixes in one bucket must not overlap, and credential prefixes must be unique across brands.
+  `credentialEnvironment`, `r2Bucket`, `r2Prefix`, and `updateUrl`. The environment must be exactly
+  `release-<brandId>`. Both URL and prefix must end in the same brand/channel path, and prefixes in
+  one bucket must not overlap.
 - `distribution.mobile` may be `null` only for plan validation. Every build requires `easProjectId`, its
   exact `https://u.expo.dev/<id>` URL, iOS `appleTeamId`/`ascAppId`, and Android
   `track: "internal"`. EAS project IDs and App Store Connect app IDs must be unique across brands.
@@ -176,15 +179,16 @@ upload inputs before any store submission or R2 upload can begin.
 
 ### Required Actions configuration and least privilege
 
-Signing secrets and render vars below are read from the protected `release` environment; the bot
-credentials are organization secrets. Trusted workflow steps report missing bot credentials before
-checking out selected client code, and the input scripts report missing render, signing, or upload
-values without receiving those bot credentials:
+Render vars below are read from the protected `release` environment. Signing, upload, store, and
+observability inputs are read from the protected `release-<brandId>` environment selected by the
+reviewed matrix. The bot credentials are organization secrets. Trusted workflow steps report
+missing bot credentials before checking out selected client code, and the input scripts report
+missing render, signing, or upload values without receiving those bot credentials:
 
-- Vars: `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO`, `CONFIG_RELEASE_REVISION`,
-  `CONFIG_RELEASE_KEYRINGS`, and `POSTHOG_HOST`. Both repository vars must be canonical,
-  different `arcboxlabs/repository` identities; malformed, absent, cross-organization, and equal
-  values fail before token minting or checkout.
+- `release` vars: `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO`, `CONFIG_RELEASE_REVISION`, and
+  `CONFIG_RELEASE_KEYRINGS`. Both repository vars must be canonical, different
+  `arcboxlabs/repository` identities; malformed, absent, cross-organization, and equal values fail
+  before token minting or checkout.
   Revision/keyring values are exact JSON bytes already digest-pinned by each release manifest.
 - Config checkouts: organization secrets `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY` mint separate,
   short-lived installation tokens with **Contents: read** only on the validated publisher
@@ -197,9 +201,10 @@ values without receiving those bot credentials:
 - Windows Desktop: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_PUBLISHER_NAME`,
   `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, and `AZURE_CERTIFICATE_PROFILE`. The Azure
   app has only the Trusted Signing certificate-profile signer role and an OIDC subject restricted
-  to this repository's `release` environment; no client secret exists.
-- Desktop observability: `SENTRY_DSN_DESKTOP` and the shared `POSTHOG_PROJECT_TOKEN` plus
-  `POSTHOG_HOST` var. These are required publishable identifiers, not signing credentials.
+  to this repository's matching `release-<brandId>` environment; no client secret exists.
+- Desktop observability in `release-<brandId>`: `SENTRY_DSN_DESKTOP` and
+  `POSTHOG_PROJECT_TOKEN` plus the `POSTHOG_HOST` var. These are required publishable identifiers,
+  not signing credentials.
 - Mobile: `EXPO_TOKEN`, `SENTRY_AUTH_TOKEN`, `SENTRY_DSN_MOBILE`, and
   `POSTHOG_PROJECT_TOKEN`. Issue `EXPO_TOKEN` to a robot account with access only to the matrix's EAS projects;
   scope the Sentry token to source-map upload for the one mobile project. The DSN and PostHog values
@@ -207,15 +212,17 @@ values without receiving those bot credentials:
   Native certificates, provisioning profiles, Android keystores, App Store Connect keys, and Google
   Play service accounts stay EAS-managed and project-scoped. Submissions stop at TestFlight and the
   Play internal track; this workflow never submits to App Review or promotes a Play release.
-- Desktop upload: `<PREFIX>_R2_ACCOUNT_ID`, `<PREFIX>_R2_ACCESS_KEY_ID`, and
-  `<PREFIX>_R2_SECRET_ACCESS_KEY` for each matrix `credentialSecretPrefix`. Each key pair is scoped to
-  that brand's one `r2Bucket/r2Prefix` with object read/write/list only; it must not access another
-  brand prefix or permit bucket/account administration. `<PREFIX>_R2_ACCOUNT_ID` is exactly the
+- Desktop upload: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in each brand's
+  `release-<brandId>` environment. Each key pair is scoped to that brand's one `r2Bucket/r2Prefix`
+  with object read/write/list only; it must not access another brand prefix or permit
+  bucket/account administration. `R2_ACCOUNT_ID` is exactly the
   lowercase 32-hex Cloudflare account ID; URL-like or otherwise malformed values fail before AWS CLI runs.
 
 Do not store private signing material, access tokens, or service-account JSON in the committed
-matrix, repository files, artifacts, or Actions vars. Protect the `release` environment with
-required reviewers and exact deployment ref rules before enabling `sign` or `upload`.
+matrix, repository files, artifacts, or Actions vars. Protect `release` with required reviewers and
+only exact `master` plus `v*.*.*` custom deployment policies. Protect every `release-<brandId>`
+environment with required reviewers and only the exact `master` custom deployment policy before
+enabling `build`, `sign`, or `upload`.
 The environment preflight reads protection metadata with the built-in `GITHUB_TOKEN` and explicit
 `actions: read`; this metadata-only token cannot approve or bypass an environment review.
 
