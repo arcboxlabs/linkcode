@@ -366,16 +366,30 @@ describe('release brand matrix workflow', () => {
     expect(action).not.toContain(appTokenAction);
     expect(action).not.toContain('github-app-private-key');
     expect(action).not.toContain('BOT_APP_PRIVATE_KEY');
-    expect(action).toContain('publisher_repo=arcboxlabs/linkcodehq');
-    expect(action).toContain('source_repo=arcboxlabs/linkcode-config');
+    expect(action).toContain('publisher-repository:');
+    expect(action).toContain('publisher_repo="$PUBLISHER_REPO"');
+    expect(action).toContain('source-repository:');
+    expect(action).toContain('source_repo="$SOURCE_REPO"');
     expect(action).toContain('default: "."');
     expect(action).toContain('.|examples/acme-zenith)');
     expect(action).toContain('cmp -s');
     expect(action).toContain('http.followRedirects=false');
+    expect(action).toContain('--max-redirs 0');
+    expect(action).toContain('refs/heads/master');
+    expect(action).toContain('not reachable from reviewed master');
     expect(action).toContain('must be exact lowercase 40-hex commits');
     expect(action).toContain('must not contain symbolic links');
-    expect(action).not.toContain('CONFIG_PUBLISHER_REPO');
+    expect(action).toContain('CONFIG_PUBLISHER_REPO');
+    expect(action).toContain('CONFIG_SOURCE_REPO');
     expect(action).not.toContain('CONFIG_PUBLISHER_TOKEN');
+    expect(action).not.toContain('CONFIG_SOURCE_TOKEN');
+    expect(action).toContain('checkout identity did not match expected repository');
+    expect(action).toContain('publisher/parser/schema contract');
+    expect(action).toContain('Pinned config source must contain source root');
+    expect(action).toContain('unset PUBLISHER_TOKEN SOURCE_TOKEN');
+    expect(action.indexOf('unset PUBLISHER_TOKEN SOURCE_TOKEN')).toBeLessThan(
+      action.indexOf('pnpm --dir "$publisher" install --frozen-lockfile'),
+    );
 
     const renderJobs = [
       desktop.slice(desktop.indexOf('  render-config:'), desktop.indexOf('  build:')),
@@ -385,9 +399,29 @@ describe('release brand matrix workflow', () => {
     for (const renderJob of renderJobs) {
       expect(renderJob.split(appTokenAction)).toHaveLength(3);
       expect(renderJob.split('owner: arcboxlabs')).toHaveLength(3);
-      expect(renderJob).toContain('repositories: linkcodehq');
-      expect(renderJob).toContain('repositories: linkcode-config');
+      expect(renderJob).toContain(
+        `CONFIG_PUBLISHER_REPO: ${ACTIONS_EXPRESSION}{{ vars.CONFIG_PUBLISHER_REPO }}`,
+      );
+      expect(renderJob).toContain(
+        `CONFIG_SOURCE_REPO: ${ACTIONS_EXPRESSION}{{ vars.CONFIG_SOURCE_REPO }}`,
+      );
+      expect(renderJob).toContain('$name is required');
+      expect(renderJob).toContain('must use canonical owner/repository syntax');
+      expect(renderJob).toContain('$name owner must be arcboxlabs');
+      expect(renderJob).toContain('must identify different repositories');
+      expect(renderJob).toContain(
+        `repositories: ${ACTIONS_EXPRESSION}{{ steps.repositories.outputs.publisher-name }}`,
+      );
+      expect(renderJob).toContain(
+        `repositories: ${ACTIONS_EXPRESSION}{{ steps.repositories.outputs.source-name }}`,
+      );
       expect(renderJob.split('permission-contents: read')).toHaveLength(3);
+      expect(renderJob).toContain(
+        `publisher-repository: ${ACTIONS_EXPRESSION}{{ steps.repositories.outputs.publisher-full }}`,
+      );
+      expect(renderJob).toContain(
+        `source-repository: ${ACTIONS_EXPRESSION}{{ steps.repositories.outputs.source-full }}`,
+      );
       expect(renderJob).toContain(
         `publisher-token: ${ACTIONS_EXPRESSION}{{ steps.publisher-token.outputs.token }}`,
       );
@@ -397,8 +431,24 @@ describe('release brand matrix workflow', () => {
       expect(renderJob.indexOf(appTokenAction)).toBeLessThan(
         renderJob.indexOf('actions/checkout@'),
       );
+      expect(renderJob).not.toContain('repositories: linkcodehq');
+      expect(renderJob).not.toContain('repositories: linkcode-config');
     }
     expect(workflow.split('source-root: examples/acme-zenith')).toHaveLength(3);
+  });
+
+  it('rejects publisher/source role swaps through independent checkout contracts', async () => {
+    const action = await readFile(
+      new URL('../actions/render-release-config/action.yml', import.meta.url),
+      'utf8',
+    );
+
+    expect(action).toContain('$publisher/packages/config-publisher/package.json');
+    expect(action).toContain('$publisher/packages/config-structural/schema/config.schema.json');
+    expect(action).toContain('$structural/brands.manifest.yaml');
+    expect(action).toContain('$structural/schema/config.schema.json');
+    expect(action).toContain('publisher/parser/schema contract');
+    expect(action).toContain('Pinned config source must contain source root');
   });
 
   it('binds credential-free desktop recovery evidence to immutable release inputs', async () => {
