@@ -34,7 +34,7 @@ on:
         default: false
 
 concurrency:
-  group: release-brand-matrix-${{ inputs.ref }}
+  group: release-brand-matrix-${{ github.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -85,12 +85,12 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Verify trusted client checkout
         env:
-          CLIENT_REF: ${{ inputs.ref }}
+          CLIENT_REF: ${{ github.sha }}
           MATRIX_FILE: ${{ inputs.matrix_file }}
         run: |
           set -euo pipefail
@@ -128,20 +128,21 @@ jobs:
             --upload "${{ inputs.upload }}"
 
   credential-free-validation:
-    name: Credential-free ${{ matrix.brandId }}/${{ matrix.platform }}
+    name: Credential-free ${{ matrix.platform }}
     needs: prepare
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.targets) }}
+      matrix:
+        platform: [desktop, ios, android]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
-          cache: true
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -174,8 +175,7 @@ jobs:
           fi
       - name: Record local-only evidence
         env:
-          BRAND_ID: ${{ matrix.brandId }}
-          CLIENT_REF: ${{ inputs.ref }}
+          CLIENT_REF: ${{ github.sha }}
           DELIVERY_SHA256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
           PLATFORM: ${{ matrix.platform }}
         run: |
@@ -186,16 +186,15 @@ jobs:
             runtime=production-hermes+prebuild
           fi
           jq -cn \
-            --arg brandId "$BRAND_ID" \
             --arg clientGitSha "$CLIENT_REF" \
             --arg deliveryDescriptorSha256 "$DELIVERY_SHA256" \
             --arg platform "$PLATFORM" \
             --arg runtime "$runtime" \
-            '{brandId:$brandId,clientGitSha:$clientGitSha,deliveryDescriptorSha256:$deliveryDescriptorSha256,deploymentIdentity:{kind:"local-static-origin",providerDeploymentId:null},evidenceVersion:1,pilotFixtureSha256:"54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39",platform:$platform,runtime:$runtime}' \
+            '{clientGitSha:$clientGitSha,deliveryDescriptorSha256:$deliveryDescriptorSha256,deploymentIdentity:{kind:"local-static-origin",providerDeploymentId:null},evidenceVersion:1,pilotFixtureSha256:"54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39",platform:$platform,runtime:$runtime}' \
             > credential-free-evidence/runtime-validation.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: credential-free-${{ matrix.brandId }}-${{ matrix.platform }}
+          name: credential-free-${{ matrix.platform }}
           path: credential-free-evidence
           if-no-files-found: error
           retention-days: 7
@@ -208,20 +207,41 @@ jobs:
     steps:
       - name: Require protected release environment
         env:
+          BRANDS_JSON: ${{ needs.prepare.outputs.brands }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          environment="$RUNNER_TEMP/release-environment.json"
-          gh api "repos/$GITHUB_REPOSITORY/environments/release" > "$environment"
-          if ! jq -e '
-            .name == "release" and
-            ([.protection_rules[]? | select(.type == "required_reviewers") | .reviewers | length] | any(. > 0)) and
-            (.deployment_branch_policy != null) and
-            (.deployment_branch_policy.protected_branches == true or .deployment_branch_policy.custom_branch_policies == true)
-          ' "$environment" >/dev/null; then
-            echo "::error::release must require reviewers and a deployment branch policy before release work"
-            exit 1
-          fi
+          check_environment() {
+            local name="$1" allow_tags="$2"
+            local metadata="$RUNNER_TEMP/environment-${name}.json"
+            local policies="$RUNNER_TEMP/environment-${name}-policies.json"
+            gh api "repos/$GITHUB_REPOSITORY/environments/$name" > "$metadata"
+            if ! jq -e --arg name "$name" '
+              .name == $name and
+              ([.protection_rules[]? | select(.type == "required_reviewers") | .reviewers | length] | any(. > 0)) and
+              .deployment_branch_policy.protected_branches == false and
+              .deployment_branch_policy.custom_branch_policies == true
+            ' "$metadata" >/dev/null; then
+              echo "::error::$name must require reviewers and exact custom deployment policies"
+              exit 1
+            fi
+            gh api "repos/$GITHUB_REPOSITORY/environments/$name/deployment-branch-policies?per_page=100" > "$policies"
+            if [ "$allow_tags" = true ]; then
+              expected='[{"name":"master","type":"branch"},{"name":"v*.*.*","type":"tag"}]'
+            else
+              expected='[{"name":"master","type":"branch"}]'
+            fi
+            if ! jq -e --argjson expected "$expected" \
+              '[.branch_policies[] | {name,type}] | sort_by(.type,.name) == $expected' \
+              "$policies" >/dev/null; then
+              echo "::error::$name has an unexpected deployment branch or tag policy"
+              exit 1
+            fi
+          }
+          check_environment release true
+          while IFS= read -r environment; do
+            check_environment "$environment" false
+          done < <(jq -r '.include[].distribution.desktop.credentialEnvironment' <<<"$BRANDS_JSON")
 
   render-inputs:
     name: Validate immutable render inputs
@@ -237,15 +257,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - run: node .github/scripts/release-inputs.cjs --phase render --platform desktop
 
   signing-inputs:
-    name: Validate signing inputs
+    name: Validate signing inputs ${{ matrix.brandId }}
     if: ${{ inputs.sign }}
     needs: [prepare, release-environment-preflight]
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     env:
       APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -268,7 +291,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - run: node .github/scripts/release-inputs.cjs --phase sign --platform desktop
       - run: node .github/scripts/release-inputs.cjs --phase sign --platform mobile
       - if: ${{ inputs.upload }}
@@ -346,13 +369,13 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
-          cache: true
+          cache: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -370,7 +393,7 @@ jobs:
           publisher-token: ${{ steps.publisher-token.outputs.token }}
           source-repository: ${{ steps.repositories.outputs.source-full }}
           source-token: ${{ steps.source-token.outputs.token }}
-          source-root: examples/acme-zenith
+          source-root: ${{ matrix.sourceRoot }}
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest: ${{ toJSON(matrix.releaseManifests.desktop) }}
@@ -383,7 +406,7 @@ jobs:
           publisher-token: ${{ steps.publisher-token.outputs.token }}
           source-repository: ${{ steps.repositories.outputs.source-full }}
           source-token: ${{ steps.source-token.outputs.token }}
-          source-root: examples/acme-zenith
+          source-root: ${{ matrix.sourceRoot }}
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest-ios: ${{ toJSON(matrix.releaseManifests.ios) }}
@@ -394,17 +417,18 @@ jobs:
           COMPLIANCE_ANDROID: ${{ toJSON(matrix.compliance.android) }}
           COMPLIANCE_DESKTOP: ${{ toJSON(matrix.compliance.desktop) }}
           COMPLIANCE_IOS: ${{ toJSON(matrix.compliance.ios) }}
-          CLIENT_REF: ${{ inputs.ref }}
+          CLIENT_REF: ${{ github.sha }}
           MATRIX_FILE: ${{ inputs.matrix_file }}
           MANIFEST_ANDROID: ${{ toJSON(matrix.releaseManifests.android) }}
           MANIFEST_DESKTOP: ${{ toJSON(matrix.releaseManifests.desktop) }}
           MANIFEST_IOS: ${{ toJSON(matrix.releaseManifests.ios) }}
           MOBILE_DISTRIBUTION: ${{ toJSON(matrix.distribution.mobile) }}
+          SOURCE_ROOT: ${{ matrix.sourceRoot }}
         run: |
           set -euo pipefail
           mkdir release-inputs
           git cat-file blob "$CLIENT_REF:$MATRIX_FILE" > release-inputs/brand-build-matrix.json
-          cp "$RUNNER_TEMP/config-render-desktop/source/examples/acme-zenith/brands.manifest.yaml" release-inputs/
+          cp "$RUNNER_TEMP/config-render-desktop/source/$SOURCE_ROOT/brands.manifest.yaml" release-inputs/
           printf '%s' "$MANIFEST_DESKTOP" > release-inputs/release-manifest.desktop.json
           printf '%s' "$MANIFEST_IOS" > release-inputs/release-manifest.ios.json
           printf '%s' "$MANIFEST_ANDROID" > release-inputs/release-manifest.android.json
@@ -441,7 +465,7 @@ jobs:
               --bundle "$bundle" \
               --brand-identity "$identity" \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --release-manifest "release-inputs/release-manifest.${platform}.json" \
@@ -464,7 +488,7 @@ jobs:
 
   desktop:
     name: Desktop ${{ matrix.brandId }}
-    if: ${{ inputs.build && !cancelled() && needs.render.result == 'success' && (needs.signing-inputs.result == 'success' || needs.signing-inputs.result == 'skipped') }}
+    if: ${{ inputs.build && !cancelled() && needs.render.result == 'success' && (needs.signing-inputs.result == 'success' || (!inputs.sign && needs.signing-inputs.result == 'skipped')) }}
     needs: [prepare, render, signing-inputs]
     strategy:
       fail-fast: false
@@ -474,11 +498,11 @@ jobs:
       contents: read
       id-token: write
     with:
-      ref: ${{ inputs.ref }}
+      ref: ${{ github.sha }}
       sign: ${{ inputs.sign }}
       brand_id: ${{ matrix.brandId }}
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
-      release_environment: release
+      release_environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
       rendered_artifact: brand-render-${{ matrix.brandId }}
       update_url: ${{ matrix.distribution.desktop.updateUrl || '' }}
 
@@ -493,11 +517,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
-          cache: true
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -538,7 +562,7 @@ jobs:
             --bundle apps/desktop/generated/config-build-bundle.json \
             --brand-identity apps/desktop/generated/brand-identity.json \
             --brand-manifest release-inputs/brands.manifest.yaml \
-            --client-git-sha '${{ inputs.ref }}' \
+            --client-git-sha '${{ github.sha }}' \
             --delivery-descriptor release-inputs/brand-build-matrix.json \
             --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
             --release-manifest release-inputs/release-manifest.desktop.json \
@@ -562,8 +586,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/setup-eas
+        with:
+          cache: false
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -591,7 +617,7 @@ jobs:
               --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
               --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --release-manifest "release-inputs/release-manifest.${platform}.json" \
@@ -614,10 +640,10 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     uses: ./.github/workflows/build-mobile.yml
     with:
-      ref: ${{ inputs.ref }}
+      ref: ${{ github.sha }}
       brand_id: ${{ matrix.brandId }}
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
-      release_environment: release
+      release_environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
       rendered_artifact: brand-render-${{ matrix.brandId }}
       submit: false
 
@@ -629,20 +655,20 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      R2_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
-      R2_ACCOUNT_ID: ${{ secrets[format('{0}_R2_ACCOUNT_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_R2_SECRET_ACCESS_KEY', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
-          cache: true
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -677,7 +703,7 @@ jobs:
               --bundle apps/desktop/generated/config-build-bundle.json \
               --brand-identity apps/desktop/generated/brand-identity.json \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --expected-brand '${{ matrix.brandId }}' \
@@ -692,7 +718,7 @@ jobs:
               --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
               --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --expected-brand '${{ matrix.brandId }}' \
@@ -709,12 +735,14 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/setup-eas
+        with:
+          cache: false
       - run: pnpm install --frozen-lockfile
       - name: Validate upload inputs
         env:
@@ -742,7 +770,7 @@ jobs:
               --bundle "apps/mobile/src/runtime/config/bundled.generated.${platform}.ts" \
               --brand-identity "apps/mobile/generated/brand-identity.${platform}.json" \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --expected-brand '${{ matrix.brandId }}' \
@@ -785,19 +813,19 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.brands) }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets[format('{0}_R2_ACCESS_KEY_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_R2_SECRET_ACCESS_KEY', matrix.distribution.desktop.credentialSecretPrefix)] }}
-      R2_ACCOUNT_ID: ${{ secrets[format('{0}_R2_ACCOUNT_ID', matrix.distribution.desktop.credentialSecretPrefix)] }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.sha }}
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
-          cache: true
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -828,7 +856,7 @@ jobs:
               --bundle apps/desktop/generated/config-build-bundle.json \
               --brand-identity apps/desktop/generated/brand-identity.json \
               --brand-manifest release-inputs/brands.manifest.yaml \
-              --client-git-sha '${{ inputs.ref }}' \
+              --client-git-sha '${{ github.sha }}' \
               --delivery-descriptor release-inputs/brand-build-matrix.json \
               --expected-delivery-sha256 '${{ needs.prepare.outputs.delivery_descriptor_sha256 }}' \
               --expected-brand '${{ matrix.brandId }}' \
