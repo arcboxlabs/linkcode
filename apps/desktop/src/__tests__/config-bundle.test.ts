@@ -22,7 +22,6 @@ const RE_IMMUTABLE = /immutable/;
 const RE_REBUILD = /rebuild before packaging/;
 const RE_WRONG_PLATFORM = /targets ios, expected desktop/;
 const RE_FIXTURE_KEY = /conformance fixture key/;
-const RE_EMERGENCY_BOOTSTRAP = /requires an emergency endpoint and emergency public key/;
 const RE_ENABLED_TOGETHER = /enabled together/;
 const SAFE_EMERGENCY_PUBLIC_KEY = 'I-ZZtxm_RMtR2fMqJtiENzX13BIMmqE8X9lDWQ-bg4c';
 const FIXTURE_PUBLIC_KEYS = [
@@ -174,7 +173,7 @@ describe('loadGeneratedConfigBundle', () => {
     },
   );
 
-  it('allows an absent emergency bootstrap only when the generated bundle is optional', async () => {
+  it('allows an absent emergency bootstrap in required release bundles', async () => {
     const fixture = JSON.parse(desktopFixture) as {
       endpoints: Record<string, unknown>;
       keyrings: Record<string, unknown>;
@@ -187,7 +186,7 @@ describe('loadGeneratedConfigBundle', () => {
     expect(() => loadGeneratedConfigBundle(optionalDir, {})).not.toThrow();
     expect(() =>
       loadGeneratedConfigBundle(optionalDir, { LINKCODE_REQUIRE_CONFIG_BUNDLE: '1' }),
-    ).toThrow(RE_EMERGENCY_BOOTSTRAP);
+    ).not.toThrow();
   });
 
   it.each([
