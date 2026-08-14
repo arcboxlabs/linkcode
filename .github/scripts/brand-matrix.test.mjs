@@ -16,10 +16,11 @@ const RE_UPLOAD_WITHOUT_SIGN = /upload requires sign=true/;
 const RE_MISSING_BRAND_SEGMENT = /must include the brand id/;
 const RE_UNKNOWN_FIELD = /must contain exactly/;
 const RE_DIVERGENT_SOURCE = /all platforms must share sourceGitSha/;
-const RE_SHARED_DESTINATION = /R2 prefixes in one bucket must not overlap/;
+const RE_SHARED_DESTINATION = /Desktop destinations must not have overlapping/;
 const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal release/;
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
 const RE_INVALID_SOURCE_ROOT = /sourceRoot: must be/;
+const RE_LEGACY_DESKTOP_UPLOAD = /"s3:\/\/\$\{R2_BUCKET\}\/\$\{R2_PREFIX\}\/"/;
 const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
 const ACTIONS_EXPRESSION = String.fromCodePoint(36);
 
@@ -82,6 +83,15 @@ function brand(brandId = 'acme') {
 
 function matrix(...brands) {
   return { brandBuildMatrixVersion: 1, brands };
+}
+
+function desktopDestination(brandId) {
+  return {
+    credentialEnvironment: 'release',
+    r2Bucket: `release-${brandId}`,
+    r2Prefix: `desktop/${brandId}/canary`,
+    updateUrl: `https://${brandId}.example.invalid/desktop/${brandId}/canary`,
+  };
 }
 
 describe('parseBrandBuildMatrix', () => {
@@ -251,6 +261,93 @@ describe('parseBrandBuildMatrix', () => {
     );
   });
 
+  it('accepts an explicit generic legacy Desktop destination', () => {
+    const arbitrary = brand('northstar');
+    arbitrary.distribution.desktop = desktopDestination('northstar');
+    arbitrary.distribution.desktop.legacyDestination = {
+      r2Bucket: 'linkcode-releases',
+      r2Prefix: 'desktop',
+      updateUrl: 'https://releases.linkcode.ai/desktop',
+    };
+
+    const parsed = parseBrandBuildMatrix(matrix(arbitrary));
+    expect(parsed.brands[0].distribution.desktop.legacyDestination).toStrictEqual({
+      r2Bucket: 'linkcode-releases',
+      r2Prefix: 'desktop',
+      updateUrl: 'https://releases.linkcode.ai/desktop',
+    });
+  });
+
+  it('rejects malformed or implicit legacy Desktop destinations', () => {
+    const missingOptIn = brand();
+    missingOptIn.distribution.desktop = desktopDestination('acme');
+    missingOptIn.distribution.desktop.legacyR2Prefix = 'desktop';
+    expect(() => parseBrandBuildMatrix(matrix(missingOptIn))).toThrow(RE_UNKNOWN_FIELD);
+
+    for (const legacyDestination of [
+      null,
+      { r2Bucket: 'valid-bucket', r2Prefix: 'desktop' },
+      {
+        r2Bucket: 'Valid_Bucket',
+        r2Prefix: 'desktop',
+        updateUrl: 'https://downloads.example.invalid/desktop',
+      },
+      {
+        r2Bucket: 'valid-bucket',
+        r2Prefix: '../desktop',
+        updateUrl: 'https://downloads.example.invalid/desktop',
+      },
+      {
+        r2Bucket: 'valid-bucket',
+        r2Prefix: 'desktop',
+        updateUrl: 'http://downloads.example.invalid/desktop',
+      },
+    ]) {
+      const malformed = brand();
+      malformed.distribution.desktop = {
+        ...desktopDestination('acme'),
+        legacyDestination,
+      };
+      expect(() => parseBrandBuildMatrix(matrix(malformed))).toThrow();
+    }
+  });
+
+  it('rejects standard and legacy destination overlap within and across brands', () => {
+    const first = brand('acme');
+    first.distribution.desktop = desktopDestination('acme');
+    first.distribution.desktop.legacyDestination = {
+      r2Bucket: 'release-acme',
+      r2Prefix: 'desktop/acme',
+      updateUrl: 'https://legacy.example.invalid/desktop/acme',
+    };
+    expect(() => parseBrandBuildMatrix(matrix(first))).toThrow(RE_SHARED_DESTINATION);
+
+    first.distribution.desktop.legacyDestination = {
+      r2Bucket: 'legacy-acme',
+      r2Prefix: 'desktop',
+      updateUrl: 'https://legacy.example.invalid/desktop',
+    };
+    const second = brand('zenith');
+    second.distribution.desktop = desktopDestination('zenith');
+    second.distribution.desktop.legacyDestination = {
+      r2Bucket: 'legacy-acme',
+      r2Prefix: 'desktop/archive',
+      updateUrl: 'https://zenith-legacy.example.invalid/desktop/archive',
+    };
+    expect(() => parseBrandBuildMatrix(matrix(first, second))).toThrow(RE_SHARED_DESTINATION);
+
+    second.distribution.desktop.legacyDestination = {
+      r2Bucket: 'legacy-zenith',
+      r2Prefix: 'desktop/archive',
+      updateUrl: 'https://legacy.example.invalid/desktop/archive',
+    };
+    expect(() => parseBrandBuildMatrix(matrix(first, second))).toThrow(RE_SHARED_DESTINATION);
+
+    first.distribution.desktop.legacyDestination.updateUrl =
+      'https://legacy.example.invalid/desktop/';
+    expect(() => parseBrandBuildMatrix(matrix(first, second))).toThrow(RE_SHARED_DESTINATION);
+  });
+
   it('rejects unknown fields and divergent immutable source bindings', () => {
     const extra = matrix(brand());
     extra.brands[0].releaseManifests.desktop.hidden = true;
@@ -378,6 +475,30 @@ describe('release brand matrix workflow', () => {
         `environment: ${ACTIONS_EXPRESSION}{{ inputs.release_environment || 'release' }}`,
       ),
     ).toHaveLength(4);
+  });
+
+  it('uses an explicit reviewed legacy Desktop destination for packaging and upload', async () => {
+    const workflow = await readFile(
+      new URL('../workflows/release-brand-matrix.yml', import.meta.url),
+      'utf8',
+    );
+    const desktop = workflow.slice(
+      workflow.indexOf('  desktop:'),
+      workflow.indexOf('  desktop-validation:'),
+    );
+    const publish = workflow.slice(workflow.indexOf('  publish-desktop:'));
+
+    expect(desktop).toContain(
+      `update_url: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.legacyDestination.updateUrl || matrix.distribution.desktop.updateUrl || '' }}`,
+    );
+    expect(publish).toContain(
+      `R2_BUCKET: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.legacyDestination.r2Bucket || matrix.distribution.desktop.r2Bucket }}`,
+    );
+    expect(publish).toContain(
+      `R2_PREFIX: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.legacyDestination.r2Prefix || matrix.distribution.desktop.r2Prefix }}`,
+    );
+    expect(publish).toMatch(RE_LEGACY_DESKTOP_UPLOAD);
+    expect(workflow).not.toContain("brandId == 'linkcode'");
   });
 
   it('mints scoped read tokens before any selected client checkout', async () => {

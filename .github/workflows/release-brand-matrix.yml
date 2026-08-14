@@ -501,7 +501,7 @@ jobs:
       delivery_descriptor_sha256: ${{ needs.prepare.outputs.delivery_descriptor_sha256 }}
       release_environment: ${{ matrix.distribution.desktop.credentialEnvironment }}
       rendered_artifact: brand-render-${{ matrix.brandId }}
-      update_url: ${{ matrix.distribution.desktop.updateUrl || '' }}
+      update_url: ${{ matrix.distribution.desktop.legacyDestination.updateUrl || matrix.distribution.desktop.updateUrl || '' }}
 
   desktop-validation:
     name: Desktop validation ${{ matrix.brandId }}
@@ -866,8 +866,10 @@ jobs:
           AWS_REGION: auto
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_BUCKET: ${{ matrix.distribution.desktop.legacyDestination.r2Bucket || matrix.distribution.desktop.r2Bucket }}
+          R2_PREFIX: ${{ matrix.distribution.desktop.legacyDestination.r2Prefix || matrix.distribution.desktop.r2Prefix }}
         run: |
           aws s3 sync "artifacts/${{ matrix.brandId }}/" \
-            "s3://${{ matrix.distribution.desktop.r2Bucket }}/${{ matrix.distribution.desktop.r2Prefix }}/" \
+            "s3://${R2_BUCKET}/${R2_PREFIX}/" \
             --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
             --no-progress

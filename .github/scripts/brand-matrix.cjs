@@ -125,7 +125,9 @@ function compliance(value, path) {
 function desktopDistribution(value, path, brandId, channel) {
   if (value === null) return null;
   const distribution = record(value, path);
-  exact(distribution, ['credentialEnvironment', 'r2Bucket', 'r2Prefix', 'updateUrl'], path);
+  const keys = ['credentialEnvironment', 'r2Bucket', 'r2Prefix', 'updateUrl'];
+  if (Object.hasOwn(distribution, 'legacyDestination')) keys.push('legacyDestination');
+  exact(distribution, keys, path);
   const updateUrl = httpsUrl(distribution.updateUrl, `${path}.updateUrl`);
   const credentialEnvironment = string(
     distribution.credentialEnvironment,
@@ -143,12 +145,59 @@ function desktopDistribution(value, path, brandId, channel) {
   if (!new URL(updateUrl).pathname.replace(RE_TRAILING_SLASH, '').endsWith(expectedSuffix)) {
     fail(path, 'updateUrl path must end with r2Prefix');
   }
-  return {
+  const result = {
     credentialEnvironment,
     r2Bucket,
     r2Prefix: r2Prefix.replace(RE_TRAILING_SLASH, ''),
     updateUrl,
   };
+  if (Object.hasOwn(distribution, 'legacyDestination')) {
+    const legacyPath = `${path}.legacyDestination`;
+    const legacy = record(distribution.legacyDestination, legacyPath);
+    exact(legacy, ['r2Bucket', 'r2Prefix', 'updateUrl'], legacyPath);
+    result.legacyDestination = {
+      r2Bucket: string(legacy.r2Bucket, `${legacyPath}.r2Bucket`, RE_BUCKET),
+      r2Prefix: string(legacy.r2Prefix, `${legacyPath}.r2Prefix`, RE_R2_PREFIX).replace(
+        RE_TRAILING_SLASH,
+        '',
+      ),
+      updateUrl: httpsUrl(legacy.updateUrl, `${legacyPath}.updateUrl`),
+    };
+    const legacySuffix = `/${result.legacyDestination.r2Prefix}`;
+    const legacyPathname = new URL(result.legacyDestination.updateUrl).pathname.replace(
+      RE_TRAILING_SLASH,
+      '',
+    );
+    if (!legacyPathname.endsWith(legacySuffix)) {
+      fail(legacyPath, 'updateUrl path must end with r2Prefix');
+    }
+  }
+  return result;
+}
+
+function destinationEntries(distribution) {
+  if (!distribution) return [];
+  const entries = [distribution];
+  if (distribution.legacyDestination) entries.push(distribution.legacyDestination);
+  return entries;
+}
+
+function destinationsOverlap(left, right) {
+  const prefixesOverlap =
+    left.r2Bucket === right.r2Bucket &&
+    (left.r2Prefix === right.r2Prefix ||
+      left.r2Prefix.startsWith(`${right.r2Prefix}/`) ||
+      right.r2Prefix.startsWith(`${left.r2Prefix}/`));
+  const leftUrl = new URL(left.updateUrl);
+  const rightUrl = new URL(right.updateUrl);
+  const leftPath = leftUrl.pathname.replace(RE_TRAILING_SLASH, '');
+  const rightPath = rightUrl.pathname.replace(RE_TRAILING_SLASH, '');
+  const urlsOverlap =
+    leftUrl.origin === rightUrl.origin &&
+    (leftPath === rightPath ||
+      leftPath.startsWith(`${rightPath}/`) ||
+      rightPath.startsWith(`${leftPath}/`));
+  return prefixesOverlap || urlsOverlap;
 }
 
 function mobileDistribution(value, path) {
@@ -243,15 +292,17 @@ function parseBrandBuildMatrix(value, options = {}) {
       );
     }
     if (distribution.desktop) {
-      const collision = destinations.some(
-        ({ bucket, prefix }) =>
-          bucket === distribution.desktop.r2Bucket &&
-          (prefix === distribution.desktop.r2Prefix ||
-            prefix.startsWith(`${distribution.desktop.r2Prefix}/`) ||
-            distribution.desktop.r2Prefix.startsWith(`${prefix}/`)),
+      const entries = destinationEntries(distribution.desktop);
+      const collision = entries.some((entry, index) =>
+        [...destinations, ...entries.slice(0, index)].some((existing) =>
+          destinationsOverlap(existing, entry),
+        ),
       );
       if (collision) {
-        fail(`${path}.distribution.desktop`, 'R2 prefixes in one bucket must not overlap');
+        fail(
+          `${path}.distribution.desktop`,
+          'Desktop destinations must not have overlapping R2 prefixes or update URL paths',
+        );
       }
     }
     if (distribution.mobile && projects.has(distribution.mobile.easProjectId)) {
@@ -261,10 +312,9 @@ function parseBrandBuildMatrix(value, options = {}) {
       fail(`${path}.distribution.mobile.ios.ascAppId`, 'must be unique');
     }
     if (distribution.desktop) {
-      destinations.push({
-        bucket: distribution.desktop.r2Bucket,
-        prefix: distribution.desktop.r2Prefix,
-      });
+      for (const destination of destinationEntries(distribution.desktop)) {
+        destinations.push(destination);
+      }
     }
     if (distribution.mobile) {
       projects.add(distribution.mobile.easProjectId);
