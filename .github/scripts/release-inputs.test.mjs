@@ -2,18 +2,95 @@ import { describe, expect, it } from 'vitest';
 import inputsModule from './release-inputs.cjs';
 
 const { validateReleaseInputs } = inputsModule;
-const RE_RENDER_MISSING = /var CONFIG_PUBLISHER_REPO.*secret CONFIG_PUBLISHER_TOKEN/;
+const RE_RENDER_MISSING =
+  /var CONFIG_PUBLISHER_REPO.*var CONFIG_SOURCE_REPO.*var CONFIG_RELEASE_KEYRINGS.*var CONFIG_RELEASE_REVISION/;
 const RE_MOBILE_SIGNING =
   /secret EXPO_TOKEN.*secret POSTHOG_PROJECT_TOKEN.*var POSTHOG_HOST.*secret SENTRY_AUTH_TOKEN.*secret SENTRY_DSN_MOBILE/;
 const RE_DESKTOP_UPLOAD = /R2_ACCESS_KEY_ID.*R2_ACCOUNT_ID.*R2_SECRET_ACCESS_KEY/;
 const RE_INVALID_KEY = /must encode an App Store Connect \.p8 key/;
 const RE_INVALID_ACCOUNT = /must be a lowercase 32-hex Cloudflare account ID/;
+const RE_CANONICAL_REPOSITORY = /must use canonical owner\/repository syntax/;
+const RE_ARCBOXLABS_OWNER = /owner must be arcboxlabs/;
+const RE_SOURCE_CANONICAL_REPOSITORY =
+  /CONFIG_SOURCE_REPO must use canonical owner\/repository syntax/;
+const RE_SOURCE_ARCBOXLABS_OWNER = /CONFIG_SOURCE_REPO owner must be arcboxlabs/;
+const RE_DIFFERENT_REPOSITORIES = /must identify different repositories/;
 
 describe('validateReleaseInputs', () => {
-  it('reports absent render vars and secrets by exact GitHub name', () => {
+  it('reports absent render vars by exact GitHub name', () => {
     expect(() => validateReleaseInputs({ env: {}, phase: 'render', platform: 'desktop' })).toThrow(
       RE_RENDER_MISSING,
     );
+  });
+
+  it('rejects malformed and cross-organization config repositories', () => {
+    const renderEnv = {
+      CONFIG_PUBLISHER_REPO: 'arcboxlabs/config-publisher',
+      CONFIG_SOURCE_REPO: 'arcboxlabs/config-source',
+      CONFIG_RELEASE_KEYRINGS: '{}',
+      CONFIG_RELEASE_REVISION: '{}',
+    };
+    expect(() =>
+      validateReleaseInputs({
+        env: {
+          ...renderEnv,
+          CONFIG_PUBLISHER_REPO: 'https://github.com/arcboxlabs/publisher',
+        },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).toThrow(RE_CANONICAL_REPOSITORY);
+    expect(() =>
+      validateReleaseInputs({
+        env: { ...renderEnv, CONFIG_PUBLISHER_REPO: 'another-org/config-publisher' },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).toThrow(RE_ARCBOXLABS_OWNER);
+    expect(() =>
+      validateReleaseInputs({
+        env: { ...renderEnv, CONFIG_SOURCE_REPO: 'arcboxlabs/source/extra' },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).toThrow(RE_SOURCE_CANONICAL_REPOSITORY);
+    expect(() =>
+      validateReleaseInputs({
+        env: { ...renderEnv, CONFIG_SOURCE_REPO: 'another-org/config-source' },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).toThrow(RE_SOURCE_ARCBOXLABS_OWNER);
+  });
+
+  it('accepts non-hardcoded publisher and source repositories in the ArcBox Labs organization', () => {
+    expect(() =>
+      validateReleaseInputs({
+        env: {
+          CONFIG_PUBLISHER_REPO: 'arcboxlabs/config-publisher',
+          CONFIG_SOURCE_REPO: 'arcboxlabs/config-source',
+          CONFIG_RELEASE_KEYRINGS: '{}',
+          CONFIG_RELEASE_REVISION: '{}',
+        },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects equal publisher and source repository roles', () => {
+    expect(() =>
+      validateReleaseInputs({
+        env: {
+          CONFIG_PUBLISHER_REPO: 'arcboxlabs/config-repository',
+          CONFIG_SOURCE_REPO: 'arcboxlabs/config-repository',
+          CONFIG_RELEASE_KEYRINGS: '{}',
+          CONFIG_RELEASE_REVISION: '{}',
+        },
+        phase: 'render',
+        platform: 'desktop',
+      }),
+    ).toThrow(RE_DIFFERENT_REPOSITORIES);
   });
 
   it('requires signing and upload inputs only for the requested platform', () => {
