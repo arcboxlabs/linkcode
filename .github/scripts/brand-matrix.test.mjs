@@ -21,6 +21,7 @@ const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal relea
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
 const RE_INVALID_SOURCE_ROOT = /sourceRoot: must be/;
 const RE_LEGACY_DESKTOP_UPLOAD = /"s3:\/\/\$\{R2_BUCKET\}\/\$\{R2_PREFIX\}\/"/;
+const RE_LEGACY_RELEASE_TAG = /must equal refs\/tags\/v1\.2\.3/;
 const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
 const ACTIONS_EXPRESSION = String.fromCodePoint(36);
 
@@ -92,6 +93,18 @@ function desktopDestination(brandId) {
     r2Prefix: `desktop/${brandId}/canary`,
     updateUrl: `https://${brandId}.example.invalid/desktop/${brandId}/canary`,
   };
+}
+
+function releasableBrand(brandId = 'acme') {
+  const entry = brand(brandId);
+  entry.distribution.desktop = desktopDestination(brandId);
+  entry.distribution.mobile = {
+    android: { track: 'internal' },
+    easProjectId: '11111111-1111-4111-8111-111111111111',
+    ios: { appleTeamId: 'ABC1234567', ascAppId: '1234567890' },
+    updatesUrl: 'https://u.expo.dev/11111111-1111-4111-8111-111111111111',
+  };
+  return entry;
 }
 
 describe('parseBrandBuildMatrix', () => {
@@ -276,6 +289,42 @@ describe('parseBrandBuildMatrix', () => {
       r2Prefix: 'desktop',
       updateUrl: 'https://releases.linkcode.ai/desktop',
     });
+  });
+
+  it('requires the package-version tag for a legacy Desktop upload', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'brand-matrix-legacy-'));
+    const matrixPath = join(root, 'matrix.json');
+    const outputPath = join(root, 'github-output');
+    const release = releasableBrand();
+    release.distribution.desktop.legacyDestination = {
+      r2Bucket: 'legacy-releases',
+      r2Prefix: 'desktop',
+      updateUrl: 'https://legacy.example.invalid/desktop',
+    };
+    await writeFile(matrixPath, JSON.stringify(matrix(release)));
+    const args = [
+      '--matrix-file',
+      matrixPath,
+      '--build',
+      'true',
+      '--sign',
+      'true',
+      '--upload',
+      'true',
+      '--desktop-version',
+      '1.2.3',
+    ];
+
+    expect(() =>
+      runCli([...args, '--release-ref', 'refs/heads/master'], {
+        GITHUB_OUTPUT: outputPath,
+      }),
+    ).toThrow(RE_LEGACY_RELEASE_TAG);
+    expect(() =>
+      runCli([...args, '--release-ref', 'refs/tags/v1.2.3'], {
+        GITHUB_OUTPUT: outputPath,
+      }),
+    ).not.toThrow();
   });
 
   it('rejects malformed or implicit legacy Desktop destinations', () => {
@@ -498,6 +547,8 @@ describe('release brand matrix workflow', () => {
       `R2_PREFIX: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.legacyDestination.r2Prefix || matrix.distribution.desktop.r2Prefix }}`,
     );
     expect(publish).toMatch(RE_LEGACY_DESKTOP_UPLOAD);
+    expect(workflow).toContain('--release-ref "$GITHUB_REF"');
+    expect(workflow).toContain('--desktop-version "$(jq -er .version apps/desktop/package.json)"');
     expect(workflow).not.toContain("brandId == 'linkcode'");
   });
 

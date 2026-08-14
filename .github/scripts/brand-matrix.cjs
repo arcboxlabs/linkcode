@@ -322,6 +322,13 @@ function parseBrandBuildMatrix(value, options = {}) {
     }
     return brand;
   });
+  if (options.upload && brands.some((brand) => brand.distribution.desktop?.legacyDestination)) {
+    const desktopVersion = string(options.desktopVersion, 'options.desktopVersion');
+    const expectedRef = `refs/tags/v${desktopVersion}`;
+    if (options.releaseRef !== expectedRef) {
+      fail('options.releaseRef', `must equal ${expectedRef} for a legacy Desktop upload`);
+    }
+  }
   return { brandBuildMatrixVersion: BUILD_MATRIX_VERSION, brands };
 }
 
@@ -351,7 +358,9 @@ function runCli(argv = process.argv.slice(2), env = process.env) {
     args: argv,
     options: {
       build: { type: 'string', default: 'false' },
+      'desktop-version': { type: 'string', default: '' },
       'matrix-file': { type: 'string' },
+      'release-ref': { type: 'string', default: '' },
       sign: { type: 'string', default: 'false' },
       upload: { type: 'string', default: 'false' },
     },
@@ -368,6 +377,8 @@ function runCli(argv = process.argv.slice(2), env = process.env) {
   }
   const plan = buildMatrixPlan(matrix, {
     build: strictBoolean(values.build, '--build'),
+    desktopVersion: values['desktop-version'],
+    releaseRef: values['release-ref'],
     sign: strictBoolean(values.sign, '--sign'),
     upload: strictBoolean(values.upload, '--upload'),
   });
