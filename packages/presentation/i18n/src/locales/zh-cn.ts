@@ -1370,6 +1370,7 @@ export const zhCN = {
     },
     settings: {
       title: '设置',
+      more: '更多',
       signIn: '登录 LinkCode Cloud',
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',

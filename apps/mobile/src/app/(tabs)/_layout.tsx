@@ -24,7 +24,6 @@ export default function TabsLayout(): React.ReactNode {
 function TabsNavigator(): React.ReactNode {
   const tThreads = useTranslations('mobile.sessions');
   const tTerminals = useTranslations('mobile.terminals');
-  const tSettings = useTranslations('mobile.settings');
   const actions = usePrimaryActions();
   // Runtime segments under this layout are ['(tabs)', '<tab>'] — wider than the untyped-routes
   // 1-tuple, hence `.at`. Before hydration fall back to home.
@@ -40,10 +39,6 @@ function TabsNavigator(): React.ReactNode {
       <NativeTabs.Trigger name="terminals">
         <NativeTabs.Trigger.Icon sf="apple.terminal" />
         <NativeTabs.Trigger.Label>{tTerminals('title')}</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Icon sf="gearshape" />
-        <NativeTabs.Trigger.Label>{tSettings('title')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       {/* iOS 26's separated tab-bar slot (the `search` role) carries the focused tab's primary
        * action: `disabled` keeps native selection prevented while tabPress still reaches JS. */}

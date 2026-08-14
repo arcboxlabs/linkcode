@@ -20,10 +20,10 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
-import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
 import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
@@ -62,6 +62,7 @@ export default function ThreadsRoute(): React.ReactNode {
         }
       : null;
   usePrimaryAction('threads', primaryAction);
+  const trailingActions = useTrailingActions(primaryAction);
 
   return (
     <View className="flex-1 bg-background">
@@ -71,16 +72,7 @@ export default function ThreadsRoute(): React.ReactNode {
           headerLargeTitleEnabled: !USES_IOS_26_NAVIGATION,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
-          headerRight:
-            !USES_IOS_26_NAVIGATION && primaryAction
-              ? () => (
-                  <HeaderIconButton
-                    icon={primaryAction.icon}
-                    label={primaryAction.label}
-                    onPress={primaryAction.onPress}
-                  />
-                )
-              : undefined,
+          ...trailingActions,
         }}
       />
       <HostClientGate>

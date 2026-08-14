@@ -1414,6 +1414,7 @@ export const en = {
     },
     settings: {
       title: 'Settings',
+      more: 'More',
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
