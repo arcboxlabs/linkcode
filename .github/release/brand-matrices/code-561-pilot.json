@@ -98,7 +98,8 @@
           "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
           "telemetryEndpoint": "https://acme.example.invalid/telemetry"
         }
-      }
+      },
+      "sourceRoot": "examples/acme-zenith"
     },
     {
       "brandId": "zenith",
@@ -197,7 +198,8 @@
           "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
           "telemetryEndpoint": "https://zenith.example.invalid/telemetry"
         }
-      }
+      },
+      "sourceRoot": "examples/acme-zenith"
     }
   ]
 }

@@ -17,8 +17,10 @@ const RE_MISSING_BRAND_SEGMENT = /must include the brand id/;
 const RE_UNKNOWN_FIELD = /must contain exactly/;
 const RE_DIVERGENT_SOURCE = /all platforms must share sourceGitSha/;
 const RE_SHARED_DESTINATION = /R2 prefixes in one bucket must not overlap/;
-const RE_SHARED_CREDENTIALS = /credentialSecretPrefix: must be unique/;
+const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal release-/;
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
+const RE_INVALID_SOURCE_ROOT = /sourceRoot: must be/;
+const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
 const ACTIONS_EXPRESSION = String.fromCodePoint(36);
 
 function sha(character) {
@@ -74,6 +76,7 @@ function brand(brandId = 'acme') {
       desktop: manifest(brandId, 'desktop'),
       ios: manifest(brandId, 'ios'),
     },
+    sourceRoot: '.',
   };
 }
 
@@ -115,6 +118,14 @@ describe('parseBrandBuildMatrix', () => {
     expect(
       pilot.brands.every((entry) => Object.values(entry.distribution).every((x) => x === null)),
     ).toBe(true);
+    expect(pilot.brands.every((entry) => entry.sourceRoot === 'examples/acme-zenith')).toBe(true);
+    expect(() => buildMatrixPlan(pilot, { build: true })).toThrow(RE_MISSING_DELIVERY);
+    const fixture = await readFile(
+      new URL('../../apps/desktop/e2e/fixtures/pilot-e2e-v1.json', import.meta.url),
+    );
+    expect(createHash('sha256').update(fixture).digest('hex')).toBe(
+      '54ce1fc855e12295a8dd1490463c9afac8e84a526f1e16340bcefe4f0fec8e39',
+    );
   });
 
   it('builds the complete brand by platform plan', () => {
@@ -166,7 +177,7 @@ describe('parseBrandBuildMatrix', () => {
 
     const first = brand('acme');
     first.distribution.desktop = {
-      credentialSecretPrefix: 'ACME',
+      credentialEnvironment: 'release-acme',
       r2Bucket: 'release-acme',
       r2Prefix: 'desktop/acme/canary',
       updateUrl: 'https://acme.example.invalid/desktop/acme/canary',
@@ -179,6 +190,7 @@ describe('parseBrandBuildMatrix', () => {
     };
     const second = structuredClone(first);
     second.brandId = 'zenith';
+    second.distribution.desktop.credentialEnvironment = 'release-zenith';
     for (const platform of ['desktop', 'ios', 'android']) {
       second.releaseManifests[platform].brandId = 'zenith';
     }
@@ -190,7 +202,7 @@ describe('parseBrandBuildMatrix', () => {
   it('rejects shared R2 destinations, credentials, and store apps across brands', () => {
     const first = brand('acme');
     first.distribution.desktop = {
-      credentialSecretPrefix: 'ACME',
+      credentialEnvironment: 'release-acme',
       r2Bucket: 'release-brands',
       r2Prefix: 'desktop/acme/zenith/canary',
       updateUrl: 'https://acme.example.invalid/desktop/acme/zenith/canary',
@@ -203,7 +215,7 @@ describe('parseBrandBuildMatrix', () => {
     };
     const second = brand('zenith');
     second.distribution.desktop = {
-      credentialSecretPrefix: 'ZENITH',
+      credentialEnvironment: 'release-zenith',
       r2Bucket: first.distribution.desktop.r2Bucket,
       r2Prefix: first.distribution.desktop.r2Prefix,
       updateUrl: 'https://zenith.example.invalid/desktop/acme/zenith/canary',
@@ -227,12 +239,12 @@ describe('parseBrandBuildMatrix', () => {
 
     second.distribution.desktop.r2Prefix = 'desktop/zenith/canary';
     second.distribution.desktop.updateUrl = 'https://zenith.example.invalid/desktop/zenith/canary';
-    second.distribution.desktop.credentialSecretPrefix = 'ACME';
+    second.distribution.desktop.credentialEnvironment = 'release-acme';
     expect(() => parseBrandBuildMatrix(matrix(first, second), { build: true })).toThrow(
-      RE_SHARED_CREDENTIALS,
+      RE_WRONG_CREDENTIAL_ENVIRONMENT,
     );
 
-    second.distribution.desktop.credentialSecretPrefix = 'ZENITH';
+    second.distribution.desktop.credentialEnvironment = 'release-zenith';
     second.distribution.mobile.ios.ascAppId = first.distribution.mobile.ios.ascAppId;
     expect(() => parseBrandBuildMatrix(matrix(first, second), { build: true })).toThrow(
       RE_SHARED_APP_STORE_APP,
@@ -247,6 +259,10 @@ describe('parseBrandBuildMatrix', () => {
     const divergent = matrix(brand());
     divergent.brands[0].releaseManifests.ios.sourceGitSha = gitSha('f');
     expect(() => parseBrandBuildMatrix(divergent)).toThrow(RE_DIVERGENT_SOURCE);
+
+    const redirected = matrix(brand());
+    redirected.brands[0].sourceRoot = 'brands/acme';
+    expect(() => parseBrandBuildMatrix(redirected)).toThrow(RE_INVALID_SOURCE_ROOT);
   });
 
   it('emits the digest of the exact matrix-file bytes', async () => {
@@ -275,9 +291,7 @@ describe('release brand matrix workflow', () => {
     );
 
     expect(validation).toContain('needs: prepare');
-    expect(validation).toContain(
-      `matrix: ${ACTIONS_EXPRESSION}{{ fromJSON(needs.prepare.outputs.targets) }}`,
-    );
+    expect(validation).toContain('platform: [desktop, ios, android]');
     expect(validation).toContain('xvfb-run -a pnpm -F @linkcode/desktop e2e:config-canary');
     expect(validation).toContain('pnpm -F @linkcode/mobile smoke:export');
     expect(validation).toContain(
@@ -285,13 +299,12 @@ describe('release brand matrix workflow', () => {
     );
     expect(validation).toContain("matrix.platform == 'desktop'");
     expect(validation).toContain("matrix.platform != 'desktop'");
-    expect(validation).toContain(
-      `credential-free-${ACTIONS_EXPRESSION}{{ matrix.brandId }}-${ACTIONS_EXPRESSION}{{ matrix.platform }}`,
-    );
+    expect(validation).toContain(`credential-free-${ACTIONS_EXPRESSION}{{ matrix.platform }}`);
     expect(validation).toContain('"local-static-origin"');
     expect(validation).toContain('providerDeploymentId:null');
     expect(validation).not.toContain('environment: release');
-    expect(validation).not.toContain('secrets.');
+    expect(validation).not.toMatch(RE_SECRETS_EXPRESSION);
+    expect(validation).not.toContain('brandId:$brandId');
     expect(validation).not.toContain('release-environment-preflight');
   });
 
@@ -309,7 +322,12 @@ describe('release brand matrix workflow', () => {
     expect(preflight).toContain('protection_rules');
     expect(preflight).toContain('required_reviewers');
     expect(preflight).toContain('deployment_branch_policy');
-    expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/release"');
+    expect(preflight).toContain('gh api "repos/$GITHUB_REPOSITORY/environments/$name"');
+    expect(preflight).toContain('deployment-branch-policies?per_page=100');
+    expect(preflight).toContain(
+      'expected=\'[{"name":"master","type":"branch"},{"name":"v*.*.*","type":"tag"}]\'',
+    );
+    expect(preflight).toContain('credentialEnvironment');
     expect(preflight).toContain(`GH_TOKEN: ${ACTIONS_EXPRESSION}{{ github.token }}`);
     expect(preflight).not.toContain('RELEASE_ENVIRONMENT_ADMIN_TOKEN');
     expect(workflow).toContain('actions: read');
@@ -325,9 +343,20 @@ describe('release brand matrix workflow', () => {
       workflow.indexOf('  render:'),
     );
     expect(signingInputs).toContain('needs: [prepare, release-environment-preflight]');
-    expect(signingInputs).toContain('environment: release');
-    expect(workflow.split('    environment: release')).toHaveLength(7);
-    expect(workflow.split('release_environment: release')).toHaveLength(3);
+    expect(signingInputs).toContain(
+      `environment: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.credentialEnvironment }}`,
+    );
+    expect(workflow).not.toContain('secrets[format(');
+    expect(workflow).toContain(
+      `R2_ACCESS_KEY_ID: ${ACTIONS_EXPRESSION}{{ secrets.R2_ACCESS_KEY_ID }}`,
+    );
+    expect(workflow).toContain(
+      `release_environment: ${ACTIONS_EXPRESSION}{{ matrix.distribution.desktop.credentialEnvironment }}`,
+    );
+    expect(workflow).toContain(
+      `if: ${ACTIONS_EXPRESSION}{{ inputs.build && !cancelled() && needs.render.result == 'success' && (needs.signing-inputs.result == 'success' || (!inputs.sign && needs.signing-inputs.result == 'skipped')) }}`,
+    );
+    expect(workflow).not.toContain(`ref: ${ACTIONS_EXPRESSION}{{ inputs.ref }}`);
   });
 
   it('passes the release environment through reusable signing workflows', async () => {
@@ -434,7 +463,9 @@ describe('release brand matrix workflow', () => {
       expect(renderJob).not.toContain('repositories: linkcodehq');
       expect(renderJob).not.toContain('repositories: linkcode-config');
     }
-    expect(workflow.split('source-root: examples/acme-zenith')).toHaveLength(3);
+    expect(
+      workflow.split(`source-root: ${ACTIONS_EXPRESSION}{{ matrix.sourceRoot }}`),
+    ).toHaveLength(3);
   });
 
   it('rejects publisher/source role swaps through independent checkout contracts', async () => {

@@ -34,7 +34,6 @@ const RE_R2_PREFIX = /^[a-z0-9][a-z0-9/-]*$/;
 const RE_TRAILING_SLASH = /\/$/;
 const RE_TEAM_ID = /^[A-Z0-9]{10}$/;
 const RE_ASC_APP_ID = /^\d+$/;
-const RE_SECRET_PREFIX = /^[A-Z][A-Z0-9_]{1,31}$/;
 
 function fail(path, message) {
   throw new TypeError(`${path}: ${message}`);
@@ -126,13 +125,15 @@ function compliance(value, path) {
 function desktopDistribution(value, path, brandId, channel) {
   if (value === null) return null;
   const distribution = record(value, path);
-  exact(distribution, ['credentialSecretPrefix', 'r2Bucket', 'r2Prefix', 'updateUrl'], path);
+  exact(distribution, ['credentialEnvironment', 'r2Bucket', 'r2Prefix', 'updateUrl'], path);
   const updateUrl = httpsUrl(distribution.updateUrl, `${path}.updateUrl`);
-  const credentialSecretPrefix = string(
-    distribution.credentialSecretPrefix,
-    `${path}.credentialSecretPrefix`,
-    RE_SECRET_PREFIX,
+  const credentialEnvironment = string(
+    distribution.credentialEnvironment,
+    `${path}.credentialEnvironment`,
   );
+  if (credentialEnvironment !== `release-${brandId}`) {
+    fail(`${path}.credentialEnvironment`, `must equal release-${brandId}`);
+  }
   const r2Bucket = string(distribution.r2Bucket, `${path}.r2Bucket`, RE_BUCKET);
   const r2Prefix = string(distribution.r2Prefix, `${path}.r2Prefix`, RE_R2_PREFIX);
   const expectedSuffix = `/${r2Prefix.replace(RE_TRAILING_SLASH, '')}`;
@@ -143,7 +144,7 @@ function desktopDistribution(value, path, brandId, channel) {
     fail(path, 'updateUrl path must end with r2Prefix');
   }
   return {
-    credentialSecretPrefix,
+    credentialEnvironment,
     r2Bucket,
     r2Prefix: r2Prefix.replace(RE_TRAILING_SLASH, ''),
     updateUrl,
@@ -182,18 +183,24 @@ function parseBrandBuildMatrix(value, options = {}) {
   if (options.upload && !options.sign) fail('options.upload', 'upload requires sign=true');
   const seenBrands = new Set();
   const destinations = [];
-  const credentialPrefixes = new Set();
   const projects = new Set();
   const appStoreApps = new Set();
   const brands = matrix.brands.map((raw, index) => {
     const path = `matrix.brands[${index}]`;
     const brand = record(raw, path);
-    exact(brand, ['brandId', 'channel', 'compliance', 'distribution', 'releaseManifests'], path);
+    exact(
+      brand,
+      ['brandId', 'channel', 'compliance', 'distribution', 'releaseManifests', 'sourceRoot'],
+      path,
+    );
     const brandId = string(brand.brandId, `${path}.brandId`, RE_BRAND_ID);
     if (seenBrands.has(brandId)) fail(`${path}.brandId`, 'must be unique');
     seenBrands.add(brandId);
     if (brand.channel !== 'canary' && brand.channel !== 'stable') {
       fail(`${path}.channel`, 'must be canary or stable');
+    }
+    if (brand.sourceRoot !== '.' && brand.sourceRoot !== 'examples/acme-zenith') {
+      fail(`${path}.sourceRoot`, 'must be . or examples/acme-zenith');
     }
     const manifests = record(brand.releaseManifests, `${path}.releaseManifests`);
     exact(manifests, PLATFORMS, `${path}.releaseManifests`);
@@ -247,12 +254,6 @@ function parseBrandBuildMatrix(value, options = {}) {
         fail(`${path}.distribution.desktop`, 'R2 prefixes in one bucket must not overlap');
       }
     }
-    if (
-      distribution.desktop &&
-      credentialPrefixes.has(distribution.desktop.credentialSecretPrefix)
-    ) {
-      fail(`${path}.distribution.desktop.credentialSecretPrefix`, 'must be unique');
-    }
     if (distribution.mobile && projects.has(distribution.mobile.easProjectId)) {
       fail(`${path}.distribution.mobile.easProjectId`, 'must be unique');
     }
@@ -264,7 +265,6 @@ function parseBrandBuildMatrix(value, options = {}) {
         bucket: distribution.desktop.r2Bucket,
         prefix: distribution.desktop.r2Prefix,
       });
-      credentialPrefixes.add(distribution.desktop.credentialSecretPrefix);
     }
     if (distribution.mobile) {
       projects.add(distribution.mobile.easProjectId);
