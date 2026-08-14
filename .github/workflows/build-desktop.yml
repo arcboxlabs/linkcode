@@ -85,22 +85,52 @@ env:
   LINKCODE_REQUIRE_CONFIG_BUNDLE: ${{ (inputs.sign || inputs.rendered_artifact != '') && '1' || '' }}
 
 jobs:
-  # Renders the immutable config bundle from the pinned config publisher checkout (release
-  # environment holds the pins and the publisher read token). Unsigned builds skip this and
-  # build without a bundle; signed builds hard-require its output.
+  # Renders the immutable config bundle from the pinned config publisher checkout. The release
+  # environment selects the publisher repository; the workflow mints its scoped read token.
+  # Unsigned builds skip this and build without a bundle; signed builds hard-require its output.
   render-config:
     name: Render immutable config
     if: ${{ inputs.sign && inputs.rendered_artifact == '' }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     environment: ${{ inputs.release_environment || 'release' }}
     steps:
+      - name: Validate config repositories
+        id: repositories
+        env:
+          CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          CONFIG_SOURCE_REPO: ${{ vars.CONFIG_SOURCE_REPO }}
+        run: |
+          set -euo pipefail
+          validate_repository() {
+            local name="$1" value="$2" prefix="$3"
+            if [ -z "$value" ]; then
+              echo "::error::$name is required in the protected release environment"
+              exit 1
+            fi
+            if [[ ! "$value" =~ ^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9][A-Za-z0-9._-]{0,99})$ ]]; then
+              echo "::error::$name must use canonical owner/repository syntax"
+              exit 1
+            fi
+            if [ "${BASH_REMATCH[1]}" != arcboxlabs ]; then
+              echo "::error::$name owner must be arcboxlabs"
+              exit 1
+            fi
+            printf '%s-full=%s\n%s-name=%s\n' "$prefix" "$value" "$prefix" "${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          }
+          validate_repository CONFIG_PUBLISHER_REPO "$CONFIG_PUBLISHER_REPO" publisher
+          validate_repository CONFIG_SOURCE_REPO "$CONFIG_SOURCE_REPO" source
+          if [ "$CONFIG_PUBLISHER_REPO" = "$CONFIG_SOURCE_REPO" ]; then
+            echo "::error::CONFIG_PUBLISHER_REPO and CONFIG_SOURCE_REPO must identify different repositories"
+            exit 1
+          fi
+
       - name: Require organization App credentials
         env:
           BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
           BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
         run: |
           if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
-            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read arcboxlabs/linkcodehq and arcboxlabs/linkcode-config"
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read the selected publisher and source repositories"
             exit 1
           fi
 
@@ -111,7 +141,7 @@ jobs:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           owner: arcboxlabs
-          repositories: linkcodehq
+          repositories: ${{ steps.repositories.outputs.publisher-name }}
           permission-contents: read
 
       - name: Mint config source read token
@@ -121,7 +151,7 @@ jobs:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           owner: arcboxlabs
-          repositories: linkcode-config
+          repositories: ${{ steps.repositories.outputs.source-name }}
           permission-contents: read
 
       - name: Checkout
@@ -147,7 +177,9 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: desktop
+          publisher-repository: ${{ steps.repositories.outputs.publisher-full }}
           publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-repository: ${{ steps.repositories.outputs.source-full }}
           source-token: ${{ steps.source-token.outputs.token }}
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}

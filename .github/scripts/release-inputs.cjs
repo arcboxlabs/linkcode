@@ -4,8 +4,11 @@ const process = require('node:process');
 const PHASES = new Set(['render', 'sign', 'upload']);
 const PLATFORMS = new Set(['desktop', 'mobile']);
 const RE_R2_ACCOUNT_ID = /^[0-9a-f]{32}$/;
+const RE_PUBLISHER_REPOSITORY = /^([a-z\d][a-z\d-]{0,38})\/[a-z\d][\w.-]{0,99}$/i;
 const INPUTS = {
   render: [
+    ['var', 'CONFIG_PUBLISHER_REPO'],
+    ['var', 'CONFIG_SOURCE_REPO'],
     ['var', 'CONFIG_RELEASE_KEYRINGS'],
     ['var', 'CONFIG_RELEASE_REVISION'],
   ],
@@ -55,6 +58,22 @@ function validateReleaseInputs({ env, phase, platform }) {
     throw new TypeError(
       `${phase}/${platform}: missing GitHub release environment inputs: ${formatted}`,
     );
+  }
+  if (phase === 'render') {
+    for (const name of ['CONFIG_PUBLISHER_REPO', 'CONFIG_SOURCE_REPO']) {
+      const repository = RE_PUBLISHER_REPOSITORY.exec(env[name]);
+      if (!repository) {
+        throw new TypeError(`render: var ${name} must use canonical owner/repository syntax`);
+      }
+      if (repository[1] !== 'arcboxlabs') {
+        throw new TypeError(`render: var ${name} owner must be arcboxlabs`);
+      }
+    }
+    if (env.CONFIG_PUBLISHER_REPO === env.CONFIG_SOURCE_REPO) {
+      throw new TypeError(
+        'render: CONFIG_PUBLISHER_REPO and CONFIG_SOURCE_REPO must identify different repositories',
+      );
+    }
   }
   if (phase === 'sign' && platform === 'desktop') {
     let key;
