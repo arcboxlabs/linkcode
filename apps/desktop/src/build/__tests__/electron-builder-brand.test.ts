@@ -66,6 +66,20 @@ describe('electronBuilderBrandConfig', () => {
     expect(serialized.replaceAll('./electron-builder.yml', '')).not.toMatch(/linkcode/i);
   });
 
+  it('uses the publisher-resolved LinkCode desktop app id verbatim', () => {
+    const config = electronBuilderBrandConfig(
+      identity({
+        applicationId: 'com.arcboxlabs.linkcode.desktop',
+        brandId: 'linkcode',
+        displayName: 'LinkCode',
+        storageNamespace: 'LinkCode',
+        urlScheme: 'linkcode',
+      }),
+    );
+
+    expect(config.appId).toBe('com.arcboxlabs.linkcode.desktop');
+  });
+
   it('serializes deterministically', () => {
     const first = serializeElectronBuilderBrandConfig(electronBuilderBrandConfig(ZENITH_CANARY));
     const second = serializeElectronBuilderBrandConfig(electronBuilderBrandConfig(ZENITH_CANARY));

@@ -9,14 +9,22 @@ inputs:
   app:
     description: Which app to render for (desktop or mobile)
     required: true
-  publisher-repo:
-    description: owner/name of the config publisher repository (vars.CONFIG_PUBLISHER_REPO)
-    required: false
-    default: ""
+  publisher-repository:
+    description: Validated owner/name from vars.CONFIG_PUBLISHER_REPO
+    required: true
   publisher-token:
-    description: Token that can read the config publisher repository (secrets.CONFIG_PUBLISHER_TOKEN)
+    description: Short-lived Contents read token restricted to publisher-repository
+    required: true
+  source-repository:
+    description: Validated owner/name from vars.CONFIG_SOURCE_REPO
+    required: true
+  source-token:
+    description: Short-lived Contents read token restricted to source-repository
+    required: true
+  source-root:
+    description: Reviewed source root (repository root for production or examples/acme-zenith)
     required: false
-    default: ""
+    default: "."
   revision:
     description: Config revision metadata JSON content (vars.CONFIG_RELEASE_REVISION)
     required: false
@@ -25,6 +33,10 @@ inputs:
     description: Public keyrings JSON content (vars.CONFIG_RELEASE_KEYRINGS)
     required: false
     default: ""
+  brand-artifacts:
+    description: Render the desktop brand identity, assets, and builder overlay
+    required: false
+    default: "false"
   release-manifest:
     description: Desktop release-render manifest JSON content (app == desktop)
     required: false
@@ -45,19 +57,38 @@ runs:
       shell: bash
       env:
         APP: ${{ inputs.app }}
-        PUBLISHER_REPO: ${{ inputs.publisher-repo }}
+        PUBLISHER_REPO: ${{ inputs.publisher-repository }}
         PUBLISHER_TOKEN: ${{ inputs.publisher-token }}
+        SOURCE_REPO: ${{ inputs.source-repository }}
+        SOURCE_TOKEN: ${{ inputs.source-token }}
+        SOURCE_ROOT: ${{ inputs.source-root }}
         REVISION_JSON: ${{ inputs.revision }}
         KEYRINGS_JSON: ${{ inputs.keyrings }}
         MANIFEST_DESKTOP: ${{ inputs.release-manifest }}
         MANIFEST_IOS: ${{ inputs.release-manifest-ios }}
         MANIFEST_ANDROID: ${{ inputs.release-manifest-android }}
+        BRAND_ARTIFACTS: ${{ inputs.brand-artifacts }}
       run: |
         set -euo pipefail
 
+        if [[ ! "$PUBLISHER_REPO" =~ ^arcboxlabs/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+          echo "::error::CONFIG_PUBLISHER_REPO must use canonical arcboxlabs/repository syntax"
+          exit 1
+        fi
+        if [[ ! "$SOURCE_REPO" =~ ^arcboxlabs/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+          echo "::error::CONFIG_SOURCE_REPO must use canonical arcboxlabs/repository syntax"
+          exit 1
+        fi
+        if [ "$PUBLISHER_REPO" = "$SOURCE_REPO" ]; then
+          echo "::error::CONFIG_PUBLISHER_REPO and CONFIG_SOURCE_REPO must identify different repositories"
+          exit 1
+        fi
+        if [ -z "$PUBLISHER_TOKEN" ] || [ -z "$SOURCE_TOKEN" ]; then
+          echo "::error::render-release-config requires separate short-lived Contents read tokens for $PUBLISHER_REPO and $SOURCE_REPO"
+          exit 1
+        fi
+
         missing=()
-        [ -n "$PUBLISHER_REPO" ] || missing+=(CONFIG_PUBLISHER_REPO)
-        [ -n "$PUBLISHER_TOKEN" ] || missing+=(CONFIG_PUBLISHER_TOKEN)
         [ -n "$REVISION_JSON" ] || missing+=(CONFIG_RELEASE_REVISION)
         [ -n "$KEYRINGS_JSON" ] || missing+=(CONFIG_RELEASE_KEYRINGS)
         case "$APP" in
@@ -73,7 +104,7 @@ runs:
           exit 1
         fi
 
-        work="$RUNNER_TEMP/config-render"
+        work="$RUNNER_TEMP/config-render-$APP"
         mkdir -p "$work"
         printf '%s' "$REVISION_JSON" > "$work/revision.json"
         printf '%s' "$KEYRINGS_JSON" > "$work/keyrings.json"
@@ -115,27 +146,112 @@ runs:
         brand="$(pin "$primary" .brandId)"
         channel="$(pin "$primary" .channel)"
         telemetry="$(pin "$primary" .telemetryEndpoint)"
-
-        # Fetch exactly the two pinned commits — never a branch head — and keep the token out of
-        # persisted git config by passing it per command.
-        auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$PUBLISHER_TOKEN" | base64 -w0)"
-        publisher="$work/publisher"
-        git init -q "$publisher"
-        git -C "$publisher" remote add origin "https://github.com/${PUBLISHER_REPO}.git"
-        if ! git -C "$publisher" -c "http.https://github.com/.extraheader=$auth" \
-            fetch -q --depth 1 origin "$publisher_sha" "$source_sha"; then
-          echo "::error::Could not fetch pinned commits ${publisher_sha} / ${source_sha} from the config publisher repository. Release builds require read access to the private publisher repository and both pinned commits to exist."
+        if [[ ! "$publisher_sha" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::publisherGitSha and sourceGitSha must be exact lowercase 40-hex commits"
           exit 1
         fi
-        git -C "$publisher" checkout -q "$publisher_sha"
-        git -C "$publisher" worktree add -q --detach "$work/source" "$source_sha"
+
+        # Repository identities are release-environment owned; the source root is workflow-owned.
+        # Manifests control exact commits and bind the rendered release inputs.
+        publisher_repo="$PUBLISHER_REPO"
+        source_repo="$SOURCE_REPO"
+        case "$SOURCE_ROOT" in
+          .|examples/acme-zenith) ;;
+          *) echo "::error::source-root must be the production repository root or the reviewed nonproduction example root"; exit 1 ;;
+        esac
+        publisher="$work/publisher"
+        source="$work/source"
+
+        checkout_pinned() {
+          local dir="$1" repo="$2" sha="$3" token="$4" label="$5"
+          local auth comparison extra reviewed reviewed_name reviewed_sha
+          local reviewed_ref=refs/heads/master
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$token" | base64 -w0)"
+          git init -q "$dir"
+          git -C "$dir" remote add origin "https://github.com/${repo}.git"
+          if ! reviewed="$(git -C "$dir" \
+              -c "http.https://github.com/.extraheader=$auth" \
+              -c http.followRedirects=false \
+              ls-remote --exit-code origin "$reviewed_ref")"; then
+            echo "::error::Could not resolve reviewed master for $label repository $repo"
+            exit 1
+          fi
+          read -r reviewed_sha reviewed_name extra <<< "$reviewed"
+          if [[ ! "$reviewed_sha" =~ ^[0-9a-f]{40}$ ]] || \
+             [ "$reviewed_name" != "$reviewed_ref" ] || [ -n "$extra" ]; then
+            echo "::error::$label reviewed ref identity did not match $reviewed_ref in $repo"
+            exit 1
+          fi
+          comparison="$dir-reviewed-ancestry.json"
+          if ! curl --fail --silent --show-error --max-redirs 0 \
+              --proto '=https' --tlsv1.2 \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer $token" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -o "$comparison" \
+              "https://api.github.com/repos/${repo}/compare/${sha}...${reviewed_sha}"; then
+            echo "::error::Could not verify that $label commit $sha is reachable from reviewed master in $repo"
+            exit 1
+          fi
+          if ! jq -e --arg sha "$sha" '
+              (.status == "ahead" or .status == "identical") and
+              .base_commit.sha == $sha and .merge_base_commit.sha == $sha
+            ' "$comparison" > /dev/null; then
+            echo "::error::$label commit $sha is not reachable from reviewed master in $repo"
+            exit 1
+          fi
+          if ! git -C "$dir" -c "http.https://github.com/.extraheader=$auth" \
+              -c http.followRedirects=false \
+              fetch -q --depth 1 origin "$sha"; then
+            echo "::error::Could not fetch $label commit $sha from $repo. Confirm the org App is installed on that private repository with Contents: read and the commit exists."
+            exit 1
+          fi
+          git -C "$dir" checkout -q --detach FETCH_HEAD
+          if [ "$(git -C "$dir" rev-parse HEAD)" != "$sha" ] || \
+             [ "$(git -C "$dir" remote get-url origin)" != "https://github.com/${repo}.git" ]; then
+            echo "::error::$label checkout identity did not match expected repository $repo at $sha"
+            exit 1
+          fi
+        }
+
+        checkout_pinned "$publisher" "$publisher_repo" "$publisher_sha" "$PUBLISHER_TOKEN" publisher
+        checkout_pinned "$source" "$source_repo" "$source_sha" "$SOURCE_TOKEN" "config source"
+        unset PUBLISHER_TOKEN SOURCE_TOKEN
+
+        structural="$source/$SOURCE_ROOT"
+        if [ ! -f "$publisher/package.json" ] || \
+           [ ! -f "$publisher/pnpm-lock.yaml" ] || \
+           [ ! -f "$publisher/packages/config-publisher/package.json" ] || \
+           [ ! -f "$publisher/packages/config-structural/schema/config.schema.json" ] || \
+           [ -L "$publisher/package.json" ] || \
+           [ -L "$publisher/pnpm-lock.yaml" ] || \
+           [ -L "$publisher/packages/config-publisher/package.json" ] || \
+           [ -L "$publisher/packages/config-structural/schema/config.schema.json" ]; then
+          echo "::error::Pinned publisher checkout does not satisfy the publisher/parser/schema contract"
+          exit 1
+        fi
+        if [ ! -f "$structural/brands.manifest.yaml" ] || \
+           [ ! -f "$structural/schema/config.schema.json" ]; then
+          echo "::error::Pinned config source must contain source root $SOURCE_ROOT with its manifest and schema mirror; production root is intentionally unavailable until reviewed production data exists"
+          exit 1
+        fi
+        if find "$structural" -type l -print -quit | grep -q .; then
+          echo "::error::Pinned config source root must not contain symbolic links"
+          exit 1
+        fi
+        if ! cmp -s \
+            "$publisher/packages/config-structural/schema/config.schema.json" \
+            "$structural/schema/config.schema.json"; then
+          echo "::error::Config source schema mirror differs byte-for-byte from the canonical schema at publisher commit $publisher_sha"
+          exit 1
+        fi
 
         pnpm --dir "$publisher" install --frozen-lockfile
 
         common_args=(
           --publisher "$publisher"
           --publisher-git-sha "$publisher_sha"
-          --structural "$work/source/packages/config-structural"
+          --structural "$structural"
           --source-git-sha "$source_sha"
           --revision "$work/revision.json"
           --keyrings "$work/keyrings.json"
@@ -144,8 +260,15 @@ runs:
           --telemetry-endpoint "$telemetry"
         )
         if [ "$APP" = desktop ]; then
+          brand_args=()
+          if [ "$BRAND_ARTIFACTS" = true ]; then
+            brand_args=(--brand-artifacts)
+          elif [ "$BRAND_ARTIFACTS" != false ]; then
+            echo "::error::brand-artifacts must be true or false"
+            exit 1
+          fi
           pnpm -F @linkcode/desktop config:render "${common_args[@]}" \
-            --release-manifest "$work/manifest-desktop.json"
+            --release-manifest "$work/manifest-desktop.json" "${brand_args[@]}"
         else
           pnpm -F @linkcode/mobile config:render "${common_args[@]}" \
             --release-manifest-ios "$work/manifest-ios.json" \

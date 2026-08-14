@@ -7,7 +7,7 @@
 name: Build Desktop
 
 on:
-  # Invoked by release-desktop.yml (caller must use `secrets: inherit`).
+  # Release-environment secrets resolve in the called jobs; callers need not forward all secrets.
   workflow_call:
     inputs:
       ref:
@@ -20,6 +20,31 @@ on:
         type: boolean
         required: false
         default: false
+      brand_id:
+        description: Brand id for isolated artifact names; empty keeps the default release flow
+        type: string
+        required: false
+        default: ""
+      delivery_descriptor_sha256:
+        description: Expected SHA-256 of the committed brand delivery matrix
+        type: string
+        required: false
+        default: ""
+      rendered_artifact:
+        description: Pre-rendered brand/config artifact from the matrix workflow
+        type: string
+        required: false
+        default: ""
+      update_url:
+        description: Validated brand-scoped desktop update URL
+        type: string
+        required: false
+        default: ""
+      release_environment:
+        description: GitHub environment that owns signing and publisher credentials
+        type: string
+        required: false
+        default: release
   # CI builds on PRs — unsigned.
   # pull_request:
   #   paths:
@@ -36,7 +61,7 @@ on:
         default: false
 
 concurrency:
-  group: build-desktop-${{ github.ref }}-${{ github.event_name }}
+  group: build-desktop-${{ github.ref }}-${{ github.event_name }}-${{ inputs.brand_id || 'linkcode' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -57,29 +82,90 @@ env:
 
   # Signed builds must embed the rendered immutable config bundle: the Vite main build and
   # verify-artifacts both fail when it is absent instead of shipping empty defaults.
-  LINKCODE_REQUIRE_CONFIG_BUNDLE: ${{ inputs.sign && '1' || '' }}
+  LINKCODE_REQUIRE_CONFIG_BUNDLE: ${{ (inputs.sign || inputs.rendered_artifact != '') && '1' || '' }}
 
 jobs:
-  # Renders the immutable config bundle from the pinned config publisher checkout (release
-  # environment holds the pins and the publisher read token). Unsigned builds skip this and
-  # build without a bundle; signed builds hard-require its output.
+  # Renders the immutable config bundle from the pinned config publisher checkout. The release
+  # environment selects the publisher repository; the workflow mints its scoped read token.
+  # Unsigned builds skip this and build without a bundle; signed builds hard-require its output.
   render-config:
     name: Render immutable config
-    if: ${{ inputs.sign }}
+    if: ${{ inputs.sign && inputs.rendered_artifact == '' }}
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
-    environment: release
+    environment: ${{ inputs.release_environment || 'release' }}
     steps:
+      - name: Validate config repositories
+        id: repositories
+        env:
+          CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          CONFIG_SOURCE_REPO: ${{ vars.CONFIG_SOURCE_REPO }}
+        run: |
+          set -euo pipefail
+          validate_repository() {
+            local name="$1" value="$2" prefix="$3"
+            if [ -z "$value" ]; then
+              echo "::error::$name is required in the protected release environment"
+              exit 1
+            fi
+            if [[ ! "$value" =~ ^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9][A-Za-z0-9._-]{0,99})$ ]]; then
+              echo "::error::$name must use canonical owner/repository syntax"
+              exit 1
+            fi
+            if [ "${BASH_REMATCH[1]}" != arcboxlabs ]; then
+              echo "::error::$name owner must be arcboxlabs"
+              exit 1
+            fi
+            printf '%s-full=%s\n%s-name=%s\n' "$prefix" "$value" "$prefix" "${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          }
+          validate_repository CONFIG_PUBLISHER_REPO "$CONFIG_PUBLISHER_REPO" publisher
+          validate_repository CONFIG_SOURCE_REPO "$CONFIG_SOURCE_REPO" source
+          if [ "$CONFIG_PUBLISHER_REPO" = "$CONFIG_SOURCE_REPO" ]; then
+            echo "::error::CONFIG_PUBLISHER_REPO and CONFIG_SOURCE_REPO must identify different repositories"
+            exit 1
+          fi
+
+      - name: Require organization App credentials
+        env:
+          BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+          BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read the selected publisher and source repositories"
+            exit 1
+          fi
+
+      - name: Mint publisher read token
+        id: publisher-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: ${{ steps.repositories.outputs.publisher-name }}
+          permission-contents: read
+
+      - name: Mint config source read token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: ${{ steps.repositories.outputs.source-name }}
+          permission-contents: read
+
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           run_install: false
           cache: true
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -91,14 +177,16 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: desktop
-          publisher-repo: ${{ vars.CONFIG_PUBLISHER_REPO }}
-          publisher-token: ${{ secrets.CONFIG_PUBLISHER_TOKEN }}
+          publisher-repository: ${{ steps.repositories.outputs.publisher-full }}
+          publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-repository: ${{ steps.repositories.outputs.source-full }}
+          source-token: ${{ steps.source-token.outputs.token }}
           revision: ${{ vars.CONFIG_RELEASE_REVISION }}
           keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
           release-manifest: ${{ vars.CONFIG_RELEASE_MANIFEST_DESKTOP }}
 
       - name: Upload rendered bundle
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: desktop-config-bundle
           path: apps/desktop/generated/config-build-bundle.json
@@ -112,7 +200,7 @@ jobs:
     if: ${{ !cancelled() && (needs.render-config.result == 'success' || needs.render-config.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     # Signing is gated by the `release` environment (secrets + tag policy); '' = no environment.
-    environment: ${{ inputs.sign && 'release' || '' }}
+    environment: ${{ inputs.sign && (inputs.release_environment || 'release') || '' }}
     strategy:
       fail-fast: false
       # Runners resolve through repo/org `vars` (ArcBox pins Blacksmith labels there); forks
@@ -164,11 +252,25 @@ jobs:
       # The exact bytes rendered by render-config: Vite validates them, derives the inlined
       # bootstrap, and stages them into the asar; verify-artifacts byte-compares the staged copy.
       - name: Fetch rendered config bundle
-        if: ${{ inputs.sign }}
+        if: ${{ inputs.sign || inputs.rendered_artifact != '' }}
         uses: actions/download-artifact@v8
         with:
-          name: desktop-config-bundle
-          path: apps/desktop/generated
+          name: ${{ inputs.rendered_artifact || 'desktop-config-bundle' }}
+          path: ${{ inputs.rendered_artifact != '' && '.' || 'apps/desktop/generated' }}
+
+      - name: Validate branded packaging inputs
+        if: ${{ inputs.rendered_artifact != '' }}
+        shell: bash
+        env:
+          BRAND_ID: ${{ inputs.brand_id }}
+          BRAND_UPDATE_URL: ${{ inputs.update_url }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BRAND_ID" =~ ^[a-z][a-z0-9-]{0,62}$ ]]; then
+            echo "::error::brand_id must be a lowercase brand identifier"
+            exit 1
+          fi
+          node -e 'const url = new URL(process.env.BRAND_UPDATE_URL); if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error("update_url must be HTTPS without credentials, query, or fragment")'
 
       - parallel:
           - name: Build workspace
@@ -178,7 +280,7 @@ jobs:
               # stay declared in apps/desktop/turbo.json `build.env` so Turbo cache keys include them.
               MAIN_VITE_SENTRY_DSN: ${{ inputs.sign && secrets.SENTRY_DSN_DESKTOP || '' }}
               RENDERER_VITE_POSTHOG_PROJECT_TOKEN: ${{ inputs.sign && secrets.POSTHOG_PROJECT_TOKEN || '' }}
-              RENDERER_VITE_POSTHOG_HOST: ${{ inputs.sign && secrets.POSTHOG_HOST || '' }}
+              RENDERER_VITE_POSTHOG_HOST: ${{ inputs.sign && vars.POSTHOG_HOST || '' }}
 
           # The PTY sidecar ships per arch under Resources (extraResources: sidecar/${arch}).
           - name: Build PTY sidecar (both arches)
@@ -216,18 +318,24 @@ jobs:
           if [ -n "$MACOS_CSC_LINK" ]; then
             export CSC_LINK="$MACOS_CSC_LINK" CSC_KEY_PASSWORD="$MACOS_CSC_KEY_PASSWORD"
           fi
+          publish_args=()
+          if [ -n "$BRAND_UPDATE_URL" ]; then
+            publish_args=(-c.publish.provider=generic "-c.publish.url=$BRAND_UPDATE_URL" -c.publish.useMultipleRangeRequest=false)
+          fi
           if [ "${{ matrix.platform }}" = linux ]; then
             # Electron 43 needs Clang 15; the arm64 rebuild also needs an explicit cross target.
             CC=clang-15 CXX=clang++-15 \
-              node scripts/package-app.mts linux --x64 --publish never
+              node scripts/package-app.mts linux --x64 --publish never "${publish_args[@]}"
             CC='clang-15 --target=aarch64-linux-gnu' \
               CXX='clang++-15 --target=aarch64-linux-gnu' \
-              node scripts/package-app.mts linux --arm64 --publish never
+              node scripts/package-app.mts linux --arm64 --publish never "${publish_args[@]}"
           else
             node scripts/package-app.mts ${{ matrix.platform }} --publish never \
+              "${publish_args[@]}" \
               ${{ (runner.os == 'Windows' && inputs.sign) && format('-c.win.azureSignOptions.publisherName="{0}" -c.win.azureSignOptions.endpoint="{1}" -c.win.azureSignOptions.codeSigningAccountName="{2}" -c.win.azureSignOptions.certificateProfileName="{3}"', env.AZURE_PUBLISHER_NAME, env.AZURE_SIGN_ENDPOINT, env.AZURE_CODE_SIGNING_ACCOUNT, env.AZURE_CERTIFICATE_PROFILE) || '' }}
           fi
         env:
+          BRAND_UPDATE_URL: ${{ inputs.update_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           # macOS signing (Developer ID cert) + notarization (App Store Connect API key).
@@ -252,10 +360,32 @@ jobs:
         shell: bash
         run: node scripts/verify-artifacts.mts ${{ matrix.platform }}
 
+      - name: Write artifact provenance
+        if: ${{ inputs.rendered_artifact != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts=()
+          while IFS= read -r -d '' path; do
+            artifacts+=(--artifact "$(basename "$path")")
+          done < <(find "${OUTPUT_DIR}" -maxdepth 1 -type f ! -name builder-debug.yml -print0 | sort -z)
+          pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+            --artifact-root "${OUTPUT_DIR}" "${artifacts[@]}" \
+            --bundle apps/desktop/generated/config-build-bundle.json \
+            --brand-identity apps/desktop/generated/brand-identity.json \
+            --brand-manifest release-inputs/brands.manifest.yaml \
+            --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ inputs.delivery_descriptor_sha256 }}' \
+            --release-manifest release-inputs/release-manifest.desktop.json \
+            --compliance release-inputs/compliance.desktop.json \
+            --out "release-provenance.${{ matrix.platform }}.json" \
+            ${{ inputs.sign && '--signed' || '' }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-${{ matrix.platform }}
+          name: ${{ inputs.brand_id != '' && format('desktop-{0}-{1}', inputs.brand_id, matrix.platform) || format('desktop-{0}', matrix.platform) }}
           if-no-files-found: error
           retention-days: 7
           # *.yml + *.blockmap are the electron-updater feed — do not drop them. builder-debug.yml
@@ -272,4 +402,5 @@ jobs:
             ${{ env.OUTPUT_DIR }}/*.snap
             ${{ env.OUTPUT_DIR }}/*.yml
             ${{ env.OUTPUT_DIR }}/*.blockmap
+            ${{ env.OUTPUT_DIR }}/release-provenance.${{ matrix.platform }}.json
             !${{ env.OUTPUT_DIR }}/builder-debug.yml

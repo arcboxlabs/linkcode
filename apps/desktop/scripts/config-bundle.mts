@@ -6,7 +6,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
-import { isObjectEmpty } from 'foxts/is-object-empty';
 // Relative on purpose: this module is inlined into the bundled Vite config, which runs under
 // plain Node — Node cannot resolve the package's extensionless TS source exports.
 import { parseBrandIdentityArtifact } from '../../../packages/foundation/common/src/config/brand-identity';
@@ -114,14 +113,6 @@ export function loadGeneratedConfigBundle(
   ) {
     throw new Error(
       'generated config bundle emergency keyring contains the conformance fixture key',
-    );
-  }
-  if (
-    env.LINKCODE_REQUIRE_CONFIG_BUNDLE === '1' &&
-    (bundle.endpoints.emergency === null || isObjectEmpty(bundle.keyrings.emergency))
-  ) {
-    throw new Error(
-      'LINKCODE_REQUIRE_CONFIG_BUNDLE=1 requires an emergency endpoint and emergency public key',
     );
   }
   const branded = bundle.brandId !== DEFAULT_BRAND_ID;
