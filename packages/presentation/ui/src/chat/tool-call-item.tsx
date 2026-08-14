@@ -13,6 +13,7 @@ import {
   toolCallMetadata,
   toolCallSearchCounts,
 } from '../tool-utils';
+import { IntegrationIcon, integrationBrand } from './integration-brand';
 import { Tool, ToolContent, ToolHeader } from './tool';
 import { toolCallDisplayText, toolSearchPresentation } from './tool-result-content';
 import { ToolResultPreview } from './tool-result-preview';
@@ -103,11 +104,22 @@ export function ToolCallItem({
   const searchCounts = toolSearch ? undefined : toolCallSearchCounts(toolCall);
   let title = mcp?.tool ?? toolCall.title;
   let summary = toolCallContextSummary(toolCall);
+  // Glyph priority: caller-supplied plugin icon, ToolSearch toolbox, integration brand, kind
+  // icon. State glyphs override inside ToolIcon — except failed, which keeps a supplied glyph.
+  const brand = mcp ? integrationBrand(mcp.server) : undefined;
   let headerIcon = icon;
   if (toolSearch && !headerIcon) {
     headerIcon = (
       <ToolCaseIcon
         className={cn('size-3.5 shrink-0', running ? 'text-foreground' : 'text-muted-foreground')}
+      />
+    );
+  }
+  if (brand && !headerIcon) {
+    headerIcon = (
+      <IntegrationIcon
+        brand={brand}
+        className={running ? 'text-foreground' : 'text-muted-foreground'}
       />
     );
   }

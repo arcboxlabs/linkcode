@@ -7,7 +7,6 @@ import type {
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
@@ -36,7 +35,7 @@ import { AGENT_INPUT_CAPABILITIES, textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { AgentAdapter, AgentStartCatalogOptions } from './adapter';
+import type { AgentAdapter, AgentHistoryReadContext, AgentStartCatalogOptions } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
@@ -110,7 +109,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     return Promise.resolve({ sessions: [] });
   }
 
-  readHistory(_opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  readHistory(_opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     return Promise.reject(new Error(`${this.kind}: history read is not supported`));
   }
 

@@ -31,6 +31,9 @@ export type HistoryReadOptions = AgentHistoryReadOptions & {
 export interface HistoryServiceOptions {
   ttlMs?: number;
   now?: () => number;
+  /** MCP server names the engine injects at session start (start-options-resolver) — passed to
+   * cold reads so replayed calls to injected servers resolve like config-declared ones. */
+  injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
 }
 
 interface ListCacheEntry {
@@ -53,6 +56,7 @@ export class HistoryService {
   private readonly historyCwdById = new Map<string, string>();
   private readonly ttlMs: number;
   private readonly now: () => number;
+  private readonly injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
 
   constructor(
     private readonly factory: AdapterFactory,
@@ -60,6 +64,7 @@ export class HistoryService {
   ) {
     this.ttlMs = opts.ttlMs ?? 30000;
     this.now = opts.now ?? Date.now;
+    this.injectedMcpServerNames = opts.injectedMcpServerNames;
   }
 
   list(
@@ -132,8 +137,13 @@ export class HistoryService {
         }),
       );
     }
+    const mcpServerNames = this.injectedMcpServerNames?.(kind);
+    const readContext = {
+      ...(cwd && { cwd }),
+      ...(mcpServerNames?.length && { mcpServerNames }),
+    };
     return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-      adapter.readHistory({ historyId: opts.historyId, ...(cwd && { cwd }), limit: 1000 }),
+      adapter.readHistory({ historyId: opts.historyId, ...readContext, limit: 1000 }),
     ).pipe(
       Effect.map(sanitizeHistoryResult),
       Effect.flatMap((fullResult) => {
@@ -150,7 +160,7 @@ export class HistoryService {
           return Effect.succeed(sliceEventCache(entry, offset, limit));
         }
         return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-          adapter.readHistory({ ...stripForceRefresh(opts), ...(cwd && { cwd }) }),
+          adapter.readHistory({ ...stripForceRefresh(opts), ...readContext }),
         ).pipe(Effect.map(sanitizeHistoryResult));
       }),
     );

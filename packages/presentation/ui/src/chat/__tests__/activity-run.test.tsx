@@ -35,6 +35,11 @@ function translateKey(key: string, values?: Record<string, unknown>): string {
   if (key === 'settled.integration') {
     return count === 1 ? 'Used an integration once' : `Used an integration ${count} times`;
   }
+  if (key === 'settled.integrationBrand') {
+    const brand = String(values?.brand);
+    return count === 1 ? `Used ${brand} once` : `Used ${brand} ${count} times`;
+  }
+  if (key === 'running.integrationBrand') return `Using ${String(values?.brand)}`;
   if (key === 'thoughtDuration') return `Thought for ${String(values?.seconds)} seconds`;
   return labels[key] ?? key;
 }
@@ -568,5 +573,49 @@ describe('ActivityRun', () => {
     expect(header.textContent).not.toContain('Private');
     expect(header.textContent).not.toContain('secret-command');
     if (count > 10) expect(header.textContent).not.toContain(String(count));
+  });
+
+  it('names and brands a dedicated integration run, but never tints the brand red', () => {
+    const healthy = activityRun([
+      simpleTool('linear-1', 'other', 'mcp__linear__get_issue'),
+      simpleTool('linear-2', 'other', 'mcp__linear__save_issue'),
+    ]);
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile: vi.fn() }}>
+        <ActivityRun
+          awaitingApproval={EMPTY_IDS}
+          awaitingAnswer={EMPTY_IDS}
+          questionsByToolCall={EMPTY_QUESTIONS}
+          declined={EMPTY_IDS}
+          run={healthy}
+        />
+      </ArtifactHostActionsProvider>,
+    );
+    const header = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
+    expect(header.textContent).toContain('Used Linear 2 times');
+    expect(header.querySelector('[data-brand="linear"]')).not.toBeNull();
+    cleanup();
+
+    const failedItem = simpleTool('linear-4', 'other', 'mcp__linear__save_issue');
+    failedItem.toolCall.status = 'failed';
+    render(
+      <ArtifactHostActionsProvider actions={{ referenceToComposer: vi.fn(), openFile: vi.fn() }}>
+        <ActivityRun
+          awaitingApproval={EMPTY_IDS}
+          awaitingAnswer={EMPTY_IDS}
+          questionsByToolCall={EMPTY_QUESTIONS}
+          declined={EMPTY_IDS}
+          run={activityRun([simpleTool('linear-3', 'other', 'mcp__linear__get_issue'), failedItem])}
+        />
+      </ArtifactHostActionsProvider>,
+    );
+    const failedHeader = screen.getByRole('button', { name: RE_ACTIVITY_DETAILS });
+    // The brand glyph persists through failure, but never in the destructive tint — the red
+    // failure clause carries the state.
+    const failedGlyph = failedHeader.querySelector('[data-brand="linear"]');
+    expect(failedGlyph).not.toBeNull();
+    expect(failedGlyph?.classList.contains('text-destructive-foreground')).toBe(false);
+    expect(failedHeader.textContent).toContain('An action failed');
+    expect(failedHeader.textContent).toContain('Used Linear 2 times');
   });
 });
