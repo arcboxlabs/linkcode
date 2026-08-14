@@ -9,8 +9,7 @@ const RE_SENTINEL = /development sentinel/;
 const RE_WRONG_PLATFORM = /targets android, expected ios/;
 const RE_PROVENANCE_DRIFT = /disagree on target or provenance/;
 const RE_MODULE_SHAPE = /generated config module shape/;
-const RE_EMERGENCY_ENDPOINT = /no emergency endpoint/;
-const RE_EMERGENCY_KEYS = /no emergency public keys/;
+const RE_EMERGENCY_PAIR = /emergency endpoint and keyring must be enabled together/;
 const RE_FIXTURE_KEY = /conformance fixture key/;
 const SAFE_EMERGENCY_PUBLIC_KEY = 'I-ZZtxm_RMtR2fMqJtiENzX13BIMmqE8X9lDWQ-bg4c';
 const FIXTURE_PUBLIC_KEYS = [
@@ -92,19 +91,25 @@ describe('verify-release-config', () => {
     },
   );
 
-  it('rejects a missing emergency endpoint', () => {
+  it('accepts an explicitly disabled emergency channel', () => {
     write(
       'ios',
       bundleFor('ios', {
         endpoints: { emergency: null, normal: null, telemetry: null },
+        keyrings: { emergency: {}, normal: {} },
       }),
     );
-    expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_EMERGENCY_ENDPOINT);
+    expect(() => verifyReleaseConfig(['ios'], dir)).not.toThrow();
   });
 
-  it('rejects an empty emergency keyring', () => {
-    write('ios', bundleFor('ios', { keyrings: { emergency: {}, normal: {} } }));
-    expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_EMERGENCY_KEYS);
+  it.each([
+    {
+      endpoints: { emergency: null, normal: null, telemetry: null },
+    },
+    { keyrings: { emergency: {}, normal: {} } },
+  ])('rejects a partially enabled emergency channel', (overrides) => {
+    write('ios', bundleFor('ios', overrides));
+    expect(() => verifyReleaseConfig(['ios'], dir)).toThrow(RE_EMERGENCY_PAIR);
   });
 
   it('fails when a generated module is missing', () => {
