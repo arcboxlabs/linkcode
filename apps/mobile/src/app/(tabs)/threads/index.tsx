@@ -21,17 +21,17 @@ import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
+import type { PrimaryAction } from '@mobile/components/shell/primary-action';
+import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
-
-const USES_INLINE_NAVIGATION_TITLE =
-  Platform.OS === 'ios' && Number.parseInt(Platform.Version, 10) >= 26;
 
 /** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
 type SearchBarChangeEvent = Parameters<
@@ -52,21 +52,32 @@ export default function ThreadsRoute(): React.ReactNode {
   const connection = useHostConnection();
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  const primaryAction: PrimaryAction | null =
+    connection?.status === 'ready'
+      ? {
+          sf: 'square.and.pencil',
+          icon: SquarePenIcon,
+          label: t('newThread'),
+          onPress: () => setSheetOpen(true),
+        }
+      : null;
+  usePrimaryAction('threads', primaryAction);
+
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
           headerShown: true,
-          headerLargeTitleEnabled: !USES_INLINE_NAVIGATION_TITLE,
+          headerLargeTitleEnabled: !USES_IOS_26_NAVIGATION,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           headerRight:
-            connection?.status === 'ready'
+            !USES_IOS_26_NAVIGATION && primaryAction
               ? () => (
                   <HeaderIconButton
-                    icon={SquarePenIcon}
-                    label={t('newThread')}
-                    onPress={() => setSheetOpen(true)}
+                    icon={primaryAction.icon}
+                    label={primaryAction.label}
+                    onPress={primaryAction.onPress}
                   />
                 )
               : undefined,
