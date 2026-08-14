@@ -17,7 +17,7 @@ const RE_MISSING_BRAND_SEGMENT = /must include the brand id/;
 const RE_UNKNOWN_FIELD = /must contain exactly/;
 const RE_DIVERGENT_SOURCE = /all platforms must share sourceGitSha/;
 const RE_SHARED_DESTINATION = /R2 prefixes in one bucket must not overlap/;
-const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal release-/;
+const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal release/;
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
 const RE_INVALID_SOURCE_ROOT = /sourceRoot: must be/;
 const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
@@ -177,7 +177,7 @@ describe('parseBrandBuildMatrix', () => {
 
     const first = brand('acme');
     first.distribution.desktop = {
-      credentialEnvironment: 'release-acme',
+      credentialEnvironment: 'release',
       r2Bucket: 'release-acme',
       r2Prefix: 'desktop/acme/canary',
       updateUrl: 'https://acme.example.invalid/desktop/acme/canary',
@@ -188,9 +188,9 @@ describe('parseBrandBuildMatrix', () => {
       ios: { appleTeamId: 'ABC1234567', ascAppId: '1234567890' },
       updatesUrl: 'https://u.expo.dev/11111111-1111-4111-8111-111111111111',
     };
+    expect(() => parseBrandBuildMatrix(matrix(first), { build: true })).not.toThrow();
     const second = structuredClone(first);
     second.brandId = 'zenith';
-    second.distribution.desktop.credentialEnvironment = 'release-zenith';
     for (const platform of ['desktop', 'ios', 'android']) {
       second.releaseManifests[platform].brandId = 'zenith';
     }
@@ -199,10 +199,10 @@ describe('parseBrandBuildMatrix', () => {
     );
   });
 
-  it('rejects shared R2 destinations, credentials, and store apps across brands', () => {
+  it('rejects shared R2 destinations and store apps across brands', () => {
     const first = brand('acme');
     first.distribution.desktop = {
-      credentialEnvironment: 'release-acme',
+      credentialEnvironment: 'release',
       r2Bucket: 'release-brands',
       r2Prefix: 'desktop/acme/zenith/canary',
       updateUrl: 'https://acme.example.invalid/desktop/acme/zenith/canary',
@@ -215,7 +215,7 @@ describe('parseBrandBuildMatrix', () => {
     };
     const second = brand('zenith');
     second.distribution.desktop = {
-      credentialEnvironment: 'release-zenith',
+      credentialEnvironment: 'release',
       r2Bucket: first.distribution.desktop.r2Bucket,
       r2Prefix: first.distribution.desktop.r2Prefix,
       updateUrl: 'https://zenith.example.invalid/desktop/acme/zenith/canary',
@@ -244,7 +244,7 @@ describe('parseBrandBuildMatrix', () => {
       RE_WRONG_CREDENTIAL_ENVIRONMENT,
     );
 
-    second.distribution.desktop.credentialEnvironment = 'release-zenith';
+    second.distribution.desktop.credentialEnvironment = 'release';
     second.distribution.mobile.ios.ascAppId = first.distribution.mobile.ios.ascAppId;
     expect(() => parseBrandBuildMatrix(matrix(first, second), { build: true })).toThrow(
       RE_SHARED_APP_STORE_APP,
@@ -327,7 +327,7 @@ describe('release brand matrix workflow', () => {
     expect(preflight).toContain(
       'expected=\'[{"name":"master","type":"branch"},{"name":"v*.*.*","type":"tag"}]\'',
     );
-    expect(preflight).toContain('credentialEnvironment');
+    expect(preflight).not.toContain('credentialEnvironment');
     expect(preflight).toContain(`GH_TOKEN: ${ACTIONS_EXPRESSION}{{ github.token }}`);
     expect(preflight).not.toContain('RELEASE_ENVIRONMENT_ADMIN_TOKEN');
     expect(workflow).toContain('actions: read');
