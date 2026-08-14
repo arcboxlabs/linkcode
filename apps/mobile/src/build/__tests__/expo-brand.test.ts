@@ -70,6 +70,28 @@ describe('deriveExpoBrandOverlay', () => {
     });
   });
 
+  it('uses the publisher-resolved LinkCode mobile ids verbatim', () => {
+    const linkcode = deriveExpoBrandOverlay(
+      identity('ios', {
+        applicationId: 'com.arcboxlabs.linkcode.mobile',
+        brandId: 'linkcode',
+        displayName: 'LinkCode',
+        storageNamespace: 'LinkCode',
+        urlScheme: 'linkcode',
+      }),
+      identity('android', {
+        applicationId: 'com.arcboxlabs.linkcode.mobile',
+        brandId: 'linkcode',
+        displayName: 'LinkCode',
+        storageNamespace: 'LinkCode',
+        urlScheme: 'linkcode',
+      }),
+    );
+
+    expect(linkcode.iosBundleIdentifier).toBe('com.arcboxlabs.linkcode.mobile');
+    expect(linkcode.androidPackage).toBe('com.arcboxlabs.linkcode.mobile');
+  });
+
   it('fails closed on swapped platforms', () => {
     expect(() => deriveExpoBrandOverlay(identity('android'), identity('android'))).toThrow(
       /expected an ios identity/,
