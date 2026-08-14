@@ -6,6 +6,7 @@ import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
 import { Cause, Effect, FiberSet } from 'effect';
 import { CustomMcpServerService } from './agent/custom-mcp-service';
+import { adoptDetectedLogins } from './agent/detected-logins';
 import { AgentLoginService } from './agent/login-service';
 import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
@@ -109,6 +110,19 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       collect: deps.collectAgentRuntimes,
       onChanged(next) {
         transport.send(createWireMessage({ kind: 'agent-runtime.changed', runtimes: next }));
+        // A probe is the only thing that sees a CLI login, so adoption rides the same signal — the
+        // push clients already revalidate on is what tells them the pool grew.
+        runTask(
+          adoptDetectedLogins(providerStore, next).pipe(
+            Effect.catch((error) =>
+              Effect.logError(
+                error.publicMessage,
+                { operation: error.operation, subsystem: error.subsystem },
+                error.cause,
+              ),
+            ),
+          ),
+        );
       },
     },
     runTask,

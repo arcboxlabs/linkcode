@@ -62,7 +62,7 @@ const PERMISSION_ITEM: PermissionConversationItem = {
 };
 
 const RE_MODEL_DEFAULT = /modelDefault/;
-const RE_OPUS_4_8 = /Opus 4.8/;
+const RE_OPUS_4_8_ID = /claude-opus-4-8/;
 const RE_MAX_EFFORT = /Max/;
 
 function surface(
@@ -126,11 +126,15 @@ describe('ConversationSurface prompt card', () => {
   });
 
   it('keeps the model unresolved until the adapter reports its concrete value', () => {
+    // No account is enabled for this thread's agent, so there is nothing to pick from and no
+    // placeholder to promise one.
     const { rerender } = render(surface());
-    expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: RE_MODEL_DEFAULT })).toBeNull();
 
+    // What the session actually runs on is still reported, unlabelled: no account listed this id,
+    // and withholding it would leave the thread's own model invisible.
     rerender(surface(undefined, { ...EMPTY_CONVERSATION, currentModel: 'claude-opus-4-8' }));
-    expect(screen.getByRole('button', { name: RE_OPUS_4_8 })).toBeTruthy();
+    expect(screen.getByRole('button', { name: RE_OPUS_4_8_ID })).toBeTruthy();
   });
 
   it('shows any reflected normalized effort even when the adapter does not offer it', () => {

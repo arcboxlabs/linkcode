@@ -159,7 +159,11 @@ describe('simulator MCP injection at session start', () => {
 describe('account binding at session start', () => {
   function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
     const store = new InMemoryProviderConfigStore();
-    store.createAndBindAccount(agent, account);
+    // An account with nothing picked refuses to start; these cases are about endpoints.
+    store.update({
+      providers: { [agent]: { enabled: true, enabledAccountIds: [account.id] } },
+      accounts: [{ ...account, models: [{ id: 'picked-model' }] }],
+    });
     return store;
   }
 
@@ -171,7 +175,23 @@ describe('account binding at session start', () => {
     ...overrides,
   });
 
-  it('refuses the session when the bound account has no endpoint the agent speaks', async () => {
+  it('refuses an agent whose account picked no model, but lets one with none resolve its own', async () => {
+    const store = new InMemoryProviderConfigStore();
+    store.update({ accounts: [account({ service: 'openai-api' })] });
+    const bound = new SessionStartOptionsResolver(store, undefined);
+    await expect(
+      Effect.runPromise(bound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION)),
+    ).rejects.toThrow('No model selected for codex');
+
+    // Nothing bound: the agent still runs on whatever it resolves for itself.
+    const unbound = new SessionStartOptionsResolver(new InMemoryProviderConfigStore(), undefined);
+    const { options } = await Effect.runPromise(
+      unbound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.model).toBeUndefined();
+  });
+
+  it('refuses an account named by the request that has no endpoint the agent speaks', async () => {
     const anthropicOnly = account({
       endpoint: { baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' },
     });
@@ -179,8 +199,17 @@ describe('account binding at session start', () => {
 
     // Starting anyway would point codex at an endpoint that answers 404 on /responses.
     await expect(
-      Effect.runPromise(resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION)),
+      Effect.runPromise(
+        resolver.resolve({ kind: 'codex', cwd: '/repo', accountId: anthropicOnly.id }, SESSION),
+      ),
     ).rejects.toThrow('cannot back codex');
+
+    // Merely sitting enabled in the pool is not a request: it never reaches codex's model menu, so
+    // it is skipped rather than made to break every session the agent starts.
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.config?.baseUrl).toBeUndefined();
   });
 
   it('starts an account the pre-variant add flow pinned to one endpoint', async () => {

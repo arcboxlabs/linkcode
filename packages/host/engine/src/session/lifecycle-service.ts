@@ -1,5 +1,7 @@
+import type { AgentAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryId,
+  AgentInput,
   AgentKind,
   ContentBlock,
   MessageId,
@@ -21,8 +23,12 @@ import type { WorktreeService } from '../worktree/worktree-service';
 import type { HistoryService } from './history-service';
 import { decodeLiveBranchCursor } from './live-session';
 import type { SessionOrchestrator } from './orchestrator';
-import type { SessionRecordRegistry } from './session-record-registry';
-import type { SessionStartOptionsResolver } from './start-options-resolver';
+import type {
+  SessionPin,
+  SessionRecordRegistry,
+  SessionRunIntent,
+} from './session-record-registry';
+import type { ResolvedStartOptions, SessionStartOptionsResolver } from './start-options-resolver';
 
 type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
 
@@ -85,7 +91,11 @@ export class SessionLifecycleService {
     const { sessions, startOptions, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const { options: resolvedIntent, warnings } = yield* startOptions.resolve(options, sessionId);
+      const {
+        options: resolvedIntent,
+        accountId,
+        warnings,
+      } = yield* startOptions.resolve(options, sessionId);
       const resolved = yield* worktrees.provision(resolvedIntent, sessionId);
       if (options.cwd) {
         const parent = yield* workspaceTouch(workspaces, options.cwd);
@@ -101,7 +111,7 @@ export class SessionLifecycleService {
         createdVia: resolved.createdVia,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now }],
+        runs: [{ startedAt: now, ...runOf(resolved, accountId) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -158,10 +168,11 @@ export class SessionLifecycleService {
     const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const { options: resolvedIntent, warnings } = yield* resolver.resolve(
-        { ...options, kind },
-        sessionId,
-      );
+      const {
+        options: resolvedIntent,
+        accountId,
+        warnings,
+      } = yield* resolver.resolve({ ...options, kind }, sessionId);
       const startOptions = yield* worktrees.provision(resolvedIntent, sessionId);
       if (options.cwd) {
         const parent = yield* workspaceTouch(workspaces, options.cwd);
@@ -176,7 +187,7 @@ export class SessionLifecycleService {
         origin: { type: 'imported', historyId, importedAt: now },
         createdAt: now,
         updatedAt: now,
-        runs: [{ historyId, startedAt: now }],
+        runs: [{ historyId, startedAt: now, ...runOf(startOptions, accountId) }],
       };
       yield* sessions.startLive(
         replyTo,
@@ -235,12 +246,11 @@ export class SessionLifecycleService {
           );
         }
 
-        const { history, records, sessions, startOptions: resolver } = this;
+        const { history, sessions } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
-          const { options: startOptions, warnings } = yield* resolver.resolve(
-            { kind: source.kind, cwd: source.cwd },
-            sourceSessionId,
-          );
+          const resolved = yield* resolveForRecord(source);
           yield* sessions.stopForReplacement(sourceSessionId);
           const resolvedBranchCursor =
             liveCursor.type === 'live'
@@ -252,17 +262,16 @@ export class SessionLifecycleService {
                   liveCursor.contentFingerprint,
                 )
               : branchCursor;
-          records.beginRun(sourceSessionId);
-          yield* sessions.startLive(
+          yield* launchRun(
             replyTo,
             source,
+            resolved,
             (adapter) =>
               history.branch(
                 adapter,
                 { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
-                startOptions,
+                resolved.options,
               ),
-            warnings,
             {
               initialInput: { type: 'prompt', content },
               registerRecord: false,
@@ -298,13 +307,13 @@ export class SessionLifecycleService {
         // A never-prompted session has no provider transcript to resume from (the adapter only mints one
         // on the first prompt); waking it is a fresh start under the same LinkCode id.
         const historyId = this.records.historyId(sessionId);
-        const { history, sessions, startOptions: resolver, workspaces, worktrees } = this;
+        const { workspaces, worktrees } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
+        const resumeStrategy = this.resumeStrategy.bind(this);
         return Effect.gen(function* () {
           yield* worktrees.verifyResume(sessionId);
-          const { options: startOptions, warnings } = yield* resolver.resolve(
-            { kind: record.kind, cwd: record.cwd },
-            sessionId,
-          );
+          const resolved = yield* resolveForRecord(record);
           // Register before starting so a persistence failure cannot follow a successful
           // `session.started` reply with a contradictory request failure.
           const worktree = worktrees.get(sessionId);
@@ -314,19 +323,186 @@ export class SessionLifecycleService {
           } else if (record.cwd) {
             yield* workspaceTouch(workspaces, record.cwd);
           }
-          record.runs.push({ historyId, startedAt: Date.now() });
-          yield* sessions.startLive(
-            replyTo,
+          yield* launchRun(replyTo, record, resolved, resumeStrategy(historyId, resolved.options), {
+            historyId,
+          });
+        });
+      }),
+    );
+  }
+
+  /**
+   * Route an input that changes what a relaunch must replay, and record it once the session has
+   * accepted it — a rejected pick never becomes the thread's own choice. Everything else is forwarded
+   * untouched, so the client's contract is one `agent.input` request either way.
+   */
+  applyInput(sessionId: SessionId, input: AgentInput): Effect.Effect<void, unknown> {
+    switch (input.type) {
+      case 'set-model':
+        return this.switchModel(sessionId, input.model, input.accountId);
+      case 'set-effort':
+        return this.recordAccepted(sessionId, input, { effort: input.effort });
+      case 'set-approval-policy':
+        return this.recordAccepted(sessionId, input, { approvalPolicyId: input.policyId });
+      default:
+        return this.sessions.sendInput(sessionId, input);
+    }
+  }
+
+  /**
+   * Point a live session at a model, on `accountId` when the pick names one. Credentials and base URL
+   * are injected once at spawn, so a cross-account switch cannot happen in place: it is a relaunch
+   * under the same id that resumes the transcript. A switch within the session's own account stays in
+   * place, which is why the error channel is the adapter's untyped one rather than
+   * {@link EngineFailure}.
+   */
+  private switchModel(
+    sessionId: SessionId,
+    model: string,
+    accountId?: string,
+  ): Effect.Effect<void, unknown> {
+    return this.sessionSemaphore(sessionId).withPermit(
+      Effect.suspend(() => {
+        const record = this.records.get(sessionId);
+        if (!record) {
+          return Effect.fail(
+            new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+          );
+        }
+        if (!this.sessions.has(sessionId)) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: `Session is not running: ${sessionId}`,
+            }),
+          );
+        }
+        // A pick that names no account, or names the session's own, is a switch within the account
+        // the run already resolved to: the adapter takes it in place and the run keeps its own.
+        if (accountId === undefined || this.records.accountId(sessionId) === accountId) {
+          return this.recordAccepted(
+            sessionId,
+            { type: 'set-model', model, ...(accountId !== undefined && { accountId }) },
+            { model },
+          );
+        }
+        if (this.sessions.isBusy(sessionId)) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The session is busy; switch accounts once the turn has finished',
+            }),
+          );
+        }
+        // Relaunching without a transcript would silently start a fresh conversation in place of
+        // the one on screen. Losing the thread is worse than refusing the switch.
+        const historyId = this.records.historyId(sessionId);
+        if (historyId === undefined) {
+          return Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The session has no provider transcript to carry to another account',
+            }),
+          );
+        }
+        // Asked before the teardown below: a refusal from `history.resume` would arrive with the
+        // old adapter already gone.
+        if (this.sessions.historyCapabilities(sessionId)?.resume !== true) {
+          return Effect.fail(
+            new RequestError({
+              code: 'unsupported',
+              message: `${record.kind}: switching account needs history resume, which it does not support`,
+            }),
+          );
+        }
+
+        const { sessions } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
+        const resumeStrategy = this.resumeStrategy.bind(this);
+        return Effect.gen(function* () {
+          const resolved = yield* resolveForRecord(record, { model, accountId });
+          yield* sessions.stopForReplacement(sessionId);
+          yield* launchRun(
+            undefined,
             record,
-            (adapter) =>
-              historyId === undefined
-                ? sessions.startAdapter(adapter, startOptions)
-                : history.resume(adapter, historyId, startOptions),
-            warnings,
+            resolved,
+            resumeStrategy(historyId, resolved.options),
+            { historyId, registerRecord: false },
           );
         });
       }),
     );
+  }
+
+  /** Forward a pick to the live adapter and record it on the run only if the adapter took it. */
+  private recordAccepted(
+    sessionId: SessionId,
+    input: AgentInput,
+    intent: SessionRunIntent,
+  ): Effect.Effect<void, unknown> {
+    return this.sessions
+      .sendInput(sessionId, input)
+      .pipe(Effect.tap(() => Effect.sync(() => this.records.setRunIntent(sessionId, intent))));
+  }
+
+  /**
+   * Resolve the options an existing record relaunches under. Absent an explicit `override`, the
+   * thread's own last run supplies the model, account, effort and approval tier: the daemon's
+   * configured default answers for new and unpinned sessions, and adopting it here would silently
+   * move a running thread to whatever Settings now says.
+   */
+  private resolveForRecord(
+    record: SessionRecord,
+    override?: SessionPin,
+  ): Effect.Effect<ResolvedStartOptions, EngineFailure> {
+    const pinned = override ?? this.records.pinnedOptions(record.sessionId);
+    return this.startOptions.resolve(
+      { kind: record.kind, cwd: record.cwd, ...pinned },
+      record.sessionId,
+    );
+  }
+
+  /** Record the run this launch begins, then bind the record to a fresh adapter. Every relaunch of
+   * an existing record goes through here, so `runs` has exactly one writer. */
+  private launchRun(
+    replyTo: string | undefined,
+    record: SessionRecord,
+    resolved: ResolvedStartOptions,
+    startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
+    options: {
+      historyId?: AgentHistoryId;
+      initialInput?: AgentInput;
+      registerRecord?: boolean;
+      rewindMessageId?: MessageId;
+    } = {},
+  ): Effect.Effect<void, EngineFailure> {
+    const { historyId, ...startOptions } = options;
+    return Effect.suspend(() => {
+      this.records.beginRun(record.sessionId, {
+        ...runOf(resolved.options, resolved.accountId),
+        historyId,
+      });
+      return this.sessions.startLive(
+        replyTo,
+        record,
+        startAdapter,
+        resolved.warnings,
+        startOptions,
+      );
+    });
+  }
+
+  /** Wake an adapter onto an existing transcript, or start it fresh when there is none to resume. */
+  private resumeStrategy(
+    historyId: AgentHistoryId | undefined,
+    options: StartOptions,
+  ): (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure> {
+    const { history, sessions } = this;
+    return (adapter) =>
+      historyId === undefined
+        ? sessions.startAdapter(adapter, options)
+        : history.resume(adapter, historyId, options);
   }
 
   private createAutomationSession(options: {
@@ -339,7 +515,7 @@ export class SessionLifecycleService {
     const { sessions, startOptions: resolver, workspaces } = this;
     const sessionId = this.nextSessionId();
     return Effect.gen(function* () {
-      const { options: startOptions } = yield* resolver.resolve(
+      const { options: startOptions, accountId } = yield* resolver.resolve(
         { kind: options.kind, cwd: options.cwd, model: options.model },
         sessionId,
       );
@@ -353,7 +529,7 @@ export class SessionLifecycleService {
         automation: options.automation,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now }],
+        runs: [{ startedAt: now, ...runOf(startOptions, accountId) }],
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, (adapter) =>
@@ -424,4 +600,17 @@ function workspaceRegisterWorktree(
         publicMessage: 'Failed to persist managed worktree workspace',
       }),
   });
+}
+
+/** What a launch settled on, spread into a `SessionRun`. The account comes from the resolver rather
+ * than the options it produced, because only the resolver knows one actually backed the run.
+ * Unresolved fields stay absent rather than writing `undefined` into the record, and are what a later
+ * relaunch reads back to stay put. */
+function runOf(options: StartOptions, accountId: string | undefined): SessionPin {
+  return {
+    ...(accountId !== undefined && { accountId }),
+    ...(options.model !== undefined && { model: options.model }),
+    ...(options.effort !== undefined && { effort: options.effort }),
+    ...(options.approvalPolicyId !== undefined && { approvalPolicyId: options.approvalPolicyId }),
+  };
 }

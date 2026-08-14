@@ -32,7 +32,8 @@ import {
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
 import { effortOptionsForModel } from './agent-efforts';
-import { AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import type { ModelOption } from './agent-models';
+import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {
@@ -157,9 +158,9 @@ export interface ComposerProps {
   /** Executable directive contract. Loading slash catalogs accept typed commands for host-side
    * validation; ready catalogs are authoritative, including an empty catalog. */
   directiveControls: ComposerDirectiveControls;
-  /** The session's adapter-advertised model catalog, reflected from `available-models-update`
-   * (install-dependent agents like opencode). Takes precedence over the static per-kind table;
-   * empty or absent falls back to that table. */
+  /** Every model this composer may offer, already assembled by the caller from the accounts enabled
+   * for the agent. Absent or empty means no picker: nothing here falls back to a table, or an
+   * account switch could not take a model off the menu. */
   agentModels?: AgentModelOption[] | null;
   /** A promise defers draft clearing until the caller accepts the submission. */
   onSend: (content: ContentBlock[]) => ComposerSubmissionResult;
@@ -174,19 +175,24 @@ export interface ComposerProps {
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   /** Sends the model switch (`set-model`); the active model is reflected from `model-update`, not
    * locally — a rejected switch keeps the previous model. */
-  onModelChange?: (model: string) => Promise<void>;
+  /** Receives the whole entry, so a cross-account pick names the account it belongs to. */
+  onModelChange?: (model: ModelOption) => Promise<void>;
+  /** The account the current model belongs to; disambiguates a list spanning several. */
+  currentAccountId?: string;
+  /** Live sessions only: mark entries from another account, whose pick restarts the thread. */
+  accountSwitchRestarts?: boolean;
   /** Sends the reasoning-effort switch (`set-effort`); reflected from `effort-update`, same contract. */
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
   /** Clears a draft's explicit model override. Omitted for live sessions. */
   onResetModel?: () => void;
   /** Clears a draft's explicit effort override. Omitted for live sessions. */
   onResetEffort?: () => void;
-  /** Providers offered for selection (the new-session composer). Absent or empty means the
-   * provider is fixed — the trigger then hides the provider glyph and submenu. */
-  selectableProviders?: AgentKind[];
-  /** Runtime availability badges for the provider submenu (CODE-112). */
+  /** Harnesses offered for selection (the new-session composer). Absent or empty means the
+   * harness is fixed — the trigger then hides the harness glyph and submenu. */
+  selectableHarnesses?: AgentKind[];
+  /** Runtime availability badges for the harness submenu (CODE-112). */
   runtimeCues?: AgentRuntimeCues;
-  onProviderChange?: (provider: AgentKind) => Promise<void>;
+  onHarnessChange?: (harness: AgentKind) => Promise<void>;
   /** Strip rendered at the bottom of the composer card (e.g. the new-session workspace bar). */
   contextBar?: React.ReactNode;
   /** Opens a native file picker and returns the picked images, ready to stage. Absent (webview):
@@ -228,12 +234,14 @@ export function Composer({
   onModeChange,
   onApprovalPolicyChange,
   onModelChange,
+  currentAccountId,
+  accountSwitchRestarts = false,
   onEffortChange,
   onResetModel,
   onResetEffort,
-  selectableProviders,
+  selectableHarnesses,
   runtimeCues,
-  onProviderChange,
+  onHarnessChange,
   contextBar,
   onPickAttachmentFiles,
 }: ComposerProps): React.ReactNode {
@@ -789,14 +797,9 @@ export function Composer({
   }
 
   const placeholderAgent = agentLabel ?? 'agent';
-  // The adapter-advertised catalog wins over the static table: an install-dependent agent
-  // (opencode) knows its own reachable models; the table only covers curated vendor lists.
-  const modelOptions =
-    agentModels && agentModels.length > 0
-      ? agentModels
-      : agentKind
-        ? AGENT_MODEL_OPTIONS[agentKind]
-        : undefined;
+  // What the caller offers and nothing else: every model reaches this menu through an account
+  // enabled for the agent, so a fallback table here would put back a row no switch can remove.
+  const modelOptions = agentModels ?? undefined;
   const effortOptions = effortOptionsForModel(
     agentKind,
     resolveModel(modelOptions, currentModel ?? null),
@@ -833,8 +836,8 @@ export function Composer({
 
   // Server-reflected like mode/policy: the pick shows once `model-update` / `effort-update` echoes
   // it back; a rejected switch leaves the previous value and the failure lands in the error banner.
-  function selectModel(modelId: string): void {
-    void onModelChange?.(modelId).catch(noop);
+  function selectModel(model: ModelOption): void {
+    void onModelChange?.(model).catch(noop);
   }
 
   function selectEffort(effort: EffortLevel): void {
@@ -1021,19 +1024,21 @@ export function Composer({
                     disabled={interactionDisabled}
                     effortOptions={effortOptions}
                     modelOptions={modelOptions}
-                    provider={agentKind}
+                    harness={agentKind}
                     runtimeCues={runtimeCues}
-                    selectableProviders={selectableProviders}
+                    selectableHarnesses={selectableHarnesses}
+                    accountSwitchRestarts={accountSwitchRestarts}
+                    selectedAccountId={currentAccountId}
                     selectedEffortId={currentEffort ?? null}
                     selectedModelId={currentModel ?? null}
                     onResetEffort={onResetEffort}
                     onResetModel={onResetModel}
                     onSelectEffort={selectEffort}
                     onSelectModel={selectModel}
-                    onSelectProvider={
-                      onProviderChange
-                        ? (provider) => {
-                            void onProviderChange(provider).catch(noop);
+                    onSelectHarness={
+                      onHarnessChange
+                        ? (harness) => {
+                            void onHarnessChange(harness).catch(noop);
                           }
                         : undefined
                     }

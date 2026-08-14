@@ -71,7 +71,7 @@ export function HistoryImportTab({ kind }: { kind: AgentKind }): React.ReactNode
     <>
       <DesktopChromePortal segment="main" position="left" className="gap-2 px-2">
         <span className="min-w-0 truncate font-semibold text-sm">
-          {t('panelTitle', { provider: AGENT_LABELS[kind] })}
+          {t('panelTitle', { harness: AGENT_LABELS[kind] })}
         </span>
         {surface.count > 0 && (
           <span className="shrink-0 text-muted-foreground text-xs">

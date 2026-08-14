@@ -1,5 +1,4 @@
 import type { ProviderConfigStore } from '@linkcode/engine';
-import { accountBinding } from '@linkcode/engine';
 import type { Accounts, CustomMcpServer, ProvidersConfig } from '@linkcode/schema';
 import { saveCustomMcpServers, saveProviderConfiguration } from './config';
 import type { SecretVault } from './secrets';
@@ -33,12 +32,6 @@ export function createProviderConfigStore(
     setCustomMcpServers(next) {
       saveCustomMcpServers(vault, next, customMcpServers);
       customMcpServers = next;
-    },
-    createAndBindAccount(agent, account) {
-      const next = accountBinding(providers, accounts, agent, account);
-      saveProviderConfiguration(vault, next.providers, next.accounts);
-      providers = next.providers;
-      accounts = next.accounts;
     },
   };
 }

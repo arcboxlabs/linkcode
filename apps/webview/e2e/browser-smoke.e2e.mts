@@ -15,6 +15,7 @@ import { chromium } from 'playwright-core';
 const webviewDir = fileURLToPath(new URL('..', import.meta.url));
 const daemonDir = fileURLToPath(new URL('../../daemon', import.meta.url));
 const viteCli = fileURLToPath(new URL('../../bin/vite.js', import.meta.resolve('vite')));
+const newSessionDefaultsKey = 'linkcode.workbench.new-session-defaults:v7';
 const mockThreadTitle = 'Wire the workbench to the daemon';
 const mockChatThreadTitle = 'Prototype without git';
 const longThreadTitle = 'Long thread · navigation testbed';
@@ -69,12 +70,11 @@ async function sendPrompt(page: Page, prompt: string, appErrors: string[]): Prom
 }
 
 async function verifyNewChatIsolation(page: Page, appErrors: string[]): Promise<void> {
-  await page.evaluate(() => {
-    localStorage.setItem(
-      'linkcode.workbench.new-session-defaults:v5',
-      JSON.stringify({ state: { lastProvider: 'pi' }, version: 0 }),
-    );
-  });
+  // Must track NEW_SESSION_DEFAULTS_STORAGE_KEY and its schema: a stale blob is discarded silently,
+  // the new chat falls back to claude-code, and its `missing` mock runtime blocks Send forever.
+  await page.evaluate((key) => {
+    localStorage.setItem(key, JSON.stringify({ state: { lastHarness: 'pi' }, version: 0 }));
+  }, newSessionDefaultsKey);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('[data-thread-title]', { hasText: mockChatThreadTitle }).waitFor();
   await page.locator('[data-thread-title]', { hasText: mockChatThreadTitle }).click();
@@ -101,7 +101,14 @@ async function verifyNewChatIsolation(page: Page, appErrors: string[]): Promise<
     });
   });
 
-  await page.getByRole('button', { name: 'Send' }).click();
+  const send = page.getByRole('button', { name: 'Send' });
+  if (await send.isDisabled()) {
+    throw new Error(
+      `New chat cannot send: the ${newSessionDefaultsKey} seed did not resolve a sendable harness. ` +
+        'Check the storage key version and the persisted field names against new-session-defaults-store.ts.',
+    );
+  }
+  await send.click();
   await page.getByText(`You said: ${prompt}`, { exact: false }).waitFor({ timeout: 15000 });
   const titles = await page.evaluate(() => {
     const finish = Reflect.get(window, '__newChatIsolationProbe') as

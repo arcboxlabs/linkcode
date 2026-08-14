@@ -48,7 +48,9 @@ export interface WorkbenchSessions {
   create: (opts: {
     kind: AgentKind;
     cwd: string;
-    model?: string | null;
+    model?: string;
+    /** Pins the session to the account the picked model belongs to. */
+    accountId?: string;
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;
@@ -193,7 +195,9 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   async function create(opts: {
     kind: AgentKind;
     cwd: string;
-    model?: string | null;
+    model?: string;
+    /** Pins the session to the account the picked model belongs to. */
+    accountId?: string;
     effort?: EffortLevel;
     approvalPolicyId?: string;
     modeId?: SessionModeId;

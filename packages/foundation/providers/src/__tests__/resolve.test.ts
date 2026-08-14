@@ -1,8 +1,8 @@
 import type { Account, AgentKind, AgentRuntimes } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
-import { serviceById } from '../catalog';
-import { detectedLoginSuggestions } from '../detected-logins';
+import { endpointServiceById, modelListSource, serviceById } from '../catalog';
+import { detectedLogins } from '../detected-logins';
 import { resolveBinding, serviceProtocols } from '../resolve';
 import { fillTemplate, templatePlaceholders } from '../template';
 
@@ -276,6 +276,33 @@ describe('catalog helpers', () => {
     expect(serviceProtocols(undefined)).toEqual([]);
   });
 
+  it('resolves a model-list source only for services that serve one', () => {
+    // Service root, deliberately not the `/anthropic` variant's path.
+    expect(modelListSource('deepseek')).toEqual({
+      url: 'https://api.deepseek.com/models',
+      wire: 'openai',
+    });
+    expect(modelListSource('anthropic-api')?.wire).toBe('anthropic');
+    // Both Cloudflare routes serve no list, and oauth services have no secret to ask with.
+    expect(modelListSource('cloudflare-gateway')).toBeUndefined();
+    expect(modelListSource('cloudflare-anthropic')).toBeUndefined();
+    expect(modelListSource('claude-sub')).toBeUndefined();
+    expect(modelListSource('custom')).toBeUndefined();
+    expect(modelListSource(undefined)).toBeUndefined();
+  });
+
+  it('keeps the model-list url independent of the variant an agent resolves to', () => {
+    // Deriving from the resolved variant is what this replaced: the anthropic variants of these two
+    // sit on different paths, so appending would ask a route that does not exist.
+    for (const id of ['deepseek', 'vercel-gateway']) {
+      const service = nullthrow(endpointServiceById(id), `${id} missing`);
+      const anthropic = nullthrow(service.variants.anthropic, `${id} anthropic variant missing`);
+      expect(nullthrow(service.models, `${id} model list missing`).url).not.toBe(
+        `${anthropic.baseUrl}/models`,
+      );
+    }
+  });
+
   it('extracts and fills endpoint template placeholders', () => {
     const cloudflare = serviceById('cloudflare-anthropic');
     if (cloudflare?.kind !== 'endpoint') throw new Error('cloudflare descriptor missing');
@@ -286,7 +313,7 @@ describe('catalog helpers', () => {
     );
   });
 
-  it('suggests detected CLI logins the pool does not represent yet', () => {
+  it('reports detected CLI logins the pool does not represent yet', () => {
     const runtimes: AgentRuntimes = {
       'claude-code': {
         status: 'available',
@@ -294,13 +321,13 @@ describe('catalog helpers', () => {
       },
       codex: { status: 'available', auth: { loggedIn: false } },
     };
-    const suggested = detectedLoginSuggestions([], runtimes);
-    expect(suggested.map(({ service, auth }) => [service.id, auth.email])).toEqual([
+    const detected = detectedLogins([], runtimes);
+    expect(detected.map(({ service, auth }) => [service.id, auth.email])).toEqual([
       ['claude-sub', 'x@y.z'],
     ]);
-    // An existing oauth account for the agent absorbs the suggestion; unprobed runtimes yield none.
+    // An existing oauth account for the agent absorbs it; unprobed runtimes yield none.
     const claudeSub = account({ credential: { type: 'oauth', agent: 'claude-code' } });
-    expect(detectedLoginSuggestions([claudeSub], runtimes)).toEqual([]);
-    expect(detectedLoginSuggestions([], undefined)).toEqual([]);
+    expect(detectedLogins([claudeSub], runtimes)).toEqual([]);
+    expect(detectedLogins([], undefined)).toEqual([]);
   });
 });

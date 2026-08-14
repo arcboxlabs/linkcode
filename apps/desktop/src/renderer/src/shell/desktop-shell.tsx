@@ -79,8 +79,7 @@ export function DesktopShell({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  newSessionDefaultModels,
-  newSessionPreferredModels,
+  accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -428,8 +427,7 @@ export function DesktopShell({
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
-          defaultModels={newSessionDefaultModels}
-          preferredModels={newSessionPreferredModels}
+          accountModels={accountModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}
           NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
@@ -453,6 +451,8 @@ export function DesktopShell({
           composer={conversationComposer}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          accountModels={active ? accountModels?.[active.kind] : undefined}
+          accountId={active?.accountId}
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}

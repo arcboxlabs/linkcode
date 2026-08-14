@@ -1,18 +1,27 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { ServiceModelList } from '@linkcode/providers';
 import type { AccountEndpoint } from '@linkcode/schema';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelListRequest } from '../agent/model-probe';
 import {
   modelListHeaders,
-  modelListUrl,
+  modelListUrlFromEndpoint,
   probeEndpointModels,
   requestModelListAtAddress,
   resolvePublicEndpoint,
 } from '../agent/model-probe';
 
-const anthropic: AccountEndpoint = { baseUrl: 'https://relay.test/', protocol: 'anthropic' };
-const openai: AccountEndpoint = { baseUrl: 'https://relay.test/v1', protocol: 'openai-chat' };
+const anthropicEndpoint: AccountEndpoint = {
+  baseUrl: 'https://relay.test/',
+  protocol: 'anthropic',
+};
+const openaiEndpoint: AccountEndpoint = {
+  baseUrl: 'https://relay.test/v1',
+  protocol: 'openai-chat',
+};
+const anthropic: ServiceModelList = { url: 'https://relay.test/v1/models', wire: 'anthropic' };
+const openai: ServiceModelList = { url: 'https://relay.test/v1/models', wire: 'openai' };
 const REJECTION_PATTERN = /401.*invalid api key/;
 const NOT_A_LIST_PATTERN = /did not answer a model list/;
 const HTTP_PATTERN = /HTTP/;
@@ -25,31 +34,42 @@ function jsonResponse(body: unknown): Awaited<ReturnType<ModelListRequest>> {
   return { status: 200, statusText: 'OK', body: JSON.stringify(body) };
 }
 
-describe('endpoint model list addressing', () => {
+describe('custom endpoint model list addressing', () => {
   it('appends /v1 for Anthropic-shaped base URLs and only /models for OpenAI-shaped ones', () => {
-    expect(modelListUrl(anthropic)).toBe('https://relay.test/v1/models?limit=1000');
-    expect(modelListUrl(openai)).toBe('https://relay.test/v1/models');
+    // Only custom accounts reach this: catalog services carry an explicit URL instead.
+    expect(modelListUrlFromEndpoint(anthropicEndpoint)).toBe(
+      'https://relay.test/v1/models?limit=1000',
+    );
+    expect(modelListUrlFromEndpoint(openaiEndpoint)).toBe('https://relay.test/v1/models');
   });
 
   it('rejects URL components that string-appending could misaddress', () => {
     expect(() =>
-      modelListUrl({ baseUrl: 'https://relay.test/v1?tenant=x', protocol: 'openai-chat' }),
+      modelListUrlFromEndpoint({
+        baseUrl: 'https://relay.test/v1?tenant=x',
+        protocol: 'openai-chat',
+      }),
     ).toThrow(INVALID_ENDPOINT_PATTERN);
     expect(() =>
-      modelListUrl({ baseUrl: 'https://user:secret@relay.test/v1', protocol: 'openai-chat' }),
+      modelListUrlFromEndpoint({
+        baseUrl: 'https://user:secret@relay.test/v1',
+        protocol: 'openai-chat',
+      }),
     ).toThrow(INVALID_ENDPOINT_PATTERN);
   });
 
-  it('authenticates per protocol and credential shape', () => {
-    expect(modelListHeaders(anthropic, { type: 'api-key', key: 'k' })).toMatchObject({
+  it('authenticates per wire and credential shape', () => {
+    expect(modelListHeaders('anthropic', { type: 'api-key', key: 'k' })).toMatchObject({
       'x-api-key': 'k',
       'anthropic-version': '2023-06-01',
     });
-    expect(modelListHeaders(anthropic, { type: 'auth-token', token: 't' })).toMatchObject({
+    expect(modelListHeaders('anthropic', { type: 'auth-token', token: 't' })).toMatchObject({
       authorization: 'Bearer t',
       'anthropic-version': '2023-06-01',
     });
-    expect(modelListHeaders(openai, { type: 'api-key', key: 'k' }).authorization).toBe('Bearer k');
+    expect(modelListHeaders('openai', { type: 'api-key', key: 'k' }).authorization).toBe(
+      'Bearer k',
+    );
   });
 });
 

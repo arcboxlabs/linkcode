@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EffortLevelSchema } from '../agent/input';
 import { AgentHistoryCapabilitiesSchema } from '../history';
 import { ImPlatformSchema } from '../im';
 import {
@@ -7,6 +8,7 @@ import {
   SessionIdSchema,
   TimestampSchema,
 } from '../primitives';
+import { ApprovalPolicyIdSchema } from './control';
 import { SessionStatusSchema } from './lifecycle';
 
 /**
@@ -32,10 +34,25 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
 
-/** One live start/resume of a session. Providers usually mint a new native id per resume, so a
- * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref). */
+/**
+ * One live start/resume of a session. Providers usually mint a new native id per resume, so a
+ * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref).
+ *
+ * Everything below `historyId` is what the thread is *set to* — the choices it launched with plus
+ * every pick accepted since — and a relaunch replays them so the thread keeps them when the
+ * configured default moves. What an adapter resolved for itself is deliberately absent: recording
+ * that would pin every thread to its first launch and cut it off from the agent's default for good.
+ */
 export const SessionRunSchema = z.object({
   historyId: AgentHistoryIdSchema.optional(),
+  /** The account this run resolved to. Credentials and base URL are injected once at spawn, so the
+   * account is fixed for the run's lifetime and a later rebind does not move it. */
+  accountId: z.string().min(1).optional(),
+  /** Recorded with the account because the two are one choice. */
+  model: z.string().min(1).optional(),
+  /** Both axes live on the adapter a relaunch destroys, so they are replayed from here or lost. */
+  effort: EffortLevelSchema.optional(),
+  approvalPolicyId: ApprovalPolicyIdSchema.optional(),
   startedAt: TimestampSchema,
   endedAt: TimestampSchema.optional(),
 });
@@ -76,6 +93,9 @@ export const SessionInfoSchema = z.object({
   automation: SessionAutomationSchema.optional(),
   /** Latest run's provider-local history id — the transcript to read this session's past from. */
   historyId: AgentHistoryIdSchema.optional(),
+  /** Latest run's account — what the session is talking to now. Picking a model from another
+   * account relaunches the session on it, which starts a new run. */
+  accountId: z.string().min(1).optional(),
   /** Provider-history operations supported by this session's adapter/runtime. */
   historyCapabilities: AgentHistoryCapabilitiesSchema.optional(),
 });

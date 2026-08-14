@@ -23,6 +23,21 @@ export interface ServiceVariant {
   knownProvider?: Partial<Record<AgentKind, string>>;
 }
 
+/**
+ * Where to read the ids this service serves. Service-level, not per variant: one secret reaches one
+ * model list, and the ids are the same whichever protocol shape an agent ends up using.
+ *
+ * The URL is spelled out rather than derived from a variant's `baseUrl` + protocol, because
+ * derivation is wrong for any service whose variants sit on different paths — DeepSeek's
+ * `/anthropic` variant would yield `/anthropic/v1/models`, and Vercel's bare-origin one a root
+ * `/models`. Absent means the service serves no list and the account is freeform-only.
+ */
+export interface ServiceModelList {
+  url: string;
+  /** Decides auth header and response shape only; the chat/responses split is irrelevant here. */
+  wire: 'anthropic' | 'openai';
+}
+
 export type ServiceDescriptor =
   /** Delegates to an agent CLI's own login store — no secret handled by LinkCode. */
   | { id: string; label: string; group: 'subscription'; kind: 'oauth'; agent: AgentKind }
@@ -35,6 +50,7 @@ export type ServiceDescriptor =
       /** How the one secret authenticates. Service-level: every variant accepts the same secret. */
       credentialType: 'api-key' | 'auth-token';
       variants: Partial<Record<AccountProtocol, ServiceVariant>>;
+      models?: ServiceModelList;
       secretPlaceholder?: string;
     }
   /** Free-form endpoint — the full account form. */
@@ -55,6 +71,8 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         knownProvider: { opencode: 'anthropic', pi: 'anthropic' },
       },
     },
+    // `limit` defaults to 20, so it must be asked for explicitly to get the whole list.
+    models: { url: 'https://api.anthropic.com/v1/models?limit=1000', wire: 'anthropic' },
     secretPlaceholder: 'sk-ant-…',
   },
   {
@@ -72,6 +90,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       // resolve to the Responses adapter, so reaching chat here needs a custom registration.
       'openai-chat': { baseUrl: 'https://api.openai.com/v1' },
     },
+    models: { url: 'https://api.openai.com/v1/models', wire: 'openai' },
     secretPlaceholder: 'sk-…',
   },
   {
@@ -89,6 +108,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       // own `xai` entries are chat-shaped, and opencode/pi prefer those.
       'openai-responses': { baseUrl: 'https://api.x.ai/v1' },
     },
+    models: { url: 'https://api.x.ai/v1/models', wire: 'openai' },
     secretPlaceholder: 'xai-…',
   },
   {
@@ -107,6 +127,8 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         knownProvider: { opencode: 'deepseek', pi: 'deepseek' },
       },
     },
+    // Service root, not the `/anthropic` variant's path — that one serves no list.
+    models: { url: 'https://api.deepseek.com/models', wire: 'openai' },
     secretPlaceholder: 'sk-…',
   },
   {
@@ -124,6 +146,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       // The "Anthropic skin" is guaranteed only for Claude models.
       anthropic: { baseUrl: 'https://openrouter.ai/api' },
     },
+    models: { url: 'https://openrouter.ai/api/v1/models', wire: 'openai' },
     secretPlaceholder: 'sk-or-v1-…',
   },
   {
@@ -141,6 +164,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       // Anthropic-shaped endpoint; translates server-side, so it also serves non-Anthropic models.
       anthropic: { baseUrl: 'https://ai-gateway.vercel.sh' },
     },
+    models: { url: 'https://ai-gateway.vercel.sh/v1/models', wire: 'openai' },
   },
   {
     id: 'cloudflare-gateway',
@@ -148,6 +172,8 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     group: 'gateway',
     kind: 'endpoint',
     credentialType: 'auth-token',
+    // No `models`: `/compat` has no model-list route at all (docs + verified live), so a Cloudflare
+    // gateway account is freeform-only.
     variants: {
       // `/compat` serves chat completions only — Cloudflare's Responses route is a different path
       // (`/openai/responses`), so there is deliberately no responses variant here.
@@ -184,4 +210,9 @@ export type EndpointService = Extract<ServiceDescriptor, { kind: 'endpoint' }>;
 export function endpointServiceById(id: string | undefined): EndpointService | undefined {
   const service = serviceById(id);
   return service?.kind === 'endpoint' ? service : undefined;
+}
+
+/** Where to read this service's model ids, or undefined when it serves no list. */
+export function modelListSource(id: string | undefined): ServiceModelList | undefined {
+  return endpointServiceById(id)?.models;
 }

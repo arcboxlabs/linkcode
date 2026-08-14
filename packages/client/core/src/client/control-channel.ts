@@ -1,6 +1,4 @@
 import type {
-  Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
@@ -267,9 +265,15 @@ export class ControlChannel {
     }));
   }
 
-  /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session. */
-  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
-    return this.send(sessionId, { type: 'set-model', model });
+  /** Switch the session's model, going forward. Rejects if the adapter can't rebind a live session.
+   * `accountId` names the account the model came from: picking one the session isn't running on
+   * restarts it on that account and resumes the transcript. */
+  setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {
+    return this.send(sessionId, {
+      type: 'set-model',
+      model,
+      ...(accountId !== undefined && { accountId }),
+    });
   }
 
   /** Switch the session's reasoning-effort level, going forward. Same acceptance rule as setModel. */
@@ -570,23 +574,19 @@ export class ControlChannel {
     }));
   }
 
-  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
-    return this.sendCorrelated('ack', (clientReqId) => ({
-      kind: 'config.account.create-and-bind',
-      clientReqId,
-      agent,
-      account,
-    }));
-  }
-
-  /** Ask the daemon what an endpoint serves, using a not-yet-saved secret: the account forms offer
-   * the answer as the model picker. The daemon must do it — the renderer's CSP blocks the fetch. */
-  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
+  /** Ask the daemon which models a service serves, so the account forms can offer a real list to
+   * pick from. The daemon must do it — the renderer's CSP blocks the fetch, and it resolves the list
+   * URL from the service catalog itself. Pass a secret the add form has not saved yet, or the id of
+   * a saved account so its stored secret never leaves the daemon. */
+  probeAccountModels(
+    service: string,
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string },
+  ): Promise<AccountModel[]> {
     return this.sendCorrelated('accountModels', (clientReqId) => ({
       kind: 'config.probe-models',
       clientReqId,
-      endpoint,
-      secret,
+      service,
+      credential,
     }));
   }
 
