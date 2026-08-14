@@ -20,7 +20,7 @@
     "@openai/codex": "^0.144.6",
     "@opencode-ai/sdk": "^1.18.3",
     "cross-spawn": "^7.0.6",
-    "foxts": "^5.8.0",
+    "foxts": "^5.9.0",
     "smol-toml": "^1.7.1",
     "zod": "catalog:"
   },

@@ -16,7 +16,7 @@
     "@linkcode/client-core": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "diff": "^9.0.0",
-    "foxts": "^5.8.0"
+    "foxts": "^5.9.0"
   },
   "devDependencies": {
     "typescript": "catalog:"

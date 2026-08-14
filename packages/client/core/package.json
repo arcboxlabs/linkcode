@@ -15,7 +15,7 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "foxact": "^0.3.8",
-    "foxts": "^5.8.0"
+    "foxts": "^5.9.0"
   },
   "devDependencies": {
     "@types/react": "catalog:",
