@@ -728,6 +728,11 @@ describe('mapCodexHistoryEvents', () => {
         arguments: '{"code":"1"}',
         call_id: 'call_dual2',
       }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_dual2',
+        output: 'aborted by user after 1.0s',
+      }),
       {
         type: 'event_msg',
         payload: {
@@ -737,7 +742,6 @@ describe('mapCodexHistoryEvents', () => {
           result: { Ok: { content: [{ type: 'text', text: '1' }] } },
         },
       },
-      responseItem({ type: 'function_call_output', call_id: 'call_dual2', output: '1' }),
     ]);
 
     const tools = toolCalls(events);
@@ -747,6 +751,53 @@ describe('mapCodexHistoryEvents', () => {
       ['call_dual2', 'mcp__node_repl__js', 'in_progress'],
       ['call_dual2', 'mcp__node_repl__js', 'completed'],
     ]);
+  });
+
+  it('settles response-backed MCP calls from end rows when output is missing', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1"}',
+        call_id: 'call_missing_success',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_missing_success',
+          invocation: { server: 'node_repl', tool: 'js' },
+          result: { Ok: { content: [{ type: 'text', text: '1' }] } },
+        },
+      },
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__github',
+        name: 'search',
+        arguments: '{}',
+        call_id: 'call_missing_failure',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_missing_failure',
+          invocation: { server: 'github', tool: 'search' },
+          result: { Err: 'connection reset' },
+        },
+      },
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.status])).toEqual([
+      ['call_missing_success', 'in_progress'],
+      ['call_missing_success', 'completed'],
+      ['call_missing_failure', 'in_progress'],
+      ['call_missing_failure', 'failed'],
+    ]);
+    expect(tools[1].rawOutput).toEqual({ content: [{ type: 'text', text: '1' }] });
+    expect(tools[3].rawOutput).toBe('connection reset');
   });
 
   it('replays an oversized MCP result status-only (CODE-576)', () => {

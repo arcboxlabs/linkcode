@@ -38,45 +38,26 @@ export function cursorFromTotal(
   return offset + limit < totalCount ? String(offset + limit) : undefined;
 }
 
-/** Payload one replayed event embeds beyond its fixed structure: user-message attachments
- * (base64 — ASCII, so string length is byte length) and a tool call's whole serialized payload —
- * command output and diffs ride `content`, MCP results `rawOutput`, and none are bounded by the
- * event's shape. Measured in UTF-8 bytes, which is what the transport frames. */
-function eventPayloadLength(event: AgentHistoryEvent): number {
-  if (event.event.type === 'tool-call') {
-    return Buffer.byteLength(JSON.stringify(event.event.toolCall), 'utf8');
-  }
-  if (event.event.type !== 'user-message') return 0;
-  let total = 0;
-  for (const block of event.event.content) {
-    if (block.type === 'image' || block.type === 'audio') total += block.data.length;
-    else if (block.type === 'resource' && 'blob' in block.resource) {
-      total += block.resource.blob.length;
-    }
-  }
-  return total;
+/** Counts the complete event because text, thoughts, summaries, tool payloads, and attachments are unbounded. */
+function eventSerializedByteLength(event: AgentHistoryEvent): number {
+  return Buffer.byteLength(JSON.stringify(event), 'utf8');
 }
 
-/** Page slice bounded by event count AND aggregate embedded payload (attachments + tool
- * payloads). One `history.read.result` travels as a single logical transport message, and the
- * tunnel silently drops any message its reassembly buffer cannot hold — so payload-heavy
- * transcripts must fan across cursor pages instead of concentrating into one reply. The budget is
- * `MAX_ATTACHMENT_TOTAL_BASE64_LENGTH` (what transports already size a maximal prompt's frame
- * for); a page's first event always ships — per-prompt attachment caps, provider-side tool-output
- * truncation, and the codex per-MCP-result cap keep single events within budget in practice. */
+/** Bounds aggregate serialized event bytes; the first event always ships so cursor pagination
+ * cannot stall on a single oversized stored record. */
 export function sliceHistoryEventPage(
   events: readonly AgentHistoryEvent[],
   offset: number,
   limit: number,
 ): { events: AgentHistoryEvent[]; cursor: string | undefined } {
   const page: AgentHistoryEvent[] = [];
-  let payloadLength = 0;
+  let pageByteLength = 0;
   for (let index = offset; index < events.length && page.length < limit; index += 1) {
-    const eventLength = eventPayloadLength(events[index]);
-    if (page.length > 0 && payloadLength + eventLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
+    const eventLength = eventSerializedByteLength(events[index]);
+    if (page.length > 0 && pageByteLength + eventLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
       break;
     }
-    payloadLength += eventLength;
+    pageByteLength += eventLength;
     page.push(events[index]);
   }
   const next = offset + page.length;

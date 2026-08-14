@@ -463,27 +463,50 @@ const CODEX_TOOL_OUTPUT_TYPES = new Set([
   'local_shell_call_output',
 ]);
 
-/** call_ids already carried by response_item announce/output rows. Legacy direct-MCP rollouts
- * persist announce + output + `mcp_tool_call_end` for ONE call (observed order: announce, end,
- * output) — synthesizing the end row too would emit a third snapshot whose structured status the
- * trailing output settle then overwrites (a failed `isError` result degrades to `completed`). */
-function collectRespondedToolCallIds(rows: JsonRecord[]): Set<string> {
+/** Response-backed calls use their output for content, while the MCP end row owns terminal status. */
+function collectRespondedToolCallIds(rows: JsonRecord[]): {
+  callIds: Set<string>;
+  outputCallIds: Set<string>;
+} {
   const callIds = new Set<string>();
+  const outputCallIds = new Set<string>();
   for (const row of rows) {
     if (stringField(row, 'type') !== 'response_item') continue;
     const payload = recordField(row, 'payload');
     if (!payload) continue;
     const payloadType = stringField(payload, 'type');
-    if (
-      payloadType === undefined ||
-      (!CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType) && !CODEX_TOOL_OUTPUT_TYPES.has(payloadType))
-    ) {
-      continue;
-    }
+    if (payloadType === undefined) continue;
+    const isOutput = CODEX_TOOL_OUTPUT_TYPES.has(payloadType);
+    if (!isOutput && !CODEX_TOOL_ANNOUNCE_TYPES.has(payloadType)) continue;
     const callId = stringField(payload, 'call_id');
-    if (callId) callIds.add(callId);
+    if (!callId) continue;
+    callIds.add(callId);
+    if (isOutput) outputCallIds.add(callId);
   }
-  return callIds;
+  return { callIds, outputCallIds };
+}
+
+interface McpEndState {
+  status: 'completed' | 'failed';
+  rawOutput?: ToolCall['rawOutput'];
+}
+
+/** Precomputed so a response output that precedes its MCP end row still gets the structured verdict. */
+function collectMcpEndStates(rows: JsonRecord[]): Map<string, McpEndState> {
+  const states = new Map<string, McpEndState>();
+  for (const row of rows) {
+    if (stringField(row, 'type') !== 'event_msg') continue;
+    const payload = recordField(row, 'payload');
+    if (!payload || stringField(payload, 'type') !== 'mcp_tool_call_end') continue;
+    const callId = stringField(payload, 'call_id');
+    if (!callId) continue;
+    const endToolCall = codexMcpEndToolCall(payload);
+    states.set(callId, {
+      status: codexMcpEndFailed(payload) ? 'failed' : 'completed',
+      ...(endToolCall?.rawOutput !== undefined && { rawOutput: endToolCall.rawOutput }),
+    });
+  }
+  return states;
 }
 
 /** Replays the rollout into live presentation shapes. MCP end-only calls retain their live
@@ -496,10 +519,10 @@ export function mapCodexHistoryEvents(
   const announced = new Map<string, ToolCall>();
   const persistedMcpIdentities = collectCodexMcpIdentities(rows);
   const promptTexts = collectCodexPromptTexts(rows);
-  const respondedCallIds = collectRespondedToolCallIds(rows);
-  /** Response-backed calls whose end row recorded a failure: the response output settle cannot
-   * see `isError`/`Err`, so the end row's verdict must win over the settle's text heuristic. */
-  const mcpEndFailures = new Set<string>();
+  const { callIds: respondedCallIds, outputCallIds: responseOutputCallIds } =
+    collectRespondedToolCallIds(rows);
+  const mcpEndStates = collectMcpEndStates(rows);
+  const seenMcpEndCallIds = new Set<string>();
   /** update_plan call_ids, so their `Plan updated` receipts don't settle a phantom tool row. */
   const planCalls = new Set<string>();
   let currentTurnId: string | null = null;
@@ -544,16 +567,12 @@ export function mapCodexHistoryEvents(
       if (payload && stringField(payload, 'type') === 'mcp_tool_call_end') {
         const callId = stringField(payload, 'call_id');
         if (callId === undefined) return;
+        seenMcpEndCallIds.add(callId);
         if (respondedCallIds.has(callId)) {
-          // Response-backed calls already replay through the announce/settle pair — only the end
-          // row's failure verdict carries over (observed order announce → end → output, but a
-          // late end row corrects an already-settled card too).
-          if (codexMcpEndFailed(payload)) {
-            mcpEndFailures.add(callId);
+          if (!responseOutputCallIds.has(callId)) {
             const existing = announced.get(callId);
-            if (existing && existing.status !== 'in_progress') {
-              events.push(recordToolEvent({ ...existing, status: 'failed' }));
-            }
+            const endState = mcpEndStates.get(callId);
+            if (existing && endState) events.push(recordToolEvent({ ...existing, ...endState }));
           }
           return;
         }
@@ -575,16 +594,21 @@ export function mapCodexHistoryEvents(
           planCalls.add(callId);
           events.push({ historyId, itemId: callId, event: { type: 'plan', plan: mapped.plan } });
         } else {
-          events.push(recordToolEvent(mapped.toolCall));
+          const endState =
+            !responseOutputCallIds.has(callId) && seenMcpEndCallIds.has(callId)
+              ? mcpEndStates.get(callId)
+              : undefined;
+          events.push(
+            recordToolEvent(endState ? { ...mapped.toolCall, ...endState } : mapped.toolCall),
+          );
         }
         return;
       }
       if (CODEX_TOOL_OUTPUT_TYPES.has(payloadType)) {
         if (planCalls.has(callId)) return;
         const settled = codexToolSettle(callId, payload, announced.get(callId));
-        events.push(
-          recordToolEvent(mcpEndFailures.has(callId) ? { ...settled, status: 'failed' } : settled),
-        );
+        const status = mcpEndStates.get(callId)?.status;
+        events.push(recordToolEvent(status ? { ...settled, status } : settled));
         return;
       }
     }

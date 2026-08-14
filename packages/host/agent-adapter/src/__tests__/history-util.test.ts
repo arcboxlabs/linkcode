@@ -5,14 +5,30 @@ import { asHistoryId, asMessageId, sliceHistoryEventPage } from '../history-util
 
 const HID = asHistoryId('history-paging');
 
-function textEvent(id: string): AgentHistoryEvent {
+function textEvent(id: string, text = id): AgentHistoryEvent {
   return {
     historyId: HID,
     itemId: id,
     event: {
       type: 'user-message',
       messageId: asMessageId(id),
-      content: [{ type: 'text', text: id }],
+      content: [{ type: 'text', text }],
+    },
+  };
+}
+
+function agentTextEvent(
+  id: string,
+  type: 'agent-message' | 'agent-thought',
+  text: string,
+): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type,
+      messageId: asMessageId(id),
+      content: [{ type: 'text', text }],
     },
   };
 }
@@ -138,6 +154,27 @@ describe('sliceHistoryEventPage', () => {
     expect(first.cursor).toBe('2');
     const rest = sliceHistoryEventPage(events, 2, 1000);
     expect(itemIds(rest)).toEqual(['exec-2']);
+    expect(rest.cursor).toBeUndefined();
+  });
+
+  it('counts text, thought, and compaction content toward the page budget', () => {
+    const large = 'A'.repeat(Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.26));
+    const events: AgentHistoryEvent[] = [
+      textEvent('user', large),
+      agentTextEvent('message', 'agent-message', large),
+      agentTextEvent('thought', 'agent-thought', large),
+      {
+        historyId: HID,
+        itemId: 'compaction',
+        event: { type: 'compaction', compactionId: 'compaction', summary: large },
+      },
+    ];
+
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['user', 'message', 'thought']);
+    expect(first.cursor).toBe('3');
+    const rest = sliceHistoryEventPage(events, 3, 1000);
+    expect(itemIds(rest)).toEqual(['compaction']);
     expect(rest.cursor).toBeUndefined();
   });
 });
