@@ -119,6 +119,18 @@ runs:
               exit 1
             fi
           done
+          if [ "$SOURCE_ROOT" = . ] && ! jq -e '
+              .releaseManifestFormatVersion == 2 and
+              (.publicationEvidence.activationVersion | type == "string") and
+              (.publicationEvidence.deploymentId | type == "string") and
+              .publicationEvidence.deploymentSourceGitSha == .sourceGitSha and
+              (.publicationEvidence.keyId | type == "string") and
+              (.publicationEvidence.pointerSha256 | type == "string") and
+              (.publicationEvidence.verifiedAt | type == "string")
+            ' "$1" > /dev/null; then
+            echo "::error::Production release manifest $1 requires exact observer publication evidence"
+            exit 1
+          fi
         }
 
         if [ "$APP" = desktop ]; then

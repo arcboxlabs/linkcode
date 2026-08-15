@@ -242,6 +242,42 @@ describe('release manifest binding', () => {
     expect(render?.args).toContain(request.releaseManifestPath);
   });
 
+  it('accepts exact observer evidence and rejects a mismatched deployment source', async () => {
+    const request = await makeBoundRequest();
+    const manifest = JSON.parse(await readFile(request.releaseManifestPath!, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const publicationEvidence = {
+      activationVersion: '1',
+      deploymentId: 'deployment-fixture',
+      deploymentSourceGitSha: SOURCE_SHA,
+      keyId: 'normal-fixture-1',
+      pointerSha256: 'e'.repeat(64),
+      verifiedAt: '2026-08-15T03:01:00Z',
+    };
+    await writeFile(
+      request.releaseManifestPath!,
+      JSON.stringify({ ...manifest, publicationEvidence, releaseManifestFormatVersion: 2 }),
+    );
+    const { run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    await expect(renderConfigBundleWithPublisher(request, run)).resolves.toBeDefined();
+
+    await writeFile(
+      request.releaseManifestPath!,
+      JSON.stringify({
+        ...manifest,
+        publicationEvidence: { ...publicationEvidence, deploymentSourceGitSha: 'f'.repeat(40) },
+        releaseManifestFormatVersion: 2,
+      }),
+    );
+    await expect(renderConfigBundleWithPublisher(request, run)).rejects.toThrow(
+      'invalid publication evidence',
+    );
+  });
+
   it('fails when the rendered snapshot digest is not the pinned published digest', async () => {
     const request = await makeBoundRequest();
     const manifest = JSON.parse(await readFile(request.releaseManifestPath!, 'utf8')) as Record<
