@@ -454,6 +454,7 @@ describe('release brand matrix workflow', () => {
     expect(action).toContain(
       'Production release manifest $1 requires exact observer publication evidence',
     );
+    expect(action).toContain('both targets must use one observed deployment');
     expect(action).toContain('unset PUBLISHER_TOKEN SOURCE_TOKEN');
     expect(action.indexOf('unset PUBLISHER_TOKEN SOURCE_TOKEN')).toBeLessThan(
       action.indexOf('pnpm --dir "$publisher" install --frozen-lockfile'),

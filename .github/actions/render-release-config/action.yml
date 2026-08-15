@@ -151,6 +151,14 @@ runs:
               exit 1
             fi
           done
+          if [ "$SOURCE_ROOT" = . ]; then
+            for field in deploymentId deploymentSourceGitSha keyId verifiedAt; do
+              if [ "$(pin "$work/manifest-ios.json" ".publicationEvidence.$field")" != "$(pin "$work/manifest-android.json" ".publicationEvidence.$field")" ]; then
+                echo "::error::iOS and Android release manifests disagree on publicationEvidence.$field; both targets must use one observed deployment"
+                exit 1
+              fi
+            done
+          fi
         fi
 
         publisher_sha="$(pin "$primary" .publisherGitSha)"
