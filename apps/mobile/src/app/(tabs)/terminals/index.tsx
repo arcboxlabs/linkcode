@@ -53,13 +53,13 @@ export default function TerminalsRoute(): React.ReactNode {
   const trailingActions = useTrailingActions(primaryAction);
 
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
-  // proposed the whole window and paints straight over the large title.
+  // proposed the whole window and paints straight over the navigation header.
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
           headerShown: true,
-          headerLargeTitle: true,
+          headerLargeTitleEnabled: false,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           ...trailingActions,

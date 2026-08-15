@@ -20,7 +20,6 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
-import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
@@ -69,7 +68,7 @@ export default function ThreadsRoute(): React.ReactNode {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerLargeTitleEnabled: !USES_IOS_26_NAVIGATION,
+          headerLargeTitleEnabled: false,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           ...trailingActions,
@@ -157,7 +156,7 @@ function ThreadsScreen({
 
   return (
     <>
-      {/* `stacked` keeps the field below either title style instead of moving into the iOS 26 toolbar;
+      {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar;
           the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
       <Stack.SearchBar
         placeholder={t('searchPlaceholder')}
