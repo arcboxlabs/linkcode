@@ -1251,7 +1251,12 @@ export const en = {
       open: 'Open',
       remove: 'Remove',
       viaTunnel: 'via LinkCode Cloud',
-      addManually: 'Add a host by URL',
+      addManually: 'Other…',
+      discovery: {
+        title: 'Discovered hosts',
+        searching: 'Searching the local network…',
+        error: 'Could not search the local network.',
+      },
       cloud: {
         title: 'LinkCode Cloud',
         hint: 'Sign in to reach your machines from anywhere through LinkCode Cloud.',

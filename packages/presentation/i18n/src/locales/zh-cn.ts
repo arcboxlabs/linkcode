@@ -1217,7 +1217,12 @@ export const zhCN = {
       open: '打开',
       remove: '移除',
       viaTunnel: '经由 LinkCode Cloud',
-      addManually: '通过地址添加 host',
+      addManually: '其他…',
+      discovery: {
+        title: '发现的 host',
+        searching: '正在搜索局域网…',
+        error: '无法搜索局域网。',
+      },
       cloud: {
         title: 'LinkCode Cloud',
         hint: '登录后即可通过 LinkCode Cloud 随时随地连接你的机器。',

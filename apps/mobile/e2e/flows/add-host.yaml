@@ -19,9 +19,9 @@ appId: com.arcboxlabs.linkcode.mobile
       - openLink: linkcode://connect
       - waitForAnimationToEnd
       - assertVisible: 'Manage hosts'
-      - assertVisible: 'Add a host by URL'
+      - assertVisible: 'Other…'
 
-- tapOn: 'Add a host by URL'
+- tapOn: 'Other…'
 - waitForAnimationToEnd
 - assertVisible: 'Name'
 - assertVisible: 'Host URL'
