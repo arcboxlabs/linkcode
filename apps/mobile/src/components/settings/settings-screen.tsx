@@ -2,6 +2,7 @@ import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/u
 import { disabled, font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { LARGE_TITLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import {
   disableDeviceNotifications,
@@ -77,11 +78,10 @@ export function SettingsScreen(): React.ReactNode {
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
   // proposed the whole window and paints straight over the large title.
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitle: true,
+          ...LARGE_TITLE_HEADER_OPTIONS,
           title: t('title'),
         }}
       />

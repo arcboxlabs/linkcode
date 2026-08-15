@@ -14,11 +14,13 @@ import { SessionStatusChip } from '@mobile/components/conversation/session-statu
 import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { noop } from 'foxact/noop';
 import { useThemeColor } from 'heroui-native';
 import { EllipsisIcon } from 'lucide-react-native';
@@ -46,6 +48,7 @@ function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
   const tChat = useTranslations('mobile.chat');
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const muted = useThemeColor('muted');
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
@@ -112,7 +115,7 @@ function SessionScreen(): React.ReactNode {
     <View className="flex-1 bg-background" style={{ paddingBottom: insets.bottom }}>
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...VISIBLE_HEADER_OPTIONS,
           title,
           headerRight: () => (
             <View className="flex-row items-center gap-1">
@@ -144,6 +147,9 @@ function SessionScreen(): React.ReactNode {
               onPressTool={(toolCall) => setOpenToolCallId(toolCall.toolCallId)}
             />
           )}
+          ListFooterComponent={
+            process.env.EXPO_OS === 'ios' ? <View style={{ height: headerHeight }} /> : null
+          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
           className="flex-1"
         />

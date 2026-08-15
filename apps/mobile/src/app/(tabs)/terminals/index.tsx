@@ -16,6 +16,7 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
 import { useHostConnection } from '@mobile/runtime/host-connection';
@@ -58,8 +59,7 @@ export default function TerminalsRoute(): React.ReactNode {
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitleEnabled: false,
+          ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           ...trailingActions,

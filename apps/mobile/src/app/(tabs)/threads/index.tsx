@@ -22,6 +22,7 @@ import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
@@ -67,8 +68,7 @@ export default function ThreadsRoute(): React.ReactNode {
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitleEnabled: false,
+          ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
           ...trailingActions,
