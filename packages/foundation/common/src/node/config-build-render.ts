@@ -75,7 +75,10 @@ export function configBuildRenderArgs(request: ConfigBuildRenderRequest): readon
 }
 
 const RE_HEX_SHA256 = /^[0-9a-f]{64}$/;
-const RELEASE_MANIFEST_KEYS = [
+const RE_MONOTONIC_VERSION = /^(?:0|[1-9]\d{0,19})$/;
+const RE_KEY_ID = /^[\dA-Z][\w.-]{0,127}$/i;
+const RE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+const RELEASE_MANIFEST_BASE_KEYS = [
   'brandId',
   'channel',
   'configRevisionId',
@@ -88,10 +91,21 @@ const RELEASE_MANIFEST_KEYS = [
   'sourceGitSha',
   'telemetryEndpoint',
 ] as const;
-const RELEASE_MANIFEST_KEY_SET: ReadonlySet<string> = new Set(RELEASE_MANIFEST_KEYS);
+const RELEASE_MANIFEST_V1_KEY_SET: ReadonlySet<string> = new Set(RELEASE_MANIFEST_BASE_KEYS);
+const RELEASE_MANIFEST_V2_KEY_SET: ReadonlySet<string> = new Set([
+  ...RELEASE_MANIFEST_BASE_KEYS,
+  'publicationEvidence',
+]);
+const PUBLICATION_EVIDENCE_KEYS = new Set([
+  'activationVersion',
+  'deploymentId',
+  'deploymentSourceGitSha',
+  'keyId',
+  'pointerSha256',
+  'verifiedAt',
+]);
 
-/** Frozen release-render manifest v1 (publisher CONTRACT.md "Release render manifest v1"). */
-export interface ConfigBuildReleaseManifest {
+interface ConfigBuildReleaseManifestBase {
   readonly brandId: string;
   readonly channel: string;
   readonly configRevisionId: string;
@@ -99,33 +113,55 @@ export interface ConfigBuildReleaseManifest {
   readonly platform: string;
   readonly publicKeyringsSha256: string;
   readonly publisherGitSha: string;
-  readonly releaseManifestFormatVersion: 1;
   readonly revisionSha256: string;
   readonly sourceGitSha: string;
   readonly telemetryEndpoint: string;
 }
+
+export interface ConfigBuildPublicationEvidence {
+  readonly activationVersion: string;
+  readonly deploymentId: string;
+  readonly deploymentSourceGitSha: string;
+  readonly keyId: string;
+  readonly pointerSha256: string;
+  readonly verifiedAt: string;
+}
+
+export type ConfigBuildReleaseManifest =
+  | (ConfigBuildReleaseManifestBase & { readonly releaseManifestFormatVersion: 1 })
+  | (ConfigBuildReleaseManifestBase & {
+      readonly publicationEvidence: ConfigBuildPublicationEvidence;
+      readonly releaseManifestFormatVersion: 2;
+    });
 
 function parseReleaseManifest(value: unknown, path: string): ConfigBuildReleaseManifest {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError(`Release manifest at ${path} must be a JSON object`);
   }
   const manifest = value as Record<string, unknown>;
+  const version = manifest.releaseManifestFormatVersion;
+  if (version !== 1 && version !== 2) {
+    throw new TypeError(`Release manifest at ${path} has an unsupported format version`);
+  }
+  const keys = version === 1 ? RELEASE_MANIFEST_V1_KEY_SET : RELEASE_MANIFEST_V2_KEY_SET;
   for (const key of Object.keys(manifest)) {
-    if (!RELEASE_MANIFEST_KEY_SET.has(key)) {
+    if (!keys.has(key)) {
       throw new TypeError(`Release manifest at ${path} contains unsupported field ${key}`);
     }
   }
-  if (manifest.releaseManifestFormatVersion !== 1) {
-    throw new TypeError(`Release manifest at ${path} has an unsupported format version`);
+  for (const key of keys) {
+    if (!(key in manifest)) {
+      throw new TypeError(`Release manifest at ${path} is missing field ${key}`);
+    }
   }
-  const field = (key: (typeof RELEASE_MANIFEST_KEYS)[number]): string => {
+  const field = (key: (typeof RELEASE_MANIFEST_BASE_KEYS)[number]): string => {
     const fieldValue = manifest[key];
     if (typeof fieldValue !== 'string') {
       throw new TypeError(`Release manifest at ${path} is missing field ${key}`);
     }
     return fieldValue;
   };
-  return {
+  const base: ConfigBuildReleaseManifestBase = {
     brandId: field('brandId'),
     channel: field('channel'),
     configRevisionId: field('configRevisionId'),
@@ -133,11 +169,61 @@ function parseReleaseManifest(value: unknown, path: string): ConfigBuildReleaseM
     platform: field('platform'),
     publicKeyringsSha256: field('publicKeyringsSha256'),
     publisherGitSha: field('publisherGitSha'),
-    releaseManifestFormatVersion: 1,
     revisionSha256: field('revisionSha256'),
     sourceGitSha: field('sourceGitSha'),
     telemetryEndpoint: field('telemetryEndpoint'),
   };
+  if (version === 1) return { ...base, releaseManifestFormatVersion: 1 };
+  const publicationEvidence = parsePublicationEvidence(
+    manifest.publicationEvidence,
+    path,
+    base.sourceGitSha,
+  );
+  return { ...base, publicationEvidence, releaseManifestFormatVersion: 2 };
+}
+
+function parsePublicationEvidence(
+  value: unknown,
+  path: string,
+  sourceGitSha: string,
+): ConfigBuildPublicationEvidence {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`Release manifest at ${path} has invalid publication evidence`);
+  }
+  const evidence = value as Record<string, unknown>;
+  const actual = Object.keys(evidence).sort();
+  const expected = [...PUBLICATION_EVIDENCE_KEYS].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new TypeError(`Release manifest at ${path} has invalid publication evidence fields`);
+  }
+  const field = (key: string): string => {
+    const result = evidence[key];
+    if (typeof result !== 'string' || result.length === 0) {
+      throw new TypeError(`Release manifest at ${path} has invalid publication evidence ${key}`);
+    }
+    return result;
+  };
+  const publication = {
+    activationVersion: field('activationVersion'),
+    deploymentId: field('deploymentId'),
+    deploymentSourceGitSha: field('deploymentSourceGitSha'),
+    keyId: field('keyId'),
+    pointerSha256: field('pointerSha256'),
+    verifiedAt: field('verifiedAt'),
+  };
+  if (
+    !RE_MONOTONIC_VERSION.test(publication.activationVersion) ||
+    publication.activationVersion === '0' ||
+    publication.deploymentId.length > 256 ||
+    publication.deploymentSourceGitSha !== sourceGitSha ||
+    !RE_KEY_ID.test(publication.keyId) ||
+    !RE_HEX_SHA256.test(publication.pointerSha256) ||
+    !RE_TIMESTAMP.test(publication.verifiedAt) ||
+    Number.isNaN(Date.parse(publication.verifiedAt))
+  ) {
+    throw new TypeError(`Release manifest at ${path} has invalid publication evidence`);
+  }
+  return publication;
 }
 
 /** Re-verifies the release-manifest binding against the loaded bundle and the exact input file

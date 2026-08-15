@@ -20,6 +20,9 @@ const RE_SHARED_DESTINATION = /R2 prefixes in one bucket must not overlap/;
 const RE_WRONG_CREDENTIAL_ENVIRONMENT = /credentialEnvironment: must equal release/;
 const RE_SHARED_APP_STORE_APP = /ios\.ascAppId: must be unique/;
 const RE_INVALID_SOURCE_ROOT = /sourceRoot: must be/;
+const RE_SHARED_DEPLOYMENT = /all platforms must share publicationEvidence\.deploymentId/;
+const RE_PRODUCTION_EVIDENCE = /production releases require observed publication evidence/;
+const RE_INACTIVE_PUBLICATION = /must be greater than zero/;
 const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
 const ACTIONS_EXPRESSION = String.fromCodePoint(36);
 
@@ -48,9 +51,17 @@ function manifest(brandId, platform) {
     configRevisionId: 'fixture-v1',
     expectedSnapshotSha256: sha('a'),
     platform,
+    publicationEvidence: {
+      activationVersion: '1',
+      deploymentId: 'deployment-fixture',
+      deploymentSourceGitSha: gitSha('e'),
+      keyId: 'normal-fixture-1',
+      pointerSha256: sha('f'),
+      verifiedAt: '2026-08-15T03:01:00Z',
+    },
     publicKeyringsSha256: sha('b'),
     publisherGitSha: gitSha('c'),
-    releaseManifestFormatVersion: 1,
+    releaseManifestFormatVersion: 2,
     revisionSha256: sha('d'),
     sourceGitSha: gitSha('e'),
     telemetryEndpoint: `https://${brandId}.example.invalid/telemetry`,
@@ -119,7 +130,7 @@ describe('parseBrandBuildMatrix', () => {
       pilot.brands.every((entry) => Object.values(entry.distribution).every((x) => x === null)),
     ).toBe(true);
     expect(pilot.brands.every((entry) => entry.sourceRoot === 'examples/acme-zenith')).toBe(true);
-    expect(() => buildMatrixPlan(pilot, { build: true })).toThrow(RE_MISSING_DELIVERY);
+    expect(() => buildMatrixPlan(pilot, { build: true })).toThrow(RE_PRODUCTION_EVIDENCE);
     const fixture = await readFile(
       new URL('../../apps/desktop/e2e/fixtures/pilot-e2e-v1.json', import.meta.url),
     );
@@ -258,11 +269,36 @@ describe('parseBrandBuildMatrix', () => {
 
     const divergent = matrix(brand());
     divergent.brands[0].releaseManifests.ios.sourceGitSha = gitSha('f');
+    divergent.brands[0].releaseManifests.ios.publicationEvidence.deploymentSourceGitSha =
+      gitSha('f');
     expect(() => parseBrandBuildMatrix(divergent)).toThrow(RE_DIVERGENT_SOURCE);
+
+    const mixedDeployment = matrix(brand());
+    mixedDeployment.brands[0].releaseManifests.ios.publicationEvidence.deploymentId =
+      'another-deployment';
+    expect(() => parseBrandBuildMatrix(mixedDeployment)).toThrow(RE_SHARED_DEPLOYMENT);
+
+    const inactive = matrix(brand());
+    inactive.brands[0].releaseManifests.desktop.publicationEvidence.activationVersion = '0';
+    expect(() => parseBrandBuildMatrix(inactive)).toThrow(RE_INACTIVE_PUBLICATION);
 
     const redirected = matrix(brand());
     redirected.brands[0].sourceRoot = 'brands/acme';
     expect(() => parseBrandBuildMatrix(redirected)).toThrow(RE_INVALID_SOURCE_ROOT);
+  });
+
+  it('requires observer evidence for production while preserving nonproduction v1 fixtures', () => {
+    const input = brand();
+    for (const platform of ['desktop', 'ios', 'android']) {
+      input.releaseManifests[platform].releaseManifestFormatVersion = 1;
+      delete input.releaseManifests[platform].publicationEvidence;
+    }
+    expect(() => parseBrandBuildMatrix(matrix(input))).toThrow(RE_PRODUCTION_EVIDENCE);
+    input.sourceRoot = 'examples/acme-zenith';
+    expect(() => parseBrandBuildMatrix(matrix(input))).not.toThrow();
+    expect(() => parseBrandBuildMatrix(matrix(input), { build: true })).toThrow(
+      RE_PRODUCTION_EVIDENCE,
+    );
   });
 
   it('emits the digest of the exact matrix-file bytes', async () => {
@@ -415,6 +451,10 @@ describe('release brand matrix workflow', () => {
     expect(action).toContain('checkout identity did not match expected repository');
     expect(action).toContain('publisher/parser/schema contract');
     expect(action).toContain('Pinned config source must contain source root');
+    expect(action).toContain(
+      'Production release manifest $1 requires exact observer publication evidence',
+    );
+    expect(action).toContain('both targets must use one observed deployment');
     expect(action).toContain('unset PUBLISHER_TOKEN SOURCE_TOKEN');
     expect(action.indexOf('unset PUBLISHER_TOKEN SOURCE_TOKEN')).toBeLessThan(
       action.indexOf('pnpm --dir "$publisher" install --frozen-lockfile'),

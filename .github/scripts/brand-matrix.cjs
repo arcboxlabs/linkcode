@@ -9,7 +9,7 @@ const CHECKLIST_KEYS = [
   'permissionsReviewed',
   'storeMetadataReviewed',
 ];
-const RELEASE_MANIFEST_KEYS = [
+const RELEASE_MANIFEST_BASE_KEYS = [
   'brandId',
   'channel',
   'configRevisionId',
@@ -22,6 +22,15 @@ const RELEASE_MANIFEST_KEYS = [
   'sourceGitSha',
   'telemetryEndpoint',
 ];
+const PUBLICATION_EVIDENCE_KEYS = [
+  'activationVersion',
+  'deploymentId',
+  'deploymentSourceGitSha',
+  'keyId',
+  'pointerSha256',
+  'verifiedAt',
+];
+const RELEASE_MANIFEST_VERSIONS = new Set([1, 2]);
 
 const RE_BRAND_ID = /^[a-z][a-z0-9-]{0,62}$/;
 const RE_GIT_SHA = /^[0-9a-f]{40}$/;
@@ -34,6 +43,9 @@ const RE_R2_PREFIX = /^[a-z0-9][a-z0-9/-]*$/;
 const RE_TRAILING_SLASH = /\/$/;
 const RE_TEAM_ID = /^[A-Z0-9]{10}$/;
 const RE_ASC_APP_ID = /^\d+$/;
+const RE_MONOTONIC_VERSION = /^(?:0|[1-9]\d{0,19})$/;
+const RE_KEY_ID = /^[\dA-Z][\w.-]{0,127}$/i;
+const RE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 function fail(path, message) {
   throw new TypeError(`${path}: ${message}`);
@@ -74,10 +86,21 @@ function httpsUrl(value, path) {
   return text;
 }
 
-function releaseManifest(value, path, platform, brandId, channel) {
+function releaseManifest(value, path, platform, brandId, channel, requirePublicationEvidence) {
   const manifest = record(value, path);
-  exact(manifest, RELEASE_MANIFEST_KEYS, path);
-  if (manifest.releaseManifestFormatVersion !== 1) fail(path, 'format version must be 1');
+  if (!RELEASE_MANIFEST_VERSIONS.has(manifest.releaseManifestFormatVersion)) {
+    fail(path, 'format version must be 1 or 2');
+  }
+  if (requirePublicationEvidence && manifest.releaseManifestFormatVersion !== 2) {
+    fail(path, 'production releases require observed publication evidence');
+  }
+  exact(
+    manifest,
+    manifest.releaseManifestFormatVersion === 2
+      ? [...RELEASE_MANIFEST_BASE_KEYS, 'publicationEvidence']
+      : RELEASE_MANIFEST_BASE_KEYS,
+    path,
+  );
   for (const field of ['brandId', 'channel', 'configRevisionId', 'platform']) {
     string(manifest[field], `${path}.${field}`);
   }
@@ -89,6 +112,34 @@ function releaseManifest(value, path, platform, brandId, channel) {
   }
   string(manifest.configRevisionId, `${path}.configRevisionId`, RE_REVISION);
   httpsUrl(manifest.telemetryEndpoint, `${path}.telemetryEndpoint`);
+  if (manifest.releaseManifestFormatVersion === 2) {
+    const evidence = record(manifest.publicationEvidence, `${path}.publicationEvidence`);
+    exact(evidence, PUBLICATION_EVIDENCE_KEYS, `${path}.publicationEvidence`);
+    const activationVersion = string(
+      evidence.activationVersion,
+      `${path}.publicationEvidence.activationVersion`,
+      RE_MONOTONIC_VERSION,
+    );
+    if (activationVersion === '0') {
+      fail(`${path}.publicationEvidence.activationVersion`, 'must be greater than zero');
+    }
+    const deploymentId = string(evidence.deploymentId, `${path}.publicationEvidence.deploymentId`);
+    if (deploymentId.length > 256) fail(`${path}.publicationEvidence.deploymentId`, 'is too long');
+    string(
+      evidence.deploymentSourceGitSha,
+      `${path}.publicationEvidence.deploymentSourceGitSha`,
+      RE_GIT_SHA,
+    );
+    if (evidence.deploymentSourceGitSha !== manifest.sourceGitSha) {
+      fail(`${path}.publicationEvidence.deploymentSourceGitSha`, 'must equal sourceGitSha');
+    }
+    string(evidence.keyId, `${path}.publicationEvidence.keyId`, RE_KEY_ID);
+    string(evidence.pointerSha256, `${path}.publicationEvidence.pointerSha256`, RE_SHA256);
+    string(evidence.verifiedAt, `${path}.publicationEvidence.verifiedAt`, RE_TIMESTAMP);
+    if (Number.isNaN(Date.parse(evidence.verifiedAt))) {
+      fail(`${path}.publicationEvidence.verifiedAt`, 'must be a valid timestamp');
+    }
+  }
   if (
     manifest.brandId !== brandId ||
     manifest.channel !== channel ||
@@ -202,6 +253,7 @@ function parseBrandBuildMatrix(value, options = {}) {
     if (brand.sourceRoot !== '.' && brand.sourceRoot !== 'examples/acme-zenith') {
       fail(`${path}.sourceRoot`, 'must be . or examples/acme-zenith');
     }
+    const requirePublicationEvidence = options.build || brand.sourceRoot === '.';
     const manifests = record(brand.releaseManifests, `${path}.releaseManifests`);
     exact(manifests, PLATFORMS, `${path}.releaseManifests`);
     const declarations = record(brand.compliance, `${path}.compliance`);
@@ -213,6 +265,7 @@ function parseBrandBuildMatrix(value, options = {}) {
         platform,
         brandId,
         brand.channel,
+        requirePublicationEvidence,
       );
       declarations[platform] = compliance(declarations[platform], `${path}.compliance.${platform}`);
     }
@@ -225,6 +278,19 @@ function parseBrandBuildMatrix(value, options = {}) {
     ]) {
       if (PLATFORMS.some((platform) => manifests[platform][field] !== manifests.desktop[field])) {
         fail(`${path}.releaseManifests`, `all platforms must share ${field}`);
+      }
+    }
+    if (requirePublicationEvidence) {
+      for (const field of ['deploymentId', 'deploymentSourceGitSha', 'keyId', 'verifiedAt']) {
+        if (
+          PLATFORMS.some(
+            (platform) =>
+              manifests[platform].publicationEvidence[field] !==
+              manifests.desktop.publicationEvidence[field],
+          )
+        ) {
+          fail(`${path}.releaseManifests`, `all platforms must share publicationEvidence.${field}`);
+        }
       }
     }
     const distribution = record(brand.distribution, `${path}.distribution`);
