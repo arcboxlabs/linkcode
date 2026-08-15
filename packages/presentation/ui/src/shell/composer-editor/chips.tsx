@@ -3,16 +3,17 @@ import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from 'coss-ui/components/menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
 import type { NodeKey } from 'lexical';
-import { BookTextIcon, TerminalIcon, TriangleAlertIcon } from 'lucide-react';
+import { TerminalIcon, TriangleAlertIcon } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { fileBasename } from '../../chat/artifacts/file-kind';
+import { CommandBrandGlyph, commandBrandChipStyle } from '../../chat/command-brand';
 import { FileIdentityIcon } from '../../chat/file-identity-icon';
 import { Chip } from '../../chat/link-chip';
 import { cn } from '../../lib/cn';
 import type { ComposerDirectiveState, DirectivePlacementIssue } from './directive-state';
-import { commandStatus, directiveStateFor, shellStatus } from './directive-state';
+import { commandFor, commandStatus, directiveStateFor, shellStatus } from './directive-state';
 import { $convertDirectiveToText, $removeDirective } from './serialize';
 
 function useDirectiveState<T>(selector: (state: ComposerDirectiveState) => T): T {
@@ -35,6 +36,8 @@ interface DirectiveChipProps {
   children: React.ReactNode;
   nodeKey: NodeKey;
   reason?: string;
+  /** Runtime brand tint overriding the variant palette (a provider's command color). */
+  style?: React.CSSProperties;
   variant: keyof typeof SELECTED_RING_CLASS;
 }
 
@@ -44,6 +47,7 @@ function DirectiveChip({
   children,
   nodeKey,
   reason,
+  style,
   variant,
 }: DirectiveChipProps): React.ReactNode {
   const [editor] = useLexicalComposerContext();
@@ -82,6 +86,7 @@ function DirectiveChip({
       className={cn(selected && SELECTED_RING_CLASS[variant])}
       data-selected={selected || undefined}
       render={<button disabled={disabled} type="button" />}
+      style={style}
       variant={variant}
       onKeyDownCapture={keepEnterActivationLocal}
       onMouseDown={(event) => event.preventDefault()}
@@ -144,6 +149,7 @@ export function CommandChip({
   nodeKey: NodeKey;
 }): React.ReactNode {
   const status = useDirectiveState((state) => commandStatus(name, state.directiveControls.slash));
+  const command = useDirectiveState((state) => commandFor(name, state.directiveControls.slash));
   const placement = useDirectiveState((state) => state.placementIssues[nodeKey]);
   const t = useTranslations('workbench.composer');
   const statusReason =
@@ -157,6 +163,7 @@ export function CommandChip({
     <DirectiveChip
       nodeKey={nodeKey}
       reason={reason}
+      style={reason ? undefined : commandBrandChipStyle(command)}
       variant={
         status === 'unknown' ? 'error' : status === 'unsupported' || placement ? 'warning' : 'info'
       }
@@ -164,7 +171,7 @@ export function CommandChip({
       {reason ? (
         <TriangleAlertIcon aria-hidden className="size-3.5" />
       ) : (
-        <BookTextIcon aria-hidden className="size-3.5" />
+        <CommandBrandGlyph className="size-3.5" command={command} />
       )}
       /{name}
     </DirectiveChip>

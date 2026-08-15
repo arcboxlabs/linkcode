@@ -1,9 +1,12 @@
 import type { AdapterFactory, AgentAdapter, BrowserToolsetFactory } from '@linkcode/agent-adapter';
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
+  AgentHistoryCapabilities,
   AgentInput,
   ContentBlock,
   McpWarning,
+  MessageId,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -15,7 +18,7 @@ import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
 import type { EngineFailure } from '../failure';
-import { OperationError, RequestError } from '../failure';
+import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
 import type { ResourceService } from '../resource/service';
 import { LiveSession } from './live-session';
@@ -58,12 +61,23 @@ export class SessionOrchestrator {
   }
 
   list(): SessionInfo[] {
-    return this.records.list((sessionId) => this.sessions.get(sessionId)?.status);
+    return this.records
+      .list((sessionId) => this.sessions.get(sessionId)?.status)
+      .map((session) => ({
+        ...session,
+        historyCapabilities: this.factory(session.kind).historyCapabilities,
+      }));
   }
 
   isBusy(sessionId: SessionId): boolean {
     const session = this.sessions.get(sessionId);
     return session !== undefined && (session.turnInputActive || session.status === 'running');
+  }
+
+  /** The running adapter's history capabilities — asked of the live instance rather than a fresh
+   * one, so a caller about to tear it down learns what *this* session can do. */
+  historyCapabilities(sessionId: SessionId): AgentHistoryCapabilities | undefined {
+    return this.sessions.get(sessionId)?.adapter.historyCapabilities;
   }
 
   replay(sessionId: SessionId): void {
@@ -82,6 +96,14 @@ export class SessionOrchestrator {
     return Effect.suspend(() =>
       this.teardown(sessionId, this.requireSession(sessionId), 'session.stop'),
     );
+  }
+
+  stopForReplacement(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
+    return Effect.suspend<void, EngineFailure, never>(() => {
+      const session = this.sessions.get(sessionId);
+      if (!session) return Effect.void;
+      return this.teardown(sessionId, session, 'history.rewrite', false);
+    });
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
@@ -167,11 +189,26 @@ export class SessionOrchestrator {
     record: SessionRecord,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     mcpWarnings: readonly McpWarning[] = [],
+    options: {
+      initialInput?: AgentInput;
+      registerRecord?: boolean;
+      rewindMessageId?: MessageId;
+    } = {},
   ): Effect.Effect<void, EngineFailure> {
-    const { events, factory, records, runtimes, scope: parentScope, sessions, transport } = this;
+    const {
+      events,
+      factory,
+      inputs,
+      records,
+      runtimes,
+      scope: parentScope,
+      sessions,
+      transport,
+    } = this;
     const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
+    const { initialInput, registerRecord = true, rewindMessageId } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
@@ -180,29 +217,73 @@ export class SessionOrchestrator {
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
         const session = new LiveSession(adapter, sessionId, scope, closed);
-        session.listen((event) => events.handle(sessionId, session, event));
+        const startupEvents: AgentEvent[] = [];
+        let bufferEvents = rewindMessageId !== undefined;
+        session.listen((event) => {
+          if (bufferEvents) startupEvents.push(event);
+          else events.handle(sessionId, session, event);
+        });
+        if (sessions.has(sessionId)) {
+          session.stopListening();
+          yield* Scope.close(scope, Exit.interrupt());
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: `Session is already running: ${sessionId}`,
+            }),
+          );
+        }
         sessions.set(sessionId, session);
         yield* recordLiveSessions(sessions.size);
-        records.register(record);
+        if (registerRecord) records.register(record);
         // A start can land before the boot probe settles. Register first so delete can tear it down,
         // then wait and re-check identity before and after adapter startup to prevent resurrection.
-        const start = Effect.gen(function* () {
+        const startAdapterSession = Effect.gen(function* () {
           yield* runtimes.awaitReady();
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
-          if (replyTo !== undefined) {
-            transport.send(
-              createWireMessage({
-                kind: 'session.started',
-                replyTo,
-                sessionId,
-                ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
-              }),
-            );
-          }
         });
-        yield* session.run(start).pipe(Effect.tapError(() => discardFailedStart(session)));
+        yield* session
+          .run(startAdapterSession)
+          .pipe(
+            Effect.tapError(() =>
+              discardFailedStart(session).pipe(
+                Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
+              ),
+            ),
+          );
+        if (rewindMessageId !== undefined) {
+          events.broadcast(sessionId, [
+            { type: 'conversation-rewind', messageId: rewindMessageId },
+          ]);
+          bufferEvents = false;
+          for (const event of startupEvents) events.handle(sessionId, session, event);
+        }
+        if (initialInput !== undefined) {
+          yield* session
+            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput)))
+            .pipe(
+              Effect.mapError((cause) =>
+                toOperationFailure(cause, {
+                  subsystem: 'agent',
+                  operation: 'history.rewrite.input',
+                  publicMessage: 'Agent input was rejected',
+                }),
+              ),
+            );
+        }
+        if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
+        if (replyTo !== undefined) {
+          transport.send(
+            createWireMessage({
+              kind: 'session.started',
+              replyTo,
+              sessionId,
+              ...(mcpWarnings.length > 0 && { mcpWarnings: [...mcpWarnings] }),
+            }),
+          );
+        }
       }),
       {
         span: 'Session.start',
@@ -247,6 +328,7 @@ export class SessionOrchestrator {
     sessionId: SessionId,
     session: LiveSession,
     operation: string,
+    releaseSession = true,
   ): Effect.Effect<void, OperationError> {
     return observeOperation(
       Effect.suspend(() => {
@@ -262,7 +344,7 @@ export class SessionOrchestrator {
           Effect.ensuring(
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
-              this.onStopped(sessionId);
+              if (releaseSession) this.onStopped(sessionId);
               this.records.sealCurrentRun(sessionId);
               return recordLiveSessions(this.sessions.size);
             }),

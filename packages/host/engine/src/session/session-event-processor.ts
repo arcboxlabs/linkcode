@@ -102,6 +102,9 @@ export class SessionEventProcessor {
         case 'session-ref':
           this.records.bindHistoryId(sessionId, event.historyId);
           break;
+        case 'title-update':
+          this.records.setProviderTitle(sessionId, event.title);
+          break;
         case 'error':
           if (event.code === AUTH_FAILED_ERROR_CODE) this.runtimes.refresh();
           break;

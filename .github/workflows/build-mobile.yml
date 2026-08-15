@@ -4,6 +4,38 @@
 name: Build Mobile
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        type: string
+        required: false
+        default: ""
+      brand_id:
+        description: Brand id for isolated artifact names
+        type: string
+        required: false
+        default: ""
+      delivery_descriptor_sha256:
+        description: Expected SHA-256 of the committed brand delivery matrix
+        type: string
+        required: false
+        default: ""
+      rendered_artifact:
+        description: Pre-rendered brand/config artifact from the matrix workflow
+        type: string
+        required: false
+        default: ""
+      submit:
+        description: Upload to TestFlight and Google Play internal testing
+        type: boolean
+        required: false
+        default: false
+      release_environment:
+        description: GitHub environment that owns build, signing, and store credentials
+        type: string
+        required: false
+        default: release
   workflow_dispatch:
     inputs:
       submit:
@@ -13,7 +45,7 @@ on:
         default: false
 
 concurrency:
-  group: build-mobile-production
+  group: build-mobile-production-${{ inputs.brand_id || 'linkcode' }}
   cancel-in-progress: false
 
 permissions:
@@ -31,9 +63,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Check submit configuration
-        if: ${{ inputs.submit }}
+        if: ${{ inputs.submit && inputs.rendered_artifact == '' }}
         run: |
           asc_app_id="$(jq -r '.submit.production.ios.ascAppId // empty' apps/mobile/eas.json)"
           if [ -z "$asc_app_id" ]; then
@@ -41,12 +75,117 @@ jobs:
             exit 1
           fi
 
+  # Store builds always sign, so the immutable config bundle is unconditionally required: this
+  # job renders both platform modules in one invocation from the pinned publisher checkout and
+  # fails with an actionable error when the release-environment pins are absent.
+  render-config:
+    name: Render immutable config
+    needs: preflight
+    if: ${{ inputs.rendered_artifact == '' }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    environment: ${{ inputs.release_environment || 'release' }}
+    steps:
+      - name: Validate config repositories
+        id: repositories
+        env:
+          CONFIG_PUBLISHER_REPO: ${{ vars.CONFIG_PUBLISHER_REPO }}
+          CONFIG_SOURCE_REPO: ${{ vars.CONFIG_SOURCE_REPO }}
+        run: |
+          set -euo pipefail
+          validate_repository() {
+            local name="$1" value="$2" prefix="$3"
+            if [ -z "$value" ]; then
+              echo "::error::$name is required in the protected release environment"
+              exit 1
+            fi
+            if [[ ! "$value" =~ ^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9][A-Za-z0-9._-]{0,99})$ ]]; then
+              echo "::error::$name must use canonical owner/repository syntax"
+              exit 1
+            fi
+            if [ "${BASH_REMATCH[1]}" != arcboxlabs ]; then
+              echo "::error::$name owner must be arcboxlabs"
+              exit 1
+            fi
+            printf '%s-full=%s\n%s-name=%s\n' "$prefix" "$value" "$prefix" "${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          }
+          validate_repository CONFIG_PUBLISHER_REPO "$CONFIG_PUBLISHER_REPO" publisher
+          validate_repository CONFIG_SOURCE_REPO "$CONFIG_SOURCE_REPO" source
+          if [ "$CONFIG_PUBLISHER_REPO" = "$CONFIG_SOURCE_REPO" ]; then
+            echo "::error::CONFIG_PUBLISHER_REPO and CONFIG_SOURCE_REPO must identify different repositories"
+            exit 1
+          fi
+
+      - name: Require organization App credentials
+        env:
+          BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+          BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so config rendering can read the selected publisher and source repositories"
+            exit 1
+          fi
+
+      - name: Mint publisher read token
+        id: publisher-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: ${{ steps.repositories.outputs.publisher-name }}
+          permission-contents: read
+
+      - name: Mint config source read token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: ${{ steps.repositories.outputs.source-name }}
+          permission-contents: read
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup EAS
+        uses: ./.github/actions/setup-eas
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Render config bundles
+        uses: ./.github/actions/render-release-config
+        with:
+          app: mobile
+          publisher-repository: ${{ steps.repositories.outputs.publisher-full }}
+          publisher-token: ${{ steps.publisher-token.outputs.token }}
+          source-repository: ${{ steps.repositories.outputs.source-full }}
+          source-token: ${{ steps.source-token.outputs.token }}
+          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
+          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
+          release-manifest-ios: ${{ vars.CONFIG_RELEASE_MANIFEST_IOS }}
+          release-manifest-android: ${{ vars.CONFIG_RELEASE_MANIFEST_ANDROID }}
+
+      - name: Upload generated config modules
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mobile-config-modules
+          path: apps/mobile/src/runtime/config/bundled.generated.*.ts
+          if-no-files-found: error
+          retention-days: 1
+
   build:
     name: Build ${{ matrix.platform }}
-    needs: preflight
+    needs: [preflight, render-config]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.render-config.result == 'success' || needs.render-config.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
-    environment: release
+    environment: ${{ inputs.release_environment || 'release' }}
     strategy:
       fail-fast: false
       matrix:
@@ -82,6 +221,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
@@ -118,6 +259,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The exact modules rendered by render-config; .easignore lets them into the EAS project
+      # archive, and the eas-build-pre-install hook re-verifies them inside that archive.
+      - name: Fetch generated config modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ inputs.rendered_artifact || 'mobile-config-modules' }}
+          path: ${{ inputs.rendered_artifact != '' && '.' || 'apps/mobile/src/runtime/config' }}
+
+      - name: Verify release config modules
+        run: pnpm -F @linkcode/mobile config:verify-release
+
       - name: Build signed artifact locally
         working-directory: ${{ env.MOBILE_DIR }}
         env:
@@ -128,11 +280,30 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: eas build --local --platform "${{ matrix.platform }}" --profile production --output "$RUNNER_TEMP/linkcode-${{ matrix.platform }}.${{ matrix.extension }}" --non-interactive
 
+      - name: Write artifact provenance
+        if: ${{ inputs.rendered_artifact != '' }}
+        run: |
+          pnpm exec tsx packages/foundation/common/src/node/release-artifact-cli.mts \
+            --artifact-root "$RUNNER_TEMP" \
+            --artifact "linkcode-${{ matrix.platform }}.${{ matrix.extension }}" \
+            --bundle "apps/mobile/src/runtime/config/bundled.generated.${{ matrix.platform }}.ts" \
+            --brand-identity "apps/mobile/generated/brand-identity.${{ matrix.platform }}.json" \
+            --brand-manifest release-inputs/brands.manifest.yaml \
+            --client-git-sha '${{ inputs.ref }}' \
+            --delivery-descriptor release-inputs/brand-build-matrix.json \
+            --expected-delivery-sha256 '${{ inputs.delivery_descriptor_sha256 }}' \
+            --release-manifest "release-inputs/release-manifest.${{ matrix.platform }}.json" \
+            --compliance "release-inputs/compliance.${{ matrix.platform }}.json" \
+            --out "release-provenance.${{ matrix.platform }}.json" \
+            --signed
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: mobile-${{ matrix.platform }}
-          path: ${{ runner.temp }}/linkcode-${{ matrix.platform }}.${{ matrix.extension }}
+          name: ${{ inputs.brand_id != '' && format('mobile-{0}-{1}', inputs.brand_id, matrix.platform) || format('mobile-{0}', matrix.platform) }}
+          path: |
+            ${{ runner.temp }}/linkcode-${{ matrix.platform }}.${{ matrix.extension }}
+            ${{ runner.temp }}/release-provenance.${{ matrix.platform }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -142,19 +313,19 @@ jobs:
     needs: build
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 30
-    environment: release
+    environment: ${{ inputs.release_environment || 'release' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # - platform: android
-          #   extension: aab
           - platform: ios
             extension: ipa
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Setup EAS
         uses: ./.github/actions/setup-eas
@@ -165,7 +336,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: mobile-${{ matrix.platform }}
+          name: ${{ inputs.brand_id != '' && format('mobile-{0}-{1}', inputs.brand_id, matrix.platform) || format('mobile-{0}', matrix.platform) }}
           path: ${{ runner.temp }}
 
       - name: Submit artifact

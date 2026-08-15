@@ -64,6 +64,13 @@
       "when": 1785425562289,
       "tag": "0008_add_session_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786331414776,
+      "tag": "0009_add_session_run_pin",
+      "breakpoints": true
     }
   ]
 }

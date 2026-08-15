@@ -2,11 +2,13 @@ import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@lin
 import { useRef } from 'react';
 import type { StickToBottomContext } from 'use-stick-to-bottom';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
+import { CommandCatalogProvider } from '../chat/command-brand';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
-import type { ConversationViewModel } from '../chat/types';
+import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
+import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
@@ -24,7 +26,7 @@ export interface ConversationComposerController {
   directiveControls: ComposerDirectiveControls;
   onModeChange?: (modeId: string) => Promise<void>;
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
-  onModelChange?: (model: string) => Promise<void>;
+  onModelChange?: (model: ModelOption) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
 }
 
@@ -33,6 +35,11 @@ export interface ConversationSurfaceProps {
   composer: ConversationComposerController;
   agentKind?: AgentKind;
   agentLabel?: string;
+  /** Every model this session's agent may run on, across all accounts it can bind. Absent means no
+   * account backs it, so the adapter catalog or the curated table supplies the choices instead. */
+  accountModels?: ModelOption[];
+  /** The session's account, so a reflected model id resolves against the right entry. */
+  accountId?: string;
   /** Frontend capability stub used until attachment support is advertised by the session. */
   attachmentsSupported?: boolean;
   cwd?: string;
@@ -51,6 +58,12 @@ export interface ConversationSurfaceProps {
   className?: string;
   conversationClassName?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
+  promptEditState?: PromptEditState;
+  onEditPrompt?: (
+    messageId: string,
+    branchCursor: string,
+    content: ContentBlock[],
+  ) => Promise<void>;
   /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
   mentionItems?: MentionItem[];
   /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
@@ -82,6 +95,8 @@ export function ConversationSurface({
   conversation,
   composer,
   agentKind,
+  accountModels,
+  accountId,
   agentLabel,
   attachmentsSupported = false,
   cwd,
@@ -95,6 +110,8 @@ export function ConversationSurface({
   className,
   conversationClassName,
   TerminalBlockComponent,
+  promptEditState = 'unsupported',
+  onEditPrompt,
   mentionItems,
   onMentionQueryChange,
   showPlanInPromptDock = true,
@@ -130,16 +147,26 @@ export function ConversationSurface({
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col bg-background', className)}>
       <div className={cn('min-h-0 flex-1', conversationClassName)}>
         <ArtifactHostActionsProvider actions={artifactActions}>
-          <ConversationView
-            conversation={conversation}
-            agentKind={agentKind}
-            cwd={cwd}
-            modelName={modelName ?? conversation.currentModel ?? undefined}
-            scrollContextRef={conversationScrollRef}
-            TerminalBlockComponent={TerminalBlockComponent}
-            onReviewChanges={onReviewChanges}
-            onOpenBilling={onOpenBilling}
-          />
+          <CommandCatalogProvider
+            commands={
+              composer.directiveControls.slash.state === 'ready'
+                ? composer.directiveControls.slash.commands
+                : null
+            }
+          >
+            <ConversationView
+              conversation={conversation}
+              agentKind={agentKind}
+              cwd={cwd}
+              modelName={modelName ?? conversation.currentModel ?? undefined}
+              scrollContextRef={conversationScrollRef}
+              TerminalBlockComponent={TerminalBlockComponent}
+              promptEditState={promptEditState}
+              onEditPrompt={onEditPrompt}
+              onReviewChanges={onReviewChanges}
+              onOpenBilling={onOpenBilling}
+            />
+          </CommandCatalogProvider>
         </ArtifactHostActionsProvider>
       </div>
       {conversation.usageReport && <UsageReportCard report={conversation.usageReport} />}
@@ -179,7 +206,14 @@ export function ConversationSurface({
           approvalPolicy={conversation.approvalPolicy}
           currentModel={conversation.currentModel}
           currentEffort={conversation.currentEffort}
-          agentModels={conversation.availableModels}
+          // Same list as a draft: only models from accounts enabled for this agent. The adapter's
+          // own catalog is not offered, so the account switches govern this menu too. A
+          // cross-account pick here relaunches the thread.
+          agentModels={accountModels ?? null}
+          currentAccountId={accountId}
+          // Live thread: leaving its account means relaunching the agent, which the menu says out
+          // loud rather than letting a process restart happen invisibly.
+          accountSwitchRestarts
           directiveControls={composer.directiveControls}
           onSend={composer.onSend}
           // Scrolls at submit, not acceptance: the jump must feel tied to pressing send, and a

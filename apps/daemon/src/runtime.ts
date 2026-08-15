@@ -11,6 +11,7 @@ import {
 import type { PreviewRouteTable } from '@linkcode/transport';
 import type { TransportServer } from '@linkcode/transport/server';
 import { createTransportServer } from '@linkcode/transport/server';
+import { asyncRetry } from 'foxts/async-retry';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
 import type { DaemonListenerConfig } from './config';
 import { runtimeFilePath } from './config';
@@ -51,18 +52,25 @@ export async function probeDaemonIdentity(
   baseUrl: string,
   timeoutMs: number = PROBE_TIMEOUT_MS,
 ): Promise<DaemonIdentity | null> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      const res = await fetch(new URL(DAEMON_IDENTITY_PATH, baseUrl), {
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (!res.ok) return null;
-      const parsed = DaemonIdentitySchema.safeParse(await res.json());
-      return parsed.success ? parsed.data : null;
-    } catch (err) {
-      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
-      if (!timedOut || attempt >= PROBE_TIMEOUT_RETRIES) return null;
-    }
+  try {
+    return await asyncRetry(
+      async () => {
+        const res = await fetch(new URL(DAEMON_IDENTITY_PATH, baseUrl), {
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) return null;
+        const parsed = DaemonIdentitySchema.safeParse(await res.json());
+        return parsed.success ? parsed.data : null;
+      },
+      {
+        retries: PROBE_TIMEOUT_RETRIES,
+        minTimeout: 1,
+        randomize: false,
+        shouldRetry: ({ error }) => error instanceof DOMException && error.name === 'TimeoutError',
+      },
+    );
+  } catch {
+    return null;
   }
 }
 

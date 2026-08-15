@@ -79,8 +79,7 @@ export function DesktopShell({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  newSessionDefaultModels,
-  newSessionPreferredModels,
+  accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
   NewSessionBranchPickerComponent,
@@ -89,6 +88,7 @@ export function DesktopShell({
   onOpenProviderSettings,
   onOpenBilling,
   conversation,
+  onEditPrompt,
   respondingRequestIds,
   responseErrors,
   resourcesPanel,
@@ -428,8 +428,7 @@ export function DesktopShell({
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
-          defaultModels={newSessionDefaultModels}
-          preferredModels={newSessionPreferredModels}
+          accountModels={accountModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}
           NewSessionBranchPickerComponent={NewSessionBranchPickerComponent}
@@ -453,6 +452,8 @@ export function DesktopShell({
           composer={conversationComposer}
           agentKind={active?.kind}
           agentLabel={agentLabel}
+          accountModels={active ? accountModels?.[active.kind] : undefined}
+          accountId={active?.accountId}
           attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}
@@ -461,6 +462,14 @@ export function DesktopShell({
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}
+          promptEditState={
+            active?.historyCapabilities?.branch === true
+              ? active.status === 'idle' || active.status === 'stopped'
+                ? 'enabled'
+                : 'busy'
+              : 'unsupported'
+          }
+          onEditPrompt={onEditPrompt}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           mentionItems={mentionItems}

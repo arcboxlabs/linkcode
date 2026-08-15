@@ -64,9 +64,15 @@ export const StartOptionsSchema = z.object({
   cwd: z.string().min(1),
   /** Existing local branch and whether to use the original checkout or a managed worktree. */
   branch: BranchSelectionSchema.optional(),
-  /** Model id override (vendor-specific). Undefined applies the LinkCode-configured default;
-   * null explicitly defers to the agent/provider's own default. */
-  model: z.string().nullable().optional(),
+  /** Model id (vendor-specific). Undefined falls back to the agent's persisted pick
+   * (`ProviderConfig.model`); if that is unset too, the session refuses to start rather than
+   * letting the agent choose for itself. */
+  model: z.string().optional(),
+  /** The account the model was picked from, which outranks the agent's `activeAccountId` fallback.
+   * A request only: resolution consumes it, injects the credential bundle into `config`, and reports
+   * the account that actually resolved separately — so an id naming a deleted account can never read
+   * back as "an account is backing this run". */
+  accountId: z.string().min(1).optional(),
   /** Initial session mode (e.g. plan / accept-edits), if the agent advertises modes. */
   modeId: SessionModeIdSchema.optional(),
   /** Initial reasoning effort, if the selected adapter supports effort. */
@@ -94,6 +100,17 @@ export const AgentCommandSchema = z.object({
   /** Alternate names that invoke the same command (claude-code, e.g. `/cost` → `/usage`), no
    * leading slash. Input matching accepts them; menus display only the canonical `name`. */
   aliases: z.array(z.string().min(1)).optional(),
+  /** Provider-supplied human name (codex plugin skills: "Documents"), shown beside `name`. */
+  displayName: z.string().min(1).optional(),
+  /** Small brand icon embedded as a data URI (no asset endpoint exists) — size-capped and, for
+   * SVG, active-content-screened at adapter ingest. Render via `<img>` only; never inline SVG
+   * markup into the DOM — the screen is depth, not a sanitizer. */
+  iconDataUri: z.string().startsWith('data:image/').optional(),
+  /** Brand accent for icon fallbacks (menu initial chips). */
+  brandColor: z
+    .string()
+    .regex(/^#[0-9A-F]{6}$/i)
+    .optional(),
 });
 export type AgentCommand = z.infer<typeof AgentCommandSchema>;
 
@@ -169,8 +186,14 @@ export const AgentInputSchema = z.discriminatedUnion('type', [
    * adapters that advertise policies via `approval-policy-update` accept this; others reject it. */
   z.object({ type: z.literal('set-approval-policy'), policyId: ApprovalPolicyIdSchema }),
   /** Switch the model for the session, going forward (vendor-specific id). Only adapters that
-   * support changing the model on an already-running session accept this; others reject it. */
-  z.object({ type: z.literal('set-model'), model: z.string().min(1) }),
+   * support changing the model on an already-running session accept this; others reject it.
+   * `accountId` names the account the model was picked from; switching to a different one restarts
+   * the session and resumes its transcript, because credentials are injected once at spawn. */
+  z.object({
+    type: z.literal('set-model'),
+    model: z.string().min(1),
+    accountId: z.string().min(1).optional(),
+  }),
   /** Switch the reasoning-effort level for the session, going forward. Same acceptance rule as
    * `set-model`: only adapters that can rebind effort on a live session accept this. */
   z.object({ type: z.literal('set-effort'), effort: EffortLevelSchema }),

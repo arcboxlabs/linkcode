@@ -6,7 +6,8 @@
     "paths": {
       "@mobile/*": ["./src/*"]
     },
+    "allowImportingTsExtensions": true,
     "strict": true
   },
-  "include": ["src", "modules", "vitest.config.ts"]
+  "include": ["src", "modules", "scripts", "app.config.ts", "vitest.config.ts"]
 }

@@ -1,4 +1,5 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
+import { enabledAccounts } from '@linkcode/providers';
 import type {
   Accounts,
   AgentKind,
@@ -125,8 +126,8 @@ export function deriveAgentRuntimeCues(
 
 /**
  * Whether LinkCode injects a secret for this agent at spawn, which makes a signed-out CLI runnable
- * (`applyProviderDefaults`): the bound account's own key/token, or the legacy per-agent api key. An
- * `oauth` account delegates back to the CLI's login store, so it does not count.
+ * (`applyProviderDefaults`): any enabled account's own key/token, or the legacy per-agent api key.
+ * An `oauth` account delegates back to the CLI's login store, so it does not count.
  */
 export function hasInjectedCredential(
   kind: AgentKind,
@@ -134,10 +135,9 @@ export function hasInjectedCredential(
   accounts: Accounts,
 ): boolean {
   if (providers[kind]?.apiKey?.trim()) return true;
-  const boundId = providers[kind]?.activeAccountId;
-  if (boundId === undefined) return false;
-  const bound = accounts.find((account) => account.id === boundId);
-  return bound?.credential.type === 'api-key' || bound?.credential.type === 'auth-token';
+  return enabledAccounts(accounts, providers, kind).some(
+    ({ credential }) => credential.type === 'api-key' || credential.type === 'auth-token',
+  );
 }
 
 /** The login cue for a signed-out runtime, its phase driven by any in-flight login activity. */

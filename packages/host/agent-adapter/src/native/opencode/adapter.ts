@@ -3,10 +3,10 @@ import { parse, sep } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentModelOption,
@@ -25,15 +25,17 @@ import type {
   Part,
   TextPartInput,
 } from '@opencode-ai/sdk/v2';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { invariant } from 'foxts/guard';
+import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
-import type { AgentStartCatalogOptions } from '../../adapter';
+import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
 import {
   contentToText,
@@ -44,6 +46,7 @@ import {
 import {
   filterRevertedMessages,
   mapOpencodeHistoryEvents,
+  opencodeMcpTitle,
   opencodeSessionToHistorySession,
   toolCallFromPart,
 } from './history';
@@ -118,9 +121,9 @@ async function canonicalDirectory(cwd: string): Promise<string> {
   }
 }
 
-/** The generated client resolves with `{error}` on HTTP and network failures alike (nothing here
- * passes `throwOnError`), so every RPC result must be checked — an unchecked failure silently
- * reads as success. Throws with the error detail when the result carries one. */
+/** The generated client resolves non-2xx responses as `{error}` (nothing here passes
+ * `throwOnError`), so every RPC result must be checked — an unchecked failure silently reads as
+ * success. Transport-level failures are the exception: fetch itself rejects on a dead server. */
 function okOrThrow<T extends { error?: unknown }>(result: T, context: string): T {
   if (result.error === undefined) return result;
   let detail: string;
@@ -145,12 +148,28 @@ function parseModelRef(model: string): { providerID: string; modelID: string } |
   return { providerID, modelID };
 }
 
+/** A selected model id is the vendor's own, taken from the service's model list and carrying no
+ * provider — opencode routes only by `providerID/modelID`, so qualify it with the endpoint's id in
+ * opencode's catalog. Without a known provider a bare id stays unroutable and is rejected. */
+function resolveModelRef(
+  model: string,
+  knownProvider: string | undefined,
+): { providerID: string; modelID: string } | undefined {
+  if (model.includes('/')) return parseModelRef(model);
+  return knownProvider === undefined ? undefined : { providerID: knownProvider, modelID: model };
+}
+
 type OpencodeModule = typeof import('@opencode-ai/sdk/v2');
 type OpencodeClient = ReturnType<OpencodeModule['createOpencodeClient']>;
 type OpencodeProviderList = NonNullable<
   Awaited<ReturnType<OpencodeClient['provider']['list']>>['data']
 >;
-type OpencodeAgentSummary = { name: string; mode: string; hidden?: boolean; description?: string };
+interface OpencodeAgentSummary {
+  name: string;
+  mode: string;
+  hidden?: boolean;
+  description?: string;
+}
 
 /** Reachable models: every connected (or key-less `api`-source) provider's models, narrowed to the
  * credential-injected provider when one is in play. Pre-session reads pass null — the injection is
@@ -183,7 +202,7 @@ function opencodeModelOptions(
  * the first primary, else the first selectable. Null when nothing is selectable, so the axis stays
  * hidden rather than advertising an empty list. */
 function opencodeAgentPolicies(
-  agents: ReadonlyArray<OpencodeAgentSummary>,
+  agents: readonly OpencodeAgentSummary[],
 ): { policies: ApprovalPolicy[]; defaultPolicyId: string } | null {
   const selectable = agents.filter(
     (agent) => (agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true,
@@ -211,11 +230,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private client: OpencodeClient | null = null;
   private closeServer: (() => void) | null = null;
   private sessionId: string | null = null;
+  /** Last provider title observed; a fresh session's placeholder is the baseline, not an update. */
+  private sessionTitle: string | null = null;
   /** Provider session id to adopt at the next start — set by `resumeHistory`. OpenCode sessions
    * live server-side, so a native resume is just prompting the existing id again. */
   private resumeFrom: string | null = null;
@@ -248,6 +270,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Tool part id by provider `callID`: asks cite tools via `tool.callID` but the card was
    * announced under the PART id — this map re-joins them. Cleared at each turn settle. */
   private readonly toolPartIdByCallId = new Map<string, string>();
+  /** MCP server names this session can call (injected StartOptions servers plus the instance's
+   * own configured ones) — the only key that splits opencode's flat `server_tool` MCP tool
+   * names back into the shared `mcp__<server>__<tool>` slug (history.ts). */
+  private mcpServerNames: readonly string[] = [];
   /** Message ids reported with `role: 'user'` — their parts must be skipped: the server streams
    * `message.part.updated` for the user's own prompt text too (observed live on 1.17.11), and
    * replaying it would double-render the prompt as an agent bubble. Cleared at each turn settle. */
@@ -286,7 +312,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // pre-adoption behavior for this path.
       }
     }
-    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : undefined;
+    // The model ref decides routing (prompts carry `{providerID, modelID}`), so it wins; the
+    // resolved known provider covers the common case of a model id typed without one.
+    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : cred.knownProvider;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
@@ -308,17 +336,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       // (exit 1, ServeError) and the session never starts. allocatePort is check-then-use (the
       // port can be stolen between the probe and the child's bind), so one failed spawn retries
       // with a fresh port — the same discipline as the shared history server.
-      try {
-        server = await startOpencodeServe({
-          port: await allocatePort(),
-          config: serverOptions?.config,
-        });
-      } catch {
-        server = await startOpencodeServe({
-          port: await allocatePort(),
-          config: serverOptions?.config,
-        });
-      }
+      server = await asyncRetry(
+        async () =>
+          startOpencodeServe({
+            port: await allocatePort(),
+            config: serverOptions?.config,
+          }),
+        { retries: 1, minTimeout: 1, randomize: false },
+      );
     } catch (err) {
       const detail = extractErrorMessage(err) ?? 'Unknown error';
       this.emitError(`opencode: failed to start server (${detail})`, 'sdk-unavailable', false);
@@ -337,6 +362,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       }
       this.sessionId = got.data.id;
       this.directory = got.data.directory;
+      this.sessionTitle = got.data.title.trim() || null;
+      if (this.sessionTitle) this.emitTitle(this.sessionTitle);
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
@@ -353,6 +380,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!id) throw new Error('opencode: failed to create session');
       this.sessionId = id;
       this.directory = opts.cwd;
+      this.sessionTitle = created.data?.title.trim() || null;
     }
     // Catalog fetches are best-effort: none has an SSE change event (poll-only), and a failed
     // list must not fail session start. They are independent reads of the same local server, so
@@ -363,6 +391,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.fetchModelCatalog(),
       this.fetchCommandCatalog(),
       this.fetchAgentCatalog(opts.approvalPolicyId ?? resumedAgent),
+      this.collectMcpServerNames(opts.mcpServers),
     ]);
     if (opts.approvalPolicyId && this.currentAgent && this.currentAgent !== opts.approvalPolicyId) {
       this.emitError(
@@ -371,7 +400,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     // A resumed session record confirms its current model. A fresh override is confirmed only when
     // the running server advertises that exact ref; a request or failed catalog is not acceptance.
-    if (opts.model && (opts.model === resumedModel || availableModels?.has(opts.model))) {
+    // Compare as resolved refs: a picked id is the vendor's own and carries no provider, while the
+    // catalog and the session record are always `providerID/modelID`.
+    const requested = this.model();
+    const advertised =
+      requested === undefined
+        ? false
+        : availableModels?.has(`${requested.providerID}/${requested.modelID}`) === true;
+    if (opts.model && (advertised || opts.model === resumedModel)) {
       this.emitModel(opts.model);
     }
     void this.consumeEvents();
@@ -618,6 +654,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const messageID = nullthrow(
+      decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId),
+      'opencode: history branch cursor has no target prompt',
+    );
+    const childId = await this.withHistoryClient(async (client) => {
+      const source = okOrThrow(
+        await client.session.get({ sessionID: opts.historyId }),
+        'opencode: session.get',
+      );
+      invariant(source.data, 'opencode: session.get returned no session');
+      const forked = okOrThrow(
+        await client.session.fork({
+          sessionID: opts.historyId,
+          messageID,
+          directory: source.data.directory,
+        }),
+        'opencode: session.fork',
+      );
+      invariant(forked.data, 'opencode: session.fork returned no session');
+      return forked.data.id;
+    });
+    this.resumeFrom = childId;
+    await this.start(startOpts);
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
@@ -645,7 +710,24 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     };
   }
 
-  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  /** Resolve the session's MCP server names: injected StartOptions servers plus the merged
+   * config's `mcp` keys — a pure config read. Deliberately NOT `mcp.status`, whose lazy init
+   * connects every configured server (spawning stdio children, dialing dead remotes for up to
+   * the 30s-per-transport timeout). Best-effort: a failed read keeps the injected set. */
+  private async collectMcpServerNames(injected: StartOptions['mcpServers']): Promise<void> {
+    const names = new Set((injected ?? []).map((server) => server.name));
+    this.mcpServerNames = [...names];
+    if (!this.client) return;
+    try {
+      const config = await this.client.config.get({ directory: this.directory });
+      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      this.mcpServerNames = [...names];
+    } catch {
+      // fetch rejects on a dead server — retitling is never worth failing the session for.
+    }
+  }
+
+  override async readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const { session, events } = await this.withHistoryClient(async (client) => {
@@ -660,11 +742,24 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         throw new Error(`opencode: history '${opts.historyId}' was not found`);
       }
       okOrThrow(messages, 'opencode: session.messages');
+      // Best-effort MCP server names so replayed MCP tool titles converge with live ones — a
+      // pure config read, never `mcp.status` (its lazy init would spawn/dial every configured
+      // server from the shared history instance). Config-declared servers resolve, including
+      // disabled ones; engine-injected servers exist only on a session's own live instance, so
+      // the caller's `mcpServerNames` hint is the only way their calls resolve here.
+      const names = new Set(opts.mcpServerNames);
+      try {
+        const config = await client.config.get({ directory: got.data.directory });
+        for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      } catch {
+        // fetch rejects on a dead server — the read proceeds with the caller's hint set.
+      }
       return {
         session: opencodeSessionToHistorySession(got.data),
         events: mapOpencodeHistoryEvents(
           opts.historyId,
           filterRevertedMessages(messages.data ?? [], got.data.revert),
+          [...names],
         ),
       };
     });
@@ -718,9 +813,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * the legacy bus — the immediate reflect below is the only confirmation channel there is. */
   protected override onSetModel(model: string): Promise<void> {
     invariant(this.opts, 'opencode: session not started');
-    const parsed = parseModelRef(model);
+    const parsed = resolveModelRef(model, readAgentCredential(this.opts.config).knownProvider);
     if (!parsed) {
-      // Storing an unparseable ref would emit a "successful" model-update while every following
+      // Storing an unroutable ref would emit a "successful" model-update while every following
       // prompt silently omits the model field and keeps running on the previous one.
       return Promise.reject(
         new Error(`opencode: model must be 'providerID/modelID' (got '${model}')`),
@@ -764,7 +859,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * recorded agent wins while it is still selectable. Nothing selectable → the axis stays hidden
    * (an empty `availablePolicies` is never emitted). */
   private adoptAgentCatalog(
-    agents: ReadonlyArray<OpencodeAgentSummary>,
+    agents: readonly OpencodeAgentSummary[],
     preferredAgent: string | null,
   ): void {
     const catalog = opencodeAgentPolicies(agents);
@@ -779,7 +874,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   private model(): { providerID: string; modelID: string } | undefined {
-    return this.opts?.model ? parseModelRef(this.opts.model) : undefined;
+    if (!this.opts?.model) return undefined;
+    return resolveModelRef(this.opts.model, readAgentCredential(this.opts.config).knownProvider);
   }
 
   /** Runs for the whole session, dispatching every SSE event and replacing a stream the server
@@ -838,6 +934,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   private handleEvent(ev: Event): void {
     try {
       switch (ev.type) {
+        case 'session.updated': {
+          const { info, sessionID } = ev.properties;
+          if (sessionID === this.sessionId && info.id === this.sessionId) {
+            const title = info.title.trim();
+            if (title.length > 0 && title !== this.sessionTitle) {
+              this.sessionTitle = title;
+              this.emitTitle(title);
+            }
+          }
+          break;
+        }
         case 'message.updated':
           if (ev.properties.sessionID === this.sessionId) {
             const { info } = ev.properties;
@@ -911,7 +1018,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     ) {
       return;
     }
-    this.emitModel(model);
+    // opencode always reports `providerID/modelID`. When that is the pick resolved, reflect the
+    // pick verbatim instead — the client matches against the ids the user selected, which are bare.
+    const requested = this.model();
+    const routedThePick =
+      requested !== undefined && `${requested.providerID}/${requested.modelID}` === model;
+    this.emitModel(routedThePick && this.opts?.model ? this.opts.model : model);
   }
 
   /** Turn settle on `session.idle`, guarded on liveness AND `turnStarted`: an abort's duplicate
@@ -1000,11 +1112,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         ? { type: 'command' as const, command, cwd: this.directory, toolCallId: linkedToolCallId }
         : undefined;
     const toolCallId = linkedToolCallId ?? (commandSubject ? undefined : nextToolCallId());
+    // Asks cite MCP tools by their flat provider name — retitle like the tool cards so the ask
+    // and the call it gates wear the same identity.
+    const permissionTitle =
+      opencodeMcpTitle(props.permission, this.mcpServerNames) ?? props.permission;
     if (!linkedToolCallId && toolCallId) {
       this.emitTool({
         toolCallId,
-        title: props.permission,
-        kind: toolKindFromName(props.permission),
+        title: permissionTitle,
+        kind: toolKindFromName(permissionTitle),
         status: 'in_progress',
         rawInput,
         locations: locationsFromToolInput(rawInput),
@@ -1012,7 +1128,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     const outcome = await this.requestPermission(
       {
-        title: props.permission,
+        title: permissionTitle,
         subject: commandSubject ?? {
           type: 'tool-call',
           toolCallId: toolCallId ?? nextToolCallId(),
@@ -1136,7 +1252,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         this.toolPartIdByCallId.set(part.callID, part.id);
         // History emits one full snapshot. Live terminal output appends separately, so repeated
         // cumulative part updates do not retransmit an ever-growing content array.
-        const toolCall = toolCallFromPart(part);
+        const toolCall = toolCallFromPart(part, this.mcpServerNames);
         if (toolCall.status === 'completed' || toolCall.status === 'failed') {
           for (const content of toolCall.content) this.appendToolContent(part.id, content);
           this.emitTool({ ...toolCall, content: undefined });

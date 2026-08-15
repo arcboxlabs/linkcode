@@ -1,0 +1,205 @@
+{
+  "brandBuildMatrixVersion": 1,
+  "brands": [
+    {
+      "brandId": "acme",
+      "channel": "canary",
+      "compliance": {
+        "android": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        },
+        "desktop": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        },
+        "ios": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        }
+      },
+      "distribution": {
+        "desktop": null,
+        "mobile": null
+      },
+      "releaseManifests": {
+        "android": {
+          "brandId": "acme",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "0675b1b33e81d4898f75233fdf9bda7243348e286ebfd3b06f807d82fff8818f",
+          "platform": "android",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://acme.example.invalid/telemetry"
+        },
+        "desktop": {
+          "brandId": "acme",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "936250a3ef922cede3a200b5dc401cc7697ee1db90dc3efd0f873358524f01e3",
+          "platform": "desktop",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://acme.example.invalid/telemetry"
+        },
+        "ios": {
+          "brandId": "acme",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "a689a8d95f74d9cb00b5d9850af3ecfd50edb23d2496c71805c9ffe4659d56ae",
+          "platform": "ios",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://acme.example.invalid/telemetry"
+        }
+      },
+      "sourceRoot": "examples/acme-zenith"
+    },
+    {
+      "brandId": "zenith",
+      "channel": "canary",
+      "compliance": {
+        "android": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        },
+        "desktop": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        },
+        "ios": {
+          "checklist": {
+            "configurableFeaturesDisclosed": true,
+            "dataPracticesReviewed": true,
+            "noExecutableCode": true,
+            "permissionsReviewed": true,
+            "storeMetadataReviewed": true
+          },
+          "disclosedFeatures": [
+            "feature.aiAssist",
+            "feature.newEditor",
+            "modules.messaging.enabled",
+            "modules.terminal.enabled",
+            "modules.workspace.enabled"
+          ]
+        }
+      },
+      "distribution": {
+        "desktop": null,
+        "mobile": null
+      },
+      "releaseManifests": {
+        "android": {
+          "brandId": "zenith",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "a0ef5196645ae3b857343784f7a5ab5d6f5184b15c7cb646d8e86c93ff5384b0",
+          "platform": "android",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://zenith.example.invalid/telemetry"
+        },
+        "desktop": {
+          "brandId": "zenith",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "99a93cec0ca5381faa15a5def6727736f220b5d7d111e1fce04afda1d321aef2",
+          "platform": "desktop",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://zenith.example.invalid/telemetry"
+        },
+        "ios": {
+          "brandId": "zenith",
+          "channel": "canary",
+          "configRevisionId": "code-561-operational",
+          "expectedSnapshotSha256": "e1b93b64973e0192ed2e1d8ba9a4cca27ae2bb5521ef6011392c2d86b510b95b",
+          "platform": "ios",
+          "publicKeyringsSha256": "1a674a4c47d1ef57e51f7e50e8f044f32cffa0450574f12f23ddeb5cb619d445",
+          "publisherGitSha": "986d9f21403df53bc932f511eb1b5f0bb634d48d",
+          "releaseManifestFormatVersion": 1,
+          "revisionSha256": "e8389e2edc8273c5ec1b029c7101ae18af6e5b55218f0c8fd2dfe640cf695c5b",
+          "sourceGitSha": "a1ed4d666721c3aed0d563aaea42fce8b5f945b5",
+          "telemetryEndpoint": "https://zenith.example.invalid/telemetry"
+        }
+      },
+      "sourceRoot": "examples/acme-zenith"
+    }
+  ]
+}

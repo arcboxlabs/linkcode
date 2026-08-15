@@ -78,7 +78,7 @@ export function PluginsTab({
               {group.discoveryFailed ? (
                 <EmptyRow
                   text={t('discoveryFailed', {
-                    provider: label,
+                    harness: label,
                     reason: group.failureReason ?? t('discoveryFailedUnknown'),
                   })}
                 />
@@ -89,7 +89,7 @@ export function PluginsTab({
                     filtering
                       ? t('noSearchResults')
                       : missingRuntimes.has(group.provider)
-                        ? t('runtimeMissing', { provider: label })
+                        ? t('runtimeMissing', { harness: label })
                         : market
                           ? t('marketEmptyHint')
                           : t('installedEmptyHint')

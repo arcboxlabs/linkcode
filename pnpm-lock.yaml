@@ -9,6 +9,9 @@ catalogs:
     '@iconify-json/material-icon-theme':
       specifier: ^1.2.69
       version: 1.2.69
+    '@iconify-json/simple-icons':
+      specifier: ^1.2.92
+      version: 1.2.92
     '@proj-airi/lobe-icons':
       specifier: ^1.0.19
       version: 1.0.19
@@ -135,6 +138,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
         version: 1.0.19
@@ -332,6 +338,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@linkcode/ui':
         specifier: workspace:*
         version: link:../../packages/presentation/ui
@@ -703,6 +712,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
         version: 1.0.19
@@ -807,6 +819,9 @@ importers:
       '@linkcode/i18n':
         specifier: workspace:*
         version: link:../../presentation/i18n
+      '@linkcode/providers':
+        specifier: workspace:*
+        version: link:../../foundation/providers
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../foundation/schema
@@ -883,6 +898,18 @@ importers:
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../schema
+      '@noble/ed25519':
+        specifier: 3.0.0
+        version: 3.0.0
+      '@noble/hashes':
+        specifier: 2.2.0
+        version: 2.2.0
+      canonicalize:
+        specifier: 3.0.0
+        version: 3.0.0
+      foxts:
+        specifier: ^5.8.1
+        version: 5.8.1
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -894,8 +921,20 @@ importers:
         specifier: 'catalog:'
         version: 26.1.1
 
+  packages/foundation/providers:
+    dependencies:
+      '@linkcode/schema':
+        specifier: workspace:*
+        version: link:../schema
+      foxts:
+        specifier: ^5.8.1
+        version: 5.8.1
+
   packages/foundation/schema:
     dependencies:
+      canonicalize:
+        specifier: 3.0.0
+        version: 3.0.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -1047,6 +1086,9 @@ importers:
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../foundation/common
+      '@linkcode/providers':
+        specifier: workspace:*
+        version: link:../../foundation/providers
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../foundation/schema
@@ -3194,6 +3236,9 @@ packages:
   '@iconify-json/material-icon-theme@1.2.69':
     resolution: {integrity: sha512-BqVadW0C19qyzp7Gtl2z0wExBFhfGKDPrgq4ajnGUe9atBcqSwz/yULCbZWzjPlOPrFFu4P3hhfs8Vl503nhEg==}
 
+  '@iconify-json/simple-icons@1.2.92':
+    resolution: {integrity: sha512-hR0ozxR97t1dzWw+esoxFijZ15gagt7EIgF3CNifu2yICXhS7gnun4Y+j+odJQtNSl7wvqMdoLbViIShwe/fdw==}
+
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
@@ -3686,6 +3731,9 @@ packages:
   '@noble/ciphers@2.2.0':
     resolution: {integrity: sha512-Z6pjIZ/8IJcCGzb2S/0Px5J81yij85xASuk1teLNeg75bfT07MV3a/O2Mtn1I2se43k3lkVEcFaR10N4cgQcZA==}
     engines: {node: '>= 20.19.0'}
+
+  '@noble/ed25519@3.0.0':
+    resolution: {integrity: sha512-QyteqMNm0GLqfa5SoYbSC3+Pvykwpn95Zgth4MFVSMKBB75ELl9tX1LAVsN4c3HXOrakHsF2gL4zWDAYCcsnzg==}
 
   '@noble/hashes@1.4.0':
     resolution: {integrity: sha512-V1JJ1WTRUqHHrOSh597hURcMqVKVGL/ea3kv0gSnEdsEZ0/+VyPghM1lMNGc00z7CIQorSvbKpuJkxvuHbvdbg==}
@@ -6231,6 +6279,11 @@ packages:
 
   caniuse-lite@1.0.30001800:
     resolution: {integrity: sha512-MMHtuAz9Ys840zAY5F4k6fV5GaivZ9sPk+nz0mY+GYVzRBnYkN0mpqkSR92oWRQ19yQWo4HvBV/FnC16AJX8MA==}
+
+  canonicalize@3.0.0:
+    resolution: {integrity: sha512-yYLfHyDMIXRyRqsKBRLX023riFLpXY2YOfdtqKXZRZy9qsfOJ9U+4F9YZL7MEzL5+ziN2x2nlBvY/Voi3EBljA==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -13564,6 +13617,10 @@ snapshots:
     dependencies:
       '@iconify/types': 2.0.0
 
+  '@iconify-json/simple-icons@1.2.92':
+    dependencies:
+      '@iconify/types': 2.0.0
+
   '@iconify/types@2.0.0': {}
 
   '@iconify/utils@3.1.3':
@@ -14062,6 +14119,8 @@ snapshots:
       fast-glob: 3.3.1
 
   '@noble/ciphers@2.2.0': {}
+
+  '@noble/ed25519@3.0.0': {}
 
   '@noble/hashes@1.4.0': {}
 
@@ -16547,6 +16606,8 @@ snapshots:
   camelcase@6.3.0: {}
 
   caniuse-lite@1.0.30001800: {}
+
+  canonicalize@3.0.0: {}
 
   ccount@2.0.1: {}
 

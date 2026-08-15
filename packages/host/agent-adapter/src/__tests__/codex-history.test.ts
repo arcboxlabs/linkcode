@@ -24,6 +24,68 @@ function base64WithByteLength(bytes: number): string {
 }
 
 describe('mapCodexHistoryEvents', () => {
+  it('maps each prompt to the previous completed turn', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'turn_context', payload: { turn_id: 'turn-1' } },
+      responseItem({
+        type: 'message',
+        id: 'first-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first' }],
+      }),
+      responseItem({
+        type: 'message',
+        id: 'first-answer',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'answer' }],
+      }),
+      { type: 'turn_context', payload: { turn_id: 'turn-2' } },
+      responseItem({
+        type: 'message',
+        id: 'second-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second' }],
+      }),
+    ]);
+
+    const prompts = events.filter((event) => event.event.type === 'user-message');
+    expect(
+      prompts.map((entry) =>
+        JSON.parse(entry.event.type === 'user-message' ? (entry.event.branchCursor ?? '') : ''),
+      ),
+    ).toEqual([
+      { version: 1, kind: 'codex', historyId: HID, branchPoint: null },
+      { version: 1, kind: 'codex', historyId: HID, branchPoint: 'turn-1' },
+    ]);
+  });
+
+  it('omits the cursor for later prompts when legacy rollout rows have no turn ids', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'message',
+        id: 'first-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first' }],
+      }),
+      responseItem({
+        type: 'message',
+        id: 'second-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second' }],
+      }),
+    ]);
+
+    expect(events[0].event).toMatchObject({
+      type: 'user-message',
+      branchCursor: expect.any(String),
+    });
+    expect(events[1].event).toEqual({
+      type: 'user-message',
+      messageId: 'second-prompt',
+      content: [{ type: 'text', text: 'second' }],
+    });
+  });
+
   it('replays text and drops synthetic user rows (pre-existing behavior)', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem(
@@ -65,6 +127,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'user-message',
       messageId: 'user-with-image',
+      branchCursor: expect.any(String),
       content: [
         { type: 'text', text: 'before' },
         { type: 'image', data: 'cG5n', mimeType: 'image/png' },
@@ -155,6 +218,7 @@ describe('mapCodexHistoryEvents', () => {
     expect(events[0].event).toEqual({
       type: 'user-message',
       messageId: 'real-prompt',
+      branchCursor: expect.any(String),
       content: [{ type: 'text', text: concatenated }],
     });
   });
@@ -350,6 +414,197 @@ describe('mapCodexHistoryEvents', () => {
         type: 'content',
         content: { type: 'text', text: 'def greet():\n    print("hello")\n' },
       },
+    ]);
+  });
+
+  it("replays MCP callable names under the live adapter's mcp slug", () => {
+    // Callable namespaces are only a fallback and cannot distinguish a delimiter from a server suffix.
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1 + 1"}',
+        call_id: 'call_mcp1',
+      }),
+      responseItem({ type: 'function_call_output', call_id: 'call_mcp1', output: '2' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__computer_use__',
+        name: 'click',
+        arguments: '{}',
+        call_id: 'call_mcp2',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_save_comment',
+        arguments: '{}',
+        call_id: 'call_mcp3',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__repo__prod',
+        name: 'search_files',
+        arguments: '{}',
+        call_id: 'call_mcp4',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'collaboration',
+        name: 'send_message',
+        arguments: '{}',
+        call_id: 'call_builtin',
+      }),
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp2', 'computer_use__.click'],
+      ['call_mcp3', 'mcp__linear__save_comment'],
+      // A `__`-bearing server name would mis-split the slug — the raw dotted title survives.
+      ['call_mcp4', 'repo__prod.search_files'],
+      ['call_builtin', 'send_message'],
+    ]);
+    expect(tools[0].kind).toBe('other');
+    expect(tools[1]).toMatchObject({ status: 'completed', kind: 'other' });
+  });
+
+  it('prefers persisted raw MCP identity over lossy callable names', () => {
+    const longToolName =
+      'extremely-lengthy-function-name-that-absolutely-surpasses-all-reasonable-limits';
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__acme__',
+        name: 'lookup',
+        arguments: '{}',
+        call_id: 'call_trailing_delimiter',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_trailing_delimiter',
+          invocation: { server: 'acme__', tool: 'lookup', arguments: {} },
+        },
+      },
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_trailing_delimiter',
+        output: 'found',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__server_one',
+        name: 'extremely_lengthy_function_name_that_absolut_0123456789ab',
+        arguments: '{}',
+        call_id: 'call_sanitized',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call_sanitized',
+            server: 'server.one',
+            tool: longToolName,
+            arguments: {},
+            status: 'completed',
+          },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_sanitized', output: 'found' }),
+    ]);
+
+    expect(toolCalls(events).map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_trailing_delimiter', 'acme__.lookup'],
+      ['call_trailing_delimiter', 'acme__.lookup'],
+      ['call_sanitized', `mcp__server.one__${longToolName}`],
+      ['call_sanitized', `mcp__server.one__${longToolName}`],
+    ]);
+  });
+
+  it('recovers only matching legacy dotless Codex Apps callable identities', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__github',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_legacy_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_legacy_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_legacy_app', output: 'created' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_mismatched_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_mismatched_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_mismatched_app',
+        output: 'created',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_modern_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_modern_app',
+          invocation: { server: 'codex_apps', tool: 'linear_create_issue', arguments: {} },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call_modern_app',
+            server: 'codex_apps',
+            tool: 'github.create_issue',
+            arguments: {},
+            status: 'completed',
+          },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_modern_app', output: 'created' }),
+    ]);
+
+    expect(toolCalls(events).map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
     ]);
   });
 

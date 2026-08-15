@@ -86,6 +86,11 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   tables in `src/db/schema.ts`). The zod `SessionRecordSchema` is the contract: rows are re-validated
   through it on load; the table is just storage. After editing `src/db/schema.ts`, run
   `pnpm -F @linkcode/daemon exec drizzle-kit generate` and commit `drizzle/` — migrations run at boot.
+  - **A record field with no column is dropped in silence.** The store enumerates columns on write and
+    rebuilds the record on read, so an `.optional()` field added to the schema alone survives until the
+    next boot and then parses cleanly as `undefined`. Adding one is three edits (column, write, read)
+    plus a migration, and the engine's `InMemorySessionStore` cannot catch a missed one — only a
+    round-trip through this store can (`__tests__/session-store.test.ts`).
 - **`runtime.json`** — endpoint discovery (`{name,pid,startedAt,listeners:[{type,url}]}`), written
   `0600` only AFTER every listener binds and removed on graceful `SIGINT`/`SIGTERM` shutdown.
 

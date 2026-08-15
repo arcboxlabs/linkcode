@@ -1,0 +1,69 @@
+# EAS project-archive ignore rules. When this file exists, eas-cli ignores every .gitignore, so
+# it mirrors the repo's exclusions with ONE deliberate difference: the generated immutable config
+# modules (gitignored) MUST reach the EAS build archive — Metro must resolve them over the
+# committed { bundle: null } sentinel in production builds. Keep this file in sync with
+# .gitignore and apps/mobile/.gitignore when adding large build outputs or secret patterns.
+
+# dependencies / package-manager state
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+out/
+build/
+.vite/
+expo-export/
+*.tsbuildinfo
+.turbo/
+.eslintcache
+coverage/
+/out
+/target
+release/
+apps/desktop/sidecar/
+apps/desktop/generated/
+apps/daemon/standalone/
+
+# expo / react-native local state and generated native folders
+.expo/
+.expo-shared/
+expo-env.d.ts
+web-build/
+.metro-health-check*
+.kotlin/
+apps/mobile/ios/
+apps/mobile/android/
+
+# credentials and keys — never archive
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*.orig.*
+credentials.json
+.env
+.env.*
+!.env.example
+
+# logs / editor / os
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# local tooling state
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+.direnv
+.pre-commit-config.yaml
+.claude/worktrees/
+.amp/
+.repos/
+.git/
+
+# NOT ignored (unlike .gitignore): apps/mobile/src/runtime/config/bundled.generated.<platform>.ts

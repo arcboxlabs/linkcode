@@ -35,7 +35,8 @@ import { useTranslations } from 'use-intl';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import { AGENT_DEFAULT_MODELS, AGENT_MODEL_OPTIONS, resolveModel } from './agent-models';
+import type { ModelOption } from './agent-models';
+import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
@@ -47,7 +48,7 @@ import { DEFAULT_MODE_ID } from './session-modes';
 export interface NewSessionDraft {
   /** Resolved by the workbench (explicit pick → last used → chat → first project); null = none available. */
   initialWorkspaceId: WorkspaceId | null;
-  initialProvider: AgentKind;
+  initialHarness: AgentKind;
 }
 
 export interface NewSessionSubmission {
@@ -55,9 +56,11 @@ export interface NewSessionSubmission {
   cwd: string;
   /** The picked workspace backing `cwd` — lets the caller persist it as the next draft's default. */
   workspaceId: WorkspaceId;
-  /** Null explicitly returns this provider to its configured/default model. */
-  model?: string | null;
-  /** Null explicitly returns this provider to its default effort. */
+  /** Absent falls back to the agent's persisted pick; there is no "return to default" tier. */
+  model?: string;
+  /** The account the picked model belongs to, pinning the session to it. */
+  accountId?: string;
+  /** Null explicitly returns this harness to its default effort. */
   effort?: EffortLevel | null;
   approvalPolicyId?: string;
   modeId?: SessionModeId;
@@ -81,17 +84,15 @@ export interface NewSessionSurfaceProps {
   className?: string;
   topContent?: React.ReactNode;
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
-   * provider and blocks sending until the runtime is ready; badges ride the provider submenu. */
+   * harness and blocks sending until the runtime is ready; badges ride the harness submenu. */
   runtimeCues?: AgentRuntimeCues;
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
-  /** Effective user-configured model defaults. `null` means they are still loading; when omitted,
-   * built-in provider defaults fill missing kinds for standalone consumers. */
-  defaultModels?: Readonly<Partial<Record<AgentKind, string>>> | null;
-  /** Last accepted model per provider. Unlike configured defaults, this is an explicit override. */
-  preferredModels?: Readonly<Partial<Record<AgentKind, string>>>;
-  /** Last accepted effort per provider. Missing kinds retain the provider default. */
+  /** The models each agent offers, from every account enabled for it. They lead the picker and their
+   * head is the agent's default; the agent's own catalog follows for a run on its own login. */
+  accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
+  /** Last accepted effort per harness. Missing kinds retain the harness default. */
   preferredEfforts?: Readonly<Partial<Record<AgentKind, EffortLevel>>>;
   /** Last successfully used branch and checkout mode per workspace. */
   preferredBranches?: Readonly<Record<string, BranchSelection>>;
@@ -117,7 +118,7 @@ export interface NewSessionSurfaceProps {
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
 }
 
-const SELECTABLE_PROVIDERS = Object.keys(AGENT_LABELS) as AgentKind[];
+const SELECTABLE_HARNESSES = Object.keys(AGENT_LABELS) as AgentKind[];
 
 function workspaceById(
   workspaces: readonly WorkspaceRecord[],
@@ -143,8 +144,7 @@ export function NewSessionSurface({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
-  defaultModels,
-  preferredModels,
+  accountModels,
   preferredEfforts,
   preferredBranches,
   NewSessionBranchPickerComponent,
@@ -159,10 +159,14 @@ export function NewSessionSurface({
   onPickAttachmentFiles,
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
-  const [provider, setProvider] = useState(draft.initialProvider);
+  const [harness, setHarness] = useState(draft.initialHarness);
   const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
+  /** The account each picked model belongs to; null once the pick is reset. */
+  const [selectedAccounts, setSelectedAccounts] = useState<
+    Partial<Record<AgentKind, string | null>>
+  >({});
   const [selectedEfforts, setSelectedEfforts] = useState<
     Partial<Record<AgentKind, EffortLevel | null>>
   >({});
@@ -178,34 +182,38 @@ export function NewSessionSurface({
     ? (selectedBranches[selected.workspaceId] ?? preferredBranches?.[selected.workspaceId])
     : undefined;
   const branchMode = selectedBranch?.mode ?? 'local';
-  const catalog = agentCatalogs?.[provider];
-  const localModel = selectedModels[provider];
-  const selectedModel =
-    localModel === undefined ? (preferredModels?.[provider] ?? null) : localModel;
-  // The catalog default is what the agent's own config would start on, so it outranks the built-in
-  // guess but yields to anything the user expressed through LinkCode.
-  const displayedModel =
-    selectedModel ??
-    (defaultModels === null
-      ? null
-      : (defaultModels?.[provider] ??
-        catalog?.defaultModel ??
-        AGENT_DEFAULT_MODELS[provider] ??
-        null));
-  const localEffort = selectedEfforts[provider];
-  const effort = localEffort === undefined ? (preferredEfforts?.[provider] ?? null) : localEffort;
-  const dynamicModels = catalog && catalog.models.length > 0 ? catalog.models : null;
-  const modelOption = resolveModel(dynamicModels ?? AGENT_MODEL_OPTIONS[provider], displayedModel);
-  const effortLevels = modelOption?.effortLevels;
+  const catalog = agentCatalogs?.[harness];
+  const localModel = selectedModels[harness];
+  const selectedModel = localModel === undefined ? null : localModel;
+  const localEffort = selectedEfforts[harness];
+  const effort = localEffort === undefined ? (preferredEfforts?.[harness] ?? null) : localEffort;
+  // Every offered model comes from an account enabled for this agent, and its head is what an
+  // untouched draft runs on — the same entry the daemon derives. The agent's own catalog is
+  // deliberately absent: a model nobody enabled an account for is not on offer, so the account
+  // switches govern this menu completely rather than sitting beside a list they cannot reach.
+  const pickable: ModelOption[] = accountModels?.[harness] ?? [];
+  const localAccount = selectedAccounts[harness];
+  // `null` is "the accounts have not loaded", so there is no head yet.
+  const modelOption =
+    selectedModel === null
+      ? accountModels === null
+        ? undefined
+        : pickable[0]
+      : resolveModel(pickable, selectedModel, localAccount ?? undefined);
+  const displayedModel = selectedModel ?? modelOption?.id ?? null;
+  // Effort follows the model the session will actually run on, which is the agent's own default
+  // whenever nothing here is offered — the axis stays truthful even with no model to show.
+  const effortModel = displayedModel ?? catalog?.defaultModel ?? null;
+  const effortLevels = resolveModel(catalog?.models, effortModel)?.effortLevels;
   const constrainedEffort =
     effortLevels === undefined || effortLevels.includes(effort ?? 'low') ? effort : null;
   // A catalog effort paired with a default model belongs to that model: once something else picks
   // the model, that model's own advertised default is the honest value. A catalog that names no
   // default model (claude-code, whose effort setting is model-independent) keeps applying.
   const catalogEffort =
-    catalog?.defaultModel === undefined || catalog.defaultModel === displayedModel
+    catalog?.defaultModel === undefined || catalog.defaultModel === effortModel
       ? catalog?.defaultEffort
-      : modelOption?.defaultEffort;
+      : resolveModel(catalog.models, effortModel)?.defaultEffort;
   const displayedEffort =
     constrainedEffort ??
     (catalogEffort !== undefined &&
@@ -215,7 +223,7 @@ export function NewSessionSurface({
   // Only a real pick travels to the adapter. Every catalog default — policy, model, effort — is a
   // display value: submitting one would read as an explicit choice and override the agent's own
   // startup resolution — claude's `permissions.defaultMode`, codex's configured `config.toml`.
-  const pickedPolicyId = selectedPolicies[provider];
+  const pickedPolicyId = selectedPolicies[harness];
   const currentPolicyId =
     pickedPolicyId ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
@@ -228,10 +236,14 @@ export function NewSessionSurface({
     setPending(true);
     try {
       await onSubmit({
-        kind: provider,
+        kind: harness,
         cwd: selected.cwd,
         workspaceId: selected.workspaceId,
-        model: localModel === null ? null : (selectedModel ?? undefined),
+        model: localModel === null ? undefined : (selectedModel ?? undefined),
+        // Only an account the user actually picked pins the session. Deriving one from an untouched
+        // draft would pin whichever account happens to list that model id first, quietly overriding
+        // the agent's own default when two accounts serve the same id.
+        ...(typeof localAccount === 'string' && { accountId: localAccount }),
         ...(localEffort === null
           ? { effort: null }
           : constrainedEffort !== null && { effort: constrainedEffort }),
@@ -257,27 +269,31 @@ export function NewSessionSurface({
     return submit({ type: 'shell-command', command });
   }
 
-  function handleProviderChange(nextProvider: AgentKind): Promise<void> {
-    setProvider(nextProvider);
+  function handleHarnessChange(nextHarness: AgentKind): Promise<void> {
+    setHarness(nextHarness);
     return Promise.resolve();
   }
 
-  function handleModelChange(nextModel: string): Promise<void> {
-    setSelectedModels((current) => ({ ...current, [provider]: nextModel }));
+  function handleModelChange(next: ModelOption): Promise<void> {
+    setSelectedModels((current) => ({ ...current, [harness]: next.id }));
+    // The account is part of the pick: two accounts can serve the same id, and the session must
+    // start on the one whose entry was chosen.
+    setSelectedAccounts((current) => ({ ...current, [harness]: next.accountId ?? null }));
     return Promise.resolve();
   }
 
   function handleEffortChange(nextEffort: EffortLevel): Promise<void> {
-    setSelectedEfforts((current) => ({ ...current, [provider]: nextEffort }));
+    setSelectedEfforts((current) => ({ ...current, [harness]: nextEffort }));
     return Promise.resolve();
   }
 
   function handleResetModel(): void {
-    setSelectedModels((current) => ({ ...current, [provider]: null }));
+    setSelectedModels((current) => ({ ...current, [harness]: null }));
+    setSelectedAccounts((current) => ({ ...current, [harness]: null }));
   }
 
   function handleResetEffort(): void {
-    setSelectedEfforts((current) => ({ ...current, [provider]: null }));
+    setSelectedEfforts((current) => ({ ...current, [harness]: null }));
   }
 
   function handleModeChange(nextModeId: string): Promise<void> {
@@ -286,7 +302,7 @@ export function NewSessionSurface({
   }
 
   function handleApprovalPolicyChange(policyId: string): Promise<void> {
-    setSelectedPolicies((current) => ({ ...current, [provider]: policyId }));
+    setSelectedPolicies((current) => ({ ...current, [harness]: policyId }));
     return Promise.resolve();
   }
 
@@ -294,8 +310,8 @@ export function NewSessionSurface({
     selected && !isChatSelected
       ? t('headingIn', { name: selected.name ?? repositoryLabel(selected.cwd) })
       : t('heading');
-  const cue = runtimeCues?.[provider];
-  const capabilities = AGENT_INPUT_CAPABILITIES[provider];
+  const cue = runtimeCues?.[harness];
+  const capabilities = AGENT_INPUT_CAPABILITIES[harness];
   const directiveControls: ComposerDirectiveControls = {
     slash: capabilities.slashCommands
       ? { state: 'loading', onInvokeCommand: handleInvokeCommand }
@@ -339,7 +355,7 @@ export function NewSessionSurface({
               <div className="mx-auto max-w-3xl">
                 <AgentOnboardingCard
                   cue={cue}
-                  kind={provider}
+                  kind={harness}
                   onContinueUnverified={onContinueUnverified}
                   onDownload={onDownloadAgent}
                   onOpenProviderSettings={onOpenProviderSettings}
@@ -348,9 +364,9 @@ export function NewSessionSurface({
             </div>
           )}
           <Composer
-            agentLabel={AGENT_LABELS[provider]}
-            agentKind={provider}
-            attachmentsSupported={Boolean(attachmentSupport?.[provider])}
+            agentLabel={AGENT_LABELS[harness]}
+            agentKind={harness}
+            attachmentsSupported={Boolean(attachmentSupport?.[harness])}
             blockDirectivesWithAttachments
             disabled={pending || !selected}
             directiveControls={directiveControls}
@@ -358,14 +374,18 @@ export function NewSessionSurface({
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
+            // Only the runtime gates sending. An empty list is not a refusal: an agent with no
+            // account still resolves its own model, and the one case the daemon does refuse — an
+            // account pinned with nothing picked — reports itself rather than greying the button.
             sendBlocked={cue !== undefined}
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}
-            agentModels={dynamicModels}
+            agentModels={pickable.length > 0 ? pickable : null}
+            currentAccountId={modelOption?.accountId}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
-            selectableProviders={SELECTABLE_PROVIDERS}
+            selectableHarnesses={SELECTABLE_HARNESSES}
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
@@ -375,7 +395,7 @@ export function NewSessionSurface({
             onModelChange={handleModelChange}
             onResetEffort={effort === null ? undefined : handleResetEffort}
             onResetModel={selectedModel === null ? undefined : handleResetModel}
-            onProviderChange={handleProviderChange}
+            onHarnessChange={handleHarnessChange}
             contextBar={
               <NewSessionContextBar
                 workspaces={workspaces}

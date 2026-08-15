@@ -1,7 +1,10 @@
 import { WorkspaceIdSchema } from '@linkcode/schema';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NEW_SESSION_DEFAULTS_STORAGE_KEY } from '../new-session-defaults-store';
 
-const STORAGE_KEY = 'linkcode.workbench.new-session-defaults:v5';
+// Imported rather than restated: a hand-copied key drifted once, and the mismatch turned the
+// malformed-blob test below into a vacuous pass.
+const STORAGE_KEY = NEW_SESSION_DEFAULTS_STORAGE_KEY;
 const WORKSPACE_ID = WorkspaceIdSchema.parse('workspace-1');
 const stored = new Map<string, string>();
 const storage = {
@@ -25,41 +28,34 @@ beforeEach(() => storage.clear());
 afterAll(() => vi.unstubAllGlobals());
 
 describe('new-session defaults', () => {
-  it('keeps successful model and effort choices isolated per provider', async () => {
+  it('keeps successful effort choices isolated per provider', async () => {
     const store = await loadStore();
 
+    // A confirmed model rides the same shape but is not stored here — daemon config owns it.
     store
       .getState()
       .remember('claude-code', WORKSPACE_ID, { model: 'claude-opus-4-8', effort: 'high' });
     store.getState().rememberSelection('claude-code', { effort: 'medium' });
     store.getState().rememberSelection('codex', { model: 'gpt-5.6-terra', effort: 'low' });
 
-    expect(store.getState().modelsByProvider).toEqual({
-      'claude-code': 'claude-opus-4-8',
-      codex: 'gpt-5.6-terra',
-    });
     expect(store.getState().effortsByProvider).toEqual({ 'claude-code': 'medium', codex: 'low' });
   });
 
-  it('clears an explicitly rejected selection without disturbing the other axis', async () => {
+  it('clears an explicitly rejected effort', async () => {
     const store = await loadStore();
-    store
-      .getState()
-      .remember('claude-code', WORKSPACE_ID, { model: 'claude-opus-4-8', effort: 'ultracode' });
+    store.getState().remember('claude-code', WORKSPACE_ID, { effort: 'ultracode' });
 
     store.getState().remember('claude-code', WORKSPACE_ID, { effort: null });
 
-    expect(store.getState().modelsByProvider).toEqual({ 'claude-code': 'claude-opus-4-8' });
     expect(store.getState().effortsByProvider).toEqual({});
   });
 
-  it('rehydrates model and effort choices after a renderer restart', async () => {
+  it('rehydrates effort choices after a renderer restart', async () => {
     const first = await loadStore();
-    first.getState().remember('grok-build', WORKSPACE_ID, { model: 'grok-4.5', effort: 'medium' });
+    first.getState().remember('grok-build', WORKSPACE_ID, { effort: 'medium' });
 
     const restarted = await loadStore();
 
-    expect(restarted.getState().modelsByProvider).toEqual({ 'grok-build': 'grok-4.5' });
     expect(restarted.getState().effortsByProvider).toEqual({ 'grok-build': 'medium' });
   });
 
@@ -82,9 +78,8 @@ describe('new-session defaults', () => {
       STORAGE_KEY,
       JSON.stringify({
         state: {
-          lastProvider: 'codex',
+          lastHarness: 'codex',
           lastWorkspaceId: WORKSPACE_ID,
-          modelsByProvider: { codex: '' },
           effortsByProvider: { codex: 'unsupported' },
         },
         version: 0,
@@ -93,8 +88,7 @@ describe('new-session defaults', () => {
 
     const store = await loadStore();
 
-    expect(store.getState().lastProvider).toBeNull();
-    expect(store.getState().modelsByProvider).toEqual({});
+    expect(store.getState().lastHarness).toBeNull();
     expect(store.getState().effortsByProvider).toEqual({});
     expect(store.getState().branchesByWorkspace).toEqual({});
   });

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.22.0](https://github.com/arcboxlabs/linkcode/compare/v0.21.0...v0.22.0) (2026-08-06)
+
+
+### Features
+
+* **providers:** resolve provider endpoints per agent ([#424](https://github.com/arcboxlabs/linkcode/issues/424)) ([cd67dd9](https://github.com/arcboxlabs/linkcode/commit/cd67dd9f5d0d5d9d159944dccb30420949bd4781))
+
+
+### Bug Fixes
+
+* **lint:** run single-threaded by default and share one command with CI ([#416](https://github.com/arcboxlabs/linkcode/issues/416)) ([1fb5474](https://github.com/arcboxlabs/linkcode/commit/1fb54744463de92b050b0cc881376c633947943a))
+
+## [0.21.0](https://github.com/arcboxlabs/linkcode/compare/v0.20.0...v0.21.0) (2026-08-05)
+
+
+### Features
+
+* **config:** add shared configuration core ([#404](https://github.com/arcboxlabs/linkcode/issues/404)) ([7382ad5](https://github.com/arcboxlabs/linkcode/commit/7382ad502153cb006e7c17a2adb339f9c4c3ffb8))
+* **config:** build-time immutable per-target bootstrap and bundled defaults (CODE-552) ([#413](https://github.com/arcboxlabs/linkcode/issues/413)) ([429a02c](https://github.com/arcboxlabs/linkcode/commit/429a02c110aa592768734651388f645197f1dfe7))
+* **config:** consent-gated authenticated publication telemetry (CODE-555 client) ([#417](https://github.com/arcboxlabs/linkcode/issues/417)) ([48afdd5](https://github.com/arcboxlabs/linkcode/commit/48afdd54bbd1760b4d84cecd9cd1db3d2b4f3973))
+* **config:** emergency client runtime (CODE-554) ([#420](https://github.com/arcboxlabs/linkcode/issues/420)) ([5d365a9](https://github.com/arcboxlabs/linkcode/commit/5d365a95fe8dbd3baad518e46416ddd42c4d2fdd))
+* **desktop:** integrate verified config bootstrap and LKG ([#410](https://github.com/arcboxlabs/linkcode/issues/410)) ([832a746](https://github.com/arcboxlabs/linkcode/commit/832a746431fe2a1f3a88706dc5cf11863f28eecb))
+* **mobile:** integrate shared configuration core ([#409](https://github.com/arcboxlabs/linkcode/issues/409)) ([f858e8a](https://github.com/arcboxlabs/linkcode/commit/f858e8abedf4c3e61b71fa2a9054b275f76d5e47))
+* **schema:** define LinkCode marketplace contracts ([#403](https://github.com/arcboxlabs/linkcode/issues/403)) ([482c3bd](https://github.com/arcboxlabs/linkcode/commit/482c3bd48333e3756392525c8633ec0270f9c85a))
+* **schema:** define LinkCode plugin package contracts ([#400](https://github.com/arcboxlabs/linkcode/issues/400)) ([e95bb08](https://github.com/arcboxlabs/linkcode/commit/e95bb086f444a1731878f299e15d41d36f2bc908))
+* **ui:** rework model selector menu ([#415](https://github.com/arcboxlabs/linkcode/issues/415)) ([2d4d987](https://github.com/arcboxlabs/linkcode/commit/2d4d9872b7265ad7d2f21dee7c2a7c0c3d3daab1))
+
+
+### Bug Fixes
+
+* **workbench:** isolate identity-scoped cache data ([#412](https://github.com/arcboxlabs/linkcode/issues/412)) ([03cc288](https://github.com/arcboxlabs/linkcode/commit/03cc288b0588f0ec32a3ee6c1aab5b4cea43355c))
+
+## [0.20.0](https://github.com/arcboxlabs/linkcode/compare/v0.19.0...v0.20.0) (2026-08-03)
+
+
+### Features
+
+* **history:** rewrite prompts while agents run ([#406](https://github.com/arcboxlabs/linkcode/issues/406)) ([de0145f](https://github.com/arcboxlabs/linkcode/commit/de0145f5a97ad918e38171873f959cead0d37e85))
+
+
+### Bug Fixes
+
+* **agent-adapter:** sync provider session titles ([#405](https://github.com/arcboxlabs/linkcode/issues/405)) ([7658ae1](https://github.com/arcboxlabs/linkcode/commit/7658ae1203a3f153f11f9848bd852b880d392d00))
+
 ## [0.19.0](https://github.com/arcboxlabs/linkcode/compare/v0.18.2...v0.19.0) (2026-08-02)
 
 

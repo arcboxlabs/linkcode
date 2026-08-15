@@ -2,6 +2,7 @@ import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
 import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryEvent,
   AgentHistoryId,
   AgentHistoryListOptions,
@@ -15,8 +16,9 @@ import type {
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
+import { promptContentFingerprint } from './live-session';
 
-export const HISTORY_CONVERSION_CACHE_VERSION = 4;
+export const HISTORY_CONVERSION_CACHE_VERSION = 5;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
@@ -29,6 +31,9 @@ export type HistoryReadOptions = AgentHistoryReadOptions & {
 export interface HistoryServiceOptions {
   ttlMs?: number;
   now?: () => number;
+  /** MCP server names the engine injects at session start (start-options-resolver) — passed to
+   * cold reads so replayed calls to injected servers resolve like config-declared ones. */
+  injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
 }
 
 interface ListCacheEntry {
@@ -51,6 +56,7 @@ export class HistoryService {
   private readonly historyCwdById = new Map<string, string>();
   private readonly ttlMs: number;
   private readonly now: () => number;
+  private readonly injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
 
   constructor(
     private readonly factory: AdapterFactory,
@@ -58,6 +64,7 @@ export class HistoryService {
   ) {
     this.ttlMs = opts.ttlMs ?? 30000;
     this.now = opts.now ?? Date.now;
+    this.injectedMcpServerNames = opts.injectedMcpServerNames;
   }
 
   list(
@@ -130,8 +137,13 @@ export class HistoryService {
         }),
       );
     }
+    const mcpServerNames = this.injectedMcpServerNames?.(kind);
+    const readContext = {
+      ...(cwd && { cwd }),
+      ...(mcpServerNames?.length && { mcpServerNames }),
+    };
     return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-      adapter.readHistory({ historyId: opts.historyId, ...(cwd && { cwd }), limit: 1000 }),
+      adapter.readHistory({ historyId: opts.historyId, ...readContext, limit: 1000 }),
     ).pipe(
       Effect.map(sanitizeHistoryResult),
       Effect.flatMap((fullResult) => {
@@ -148,7 +160,7 @@ export class HistoryService {
           return Effect.succeed(sliceEventCache(entry, offset, limit));
         }
         return agentHistoryOperation('history.read', 'Failed to read agent history', () =>
-          adapter.readHistory({ ...stripForceRefresh(opts), ...(cwd && { cwd }) }),
+          adapter.readHistory({ ...stripForceRefresh(opts), ...readContext }),
         ).pipe(Effect.map(sanitizeHistoryResult));
       }),
     );
@@ -169,6 +181,82 @@ export class HistoryService {
     }
     return agentHistoryOperation('history.resume', 'Failed to resume agent history', () =>
       adapter.resumeHistory({ historyId }, startOpts),
+    );
+  }
+
+  branch(
+    adapter: AgentAdapter,
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Effect.Effect<void, RequestError | OperationError> {
+    const branchHistory = adapter.branchHistory?.bind(adapter);
+    if (branchHistory === undefined || adapter.historyCapabilities.branch !== true) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${adapter.kind}: history branch is not supported`,
+        }),
+      );
+    }
+    return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
+      branchHistory(opts, startOpts),
+    );
+  }
+
+  resolveLiveBranchCursor(
+    kind: AgentKind,
+    historyId: AgentHistoryId,
+    cwd: string,
+    offsetFromEnd: number,
+    contentFingerprint: string,
+  ): Effect.Effect<string, RequestError | OperationError> {
+    const adapter = this.factory(kind);
+    if (!adapter.historyCapabilities.read) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported',
+          message: `${kind}: history read is not supported`,
+        }),
+      );
+    }
+    return agentHistoryOperation('history.read', 'Failed to read agent history', async () => {
+      const branchablePrompts: Array<{ branchCursor: string; contentFingerprint: string }> = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result = sanitizeHistoryResult(
+          // eslint-disable-next-line no-await-in-loop -- Provider cursors require serial pagination.
+          await adapter.readHistory({ historyId, cwd, limit: 1000, cursor }),
+        );
+        for (const entry of result.events) {
+          if (entry.event.type === 'user-message' && entry.event.branchCursor !== undefined) {
+            branchablePrompts.push({
+              branchCursor: entry.event.branchCursor,
+              contentFingerprint: promptContentFingerprint(entry.event.content),
+            });
+          }
+        }
+        cursor = result.cursor;
+        if (cursor !== undefined && seenCursors.has(cursor)) {
+          throw new Error(`${kind}: history read returned a repeated cursor`);
+        }
+        if (cursor !== undefined) seenCursors.add(cursor);
+      } while (cursor !== undefined);
+      const matchingPrompts = branchablePrompts.filter(
+        (prompt) => prompt.contentFingerprint === contentFingerprint,
+      );
+      return matchingPrompts.at(-(offsetFromEnd + 1))?.branchCursor;
+    }).pipe(
+      Effect.flatMap((cursor) =>
+        cursor === undefined
+          ? Effect.fail(
+              new RequestError({
+                code: 'conflict',
+                message: 'The prompt does not match the latest provider history',
+              }),
+            )
+          : Effect.succeed(cursor),
+      ),
     );
   }
 

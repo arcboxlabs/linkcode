@@ -10,6 +10,7 @@ import {
   toolCallFetchStatus,
   toolCallFetchUrl,
   toolCallSearchQuery,
+  toolSearchPresentation,
 } from './chat/tool-result-content';
 
 export { toolCallDisplayContent } from './chat/tool-result-content';
@@ -47,9 +48,10 @@ export interface McpToolName {
   tool: string;
 }
 
-/** Splits Claude Code's `mcp__<server>__<tool>` slug on the first `__` after the prefix (server
- * keys never contain `__`; tool names may). Non-matching titles — including other adapters' MCP
- * formats — return undefined and display verbatim. */
+/** Splits the shared `mcp__<server>__<tool>` slug (claude-code's native form; codex and
+ * opencode normalize to it adapter-side) on the first `__` after the prefix — a user-chosen
+ * server key containing `__` mis-splits, a known cosmetic limit. Non-matching titles return
+ * undefined and display verbatim. */
 export function mcpToolName(title: string): McpToolName | undefined {
   if (!title.startsWith('mcp__')) return undefined;
   const rest = title.slice(5);
@@ -97,10 +99,13 @@ export function toolCallMetadata(toolCall: ToolCall): ToolMetadata[] {
       const metadata: ToolMetadata[] = [];
       const query = toolCallSearchQuery(toolCall);
       if (query) metadata.push({ key: 'query', value: query });
-      const matches = countValue(output?.matches);
-      if (matches !== undefined) metadata.push({ key: 'matches', value: String(matches) });
-      const files = countValue(output?.files);
-      if (files !== undefined) metadata.push({ key: 'files', value: String(files) });
+      const counts = toolCallSearchCounts(toolCall);
+      if (counts?.matches !== undefined) {
+        metadata.push({ key: 'matches', value: String(counts.matches) });
+      }
+      if (counts?.files !== undefined) {
+        metadata.push({ key: 'files', value: String(counts.files) });
+      }
       return metadata;
     }
     case 'fetch': {
@@ -159,6 +164,23 @@ function toolCallParamMetadata(toolCall: ToolCall): ToolMetadata[] {
   return metadata;
 }
 
+export interface ToolCallSearchCounts {
+  matches?: number;
+  files?: number;
+}
+
+/** Settle counts for a search call's header. Claude's Grep envelope uses `numMatches`/`numFiles`
+ * scalars; mock and other adapters may carry `matches`/`files` arrays or numbers. */
+export function toolCallSearchCounts(toolCall: ToolCall): ToolCallSearchCounts | undefined {
+  if (toolCall.kind !== 'search') return undefined;
+  const output = recordValue(toolCall.rawOutput);
+  if (!output) return undefined;
+  const matches = countValue(output.numMatches) ?? countValue(output.matches);
+  const files = countValue(output.numFiles) ?? countValue(output.files);
+  if (matches === undefined && files === undefined) return undefined;
+  return { matches, files };
+}
+
 export interface ToolCallHeaderSummary {
   label: string;
   tooltip?: string;
@@ -179,8 +201,10 @@ export function toolCallHeaderSummary(toolCall: ToolCall): ToolCallHeaderSummary
       if (file) return { label: file.label, tooltip: file.tooltip };
       break;
     }
+    // A counted settle humanizes in the localized header and the raw query stays in the body
+    // card; an uncounted search (WebSearch, in-progress) keeps the query — its only context.
     case 'search':
-      label = toolCallSearchQuery(toolCall);
+      if (!toolCallSearchCounts(toolCall)) label = toolCallSearchQuery(toolCall);
       break;
     case 'fetch':
       label = toolCallFetchUrl(toolCall);
@@ -210,6 +234,9 @@ export function hasToolBody(toolCall: ToolCall): boolean {
   if (toolCall.kind === 'execute') {
     if (toolCallCommand(toolCall)) return true;
     if (toolCallExecuteText(toolCall)) return true;
+  }
+  if (toolSearchPresentation(toolCall)) {
+    return toolCallFailureMessage(toolCall) !== undefined;
   }
   return toolCallMetadata(toolCall).length > 0 || toolCallFailureMessage(toolCall) !== undefined;
 }

@@ -1,12 +1,18 @@
 import { asHistoryId } from '@linkcode/agent-adapter';
 import type {
+  AgentEvent,
+  AgentHistoryBranchOptions,
+  AgentHistoryCapabilities,
   AgentHistoryReadOptions,
   SessionId,
   SessionRecord,
+  WirePayload,
   WorkspaceId,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
+import { MessageIdSchema, textBlock } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
+import { describe, expect, it, vi } from 'vitest';
+import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -14,8 +20,19 @@ import {
   FakeAdapter,
   createSessionHarness as harness,
   listedSessions,
+  settleEngineTasks,
   startedSessionId as startedId,
+  settleEngineTasks as tick,
 } from './fixtures/session-harness';
+
+/** An adapter that takes the input and then refuses it, like one asked for an unsupported level. */
+class PickyAdapter extends FakeAdapter {
+  override send(input: Parameters<FakeAdapter['send']>[0]) {
+    return super.send(input).then(() => {
+      throw new Error('claude-code: effort refused');
+    });
+  }
+}
 
 class CwdlessHistoryAdapter extends FakeAdapter {
   override readHistory(opts: AgentHistoryReadOptions) {
@@ -31,12 +48,124 @@ class CwdlessHistoryAdapter extends FakeAdapter {
   }
 }
 
+class BranchingHistoryAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    branch: true,
+  };
+  branchedFrom: AgentHistoryBranchOptions | null = null;
+
+  branchHistory(opts: AgentHistoryBranchOptions, startOpts: Parameters<FakeAdapter['start']>[0]) {
+    this.branchedFrom = opts;
+    this.startedWith = startOpts;
+    this.emit({ type: 'session-ref', historyId: asHistoryId('native-child') });
+    return Promise.resolve();
+  }
+
+  override readHistory(opts: AgentHistoryReadOptions) {
+    return Promise.resolve({
+      session: {
+        historyId: opts.historyId,
+        kind: this.kind,
+        cwd: '/repo',
+      },
+      events: [
+        {
+          historyId: opts.historyId,
+          itemId: 'provider-source-message',
+          event: {
+            type: 'user-message' as const,
+            messageId: MessageIdSchema.parse('provider-source-message'),
+            content: [textBlock('Original prompt')],
+            branchCursor: 'opaque-original-cursor',
+          },
+        },
+        {
+          historyId: opts.historyId,
+          itemId: 'provider-later-message',
+          event: {
+            type: 'user-message' as const,
+            messageId: MessageIdSchema.parse('provider-later-message'),
+            content: [textBlock('Later prompt')],
+            branchCursor: 'opaque-later-cursor',
+          },
+        },
+      ],
+    });
+  }
+}
+
+class RejectingBranchAdapter extends BranchingHistoryAdapter {
+  override branchHistory(): Promise<void> {
+    return Promise.reject(new Error('provider fork failed'));
+  }
+}
+
+class RejectingBranchedPromptAdapter extends BranchingHistoryAdapter {
+  override send(): Promise<void> {
+    return Promise.reject(new Error('edited prompt rejected'));
+  }
+}
+
+class BlockingBranchAdapter extends BranchingHistoryAdapter {
+  constructor(private readonly branchGate: Promise<void>) {
+    super();
+  }
+
+  override branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: Parameters<FakeAdapter['start']>[0],
+  ): Promise<void> {
+    return this.branchGate.then(() => super.branchHistory(opts, startOpts));
+  }
+}
+
+class BlockingStopBranchAdapter extends BranchingHistoryAdapter {
+  stopStarted = false;
+
+  constructor(private readonly stopGate: Promise<void>) {
+    super();
+  }
+
+  override stop(): Promise<void> {
+    this.stopStarted = true;
+    return this.stopGate.then(() => super.stop());
+  }
+}
+
+class RejectingStopBranchAdapter extends BranchingHistoryAdapter {
+  override stop(): Promise<void> {
+    return Promise.reject(new Error('provider stop failed'));
+  }
+}
+
 function listedWorkspaces(sent: Parameters<typeof listedSessions>[0], replyTo: string) {
   const listed = sent.find(
     (payload) => payload.kind === 'workspace.listed' && payload.replyTo === replyTo,
   );
   if (listed?.kind !== 'workspace.listed') throw new Error(`no workspace.listed for ${replyTo}`);
   return listed.workspaces;
+}
+
+function agentEvents(sent: WirePayload[], sessionId: SessionId): AgentEvent[] {
+  return sent.flatMap((payload) =>
+    payload.kind === 'agent.event' && payload.sessionId === sessionId ? [payload.event] : [],
+  );
+}
+
+function promiseGate() {
+  let open: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return {
+    promise,
+    open() {
+      if (open) open();
+    },
+  };
 }
 
 describe('engine session records', () => {
@@ -82,6 +211,461 @@ describe('engine session records', () => {
     expect(sessions[0].updatedAt).toBeTypeOf('number');
   });
 
+  it('rewrites an idle session in place with rewind ordered before the replacement prompt', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'source-prompt',
+      sessionId: sourceSessionId,
+      input: { type: 'prompt', content: [textBlock('Original prompt')] },
+    });
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'idle' });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await tick();
+
+    expect(startedId(h.sent, 'rewrite')).toBe(sourceSessionId);
+    expect(h.adapters[0].stopped).toBe(true);
+    const replacementAdapter = h.adapters[1] as BranchingHistoryAdapter;
+    expect(replacementAdapter.branchedFrom).toEqual({
+      historyId: 'native-source',
+      cursor: 'opaque-cursor',
+    });
+    expect(replacementAdapter.sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('edited prompt')] },
+    ]);
+    expect(h.adapters[0].sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('Original prompt')] },
+    ]);
+
+    const events = agentEvents(h.sent, sourceSessionId);
+    const rewindIndex = events.findIndex((event) => event.type === 'conversation-rewind');
+    const sessionRefIndex = events.findIndex(
+      (event) => event.type === 'session-ref' && event.historyId === 'native-child',
+    );
+    const replacementIndex = events.findIndex(
+      (event) =>
+        event.type === 'user-message' &&
+        event.content[0]?.type === 'text' &&
+        event.content[0].text === 'edited prompt',
+    );
+    expect(rewindIndex).toBeGreaterThanOrEqual(0);
+    expect(sessionRefIndex).toBeGreaterThan(rewindIndex);
+    expect(replacementIndex).toBeGreaterThan(sessionRefIndex);
+
+    const [record] = await store.load();
+    expect(record).toMatchObject({
+      sessionId: sourceSessionId,
+      origin: { type: 'created' },
+      cwd: '/repo',
+      title: 'Original prompt',
+    });
+    expect(record.runs).toHaveLength(2);
+    expect(record.runs[0]).toMatchObject({
+      historyId: 'native-source',
+      endedAt: expect.any(Number),
+    });
+    expect(record.runs[1]).toMatchObject({ historyId: 'native-child' });
+    await h.inject({ kind: 'session.list', clientReqId: 'list' });
+    expect(listedSessions(h.sent, 'list')).toHaveLength(1);
+  });
+
+  it('rewrites a stopped session under the same session id', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    await h.inject({
+      kind: 'session.stop',
+      clientReqId: 'stop-source',
+      sessionId: sourceSessionId,
+    });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-stopped',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-stopped')).toBe(sourceSessionId));
+    expect(await store.load()).toHaveLength(1);
+  });
+
+  it('serializes concurrent rewrites while replacing each live turn', async () => {
+    const branchGate = promiseGate();
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BlockingBranchAdapter(branchGate.promise));
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'idle' });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-one',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('first edit')],
+    });
+    await vi.waitFor(() => expect(h.adapters).toHaveLength(2));
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-two',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('second edit')],
+    });
+
+    branchGate.open();
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-one')).toBe(sourceSessionId));
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-two')).toBe(sourceSessionId));
+
+    expect(h.adapters).toHaveLength(3);
+    expect(h.adapters[1].stopped).toBe(true);
+    expect(h.adapters[1].sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('first edit')] },
+    ]);
+    expect(h.adapters[2].sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('second edit')] },
+    ]);
+    const [record] = await store.load();
+    expect(record.runs).toHaveLength(3);
+  });
+
+  it('stops a running turn before rewriting it in the same session', async () => {
+    const stopGate = promiseGate();
+    let adapterIndex = 0;
+    const store = new InMemorySessionStore();
+    const h = harness(store, () =>
+      adapterIndex++ === 0
+        ? new BlockingStopBranchAdapter(stopGate.promise)
+        : new BranchingHistoryAdapter(),
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'source-prompt',
+      sessionId: sourceSessionId,
+      input: { type: 'prompt', content: [textBlock('Original prompt')] },
+    });
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+    const sourceMessage = agentEvents(h.sent, sourceSessionId).findLast(
+      (event) => event.type === 'user-message' && event.branchCursor !== undefined,
+    );
+    if (sourceMessage?.type !== 'user-message' || sourceMessage.branchCursor === undefined) {
+      throw new Error('live source prompt has no branch cursor');
+    }
+    const eventMark = h.sent.length;
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-running',
+      sourceSessionId,
+      sourceMessageId: sourceMessage.messageId,
+      branchCursor: sourceMessage.branchCursor,
+      content: [textBlock('edited prompt')],
+    });
+
+    const sourceAdapter = h.adapters[0] as BlockingStopBranchAdapter;
+    await vi.waitFor(() => expect(sourceAdapter.stopStarted).toBe(true));
+    sourceAdapter.emit({
+      type: 'agent-message-chunk',
+      messageId: MessageIdSchema.parse('late-source-message'),
+      content: textBlock('late source output'),
+    });
+    expect(h.adapters).toHaveLength(1);
+    expect(
+      agentEvents(h.sent.slice(eventMark), sourceSessionId).some(
+        (event) => event.type === 'conversation-rewind',
+      ),
+    ).toBe(false);
+
+    stopGate.open();
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-running')).toBe(sourceSessionId));
+
+    expect(sourceAdapter.stopped).toBe(true);
+    const replacementAdapter = h.adapters[2] as BranchingHistoryAdapter;
+    expect(replacementAdapter.branchedFrom).toEqual({
+      historyId: 'native-source',
+      cursor: 'opaque-original-cursor',
+    });
+    expect(replacementAdapter.sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('edited prompt')] },
+    ]);
+    const replacementEvents = agentEvents(h.sent.slice(eventMark), sourceSessionId);
+    expect(replacementEvents).not.toContainEqual({
+      type: 'agent-message-chunk',
+      messageId: 'late-source-message',
+      content: textBlock('late source output'),
+    });
+    const rewindIndex = replacementEvents.findIndex(
+      (event) => event.type === 'conversation-rewind',
+    );
+    const replacementIndex = replacementEvents.findIndex(
+      (event) =>
+        event.type === 'user-message' &&
+        event.content[0]?.type === 'text' &&
+        event.content[0].text === 'edited prompt',
+    );
+    expect(rewindIndex).toBeGreaterThanOrEqual(0);
+    expect(replacementIndex).toBeGreaterThan(rewindIndex);
+
+    const [record] = await store.load();
+    expect(record.sessionId).toBe(sourceSessionId);
+    expect(record.runs).toHaveLength(2);
+    expect(record.runs[0].endedAt).toBeTypeOf('number');
+  });
+
+  it('rewrites an earlier live prompt from its original provider history', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new BranchingHistoryAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'first-prompt',
+      sessionId: sourceSessionId,
+      input: { type: 'prompt', content: [textBlock('Original prompt')] },
+    });
+    h.adapters[0].emit({ type: 'status', status: 'idle' });
+    const laterPromptMark = h.sent.length;
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'later-prompt',
+      sessionId: sourceSessionId,
+      input: { type: 'prompt', content: [textBlock('Later prompt')] },
+    });
+    expect(
+      agentEvents(h.sent.slice(laterPromptMark), sourceSessionId).filter(
+        (event) => event.type === 'user-message',
+      ),
+    ).toHaveLength(1);
+    const livePrompts = agentEvents(h.sent, sourceSessionId).flatMap((event) =>
+      event.type === 'user-message' && event.branchCursor !== undefined ? [event] : [],
+    );
+    const originalPrompt = livePrompts.findLast(
+      (event) => event.content[0]?.type === 'text' && event.content[0].text === 'Original prompt',
+    );
+    const laterPrompt = livePrompts.findLast(
+      (event) => event.content[0]?.type === 'text' && event.content[0].text === 'Later prompt',
+    );
+    if (
+      originalPrompt?.type !== 'user-message' ||
+      originalPrompt.branchCursor === undefined ||
+      laterPrompt?.type !== 'user-message' ||
+      laterPrompt.branchCursor === undefined
+    ) {
+      throw new Error('live prompts have no branch cursor');
+    }
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-later',
+      sourceSessionId,
+      sourceMessageId: laterPrompt.messageId,
+      branchCursor: laterPrompt.branchCursor,
+      content: [textBlock('edited later prompt')],
+    });
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-later')).toBe(sourceSessionId));
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-original',
+      sourceSessionId,
+      sourceMessageId: originalPrompt.messageId,
+      branchCursor: originalPrompt.branchCursor,
+      content: [textBlock('edited original prompt')],
+    });
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-original')).toBe(sourceSessionId));
+
+    expect((h.adapters[4] as BranchingHistoryAdapter).branchedFrom).toEqual({
+      historyId: 'native-source',
+      cursor: 'opaque-original-cursor',
+    });
+    const [record] = await store.load();
+    expect(record.runs).toHaveLength(3);
+  });
+
+  it('does not rewind or start a replacement when stopping the running turn fails', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new RejectingStopBranchAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+    const eventMark = h.sent.length;
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-stop-failed',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await tick();
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'rewrite-stop-failed',
+      code: 'operation_failed',
+      message: 'Agent failed to stop',
+    });
+    expect(h.adapters).toHaveLength(1);
+    expect(
+      agentEvents(h.sent.slice(eventMark), sourceSessionId).some(
+        (event) => event.type === 'conversation-rewind',
+      ),
+    ).toBe(false);
+    const [record] = await store.load();
+    expect(record.runs).toHaveLength(1);
+    expect(record.runs[0]).toMatchObject({
+      historyId: 'native-source',
+      endedAt: expect.any(Number),
+    });
+  });
+
+  it('keeps the original provider history recoverable when the provider fork fails', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new RejectingBranchAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'idle' });
+    const eventMark = h.sent.length;
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'branch-failed',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'branch-failed',
+      code: 'operation_failed',
+      message: 'Failed to branch agent history',
+    });
+    expect(
+      h.sent
+        .slice(eventMark)
+        .some(
+          (payload) =>
+            payload.kind === 'agent.event' && payload.event.type === 'conversation-rewind',
+        ),
+    ).toBe(false);
+    const [record] = await store.load();
+    expect(record.runs).toHaveLength(2);
+    expect(record.runs[1]).toMatchObject({ endedAt: expect.any(Number) });
+    expect(record.runs[1].historyId).toBeUndefined();
+
+    await h.inject({
+      kind: 'session.resume',
+      clientReqId: 'resume-source',
+      sessionId: sourceSessionId,
+    });
+    expect(startedId(h.sent, 'resume-source')).toBe(sourceSessionId);
+    expect(h.adapters[2].resumedFrom).toBe('native-source');
+  });
+
+  it('keeps the replacement run in the same session when its edited prompt is rejected', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new RejectingBranchedPromptAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapters[0].emit({ type: 'status', status: 'idle' });
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'prompt-failed',
+      sourceSessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await tick();
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'prompt-failed',
+      code: 'operation_failed',
+      message: 'Agent input was rejected',
+      reportedInConversation: true,
+    });
+    const records = await store.load();
+    expect(records).toHaveLength(1);
+    expect(records[0].sessionId).toBe(sourceSessionId);
+    expect(records[0].runs.at(-1)?.historyId).toBe('native-child');
+    expect(agentEvents(h.sent, sourceSessionId)).toContainEqual({
+      type: 'conversation-rewind',
+      messageId: 'source-message',
+    });
+  });
+
   it('resumes a persisted session under the same id, appending a run', async () => {
     const store = new InMemorySessionStore();
     const first = harness(store);
@@ -105,6 +689,76 @@ describe('engine session records', () => {
     expect(record.runs).toHaveLength(2);
     expect(record.runs[0].endedAt).toBeTypeOf('number');
     expect(record.runs[1].historyId).toBe('native-1');
+  });
+
+  it('replaces the first-prompt fallback with a provider title and dedupes repeats', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'r2',
+      sessionId,
+      input: { type: 'prompt', content: [textBlock('Investigate the login regression')] },
+    });
+    const changesBeforeTitle = h.sent.filter(
+      (payload) => payload.kind === 'session.changed',
+    ).length;
+
+    h.adapters[0].emit({ type: 'title-update', title: 'Fix OAuth callback handling' });
+    h.adapters[0].emit({ type: 'title-update', title: 'Fix OAuth callback handling' });
+    await settleEngineTasks();
+
+    expect((await store.load())[0].title).toBe('Fix OAuth callback handling');
+    expect(h.sent.filter((payload) => payload.kind === 'session.changed')).toHaveLength(
+      changesBeforeTitle + 1,
+    );
+    expect(h.sent.findLast((payload) => payload.kind === 'session.changed')).toEqual({
+      kind: 'session.changed',
+      sessionId,
+      reason: 'updated',
+    });
+
+    const restarted = harness(store);
+    await restarted.engine.start();
+    await restarted.inject({ kind: 'session.list', clientReqId: 'r3' });
+    expect(listedSessions(restarted.sent, 'r3')[0].title).toBe('Fix OAuth callback handling');
+  });
+
+  it('does not replace an automation title with provider metadata', async () => {
+    const store = new InMemorySessionStore();
+    const sessionId = 'automation-session' as SessionId;
+    await store.save({
+      sessionId,
+      kind: 'claude-code',
+      cwd: '/repo',
+      title: 'Nightly dependency update',
+      origin: { type: 'created' },
+      automation: { kind: 'schedule', id: 'schedule-1' },
+      createdAt: 1,
+      updatedAt: 2,
+      runs: [{ historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 2 }],
+    });
+    const h = harness(store);
+    await h.engine.start();
+    await h.inject({ kind: 'session.resume', clientReqId: 'r1', sessionId });
+    const changesBeforeTitle = h.sent.filter(
+      (payload) => payload.kind === 'session.changed',
+    ).length;
+
+    h.adapters[0].emit({ type: 'title-update', title: 'Provider generated title' });
+    await settleEngineTasks();
+
+    expect((await store.load())[0].title).toBe('Nightly dependency update');
+    expect(h.sent.filter((payload) => payload.kind === 'session.changed')).toHaveLength(
+      changesBeforeTitle,
+    );
   });
 
   it('imports a provider history session as a cold record', async () => {
@@ -278,5 +932,491 @@ describe('engine session records', () => {
     await inject({ kind: 'session.list', clientReqId: 'r4' });
     expect(listedSessions(sent, 'r4')).toHaveLength(1);
     expect(await inner.load()).toHaveLength(1);
+  });
+});
+
+describe('session account attribution', () => {
+  function storeBoundTo(accountId: string, model: string): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: [accountId] } },
+      accounts: [
+        {
+          id: accountId,
+          label: 'Bound',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-test' },
+          models: [{ id: model }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  it("records the account a run resolved to and reports the latest run's", async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_bound');
+    // Persisted per run, so a restart still knows what the session is talking to.
+    expect((await store.load())[0].runs[0].accountId).toBe('acc_bound');
+  });
+
+  it('honours an account the client pinned over the bound one', async () => {
+    const providers = storeBoundTo('acc_bound', 'claude-opus-5');
+    const pool = providers.getAccounts();
+    providers.update({
+      accounts: [
+        ...pool,
+        {
+          id: 'acc_pinned',
+          label: 'Pinned',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-other' },
+          models: [{ id: 'claude-sonnet-5' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+
+    // This is how picking a model that belongs to another account reaches the daemon.
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'claude-sonnet-5',
+        accountId: 'acc_pinned',
+      },
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'r2' });
+
+    expect(listedSessions(h.sent, 'r2')[0]?.accountId).toBe('acc_pinned');
+  });
+});
+
+describe('a session keeps its own pick', () => {
+  it('replays a model picked mid-run, not the one the run launched with', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_one'] } },
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'model-a' }, { id: 'model-b' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+
+    // Same account, so this switches in place and launches nothing — the ordinary way a user
+    // changes model. The accepted pick is what gets recorded, not anything the adapter reflects.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'pick',
+      sessionId,
+      input: { type: 'set-model', model: 'model-b', accountId: 'acc_one' },
+    });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('model-b');
+  });
+
+  it('leaves a model the adapter resolved for itself out of the pin', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({ providers: { 'claude-code': { enabled: true } } });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // What the CLI resolved on its own, reflected at launch: display state, not a choice anyone made.
+    h.adapters[0].emit({ type: 'model-update', model: 'adapter-choice' });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Recording that reflection would pin the thread to its first launch, and the head of the
+    // agent's list could never reach it again.
+    providers.update({
+      accounts: [
+        {
+          id: 'acc_one',
+          label: 'One',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-one' },
+          models: [{ id: 'configured' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    expect(nullthrow(h.adapters.at(-1)).resumedWith?.model).toBe('configured');
+    expect((await store.load())[0].runs[0].model).toBeUndefined();
+  });
+
+  it('replays the effort and approval tier picked on the live session', async () => {
+    const h = harness(new InMemorySessionStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    // Both axes live on the adapter, so a relaunch is where they get lost.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'xhigh' },
+    });
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'policy',
+      sessionId,
+      input: { type: 'set-approval-policy', policyId: 'acceptEdits' },
+    });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.effort).toBe('xhigh');
+    expect(resumed.resumedWith?.approvalPolicyId).toBe('acceptEdits');
+  });
+
+  it('records nothing when the session refuses the pick', async () => {
+    const store = new InMemorySessionStore();
+    const h = harness(store, () => new PickyAdapter());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'effort',
+      sessionId,
+      input: { type: 'set-effort', effort: 'max' },
+    });
+    await tick();
+
+    expect(h.adapters[0].sentInputs).toContainEqual({ type: 'set-effort', effort: 'max' });
+    expect((await store.load())[0].runs[0].effort).toBeUndefined();
+  });
+
+  it('falls back to the agent’s default when the pinned account has been deleted', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    const surviving = {
+      id: 'acc_default',
+      label: 'Default',
+      service: 'anthropic-api' as const,
+      credential: { type: 'api-key' as const, key: 'sk-default' },
+      models: [{ id: 'model-default' }],
+      createdAt: 0,
+    };
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_default'] } },
+      accounts: [
+        surviving,
+        {
+          id: 'acc_doomed',
+          label: 'Doomed',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-doomed' },
+          models: [{ id: 'model-doomed' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      providers,
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: {
+        kind: 'claude-code',
+        cwd: '/repo',
+        model: 'model-doomed',
+        accountId: 'acc_doomed',
+      },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // The run's pin now names an account that no longer exists. Replaying it verbatim would start
+    // the agent with no credential at all, and the thread could never recover.
+    providers.update({ accounts: [surviving] });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-default');
+    // The new run records the account that actually backed it, so the thread's pin recovers too.
+    await h.inject({ kind: 'session.list', clientReqId: 'r4' });
+    expect(listedSessions(h.sent, 'r4')[0]?.accountId).toBe('acc_default');
+  });
+
+  it('resumes on the run’s account and model after the daemon default moved', async () => {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    const store = new InMemorySessionStore();
+    const h = harness(store, undefined, undefined, undefined, undefined, providers);
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await tick();
+    await h.inject({ kind: 'session.stop', clientReqId: 'r2', sessionId });
+
+    // Settings narrows the agent to the other account while the thread sleeps, moving the head of
+    // its list — the only thing an unpinned start would resolve to.
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_second'] } },
+    });
+    await h.inject({ kind: 'session.resume', clientReqId: 'r3', sessionId });
+
+    const resumed = nullthrow(h.adapters.at(-1));
+    expect(resumed.resumedWith?.model).toBe('model-first');
+    expect(resumed.resumedWith?.config?.apiKey).toBe('sk-first');
+    expect((await store.load())[0].runs.at(-1)?.accountId).toBe('acc_first');
+  });
+});
+
+class ResumelessAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: false,
+  };
+}
+
+describe('live account switching', () => {
+  /** Two accounts an agent can bind, one of them currently bound. */
+  function twoAccountStore(): InMemoryProviderConfigStore {
+    const providers = new InMemoryProviderConfigStore();
+    providers.update({
+      providers: { 'claude-code': { enabled: true, enabledAccountIds: ['acc_first'] } },
+      accounts: [
+        {
+          id: 'acc_first',
+          label: 'First',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-first' },
+          models: [{ id: 'model-first' }],
+          createdAt: 0,
+        },
+        {
+          id: 'acc_second',
+          label: 'Second',
+          service: 'anthropic-api',
+          credential: { type: 'api-key', key: 'sk-second' },
+          models: [{ id: 'model-second' }],
+          createdAt: 0,
+        },
+      ],
+    });
+    return providers;
+  }
+
+  async function liveSession(
+    makeAdapter?: () => FakeAdapter,
+    options: { withTranscript?: boolean } = {},
+  ) {
+    const { withTranscript = true } = options;
+    const store = new InMemorySessionStore();
+    const h = harness(store, makeAdapter, undefined, undefined, undefined, twoAccountStore());
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    if (withTranscript) {
+      h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-live') });
+      await tick();
+    }
+    return { ...h, store, sessionId };
+  }
+
+  function switchTo(
+    h: Awaited<ReturnType<typeof liveSession>>,
+    accountId: string,
+    model: string,
+    clientReqId = 'switch',
+  ) {
+    return h.inject({
+      kind: 'agent.input',
+      clientReqId,
+      sessionId: h.sessionId,
+      input: { type: 'set-model', model, accountId },
+    });
+  }
+
+  it('relaunches on the new account, resuming the transcript under the same id', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    // A fresh adapter, resumed from the transcript the old one had established.
+    expect(h.adapters).toHaveLength(2);
+    expect(h.adapters[0].stopped).toBe(true);
+    expect(h.adapters[1].resumedFrom).toBe('native-live');
+    expect(h.adapters[1].resumedWith?.model).toBe('model-second');
+    expect(h.adapters[1].resumedWith?.config?.apiKey).toBe('sk-second');
+
+    const runs = (await h.store.load())[0].runs;
+    expect(runs).toHaveLength(2);
+    expect(runs[1].accountId).toBe('acc_second');
+
+    // The relaunch sends no `session.started` and re-reports the historyId the record already has,
+    // so without this cue clients keep listing the previous account indefinitely.
+    expect(h.sent).toContainEqual({
+      kind: 'session.changed',
+      sessionId: h.sessionId,
+      reason: 'updated',
+    });
+    await h.inject({ kind: 'session.list', clientReqId: 'listed' });
+    expect(listedSessions(h.sent, 'listed')[0]?.accountId).toBe('acc_second');
+  });
+
+  it('forwards a pick on the session’s own account in place, recording no new run', async () => {
+    const h = await liveSession();
+
+    await switchTo(h, 'acc_first', 'model-first');
+
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'switch' });
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].sentInputs).toContainEqual({
+      type: 'set-model',
+      model: 'model-first',
+      accountId: 'acc_first',
+    });
+    expect((await h.store.load())[0].runs).toHaveLength(1);
+  });
+
+  it('refuses a switch while a turn is running', async () => {
+    const h = await liveSession();
+    h.adapters[0].emit({ type: 'status', status: 'running' });
+    await tick();
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session is busy; switch accounts once the turn has finished',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses a switch on a session with no provider transcript rather than starting fresh', async () => {
+    const h = await liveSession(undefined, { withTranscript: false });
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'conflict',
+      message: 'The session has no provider transcript to carry to another account',
+    });
+    expect(h.adapters).toHaveLength(1);
+  });
+
+  it('refuses before teardown when the agent cannot resume, leaving the session live', async () => {
+    const h = await liveSession(() => new ResumelessAdapter());
+
+    await switchTo(h, 'acc_second', 'model-second');
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'switch',
+      code: 'unsupported',
+      message: 'claude-code: switching account needs history resume, which it does not support',
+    });
+    // The whole point of checking first: the session it refused to move is still running.
+    expect(h.adapters).toHaveLength(1);
+    expect(h.adapters[0].stopped).toBe(false);
   });
 });

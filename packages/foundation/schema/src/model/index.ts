@@ -10,6 +10,8 @@ export * from './file';
 export * from './git';
 export * from './history';
 export * from './im';
+export * from './linkcode-marketplace';
+export * from './linkcode-plugin';
 export * from './loop';
 export * from './managed-asset';
 export * from './permission';

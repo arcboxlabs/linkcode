@@ -28,8 +28,7 @@ permissions:
   contents: read
 
 env:
-  # Typed linting needs one TS program set in a single heap: `lint:ci` runs eslint with
-  # `--concurrency=off`, and a cold cache still walks the whole repo, which does not fit in 4096.
+  # Non-lint Node steps still need more than the default 4096 MB heap; lint sets its own limit.
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
@@ -105,10 +104,9 @@ jobs:
       - name: Check formatting and imports
         run: pnpm format:check
 
-      # `lint:ci`, not `lint`: multithread linting duplicates the typescript-eslint program per
-      # worker instead of splitting it, which OOMs a 2-worker runner (CODE-468).
+      # Type-aware programs are duplicated per worker, so lint defaults to single-threaded.
       - name: Lint
-        run: pnpm lint:ci
+        run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
@@ -282,6 +280,86 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  config-integration:
+    name: Cross-repository config contract
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Require organization App credentials
+        env:
+          BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+          BOT_APP_PRIVATE_KEY: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$BOT_APP_ID" ] || [ -z "$BOT_APP_PRIVATE_KEY" ]; then
+            echo "::error::BOT_APP_ID and BOT_APP_PRIVATE_KEY must be available so CI can read arcboxlabs/linkcodehq and arcboxlabs/linkcode-config"
+            exit 1
+          fi
+
+      - name: Mint publisher read token
+        id: publisher-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcodehq
+          permission-contents: read
+
+      - name: Mint config source read token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: arcboxlabs
+          repositories: linkcode-config
+          permission-contents: read
+
+      - name: Check out pinned publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: arcboxlabs/linkcodehq
+          ref: 986d9f21403df53bc932f511eb1b5f0bb634d48d
+          token: ${{ steps.publisher-token.outputs.token }}
+          path: .config-validation/linkcodehq
+          persist-credentials: false
+
+      - name: Check out pinned config source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: arcboxlabs/linkcode-config
+          ref: a1ed4d666721c3aed0d563aaea42fce8b5f945b5
+          token: ${{ steps.source-token.outputs.token }}
+          path: .config-validation/linkcode-config
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Validate pinned source with the pinned parser
+        run: |
+          set -euo pipefail
+          hq="$GITHUB_WORKSPACE/.config-validation/linkcodehq"
+          config="$GITHUB_WORKSPACE/.config-validation/linkcode-config"
+          test "$(git -C "$hq" rev-parse HEAD)" = 986d9f21403df53bc932f511eb1b5f0bb634d48d
+          test "$(git -C "$config" rev-parse HEAD)" = a1ed4d666721c3aed0d563aaea42fce8b5f945b5
+          test "$(node --version | cut -d. -f1)" = v24
+          test "$(pnpm --version)" = 11.9.0
+          pnpm --dir "$hq" --filter @linkcodehq/config-structural... \
+            install --frozen-lockfile --ignore-scripts
+          pnpm --dir "$hq" --filter @linkcodehq/config-structural exec tsx \
+            "$config/scripts/validate.mts" \
+            --hq-root "$hq" \
+            --source-root examples/acme-zenith
+
   all-green:
     name: All Green
     runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
@@ -292,11 +370,15 @@ jobs:
       - webview
       - mobile
       - rust
+      - config-integration
     if: always()
 
     steps:
       - name: Check required jobs
         run: |
           if [ '${{ needs.typescript.result }}' != 'success' ] || [ '${{ needs.desktop.result }}' != 'success' ] || [ '${{ needs.webview.result }}' != 'success' ] || [ '${{ needs.mobile.result }}' != 'success' ] || [ '${{ needs.rust.result }}' != 'success' ]; then
+            exit 1
+          fi
+          if [ '${{ needs.config-integration.result }}' != 'success' ] && [ '${{ needs.config-integration.result }}' != 'skipped' ]; then
             exit 1
           fi

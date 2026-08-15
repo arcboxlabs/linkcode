@@ -370,12 +370,36 @@ pnpm lint
 pnpm format:check
 ```
 
-Lint runs one way locally and another in CI, and the difference is memory. `pnpm lint` uses
-`--concurrency=auto`; CI uses `pnpm lint:ci`, which is `--concurrency=off` plus a content-keyed
-cache, under `NODE_OPTIONS=--max-old-space-size=6144`. Concurrency splits the type-aware program
-across workers, so **fewer workers means a larger heap each** — narrowing it to `2` is what produced
-the `ERR_WORKER_OUT_OF_MEMORY` that broke every branch in 2026-07 (#312). If lint feels slow, raise
-the heap; narrowing concurrency is the move that breaks it.
+Lint is single-threaded, and local and CI run the identical command: `--concurrency=off` plus a
+content-keyed cache. The cross-platform Node launcher gives ESLint an 8192 MB heap, so local runs
+get the same limit as CI (pnpm 11 ignores `node-options` in `.npmrc`).
+
+Multithread linting **duplicates** the typescript-eslint program per worker instead of splitting it.
+Every worker rebuilds the program set for each tsconfig project it touches, and because workers pull
+from one global file queue, every worker touches every project. Measured over this repo (1225 files,
+cold cache, 18-core host):
+
+| `--concurrency` | wall | CPU | peak RSS | |
+|---|---|---|---|---|
+| `off`, default 4 GB heap | 40.6 s | 88.7 s | 4.74 GB | **OOM** |
+| `2`, default heap | 35.7 s | 139.1 s | 9.46 GB | **OOM** |
+| `4`, default heap | 48.4 s | 294.2 s | 18.62 GB | ok |
+| `auto` (= cores/2 = 9), default heap | 32.5 s | 339.9 s | 38.70 GB | ok |
+| `off`, 8 GB heap | 48.2 s | 70.5 s | 7.40 GB | ok |
+
+RSS scales linearly with the worker count at a constant ~4.7 GB each. Two consequences:
+
+- **Fewer workers OOM first.** A worker holds the accumulated type information for every file it
+  processes, so halving the worker count doubles that per heap. Narrowing to `2` is what produced
+  the `ERR_WORKER_OUT_OF_MEMORY` that broke every branch in 2026-07 (#312) — it is not a safe
+  "use less memory" knob, it is the most expensive setting per worker.
+- **Concurrency only pays on a cold full run, and only when the RAM is genuinely free.** On a warm
+  cache — the common case, including the pre-commit hook — single-threaded is 1.9 s / 0.5 GB against
+  3.3 s / 3.8 GB at `auto`, because nine workers each pay startup and each read the whole cache
+  file. On a 36 GB machine `auto` wants more than the free RAM and degrades into swap thrash.
+
+`LINT_CONCURRENCY` overrides the default when you want to trade RAM for a faster cold run; set it to
+`4` in your shell before running `pnpm lint`. Budget ~4.7 GB per worker, and never set it to `2`.
 
 Auto-fix — finish the task first, then run these and re-check (most issues auto-fix):
 

@@ -21,6 +21,7 @@ import type {
 } from '@linkcode/schema';
 
 export type ConversationTurnId = string | null;
+export type PromptEditState = 'enabled' | 'busy' | 'unsupported';
 
 /**
  * Fields every timeline item carries. `receivedAt` is the best-known time of the item's latest
@@ -40,6 +41,7 @@ export type ConversationItem =
       role: 'user' | 'assistant';
       blocks: ContentBlock[];
       isStreaming: boolean;
+      branchCursor?: string;
       /** Set on subagent narration: the `task`-kind tool call that spawned it (nested in the UI). */
       parentToolCallId?: string;
       /** The model serving the session when this assistant message opened (from `model-update`). */

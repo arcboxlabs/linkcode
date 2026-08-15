@@ -1,6 +1,9 @@
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { extname, resolve } from 'node:path';
 import type {
   AgentCommand,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -30,6 +33,7 @@ import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { codexEnv, readAgentCredential } from '../../credential';
+import { decodeHistoryBranchCursor } from '../../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -58,11 +62,19 @@ import {
   readCodexTranscriptSummaries,
   readJsonlFile,
 } from './history';
-import { CODEX_PLAN_ID, codexPlanEntries, execToolCall, fileChangeToolCall } from './tool-view';
+import {
+  CODEX_PLAN_ID,
+  codexMcpSlug,
+  codexPlanEntries,
+  execToolCall,
+  fileChangeToolCall,
+} from './tool-view';
 import { diffContentFromUnified } from './unified-diff';
 
 interface CodexSkillCommand extends AgentCommand {
   path: string;
+  /** Brand icon file inside the skill/plugin package — read and embedded at publish time. */
+  iconPath?: string;
 }
 
 type CodexTurnInput =
@@ -79,6 +91,8 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
   return resolveAgentShellEnvironment(cwd ?? homedir());
 }
 
+const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
+
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
@@ -93,17 +107,120 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
       const path = stringField(skill, 'path');
       if (!name || !path || commands.has(name)) continue;
       const interfaceMetadata = recordField(skill, 'interface');
+      const brandColor = interfaceMetadata && stringField(interfaceMetadata, 'brandColor');
       commands.set(name, {
         name,
         description:
           stringField(skill, 'description') ??
           (interfaceMetadata && stringField(interfaceMetadata, 'shortDescription')) ??
           stringField(skill, 'shortDescription'),
+        displayName: interfaceMetadata && stringField(interfaceMetadata, 'displayName'),
+        brandColor: brandColor && BRAND_COLOR_RE.test(brandColor) ? brandColor : undefined,
         path,
+        iconPath:
+          (interfaceMetadata && stringField(interfaceMetadata, 'iconSmall')) ??
+          (interfaceMetadata && stringField(interfaceMetadata, 'iconLarge')),
       });
     }
   }
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Composer icons render at chip size; anything bigger than this is not an icon. */
+const SKILL_ICON_MAX_BYTES = 32 * 1024;
+
+const SKILL_ICON_MIME: Record<string, string> = {
+  '.gif': 'image/gif',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
+const GIF_87A_MAGIC = Buffer.from('GIF87a');
+const GIF_89A_MAGIC = Buffer.from('GIF89a');
+const JPEG_MAGIC = Buffer.from([255, 216, 255]);
+const PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const RIFF_MAGIC = Buffer.from('RIFF');
+const WEBP_MAGIC = Buffer.from('WEBP');
+const SVG_ROOT_RE = /^\s*(?:<\?xml[\s\S]*?\?>\s*)?<svg(?:\s|>)/i;
+
+/** SVG that would execute or fetch if ever parsed as a document (scripts, foreignObject, event
+ * handlers, javascript: URLs, non-fragment refs) — inert inside `<img>`, rejected for depth. */
+const SVG_ACTIVE_CONTENT_RE =
+  /<\s*(?:script|foreignObject)\b|\bon[a-z]+\s*=|javascript:|\b(?:xlink:)?href\s*=\s*["'](?!#)/i;
+
+function hasMagic(data: Buffer, magic: Buffer, offset = 0): boolean {
+  return (
+    data.length >= offset + magic.length &&
+    data.subarray(offset, offset + magic.length).equals(magic)
+  );
+}
+
+function isSkillIconContent(mime: string, data: Buffer): boolean {
+  switch (mime) {
+    case 'image/gif':
+      return hasMagic(data, GIF_87A_MAGIC) || hasMagic(data, GIF_89A_MAGIC);
+    case 'image/jpeg':
+      return hasMagic(data, JPEG_MAGIC);
+    case 'image/png':
+      return hasMagic(data, PNG_MAGIC);
+    case 'image/svg+xml':
+      return SVG_ROOT_RE.test(data.toString('utf8'));
+    case 'image/webp':
+      return hasMagic(data, RIFF_MAGIC) && hasMagic(data, WEBP_MAGIC, 8);
+    default:
+      return false;
+  }
+}
+
+/** Embed a skill's icon file as a `data:image/*` URI, or nothing when the file is missing,
+ * unreasonably large, not a known image type, or an SVG carrying active content. The path comes
+ * from the user's own codex install; failures degrade to the glyph fallback, never to an error. */
+export async function skillIconDataUri(iconPath: string): Promise<string | undefined> {
+  const mime = SKILL_ICON_MIME[extname(iconPath).toLowerCase()];
+  if (!mime) return undefined;
+  try {
+    const resolvedPath = resolve(iconPath);
+    // Any canonical mismatch means the file or one of its parent directories traverses a symlink.
+    if ((await realpath(resolvedPath)) !== resolvedPath) return undefined;
+    const info = await stat(resolvedPath);
+    if (!info.isFile() || info.size === 0 || info.size > SKILL_ICON_MAX_BYTES) return undefined;
+    const data = await readFile(resolvedPath);
+    if (
+      data.length === 0 ||
+      data.length > SKILL_ICON_MAX_BYTES ||
+      !isSkillIconContent(mime, data)
+    ) {
+      return undefined;
+    }
+    if (mime === 'image/svg+xml' && SVG_ACTIVE_CONTENT_RE.test(data.toString('utf8'))) {
+      return undefined;
+    }
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** One catalog frame is engine-cached and replayed on every attach; bound its total embedded
+ * icon payload so a huge plugin catalog cannot outgrow transport reassembly buffers. */
+const SKILL_ICON_TOTAL_MAX_LENGTH = 256 * 1024;
+
+/** Drop icons that no longer fit the shared budget (catalog order — sorted by name); dropped
+ * ones fall back to the brandColor initial chip. */
+export function capSkillIconPayload(
+  commands: AgentCommand[],
+  budget = SKILL_ICON_TOTAL_MAX_LENGTH,
+): AgentCommand[] {
+  let remaining = budget;
+  return commands.map((command) => {
+    if (command.iconDataUri === undefined) return command;
+    if (command.iconDataUri.length > remaining) return { ...command, iconDataUri: undefined };
+    remaining -= command.iconDataUri.length;
+    return command;
+  });
 }
 
 interface CodexModelCatalog {
@@ -302,6 +419,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private server: CodexServerHandle | null = null;
@@ -433,6 +551,47 @@ export class CodexAdapter extends BaseAgentAdapter {
     startOpts: StartOptions,
   ): Promise<void> {
     this.resumeFrom = opts.historyId;
+    try {
+      await this.start(startOpts);
+    } finally {
+      this.resumeFrom = undefined;
+    }
+  }
+
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const branchPoint = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
+    if (branchPoint === null) {
+      await this.start(startOpts);
+      return;
+    }
+
+    const processEnvironment = await resolveCodexEnvironment(startOpts.cwd);
+    const credentialEnv = codexEnv(readAgentCredential(startOpts.config));
+    const serverEnvironment = credentialEnv
+      ? { ...processEnvironment, ...credentialEnv }
+      : processEnvironment;
+    const server = await this.startAppServer({
+      env: serverEnvironment,
+      onNotification: noop,
+      onExit: noop,
+    });
+    let childThreadId: string;
+    try {
+      const response = await server.request('thread/fork', {
+        threadId: opts.historyId,
+        lastTurnId: branchPoint,
+      });
+      const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
+      childThreadId = thread ? (stringField(thread, 'id') ?? '') : '';
+      if (!childThreadId) throw new Error('codex: thread/fork returned no thread id');
+    } finally {
+      server.close();
+    }
+
+    this.resumeFrom = childThreadId;
     try {
       await this.start(startOpts);
     } finally {
@@ -802,6 +961,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       const threadId = thread ? stringField(thread, 'id') : undefined;
       this.threadId = threadId ?? null;
       if (threadId && !this.holdSessionRef) this.emitSessionRef(asHistoryId(threadId));
+      const threadName = thread ? stringField(thread, 'name') : undefined;
+      if (threadName) this.emitTitle(threadName);
       // Advertise the axis so the composer's picker appears with the session's real state.
       this.emitApprovalPolicy(this.approvalPolicyState());
       await this.publishCommands(server);
@@ -879,9 +1040,17 @@ export class CodexAdapter extends BaseAgentAdapter {
       const skills = codexSkillCommands(response).filter(
         (skill) => skill.name !== COMPACT_COMMAND.name,
       );
+      const catalog = await Promise.all(
+        skills.map(async ({ path: _path, iconPath, ...command }) => ({
+          ...command,
+          iconDataUri: iconPath === undefined ? undefined : await skillIconDataUri(iconPath),
+        })),
+      );
+      // The icon reads awaited — re-check that a newer refresh or server didn't win meanwhile.
+      if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
       this.skillCommands.clear();
       for (const skill of skills) this.skillCommands.set(skill.name, skill);
-      this.emitCommands([COMPACT_COMMAND, ...skills.map(({ path: _path, ...command }) => command)]);
+      this.emitCommands([COMPACT_COMMAND, ...capSkillIconPayload(catalog)]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
         this.skillCommands.clear();
@@ -1021,6 +1190,12 @@ export class CodexAdapter extends BaseAgentAdapter {
               ? this.modelOptions.get(model)?.defaultEffort
               : undefined;
         if (effective) this.emitEffort(effective);
+        break;
+      }
+      case 'thread/name/updated': {
+        const threadId = stringField(params, 'threadId');
+        const threadName = stringField(params, 'threadName');
+        if (threadName && threadId === this.threadId) this.emitTitle(threadName);
         break;
       }
       case 'turn/started': {
@@ -1238,11 +1413,12 @@ export class CodexAdapter extends BaseAgentAdapter {
         break;
       }
       case 'mcpToolCall': {
-        const server = stringField(item, 'server') ?? 'mcp';
-        const tool = stringField(item, 'tool') ?? 'tool';
         this.emitTool({
           toolCallId: id,
-          title: `${server}.${tool}`,
+          title: codexMcpSlug(
+            stringField(item, 'server') ?? 'mcp',
+            stringField(item, 'tool') ?? 'tool',
+          ),
           kind: 'other',
           status: mapCodexItemStatus(stringField(item, 'status')),
           content: [],

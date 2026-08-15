@@ -211,7 +211,7 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
     // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
     const attached = withAccountSecret(store, value);
     migrated ||= attached.migrated;
-    const account = AccountSchema.safeParse(attached.value);
+    const account = AccountSchema.safeParse(withPickedModels(attached.value));
     if (!account.success) {
       logger.warn({ operation: 'config.load' }, 'Dropping invalid account config');
       continue;
@@ -219,6 +219,39 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
     accounts.push(account.data);
   }
   return { value: accounts, migrated };
+}
+
+/** Pre-selection configs stored one free-text model per account; carry it over as the picked set,
+ * or zod strips the unknown key and the user silently loses their model. Idempotent. */
+function withPickedModels(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const { model, ...rest } = value as { model?: unknown; models?: unknown };
+  if (typeof model !== 'string' || model === '' || rest.models !== undefined) return rest;
+  return { ...rest, models: [{ id: model }] };
+}
+
+/**
+ * An agent's only per-account state is now which accounts it offers, so the default account and
+ * default model are dropped on read — zod would strip them anyway. The default account is folded
+ * into the enabled list first: it was necessarily an account the user meant this agent to use, and
+ * an explicit list that omitted it would silently take it away.
+ */
+function withEnabledAccounts(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const {
+    activeAccountId,
+    defaultModel: _model,
+    model: _pick,
+    ...rest
+  } = value as { activeAccountId?: unknown; defaultModel?: unknown; model?: unknown } & {
+    enabledAccountIds?: unknown;
+  };
+  if (typeof activeAccountId !== 'string' || activeAccountId === '') return rest;
+  const enabled = rest.enabledAccountIds;
+  if (!Array.isArray(enabled)) return rest;
+  return enabled.includes(activeAccountId)
+    ? rest
+    : { ...rest, enabledAccountIds: [...enabled, activeAccountId] };
 }
 
 /**
@@ -270,7 +303,7 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
     }
     const attached = withProviderSecret(store, kind.data, value);
     migrated ||= attached.migrated;
-    const config = ProviderConfigSchema.safeParse(attached.value);
+    const config = ProviderConfigSchema.safeParse(withEnabledAccounts(attached.value));
     if (!config.success) {
       logger.warn({ agentKind: key, operation: 'config.load' }, 'Dropping invalid provider config');
       continue;

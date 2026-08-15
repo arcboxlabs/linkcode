@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
+import {
+  InstalledLinkCodePluginSchema,
+  LinkCodePluginIntegritySchema,
+  LinkCodePluginManifestSchema,
+  LinkCodePluginReleaseSchema,
+} from '../linkcode-plugin';
 import { PluginSchema } from '../plugin';
+
+const latexManifest = {
+  manifestVersion: 1,
+  id: 'arcbox/latex',
+  version: '1.2.0',
+  displayName: 'LaTeX',
+  description: 'Compile LaTeX documents with a portable Agent Skill.',
+  keywords: ['latex', 'pdf'],
+  components: [
+    {
+      kind: 'skill',
+      name: 'latex',
+      entry: 'skills/latex/SKILL.md',
+    },
+  ],
+  assets: [{ id: { kind: 'tool', name: 'tectonic' }, versionRange: '>=0.16.0 <0.17.0' }],
+} as const;
 
 describe('PluginSchema', () => {
   it('keeps Claude Code installation scope separate from enablement', () => {
@@ -163,5 +186,188 @@ describe('PluginSchema', () => {
         },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('LinkCode plugin package contracts', () => {
+  it('represents one agent-independent plugin with trusted tool requirements', () => {
+    expect(LinkCodePluginManifestSchema.parse(latexManifest)).toMatchObject({
+      id: 'arcbox/latex',
+      components: [{ kind: 'skill', entry: 'skills/latex/SKILL.md' }],
+      assets: [{ id: { kind: 'tool', name: 'tectonic' } }],
+    });
+  });
+
+  it('keeps provider identity and mutable installation state out of the manifest', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        provider: 'claude-code',
+      }).success,
+    ).toBe(false);
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        enabled: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    '../SKILL.md',
+    '/skills/latex/SKILL.md',
+    String.raw`skills\latex\SKILL.md`,
+    'C:/SKILL.md',
+    'skills/latex./SKILL.md',
+    `skills/latex${String.fromCodePoint(0)}/SKILL.md`,
+    'skills/latex/readme.md',
+    'skills/latex/skill.md',
+  ])('rejects invalid skill package entry %s', (entry) => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        components: [{ ...latexManifest.components[0], entry }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    'arcbox./latex',
+    'arcbox/a..b',
+    'nul/latex',
+    'arcbox/con',
+    'arcbox/con.txt',
+    'ArcBox/latex',
+    `${'a'.repeat(65)}/latex`,
+  ])('rejects unsafe plugin id %s', (id) => {
+    expect(LinkCodePluginManifestSchema.safeParse({ ...latexManifest, id }).success).toBe(false);
+  });
+
+  it('rejects a non-canonical semver release identity', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({ ...latexManifest, version: '1.2.0-01' }).success,
+    ).toBe(false);
+  });
+
+  it('accepts hyphens and numeric identifiers in semver build metadata', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        version: '1.2.0+build-01',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects duplicate component identities', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        components: [latexManifest.components[0], latexManifest.components[0]],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('continues to reject agent runtimes as plugin assets', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...latexManifest,
+        assets: [{ id: { kind: 'agent', name: 'codex' } }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('pins immutable marketplace package bytes with SRI integrity', () => {
+    expect(
+      LinkCodePluginReleaseSchema.parse({
+        manifest: {
+          ...latexManifest,
+          components: [
+            {
+              ...latexManifest.components[0],
+              futureComponentMetadata: 'ignored by older readers',
+            },
+          ],
+          futureManifestMetadata: 'ignored by older readers',
+        },
+        artifact: {
+          urls: ['releases/arcbox-latex-1.2.0.tgz'],
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          size: 4096,
+          format: 'tgz',
+        },
+        publishedAt: '2026-08-03T00:00:00.000Z',
+        deprecated: false,
+      }),
+    ).toMatchObject({ manifest: { id: 'arcbox/latex', version: '1.2.0' } });
+  });
+
+  it('rejects marketplace releases without parseable integrity', () => {
+    expect(
+      LinkCodePluginReleaseSchema.safeParse({
+        manifest: latexManifest,
+        artifact: {
+          urls: ['https://plugins.linkcode.ai/arcbox/latex/1.2.0.tgz'],
+          integrity: '7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          format: 'tgz',
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    'sha256-A',
+    'sha256-Zg==',
+    `sha256-${'A'.repeat(43)}`,
+    `sha256-${'A'.repeat(42)}B=`,
+    `sha384-${'A'.repeat(44)}`,
+    `sha512-${'A'.repeat(64)}`,
+  ])('rejects non-canonical or incorrectly sized SRI digest %s', (integrity) => {
+    expect(LinkCodePluginIntegritySchema.safeParse(integrity).success).toBe(false);
+  });
+
+  it('accepts canonical digests with the size required by each SRI algorithm', () => {
+    expect(
+      LinkCodePluginIntegritySchema.safeParse(
+        [
+          `sha256-${'A'.repeat(43)}=`,
+          `sha384-${'A'.repeat(64)}`,
+          `sha512-${'A'.repeat(86)}==`,
+        ].join(' '),
+      ).success,
+    ).toBe(true);
+  });
+
+  it('rejects non-HTTPS absolute artifact URLs', () => {
+    expect(
+      LinkCodePluginReleaseSchema.safeParse({
+        manifest: latexManifest,
+        artifact: {
+          urls: ['http://plugins.linkcode.ai/arcbox/latex/1.2.0.tgz'],
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          format: 'tgz',
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('stores mutable local state separately with marketplace provenance', () => {
+    expect(
+      InstalledLinkCodePluginSchema.parse({
+        id: 'arcbox/latex',
+        version: '1.2.0',
+        marketplaceId: 'linkcode-official',
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        enabled: true,
+        path: '/home/user/.linkcode/plugins/arcbox/latex/1.2.0',
+        futureStoreMetadata: 'ignored by older readers',
+      }),
+    ).toEqual({
+      id: 'arcbox/latex',
+      version: '1.2.0',
+      marketplaceId: 'linkcode-official',
+      integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+      enabled: true,
+      path: '/home/user/.linkcode/plugins/arcbox/latex/1.2.0',
+    });
   });
 });

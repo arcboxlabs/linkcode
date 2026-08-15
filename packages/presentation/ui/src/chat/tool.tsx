@@ -154,7 +154,9 @@ export function ToolIcon({
   }
   if (declined) return <BanIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
   if (status === 'failed') {
-    return <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
+    // Any caller-supplied glyph (brand, plugin, ToolSearch) keeps a failed call recognizable;
+    // the red status label already carries the state.
+    return icon ?? <CircleXIcon className="size-3.5 shrink-0 text-destructive-foreground" />;
   }
   if (awaitingAnswer) {
     return <MessageCircleQuestionMarkIcon className="size-3.5 shrink-0 text-foreground" />;

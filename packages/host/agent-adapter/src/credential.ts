@@ -13,6 +13,9 @@ export interface AgentCredential {
   authToken?: string;
   /** Custom endpoint (gateway / relay / local translator). */
   baseUrl?: string;
+  /** This endpoint's id in the agent's own provider catalog, when it has one. Provider-routed
+   * agents (opencode, pi) inject the credential under it instead of guessing a provider. */
+  knownProvider?: string;
   /** Extra environment for the agent process. */
   extraEnv?: Record<string, string>;
 }
@@ -25,6 +28,7 @@ export function readAgentCredential(config: StartOptions['config']): AgentCreden
     apiKey: readString(config.apiKey),
     authToken: readString(config.authToken),
     baseUrl: readString(config.baseUrl),
+    knownProvider: readString(config.knownProvider),
     ...(extraEnv && { extraEnv }),
   };
 }

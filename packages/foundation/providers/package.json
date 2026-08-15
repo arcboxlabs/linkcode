@@ -1,0 +1,16 @@
+{
+  "name": "@linkcode/providers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint --format=sukka ."
+  },
+  "dependencies": {
+    "@linkcode/schema": "workspace:*",
+    "foxts": "^5.8.1"
+  }
+}

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 const rBlobUrl = /^blob:/;
+const RE_SVG_DATA_URI = /^data:image\/svg\+xml;base64,/;
 
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
@@ -121,7 +122,7 @@ describe('dev mock transport', () => {
     expect(replyText).toContain('Hello mocked daemon');
 
     const providers = {
-      codex: { enabled: true, defaultModel: 'mock-model' },
+      codex: { enabled: true, enabledAccountIds: ['acc_1'] },
     } satisfies ProvidersConfig;
     await client.setProviderConfig(providers);
     expect(await client.getProviderConfig()).toEqual(providers);
@@ -134,21 +135,16 @@ describe('dev mock transport', () => {
     // Independent fields: writing accounts preserved the provider config.
     expect(await client.getProviderConfig()).toEqual(providers);
 
-    const boundAccount = {
+    // Adding an account is one write to the pool; nothing about the agent's config moves with it.
+    const relay = {
       id: 'acc_2',
       label: 'Relay',
       credential: { type: 'api-key', key: 'sk-relay' },
       createdAt: 1,
     } satisfies Accounts[number];
-    await client.createAndBindAccount('codex', boundAccount);
-    await client.createAndBindAccount('codex', { ...boundAccount, label: 'Updated relay' });
-    expect(await client.getAccounts()).toEqual([
-      accounts[0],
-      { ...boundAccount, label: 'Updated relay' },
-    ]);
-    expect(await client.getProviderConfig()).toEqual({
-      codex: { enabled: true, defaultModel: 'mock-model', activeAccountId: 'acc_2' },
-    });
+    await client.setAccounts([...accounts, relay]);
+    expect(await client.getAccounts()).toEqual([accounts[0], relay]);
+    expect(await client.getProviderConfig()).toEqual(providers);
 
     client.dispose();
   });
@@ -229,6 +225,19 @@ describe('dev mock transport', () => {
           name: 'review',
           description: 'Review the current changes',
           argumentHint: '<path>',
+        },
+        {
+          name: 'documents',
+          description: 'Create and edit Word and Google Docs files',
+          displayName: 'Documents',
+          brandColor: '#2563EB',
+          iconDataUri: expect.stringMatching(RE_SVG_DATA_URI),
+        },
+        {
+          name: 'sync-linear',
+          description: 'Sync issues into the tracker',
+          displayName: 'Linear',
+          brandColor: '#5E6AD2',
         },
         {
           name: 'usage',

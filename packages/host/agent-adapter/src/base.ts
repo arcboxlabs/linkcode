@@ -2,11 +2,11 @@ import type {
   AgentCapabilities,
   AgentCommand,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
@@ -35,7 +35,7 @@ import { AGENT_INPUT_CAPABILITIES, textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { AgentAdapter, AgentStartCatalogOptions } from './adapter';
+import type { AgentAdapter, AgentHistoryReadContext, AgentStartCatalogOptions } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
 import type { ProviderErrorDetails } from './gateway-error';
 import { linkCodeGatewayError } from './gateway-error';
@@ -67,15 +67,17 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     list: false,
     read: false,
     resume: false,
+    branch: false,
   };
 
   protected readonly events = new Listeners<AgentEvent>();
   protected opts: StartOptions | null = null;
   /** Last announced provider-local id — `emitSessionRef` dedupes against it. */
   private sessionRef: AgentHistoryId | null = null;
-  /** Last announced model / effort — `emitModel` / `emitEffort` dedupe against these. */
+  /** Last announced reflected values — their emit helpers dedupe against these. */
   private reflectedModel: string | null = null;
   private reflectedEffort: EffortLevel | null = null;
+  private reflectedTitle: string | null = null;
   /** Permission asks awaiting a reply, keyed by requestId. */
   private readonly pending = new Map<string, PermissionResolver>();
   /** Question asks awaiting a reply, keyed by requestId. */
@@ -109,12 +111,16 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     return Promise.resolve({ sessions: [] });
   }
 
-  readHistory(_opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  readHistory(_opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     return Promise.reject(new Error(`${this.kind}: history read is not supported`));
   }
 
   resumeHistory(_opts: AgentHistoryResumeOptions, _startOpts: StartOptions): Promise<void> {
     return Promise.reject(new Error(`${this.kind}: history resume is not supported`));
+  }
+
+  branchHistory(_opts: AgentHistoryBranchOptions, _startOpts: StartOptions): Promise<void> {
+    return Promise.reject(new Error(`${this.kind}: history branch is not supported`));
   }
 
   async send(input: AgentInput): Promise<void> {
@@ -356,6 +362,13 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (this.reflectedModel === model) return;
     this.reflectedModel = model;
     this.emit({ type: 'model-update', model });
+  }
+  /** Announce a provider-owned session title; ignores empty and duplicate updates. */
+  protected emitTitle(title: string): void {
+    const normalized = title.trim();
+    if (normalized.length === 0 || this.reflectedTitle === normalized) return;
+    this.reflectedTitle = normalized;
+    this.emit({ type: 'title-update', title: normalized });
   }
   /** Announce the reasoning-effort level the session is running at; re-emits only when it changes. */
   protected emitEffort(effort: EffortLevel): void {

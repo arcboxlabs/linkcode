@@ -1,10 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { Account, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import type { EndpointService, ServiceDescriptor, ServiceGroup } from '@linkcode/providers';
+import {
+  LINKCODE_GATEWAY_SERVICE_ID,
+  modelListSource,
+  pinnedEndpoint,
+  SERVICE_CATALOG,
+  serviceById,
+  serviceProtocols,
+  templatePlaceholders,
+} from '@linkcode/providers';
+import type { Account, AccountModel, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import { AccountModelSchema } from '@linkcode/schema';
 import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
-import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
 import {
   Select,
   SelectItem,
@@ -13,21 +23,16 @@ import {
   SelectValue,
 } from 'coss-ui/components/select';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
-import type { ServiceDescriptor, ServiceGroup, ServiceVariant } from './catalog';
-import {
-  fillTemplate,
-  LINKCODE_GATEWAY_SERVICE_ID,
-  SERVICE_CATALOG,
-  serviceById,
-  templatePlaceholders,
-} from './catalog';
+import type { ModelSources } from './model-selection';
+import { ModelSelection } from './model-selection';
 
 const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 
@@ -41,24 +46,24 @@ function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdA
   return { id: `acc_${crypto.randomUUID()}`, label: label.trim(), createdAt: Date.now() };
 }
 
-export function oauthAccount(
+function oauthAccount(
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
   label: string,
+  models: AccountModel[] = [],
 ): Account {
   return {
     ...newAccountBase(label),
     service: service.id,
     credential: { type: 'oauth', agent: service.agent },
+    ...(models.length > 0 && { models }),
   };
 }
 
-function catalogAccount(
-  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>,
-  variant: ServiceVariant,
-  draft: CatalogDraft,
-): Account {
+/** The account holds only the secret, the service key and any template values — each agent resolves
+ * its own endpoint from those, so no protocol is chosen here. */
+function catalogAccount(service: EndpointService, draft: CatalogDraft): Account {
   const trimmed: Record<string, string> = {};
-  for (const key of templatePlaceholders(variant.baseUrl)) {
+  for (const key of servicePlaceholders(service)) {
     const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
     trimmed[key] = value.trim();
   }
@@ -66,12 +71,21 @@ function catalogAccount(
     ...newAccountBase(draft.label),
     service: service.id,
     credential:
-      variant.credentialType === 'auth-token'
+      service.credentialType === 'auth-token'
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
-    endpoint: { baseUrl: fillTemplate(variant.baseUrl, trimmed), protocol: variant.protocol },
-    ...(draft.model.trim() && { model: draft.model.trim() }),
+    ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
+    ...(draft.models.length > 0 && { models: draft.models }),
   };
+}
+
+/** Placeholders across every variant: one secret covers them all, so the form asks once. */
+function servicePlaceholders(service: EndpointService): string[] {
+  const keys = new Set<string>();
+  for (const variant of Object.values(service.variants)) {
+    for (const key of templatePlaceholders(variant.baseUrl)) keys.add(key);
+  }
+  return [...keys];
 }
 
 function customAccount(draft: CustomDraft): Account {
@@ -92,7 +106,7 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
           credential: _credential,
           endpoint: _endpoint,
           label: _label,
-          model: _model,
+          models: _models,
           ...rest
         }) => rest)(account);
   return {
@@ -104,7 +118,7 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
         : { type: 'api-key', key: draft.secret },
     ...(draft.baseUrl.trim() &&
       protocol && { endpoint: { baseUrl: draft.baseUrl.trim(), protocol } }),
-    ...(draft.model.trim() && { model: draft.model.trim() }),
+    ...(draft.models.length > 0 && { models: draft.models }),
   };
 }
 
@@ -155,6 +169,7 @@ export function ServiceCatalogView({
 /** Step two: the per-service seeded form (or the free-form one for `custom`). */
 export function AddAccountForm({
   serviceId,
+  sources,
   runtimes,
   onboarding,
   busy,
@@ -163,6 +178,7 @@ export function AddAccountForm({
   linkCodeGateway,
 }: {
   serviceId: string;
+  sources?: ModelSources;
   runtimes: AgentRuntimes | undefined;
   onboarding: AgentRuntimeOnboarding;
   busy: boolean;
@@ -188,12 +204,13 @@ export function AddAccountForm({
       {service.kind === 'oauth' ? (
         <OauthCreateForm
           service={service}
+          sources={sources}
           runtimes={runtimes}
           onboarding={onboarding}
           busy={busy}
           onSubmit={onSubmit}
         />
-      ) : service.kind === 'endpoint' && service.credentialSource === 'linkcode-cloud' ? (
+      ) : service.kind === 'endpoint' && service.id === LINKCODE_GATEWAY_SERVICE_ID ? (
         <LinkCodeGatewayForm
           service={service}
           access={linkCodeGateway}
@@ -201,9 +218,9 @@ export function AddAccountForm({
           onSubmit={onSubmit}
         />
       ) : service.kind === 'endpoint' ? (
-        <CatalogAccountForm service={service} busy={busy} onSubmit={onSubmit} />
+        <CatalogAccountForm service={service} sources={sources} busy={busy} onSubmit={onSubmit} />
       ) : (
-        <CustomAccountForm busy={busy} onSubmit={onSubmit} />
+        <CustomAccountForm sources={sources} busy={busy} onSubmit={onSubmit} />
       )}
     </div>
   );
@@ -265,12 +282,10 @@ function LinkCodeGatewayForm({
       onSubmit={handleSubmit(async ({ label }) => {
         try {
           const key = await access.createKey(label);
-          const variant = service.variants[0];
           onSubmit({
             ...newAccountBase(label),
             service: service.id,
             credential: { type: 'auth-token', token: key },
-            endpoint: { baseUrl: variant.baseUrl, protocol: variant.protocol },
           });
         } catch (error) {
           setError('root', {
@@ -301,11 +316,13 @@ function LinkCodeGatewayForm({
 /** Existing-account editor shown inside the account management dialog. */
 export function EditAccountForm({
   account,
+  sources,
   busy,
   onBack,
   onSubmit,
 }: {
   account: Account;
+  sources?: ModelSources;
   busy: boolean;
   onBack: () => void;
   onSubmit: (account: Account) => void;
@@ -327,44 +344,70 @@ export function EditAccountForm({
         </h3>
       </div>
       {account.credential.type === 'oauth' ? (
-        <OauthEditForm account={account} busy={busy} onSubmit={onSubmit} />
+        <OauthEditForm account={account} sources={sources} busy={busy} onSubmit={onSubmit} />
       ) : (
-        <CustomAccountForm account={account} busy={busy} onSubmit={onSubmit} />
+        <CustomAccountForm account={account} sources={sources} busy={busy} onSubmit={onSubmit} />
       )}
     </div>
   );
 }
 
-const OauthEditDraftSchema = z.object({ label: z.string().min(1) });
+const OauthEditDraftSchema = z.object({
+  label: z.string().min(1),
+  models: z.array(AccountModelSchema),
+});
 type OauthEditDraft = z.infer<typeof OauthEditDraftSchema>;
 
 function OauthEditForm({
   account,
+  sources,
   busy,
   onSubmit,
 }: {
   account: Account;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const {
     register,
+    control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<OauthEditDraft>({
     resolver: zodResolver(OauthEditDraftSchema),
-    defaultValues: { label: account.label },
+    defaultValues: { label: account.label, models: account.models ?? [] },
   });
+  const agent = account.credential.type === 'oauth' ? account.credential.agent : undefined;
+  const fetchModels = agent === undefined || !sources ? undefined : () => sources.oauth(agent);
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit({ ...account, label: draft.label.trim() }))}
+      onSubmit={handleSubmit((draft) =>
+        onSubmit({
+          ...account,
+          label: draft.label.trim(),
+          ...(draft.models.length > 0 ? { models: draft.models } : { models: undefined }),
+        }),
+      )}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('label')} />
       </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <p className="text-muted-foreground text-xs">{t('oauthEditHint')}</p>
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
@@ -378,12 +421,14 @@ function OauthEditForm({
 /** Subscription accounts are persisted only after the agent CLI login succeeds. */
 function OauthCreateForm({
   service,
+  sources,
   runtimes,
   onboarding,
   busy,
   onSubmit,
 }: {
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>;
+  sources?: ModelSources;
   runtimes: AgentRuntimes | undefined;
   onboarding: AgentRuntimeOnboarding;
   busy: boolean;
@@ -392,6 +437,8 @@ function OauthCreateForm({
   const t = useTranslations('settings.providers');
   const serviceName = t(`serviceName.${service.id}`);
   const [label, setLabel] = useState(serviceName);
+  const [models, setModels] = useState<AccountModel[]>([]);
+  const fetchModels = sources ? () => sources.oauth(service.agent) : undefined;
   const auth = runtimes?.[service.agent]?.auth;
   const loggedIn = auth?.loggedIn === true;
   const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
@@ -410,6 +457,12 @@ function OauthCreateForm({
           onChange={(event) => setLabel(event.target.value)}
         />
       </Field>
+      <ModelSelection
+        disabled={busy || loginInProgress}
+        onChange={setModels}
+        onFetch={fetchModels}
+        selected={models}
+      />
       {loggedIn ? (
         <>
           <p className="text-muted-foreground text-xs">
@@ -422,7 +475,7 @@ function OauthCreateForm({
               type="button"
               size="sm"
               disabled={busy || label.trim() === ''}
-              onClick={() => onSubmit(oauthAccount(service, label))}
+              onClick={() => onSubmit(oauthAccount(service, label, models))}
             >
               {t('form.submit')}
             </Button>
@@ -438,7 +491,7 @@ function OauthCreateForm({
             busy || label.trim() === ''
               ? undefined
               : (kind) => {
-                  onboarding.login(kind, () => onSubmit(oauthAccount(service, label)));
+                  onboarding.login(kind, () => onSubmit(oauthAccount(service, label, models)));
                 }
           }
           onSubmitLoginCode={onboarding.submitLoginCode}
@@ -452,14 +505,14 @@ function OauthCreateForm({
 const CatalogDraftSchema = z.object({
   label: z.string().min(1),
   secret: z.string().min(1),
-  model: z.string(),
   placeholders: z.record(z.string(), z.string()),
+  models: z.array(AccountModelSchema),
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
-function catalogDraftSchema(variant: ServiceVariant): typeof CatalogDraftSchema {
+function catalogDraftSchema(service: EndpointService): typeof CatalogDraftSchema {
   return CatalogDraftSchema.superRefine((draft, ctx) => {
-    for (const key of templatePlaceholders(variant.baseUrl)) {
+    for (const key of servicePlaceholders(service)) {
       const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
       if (!value.trim()) {
         ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });
@@ -477,101 +530,88 @@ function placeholderLabel(key: string): string {
 
 function CatalogAccountForm({
   service,
+  sources,
   busy,
   onSubmit,
 }: {
-  service: Extract<ServiceDescriptor, { kind: 'endpoint' }>;
+  service: EndpointService;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const serviceName = t(`serviceName.${service.id}`);
-  // The variant determines the form's shape (placeholders, secret kind); it is UI state, not a field.
-  const [variant, setVariant] = useState(service.variants[0]);
-  const placeholders = templatePlaceholders(variant.baseUrl);
+  const placeholders = servicePlaceholders(service);
 
   const {
     register,
     control,
+    getValues,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<CatalogDraft>({
-    resolver: zodResolver(catalogDraftSchema(variant)),
-    defaultValues: { label: serviceName, secret: '', model: '', placeholders: {} },
+    resolver: zodResolver(catalogDraftSchema(service)),
+    defaultValues: { label: serviceName, secret: '', placeholders: {}, models: [] },
   });
-  // Display-only subscription for the endpoint preview; fields are wired via register/Controller.
-  const placeholderValues = useWatch({ control, name: 'placeholders' });
 
   const secretLabel =
-    variant.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');
+    service.credentialType === 'auth-token' ? t('credentialAuthToken') : t('credentialApiKey');
+
+  /** The secret is read at click time rather than watched: the button stays enabled and says what
+   * is missing, instead of subscribing the whole form to every keystroke. */
+  const fetchModels =
+    sources && service.models
+      ? async (): Promise<AccountModel[]> => {
+          const secret = getValues('secret');
+          if (!secret) throw new Error(t('models.secretFirst'));
+          return sources.probeInline(
+            service.id,
+            service.credentialType === 'auth-token'
+              ? { type: 'auth-token', token: secret }
+              : { type: 'api-key', key: secret },
+          );
+        }
+      : undefined;
 
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={handleSubmit((draft) => onSubmit(catalogAccount(service, variant, draft)))}
+      onSubmit={handleSubmit((draft) => onSubmit(catalogAccount(service, draft)))}
     >
       <Field>
         <FieldLabel>{t('form.label')}</FieldLabel>
         <Input className="w-full" autoComplete="off" {...register('label')} />
       </Field>
-      {service.variants.length > 1 ? (
-        <Field>
-          <FieldLabel>{t('form.variant')}</FieldLabel>
-          <RadioGroup
-            className="gap-2"
-            value={variant.id}
-            onValueChange={(value) => {
-              const next = service.variants.find((candidate) => candidate.id === value);
-              if (next) setVariant(next);
-            }}
-          >
-            {service.variants.map((candidate) => (
-              <label
-                key={candidate.id}
-                className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3"
-              >
-                <RadioGroupItem value={candidate.id} className="mt-0.5" />
-                <span className="min-w-0">
-                  <span className="block font-medium text-sm">
-                    {t(`variantName.${candidate.protocol}`)}
-                  </span>
-                  <span className="block text-muted-foreground text-xs">
-                    {t(`variantNote.${candidate.protocol}`)}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </RadioGroup>
-        </Field>
-      ) : null}
       {placeholders.map((key) => (
-        <Field key={`${variant.id}:${key}`}>
+        <Field key={key}>
           <FieldLabel>{placeholderLabel(key)}</FieldLabel>
           <Input className="w-full" autoComplete="off" {...register(`placeholders.${key}`)} />
         </Field>
       ))}
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{secretLabel}</FieldLabel>
-            <Input
-              type="password"
-              className="w-full"
-              autoComplete="off"
-              placeholder={service.secretPlaceholder}
-              {...register('secret')}
-            />
-          </Field>
-        </div>
-        <div className="flex-1">
-          <Field>
-            <FieldLabel>{t('form.model')}</FieldLabel>
-            <Input className="w-full" autoComplete="off" {...register('model')} />
-          </Field>
-        </div>
-      </div>
+      <Field>
+        <FieldLabel>{secretLabel}</FieldLabel>
+        <Input
+          type="password"
+          className="w-full"
+          autoComplete="off"
+          placeholder={service.secretPlaceholder}
+          {...register('secret')}
+        />
+      </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
-        {fillTemplate(variant.baseUrl, placeholderValues)} · {variant.protocol}
+        {serviceProtocols(service.id).join(' · ')}
       </p>
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
@@ -588,17 +628,19 @@ const CustomDraftSchema = z.object({
   secret: z.string().min(1),
   baseUrl: z.string(),
   protocol: z.string(),
-  model: z.string(),
+  models: z.array(AccountModelSchema),
 });
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
 function CustomAccountForm({
   account,
+  sources,
   busy,
   onSubmit,
 }: {
   account?: Account;
+  sources?: ModelSources;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -622,11 +664,23 @@ function CustomAccountForm({
           : account?.credential.type === 'api-key'
             ? account.credential.key
             : '',
-      baseUrl: account?.endpoint?.baseUrl ?? '',
-      protocol: account?.endpoint?.protocol ?? '',
-      model: account?.model ?? '',
+      // Prefill only an endpoint that is actually honored: a catalog-derived one is ignored at
+      // resolve time, so showing it would invite the user to "keep" a value that does nothing.
+      baseUrl: (account && pinnedEndpoint(account)?.baseUrl) ?? '',
+      protocol: (account && pinnedEndpoint(account)?.protocol) ?? '',
+      models: account?.models ?? [],
     },
   });
+  // A saved account is probed by id so its stored secret stays on the daemon side. A custom account
+  // names no service, so nothing can list its models and the set stays freeform.
+  const service = account?.service;
+  const fetchModels =
+    sources !== undefined &&
+    account !== undefined &&
+    service !== undefined &&
+    modelListSource(service) !== undefined
+      ? (): Promise<AccountModel[]> => sources.probeAccount(service, account.id)
+      : undefined;
 
   const typeItems = [
     { value: 'api-key', label: t('credentialApiKey') },
@@ -685,10 +739,18 @@ function CustomAccountForm({
           </Field>
         </div>
       </div>
-      <Field>
-        <FieldLabel>{t('form.model')}</FieldLabel>
-        <Input className="w-full" autoComplete="off" {...register('model')} />
-      </Field>
+      <Controller
+        control={control}
+        name="models"
+        render={({ field }) => (
+          <ModelSelection
+            disabled={busy}
+            onChange={field.onChange}
+            onFetch={fetchModels}
+            selected={field.value}
+          />
+        )}
+      />
       <div className="flex justify-end pt-1">
         <Button type="submit" size="sm" disabled={busy || isSubmitting}>
           {account === undefined ? t('form.submit') : t('form.save')}

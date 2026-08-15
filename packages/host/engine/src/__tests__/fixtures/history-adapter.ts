@@ -1,4 +1,4 @@
-import type { AdapterFactory } from '@linkcode/agent-adapter';
+import type { AdapterFactory, AgentHistoryReadContext } from '@linkcode/agent-adapter';
 import { BaseAgentAdapter } from '@linkcode/agent-adapter';
 import type {
   AgentHistoryCapabilities,
@@ -6,7 +6,6 @@ import type {
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentKind,
@@ -19,7 +18,7 @@ export interface FakeHistoryState {
   listCalls: number;
   readCalls: number;
   resumeCalls: number;
-  lastReadOptions?: AgentHistoryReadOptions;
+  lastReadOptions?: AgentHistoryReadContext;
   events?: AgentHistoryEvent[];
 }
 
@@ -81,7 +80,7 @@ export class FakeHistoryAdapter extends BaseAgentAdapter {
     return Promise.resolve({ sessions: [historySession(this.state.listCalls)] });
   }
 
-  override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  override readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     this.state.readCalls += 1;
     this.state.lastReadOptions = opts;
     return Promise.resolve({

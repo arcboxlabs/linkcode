@@ -57,6 +57,7 @@ export class SessionInputDispatcher {
       return Effect.fail(error);
     }
     const { events, records, resources } = this;
+    const promptMessageId = input.type === 'prompt' ? nextMessageId() : undefined;
     return Effect.gen(function* () {
       let adapterInput: AgentInput = input;
       if (input.type === 'prompt') {
@@ -83,10 +84,8 @@ export class SessionInputDispatcher {
       }
       if (startsTurn) session.turnInputActive = true;
       // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
-      if (input.type === 'prompt') {
-        events.broadcast(sessionId, [
-          { type: 'user-message', messageId: nextMessageId(), content: input.content },
-        ]);
+      if (promptMessageId !== undefined && input.type === 'prompt') {
+        events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
         records.setTitleFromContent(sessionId, input.content);
       } else if (input.type === 'command' || input.type === 'shell-command') {
         const text =
@@ -135,6 +134,9 @@ export class SessionInputDispatcher {
                 sessionId,
                 session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
               );
+            }
+            if (promptMessageId !== undefined) {
+              events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
             }
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) events.rejectInput(sessionId, error.publicMessage);

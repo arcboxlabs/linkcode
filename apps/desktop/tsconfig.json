@@ -16,7 +16,7 @@
     "scripts",
     "e2e",
     "vite.shared.ts",
-    "vite.main.config.ts",
+    "vite.main.config.mts",
     "vite.preload.config.ts",
     "vite.renderer.config.ts"
   ]

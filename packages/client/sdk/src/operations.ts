@@ -6,11 +6,10 @@ import type {
   SessionStartResult,
 } from '@linkcode/client-core';
 import type {
-  Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -18,6 +17,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  ContentBlock,
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
   EffortLevel,
@@ -37,6 +37,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -172,6 +173,22 @@ export function resumeHistoryWithWarnings(
   );
 }
 
+export function rewritePrompt(
+  options: Options<{
+    sourceSessionId: SessionId;
+    sourceMessageId: MessageId;
+    branchCursor: AgentHistoryBranchCursor;
+    content: ContentBlock[];
+  }>,
+): RequestResult<SessionId> {
+  return resolveClient(options).rewritePrompt(
+    options.sourceSessionId,
+    options.sourceMessageId,
+    options.branchCursor,
+    options.content,
+  );
+}
+
 export function sendInput(
   options: Options<{ sessionId: SessionId; input: AgentInput }>,
 ): RequestResult<{ ok: true }> {
@@ -203,9 +220,9 @@ export function cancelTurn(
 }
 
 export function setModel(
-  options: Options<{ sessionId: SessionId; model: string }>,
+  options: Options<{ sessionId: SessionId; model: string; accountId?: string }>,
 ): RequestResult<{ ok: true }> {
-  return resolveClient(options).setModel(options.sessionId, options.model);
+  return resolveClient(options).setModel(options.sessionId, options.model, options.accountId);
 }
 
 export function setEffort(
@@ -244,12 +261,6 @@ export function setProviderConfig(
   return resolveClient(options).setProviderConfig(options.providers);
 }
 
-export function createAndBindAccount(
-  options: Options<{ agent: AgentKind; account: Account }>,
-): RequestResult<{ ok: true }> {
-  return resolveClient(options).createAndBindAccount(options.agent, options.account);
-}
-
 export function getAccounts(options?: Options): RequestResult<Accounts> {
   return resolveClient(options).getAccounts();
 }
@@ -259,9 +270,12 @@ export function setAccounts(options: Options<{ accounts: Accounts }>): RequestRe
 }
 
 export function probeAccountModels(
-  options: Options<{ endpoint: AccountEndpoint; secret: AccountSecret }>,
+  options: Options<{
+    service: string;
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string };
+  }>,
 ): RequestResult<AccountModel[]> {
-  return resolveClient(options).probeAccountModels(options.endpoint, options.secret);
+  return resolveClient(options).probeAccountModels(options.service, options.credential);
 }
 
 /** Masked custom MCP servers — env/header keys only, never a secret value. */

@@ -21,6 +21,24 @@ export function textContent(text: string): ToolCallContent[] {
   return [{ type: 'content', content: { type: 'text', text } }];
 }
 
+const CODEX_PLUGIN_APPS_SERVER = 'codex_apps';
+
+/** The `mcp__<server>__<tool>` slug — the UI's server/tool join key. Plugin apps mount under the
+ * one `codex_apps` server with the plugin as the tool's first dot segment; surface it as server. */
+export function codexMcpSlug(server: string, tool: string): string {
+  if (server === CODEX_PLUGIN_APPS_SERVER) {
+    const dot = tool.indexOf('.');
+    if (dot > 0 && dot < tool.length - 1) {
+      server = tool.slice(0, dot);
+      tool = tool.slice(dot + 1);
+    }
+  }
+  // Codex accepts `__` in server names, but the slug splits on the first `__` — a name that
+  // would mis-split keeps codex's raw dotted title instead.
+  if (server.includes('__')) return `${server}.${tool}`;
+  return `mcp__${server}__${tool}`;
+}
+
 /** A `commandExecution` snapshot: the command line is the title, the aggregated output (settled
  * runs) is the content, and the exit code travels as `rawOutput`. */
 export function execToolCall(opts: {

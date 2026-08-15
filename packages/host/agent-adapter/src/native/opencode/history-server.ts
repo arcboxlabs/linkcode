@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { allocatePort } from '@linkcode/common/node';
 import { linkcodeStateDirName } from '@linkcode/schema/daemon-runtime';
 import { resolveProductChannel } from '@linkcode/schema/product';
+import { asyncRetry } from 'foxts/async-retry';
 
 import type { OpencodeServeProcess } from './serve';
 import {
@@ -137,14 +138,13 @@ export class OpencodeHistoryServer implements OpencodeHistoryServerLike {
 
   private async start(): Promise<string> {
     mkdirSync(this.neutralCwd, { recursive: true });
-    try {
-      return await this.spawnGeneration();
-    } catch (err) {
-      // One retry with a fresh port: allocatePort is check-then-use, so the port can be stolen
-      // between probe and bind (an immediate startup-window exit). A config failure just fails twice.
-      if (err instanceof ServeStartupExitError) return this.spawnGeneration();
-      throw err;
-    }
+    // allocatePort is check-then-use, so an immediate startup exit retries once with a fresh port.
+    return asyncRetry(() => this.spawnGeneration(), {
+      retries: 1,
+      minTimeout: 1,
+      randomize: false,
+      shouldRetry: ({ error }) => error instanceof ServeStartupExitError,
+    });
   }
 
   private async spawnGeneration(): Promise<string> {

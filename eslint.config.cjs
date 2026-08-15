@@ -17,6 +17,9 @@ module.exports = require('eslint-config-sukka').sukka(
         // expo prebuild output (gitignored continuous native generation)
         'apps/mobile/ios/**',
         'apps/mobile/android/**',
+        // gitignored per-target config modules rendered by the pinned publisher (CODE-552)
+        'apps/mobile/src/runtime/config/bundled.generated.ios.ts',
+        'apps/mobile/src/runtime/config/bundled.generated.android.ts',
         '.vscode/**',
         '.zed/**',
         '**/expo-export/**',
@@ -119,6 +122,7 @@ module.exports = require('eslint-config-sukka').sukka(
     name: 'linkcode/unplugin-icons-virtual-modules',
     files: [
       'packages/presentation/ui/src/chat/agent-icon.tsx',
+      'packages/presentation/ui/src/chat/integration-brand.tsx',
       'packages/presentation/ui/src/lib/__tests__/file-icon.test.ts',
       'packages/presentation/ui/src/lib/material-file-icons.ts',
       'packages/presentation/ui/src/shell/service-icon.tsx',

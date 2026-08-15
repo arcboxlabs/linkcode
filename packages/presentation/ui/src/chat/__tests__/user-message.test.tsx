@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { asyncNoop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CommandCatalogProvider } from '../command-brand';
 import type { ConversationItem } from '../types';
 import { UserMessage } from '../user-message';
 
@@ -49,5 +51,130 @@ describe('UserMessage', () => {
     expect(image.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+  });
+
+  it('edits a cursor-backed prompt and preserves its non-text blocks', async () => {
+    const onEditPrompt = vi.fn(asyncNoop);
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-editable',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [
+        { type: 'text', text: 'original prompt' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+      ],
+      isStreaming: false,
+      branchCursor: 'opaque-cursor',
+    };
+
+    render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={onEditPrompt} />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const editor = screen.getByRole('textbox', { name: 'editPromptLabel' });
+    expect(editor.closest('[data-role="user"]')).not.toBeNull();
+    expect((editor as HTMLTextAreaElement).value).toBe('original prompt');
+    fireEvent.change(editor, { target: { value: 'replacement prompt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'editSend' }));
+
+    await waitFor(() => {
+      expect(onEditPrompt).toHaveBeenCalledWith('user-editable', 'opaque-cursor', [
+        { type: 'text', text: 'replacement prompt' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+      ]);
+    });
+  });
+
+  it('cancels inline editing without changing the prompt', () => {
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-editable',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [{ type: 'text', text: 'original prompt' }],
+      isStreaming: false,
+      branchCursor: 'opaque-cursor',
+    };
+
+    render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'editPromptLabel' }), {
+      target: { value: 'discarded edit' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'editCancel' }));
+
+    expect(screen.queryByRole('textbox', { name: 'editPromptLabel' })).toBeNull();
+    expect(screen.getByText('original prompt')).toBeDefined();
+  });
+
+  it.each([
+    { state: 'unsupported' as const, cursor: 'opaque-cursor', label: 'editUnsupported' },
+    { state: 'busy' as const, cursor: 'opaque-cursor', label: 'editBusy' },
+    { state: 'enabled' as const, cursor: undefined, label: 'editUnavailable' },
+  ])('disables editing when $label', ({ state, cursor, label }) => {
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-disabled',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [{ type: 'text', text: 'prompt' }],
+      isStreaming: false,
+      branchCursor: cursor,
+    };
+
+    render(<UserMessage item={item} promptEditState={state} onEditPrompt={vi.fn()} />);
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: label }).disabled).toBe(true);
+  });
+
+  it('chips a catalog-matched command echo with its brand icon, leaving unknowns plain', () => {
+    const echo = (text: string): Extract<ConversationItem, { kind: 'message' }> => ({
+      id: `user-${text}`,
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [{ type: 'text', text }],
+      isStreaming: false,
+    });
+    const commands = [
+      {
+        name: 'documents',
+        displayName: 'Documents',
+        iconDataUri: 'data:image/png;base64,cG5n',
+        brandColor: '#2563EB',
+      },
+    ];
+
+    const { container } = render(
+      <CommandCatalogProvider commands={commands}>
+        <UserMessage item={echo('/documents quarterly summary')} />
+      </CommandCatalogProvider>,
+    );
+    const chip = screen.getByText('/documents');
+    expect(chip).toBeDefined();
+    expect(screen.getByText('quarterly summary')).toBeDefined();
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,cG5n');
+    // The provider's brandColor tints the chip; both mixes keep the brand hue.
+    expect(chip.style.backgroundColor).toContain('rgb(37, 99, 235)');
+    expect(chip.style.color).toContain('color-mix');
+
+    cleanup();
+    const plain = render(
+      <CommandCatalogProvider commands={commands}>
+        <UserMessage item={echo('/usr/bin/env is a path, not a command')} />
+      </CommandCatalogProvider>,
+    );
+    expect(plain.container.querySelector('img')).toBeNull();
+    expect(screen.getByText('/usr/bin/env is a path, not a command')).toBeDefined();
+
+    // Multi-line arguments keep block rendering — a chip + bare span would collapse newlines.
+    cleanup();
+    const multiline = render(
+      <CommandCatalogProvider commands={commands}>
+        <UserMessage item={echo('/documents summarize this:\nline one\nline two')} />
+      </CommandCatalogProvider>,
+    );
+    expect(multiline.container.querySelector('img')).toBeNull();
+    expect(screen.queryByText('/documents')).toBeNull();
   });
 });

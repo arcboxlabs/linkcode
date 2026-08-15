@@ -1,12 +1,19 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../model/agent';
+import { ContentBlockSchema } from '../model/content';
 import {
+  AgentHistoryBranchCursorSchema,
   AgentHistoryListOptionsSchema,
   AgentHistoryListResultSchema,
   AgentHistoryReadOptionsSchema,
   AgentHistoryReadResultSchema,
 } from '../model/history';
-import { AgentHistoryIdSchema, AgentKindSchema } from '../model/primitives';
+import {
+  AgentHistoryIdSchema,
+  AgentKindSchema,
+  MessageIdSchema,
+  SessionIdSchema,
+} from '../model/primitives';
 import { WireRequestIdSchema } from './request';
 
 export const AgentHistoryListWireOptionsSchema = AgentHistoryListOptionsSchema.extend({
@@ -49,5 +56,13 @@ export const historyWireVariants = [
     agentKind: AgentKindSchema,
     historyId: AgentHistoryIdSchema,
     startOpts: StartOptionsSchema,
+  }),
+  z.object({
+    kind: z.literal('history.branch'),
+    clientReqId: WireRequestIdSchema,
+    sourceSessionId: SessionIdSchema,
+    sourceMessageId: MessageIdSchema,
+    branchCursor: AgentHistoryBranchCursorSchema,
+    content: z.array(ContentBlockSchema),
   }),
 ] as const;

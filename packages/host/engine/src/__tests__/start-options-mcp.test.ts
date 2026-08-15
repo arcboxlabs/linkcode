@@ -1,5 +1,12 @@
 import type { PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
-import type { CustomMcpServer, McpServer, PluginProvider, SessionId } from '@linkcode/schema';
+import type {
+  Account,
+  AgentKind,
+  CustomMcpServer,
+  McpServer,
+  PluginProvider,
+  SessionId,
+} from '@linkcode/schema';
 import { PluginSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
@@ -146,6 +153,95 @@ describe('simulator MCP injection at session start', () => {
       unavailable.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
     );
     expect(resolved.mcpServers).toBeUndefined();
+  });
+});
+
+describe('injectedMcpServerNames', () => {
+  it('names the servers resolve would inject, and nothing for MCP-incapable kinds', () => {
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      provider(ENDPOINT),
+      customService(customEntry('github'), customEntry('disabled-one', false)),
+    );
+    expect(resolver.injectedMcpServerNames('opencode')).toEqual(['github', 'linkcode-sim']);
+    expect(resolver.injectedMcpServerNames('pi')).toEqual([]);
+  });
+});
+
+describe('account binding at session start', () => {
+  function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
+    const store = new InMemoryProviderConfigStore();
+    // An account with nothing picked refuses to start; these cases are about endpoints.
+    store.update({
+      providers: { [agent]: { enabled: true, enabledAccountIds: [account.id] } },
+      accounts: [{ ...account, models: [{ id: 'picked-model' }] }],
+    });
+    return store;
+  }
+
+  const account = (overrides: Partial<Account>): Account => ({
+    id: 'acc_1',
+    label: 'Test',
+    credential: { type: 'api-key', key: 'sk-test' },
+    createdAt: 0,
+    ...overrides,
+  });
+
+  it('refuses an agent whose account picked no model, but lets one with none resolve its own', async () => {
+    const store = new InMemoryProviderConfigStore();
+    store.update({ accounts: [account({ service: 'openai-api' })] });
+    const bound = new SessionStartOptionsResolver(store, undefined);
+    await expect(
+      Effect.runPromise(bound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION)),
+    ).rejects.toThrow('No model selected for codex');
+
+    // Nothing bound: the agent still runs on whatever it resolves for itself.
+    const unbound = new SessionStartOptionsResolver(new InMemoryProviderConfigStore(), undefined);
+    const { options } = await Effect.runPromise(
+      unbound.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.model).toBeUndefined();
+  });
+
+  it('refuses an account named by the request that has no endpoint the agent speaks', async () => {
+    const anthropicOnly = account({
+      endpoint: { baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' },
+    });
+    const resolver = new SessionStartOptionsResolver(storeWith(anthropicOnly, 'codex'), undefined);
+
+    // Starting anyway would point codex at an endpoint that answers 404 on /responses.
+    await expect(
+      Effect.runPromise(
+        resolver.resolve({ kind: 'codex', cwd: '/repo', accountId: anthropicOnly.id }, SESSION),
+      ),
+    ).rejects.toThrow('cannot back codex');
+
+    // Merely sitting enabled in the pool is not a request: it never reaches codex's model menu, so
+    // it is skipped rather than made to break every session the agent starts.
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.config?.baseUrl).toBeUndefined();
+  });
+
+  it('starts an account the pre-variant add flow pinned to one endpoint', async () => {
+    // Written by the old add flow for the `openai-api` catalog entry. It starts codex fine today,
+    // so honoring the pinned `openai-chat` protocol would break it on upgrade.
+    const upgraded = account({
+      service: 'openai-api',
+      endpoint: { baseUrl: 'https://api.openai.com/v1', protocol: 'openai-chat' },
+    });
+    const resolver = new SessionStartOptionsResolver(storeWith(upgraded, 'codex'), undefined);
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.config).toMatchObject({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1',
+      protocol: 'openai-responses',
+    });
   });
 });
 

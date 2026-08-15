@@ -17,10 +17,10 @@ import {
 } from 'coss-ui/components/menu';
 import { Separator } from 'coss-ui/components/separator';
 import {
-  BrainCircuitIcon,
   ChevronDownIcon,
   ListTodoIcon,
   PlusIcon,
+  RotateCcwIcon,
   ShieldIcon,
   SlidersHorizontalIcon,
   TargetIcon,
@@ -30,7 +30,12 @@ import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { EffortOption } from './agent-efforts';
 import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
 import type { ModelOption } from './agent-models';
-import { groupModelsByProvider, resolveModel } from './agent-models';
+import {
+  groupModelsByProvider,
+  modelChoiceKey,
+  resolveModel,
+  switchesAccount,
+} from './agent-models';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
 // Linear lookup: the policy/effort lists are a handful of entries at most.
@@ -145,7 +150,7 @@ export function ApprovalPolicyMenu({
   );
 }
 
-// Known workflow-mode glyphs; unknown provider modes fall back to a generic one.
+// Known workflow-mode glyphs; unknown harness modes fall back to a generic one.
 const MODE_CHIP_ICONS: Record<string, typeof ListTodoIcon> = {
   plan: ListTodoIcon,
   goal: TargetIcon,
@@ -182,7 +187,7 @@ export function SessionModeChip({
   );
 }
 
-/** Availability badge on a provider submenu item; nothing renders for a ready runtime. */
+/** Availability badge on a harness submenu item; nothing renders for a ready runtime. */
 function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   const t = useTranslations('workbench.agentRuntime');
   if (!cue) return null;
@@ -211,60 +216,93 @@ function RuntimeCueBadge({ cue }: { cue?: AgentRuntimeCue }): React.ReactNode {
   );
 }
 
-/** Codex-style model trigger: [provider glyph] model + effort, opening reasoning/model/provider menus. */
+/** One model entry. `description` is the account label the flat list needs to disambiguate; a
+ * provider submenu already names it and passes none. */
+function ModelMenuItem({
+  option,
+  description,
+  restartHint,
+}: {
+  option: ModelOption;
+  description?: string;
+  restartHint?: string;
+}): React.ReactNode {
+  return (
+    <MenuRadioItem closeOnClick value={modelChoiceKey(option)}>
+      <span className="flex min-w-0 flex-col">
+        <span>{option.label}</span>
+        {description ? <span className="text-muted-foreground text-xs">{description}</span> : null}
+        {restartHint ? <span className="text-2xs text-label-tertiary">{restartHint}</span> : null}
+      </span>
+    </MenuRadioItem>
+  );
+}
+
 export function ModelSelectorMenu({
   disabled,
-  provider,
-  selectableProviders,
+  harness,
+  selectableHarnesses,
   runtimeCues,
   modelOptions,
   effortOptions,
   selectedModelId,
+  selectedAccountId,
+  accountSwitchRestarts = false,
   selectedEffortId,
   onSelectModel,
   onSelectEffort,
   onResetModel,
   onResetEffort,
-  onSelectProvider,
+  onSelectHarness,
 }: {
   disabled: boolean;
-  provider?: AgentKind;
-  /** Providers offered for selection; absent/empty when the session's provider is fixed. */
-  selectableProviders?: AgentKind[];
-  /** Runtime availability per provider: a cue renders as a muted badge on the submenu item. */
+  harness?: AgentKind;
+  /** Harnesses offered for selection; absent/empty when the session's harness is fixed. */
+  selectableHarnesses?: AgentKind[];
+  /** Runtime availability per harness: a cue renders as a muted badge on the submenu item. */
   runtimeCues?: AgentRuntimeCues;
   modelOptions?: ModelOption[];
   effortOptions?: EffortOption[];
   selectedModelId: string | null;
+  /** Disambiguates the selection when the list spans accounts serving the same model id. */
+  selectedAccountId?: string;
+  /** Live sessions only: credentials are injected at spawn, so leaving `selectedAccountId` relaunches
+   * the agent. Entries from another account say so; a draft has nothing to restart. */
+  accountSwitchRestarts?: boolean;
   selectedEffortId: EffortLevel | null;
-  onSelectModel: (model: string) => void;
+  /** Carries the whole entry: a cross-account list needs the account alongside the id. */
+  onSelectModel: (model: ModelOption) => void;
   onSelectEffort: (effort: EffortLevel) => void;
-  /** Draft-only escape hatch back to the provider/configured model default. */
+  /** Draft-only escape hatch back to the harness/configured model default. */
   onResetModel?: () => void;
-  /** Draft-only escape hatch back to the provider effort default. */
+  /** Draft-only escape hatch back to the harness effort default. */
   onResetEffort?: () => void;
-  onSelectProvider?: (provider: AgentKind) => void;
+  onSelectHarness?: (harness: AgentKind) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.composer');
-  const selectedModel = resolveModel(modelOptions, selectedModelId);
+  const selectedModel = resolveModel(modelOptions, selectedModelId, selectedAccountId);
   const providerGroups = groupModelsByProvider(modelOptions);
+  const restartHintFor = (option: ModelOption): string | undefined =>
+    accountSwitchRestarts && switchesAccount(option, selectedAccountId)
+      ? t('modelSwitchRestarts')
+      : undefined;
   const selectedEffort =
     optionById(effortOptions, selectedEffortId) ??
     (selectedEffortId ? EFFORT_OPTIONS_BY_ID[selectedEffortId] : undefined);
-  const providers = selectableProviders ?? [];
+  const harnesses = selectableHarnesses ?? [];
   const hasEfforts = Boolean(effortOptions?.length);
   const hasModels = Boolean(modelOptions?.length);
   const modelLabel = selectedModel?.label ?? selectedModelId ?? t('modelDefault');
   const effortLabel = selectedEffort?.label ?? t('effortDefault');
-  // A draft provider picker must keep the model axis visible even when that provider discovers
+  // A draft harness picker must keep the model axis visible even when that harness discovers
   // its concrete model only after session start (OpenCode/Pi). The live update replaces Default.
-  const showsModel = providers.length > 0 || hasModels || selectedModelId !== null;
+  const showsModel = harnesses.length > 0 || hasModels || selectedModelId !== null;
 
-  if (!hasEfforts && !showsModel && providers.length === 0) return null;
+  if (!hasEfforts && !showsModel && harnesses.length === 0) return null;
   const selectorLabels: string[] = [];
-  if (provider) selectorLabels.push(AGENT_LABELS[provider]);
+  if (harness) selectorLabels.push(AGENT_LABELS[harness]);
   if (showsModel) selectorLabels.push(modelLabel);
-  if (hasEfforts) selectorLabels.push(`${t('reasoning')}: ${effortLabel}`);
+  if (hasEfforts) selectorLabels.push(`${t('effort')}: ${effortLabel}`);
 
   return (
     <Menu>
@@ -273,7 +311,7 @@ export function ModelSelectorMenu({
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
-        {provider && providers.length > 0 ? <AgentIcon kind={provider} variant="brand" /> : null}
+        {harness && harnesses.length > 0 ? <AgentIcon kind={harness} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="flex items-center gap-2 font-normal text-muted-foreground">
@@ -287,100 +325,23 @@ export function ModelSelectorMenu({
         <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
-        {onResetModel ? <MenuItem onClick={onResetModel}>{t('useDefaultModel')}</MenuItem> : null}
-        {onResetEffort ? (
-          <MenuItem onClick={onResetEffort}>{t('useDefaultEffort')}</MenuItem>
-        ) : null}
-        {onResetModel || onResetEffort ? <MenuSeparator /> : null}
-        {hasEfforts ? (
-          <MenuGroup>
-            <MenuGroupLabel>{t('reasoning')}</MenuGroupLabel>
-            <MenuRadioGroup
-              value={selectedEffortId ?? ''}
-              onValueChange={(value) => onSelectEffort(value as EffortLevel)}
-            >
-              {effortOptions?.map((option) => (
-                <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                  {option.label}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuGroup>
-        ) : null}
-        {hasModels ? (
-          <>
-            {hasEfforts ? <MenuSeparator /> : null}
-            <MenuSub>
-              <MenuSubTrigger>
-                <span className="flex size-4 shrink-0 items-center justify-center">
-                  <BrainCircuitIcon className="size-4" />
-                </span>
-                {modelLabel}
-              </MenuSubTrigger>
-              <MenuSubPopup className="w-56">
-                <MenuRadioGroup
-                  value={selectedModel?.id ?? selectedModelId ?? ''}
-                  onValueChange={(value) => onSelectModel(String(value))}
-                >
-                  {providerGroups === null ? (
-                    modelOptions?.map((option) => (
-                      <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                        <span className="flex min-w-0 flex-col">
-                          <span>{option.label}</span>
-                          {option.description ? (
-                            <span className="text-muted-foreground text-xs">
-                              {option.description}
-                            </span>
-                          ) : null}
-                        </span>
-                      </MenuRadioItem>
-                    ))
-                  ) : (
-                    <>
-                      {providerGroups.ungrouped.map((option) => (
-                        <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                          {option.label}
-                        </MenuRadioItem>
-                      ))}
-                      {/* One submenu per provider; the trigger names the provider, so items drop
-                       * the subtitle the flat list needs for disambiguation. */}
-                      {providerGroups.groups.map((group) => (
-                        <MenuSub key={group.label}>
-                          <MenuSubTrigger>{group.label}</MenuSubTrigger>
-                          <MenuSubPopup className="w-56">
-                            {group.options.map((option) => (
-                              <MenuRadioItem key={option.id} closeOnClick value={option.id}>
-                                {option.label}
-                              </MenuRadioItem>
-                            ))}
-                          </MenuSubPopup>
-                        </MenuSub>
-                      ))}
-                    </>
-                  )}
-                </MenuRadioGroup>
-              </MenuSubPopup>
-            </MenuSub>
-          </>
-        ) : null}
-        {onSelectProvider && providers.length > 0 ? (
+        {onSelectHarness && harnesses.length > 0 ? (
           <MenuSub>
             <MenuSubTrigger>
-              {provider ? (
-                <>
-                  <AgentIcon kind={provider} variant="brand" />
-                  {AGENT_LABELS[provider]}
-                </>
-              ) : (
-                t('provider')
-              )}
+              <span>{t('harness')}</span>
+              <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-muted-foreground">
+                {harness ? <AgentIcon kind={harness} variant="brand" /> : null}
+                <span className="truncate">
+                  {harness ? AGENT_LABELS[harness] : t('modelDefault')}
+                </span>
+              </span>
             </MenuSubTrigger>
             <MenuSubPopup className="w-60">
               <MenuRadioGroup
-                value={provider ?? ''}
-                onValueChange={(value) => onSelectProvider(value as AgentKind)}
+                value={harness ?? ''}
+                onValueChange={(value) => onSelectHarness(value as AgentKind)}
               >
-                {providers.map((kind) => (
+                {harnesses.map((kind) => (
                   <MenuRadioItem key={kind} className="pe-2" closeOnClick value={kind}>
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2">
@@ -394,6 +355,103 @@ export function ModelSelectorMenu({
               </MenuRadioGroup>
             </MenuSubPopup>
           </MenuSub>
+        ) : null}
+        {hasModels ? (
+          <MenuSub>
+            <MenuSubTrigger>
+              <span>{t('model')}</span>
+              <span className="min-w-0 flex-1 truncate text-end text-muted-foreground">
+                {modelLabel}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup className="w-56">
+              <MenuRadioGroup
+                value={selectedModel === undefined ? '' : modelChoiceKey(selectedModel)}
+                onValueChange={(value) => {
+                  // Keyed by (account, model), so map back to the entry rather than parsing it.
+                  const picked = modelOptions?.find(
+                    (option) => modelChoiceKey(option) === String(value),
+                  );
+                  if (picked) onSelectModel(picked);
+                }}
+              >
+                {providerGroups === null ? (
+                  modelOptions?.map((option) => (
+                    <ModelMenuItem
+                      key={modelChoiceKey(option)}
+                      description={option.description}
+                      option={option}
+                      restartHint={restartHintFor(option)}
+                    />
+                  ))
+                ) : (
+                  <>
+                    {providerGroups.ungrouped.map((option) => (
+                      <ModelMenuItem
+                        key={modelChoiceKey(option)}
+                        option={option}
+                        restartHint={restartHintFor(option)}
+                      />
+                    ))}
+                    {/* One submenu per provider; the trigger names the provider, so items drop
+                     * the subtitle the flat list needs for disambiguation. */}
+                    {providerGroups.groups.map((group) => (
+                      <MenuSub key={group.label}>
+                        <MenuSubTrigger>{group.label}</MenuSubTrigger>
+                        <MenuSubPopup className="w-56">
+                          {group.options.map((option) => (
+                            <ModelMenuItem
+                              key={modelChoiceKey(option)}
+                              option={option}
+                              restartHint={restartHintFor(option)}
+                            />
+                          ))}
+                        </MenuSubPopup>
+                      </MenuSub>
+                    ))}
+                  </>
+                )}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        ) : null}
+        {hasEfforts ? (
+          <MenuSub>
+            <MenuSubTrigger>
+              <span>{t('effort')}</span>
+              <span className="min-w-0 flex-1 truncate text-end text-muted-foreground">
+                {effortLabel}
+              </span>
+            </MenuSubTrigger>
+            <MenuSubPopup className="w-56">
+              <MenuRadioGroup
+                value={selectedEffortId ?? ''}
+                onValueChange={(value) => onSelectEffort(value as EffortLevel)}
+              >
+                {effortOptions?.map((option) => (
+                  <MenuRadioItem key={option.id} closeOnClick value={option.id}>
+                    {option.label}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        ) : null}
+        {onResetModel || onResetEffort ? (
+          <>
+            <MenuSeparator />
+            <MenuItem
+              onClick={() => {
+                onResetModel?.();
+                onResetEffort?.();
+              }}
+            >
+              {t('resetToDefault')}
+              <span className="ms-auto flex">
+                <RotateCcwIcon aria-hidden className="size-4 opacity-80" />
+              </span>
+            </MenuItem>
+          </>
         ) : null}
       </MenuPopup>
     </Menu>

@@ -1,11 +1,24 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+// Relative .mts import: Vite's config bundler inlines it (and its deep import into the config
+// package source); a bare workspace import would be externalized and fail under plain Node.
+import { loadGeneratedConfigBundle, stageConfigBundle } from './scripts/config-bundle.mts';
 import { assetPlugin, NODE_TARGET, nodeExternals, processEnvDefine } from './vite.shared';
+
+const generatedConfig = loadGeneratedConfigBundle(__dirname, process.env);
 
 export default defineConfig({
   root: __dirname,
-  define: processEnvDefine,
+  define: {
+    ...processEnvDefine,
+    ...(generatedConfig && {
+      'import.meta.env.MAIN_VITE_CONFIG_BOOTSTRAP': JSON.stringify(generatedConfig.bootstrapJson),
+    }),
+    ...(generatedConfig?.brandIdentityJson !== undefined && {
+      'import.meta.env.MAIN_VITE_BRAND_IDENTITY': JSON.stringify(generatedConfig.brandIdentityJson),
+    }),
+  },
   envPrefix: ['MAIN_VITE_', 'VITE_'],
   resolve: {
     mainFields: ['module', 'jsnext:main', 'jsnext'],
@@ -59,6 +72,12 @@ export default defineConfig({
         cpSync(resolve(__dirname, '../daemon/drizzle'), resolve(__dirname, 'out/drizzle'), {
           recursive: true,
         });
+      },
+    },
+    {
+      name: 'stage-config-build-bundle',
+      closeBundle() {
+        stageConfigBundle(__dirname, generatedConfig);
       },
     },
   ],

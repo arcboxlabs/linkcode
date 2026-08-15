@@ -76,10 +76,25 @@ describe('loadConfig providers', () => {
 
     const config = loadConfig(vault);
 
-    expect(config.providers).toEqual({
-      'claude-code': { enabled: true, defaultModel: 'sonnet' },
-    });
+    // Neither default survives: an agent's only per-account state is which accounts it offers.
+    expect(config.providers).toEqual({ 'claude-code': { enabled: true } });
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('keeps the old default account by enabling it, and drops both default models', () => {
+    writeConfig({
+      // A narrowed list that omits the default would silently take that account away on upgrade.
+      'claude-code': { enabled: true, activeAccountId: 'acc_a', enabledAccountIds: ['acc_b'] },
+      codex: { enabled: true, activeAccountId: 'acc_a', model: 'gpt-5.6-sol' },
+      opencode: { enabled: true, activeAccountId: 'acc_a', enabledAccountIds: ['acc_a'] },
+    });
+
+    expect(loadConfig(vault).providers).toEqual({
+      'claude-code': { enabled: true, enabledAccountIds: ['acc_b', 'acc_a'] },
+      // No list to join: absent already means every bindable account, this one included.
+      codex: { enabled: true },
+      opencode: { enabled: true, enabledAccountIds: ['acc_a'] },
+    });
   });
 
   it('drops an entry keyed by an unknown agent kind, logging the error', () => {
@@ -236,6 +251,14 @@ describe('loadConfig accounts', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
+  it("carries a pre-selection account's single model over as its picked set", () => {
+    writeAccountsConfig([{ ...validAccount, model: 'deepseek-v4-pro' }]);
+
+    expect(loadConfig(vault).accounts).toEqual([
+      { ...validAccount, models: [{ id: 'deepseek-v4-pro' }] },
+    ]);
+  });
+
   it('drops an account whose stored secret is gone, rather than half-loading it', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
     // The post-migration on-disk shape: an api-key credential with no key. With an empty vault the
@@ -278,13 +301,13 @@ describe('saveProviderConfiguration', () => {
 
     saveProviderConfiguration(
       vault,
-      { codex: { enabled: true, activeAccountId: 'acc_1', apiKey: 'sk-provider' } },
+      { codex: { enabled: true, enabledAccountIds: ['acc_1'], apiKey: 'sk-provider' } },
       [validAccount],
     );
 
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       hostname: '127.0.0.1',
-      providers: { codex: { enabled: true, activeAccountId: 'acc_1' } },
+      providers: { codex: { enabled: true, enabledAccountIds: ['acc_1'] } },
       accounts: [{ ...validAccount, credential: { type: 'api-key' } }],
     });
     expect(vault.refs.get('provider:codex')).toBe('sk-provider');

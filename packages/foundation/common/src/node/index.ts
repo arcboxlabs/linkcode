@@ -11,7 +11,11 @@ import { daemonRuntimeFileSegments } from '@linkcode/schema/daemon-runtime';
  * bundles. The tsconfig base sets `types: []` — the reference above opts in the Node globals.
  */
 
+export * from './brand-assets';
+export * from './config-brand-render';
+export * from './config-build-render';
 export { executableSearchLocations } from './executable-locations';
+export * from './release-artifact';
 export * from './windows-path';
 
 /** Parse a JSON file, or `null` when it is missing, unreadable, or malformed. */

@@ -10,6 +10,8 @@ export const AgentHistoryCapabilitiesSchema = z.object({
   read: z.boolean(),
   /** Adapter can resume a live session from a known provider-local history id. */
   resume: z.boolean(),
+  /** Adapter can fork provider history before a historical user prompt for replacement. */
+  branch: z.boolean().optional(),
 });
 export type AgentHistoryCapabilities = z.infer<typeof AgentHistoryCapabilitiesSchema>;
 
@@ -69,3 +71,13 @@ export const AgentHistoryResumeOptionsSchema = z.object({
   historyId: AgentHistoryIdSchema,
 });
 export type AgentHistoryResumeOptions = z.infer<typeof AgentHistoryResumeOptionsSchema>;
+
+/** Provider-owned branch point. Its payload is opaque outside the adapter that minted it. */
+export const AgentHistoryBranchCursorSchema = z.string().min(1);
+export type AgentHistoryBranchCursor = z.infer<typeof AgentHistoryBranchCursorSchema>;
+
+export const AgentHistoryBranchOptionsSchema = z.object({
+  historyId: AgentHistoryIdSchema,
+  cursor: AgentHistoryBranchCursorSchema,
+});
+export type AgentHistoryBranchOptions = z.infer<typeof AgentHistoryBranchOptionsSchema>;

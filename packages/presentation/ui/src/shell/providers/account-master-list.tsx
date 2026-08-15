@@ -8,49 +8,34 @@ import { ChevronRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ServiceIcon } from '../service-icon';
+import type { ProviderAccountRouting } from './routing';
 
 export interface ProviderAccountListItem {
   id: string;
   service?: string;
   label: string;
   serviceLabel?: string;
-  endpoint?: string;
-  protocol?: string;
+  routing?: ProviderAccountRouting;
   credentialType: 'api-key' | 'auth-token' | 'oauth';
   auth?: { loggedIn: boolean; email?: string };
   boundAgents: AgentKind[];
 }
 
-export interface DetectedProviderLoginItem {
-  service: string;
-  label: string;
-  email?: string;
-}
-
 export interface ProviderAccountListViewModel {
   accounts: ProviderAccountListItem[];
-  detectedLogins: DetectedProviderLoginItem[];
-  bindingCount: number;
-  agentCount: number;
 }
 
 /** The Providers page's single account list; account management opens outside the list. */
 export function AccountList({
   accounts,
-  detectedLogins,
-  bindingCount,
-  agentCount,
   loading,
   onSelect,
   onAdd,
-  onAdoptDetected,
   onUseLinkCodeGateway,
 }: ProviderAccountListViewModel & {
   loading: boolean;
   onSelect: (id: string) => void;
   onAdd: () => void;
-  /** One-click adopt a detected CLI login into the pool (a suggestion card, not a pool member). */
-  onAdoptDetected: (serviceId: string) => void;
   /** Explicit first-party path shown only when no third-party account or login is available. */
   onUseLinkCodeGateway?: () => void;
 }): React.ReactNode {
@@ -64,16 +49,26 @@ export function AccountList({
     return t('credentialAuthToken');
   };
 
-  const accountDetailLine = (account: ProviderAccountListItem): string => {
+  /** Undefined means the row has no second line — the sole decision, so no separate render gate
+   * can disagree with it. Catalog accounts deliberately show nothing: their wire shapes are an
+   * implementation detail the add flow stopped asking about, and this slot has no label to give
+   * bare protocol names any meaning (the detail pane shows them under `t('protocols')`). */
+  const accountDetailLine = (account: ProviderAccountListItem): string | undefined => {
     if (account.auth?.loggedIn === true) return account.auth.email ?? t('loggedIn');
     if (account.auth) return t('loggedOut');
-    return [account.endpoint, account.protocol].filter(Boolean).join(' · ');
+    return account.routing?.kind === 'pinned'
+      ? `${account.routing.baseUrl} · ${account.routing.protocol}`
+      : undefined;
   };
 
   const needle = query.trim().toLowerCase();
   const rows = needle
     ? accounts.filter((account) =>
-        [account.label, account.serviceLabel ?? '', account.endpoint ?? '']
+        [
+          account.label,
+          account.serviceLabel ?? '',
+          account.routing?.kind === 'pinned' ? account.routing.baseUrl : '',
+        ]
           .join(' ')
           .toLowerCase()
           .includes(needle),
@@ -82,15 +77,7 @@ export function AccountList({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-sm">
-            {t('accountCount', { count: accounts.length })}
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {t('boundCount', { bound: bindingCount, total: agentCount })}
-          </span>
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex gap-2">
           <Input
             className="min-w-0 flex-1 sm:w-56"
@@ -117,52 +104,51 @@ export function AccountList({
               </li>
             </>
           ) : null}
-          {rows.map((account) => (
-            <li key={account.id}>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-                onClick={() => onSelect(account.id)}
-              >
-                <ServiceIcon service={account.service} label={account.label} className="size-10" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-sm">{account.label}</span>
-                  <span className="block truncate text-muted-foreground text-xs">
-                    {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
-                  </span>
-                  {account.auth !== undefined || account.endpoint !== undefined ? (
+          {rows.map((account) => {
+            const detailLine = accountDetailLine(account);
+            return (
+              <li key={account.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => onSelect(account.id)}
+                >
+                  <ServiceIcon
+                    service={account.service}
+                    label={account.label}
+                    className="size-10"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-sm">{account.label}</span>
                     <span className="block truncate text-muted-foreground text-xs">
-                      {accountDetailLine(account)}
+                      {account.serviceLabel ?? t('customService')} · {credentialLabel(account)}
                     </span>
-                  ) : null}
-                </span>
-                <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
-                  {account.boundAgents.length === 0 ? (
-                    <Badge
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full border-dashed text-muted-foreground"
-                    >
-                      {t('unbound')}
-                    </Badge>
-                  ) : (
-                    account.boundAgents.map((kind) => (
+                    {detailLine ? (
+                      <span className="block truncate text-muted-foreground text-xs">
+                        {detailLine}
+                      </span>
+                    ) : null}
+                  </span>
+                  {/* Naming no agent is not a defect — the account's models still reach every
+                      picker it is enabled for — so the row says nothing rather than "not connected". */}
+                  <span className="hidden max-w-60 flex-wrap justify-end gap-1 sm:flex">
+                    {account.boundAgents.map((kind) => (
                       <Badge key={kind} variant="outline" size="sm" className="rounded-full">
                         {tAgent(kind)}
                       </Badge>
-                    ))
-                  )}
-                </span>
-                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            </li>
-          ))}
+                    ))}
+                  </span>
+                  <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            );
+          })}
           {!loading && needle && rows.length === 0 ? (
             <li className="px-4 py-12 text-center text-muted-foreground text-sm">
               {t('noMatches')}
             </li>
           ) : null}
-          {!loading && needle === '' && accounts.length === 0 && detectedLogins.length === 0 ? (
+          {!loading && needle === '' && accounts.length === 0 ? (
             <li className="flex flex-col items-center gap-2 px-6 py-12 text-center">
               <span className="font-medium text-sm">{t('emptyTitle')}</span>
               <span className="max-w-sm text-muted-foreground text-xs">{t('emptyHint')}</span>
@@ -173,41 +159,6 @@ export function AccountList({
               ) : null}
             </li>
           ) : null}
-          {!loading && needle === ''
-            ? detectedLogins.map((login) => (
-                <li key={login.service}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
-                    onClick={() => onAdoptDetected(login.service)}
-                  >
-                    <ServiceIcon
-                      service={login.service}
-                      label={login.label}
-                      className="size-10 border-dashed"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate font-medium text-sm">
-                          {t(`serviceName.${login.service}`)}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full text-muted-foreground"
-                        >
-                          {t('detected')}
-                        </Badge>
-                      </span>
-                      <span className="block truncate text-muted-foreground text-xs">
-                        {login.email ?? t('loggedIn')}
-                      </span>
-                    </span>
-                    <PlusIcon className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                </li>
-              ))
-            : null}
         </ul>
       </Card>
     </div>

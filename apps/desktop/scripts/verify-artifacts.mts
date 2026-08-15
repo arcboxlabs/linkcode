@@ -21,7 +21,7 @@ import process, { argv } from 'node:process';
  * at an existing file with a matching sha512; and the unpacked apps carry the bundled daemon and
  * PTY sidecar, so a build never ships a client with no host runtime (CODE-86/87).
  */
-import { listPackage, statFile } from '@electron/asar';
+import { extractFile, listPackage, statFile } from '@electron/asar';
 import { keysLength } from 'foxts/property-count';
 
 const RELEASE_DIR = 'release';
@@ -204,6 +204,39 @@ function verifyNativeBindings(platform: string, resourceDir: string, problems: s
   }
 }
 
+/**
+ * The rendered immutable config bundle staged into the asar must be byte-identical to the
+ * generated render, and release builds (LINKCODE_REQUIRE_CONFIG_BUNDLE=1) must ship it — a signed
+ * build without it would silently start from empty defaults with no endpoints or keyrings.
+ */
+function verifyConfigBundle(resourceDir: string, asarPath: string, problems: string[]): void {
+  const required = process.env.LINKCODE_REQUIRE_CONFIG_BUNDLE === '1';
+  const inner = join('out', 'config', 'build-bundle.json');
+  const generated = readOrNull(join('generated', 'config-build-bundle.json'));
+  let staged: Buffer;
+  try {
+    staged = extractFile(asarPath, inner);
+  } catch {
+    if (required) {
+      problems.push(
+        `${resourceDir}/app.asar: missing ${inner} — release builds must embed the rendered config bundle`,
+      );
+    } else if (generated !== null) {
+      problems.push(
+        `${resourceDir}/app.asar: missing ${inner} despite a rendered bundle in apps/desktop/generated — stale build output?`,
+      );
+    }
+    return;
+  }
+  if (generated === null) {
+    problems.push(
+      `${resourceDir}/app.asar: ${inner} is staged but apps/desktop/generated/config-build-bundle.json is absent — cannot prove staged bytes match the render`,
+    );
+  } else if (!staged.equals(Buffer.from(generated, 'utf8'))) {
+    problems.push(`${resourceDir}/app.asar: staged config bundle differs from the rendered bundle`);
+  }
+}
+
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
@@ -366,6 +399,7 @@ async function main(): Promise<number> {
   for (const resourceDir of expected.resourceDirs) {
     verifyHostRuntime(resourceDir, problems);
     verifyNativeBindings(platform, resourceDir, problems);
+    verifyConfigBundle(resourceDir, join(RELEASE_DIR, resourceDir, 'app.asar'), problems);
   }
 
   if (problems.length > 0) {

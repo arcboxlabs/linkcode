@@ -54,6 +54,18 @@ class HistoryTestAdapter extends OpenCodeAdapter {
   }
 }
 
+function toolPart(id: string, tool: string) {
+  return {
+    id,
+    sessionID: 'ses-1',
+    messageID: 'msg-a1',
+    type: 'tool',
+    callID: `call-${id}`,
+    tool,
+    state: { status: 'completed', input: {}, output: 'ok', time: { start: 0, end: 1 } },
+  };
+}
+
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
     id: 'ses-1',
@@ -199,6 +211,7 @@ describe('OpenCodeAdapter.readHistory', () => {
         ),
         messages: vi.fn(() => Promise.resolve({ data: [user, assistant, reverted] })),
       },
+      config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     });
 
     const adapter = new HistoryTestAdapter();
@@ -220,6 +233,68 @@ describe('OpenCodeAdapter.readHistory', () => {
     });
     expect(page2.cursor).toBeUndefined();
   });
+
+  it('retitles MCP tools from the engine hint and config-declared servers alike', async () => {
+    const assistant = {
+      info: { id: 'msg-a1', sessionID: 'ses-1', role: 'assistant', time: { created: 20 } },
+      parts: [
+        // Engine-injected server (simulator endpoint) — absent from the session's config.
+        toolPart('prt-t1', 'linkcode-sim_sim_tap'),
+        // Config-declared server — resolved without any hint.
+        toolPart('prt-t2', 'notion_search_pages'),
+        toolPart('prt-t3', 'bash'),
+        toolPart('prt-t4', 'repo__prod_search_files'),
+      ],
+    };
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: makeSession() })),
+        messages: vi.fn(() => Promise.resolve({ data: [assistant] })),
+      },
+      config: { get: vi.fn(() => Promise.resolve({ data: { mcp: { notion: {} } } })) },
+    });
+
+    const result = await new HistoryTestAdapter().readHistory({
+      historyId: 'ses-1' as AgentHistoryId,
+      mcpServerNames: ['linkcode-sim', 'repo__prod'],
+    });
+    const titles = result.events.map((e) =>
+      e.event.type === 'tool-call' ? e.event.toolCall.title : e.event.type,
+    );
+    expect(titles).toEqual([
+      'mcp__linkcode-sim__sim_tap',
+      'mcp__notion__search_pages',
+      'bash',
+      'repo__prod_search_files',
+    ]);
+  });
+
+  it('keeps the transcript readable when the config read rejects (fetch throws on a dead server)', async () => {
+    const assistant = {
+      info: { id: 'msg-a1', sessionID: 'ses-1', role: 'assistant', time: { created: 20 } },
+      parts: [
+        toolPart('prt-t1', 'linkcode-sim_sim_tap'),
+        toolPart('prt-t2', 'notion_search_pages'),
+      ],
+    };
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: makeSession() })),
+        messages: vi.fn(() => Promise.resolve({ data: [assistant] })),
+      },
+      config: { get: vi.fn(() => Promise.reject(new TypeError('fetch failed'))) },
+    });
+
+    const result = await new HistoryTestAdapter().readHistory({
+      historyId: 'ses-1' as AgentHistoryId,
+      mcpServerNames: ['linkcode-sim'],
+    });
+    const titles = result.events.map((e) =>
+      e.event.type === 'tool-call' ? e.event.toolCall.title : e.event.type,
+    );
+    // The engine hint still resolves; the config-declared server degrades to its raw title.
+    expect(titles).toEqual(['mcp__linkcode-sim__sim_tap', 'notion_search_pages']);
+  });
 });
 
 function makeLiveClient(resumedSession: Session | null) {
@@ -234,6 +309,7 @@ function makeLiveClient(resumedSession: Session | null) {
       promptAsync: vi.fn(() => Promise.resolve({ data: null })),
     },
     command: { list: vi.fn(() => Promise.resolve({ data: [] })) },
+    config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     event: { subscribe: vi.fn(() => Promise.resolve({ stream })) },
   };
 }
@@ -246,7 +322,9 @@ function sessionRefs(events: AgentEvent[]): Array<Extract<AgentEvent, { type: 's
 
 describe('OpenCodeAdapter.resumeHistory', () => {
   it('adopts the existing session under its own directory and announces the ref immediately', async () => {
-    const client = makeLiveClient(makeSession({ id: 'ses-9', directory: '/tmp/original' }));
+    const client = makeLiveClient(
+      makeSession({ id: 'ses-9', directory: '/tmp/original', title: 'Existing session title' }),
+    );
     sdkMock.createOpencode = () =>
       Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
 
@@ -260,6 +338,7 @@ describe('OpenCodeAdapter.resumeHistory', () => {
 
     expect(client.session.create).not.toHaveBeenCalled();
     expect(sessionRefs(events).map((e) => e.historyId)).toEqual(['ses-9']);
+    expect(events).toContainEqual({ type: 'title-update', title: 'Existing session title' });
     // Every session-bound call scopes to the session's real home, not the resume cwd — events
     // ride the per-directory instance bus.
     expect(client.event.subscribe).toHaveBeenCalledWith({ directory: '/tmp/original' });
@@ -281,6 +360,73 @@ describe('OpenCodeAdapter.resumeHistory', () => {
         { kind: 'opencode', cwd: '/tmp/elsewhere' },
       ),
     ).rejects.toThrow("opencode: history 'ses-gone' was not found");
+  });
+});
+
+describe('OpenCodeAdapter.branchHistory', () => {
+  it('forks before the cursor prompt in the source canonical directory and starts the child', async () => {
+    const source = makeSession({ id: 'ses-source', directory: '/canonical/repo' });
+    const child = makeSession({
+      id: 'ses-child',
+      parentID: 'ses-source',
+      directory: source.directory,
+    });
+    const fork = vi.fn(() => Promise.resolve({ data: child }));
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: source })),
+        fork,
+      },
+    });
+    const client = makeLiveClient(child);
+    sdkMock.createOpencode = () =>
+      Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+
+    const adapter = new HistoryTestAdapter();
+    adapter.onEvent(noop);
+    await adapter.branchHistory(
+      {
+        historyId: 'ses-source' as AgentHistoryId,
+        cursor: JSON.stringify({
+          version: 1,
+          kind: 'opencode',
+          historyId: 'ses-source',
+          branchPoint: 'msg-target',
+        }),
+      },
+      { kind: 'opencode', cwd: '/different/repo' },
+    );
+
+    expect(fork).toHaveBeenCalledWith({
+      sessionID: 'ses-source',
+      messageID: 'msg-target',
+      directory: '/canonical/repo',
+    });
+    expect(client.session.create).not.toHaveBeenCalled();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'replacement' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: 'ses-child', directory: '/canonical/repo' }),
+    );
+  });
+
+  it('rejects a cursor minted for another source before calling the provider', async () => {
+    const get = vi.fn();
+    sdkMock.createOpencodeClient = () => ({ session: { get } });
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-other',
+            branchPoint: 'msg-target',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toThrow('opencode: history branch cursor does not match the source session');
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

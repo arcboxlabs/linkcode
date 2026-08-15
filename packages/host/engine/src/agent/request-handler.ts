@@ -1,5 +1,6 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
-import type { WirePayload } from '@linkcode/schema';
+import { modelListSource } from '@linkcode/providers';
+import type { AccountSecret, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -22,7 +23,6 @@ type AgentRequest = Extract<
       | 'agent.catalog'
       | 'config.get'
       | 'config.set'
-      | 'config.account.create-and-bind'
       | 'config.probe-models'
       | 'agent-login.start'
       | 'agent-login.submit-code'
@@ -50,7 +50,9 @@ export class AgentRequestHandler {
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const startOptions = applyProviderDefaults(
+              // A pre-session read: an account the agent cannot bind still names the model list
+              // worth showing, so `unavailable` is deliberately not fatal here.
+              const { options: startOptions } = applyProviderDefaults(
                 { kind: payload.agentKind, cwd: payload.cwd ?? '.' },
                 this.providers.get(),
                 this.providers.getAccounts(),
@@ -134,21 +136,19 @@ export class AgentRequestHandler {
           ),
         );
       }
-      case 'config.account.create-and-bind':
-        return this.responder.reply(
-          payload.clientReqId,
-          updateProviderConfig('config.account.create-and-bind', () =>
-            this.providers.createAndBindAccount(payload.agent, payload.account),
-          ).pipe(
-            Effect.andThen(Effect.sync(() => this.responder.sendSuccess(payload.clientReqId))),
-          ),
-        );
       case 'config.probe-models':
         return this.responder.reply(
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const models = await this.probeModels(payload.endpoint, payload.secret);
+              const source = modelListSource(payload.service);
+              if (!source) {
+                throw new Error(`${payload.service} serves no model list`);
+              }
+              const models = await this.probeModels(
+                source,
+                this.probeSecret(payload.service, payload.credential),
+              );
               this.transport.send(
                 createWireMessage({
                   kind: 'config.probe-models.result',
@@ -202,6 +202,33 @@ export class AgentRequestHandler {
       default:
         return Effect.void;
     }
+  }
+
+  /**
+   * The secret to probe with. A saved account is named by id rather than shipping its secret back
+   * out to the client and in again; an oauth login holds none, so it cannot be probed.
+   *
+   * The destination and the credential arrive as two independent client-chosen fields, so the
+   * account must belong to the service being probed — otherwise a request could aim one vendor's
+   * key at another vendor's endpoint. An account with no service is refused for the same reason:
+   * only catalog services are probeable, so nothing it could legitimately match.
+   */
+  private probeSecret(
+    service: string,
+    credential: Extract<AgentRequest, { kind: 'config.probe-models' }>['credential'],
+  ): AccountSecret {
+    if (credential.type === 'inline') return credential.secret;
+    const account = this.providers
+      .getAccounts()
+      .find((candidate) => candidate.id === credential.accountId);
+    if (!account) throw new Error('Account not found');
+    if (account.service !== service) {
+      throw new Error('That account does not belong to the service being probed');
+    }
+    if (account.credential.type === 'oauth') {
+      throw new Error('A subscription login holds no secret to read the model list with');
+    }
+    return account.credential;
   }
 }
 

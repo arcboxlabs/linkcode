@@ -20,6 +20,9 @@
       "!**/node_modules",
       "!**/expo-export",
       "!packages/vendor/coss-ui",
+      "!packages/foundation/common/src/config/__fixtures__/contract-v1.json",
+      "!packages/foundation/common/src/config/__fixtures__/config-telemetry-v1.json",
+      "!packages/foundation/common/src/config/__fixtures__/emergency-handoff-v1.json",
       "!**/.repos",
       "!**/pnpm-lock.yaml"
     ]

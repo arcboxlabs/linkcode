@@ -165,6 +165,22 @@ describe('non-subscription account creation', () => {
     );
   });
 
+  it('asks nothing about protocol for a service serving several shapes', () => {
+    render(
+      <AddAccountForm
+        serviceId="openrouter"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        onBack={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    // Each agent resolves its own shape, so the user is never asked to pick one.
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  });
+
   it('adds LinkCode Gateway only after the explicit user action', async () => {
     const createKey = vi.fn().mockResolvedValue('lc-gateway-key');
     const onSubmit = vi.fn();
@@ -195,9 +211,9 @@ describe('non-subscription account creation', () => {
       expect.objectContaining({
         service: 'linkcode-gateway',
         credential: { type: 'auth-token', token: 'lc-gateway-key' },
-        endpoint: { protocol: 'openai-chat', baseUrl: 'https://gateway.linkcode.ai/v1' },
       }),
     );
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('endpoint');
   });
 
   it('keeps the Desktop-only Gateway out of clients without its host bridge', () => {
@@ -208,5 +224,40 @@ describe('non-subscription account creation', () => {
     rerender(<ServiceCatalogView onPick={onPick} linkCodeGatewayAvailable />);
     fireEvent.click(screen.getByText('serviceName.linkcode-gateway'));
     expect(onPick).toHaveBeenCalledWith('linkcode-gateway');
+  });
+
+  it('stores template values instead of a resolved endpoint', async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AddAccountForm
+        serviceId="cloudflare-gateway"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        onBack={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Account ID' }), {
+      target: { value: '8f3a' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Gateway ID' }), {
+      target: { value: 'prod' },
+    });
+    const secret = container.querySelector('input[type="password"]');
+    if (!secret) throw new Error('credential input missing');
+    fireEvent.change(secret, { target: { value: 'cf-token' } });
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const account = onSubmit.mock.calls[0]?.[0];
+    expect(account).toMatchObject({
+      service: 'cloudflare-gateway',
+      credential: { type: 'auth-token', token: 'cf-token' },
+      endpointParams: { account_id: '8f3a', gateway_id: 'prod' },
+    });
+    // One key can resolve to a different endpoint per agent, so none is pinned here.
+    expect(account).not.toHaveProperty('endpoint');
   });
 });

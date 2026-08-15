@@ -6,14 +6,28 @@ import type {
   SessionId,
   SessionInfo,
   SessionRecord,
+  SessionRun,
+  StartOptions,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { OperationError } from '../failure';
 import type { SessionStore } from './session-store';
 
 const TITLE_MAX_LENGTH = 80;
 type RunTask = (effect: Effect.Effect<void>) => void;
+
+/** The fields of a run that say what the thread is *set to*, as opposed to how the run went. */
+type SessionPinnedRun = Pick<SessionRun, 'accountId' | 'model' | 'effort' | 'approvalPolicyId'>;
+
+/** The same choices shaped as start options, which is how a relaunch replays them. `Pick` over
+ * `StartOptions` is the guarantee: a pinned field that a launch cannot accept fails typecheck. */
+export type SessionPin = Pick<StartOptions, keyof SessionPinnedRun>;
+
+/** A pick accepted on a live session; absent fields leave the run's current value alone. The account
+ * is not among them — credentials are injected at spawn, so moving accounts is a new run. */
+export type SessionRunIntent = Omit<SessionPinnedRun, 'accountId'>;
 
 export class SessionRecordRegistry {
   private readonly records = new Map<SessionId, SessionRecord>();
@@ -82,6 +96,7 @@ export class SessionRecordRegistry {
       createdVia: record.createdVia,
       automation: record.automation,
       historyId: latestHistoryId(record),
+      accountId: latestRunValue(record, 'accountId'),
     }));
   }
 
@@ -129,12 +144,48 @@ export class SessionRecordRegistry {
     this.onChanged(sessionId, 'updated');
   }
 
+  /**
+   * Record a pick the session accepted, on the newest run. A pick accepted mid-run launches nothing,
+   * so without this a relaunch replays what the run started with and silently drops it. Callers write
+   * only picks — never a value an adapter resolved for itself, which would pin the thread to its own
+   * first launch. Not an identity change — `SessionInfo` projects none of these — so it notifies
+   * nobody.
+   */
+  setRunIntent(sessionId: SessionId, intent: SessionRunIntent): void {
+    const record = this.records.get(sessionId);
+    const run = record?.runs.at(-1);
+    if (!record || !run) return;
+    const {
+      model = run.model,
+      effort = run.effort,
+      approvalPolicyId = run.approvalPolicyId,
+    } = intent;
+    if (model === run.model && effort === run.effort && approvalPolicyId === run.approvalPolicyId) {
+      return;
+    }
+    Object.assign(run, definedFields({ model, effort, approvalPolicyId }));
+    this.persist(record);
+  }
+
   sealCurrentRun(sessionId: SessionId): void {
     const record = this.records.get(sessionId);
     const run = record?.runs.at(-1);
     if (!record || !run || run.endedAt !== undefined) return;
     run.endedAt = Date.now();
     this.persist(record);
+  }
+
+  /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
+   * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. */
+  beginRun(sessionId: SessionId, run: Omit<SessionRun, 'startedAt' | 'endedAt'> = {}): void {
+    const record = this.records.get(sessionId);
+    if (!record) return;
+    record.runs.push({ startedAt: Date.now(), ...definedFields(run) });
+    this.persist(record);
+    // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
+    // must revalidate. Nothing else announces a relaunch: it sends no `session.started`, and a
+    // resumed run already carries the historyId that would otherwise notify via `bindHistoryId`.
+    this.onChanged(sessionId, 'updated');
   }
 
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {
@@ -147,9 +198,44 @@ export class SessionRecordRegistry {
     this.onChanged(sessionId, 'updated');
   }
 
+  setProviderTitle(sessionId: SessionId, title: string): void {
+    const record = this.records.get(sessionId);
+    const normalized = title.trim();
+    // Automation titles name the durable job/run and must not be replaced by provider metadata.
+    if (!record || record.automation || normalized.length === 0 || record.title === normalized) {
+      return;
+    }
+    record.title = normalized;
+    this.persist(record);
+    this.onChanged(sessionId, 'updated');
+  }
+
   historyId(sessionId: SessionId): AgentHistoryId | undefined {
     const record = this.records.get(sessionId);
     return record ? latestHistoryId(record) : undefined;
+  }
+
+  /** The account the newest run resolved to — what a live session is actually talking to. */
+  accountId(sessionId: SessionId): string | undefined {
+    const record = this.records.get(sessionId);
+    return record ? latestRunValue(record, 'accountId') : undefined;
+  }
+
+  /**
+   * What the thread is set to, shaped as a start-options override. A relaunch applies this so the
+   * thread keeps its own choices; the daemon's configured default answers for new and unpinned
+   * sessions only, and may have moved since this one started.
+   */
+  pinnedOptions(sessionId: SessionId): SessionPin | undefined {
+    const record = this.records.get(sessionId);
+    if (!record) return undefined;
+    const pin = definedFields({
+      accountId: latestRunValue(record, 'accountId'),
+      model: latestRunValue(record, 'model'),
+      effort: latestRunValue(record, 'effort'),
+      approvalPolicyId: latestRunValue(record, 'approvalPolicyId'),
+    });
+    return isObjectEmpty(pin) ? undefined : pin;
   }
 
   /** The in-memory record is authoritative while running; persistence is best-effort. */
@@ -189,6 +275,26 @@ function storeOperation<A>(
 
 function storeFailure(operation: string, publicMessage: string, cause: unknown): OperationError {
   return new OperationError({ subsystem: 'store', operation, publicMessage, cause });
+}
+
+/** The newest run that answers for `key`. Older runs may name a different value — a change between
+ * runs is legitimate — so only the latest describes what a live session is actually on. */
+function latestRunValue<K extends keyof SessionPinnedRun>(
+  record: SessionRecord,
+  key: K,
+): SessionRun[K] {
+  for (let index = record.runs.length - 1; index >= 0; index -= 1) {
+    const value = record.runs[index][key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+/** Spreading an explicit `undefined` would write the key into the persisted record. */
+function definedFields<T extends object>(fields: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
 }
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {

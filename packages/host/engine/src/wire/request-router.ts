@@ -71,14 +71,14 @@ export class WireRequestRouter {
       }
       case 'history.list':
       case 'history.read':
-      case 'history.resume': {
+      case 'history.resume':
+      case 'history.branch': {
         return this.handlers.history.handle(p);
       }
       case 'agent-runtime.list':
       case 'agent.catalog':
       case 'config.get':
       case 'config.set':
-      case 'config.account.create-and-bind':
       case 'config.probe-models': {
         return this.handlers.agent.handle(p);
       }

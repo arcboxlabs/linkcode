@@ -1,4 +1,4 @@
-import type { McpWarning, SessionId, StartOptions } from '@linkcode/schema';
+import type { AgentKind, McpWarning, SessionId, StartOptions } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { CustomMcpServerService } from '../agent/custom-mcp-service';
@@ -9,10 +9,12 @@ import { translationUpstream, withTranslatorEndpoint } from '../agent/translator
 import { OperationError, RequestError } from '../failure';
 import type { PluginService } from '../plugin/service';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
-import { MCP_CAPABLE_AGENT_KINDS } from './mcp-capability';
+import { MCP_CAPABLE_AGENT_KINDS, SIMULATOR_MCP_SERVER_NAME } from './mcp-capability';
 
 export interface ResolvedStartOptions {
   readonly options: StartOptions;
+  /** The account backing this run, recorded per run so a relaunch stays on it. */
+  readonly accountId?: string;
   /** Custom-MCP injection advisories, delivered on the `session.started` reply. */
   readonly warnings: McpWarning[];
 }
@@ -32,19 +34,41 @@ export class SessionStartOptionsResolver {
     options: StartOptions,
     sessionId: SessionId,
   ): Effect.Effect<ResolvedStartOptions, RequestError | OperationError> {
-    const defaults = applyProviderDefaults(
-      options,
-      this.providers.get(),
-      this.providers.getAccounts(),
-    );
+    const providers = this.providers.get();
+    const defaults = applyProviderDefaults(options, providers, this.providers.getAccounts());
+    // Whether an account actually resolved — the request's pick or, failing that, the agent's
+    // configured default. Asking that rather than "is a default set" also covers a pinned session
+    // on an agent with no default at all.
+    const { accountId } = defaults;
+    const account = accountId === undefined ? {} : { accountId };
     const { translator } = this;
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
     return Effect.gen(function* () {
-      const custom = yield* withCustomMcpServers(defaults);
+      if (defaults.unavailable) {
+        // Starting anyway would point the agent at an endpoint it cannot speak, which surfaces
+        // much later as an opaque 404 from the provider.
+        return yield* Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: `The account cannot back ${options.kind} (${defaults.unavailable})`,
+          }),
+        );
+      }
+      if (accountId !== undefined && defaults.options.model === undefined) {
+        // With an account in play, its selected set is the only model source and nothing falls back
+        // to the agent's own choice. Agents with no account keep resolving their own.
+        return yield* Effect.fail(
+          new RequestError({
+            code: 'unsupported',
+            message: `No model selected for ${options.kind}`,
+          }),
+        );
+      }
+      const custom = yield* withCustomMcpServers(defaults.options);
       const resolved = withSimulatorMcp(custom.options, sessionId);
       const upstream = translationUpstream(resolved);
-      if (!upstream) return { options: resolved, warnings: custom.warnings };
+      if (!upstream) return { options: resolved, ...account, warnings: custom.warnings };
       if (!translator) {
         return yield* Effect.fail(
           new RequestError({
@@ -65,14 +89,27 @@ export class SessionStartOptionsResolver {
       });
       return {
         options: withTranslatorEndpoint(resolved, url),
+        ...account,
         warnings: custom.warnings,
       };
     });
   }
 
+  /** The server names `resolve` would inject for this kind, as a hint for cold history reads:
+   * injected servers never appear in the agent's own config, so a replayed MCP call cannot
+   * resolve its server without this set. */
+  injectedMcpServerNames(kind: AgentKind): string[] {
+    if (!MCP_CAPABLE_AGENT_KINDS.has(kind)) return [];
+    const names = (this.customMcp?.listEnabled() ?? []).map((entry) => entry.server.name);
+    if (this.simulatorMcp) names.push(SIMULATOR_MCP_SERVER_NAME);
+    return names;
+  }
+
   /** Fold enabled custom MCP servers into the session's server list, warning instead of
    * silently dropping: unsupported agent kinds and name collisions are user-visible facts. */
-  private withCustomMcpServers(options: StartOptions): Effect.Effect<ResolvedStartOptions> {
+  private withCustomMcpServers(
+    options: StartOptions,
+  ): Effect.Effect<{ options: StartOptions; warnings: McpWarning[] }> {
     const warnings: McpWarning[] = [];
     const enabled = this.customMcp?.listEnabled() ?? [];
     if (enabled.length === 0) return Effect.succeed({ options, warnings });

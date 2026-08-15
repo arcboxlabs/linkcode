@@ -9,11 +9,11 @@ import { WIRE_PAYLOAD_KINDS, WirePayloadSchema } from './payload';
  */
 
 /** Stamped on every frame this build sends; bump on any wire schema change. */
-export const WIRE_PROTOCOL_VERSION = 69 as const;
+export const WIRE_PROTOCOL_VERSION = 77 as const;
 
 /** The oldest `v` this build still accepts. Bump only for a breaking change — a variant or field
  * removed, renamed, or given a new meaning; additive changes leave it alone. */
-export const MIN_COMPATIBLE_WIRE_VERSION = 68 as const;
+export const MIN_COMPATIBLE_WIRE_VERSION = 76 as const;
 
 /** Complete wire message: version + unique id + timestamp + payload. */
 export const WireMessageSchema = z.object({

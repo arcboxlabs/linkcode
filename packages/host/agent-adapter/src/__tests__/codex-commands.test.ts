@@ -1,7 +1,15 @@
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AgentEvent, StartOptions } from '@linkcode/schema';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { CodexServerHandle } from '../native/codex/adapter';
-import { CodexAdapter, codexSkillCommands } from '../native/codex/adapter';
+import {
+  CodexAdapter,
+  capSkillIconPayload,
+  codexSkillCommands,
+  skillIconDataUri,
+} from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
 
 class FakeCodexServer {
@@ -92,6 +100,49 @@ describe('CodexAdapter slash commands', () => {
     ).toEqual([
       { name: 'alpha', description: 'A', path: '/a/SKILL.md' },
       { name: 'zeta', description: 'Z', path: '/z/SKILL.md' },
+    ]);
+  });
+
+  it('projects skill brand identity, preferring the small icon and validating the color', () => {
+    expect(
+      codexSkillCommands(
+        response(
+          {
+            name: 'documents',
+            description: 'Docs',
+            path: '/skills/documents/SKILL.md',
+            enabled: true,
+            interface: {
+              displayName: 'Documents',
+              brandColor: '#2563EB',
+              iconSmall: '/plugins/documents/assets/small.png',
+              iconLarge: '/plugins/documents/assets/large.png',
+            },
+          },
+          {
+            name: 'plain',
+            description: 'No brand',
+            path: '/skills/plain/SKILL.md',
+            enabled: true,
+            interface: { brandColor: 'blue', iconLarge: '/plugins/plain/assets/large.png' },
+          },
+        ),
+      ),
+    ).toEqual([
+      {
+        name: 'documents',
+        description: 'Docs',
+        displayName: 'Documents',
+        brandColor: '#2563EB',
+        path: '/skills/documents/SKILL.md',
+        iconPath: '/plugins/documents/assets/small.png',
+      },
+      {
+        name: 'plain',
+        description: 'No brand',
+        path: '/skills/plain/SKILL.md',
+        iconPath: '/plugins/plain/assets/large.png',
+      },
     ]);
   });
 
@@ -310,6 +361,120 @@ describe('CodexAdapter slash commands', () => {
     expect(events.filter((event) => event.type === 'status')).toEqual([
       { type: 'status', status: 'running' },
       { type: 'status', status: 'idle' },
+    ]);
+  });
+});
+
+async function createIconTempDir(): Promise<string> {
+  return realpath(await mkdtemp(join(tmpdir(), 'codex-skill-icon-')));
+}
+
+describe('codex skill icons', () => {
+  const dirPromise = createIconTempDir();
+  afterAll(async () => {
+    await rm(await dirPromise, { force: true, recursive: true });
+  });
+
+  it('embeds a small icon file as a data URI and refuses non-icons', async () => {
+    const dir = await dirPromise;
+    const iconPath = join(dir, 'icon.png');
+    const iconBytes = Buffer.from('89504E470D0A1A0A6D6F636B', 'hex');
+    await writeFile(iconPath, iconBytes);
+    const oversizedPath = join(dir, 'oversized.png');
+    await writeFile(oversizedPath, Buffer.alloc(33 * 1024, 1));
+    const fakePngPath = join(dir, 'fake.png');
+    await writeFile(fakePngPath, 'not an image');
+    const wrongExtensionPath = join(dir, 'wrong-extension.jpg');
+    await writeFile(wrongExtensionPath, iconBytes);
+
+    expect(await skillIconDataUri(iconPath)).toBe(
+      `data:image/png;base64,${iconBytes.toString('base64')}`,
+    );
+    expect(await skillIconDataUri(oversizedPath)).toBeUndefined();
+    expect(await skillIconDataUri(fakePngPath)).toBeUndefined();
+    expect(await skillIconDataUri(wrongExtensionPath)).toBeUndefined();
+    expect(await skillIconDataUri(join(dir, 'missing.png'))).toBeUndefined();
+    expect(await skillIconDataUri(join(dir, 'icon.bmp'))).toBeUndefined();
+  });
+
+  it('rejects icons reached through a symlinked parent directory', async () => {
+    const dir = await dirPromise;
+    const assetsDir = join(dir, 'real-assets');
+    await mkdir(assetsDir);
+    await writeFile(join(assetsDir, 'icon.png'), Buffer.from('89504E470D0A1A0A', 'hex'));
+    const linkedDir = join(dir, 'linked-assets');
+    await symlink(assetsDir, linkedDir, process.platform === 'win32' ? 'junction' : 'dir');
+
+    expect(await skillIconDataUri(join(linkedDir, 'icon.png'))).toBeUndefined();
+  });
+
+  it('rejects SVG icons carrying active content, keeping fragment-ref-only ones', async () => {
+    const dir = await dirPromise;
+    const svg = async (name: string, body: string) => {
+      const path = join(dir, name);
+      await writeFile(path, `<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`);
+      return skillIconDataUri(path);
+    };
+
+    expect(
+      await svg('scripted.svg', '<script>fetch("https://x.example")</script>'),
+    ).toBeUndefined();
+    expect(await svg('handler.svg', '<rect onload="alert(1)"/>')).toBeUndefined();
+    expect(await svg('external.svg', '<use href="https://x.example/a.svg#i"/>')).toBeUndefined();
+    expect(await svg('foreign.svg', '<foreignObject><div/></foreignObject>')).toBeUndefined();
+    expect(
+      await svg(
+        'clean.svg',
+        '<defs><linearGradient id="g"/></defs><rect fill="url(#g)"/><use xlink:href="#g"/>',
+      ),
+    ).toBeDefined();
+  });
+
+  it('publishes the embedded icon on the catalog while keeping paths private', async () => {
+    const dir = await dirPromise;
+    const iconPath = join(dir, 'documents.svg');
+    await writeFile(iconPath, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const adapter = new TestCodex(
+      response({
+        name: 'documents',
+        description: 'Docs',
+        path: '/skills/documents/SKILL.md',
+        enabled: true,
+        interface: { displayName: 'Documents', brandColor: '#2563EB', iconSmall: iconPath },
+      }),
+    );
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+
+    await adapter.start(start);
+
+    const commands = catalog(events).at(-1)?.commands;
+    expect(commands?.find((command) => command.name === 'documents')).toEqual({
+      name: 'documents',
+      description: 'Docs',
+      displayName: 'Documents',
+      brandColor: '#2563EB',
+      iconDataUri: `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64')}`,
+    });
+    expect(JSON.stringify(commands)).not.toContain(dir);
+  });
+
+  it('drops icons past the shared catalog budget while keeping smaller later ones', () => {
+    const dataUri = (length: number): string => `data:image/png;base64,${'A'.repeat(length)}`;
+    const commands = [
+      { name: 'a', iconDataUri: dataUri(100) },
+      { name: 'b', iconDataUri: dataUri(200) },
+      { name: 'c', iconDataUri: dataUri(100) },
+      { name: 'd' },
+    ];
+
+    const capped = capSkillIconPayload(commands, dataUri(100).length * 2 + 50);
+
+    expect(capped.map((command) => [command.name, command.iconDataUri !== undefined])).toEqual([
+      ['a', true],
+      ['b', false],
+      ['c', true],
+      ['d', false],
     ]);
   });
 });

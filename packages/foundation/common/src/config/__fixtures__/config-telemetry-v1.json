@@ -1,0 +1,72 @@
+{
+  "contract": "linkcode.config-telemetry.v1",
+  "normative": true,
+  "endpoint": {
+    "method": "POST",
+    "path": "/system/config-telemetry/events",
+    "authentication": "required",
+    "rateLimit": "authenticated-api-bucket"
+  },
+  "acceptedEventTypes": [
+    "activation_success",
+    "fetch_failure",
+    "signature_verification_failure",
+    "snapshot_hash_failure",
+    "parse_failure"
+  ],
+  "request": {
+    "schemaVersion": 1,
+    "clientEventId": "019fc9a8-1c2d-7a4b-8e5f-1234567890ab",
+    "eventType": "activation_success",
+    "consent": "granted",
+    "eventTime": "2026-08-03T16:00:00.000Z",
+    "target": {
+      "brand": "linkcode",
+      "platform": "desktop"
+    },
+    "publication": {
+      "activationVersion": "42",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "configVersion": "config-42"
+    },
+    "rollout": {
+      "channel": "canary"
+    },
+    "appVersion": "0.16.0"
+  },
+  "response": {
+    "firstSubmission": {
+      "httpStatus": 202,
+      "body": {
+        "schemaVersion": 1,
+        "status": "accepted",
+        "clientEventId": "019fc9a8-1c2d-7a4b-8e5f-1234567890ab",
+        "duplicate": false
+      }
+    },
+    "exactReplay": {
+      "httpStatus": 202,
+      "body": {
+        "schemaVersion": 1,
+        "status": "accepted",
+        "clientEventId": "019fc9a8-1c2d-7a4b-8e5f-1234567890ab",
+        "duplicate": true
+      }
+    }
+  },
+  "rejections": {
+    "unauthenticated": 401,
+    "consentNotGrantedOrSchemaInvalid": 400,
+    "eventIdConflictOrPublicationMismatch": 409,
+    "rateLimited": 429
+  },
+  "semantics": {
+    "consent": "Every routine or security event is accepted only when consent is explicitly granted. Security failures never bypass consent.",
+    "correlation": "The server resolves its internal publication ID from the claimed brand, platform, rollout channel, activation version, config version, and SHA-256. That complete tuple must match the succeeded currently-live publication; clients never send the internal ID.",
+    "idempotency": "clientEventId is globally unique. An exact replay by the same authenticated principal is accepted with duplicate=true; reuse for different data is rejected.",
+    "eventTime": "Client event time is required and bounded, but promotion windows use authenticated server receipt time.",
+    "aggregation": "The eligible sample is a distinct authenticated principal reporting any accepted event for the exact publication in the observation window. Each numerator is the distinct subset reporting that outcome, so repeated rows cannot increase a rate.",
+    "privacy": "Do not send a device fingerprint, payload value, email, configuration content, secret, or free-form exception text. Unknown fields are rejected.",
+    "retention": "Accepted event rows are immutable. Scheduled maintenance deletes rows after the 90-day retention window; authenticated account erasure may delete that principal's rows earlier."
+  }
+}

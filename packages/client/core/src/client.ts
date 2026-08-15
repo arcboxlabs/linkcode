@@ -1,10 +1,9 @@
 import type {
-  Account,
-  AccountEndpoint,
   AccountModel,
   AccountSecret,
   Accounts,
   AgentEvent,
+  AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
   AgentHistoryReadResult,
@@ -35,6 +34,7 @@ import type {
   LoopSpec,
   ManagedAssetId,
   ManagedAssetStatus,
+  MessageId,
   PermissionOutcome,
   PluginProvider,
   PluginScope,
@@ -720,6 +720,17 @@ export class LinkCodeClient {
     return this.control.resumeHistory(agentKind, historyId, startOpts);
   }
 
+  rewritePrompt(
+    sourceSessionId: SessionId,
+    sourceMessageId: MessageId,
+    branchCursor: AgentHistoryBranchCursor,
+    content: ContentBlock[],
+  ): Promise<SessionId> {
+    return this.control
+      .rewritePrompt(sourceSessionId, sourceMessageId, branchCursor, content)
+      .then((result) => result.sessionId);
+  }
+
   /** Low-level: send any normalized input to a session. */
   send(sessionId: SessionId, input: AgentInput): Promise<RequestAck> {
     return this.control.send(sessionId, input);
@@ -780,8 +791,8 @@ export class LinkCodeClient {
     return this.control.setSubscriptionMode(mode);
   }
 
-  setModel(sessionId: SessionId, model: string): Promise<RequestAck> {
-    return this.control.setModel(sessionId, model);
+  setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {
+    return this.control.setModel(sessionId, model, accountId);
   }
 
   setEffort(sessionId: SessionId, effort: EffortLevel): Promise<RequestAck> {
@@ -828,9 +839,12 @@ export class LinkCodeClient {
     return this.control.getAccounts();
   }
 
-  /** Model list an endpoint serves, read daemon-side with a not-yet-saved secret. */
-  probeAccountModels(endpoint: AccountEndpoint, secret: AccountSecret): Promise<AccountModel[]> {
-    return this.control.probeAccountModels(endpoint, secret);
+  /** Models a service serves, read daemon-side with an unsaved secret or a saved account's own. */
+  probeAccountModels(
+    service: string,
+    credential: { type: 'inline'; secret: AccountSecret } | { type: 'account'; accountId: string },
+  ): Promise<AccountModel[]> {
+    return this.control.probeAccountModels(service, credential);
   }
 
   /** Masked custom MCP servers (env/header keys only — the daemon never returns values). */
@@ -1118,10 +1132,6 @@ export class LinkCodeClient {
 
   setProviderConfig(providers: ProvidersConfig): Promise<RequestAck> {
     return this.control.setProviderConfig(providers);
-  }
-
-  createAndBindAccount(agent: AgentKind, account: Account): Promise<RequestAck> {
-    return this.control.createAndBindAccount(agent, account);
   }
 
   setAccounts(accounts: Accounts): Promise<RequestAck> {

@@ -1,6 +1,7 @@
 import type {
   AgentCapabilities,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryListOptions,
   AgentHistoryListResult,
@@ -16,6 +17,14 @@ import type {
 import type { Unsubscribe } from '@linkcode/transport';
 
 export type AgentStartCatalogOptions = Partial<Pick<StartOptions, 'cwd' | 'model' | 'config'>>;
+
+/** Wire read options plus engine-supplied context that never crosses the wire. */
+export type AgentHistoryReadContext = AgentHistoryReadOptions & {
+  /** MCP server names the engine injects at session start (managed connectors, the daemon's
+   * simulator endpoint). They exist only on a session's own live instance — never in the agent's
+   * config — so a cold read cannot recover them itself. */
+  mcpServerNames?: readonly string[];
+};
 
 export interface BrowserToolExecuteResult {
   ok: boolean;
@@ -48,9 +57,11 @@ export interface AgentAdapter {
   /** List provider-local historical sessions, if supported. */
   listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult>;
   /** Read a provider-local historical session as normalized events, if supported. */
-  readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult>;
+  readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult>;
   /** Start/resume a live adapter session from a provider-local history id, if supported. */
   resumeHistory(opts: AgentHistoryResumeOptions, startOpts: StartOptions): Promise<void>;
+  /** Start this adapter on provider history forked before the cursor's historical prompt. */
+  branchHistory?(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;
   /** Subscribe to events normalized by the abstraction layer. */
   onEvent(cb: (e: AgentEvent) => void): Unsubscribe;

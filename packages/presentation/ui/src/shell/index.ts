@@ -20,6 +20,7 @@ export * from './notifications-settings-panel';
 export * from './plugins';
 export * from './providers/account-detail';
 export * from './providers/account-master-list';
+export * from './providers/routing';
 export * from './service-icon';
 export * from './session-sidebar';
 export * from './session-title-menu';

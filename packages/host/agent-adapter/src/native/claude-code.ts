@@ -23,6 +23,7 @@ import { toHostPath } from '@linkcode/common/node';
 import type {
   AgentCommand,
   AgentEvent,
+  AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryEvent,
   AgentHistoryId,
@@ -57,13 +58,16 @@ import {
   UsageReportSchema,
   unifiedPatchText,
 } from '@linkcode/schema';
+import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { waitWithAbort } from 'foxts/wait';
 import { z } from 'zod';
 import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
+import { decodeHistoryBranchCursor, encodeHistoryBranchCursor } from '../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -400,9 +404,15 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
 const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   records: new Map(),
   droppedRows: [],
+  parentUuidByUuid: new Map(),
+  toolUses: new Map(),
   toolUseResults: new Map(),
   toolUsePatches: new Map(),
 };
+
+const TITLE_POLL_INITIAL_DELAY_MS = 500;
+const TITLE_POLL_RETRIES = 3;
+const TITLE_POLL_RETRY_DELAY_MS = 1000;
 
 /**
  * Claude Code adapter — drives `@anthropic-ai/claude-agent-sdk` `query()` in **streaming input
@@ -417,6 +427,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    branch: true,
   };
 
   private q: Query | null = null;
@@ -442,6 +453,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Provider session id sniffed off the last SDK message — the resume point when an effort
    * transition into/out of `max` forces a process restart (see `onSetEffort`). */
   private lastSessionRef: string | undefined;
+  private getSessionInfo:
+    | ((sessionId: string, options?: { dir?: string }) => Promise<SDKSessionInfo | undefined>)
+    | undefined;
+  private titlePollStarted = false;
+  private titlePollController: AbortController | null = null;
   /** The last compaction boundary, awaiting its summary: the swapped-in summary text arrives on a
    * separate user frame identified by the boundary's anchor uuid (see `handleCompactBoundary`). */
   private pendingCompaction: {
@@ -506,6 +522,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    this.getSessionInfo = Object.hasOwn(sdk, 'getSessionInfo') ? sdk.getSessionInfo : undefined;
+    if (this.resumeFrom && this.getSessionInfo) {
+      try {
+        const info = await this.getSessionInfo(this.resumeFrom, { dir: opts.cwd });
+        const title = generatedClaudeTitle(info);
+        if (title) this.emitTitle(title);
+      } catch {
+        // Metadata is best-effort; a title read must not prevent the conversation from resuming.
+      }
+    }
     if (this.effort === undefined) {
       const { effective } = await sdk.resolveSettings({ cwd: opts.cwd });
       // The SDK documents `high` as Claude's provider default. A persisted setting wins, while the
@@ -611,6 +637,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     await this.start(startOpts);
   }
 
+  override async branchHistory(
+    opts: AgentHistoryBranchOptions,
+    startOpts: StartOptions,
+  ): Promise<void> {
+    const predecessor = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
+    if (predecessor !== null) {
+      const mod = await this.loadSdk(
+        '@anthropic-ai/claude-agent-sdk',
+        () => import('@anthropic-ai/claude-agent-sdk'),
+      );
+      const fork = await mod.forkSession(opts.historyId, {
+        upToMessageId: predecessor,
+        dir: startOpts.cwd,
+      });
+      this.resumeFrom = fork.sessionId;
+    }
+    await this.start(startOpts);
+  }
+
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
     const mod = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
@@ -656,6 +701,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       supplement.records,
       supplement.toolUseResults,
       supplement.toolUsePatches,
+      supplement.parentUuidByUuid,
+      supplement.toolUses,
     );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript right after its spawn announce so children land inside the
@@ -955,6 +1002,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   protected override onStop(): Promise<void> {
     this.stopped = true;
     this.turnActive = false;
+    this.titlePollController?.abort();
+    this.titlePollController = null;
     this.q?.close();
     this.inputQueue?.close();
     return Promise.resolve();
@@ -1387,27 +1436,35 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const cancelling = this.cancelling;
     this.cancelling = false;
     this.turnActive = false;
+    if (
+      msg.subtype === 'success' &&
+      this.emitGatewayError({
+        statusCode: msg.api_error_status,
+        message: msg.result,
+      })
+    ) {
+      this.teardown();
+      if (!cancelling) this.emitStatus('idle');
+      return;
+    }
+    if (msg.subtype === 'success' && msg.api_error_status === 401) {
+      this.emitError(
+        'Claude authentication failed — sign in to Claude',
+        AUTH_FAILED_ERROR_CODE,
+        false,
+      );
+      this.teardown();
+      if (!cancelling) this.emitStatus('idle');
+      return;
+    }
+    if (!cancelling) {
+      if (this.titlePollStarted) {
+        if (msg.subtype === 'success') this.refreshTitle();
+      } else {
+        this.startTitlePoll();
+      }
+    }
     if (msg.subtype === 'success') {
-      if (
-        this.emitGatewayError({
-          statusCode: msg.api_error_status,
-          message: msg.result,
-        })
-      ) {
-        this.teardown();
-        if (!cancelling) this.emitStatus('idle');
-        return;
-      }
-      if (msg.api_error_status === 401) {
-        this.emitError(
-          'Claude authentication failed — sign in to Claude',
-          AUTH_FAILED_ERROR_CODE,
-          false,
-        );
-        this.teardown();
-        if (!cancelling) this.emitStatus('idle');
-        return;
-      }
       const usage = isRecord(msg.usage) ? msg.usage : {};
       this.emitUsage({
         inputTokens: numberField(usage, 'input_tokens'),
@@ -1429,6 +1486,87 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // base send(cancel)'s final teardown cannot sweep a newly admitted turn.
     if (!cancelling) this.emitStatus('idle');
   }
+
+  private startTitlePoll(): void {
+    const sessionId = this.lastSessionRef;
+    const getSessionInfo = this.getSessionInfo;
+    if (!sessionId || !getSessionInfo || this.titlePollStarted) return;
+    this.titlePollStarted = true;
+    const controller = new AbortController();
+    this.titlePollController = controller;
+    void this.pollTitle(sessionId, getSessionInfo, controller.signal).finally(() => {
+      if (this.titlePollController === controller) this.titlePollController = null;
+    });
+  }
+
+  private refreshTitle(): void {
+    const sessionId = this.lastSessionRef;
+    const getSessionInfo = this.getSessionInfo;
+    if (!sessionId || !getSessionInfo) return;
+    this.titlePollController?.abort();
+    const controller = new AbortController();
+    this.titlePollController = controller;
+    void (async () => {
+      if (!(await this.readAndEmitTitle(sessionId, getSessionInfo, controller.signal))) {
+        await this.pollTitle(sessionId, getSessionInfo, controller.signal);
+      }
+    })().finally(() => {
+      if (this.titlePollController === controller) this.titlePollController = null;
+    });
+  }
+
+  private async pollTitle(
+    sessionId: string,
+    getSessionInfo: (
+      sessionId: string,
+      options?: { dir?: string },
+    ) => Promise<SDKSessionInfo | undefined>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      await waitWithAbort(TITLE_POLL_INITIAL_DELAY_MS, signal, true);
+      await asyncRetry(
+        async () => {
+          if (await this.readAndEmitTitle(sessionId, getSessionInfo, signal)) return;
+          throw new Error('Claude session title is not available');
+        },
+        {
+          retries: TITLE_POLL_RETRIES,
+          factor: 2,
+          minTimeout: TITLE_POLL_RETRY_DELAY_MS,
+          randomize: false,
+          signal,
+        },
+      );
+    } catch {
+      // Metadata is best-effort; polling exhaustion or cancellation must not affect the session.
+    }
+  }
+
+  private async readAndEmitTitle(
+    sessionId: string,
+    getSessionInfo: (
+      sessionId: string,
+      options?: { dir?: string },
+    ) => Promise<SDKSessionInfo | undefined>,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    try {
+      const info = await getSessionInfo(sessionId, { dir: this.opts?.cwd });
+      if (signal.aborted || this.stopped || this.lastSessionRef !== sessionId) return false;
+      const title = generatedClaudeTitle(info);
+      if (!title) return false;
+      this.emitTitle(title);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function generatedClaudeTitle(info: SDKSessionInfo | undefined): string | undefined {
+  // The SDK folds explicit and AI titles into customTitle; summary can fall back to the last prompt.
+  return info ? firstText(info.customTitle) : undefined;
 }
 
 /** `locationsFromToolInput` with the CLI's MSYS drive-form spellings (`/c/…`, reported when it
@@ -1618,6 +1756,12 @@ export interface ClaudeTranscriptSupplement {
    * summary, whose `parentUuid` is null — `logicalParentUuid` is ignored). In file (= chronological)
    * order; rows the SDK still returns (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
+  /** Message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`, but Claude
+   * requires the predecessor message id when forking immediately before a historical prompt. */
+  parentUuidByUuid: Map<string, string | null>;
+  /** tool_use_id → announce snapshot. Cursor pages can begin at the matching result row, after
+   * the stateful mapper's in-page announce map has been reset. */
+  toolUses: Map<string, ToolCall>;
   /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
    * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
   toolUseResults: Map<string, Record<string, unknown>>;
@@ -1641,6 +1785,8 @@ export function buildClaudeTranscriptSupplement(
   lines: Iterable<string>,
 ): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
+  const parentUuidByUuid = new Map<string, string | null>();
+  const toolUses = new Map<string, ToolCall>();
   const toolUseResults = new Map<string, Record<string, unknown>>();
   const toolUsePatches = new Map<string, ToolCallContent[]>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
@@ -1657,6 +1803,7 @@ export function buildClaudeTranscriptSupplement(
     if (!isRecord(parsed) || typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
     const row = parsed;
     const uuid = parsed.uuid;
+    parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
     if (row.type === 'system' && row.subtype === 'compact_boundary') {
       boundaries += 1;
       const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};
@@ -1675,11 +1822,12 @@ export function buildClaudeTranscriptSupplement(
       records.set(uuid, pending ?? { compactionId: uuid });
       pending = null;
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
-    // Harvested before the exclusions: tool_use ids are globally unique, so keying a row the
-    // timeline itself skips is harmless.
+    // Result fields are harvested before the exclusions: tool_use ids are globally unique, so
+    // keying a result row the timeline itself skips is harmless.
     if (row.type === 'user') harvestToolUseResult(toolUseResults, toolUsePatches, row);
     // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
     if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
+    if (row.type === 'assistant') harvestToolUses(toolUses, row);
     rows.push({
       row: {
         type: row.type,
@@ -1695,15 +1843,26 @@ export function buildClaudeTranscriptSupplement(
   }
   return {
     records,
+    parentUuidByUuid,
     // Only rows before the last boundary are dropped by the SDK's chain walk; the rest of the
     // timeline (summary head onward) comes back from getSessionMessages as usual.
     droppedRows: rows.reduce<SessionMessage[]>((dropped, r) => {
       if (r.boundariesBefore < boundaries) dropped.push(r.row);
       return dropped;
     }, []),
+    toolUses,
     toolUseResults,
     toolUsePatches,
   };
+}
+
+function harvestToolUses(toolUses: Map<string, ToolCall>, row: Record<string, unknown>): void {
+  const parentToolCallId = stringField(row, 'parent_tool_use_id');
+  for (const block of messageContentBlocks(row.message)) {
+    if (isToolUseBlock(block)) {
+      toolUses.set(block.id, claudeToolCallFromUse(block, parentToolCallId));
+    }
+  }
 }
 
 /** Key a raw result row's `toolUseResult` projections by its tool_use id. The field is row-level, so
@@ -1823,7 +1982,13 @@ async function readSubagentTranscripts(
         rows.flatMap(
           // No compaction records or result envelopes: a subagent transcript has no compaction
           // boundary, and `rawOutput` recovery there is a separate concern.
-          createClaudeHistoryEventMapper(asHistoryId(sessionId), undefined, undefined, patches),
+          createClaudeHistoryEventMapper(
+            asHistoryId(sessionId),
+            undefined,
+            undefined,
+            patches,
+            undefined,
+          ),
         ),
       );
     }),
@@ -1849,6 +2014,10 @@ export function createClaudeHistoryEventMapper(
   /** Edit diffs recovered from the same raw results, so a replayed settle carries the patch the
    * live path emits rather than the announce-time fragment. */
   toolUsePatches?: ReadonlyMap<string, ToolCallContent[]>,
+  /** Raw message ancestry recovered from the transcript; absent for nested subagent reads. */
+  parentUuidByUuid?: ReadonlyMap<string, string | null>,
+  /** Announce snapshots recovered from the raw transcript, for cursor pages starting at settle. */
+  toolUses?: ReadonlyMap<string, ToolCall>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
   /** Last model announced to the timeline; assistant rows re-announce only on change. */
@@ -1909,24 +2078,14 @@ export function createClaudeHistoryEventMapper(
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
-        events.push(
-          toolEvent({
-            toolCallId: block.id,
-            parentToolCallId: parent,
-            title: block.name,
-            kind: claudeToolKind(block.name),
-            status: 'in_progress',
-            content: toolInputContent(block.name, block.input) ?? [],
-            rawInput: block.input,
-          }),
-        );
+        events.push(toolEvent(claudeToolCallFromUse(block, parent)));
       }
       return events;
     }
 
     const results = blocks.filter((block) => isToolResultBlock(block));
     for (const block of results) {
-      const existing = announced.get(block.tool_use_id);
+      const existing = announced.get(block.tool_use_id) ?? toolUses?.get(block.tool_use_id);
       events.push(
         toolEvent({
           toolCallId: block.tool_use_id,
@@ -1956,7 +2115,13 @@ export function createClaudeHistoryEventMapper(
     const promptValue =
       results.length === 0 ? message.message : blocks.filter((block) => !isToolResultBlock(block));
     const text = textHistoryEvent(historyId, 'user', message.uuid, promptValue, ts);
-    if (text) events.push(text);
+    if (text) {
+      const predecessor = parentUuidByUuid?.get(message.uuid);
+      if (predecessor !== undefined && text.event.type === 'user-message') {
+        text.event.branchCursor = encodeHistoryBranchCursor('claude-code', historyId, predecessor);
+      }
+      events.push(text);
+    }
     return events;
   };
 }
@@ -1973,6 +2138,18 @@ interface ClaudeToolResultBlock {
   tool_use_id: string;
   is_error?: unknown;
   content?: unknown;
+}
+
+function claudeToolCallFromUse(block: ClaudeToolUseBlock, parentToolCallId?: string): ToolCall {
+  return {
+    toolCallId: block.id,
+    parentToolCallId,
+    title: block.name,
+    kind: claudeToolKind(block.name),
+    status: 'in_progress',
+    content: toolInputContent(block.name, block.input) ?? [],
+    rawInput: block.input,
+  };
 }
 
 interface ClaudeThinkingBlock {

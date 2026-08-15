@@ -36,11 +36,14 @@ vi.mock('../native/opencode/serve', async (importOriginal) => ({
 
 import { FakeEventStream } from './fake-event-stream';
 
+/** The config's `mcp` server entries `start()` reads — set BEFORE starting the adapter. */
+let mcpConfigFixture: Record<string, unknown> = {};
+
 class FakeClient {
   readonly stream = new FakeEventStream();
   subscribeError: Error | null = null;
   readonly session = {
-    create: vi.fn(() => ({ data: { id: 'sess-1' } })),
+    create: vi.fn(() => ({ data: { id: 'sess-1', title: 'New session - 1' } })),
     promptAsync: vi.fn(() => ({ data: null })),
     abort: vi.fn(() => ({ data: true })),
     command: vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } })),
@@ -58,6 +61,9 @@ class FakeClient {
   };
   readonly app = {
     agents: vi.fn(() => ({ data: [] as unknown[] })),
+  };
+  readonly config = {
+    get: vi.fn(() => ({ data: { mcp: mcpConfigFixture } })),
   };
   readonly provider = {
     list: vi.fn(() => ({
@@ -82,6 +88,7 @@ sdkMock.createOpencode = () => {
 
 afterEach(() => {
   closeServer.mockClear();
+  mcpConfigFixture = {};
 });
 
 async function makeAdapter(): Promise<{ adapter: OpenCodeAdapter; events: AgentEvent[] }> {
@@ -182,7 +189,40 @@ function pushAssistantModel(modelID: string, id: string): void {
   });
 }
 
+function pushSessionTitle(title: string, sessionID = 'sess-1', infoId = sessionID): void {
+  client.stream.push({
+    id: `e-title-${title}`,
+    type: 'session.updated',
+    properties: {
+      sessionID,
+      info: {
+        id: infoId,
+        slug: infoId,
+        projectID: 'project-1',
+        directory: '/tmp/repo',
+        title,
+        version: '1',
+        time: { created: 0, updated: 1 },
+      },
+    },
+  });
+}
+
 describe('OpenCodeAdapter.consumeEvents', () => {
+  it('emits an updated provider title but not the initial placeholder or other sessions', async () => {
+    const { events } = await makeAdapter();
+
+    pushSessionTitle('New session - 1');
+    pushSessionTitle('Other title', 'sess-other');
+    pushSessionTitle('Generated session title');
+    pushSessionTitle('Generated session title');
+    await drained();
+
+    expect(events.filter((event) => event.type === 'title-update')).toEqual([
+      { type: 'title-update', title: 'Generated session title' },
+    ]);
+  });
+
   it('reports a malformed event via emitError instead of throwing, and keeps consuming', async () => {
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
@@ -283,6 +323,72 @@ describe('OpenCodeAdapter.consumeEvents', () => {
           content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
         }),
       }),
+    ]);
+  });
+
+  it('normalizes MCP tool parts to the shared mcp slug from injected and configured servers', async () => {
+    mcpConfigFixture = { notion: { type: 'remote', url: 'http://127.0.0.1:7778/mcp' } };
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      mcpServers: [
+        { type: 'http', name: 'linear', url: 'http://127.0.0.1:7777/mcp' },
+        { type: 'http', name: 'repo__prod', url: 'http://127.0.0.1:7779/mcp' },
+      ],
+    });
+
+    const part = (id: string, tool: string) => ({
+      id,
+      sessionID: 'sess-1',
+      messageID: 'msg-1',
+      type: 'tool' as const,
+      callID: `call-${id}`,
+      tool,
+      state: { status: 'running' as const, input: { limit: 50 }, time: { start: 0 } },
+    });
+    client.stream.push({
+      id: 'e-mcp-injected',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 0, part: part('prt-mcp-1', 'linear_list_issues') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-mcp-configured',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 1, part: part('prt-mcp-2', 'notion_search_pages') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-builtin',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 2, part: part('prt-builtin', 'bash') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-mcp-ambiguous',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 3,
+        part: part('prt-mcp-ambiguous', 'repo__prod_search_files'),
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.filter((event) => event.type === 'tool-call')).toHaveLength(4);
+    });
+    const titles = events.reduce<string[]>((all, event) => {
+      if (event.type === 'tool-call') all.push(event.toolCall.title);
+      return all;
+    }, []);
+    expect(titles).toEqual([
+      'mcp__linear__list_issues',
+      'mcp__notion__search_pages',
+      'bash',
+      'repo__prod_search_files',
     ]);
   });
 
@@ -1349,6 +1455,37 @@ describe('OpenCodeAdapter server spawn (CODE-242)', () => {
     expect(typeof opts.port).toBe('number');
     expect(opts.port).not.toBe(4096);
   });
+
+  it('injects the credential under the resolved known provider when the model names none', async () => {
+    const seen: unknown[] = [];
+    sdkMock.createOpencode = (opts: unknown) => {
+      seen.push(opts);
+      client = new FakeClient();
+      return Promise.resolve({ client, server: { url: 'http://fake', close: closeServer } });
+    };
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      model: 'gpt-5.5',
+      config: {
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+        knownProvider: 'openai',
+      },
+    });
+
+    // Without the resolved provider id, a bare model id left the spawn unauthenticated.
+    expect(seen[0]).toMatchObject({
+      config: {
+        provider: {
+          openai: { options: { apiKey: 'sk-test', baseURL: 'https://api.openai.com/v1' } },
+        },
+      },
+    });
+  });
 });
 
 describe('OpenCodeAdapter server spawn retry', () => {
@@ -1564,7 +1701,29 @@ describe('OpenCodeAdapter control plane (CODE-224)', () => {
     });
   });
 
-  it('rejects a set-model ref that is not providerID/modelID', async () => {
+  it('qualifies a bare picked id with the endpoint’s known provider', async () => {
+    // A picked id comes from the service's model list and carries no provider; opencode routes
+    // only by providerID/modelID, so `knownProvider` supplies the missing half.
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      config: { knownProvider: 'deepseek' },
+    });
+
+    await adapter.send({ type: 'set-model', model: 'deepseek-v4-pro' });
+    // Reflected as the user picked it, so the client's own selected set matches.
+    expect(events).toContainEqual({ type: 'model-update', model: 'deepseek-v4-pro' });
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ model: { providerID: 'deepseek', modelID: 'deepseek-v4-pro' } }),
+    );
+  });
+
+  it('rejects a bare set-model ref when no known provider can qualify it', async () => {
     const { adapter, events } = await makeAdapter();
     events.length = 0;
 

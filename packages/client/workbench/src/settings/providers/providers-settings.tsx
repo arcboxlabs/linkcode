@@ -1,12 +1,6 @@
+import { LINKCODE_GATEWAY_SERVICE_ID, serviceById } from '@linkcode/providers';
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
-import {
-  createAndBindAccount,
-  getAccounts,
-  getProviderConfig,
-  probeAccountModels,
-  setAccounts,
-  setProviderConfig,
-} from '@linkcode/sdk';
+import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
 import { AccountDetail, AccountList } from '@linkcode/ui';
 import {
   Dialog,
@@ -16,20 +10,18 @@ import {
   DialogTitle,
 } from 'coss-ui/components/dialog';
 import { Skeleton } from 'coss-ui/components/skeleton';
-import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
 import type { LinkCodeGatewayAccess } from './add-flow';
-import { AddAccountForm, EditAccountForm, oauthAccount, ServiceCatalogView } from './add-flow';
-import { LINKCODE_GATEWAY_SERVICE_ID, serviceById } from './catalog';
+import { AddAccountForm, EditAccountForm, ServiceCatalogView } from './add-flow';
+import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
 import {
   providerAccountDetailViewModel,
   providerAccountListViewModel,
-  withBinding,
-  withModel,
+  withAccountEnabled,
   withoutAccount,
 } from './view';
 
@@ -52,9 +44,10 @@ export function ProvidersSettingsPanel({
   const { data: providers, mutate: mutateProviders } = useData(getProviderConfig, {});
   const { data: runtimes } = useAgentRuntimes();
   const onboarding = useAgentRuntimeOnboarding();
-  const bindAccount = useMutation(createAndBindAccount);
   const saveAccounts = useMutation(setAccounts);
   const saveProviders = useMutation(setProviderConfig);
+  // The forms are presentation; only this page sits inside the data-plane provider tree.
+  const modelSources = useModelSources();
 
   const view = useProvidersSettingsStore((state) => state.view);
   const select = useProvidersSettingsStore((state) => state.select);
@@ -68,24 +61,11 @@ export function ProvidersSettingsPanel({
   const pool = accounts ?? [];
   const accountsById = new Map(pool.map((account) => [account.id, account]));
   const selected = view.kind === 'account' ? accountsById.get(view.accountId) : undefined;
-  const selectedSecret =
-    selected?.credential.type === 'api-key'
-      ? selected.credential
-      : selected?.credential.type === 'auth-token'
-        ? selected.credential
-        : undefined;
-  const models = useData(
-    probeAccountModels,
-    selectedSecret && selected?.endpoint && selected.service === LINKCODE_GATEWAY_SERVICE_ID
-      ? { endpoint: selected.endpoint, secret: selectedSecret }
-      : null,
-    { revalidateOnFocus: false },
-  );
-  const busy = bindAccount.isMutating || saveAccounts.isMutating || saveProviders.isMutating;
+  const busy = saveAccounts.isMutating || saveProviders.isMutating;
   const selectedDetail =
     selected === undefined
       ? undefined
-      : providerAccountDetailViewModel(selected, pool, providers, runtimes);
+      : providerAccountDetailViewModel(selected, providers, runtimes);
   const accountList = providerAccountListViewModel(pool, providers, runtimes);
 
   const applyProviders = async (next: ProvidersConfig): Promise<void> => {
@@ -93,24 +73,20 @@ export function ProvidersSettingsPanel({
     void mutateProviders();
   };
 
-  const handleSetBinding = (kind: AgentKind, accountId: string | undefined): void => {
-    void applyProviders(withBinding(providers ?? {}, kind, accountId));
+  const handleSetAccountEnabled = (kind: AgentKind, enabled: boolean): void => {
+    if (!selected) return;
+    void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
-  const handleSetModel = (kind: AgentKind, model: string | undefined): void => {
-    void applyProviders(withModel(providers ?? {}, kind, model));
-  };
-
+  // Every account joins the pool the same way. A subscription used to bind itself to its agent on
+  // the way in; with no default to claim, adding one is adding one.
   const handleAdd = async (account: Account): Promise<void> => {
-    if (account.credential.type === 'oauth') {
-      await bindAccount.trigger({ agent: account.credential.agent, account });
-      await Promise.all([mutateAccounts(), mutateProviders()]);
-    } else {
-      await saveAccounts.trigger({ accounts: [...pool, account] });
-      await mutateAccounts();
-    }
-    if (account.service === LINKCODE_GATEWAY_SERVICE_ID) select(account.id);
-    else closeDialog();
+    await saveAccounts.trigger({ accounts: [...pool, account] });
+    await mutateAccounts();
+    if (account.service === LINKCODE_GATEWAY_SERVICE_ID) {
+      select(account.id);
+      startEdit();
+    } else closeDialog();
   };
 
   const handleUpdate = async (account: Account): Promise<void> => {
@@ -119,13 +95,6 @@ export function ProvidersSettingsPanel({
     });
     await mutateAccounts();
     select(account.id);
-  };
-
-  // One-click adoption of a detected CLI login: same account the oauth form would create.
-  const handleAdoptDetected = (serviceId: string): void => {
-    const service = serviceById(serviceId);
-    if (service?.kind !== 'oauth') return;
-    void handleAdd(oauthAccount(service, t(`serviceName.${service.id}`)));
   };
 
   const handleRemove = async (): Promise<void> => {
@@ -156,7 +125,6 @@ export function ProvidersSettingsPanel({
         loading={accountsLoading}
         onSelect={select}
         onAdd={startAdd}
-        onAdoptDetected={handleAdoptDetected}
         onUseLinkCodeGateway={
           linkCodeGateway ? () => pickService(LINKCODE_GATEWAY_SERVICE_ID) : undefined
         }
@@ -196,6 +164,7 @@ export function ProvidersSettingsPanel({
                 {view.kind === 'add-form' ? (
                   <AddAccountForm
                     serviceId={view.service}
+                    sources={modelSources}
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
@@ -212,6 +181,7 @@ export function ProvidersSettingsPanel({
                   view.editing ? (
                     <EditAccountForm
                       account={selected}
+                      sources={modelSources}
                       busy={saveAccounts.isMutating}
                       onBack={backToAccount}
                       onSubmit={(account) => {
@@ -222,36 +192,7 @@ export function ProvidersSettingsPanel({
                     <AccountDetail
                       account={selectedDetail}
                       busy={busy}
-                      accountModels={
-                        selected.service === LINKCODE_GATEWAY_SERVICE_ID ? models.data : undefined
-                      }
-                      accountModelsLoading={
-                        selected.service === LINKCODE_GATEWAY_SERVICE_ID && models.isLoading
-                      }
-                      accountModelsError={
-                        selected.service === LINKCODE_GATEWAY_SERVICE_ID && models.error
-                          ? (extractErrorMessage(models.error, false) ?? t('modelLoadError'))
-                          : undefined
-                      }
-                      onReloadAccountModels={
-                        selected.service === LINKCODE_GATEWAY_SERVICE_ID
-                          ? () => {
-                              void models.mutate();
-                            }
-                          : undefined
-                      }
-                      onSetAccountModel={
-                        selected.service === LINKCODE_GATEWAY_SERVICE_ID
-                          ? (model) => {
-                              const { model: _oldModel, ...withoutModel } = selected;
-                              void handleUpdate(
-                                model === undefined ? withoutModel : { ...selected, model },
-                              );
-                            }
-                          : undefined
-                      }
-                      onSetBinding={handleSetBinding}
-                      onSetModel={handleSetModel}
+                      onSetAccountEnabled={handleSetAccountEnabled}
                       onEdit={startEdit}
                       onRemove={() => {
                         void handleRemove();

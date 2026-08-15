@@ -1,5 +1,5 @@
 import type { ToolCall, ToolCallContent } from '@linkcode/schema';
-import { FileTextIcon, GlobeIcon, SearchIcon, WrenchIcon } from 'lucide-react';
+import { FileTextIcon, GlobeIcon, TextSearchIcon, WrenchIcon } from 'lucide-react';
 import { Fragment } from 'react';
 import { toolCallCommand, toolCallDisplayTitle } from '../tool-utils';
 import { artifactKindForPath, fileExtension } from './artifacts/file-kind';
@@ -22,7 +22,9 @@ import {
   toolCallFetchUrl,
   toolCallReadPreviewText,
   toolCallSearchQuery,
+  toolSearchPresentation,
 } from './tool-result-content';
+import { ToolSearchResult } from './tool-search';
 
 /** Host-provided replacement for the static `TerminalBlock` (e.g. the live daemon-backed one). */
 export type TerminalBlockComponent = React.ComponentType<{
@@ -55,26 +57,20 @@ function RenderedContent({
   return <TerminalBlock command={command} terminalId={content.terminalId} />;
 }
 
+/** The expanded card is the raw query's only home — headers summarize counts instead. */
 function SearchRows({ toolCall, text }: { toolCall: ToolCall; text: string }): React.ReactNode {
-  let resultCount = 0;
-  let lineStart = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (text.codePointAt(index) !== 10) continue;
-    if (index > lineStart) resultCount += 1;
-    lineStart = index + 1;
-  }
-  if (lineStart < text.length) resultCount += 1;
   // Search adapters return paths, grep-style lines, or prose. Preserve their text as one node:
   // splitting an unbounded grep result into rows can freeze the Electron renderer.
   return (
     <ToolPreviewCard
-      badge={String(resultCount)}
-      icon={SearchIcon}
+      icon={TextSearchIcon}
       title={toolCallSearchQuery(toolCall) ?? toolCallDisplayTitle(toolCall)}
     >
-      <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
-        <code>{text}</code>
-      </pre>
+      {text ? (
+        <pre className="overflow-x-auto whitespace-pre font-mono text-xs leading-relaxed">
+          <code>{text}</code>
+        </pre>
+      ) : null}
     </ToolPreviewCard>
   );
 }
@@ -325,7 +321,12 @@ export function ToolResultPreview({
   toolCall,
   TerminalBlockComponent,
 }: ToolResultPreviewProps): React.ReactNode {
+  const toolSearch = toolSearchPresentation(toolCall);
+  if (toolSearch) return <ToolSearchResult presentation={toolSearch} />;
   const content = toolCallDisplayContent(toolCall);
+  if (toolCall.kind === 'search' && content.length === 0 && toolCallSearchQuery(toolCall)) {
+    return <SearchRows text="" toolCall={toolCall} />;
+  }
   const file = toolCallFilePresentation(toolCall);
   if (file) {
     const hasDiff = content.some((item) => item.type === 'diff');

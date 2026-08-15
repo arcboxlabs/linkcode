@@ -74,6 +74,8 @@ client configuration or new build.
 | Variable | Surface | Notes |
 | --- | --- | --- |
 | `LINKCODE_SENTRY_DSN` | Daemon process | Read by `apps/daemon/src/instrument.ts`, preloaded via `--import`. The desktop supervisor copies `MAIN_VITE_SENTRY_DSN` into it for the packaged daemon. |
+| `MAIN_VITE_CONFIG_BOOTSTRAP` | Electron main | Build-time immutable JSON containing the config target, HTTPS endpoints, public verification keyrings, schema version, and bundled defaults. Unset builds stay READY on empty bundled defaults with remote refresh disabled. Local override files are read only by unpackaged builds. Setting it while `apps/desktop/generated/config-build-bundle.json` exists is a hard build error — a rendered bundle cannot be overridden. |
+| `LINKCODE_REQUIRE_CONFIG_BUNDLE` | Desktop build/packaging | `1` makes the Vite main build fail without a rendered `apps/desktop/generated/config-build-bundle.json` and makes `verify-artifacts.mts` require the staged asar copy. Set by `build-desktop.yml` on signed builds ([`RELEASE.md`](RELEASE.md), "Immutable config bundle"). |
 | `MAIN_VITE_SENTRY_DSN` | Electron main | Build-time inlined; declared in `apps/desktop/turbo.json` `build.env`. Only signed builds carry it. |
 | `VITE_SENTRY_DSN` | Webview | Build-time inlined; declared in `apps/webview/turbo.json` `build.env`. |
 | `EXPO_PUBLIC_SENTRY_DSN` | Mobile | Inlined by Metro/EAS at bundle time. |
@@ -107,7 +109,8 @@ client configuration or new build.
 | `RENDERER_VITE_*`, `VITE_*` | `apps/desktop/vite.renderer.config.ts` | The only prefixes exposed to desktop renderer code (`envDir` is `apps/desktop`). |
 | `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` | `apps/desktop/scripts/stage-sidecar.mts` | `aarch64-linux-gnu-gcc` for the linux-arm64 sidecar cross-build. |
 | `NODE_OPTIONS` | `.github/workflows/ci.yml` | `--max-old-space-size=4096` for every CI job. |
-| `POSTHOG_HOST` | `build-mobile.yml` | Organization Actions variable mapped to `EXPO_PUBLIC_POSTHOG_HOST` for the production bundle. |
+| `POSTHOG_HOST` | desktop/mobile build workflows | Organization Actions variable mapped to the platform-specific PostHog host for production bundles. |
+| `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO`, `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS` | release workflows | Protected `release` environment vars. The repository vars are different canonical `arcboxlabs/repository` identities for publisher code and structural source data; trusted steps validate them before minting separate repository-scoped read tokens. Current values are `arcboxlabs/linkcodehq` and `arcboxlabs/linkcode-config`. Release manifests bind their commits independently and digest-bind the exact revision/public-keyring JSON inputs. |
 
 ## Release-only secrets
 
@@ -121,11 +124,12 @@ Set as GitHub repository/environment secrets, never locally. Signing and notariz
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_TEAM_ID` | `build-desktop.yml` | notarytool key identity and team. |
 | `EXPO_TOKEN` | `build-mobile.yml` | Expo robot-user token with access to the LinkCode EAS project, managed build credentials, remote build versions, and EAS Submit. Store it in `release` only after enabling required reviewers and deployment branch/tag restrictions. |
 | `SENTRY_AUTH_TOKEN` | `build-mobile.yml` | Organization Actions secret that uploads production mobile source maps. Local EAS Build cannot read an EAS variable with Secret visibility, so GitHub must inject it. |
-| `SENTRY_DSN_MOBILE`, `POSTHOG_PROJECT_TOKEN` | `build-mobile.yml` | Mapped to the mobile `EXPO_PUBLIC_*` build-time variables. These are publishable identifiers, but the repository currently carries them as Actions secrets. |
+| `SENTRY_DSN_DESKTOP`, `SENTRY_DSN_MOBILE`, `POSTHOG_PROJECT_TOKEN` | desktop/mobile build workflows | Mapped to platform build-time telemetry variables. These are publishable identifiers, but the repository currently carries them as Actions secrets. |
 | `AZURE_PUBLISHER_NAME`, `AZURE_SIGN_ENDPOINT`, `AZURE_CODE_SIGNING_ACCOUNT`, `AZURE_CERTIFICATE_PROFILE` | `build-desktop.yml` | Windows Trusted Signing identifiers (not credentials, but kept as secrets so the public repo doesn't advertise the signing infrastructure). `AZURE_PUBLISHER_NAME` must match the certificate subject CN exactly. |
 | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` | `build-desktop.yml` | `azure/login` **inputs** for OIDC federation. No `AZURE_*` credential env exists during packaging on purpose, so `DefaultAzureCredential` falls through to the Azure CLI entry. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `release-desktop.yml` | Cloudflare R2 credentials for publishing the electron-updater feed. `AWS_REQUEST_CHECKSUM_CALCULATION`/`AWS_RESPONSE_CHECKSUM_VALIDATION` are pinned to `WHEN_REQUIRED` because R2 doesn't implement the checksums recent aws-cli sends. |
-| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | `release-please.yml`, `finalize-releases.yml`, `release-desktop.yml` | Repository/org-scoped GitHub App credentials. The App needs Contents, Issues, and Pull requests read/write on this repo so release-please can maintain PRs, draft Releases, and tags; the release environment also uses it for the Homebrew cask bump and the WinGet bump (install the App on `arcboxlabs/homebrew-tap` and on the `arcboxlabs/winget-pkgs` fork with contents + pull-requests write). Missing credentials fail release automation before any tag is created; only the package-manager bumps remain an optional self-skip. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `release-brand-matrix.yml` | R2 account and S3 credentials in the protected `release` Environment. Scope the key pair to object read/write/list only for the exact bucket/prefix destinations in the reviewed matrix. |
+| `BOT_APP_ID`, `BOT_APP_PRIVATE_KEY` | release and config-render workflows | Organization GitHub App credentials. The App needs Contents, Issues, and Pull requests read/write on this repo so release-please can maintain PRs, draft Releases, and tags; install it on the private repositories selected by `CONFIG_PUBLISHER_REPO` and `CONFIG_SOURCE_REPO` so config rendering can mint separate short-lived tokens restricted to Contents read on each repository. Package-manager bumps additionally require installations on `arcboxlabs/homebrew-tap` and `arcboxlabs/winget-pkgs` with contents + pull-requests write. Missing credentials fail release automation before any tag is created; only package-manager bumps remain an optional self-skip. |
 
 Mobile certificates, provisioning profiles, the Android keystore, the App Store Connect API key,
 and the Google Play service-account key are EAS-managed credentials, not GitHub variables.
