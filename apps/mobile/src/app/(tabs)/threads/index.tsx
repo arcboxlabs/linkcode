@@ -156,12 +156,11 @@ function ThreadsScreen({
 
   return (
     <>
-      {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar;
-          the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
+      {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar. */}
       <Stack.SearchBar
         placeholder={t('searchPlaceholder')}
         placement="stacked"
-        hideWhenScrolling={false}
+        hideWhenScrolling
         hideNavigationBar={false}
         autoCapitalize="none"
         onChangeText={onSearchChange}
