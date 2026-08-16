@@ -86,17 +86,17 @@ function httpsUrl(value, path) {
   return text;
 }
 
-function releaseManifest(value, path, platform, brandId, channel, requirePublicationEvidence) {
+function releaseManifest(value, path, platform, brandId, channel, requireFormatV2) {
   const manifest = record(value, path);
   if (!RELEASE_MANIFEST_VERSIONS.has(manifest.releaseManifestFormatVersion)) {
     fail(path, 'format version must be 1 or 2');
   }
-  if (requirePublicationEvidence && manifest.releaseManifestFormatVersion !== 2) {
-    fail(path, 'production releases require observed publication evidence');
+  if (requireFormatV2 && manifest.releaseManifestFormatVersion !== 2) {
+    fail(path, 'production releases require manifest format version 2');
   }
   exact(
     manifest,
-    manifest.releaseManifestFormatVersion === 2
+    manifest.releaseManifestFormatVersion === 2 && 'publicationEvidence' in manifest
       ? [...RELEASE_MANIFEST_BASE_KEYS, 'publicationEvidence']
       : RELEASE_MANIFEST_BASE_KEYS,
     path,
@@ -112,7 +112,7 @@ function releaseManifest(value, path, platform, brandId, channel, requirePublica
   }
   string(manifest.configRevisionId, `${path}.configRevisionId`, RE_REVISION);
   httpsUrl(manifest.telemetryEndpoint, `${path}.telemetryEndpoint`);
-  if (manifest.releaseManifestFormatVersion === 2) {
+  if (manifest.releaseManifestFormatVersion === 2 && 'publicationEvidence' in manifest) {
     const evidence = record(manifest.publicationEvidence, `${path}.publicationEvidence`);
     exact(evidence, PUBLICATION_EVIDENCE_KEYS, `${path}.publicationEvidence`);
     const activationVersion = string(
@@ -253,7 +253,7 @@ function parseBrandBuildMatrix(value, options = {}) {
     if (brand.sourceRoot !== '.' && brand.sourceRoot !== 'examples/acme-zenith') {
       fail(`${path}.sourceRoot`, 'must be . or examples/acme-zenith');
     }
-    const requirePublicationEvidence = options.build || brand.sourceRoot === '.';
+    const requireFormatV2 = options.build || brand.sourceRoot === '.';
     const manifests = record(brand.releaseManifests, `${path}.releaseManifests`);
     exact(manifests, PLATFORMS, `${path}.releaseManifests`);
     const declarations = record(brand.compliance, `${path}.compliance`);
@@ -265,7 +265,7 @@ function parseBrandBuildMatrix(value, options = {}) {
         platform,
         brandId,
         brand.channel,
-        requirePublicationEvidence,
+        requireFormatV2,
       );
       declarations[platform] = compliance(declarations[platform], `${path}.compliance.${platform}`);
     }
@@ -278,19 +278,6 @@ function parseBrandBuildMatrix(value, options = {}) {
     ]) {
       if (PLATFORMS.some((platform) => manifests[platform][field] !== manifests.desktop[field])) {
         fail(`${path}.releaseManifests`, `all platforms must share ${field}`);
-      }
-    }
-    if (requirePublicationEvidence) {
-      for (const field of ['deploymentId', 'deploymentSourceGitSha', 'keyId', 'verifiedAt']) {
-        if (
-          PLATFORMS.some(
-            (platform) =>
-              manifests[platform].publicationEvidence[field] !==
-              manifests.desktop.publicationEvidence[field],
-          )
-        ) {
-          fail(`${path}.releaseManifests`, `all platforms must share publicationEvidence.${field}`);
-        }
       }
     }
     const distribution = record(brand.distribution, `${path}.distribution`);

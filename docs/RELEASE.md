@@ -99,11 +99,11 @@ the selected publisher or source repository. The App must be installed on both p
 repositories. Missing secrets or installation access fail before rendering; no long-lived
 config-read token is used.
 
-Production rendering reads the root of `CONFIG_SOURCE_REPO` and requires release-manifest v2
-evidence from the read-only Pages observer for the exact deployed source commit. A green Pages
-build is not publication evidence. Workflow code may select only that root or the reviewed
-`examples/acme-zenith` root used by the nonproduction pilot; configuration data cannot supply a
-path.
+Production rendering reads the root of `CONFIG_SOURCE_REPO` and remains bound to the manifest's
+exact publisher/source commits, input bytes, target, and expected snapshot digest. Client releases
+do not wait for a Pages deployment or require observer publication evidence. Workflow code may
+select only that root or the reviewed `examples/acme-zenith` root used by the nonproduction pilot;
+configuration data cannot supply a path.
 
 Inputs live in the GitHub **`release` environment** and a missing value fails the build with an actionable error:
 
@@ -116,7 +116,7 @@ Inputs live in the GitHub **`release` environment** and a missing value fails th
   The two repository values must differ. Current values are `arcboxlabs/linkcodehq` and
   `arcboxlabs/linkcode-config`, respectively.
 - `CONFIG_RELEASE_REVISION` / `CONFIG_RELEASE_KEYRINGS` (vars) — exact revision-metadata and public-keyrings JSON bytes; the manifest pins their SHA-256s, so drifted content fails closed. Public keys only — private keys never enter this repo or its CI.
-- `CONFIG_RELEASE_MANIFEST_DESKTOP` / `CONFIG_RELEASE_MANIFEST_IOS` / `CONFIG_RELEASE_MANIFEST_ANDROID` (vars) — release-render manifest v2 JSON per production target, pinning `publisherGitSha`, `sourceGitSha`, brand/platform/channel, telemetry endpoint, input digests, expected published snapshot digest, and exact observer evidence (`activationVersion`, Pages deployment/source identity, signing `keyId`, pointer digest, and verification time). Version 1 remains accepted only for the reviewed nonproduction fixture.
+- `CONFIG_RELEASE_MANIFEST_DESKTOP` / `CONFIG_RELEASE_MANIFEST_IOS` / `CONFIG_RELEASE_MANIFEST_ANDROID` (vars) — release-render manifest v2 JSON per production target, pinning `publisherGitSha`, `sourceGitSha`, brand/platform/channel, telemetry endpoint, revision and public-keyring byte digests, and the expected snapshot digest. Optional `publicationEvidence` remains accepted and strictly parsed for compatibility, but its presence and Pages deployment state do not gate a client release. Version 1 remains accepted only for the reviewed nonproduction fixture.
 
 Enforcement: `LINKCODE_REQUIRE_CONFIG_BUNDLE=1` (set for signed desktop builds) makes the Vite main build fail without `apps/desktop/generated/config-build-bundle.json` and makes `verify-artifacts.mts` require the staged asar copy, which is always byte-compared against the generated render. Mobile gates twice: `pnpm -F @linkcode/mobile config:verify-release` before `eas build`, and the `eas-build-pre-install` hook inside the EAS project archive rejects the committed `{ bundle: null }` sentinel on production profiles (the root `.easignore` — which replaces `.gitignore` for EAS archiving — deliberately lets the generated modules into the archive).
 
@@ -144,14 +144,15 @@ the canonical schema in the pinned publisher checkout before parsing. Acme and Z
 The JSON root contains `brandBuildMatrixVersion: 1` and a non-empty `brands` array. Every brand has
 exactly `brandId`, `channel`, `sourceRoot`, `releaseManifests`, `compliance`, and `distribution`.
 `sourceRoot` is either `.` for reviewed production data or `examples/acme-zenith` for the pinned
-nonproduction fixture; no other path is accepted. Any matrix run with `build=true` requires
-release-manifest v2 observer evidence even when it uses the fixture root, so changing the path cannot
-bypass the production publication gate.
+nonproduction fixture; no other path is accepted. Production roots and every matrix run with
+`build=true` require release-manifest v2, but `publicationEvidence` is optional and no provider
+deployment state is checked.
 
 - `releaseManifests.desktop|ios|android` are complete release-render manifest v2 objects for a
   production source root; the reviewed nonproduction example may retain v1. The three
   targets must share publisher/source commits, config revision, revision digest, and public-keyring
-  digest; target brand/platform/channel mismatches are rejected.
+  digest; target brand/platform/channel mismatches are rejected. Optional publication evidence is
+  validated within the manifest that carries it, but is not required or compared across targets.
 - `compliance.desktop|ios|android` has a lexicographically sorted `disclosedFeatures` array and a
   checklist with all five keys set to `true`: `configurableFeaturesDisclosed`,
   `dataPracticesReviewed`, `noExecutableCode`, `permissionsReviewed`, and `storeMetadataReviewed`.

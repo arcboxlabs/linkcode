@@ -242,12 +242,21 @@ describe('release manifest binding', () => {
     expect(render?.args).toContain(request.releaseManifestPath);
   });
 
-  it('accepts exact observer evidence and rejects a mismatched deployment source', async () => {
+  it('accepts v2 without publication evidence and validates optional evidence when present', async () => {
     const request = await makeBoundRequest();
     const manifest = JSON.parse(await readFile(request.releaseManifestPath!, 'utf8')) as Record<
       string,
       unknown
     >;
+    const { run } = fakeRunner({
+      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
+    });
+    await writeFile(
+      request.releaseManifestPath!,
+      JSON.stringify({ ...manifest, releaseManifestFormatVersion: 2 }),
+    );
+    await expect(renderConfigBundleWithPublisher(request, run)).resolves.toBeDefined();
+
     const publicationEvidence = {
       activationVersion: '1',
       deploymentId: 'deployment-fixture',
@@ -260,9 +269,6 @@ describe('release manifest binding', () => {
       request.releaseManifestPath!,
       JSON.stringify({ ...manifest, publicationEvidence, releaseManifestFormatVersion: 2 }),
     );
-    const { run } = fakeRunner({
-      onRender: () => writeFile(request.outPath, JSON.stringify(fixture)),
-    });
     await expect(renderConfigBundleWithPublisher(request, run)).resolves.toBeDefined();
 
     await writeFile(

@@ -119,16 +119,9 @@ runs:
               exit 1
             fi
           done
-          if [ "$SOURCE_ROOT" = . ] && ! jq -e '
-              .releaseManifestFormatVersion == 2 and
-              (.publicationEvidence.activationVersion | type == "string") and
-              (.publicationEvidence.deploymentId | type == "string") and
-              .publicationEvidence.deploymentSourceGitSha == .sourceGitSha and
-              (.publicationEvidence.keyId | type == "string") and
-              (.publicationEvidence.pointerSha256 | type == "string") and
-              (.publicationEvidence.verifiedAt | type == "string")
-            ' "$1" > /dev/null; then
-            echo "::error::Production release manifest $1 requires exact observer publication evidence"
+          if [ "$SOURCE_ROOT" = . ] &&
+             ! jq -e '.releaseManifestFormatVersion == 2' "$1" > /dev/null; then
+            echo "::error::Production release manifest $1 requires format version 2"
             exit 1
           fi
         }
@@ -151,14 +144,6 @@ runs:
               exit 1
             fi
           done
-          if [ "$SOURCE_ROOT" = . ]; then
-            for field in deploymentId deploymentSourceGitSha keyId verifiedAt; do
-              if [ "$(pin "$work/manifest-ios.json" ".publicationEvidence.$field")" != "$(pin "$work/manifest-android.json" ".publicationEvidence.$field")" ]; then
-                echo "::error::iOS and Android release manifests disagree on publicationEvidence.$field; both targets must use one observed deployment"
-                exit 1
-              fi
-            done
-          fi
         fi
 
         publisher_sha="$(pin "$primary" .publisherGitSha)"
