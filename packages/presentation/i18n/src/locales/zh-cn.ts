@@ -136,7 +136,8 @@ export const zhCN = {
       insufficientCreditsHint: '充值后即可安全重试这条消息。',
       topUpCredits: '充值额度',
       billingUnavailableTitle: 'LinkCode 计费服务暂时不可用',
-      billingUnavailableHint: '请求尚未发送给模型，请稍后重试。',
+      billingUnavailableHint:
+        '计费系统未能记录此请求——请求可能已发送给模型，也可能尚未发送。请稍后重试。',
       minimap: {
         label: '对话导航',
         turn: '第 {index} 轮',

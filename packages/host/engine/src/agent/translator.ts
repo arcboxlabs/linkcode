@@ -54,6 +54,7 @@ export function withTranslatorEndpoint(opts: StartOptions, url: string): StartOp
     ...opts,
     config: {
       ...opts.config,
+      upstreamBaseUrl: opts.config?.baseUrl,
       baseUrl: url,
       protocol: 'anthropic',
       authToken: TRANSLATOR_PLACEHOLDER_TOKEN,

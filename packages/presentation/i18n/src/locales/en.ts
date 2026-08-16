@@ -140,7 +140,8 @@ export const en = {
       insufficientCreditsHint: 'Top up your balance, then retry this message.',
       topUpCredits: 'Top up credits',
       billingUnavailableTitle: 'LinkCode billing is temporarily unavailable',
-      billingUnavailableHint: 'Your request was not sent to the model. Please retry shortly.',
+      billingUnavailableHint:
+        'Billing could not record this request — it may or may not have reached the model. Retry shortly.',
       minimap: {
         label: 'Conversation navigation',
         turn: 'Turn {index}',

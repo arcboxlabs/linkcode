@@ -391,8 +391,12 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.emit({ type: 'error', message, code, recoverable });
   }
 
+  private providerBaseUrl(): unknown {
+    return this.opts?.config?.upstreamBaseUrl ?? this.opts?.config?.baseUrl;
+  }
+
   protected emitProviderError(message: string, details: ProviderErrorDetails = {}): void {
-    const gatewayError = linkCodeGatewayError(this.opts?.config?.baseUrl, {
+    const gatewayError = linkCodeGatewayError(this.providerBaseUrl(), {
       message,
       ...details,
     });
@@ -404,7 +408,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   protected emitGatewayError(details: ProviderErrorDetails): boolean {
-    const gatewayError = linkCodeGatewayError(this.opts?.config?.baseUrl, details);
+    const gatewayError = linkCodeGatewayError(this.providerBaseUrl(), details);
     if (!gatewayError) return false;
     this.emitError(gatewayError.message, gatewayError.code, gatewayError.recoverable);
     return true;

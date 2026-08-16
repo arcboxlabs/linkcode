@@ -1440,7 +1440,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       msg.subtype === 'success' &&
       this.emitGatewayError({
         statusCode: msg.api_error_status,
-        message: msg.result,
       })
     ) {
       this.teardown();

@@ -63,6 +63,7 @@ describe('withTranslatorEndpoint', () => {
       'http://127.0.0.1:5123',
     );
     expect(rewritten.config).toEqual({
+      upstreamBaseUrl: 'https://api.openai.com/v1',
       baseUrl: 'http://127.0.0.1:5123',
       protocol: 'anthropic',
       authToken: TRANSLATOR_PLACEHOLDER_TOKEN,
