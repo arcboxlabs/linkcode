@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import type { AgentHistoryEvent, AgentHistoryId, MessageId, Timestamp } from '@linkcode/schema';
 import { MAX_ATTACHMENT_TOTAL_BASE64_LENGTH, textBlock } from '@linkcode/schema';
 import { clamp } from 'foxts/clamp';
@@ -37,39 +38,26 @@ export function cursorFromTotal(
   return offset + limit < totalCount ? String(offset + limit) : undefined;
 }
 
-/** Base64 payload one replayed event embeds — user messages are where attachments ride. */
-function eventAttachmentLength(event: AgentHistoryEvent): number {
-  if (event.event.type !== 'user-message') return 0;
-  let total = 0;
-  for (const block of event.event.content) {
-    if (block.type === 'image' || block.type === 'audio') total += block.data.length;
-    else if (block.type === 'resource' && 'blob' in block.resource) {
-      total += block.resource.blob.length;
-    }
-  }
-  return total;
+/** Counts the complete event because text, thoughts, summaries, tool payloads, and attachments are unbounded. */
+function eventSerializedByteLength(event: AgentHistoryEvent): number {
+  return Buffer.byteLength(JSON.stringify(event), 'utf8');
 }
 
-/** Page slice bounded by event count AND aggregate embedded-attachment payload. One
- * `history.read.result` travels as a single logical transport message, and the tunnel silently
- * drops any message its reassembly buffer cannot hold — so image-heavy transcripts must fan
- * across cursor pages instead of concentrating attachments into one reply. The budget is
- * `MAX_ATTACHMENT_TOTAL_BASE64_LENGTH` (what transports already size a maximal prompt's frame
- * for); a page's first event always ships, since per-prompt caps keep any single event within
- * that budget on its own. */
+/** Bounds aggregate serialized event bytes; the first event always ships so cursor pagination
+ * cannot stall on a single oversized stored record. */
 export function sliceHistoryEventPage(
   events: readonly AgentHistoryEvent[],
   offset: number,
   limit: number,
 ): { events: AgentHistoryEvent[]; cursor: string | undefined } {
   const page: AgentHistoryEvent[] = [];
-  let payloadLength = 0;
+  let pageByteLength = 0;
   for (let index = offset; index < events.length && page.length < limit; index += 1) {
-    const attachmentLength = eventAttachmentLength(events[index]);
-    if (page.length > 0 && payloadLength + attachmentLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
+    const eventLength = eventSerializedByteLength(events[index]);
+    if (page.length > 0 && pageByteLength + eventLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
       break;
     }
-    payloadLength += attachmentLength;
+    pageByteLength += eventLength;
     page.push(events[index]);
   }
   const next = offset + page.length;
