@@ -106,8 +106,11 @@ runs:
 
         work="$RUNNER_TEMP/config-render-$APP"
         mkdir -p "$work"
-        printf '%s' "$REVISION_JSON" > "$work/revision.json"
-        printf '%s' "$KEYRINGS_JSON" > "$work/keyrings.json"
+        write_json() {
+          printf '%s\n' "${1%$'\n'}" > "$2"
+        }
+        write_json "$REVISION_JSON" "$work/revision.json"
+        write_json "$KEYRINGS_JSON" "$work/keyrings.json"
 
         pin() { jq -er "$2" "$1"; }
         # Validated at top level before any $(pin …) use: inside command substitution a failure
@@ -127,12 +130,12 @@ runs:
         }
 
         if [ "$APP" = desktop ]; then
-          printf '%s' "$MANIFEST_DESKTOP" > "$work/manifest-desktop.json"
+          write_json "$MANIFEST_DESKTOP" "$work/manifest-desktop.json"
           check_manifest "$work/manifest-desktop.json"
           primary="$work/manifest-desktop.json"
         else
-          printf '%s' "$MANIFEST_IOS" > "$work/manifest-ios.json"
-          printf '%s' "$MANIFEST_ANDROID" > "$work/manifest-android.json"
+          write_json "$MANIFEST_IOS" "$work/manifest-ios.json"
+          write_json "$MANIFEST_ANDROID" "$work/manifest-android.json"
           check_manifest "$work/manifest-ios.json"
           check_manifest "$work/manifest-android.json"
           primary="$work/manifest-ios.json"

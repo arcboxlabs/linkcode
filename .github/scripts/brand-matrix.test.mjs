@@ -465,6 +465,9 @@ describe('release brand matrix workflow', () => {
     expect(action).toContain('Pinned config source must contain source root');
     expect(action).toContain('Production release manifest $1 requires format version 2');
     expect(action).not.toContain('publicationEvidence');
+    expect(action).toContain('write_json() {');
+    expect(action).toContain(String.raw`printf '%s\n'`);
+    expect(action).toContain(String.raw`{1%$'\n'}`);
     expect(action).toContain('unset PUBLISHER_TOKEN SOURCE_TOKEN');
     expect(action.indexOf('unset PUBLISHER_TOKEN SOURCE_TOKEN')).toBeLessThan(
       action.indexOf('pnpm --dir "$publisher" install --frozen-lockfile'),
