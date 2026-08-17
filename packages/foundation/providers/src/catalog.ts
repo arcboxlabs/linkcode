@@ -50,6 +50,8 @@ export type ServiceDescriptor =
       /** How the one secret authenticates. Service-level: every variant accepts the same secret. */
       credentialType: 'api-key' | 'auth-token';
       variants: Partial<Record<AccountProtocol, ServiceVariant>>;
+      /** Restrict agents when a provider-routed SDK does not carry this service's model catalog. */
+      supportedAgents?: AgentKind[];
       models?: ServiceModelList;
       secretPlaceholder?: string;
     }
@@ -132,6 +134,24 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     // Service root, not the `/anthropic` variant's path — that one serves no list.
     models: { url: 'https://api.deepseek.com/models', wire: 'openai' },
     secretPlaceholder: 'sk-…',
+  },
+  {
+    id: 'stepfun',
+    label: 'StepFun',
+    group: 'direct',
+    kind: 'endpoint',
+    credentialType: 'api-key',
+    variants: {
+      anthropic: { baseUrl: 'https://api.stepfun.com' },
+      'openai-responses': { baseUrl: 'https://api.stepfun.com/v1' },
+      'openai-chat': {
+        baseUrl: 'https://api.stepfun.com/v1',
+        knownProvider: { opencode: 'stepfun' },
+      },
+    },
+    // Pi's bundled provider catalog has no StepFun entry, so a key cannot select its wire/models.
+    supportedAgents: ['claude-code', 'codex', 'opencode'],
+    models: { url: 'https://api.stepfun.com/v1/models', wire: 'openai' },
   },
   {
     id: LINKCODE_GATEWAY_SERVICE_ID,

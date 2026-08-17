@@ -54,6 +54,9 @@ export function resolveBinding(account: Account, kind: AgentKind): ResolvedBindi
   if (kind === 'grok-build') return resolveGrokBuild(account);
 
   const service = endpointServiceById(account.service);
+  if (service?.supportedAgents !== undefined && !service.supportedAgents.includes(kind)) {
+    return { tier: 'unavailable', reason: 'protocol-unsupported' };
+  }
   const pinned = pinnedEndpoint(account);
   if (pinned) {
     return bind(

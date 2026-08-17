@@ -135,6 +135,41 @@ describe('resolveBinding: variant chosen per agent', () => {
     });
   });
 
+  it('routes a StepFun key over each supported native protocol', () => {
+    const stepfun = account({ service: 'stepfun' });
+    expect(resolveBinding(stepfun, 'claude-code')).toEqual({
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.stepfun.com',
+    });
+    expect(resolveBinding(stepfun, 'codex')).toEqual({
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://api.stepfun.com/v1',
+    });
+    expect(resolveBinding(stepfun, 'opencode')).toEqual({
+      tier: 'native',
+      protocol: 'openai-chat',
+      baseUrl: 'https://api.stepfun.com/v1',
+      knownProvider: 'stepfun',
+    });
+    for (const kind of ['pi', 'grok-build'] as const) {
+      expect(resolveBinding(stepfun, kind)).toEqual({
+        tier: 'unavailable',
+        reason: 'protocol-unsupported',
+      });
+    }
+    expect(
+      resolveBinding(
+        account({
+          service: 'stepfun',
+          endpoint: { baseUrl: 'https://proxy.example.com/v1', protocol: 'openai-chat' },
+        }),
+        'pi',
+      ),
+    ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
+  });
+
   it('reaches codex on every service whose endpoint serves the Responses API', () => {
     // Verified against vendor docs 2026-08: xAI, OpenRouter and Vercel all serve POST /responses
     // at the base URL declared here, so codex must have a target on each.
@@ -303,6 +338,10 @@ describe('catalog helpers', () => {
     // Service root, deliberately not the `/anthropic` variant's path.
     expect(modelListSource('deepseek')).toEqual({
       url: 'https://api.deepseek.com/models',
+      wire: 'openai',
+    });
+    expect(modelListSource('stepfun')).toEqual({
+      url: 'https://api.stepfun.com/v1/models',
       wire: 'openai',
     });
     expect(modelListSource('anthropic-api')?.wire).toBe('anthropic');

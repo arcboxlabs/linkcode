@@ -165,6 +165,40 @@ describe('non-subscription account creation', () => {
     );
   });
 
+  it('offers a dedicated StepFun API key entry', async () => {
+    const onPick = vi.fn();
+    render(<ServiceCatalogView onPick={onPick} />);
+    fireEvent.click(screen.getByText('serviceName.stepfun'));
+    expect(onPick).toHaveBeenCalledWith('stepfun');
+    cleanup();
+
+    const onSubmit = vi.fn();
+    render(
+      <AddAccountForm
+        serviceId="stepfun"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        onBack={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const secret = document.querySelector<HTMLInputElement>('input[type="password"]');
+    if (!secret) throw new Error('credential input missing');
+    fireEvent.change(secret, { target: { value: 'stepfun-test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          service: 'stepfun',
+          credential: { type: 'api-key', key: 'stepfun-test-key' },
+        }),
+      ),
+    );
+  });
+
   it('asks nothing about protocol for a service serving several shapes', () => {
     render(
       <AddAccountForm
