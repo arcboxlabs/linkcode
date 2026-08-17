@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.23.0](https://github.com/arcboxlabs/linkcode/compare/v0.22.0...v0.23.0) (2026-08-17)
+
+
+### Features
+
+* **agent-adapter,ui:** surface codex skill brand icons and display names in the command catalog ([#431](https://github.com/arcboxlabs/linkcode/issues/431)) ([6785d25](https://github.com/arcboxlabs/linkcode/commit/6785d25740017bf6bf77c798c49cc9c2f3fbb117))
+* **config:** generate branded desktop and mobile identity ([#428](https://github.com/arcboxlabs/linkcode/issues/428)) ([a50ea0f](https://github.com/arcboxlabs/linkcode/commit/a50ea0fe2701748bd44ba309207c62ddd0c6a821))
+* **providers,schema,engine,workbench:** retire the default model — user-selected model sets from provider model lists ([#426](https://github.com/arcboxlabs/linkcode/issues/426)) ([084933c](https://github.com/arcboxlabs/linkcode/commit/084933c68f4d31f8e50bfc7d2996d3d4fef89184))
+* **release:** add provenance verification CLI ([cc51e0b](https://github.com/arcboxlabs/linkcode/commit/cc51e0bf85b021264bb2628da80e08eb30bd8d2d))
+* **release:** bind artifact provenance ([047c5b9](https://github.com/arcboxlabs/linkcode/commit/047c5b9b68fb75172e20f011650659d08dd1d52b))
+* **release:** build isolated brand matrix ([7a1ec14](https://github.com/arcboxlabs/linkcode/commit/7a1ec14be9a2245a5427167374044b865d78e6e9))
+* **release:** consume rendered brand artifacts ([44bcf67](https://github.com/arcboxlabs/linkcode/commit/44bcf678797ad2ae088523847330451adea15ad8))
+* **release:** download deployed config inputs ([d2aaa5f](https://github.com/arcboxlabs/linkcode/commit/d2aaa5ffe26ef83b674fe1d013e0ba40d3848b0c))
+* **release:** enforce store configuration compliance ([42a825b](https://github.com/arcboxlabs/linkcode/commit/42a825bd043337b82dbdce06eb66c40e296252b4))
+* **release:** gate matrix publication ([dd29699](https://github.com/arcboxlabs/linkcode/commit/dd296991cc11d15cf85c53583a42eefdf1f12dab))
+* **release:** render independent config source ([7c98411](https://github.com/arcboxlabs/linkcode/commit/7c984113dd78a65eed92c77a330d0d968ac8678a))
+* **release:** validate brand build matrix ([d6817d6](https://github.com/arcboxlabs/linkcode/commit/d6817d6d08f744a0a4cdd5be161dc2451ebc96b0))
+* **release:** validate protected release inputs ([e1d037f](https://github.com/arcboxlabs/linkcode/commit/e1d037fac464d3381e44a273e9406738c184d1e7))
+* **ui:** dedicated chat components for tool search/select/query ([#430](https://github.com/arcboxlabs/linkcode/issues/430)) ([8a84396](https://github.com/arcboxlabs/linkcode/commit/8a84396eccb580f6c11209b34a7661dc91e8cc78))
+
+
+### Bug Fixes
+
+* **agent-adapter:** replay codex code-mode MCP calls, Script envelopes, and skill rows ([#435](https://github.com/arcboxlabs/linkcode/issues/435)) ([a2b4e73](https://github.com/arcboxlabs/linkcode/commit/a2b4e7331375df998f52761a223971b539e7fdbe))
+* **config:** allow disabled emergency delivery ([6ea7f73](https://github.com/arcboxlabs/linkcode/commit/6ea7f73549503a58e0390ec660b386e7bf516211))
+* **release:** bind mobile observer identity ([547ff17](https://github.com/arcboxlabs/linkcode/commit/547ff17e44659167f4d8ede5dd34e2dee0941e7d))
+* **release:** close privileged workflow paths ([7c32c92](https://github.com/arcboxlabs/linkcode/commit/7c32c925588f4d611cf04bf0b06bd02b2a465126))
+* **release:** decouple client build from config publication ([e79cbf3](https://github.com/arcboxlabs/linkcode/commit/e79cbf3c0ac0fea8d3366890397214a6c39b1ff9))
+* **release:** harden brand matrix trust ([8bf90cb](https://github.com/arcboxlabs/linkcode/commit/8bf90cbec2c73cba64144d7400fec00a5847be6c))
+* **release:** harden pilot matrix gates ([856c199](https://github.com/arcboxlabs/linkcode/commit/856c199ed00e2aa1ecfbf5404b45306d93c5bc07))
+* **release:** normalize JSON environment inputs ([55b8518](https://github.com/arcboxlabs/linkcode/commit/55b8518d22feb76204a15d68d7ad542a2f9d6fbe))
+* **release:** require observed config publication ([5f8ed5e](https://github.com/arcboxlabs/linkcode/commit/5f8ed5e714b4a5558c19256218a66bce544bc5d1))
+* **release:** require observed config publication ([#451](https://github.com/arcboxlabs/linkcode/issues/451)) ([7677211](https://github.com/arcboxlabs/linkcode/commit/7677211937cfa197c244df366a55474ac94b3929))
+* **release:** select both config repositories ([f91fcbe](https://github.com/arcboxlabs/linkcode/commit/f91fcbe0d850084edee35f9f587fe13d154cd884))
+* **release:** unify target identity contract ([5d6f81b](https://github.com/arcboxlabs/linkcode/commit/5d6f81bd781cea6bdd561a9ac896959b203b2601))
+* **release:** use protected release environment ([8a19b05](https://github.com/arcboxlabs/linkcode/commit/8a19b0591f8dbe32c8691554b36768fd0693f162))
+* **ui:** tighten grouped activity spacing ([#446](https://github.com/arcboxlabs/linkcode/issues/446)) ([65f16cf](https://github.com/arcboxlabs/linkcode/commit/65f16cf1bd252ee169f64dea6bfdbd45cf7c7192))
+
 ## [0.22.0](https://github.com/arcboxlabs/linkcode/compare/v0.21.0...v0.22.0) (2026-08-06)
 
 

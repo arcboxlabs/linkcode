@@ -154,7 +154,7 @@ export function ActivityRun({
         ) : null}
         <ChatDisclosureChevron />
       </CollapsibleTrigger>
-      <ChatDisclosureContent bodyClassName="space-y-0.5">
+      <ChatDisclosureContent bodyClassName="space-y-0.5 [&>[data-slot=collapsible]>*:first-child]:py-0.5">
         {run.items.map((item) => {
           if (item.kind === 'reasoning') {
             return (

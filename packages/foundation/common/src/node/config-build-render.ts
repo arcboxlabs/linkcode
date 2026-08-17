@@ -130,7 +130,7 @@ export interface ConfigBuildPublicationEvidence {
 export type ConfigBuildReleaseManifest =
   | (ConfigBuildReleaseManifestBase & { readonly releaseManifestFormatVersion: 1 })
   | (ConfigBuildReleaseManifestBase & {
-      readonly publicationEvidence: ConfigBuildPublicationEvidence;
+      readonly publicationEvidence?: ConfigBuildPublicationEvidence;
       readonly releaseManifestFormatVersion: 2;
     });
 
@@ -149,7 +149,7 @@ function parseReleaseManifest(value: unknown, path: string): ConfigBuildReleaseM
       throw new TypeError(`Release manifest at ${path} contains unsupported field ${key}`);
     }
   }
-  for (const key of keys) {
+  for (const key of RELEASE_MANIFEST_BASE_KEYS) {
     if (!(key in manifest)) {
       throw new TypeError(`Release manifest at ${path} is missing field ${key}`);
     }
@@ -174,6 +174,9 @@ function parseReleaseManifest(value: unknown, path: string): ConfigBuildReleaseM
     telemetryEndpoint: field('telemetryEndpoint'),
   };
   if (version === 1) return { ...base, releaseManifestFormatVersion: 1 };
+  if (!('publicationEvidence' in manifest)) {
+    return { ...base, releaseManifestFormatVersion: 2 };
+  }
   const publicationEvidence = parsePublicationEvidence(
     manifest.publicationEvidence,
     path,

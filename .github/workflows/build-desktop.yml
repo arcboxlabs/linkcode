@@ -85,8 +85,8 @@ env:
   LINKCODE_REQUIRE_CONFIG_BUNDLE: ${{ (inputs.sign || inputs.rendered_artifact != '') && '1' || '' }}
 
 jobs:
-  # Renders the immutable config bundle from the pinned config publisher checkout. The release
-  # environment selects the publisher repository; the workflow mints its scoped read token.
+  # Downloads the deployed release inputs, then renders the immutable config bundle from their
+  # pinned publisher/source commits. The workflow mints scoped read tokens for both repositories.
   # Unsigned builds skip this and build without a bundle; signed builds hard-require its output.
   render-config:
     name: Render immutable config
@@ -177,13 +177,11 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: desktop
+          release-inputs-url: https://config.linkcode.ai/release/v1/linkcode/stable.json
           publisher-repository: ${{ steps.repositories.outputs.publisher-full }}
           publisher-token: ${{ steps.publisher-token.outputs.token }}
           source-repository: ${{ steps.repositories.outputs.source-full }}
           source-token: ${{ steps.source-token.outputs.token }}
-          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
-          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
-          release-manifest: ${{ vars.CONFIG_RELEASE_MANIFEST_DESKTOP }}
 
       - name: Upload rendered bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

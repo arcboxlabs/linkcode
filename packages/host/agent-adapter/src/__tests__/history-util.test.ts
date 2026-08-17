@@ -5,14 +5,30 @@ import { asHistoryId, asMessageId, sliceHistoryEventPage } from '../history-util
 
 const HID = asHistoryId('history-paging');
 
-function textEvent(id: string): AgentHistoryEvent {
+function textEvent(id: string, text = id): AgentHistoryEvent {
   return {
     historyId: HID,
     itemId: id,
     event: {
       type: 'user-message',
       messageId: asMessageId(id),
-      content: [{ type: 'text', text: id }],
+      content: [{ type: 'text', text }],
+    },
+  };
+}
+
+function agentTextEvent(
+  id: string,
+  type: 'agent-message' | 'agent-thought',
+  text: string,
+): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type,
+      messageId: asMessageId(id),
+      content: [{ type: 'text', text }],
     },
   };
 }
@@ -25,6 +41,44 @@ function imageEvent(id: string, base64Length: number): AgentHistoryEvent {
       type: 'user-message',
       messageId: asMessageId(id),
       content: [{ type: 'image', data: 'A'.repeat(base64Length), mimeType: 'image/png' }],
+    },
+  };
+}
+
+function toolEvent(id: string, rawOutputLength: number): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: id,
+        title: id,
+        kind: 'other',
+        status: 'completed',
+        content: [],
+        rawOutput: 'A'.repeat(rawOutputLength),
+      },
+    },
+  };
+}
+
+/** The freeform-exec settle shape: the whole command output in `content`, an exit code in
+ * `rawOutput` — the payload the budget must not undercount. */
+function execEvent(id: string, outputLength: number): AgentHistoryEvent {
+  return {
+    historyId: HID,
+    itemId: id,
+    event: {
+      type: 'tool-call',
+      toolCall: {
+        toolCallId: id,
+        title: id,
+        kind: 'execute',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'A'.repeat(outputLength) } }],
+        rawOutput: 0,
+      },
     },
   };
 }
@@ -79,5 +133,48 @@ describe('sliceHistoryEventPage', () => {
     const page = sliceHistoryEventPage([textEvent('a')], 5, 1000);
     expect(page.events).toEqual([]);
     expect(page.cursor).toBeUndefined();
+  });
+
+  it('counts tool raw results toward the page budget (CODE-576)', () => {
+    const large = Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.6);
+    const events = [toolEvent('tool-1', large), textEvent('text-1'), toolEvent('tool-2', large)];
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['tool-1', 'text-1']);
+    expect(first.cursor).toBe('2');
+    const rest = sliceHistoryEventPage(events, 2, 1000);
+    expect(itemIds(rest)).toEqual(['tool-2']);
+    expect(rest.cursor).toBeUndefined();
+  });
+
+  it('counts tool content toward the page budget — exec bodies ride content, not rawOutput (CODE-576)', () => {
+    const large = Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.6);
+    const events = [execEvent('exec-1', large), textEvent('text-1'), execEvent('exec-2', large)];
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['exec-1', 'text-1']);
+    expect(first.cursor).toBe('2');
+    const rest = sliceHistoryEventPage(events, 2, 1000);
+    expect(itemIds(rest)).toEqual(['exec-2']);
+    expect(rest.cursor).toBeUndefined();
+  });
+
+  it('counts text, thought, and compaction content toward the page budget', () => {
+    const large = 'A'.repeat(Math.ceil(MAX_ATTACHMENT_TOTAL_BASE64_LENGTH * 0.26));
+    const events: AgentHistoryEvent[] = [
+      textEvent('user', large),
+      agentTextEvent('message', 'agent-message', large),
+      agentTextEvent('thought', 'agent-thought', large),
+      {
+        historyId: HID,
+        itemId: 'compaction',
+        event: { type: 'compaction', compactionId: 'compaction', summary: large },
+      },
+    ];
+
+    const first = sliceHistoryEventPage(events, 0, 1000);
+    expect(itemIds(first)).toEqual(['user', 'message', 'thought']);
+    expect(first.cursor).toBe('3');
+    const rest = sliceHistoryEventPage(events, 3, 1000);
+    expect(itemIds(rest)).toEqual(['compaction']);
+    expect(rest.cursor).toBeUndefined();
   });
 });
