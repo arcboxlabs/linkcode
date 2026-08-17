@@ -1,18 +1,10 @@
-import { Form, Host } from '@expo/ui/swift-ui';
-import { DiscoveredHostsSection } from '@mobile/components/connect/discovered-hosts-section';
-import { MyMachinesSection } from '@mobile/components/connect/my-machines-section';
-import { SavedHostsSection } from '@mobile/components/connect/saved-hosts-section';
-import { SignInSection } from '@mobile/components/connect/sign-in-section';
+import { ConnectScreen } from '@mobile/components/connect/connect-screen';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
-import { useCloudAccount } from '@mobile/runtime/cloud/account';
-import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { Stack } from 'expo-router';
 import { useTranslations } from 'use-intl';
 
-export default function ConnectScreen(): React.ReactNode {
+export default function ConnectRoute(): React.ReactNode {
   const t = useTranslations('mobile.connect');
-  const account = useCloudAccount();
-  const hosts = useHostRegistryStore((state) => state.hosts);
 
   return (
     <>
@@ -22,20 +14,7 @@ export default function ConnectScreen(): React.ReactNode {
           title: t('title'),
         }}
       />
-      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        <Form>
-          {account.status === 'signed-in' ? (
-            <MyMachinesSection userId={account.user.id} />
-          ) : account.status === 'signed-out' ? (
-            <SignInSection />
-          ) : null}
-
-          {hosts.length > 0 ? <SavedHostsSection /> : null}
-
-          <DiscoveredHostsSection />
-        </Form>
-      </Host>
+      <ConnectScreen />
     </>
   );
 }

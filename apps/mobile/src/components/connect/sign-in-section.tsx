@@ -1,4 +1,6 @@
-import { Button, Section, Text } from '@expo/ui/swift-ui';
+import { Button, Text } from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, padding } from '@expo/ui/jetpack-compose/modifiers';
+import { FormSection } from '@mobile/components/form/section.android';
 import { useRouter } from 'expo-router';
 import { useTranslations } from 'use-intl';
 
@@ -6,9 +8,15 @@ import { useTranslations } from 'use-intl';
 export function SignInSection(): React.ReactNode {
   const t = useTranslations('mobile.connect.cloud');
   const router = useRouter();
+
   return (
-    <Section title={t('title')} footer={<Text>{t('hint')}</Text>}>
-      <Button label={t('signIn')} onPress={() => router.push('/sign-in')} />
-    </Section>
+    <FormSection title={t('title')} footer={t('hint')}>
+      <Button
+        onClick={() => router.push('/sign-in')}
+        modifiers={[padding(16, 4, 16, 4), fillMaxWidth()]}
+      >
+        <Text>{t('signIn')}</Text>
+      </Button>
+    </FormSection>
   );
 }

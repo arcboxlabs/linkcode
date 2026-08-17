@@ -1,101 +1,74 @@
-import { Form, Host, HStack, Section, Text, TextField, useNativeState } from '@expo/ui/swift-ui';
 import {
-  autocorrectionDisabled,
-  keyboardType,
-  onSubmit,
-  submitLabel,
-  textContentType,
-  textInputAutocapitalization,
-} from '@expo/ui/swift-ui/modifiers';
-import { HostUrlSchema, useHostRegistryStore } from '@mobile/stores/host-store';
-import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
+  Button,
+  Column,
+  Host,
+  OutlinedTextField,
+  Text,
+  useMaterialColors,
+  useNativeState,
+} from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, padding, testID } from '@expo/ui/jetpack-compose/modifiers';
+import { useAddHost } from '@mobile/components/connect/use-add-host';
+import { Stack } from 'expo-router';
 import { useTranslations } from 'use-intl';
 
+/** Android add-host form. The iOS header bar items (`unstable_header*Items`) don't exist on
+ * Android, so submit is an in-form button and dismissal is the sheet's own back/swipe. */
 export function AddHostScreen(): React.ReactNode {
   const t = useTranslations('mobile.connect');
-  const router = useRouter();
-  const addHost = useHostRegistryStore((state) => state.addHost);
-  const setLastActiveHostId = useHostRegistryStore((state) => state.setLastActiveHostId);
+  const colors = useMaterialColors();
   const name = useNativeState('');
   const url = useNativeState('');
-  const [urlInvalid, setUrlInvalid] = useState(false);
-  const [urlValid, setUrlValid] = useState(false);
+  const { urlInvalid, urlValid, onUrlChange, submit } = useAddHost();
 
-  const submit = () => {
-    const trimmedUrl = url.get().trim();
-    if (!HostUrlSchema.safeParse(trimmedUrl).success) {
-      setUrlInvalid(true);
-      return;
-    }
-    const profile = addHost({ name: name.get().trim() || t('namePlaceholder'), url: trimmedUrl });
-    setLastActiveHostId(profile.id);
-    router.dismissTo('/threads');
-  };
+  const submitFields = () => submit(name.get(), url.get());
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: t('add'),
-          unstable_headerLeftItems: () => [
-            {
-              type: 'button',
-              label: t('cancel'),
-              accessibilityLabel: t('cancel'),
-              icon: { type: 'sfSymbol', name: 'xmark' },
-              onPress: () => router.dismiss(),
-            },
-          ],
-          unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: t('add'),
-              accessibilityLabel: t('add'),
-              icon: { type: 'sfSymbol', name: 'checkmark' },
-              variant: 'prominent',
-              disabled: !urlValid,
-              onPress: submit,
-            },
-          ],
-        }}
-      />
-      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
+      <Stack.Screen options={{ title: t('add') }} />
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        <Form>
-          <Section footer={<Text>{urlInvalid ? t('invalidUrl') : t('emptyHint')}</Text>}>
-            {/* `LabeledContent` only gives the field its intrinsic width; the stack fills the row. */}
-            <HStack spacing={12}>
+        <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[padding(16, 16, 16, 16)]}>
+          <OutlinedTextField
+            value={name}
+            singleLine
+            keyboardOptions={{ capitalization: 'none', autoCorrectEnabled: false }}
+            modifiers={[testID('host-name-input'), fillMaxWidth()]}
+          >
+            <OutlinedTextField.Label>
               <Text>{t('nameLabel')}</Text>
-              <TextField
-                testID="host-name-input"
-                text={name}
-                placeholder={t('namePlaceholder')}
-                modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled()]}
-              />
-            </HStack>
-            <HStack spacing={12}>
+            </OutlinedTextField.Label>
+            <OutlinedTextField.Placeholder>
+              <Text color={colors.onSurfaceVariant}>{t('namePlaceholder')}</Text>
+            </OutlinedTextField.Placeholder>
+          </OutlinedTextField>
+          <OutlinedTextField
+            value={url}
+            singleLine
+            isError={urlInvalid}
+            onValueChange={onUrlChange}
+            keyboardOptions={{
+              keyboardType: 'uri',
+              capitalization: 'none',
+              autoCorrectEnabled: false,
+              imeAction: 'go',
+            }}
+            keyboardActions={{ onGo: submitFields }}
+            modifiers={[testID('host-url-input'), fillMaxWidth()]}
+          >
+            <OutlinedTextField.Label>
               <Text>{t('urlLabel')}</Text>
-              <TextField
-                testID="host-url-input"
-                text={url}
-                placeholder={t('urlPlaceholder')}
-                onTextChange={(text) => {
-                  setUrlInvalid(false);
-                  setUrlValid(HostUrlSchema.safeParse(text.trim()).success);
-                }}
-                modifiers={[
-                  textInputAutocapitalization('never'),
-                  autocorrectionDisabled(),
-                  keyboardType('url'),
-                  textContentType('URL'),
-                  submitLabel('go'),
-                  onSubmit(submit),
-                ]}
-              />
-            </HStack>
-          </Section>
-        </Form>
+            </OutlinedTextField.Label>
+            <OutlinedTextField.Placeholder>
+              <Text color={colors.onSurfaceVariant}>{t('urlPlaceholder')}</Text>
+            </OutlinedTextField.Placeholder>
+            <OutlinedTextField.SupportingText>
+              <Text>{urlInvalid ? t('invalidUrl') : t('emptyHint')}</Text>
+            </OutlinedTextField.SupportingText>
+          </OutlinedTextField>
+          <Button enabled={urlValid} onClick={submitFields} modifiers={[fillMaxWidth()]}>
+            <Text>{t('add')}</Text>
+          </Button>
+        </Column>
       </Host>
     </>
   );

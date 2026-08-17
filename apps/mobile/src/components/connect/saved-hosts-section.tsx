@@ -1,31 +1,38 @@
-import { Button, Section, SwipeActions } from '@expo/ui/swift-ui';
-import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { ListItem, Text, TextButton, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { clickable } from '@expo/ui/jetpack-compose/modifiers';
+import { FormSection } from '@mobile/components/form/section.android';
 import { useOpenHost } from '@mobile/runtime/use-open-host';
 import { useHostRegistryStore } from '@mobile/stores/host-store';
 import { useTranslations } from 'use-intl';
 
-/** Saved hosts, direct or tunnelled. Removal is the list's own swipe action rather than a
- *  row button, so the row itself stays a single tap target for opening the host. */
+/** Android saved hosts. Compose has no SwipeActions, so removal is a visible trailing text
+ * button; the rest of the row stays a single tap target for opening the host. */
 export function SavedHostsSection(): React.ReactNode {
   const t = useTranslations('mobile.connect');
+  const colors = useMaterialColors();
   const openHost = useOpenHost();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const removeHost = useHostRegistryStore((state) => state.removeHost);
 
   return (
-    <Section title={t('savedHosts')}>
+    <FormSection title={t('savedHosts')}>
       {hosts.map((host) => (
-        <SwipeActions key={host.id}>
-          <SwipeActions.Actions>
-            <Button role="destructive" label={t('remove')} onPress={() => removeHost(host.id)} />
-          </SwipeActions.Actions>
-          <NavigationRow
-            title={host.name}
-            subtitle={'url' in host ? host.url : t('viaTunnel')}
-            onPress={() => openHost(host.id)}
-          />
-        </SwipeActions>
+        <ListItem key={host.id} modifiers={[clickable(() => openHost(host.id))]}>
+          <ListItem.HeadlineContent>
+            <Text>{host.name}</Text>
+          </ListItem.HeadlineContent>
+          <ListItem.SupportingContent>
+            <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+              {'url' in host ? host.url : t('viaTunnel')}
+            </Text>
+          </ListItem.SupportingContent>
+          <ListItem.TrailingContent>
+            <TextButton colors={{ contentColor: colors.error }} onClick={() => removeHost(host.id)}>
+              <Text>{t('remove')}</Text>
+            </TextButton>
+          </ListItem.TrailingContent>
+        </ListItem>
       ))}
-    </Section>
+    </FormSection>
   );
 }

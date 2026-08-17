@@ -1,10 +1,8 @@
-import { CircularProgressIndicator } from '@expo/ui/jetpack-compose';
-import { size } from '@expo/ui/jetpack-compose/modifiers';
+import { HStack, ProgressView, Section, Text } from '@expo/ui/swift-ui';
+import { accessibilityLabel, controlSize, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { ManualHostRow } from '@mobile/components/connect/manual-host-row';
 import { useDiscoveredHosts } from '@mobile/components/connect/use-discovered-hosts';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { FormHint } from '@mobile/components/form/rows.android';
-import { FormSection } from '@mobile/components/form/section.android';
 import { useTranslations } from 'use-intl';
 
 export function DiscoveredHostsSection(): React.ReactNode {
@@ -12,14 +10,20 @@ export function DiscoveredHostsSection(): React.ReactNode {
   const { discoveredHosts, status, saveAndOpen } = useDiscoveredHosts();
 
   return (
-    <FormSection
-      title={t('discovery.title')}
-      trailing={
-        status === 'error' ? undefined : <CircularProgressIndicator modifiers={[size(16, 16)]} />
+    <Section
+      header={
+        <HStack alignment="center" spacing={6}>
+          <Text>{t('discovery.title')}</Text>
+          {status === 'error' ? null : (
+            <ProgressView
+              modifiers={[controlSize('small'), accessibilityLabel(t('discovery.searching'))]}
+            />
+          )}
+        </HStack>
       }
     >
       {status === 'error' ? (
-        <FormHint tone="error">{t('discovery.error')}</FormHint>
+        <Text modifiers={[foregroundStyle('red')]}>{t('discovery.error')}</Text>
       ) : (
         discoveredHosts.map((host) => (
           <NavigationRow
@@ -31,6 +35,6 @@ export function DiscoveredHostsSection(): React.ReactNode {
         ))
       )}
       <ManualHostRow />
-    </FormSection>
+    </Section>
   );
 }
