@@ -18,7 +18,7 @@ import {
 import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
-import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
+import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-options';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
@@ -47,7 +47,7 @@ function threadTitle(session: SessionInfo): string {
 export default function ThreadsRoute(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const hostMenuItems = useHostMenuItems();
+  const hostHeaderOptions = useHostHeaderOptions();
   const connection = useHostConnection();
 
   const primaryAction: PrimaryAction | null =
@@ -68,7 +68,7 @@ export default function ThreadsRoute(): React.ReactNode {
         options={{
           ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
-          unstable_headerLeftItems: () => hostMenuItems,
+          ...hostHeaderOptions,
           ...trailingActions,
         }}
       />

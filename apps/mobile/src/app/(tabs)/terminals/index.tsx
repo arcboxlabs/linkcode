@@ -13,7 +13,7 @@ import type { TerminalMetadata } from '@linkcode/schema';
 import { repositoryLabel } from '@linkcode/ui/native';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
-import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
+import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-options';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
@@ -37,7 +37,7 @@ const SUPPORTS_CONTENT_UNAVAILABLE_VIEW =
  * reachable when the host is not. */
 export default function TerminalsRoute(): React.ReactNode {
   const t = useTranslations('mobile.terminals');
-  const hostMenuItems = useHostMenuItems();
+  const hostHeaderOptions = useHostHeaderOptions();
   const connection = useHostConnection();
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -61,7 +61,7 @@ export default function TerminalsRoute(): React.ReactNode {
         options={{
           ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
-          unstable_headerLeftItems: () => hostMenuItems,
+          ...hostHeaderOptions,
           ...trailingActions,
         }}
       />
