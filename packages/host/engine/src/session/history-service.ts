@@ -72,8 +72,9 @@ export class HistoryService {
     opts: HistoryListOptions = {},
   ): Effect.Effect<AgentHistoryListResult, RequestError | OperationError> {
     const key = listCacheKey(kind, opts);
-    const cached = this.listCache.get(key);
     const now = this.now();
+    this.sweepExpired(now);
+    const cached = this.listCache.get(key);
     if (cached && !opts.forceRefresh && cached.expiresAt > now) {
       return Effect.succeed(cloneListResult(cached.result));
     }
@@ -115,8 +116,9 @@ export class HistoryService {
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const key = eventCacheKey(kind, opts.historyId);
     const cwd = opts.cwd ?? this.historyCwdById.get(key);
-    const cached = this.eventCache.get(key);
     const now = this.now();
+    this.sweepExpired(now);
+    const cached = this.eventCache.get(key);
 
     if (
       cached &&
@@ -264,6 +266,21 @@ export class HistoryService {
     this.listCache.clear();
     this.eventCache.clear();
     this.historyCwdById.clear();
+  }
+
+  /** Cache occupancy, for eviction tests and diagnostics. */
+  cacheSizes(): { list: number; events: number } {
+    return { list: this.listCache.size, events: this.eventCache.size };
+  }
+
+  /** Expired entries are dead weight — a full event cache entry holds a whole transcript. */
+  private sweepExpired(now: number): void {
+    for (const [key, entry] of this.listCache) {
+      if (entry.expiresAt <= now) this.listCache.delete(key);
+    }
+    for (const [key, entry] of this.eventCache) {
+      if (entry.expiresAt <= now) this.eventCache.delete(key);
+    }
   }
 
   private invalidateEventCacheFromList(kind: AgentKind, sessions: AgentHistorySession[]): void {

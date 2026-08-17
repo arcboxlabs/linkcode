@@ -54,6 +54,20 @@ describe('HistoryService', () => {
     expect(state.lastReadOptions?.mcpServerNames).toBeUndefined();
   });
 
+  it('evicts expired cache entries instead of keeping dead transcripts', async () => {
+    const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    let now = 0;
+    const service = new HistoryService(fakeHistoryFactory(state), { ttlMs: 1000, now: () => now });
+
+    await Effect.runPromise(service.list('codex', { cwd: '/repo' }));
+    await Effect.runPromise(service.read('codex', { historyId }));
+    expect(service.cacheSizes()).toEqual({ list: 1, events: 1 });
+
+    now = 1000;
+    await Effect.runPromise(service.list('codex', { cwd: '/other' }));
+    expect(service.cacheSizes()).toEqual({ list: 1, events: 0 });
+  });
+
   it('removes injected resource context from provider history', async () => {
     const state = {
       listCalls: 0,

@@ -1469,6 +1469,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.pendingCompactionId = null;
       this.emit({ type: 'compaction', compactionId: pending, status: 'completed' });
     }
+    // A turn ended by cancel/exit never reaches handleTurnCompleted, which owns the normal clear.
+    this.streamedTextLen.clear();
     super.teardown();
   }
 
