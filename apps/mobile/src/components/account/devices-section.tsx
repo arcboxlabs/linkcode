@@ -1,140 +1,58 @@
-import {
-  Button,
-  HStack,
-  ProgressView,
-  Section,
-  Spacer,
-  SwipeActions,
-  Text,
-  VStack,
-} from '@expo/ui/swift-ui';
-import { badge, buttonStyle, disabled, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
-import { signOutOfCloud } from '@mobile/runtime/cloud/account';
-import type { CloudDevice } from '@mobile/runtime/cloud/devices';
-import { fetchDevices, getEnrolledDeviceId, revokeDevice } from '@mobile/runtime/cloud/devices';
-import { formatRelativeShort } from '@mobile/utils/relative-time';
-import { noop } from 'foxact/noop';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { ListItem, Text, TextButton, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { useDevicesSection } from '@mobile/components/account/use-devices-section';
+import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
+import { FormSection } from '@mobile/components/form/section.android';
 import { useTranslations } from 'use-intl';
 
-/**
- * The account's registered devices. Revoking cuts access to new tunnel tokens;
- * revoking this phone also signs it out (the cloud kills its sessions).
- */
+/** Android device registry; the view model lives in `use-devices-section`. Compose has no
+ * SwipeActions, so revoke is a visible trailing text button — the MD3-discoverable shape for a
+ * destructive-only row action. */
 export function DevicesSection(): React.ReactNode {
   const t = useTranslations('mobile.account');
-
-  const [devices, setDevices] = useState<CloudDevice[] | null>(null);
-  const [devicesError, setDevicesError] = useState(false);
-  const [enrolledId, setEnrolledId] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchDevices()
-      .then(setDevices)
-      .catch(() => setDevicesError(true));
-  }, []);
-
-  useEffect(() => {
-    getEnrolledDeviceId().then(setEnrolledId).catch(noop);
-    load();
-  }, [load]);
-
-  const refresh = () => {
-    setDevicesError(false);
-    setDevices(null);
-    load();
-  };
-
-  const revoke = async (device: CloudDevice) => {
-    setBusyId(device.id);
-    try {
-      await revokeDevice(device.id);
-      if (device.id === enrolledId) {
-        // The device revoke already removed its push token and killed this phone's sessions.
-        await signOutOfCloud({ revokePushToken: false }).catch(noop);
-        return;
-      }
-      refresh();
-    } catch {
-      Alert.alert(t('revokeError'));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const confirmRevoke = (device: CloudDevice) => {
-    Alert.alert(
-      t('revokeTitle', { name: device.name }),
-      device.id === enrolledId ? t('revokeThisDeviceMessage') : t('revokeMessage'),
-      [
-        { text: t('revokeCancel'), style: 'cancel' },
-        {
-          text: t('revoke'),
-          style: 'destructive',
-          onPress() {
-            void revoke(device);
-          },
-        },
-      ],
-    );
-  };
-
-  const describeDevice = (device: CloudDevice): string => {
-    const kind = t(`deviceKind.${device.kind}`);
-    const platform = device.platform ? `${kind} · ${device.platform}` : kind;
-    return device.lastSeenAt
-      ? `${platform} · ${t('lastSeen', { time: formatRelativeShort(new Date(device.lastSeenAt).getTime()) })}`
-      : platform;
-  };
+  const colors = useMaterialColors();
+  const { devices, devicesError, enrolledId, busyId, refresh, confirmRevoke, describeDevice } =
+    useDevicesSection();
 
   return (
-    // A titled Section can't also carry an action, so the header is drawn by hand.
-    <Section
-      header={
-        <HStack>
-          <Text modifiers={[FOOTNOTE, SECONDARY]}>{t('devices')}</Text>
-          <Spacer />
-          <Button
-            label={t('refresh')}
-            onPress={refresh}
-            modifiers={[buttonStyle('plain'), FOOTNOTE]}
-          />
-        </HStack>
+    <FormSection
+      title={t('devices')}
+      trailing={
+        <TextButton onClick={refresh}>
+          <Text>{t('refresh')}</Text>
+        </TextButton>
       }
     >
       {devicesError ? (
-        <Text modifiers={[foregroundStyle('red')]}>{t('devicesError')}</Text>
+        <FormHint tone="error">{t('devicesError')}</FormHint>
       ) : devices === null ? (
-        <ProgressView />
+        <FormLoadingRow />
       ) : devices.length === 0 ? (
-        <Text modifiers={[SECONDARY]}>{t('devicesEmpty')}</Text>
+        <FormHint>{t('devicesEmpty')}</FormHint>
       ) : (
         devices.map((device) => (
-          // Revoking is the row's swipe action, matching how saved hosts are removed. The
-          // confirmation stays an RN `Alert` — that already is the native alert.
-          <SwipeActions key={device.id}>
-            <SwipeActions.Actions>
-              <Button
-                role="destructive"
-                label={t('revoke')}
-                onPress={() => confirmRevoke(device)}
-                modifiers={[disabled(busyId !== null)]}
-              />
-            </SwipeActions.Actions>
-            <VStack
-              alignment="leading"
-              spacing={2}
-              modifiers={[device.id === enrolledId ? badge(t('thisDevice')) : badge()]}
-            >
+          <ListItem key={device.id}>
+            <ListItem.HeadlineContent>
               <Text>{device.name}</Text>
-              <Text modifiers={[FOOTNOTE, SECONDARY]}>{describeDevice(device)}</Text>
-            </VStack>
-          </SwipeActions>
+            </ListItem.HeadlineContent>
+            <ListItem.SupportingContent>
+              <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+                {device.id === enrolledId
+                  ? `${describeDevice(device)} · ${t('thisDevice')}`
+                  : describeDevice(device)}
+              </Text>
+            </ListItem.SupportingContent>
+            <ListItem.TrailingContent>
+              <TextButton
+                enabled={busyId === null}
+                colors={{ contentColor: colors.error }}
+                onClick={() => confirmRevoke(device)}
+              >
+                <Text>{t('revoke')}</Text>
+              </TextButton>
+            </ListItem.TrailingContent>
+          </ListItem>
         ))
       )}
-    </Section>
+    </FormSection>
   );
 }

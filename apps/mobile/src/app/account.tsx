@@ -1,15 +1,10 @@
-import { Button, Form, Host, ProgressView, Section } from '@expo/ui/swift-ui';
-import { DeleteAccountSection } from '@mobile/components/account/delete-account-section';
-import { DevicesSection } from '@mobile/components/account/devices-section';
-import { ProfileRow } from '@mobile/components/account/profile-row';
+import { AccountScreen } from '@mobile/components/account/account-screen';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
-import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
+import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { Redirect, Stack } from 'expo-router';
-import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-/** Account screen: profile, the account's device registry, and sign-out. */
-export default function AccountScreen(): React.ReactNode {
+export default function AccountRoute(): React.ReactNode {
   const t = useTranslations('mobile.account');
   const account = useCloudAccount();
 
@@ -18,29 +13,7 @@ export default function AccountScreen(): React.ReactNode {
   return (
     <>
       <Stack.Screen options={{ ...VISIBLE_HEADER_OPTIONS, title: t('title') }} />
-      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        <Form>
-          {account.status === 'loading' ? (
-            <ProgressView />
-          ) : (
-            <>
-              <Section>
-                <ProfileRow user={account.user} />
-              </Section>
-              <DevicesSection />
-              <Section>
-                <Button
-                  role="destructive"
-                  label={t('signOut')}
-                  onPress={() => signOutOfCloud().catch(() => Alert.alert(t('signOutError')))}
-                />
-              </Section>
-              <DeleteAccountSection />
-            </>
-          )}
-        </Form>
-      </Host>
+      <AccountScreen />
     </>
   );
 }

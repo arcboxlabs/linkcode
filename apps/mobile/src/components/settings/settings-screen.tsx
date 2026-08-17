@@ -1,7 +1,23 @@
-import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { disabled, font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import {
+  Column,
+  SegmentedButton,
+  SingleChoiceSegmentedButtonRow,
+  Text,
+  useMaterialColors,
+} from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, padding } from '@expo/ui/jetpack-compose/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { FormList } from '@mobile/components/form/list.android';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { ToggleRow } from '@mobile/components/form/rows.android';
+import { FormSection } from '@mobile/components/form/section.android';
+import {
+  PRIVACY_POLICY_URL,
+  SUPPORT_URL,
+  TERMS_OF_SERVICE_URL,
+  THEME_LABEL_KEY,
+  THEME_PREFERENCES,
+} from '@mobile/components/settings/settings-screen.shared';
 import { LARGE_TITLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import {
@@ -10,30 +26,20 @@ import {
 } from '@mobile/runtime/notifications';
 import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
-import type { ThemePreference } from '@mobile/stores/settings-store';
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
+import { noop } from 'foxact/noop';
 import { useRef, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
+/** Compose has no `Link` row, so legal rows open the URL through RN `Linking`. */
+function openUrl(url: string): void {
+  Linking.openURL(url).catch(noop);
+}
 
-const THEME_LABEL_KEY = {
-  system: 'appearanceSystem',
-  light: 'appearanceLight',
-  dark: 'appearanceDark',
-} as const;
-
-const PRIVACY_POLICY_URL = 'https://linkcode.ai/privacy';
-const TERMS_OF_SERVICE_URL = 'https://linkcode.ai/terms';
-const SUPPORT_URL = 'https://linkcode.ai/support';
-
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-
-/** App settings: account + host management entries plus the About/contract summary. Nothing here is
- * host-scoped, and the screen is deliberately ungated — this is where "Manage hosts" lives, so it
- * has to survive the selected host being unreachable. */
+/** Android settings, mirroring the SwiftUI screen in `settings-screen.ios.tsx`: same sections,
+ * MD3 dress. */
 export function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
@@ -47,6 +53,8 @@ export function SettingsScreen(): React.ReactNode {
   const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
   const [notificationUpdatePending, setNotificationUpdatePending] = useState(false);
   const notificationUpdatePendingRef = useRef(false);
+  const notificationsToggleEnabled =
+    account.status === 'signed-in' && !notificationUpdatePending;
 
   const updateNotifications = async (enabled: boolean) => {
     if (account.status !== 'signed-in' || notificationUpdatePendingRef.current) return;
@@ -75,8 +83,6 @@ export function SettingsScreen(): React.ReactNode {
     }
   };
 
-  // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
-  // proposed the whole window and paints straight over the large title.
   return (
     <View className="flex-1">
       <Stack.Screen
@@ -85,102 +91,111 @@ export function SettingsScreen(): React.ReactNode {
           title: t('title'),
         }}
       />
-      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        <Form>
-          <Section>
-            {account.status === 'signed-in' ? (
-              <NavigationRow
-                title={account.user.name || account.user.email}
-                subtitle={account.user.email}
-                onPress={() => router.push('/account')}
-              />
-            ) : account.status === 'signed-out' ? (
-              <NavigationRow title={t('signIn')} onPress={() => router.push('/sign-in')} />
-            ) : null}
-            <NavigationRow title={t('manageHosts')} onPress={() => router.push('/connect')} />
+      <FormList>
+        <FormSection>
+          {account.status === 'signed-in' ? (
             <NavigationRow
-              title={t('terminalAppearance')}
-              onPress={() => router.push('/terminal-appearance')}
+              title={account.user.name || account.user.email}
+              subtitle={account.user.email}
+              onPress={() => router.push('/account')}
             />
-          </Section>
+          ) : account.status === 'signed-out' ? (
+            <NavigationRow title={t('signIn')} onPress={() => router.push('/sign-in')} />
+          ) : null}
+          <NavigationRow title={t('manageHosts')} onPress={() => router.push('/connect')} />
+          <NavigationRow
+            title={t('terminalAppearance')}
+            onPress={() => router.push('/terminal-appearance')}
+          />
+        </FormSection>
 
-          <Section title={t('connections')} footer={<Text>{t('keepHostsConnectedHint')}</Text>}>
-            <Toggle
-              isOn={keepHostsConnected}
-              onIsOnChange={setKeepHostsConnected}
-              label={t('keepHostsConnected')}
-            />
-          </Section>
+        <FormSection title={t('connections')} footer={t('keepHostsConnectedHint')}>
+          <ToggleRow
+            label={t('keepHostsConnected')}
+            value={keepHostsConnected}
+            onValueChange={setKeepHostsConnected}
+          />
+        </FormSection>
 
-          <Section title={t('appearance')}>
-            <Picker
-              selection={themePreference}
-              onSelectionChange={setThemePreference}
-              modifiers={[pickerStyle('segmented')]}
-            >
-              {THEME_PREFERENCES.map((preference) => (
-                <Text key={preference} modifiers={[tag(preference)]}>
-                  {t(THEME_LABEL_KEY[preference])}
-                </Text>
-              ))}
-            </Picker>
-          </Section>
-
-          <Section title={t('privacy')} footer={<Text>{t('analyticsHint')}</Text>}>
-            <Toggle
-              isOn={productAnalyticsEnabled}
-              onIsOnChange={setMobileProductAnalyticsEnabled}
-              label={t('analytics')}
-            />
-          </Section>
-
-          <Section
-            title={t('notifications')}
-            footer={
-              <Text>
-                {account.status === 'signed-in'
-                  ? t('notificationsHint')
-                  : t('notificationsRequiresCloud')}
-              </Text>
-            }
-          >
-            <Toggle
-              isOn={notificationsEnabled}
-              onIsOnChange={updateNotifications}
-              label={t('notifications')}
-              modifiers={[disabled(account.status !== 'signed-in' || notificationUpdatePending)]}
-            />
-          </Section>
-
-          {/* Native links open the URL themselves — no Linking.openURL fallback to get wrong. */}
-          <Section title={t('legalAndSupport')}>
-            <Link label={t('privacyPolicy')} destination={PRIVACY_POLICY_URL} />
-            <Link label={t('termsOfService')} destination={TERMS_OF_SERVICE_URL} />
-            <Link label={t('support')} destination={SUPPORT_URL} />
-          </Section>
-
-          <Section title={t('about')}>
-            <VStack alignment="leading" spacing={4}>
-              <Text modifiers={[font({ textStyle: 'headline' })]}>{tAbout('title')}</Text>
-              <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>
-                {tAbout('contract', { version: WIRE_PROTOCOL_VERSION })}
-              </Text>
-            </VStack>
-          </Section>
-
-          <Section
-            title={tAbout('registeredAgents')}
-            footer={
-              <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>{tAbout('note')}</Text>
-            }
-          >
-            {AgentKindSchema.options.map((kind) => (
-              <Text key={kind}>{kind}</Text>
+        <FormSection title={t('appearance')}>
+          <SingleChoiceSegmentedButtonRow modifiers={[padding(16, 6, 16, 10), fillMaxWidth()]}>
+            {THEME_PREFERENCES.map((preference) => (
+              <SegmentedButton
+                key={preference}
+                selected={themePreference === preference}
+                onClick={() => setThemePreference(preference)}
+              >
+                <SegmentedButton.Label>
+                  <Text>{t(THEME_LABEL_KEY[preference])}</Text>
+                </SegmentedButton.Label>
+              </SegmentedButton>
             ))}
-          </Section>
-        </Form>
-      </Host>
+          </SingleChoiceSegmentedButtonRow>
+        </FormSection>
+
+        <FormSection title={t('privacy')} footer={t('analyticsHint')}>
+          <ToggleRow
+            label={t('analytics')}
+            value={productAnalyticsEnabled}
+            onValueChange={setMobileProductAnalyticsEnabled}
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('notifications')}
+          footer={
+            account.status === 'signed-in'
+              ? t('notificationsHint')
+              : t('notificationsRequiresCloud')
+          }
+        >
+          <ToggleRow
+            label={t('notifications')}
+            value={notificationsEnabled}
+            onValueChange={(enabled) => {
+              if (!notificationsToggleEnabled) return;
+              void updateNotifications(enabled);
+            }}
+          />
+        </FormSection>
+
+        <FormSection title={t('legalAndSupport')}>
+          <NavigationRow title={t('privacyPolicy')} onPress={() => openUrl(PRIVACY_POLICY_URL)} />
+          <NavigationRow
+            title={t('termsOfService')}
+            onPress={() => openUrl(TERMS_OF_SERVICE_URL)}
+          />
+          <NavigationRow title={t('support')} onPress={() => openUrl(SUPPORT_URL)} />
+        </FormSection>
+
+        <FormSection title={t('about')}>
+          <AboutBlock
+            title={tAbout('title')}
+            contract={tAbout('contract', { version: WIRE_PROTOCOL_VERSION })}
+          />
+        </FormSection>
+
+        <FormSection title={tAbout('registeredAgents')} footer={tAbout('note')}>
+          {AgentKindSchema.options.map((kind) => (
+            <Text key={kind} modifiers={[padding(16, 10, 16, 10)]}>
+              {kind}
+            </Text>
+          ))}
+        </FormSection>
+      </FormList>
     </View>
+  );
+}
+
+function AboutBlock({ title, contract }: { title: string; contract: string }): React.ReactNode {
+  const colors = useMaterialColors();
+
+  return (
+    <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[padding(16, 8, 16, 8)]}>
+      <Text style={{ typography: 'titleMedium' }}>{title}</Text>
+      <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+        {contract}
+      </Text>
+    </Column>
   );
 }
