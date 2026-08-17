@@ -32,7 +32,7 @@
     "@sentry/node": "10.62.0",
     "@sentry/profiling-node": "10.62.0",
     "better-sqlite3": "^12.11.1",
-    "foxts": "^5.8.0",
+    "foxts": "^5.9.1",
     "pino": "^10.3.1",
     "zod": "catalog:"
   },
