@@ -1,14 +1,8 @@
-import {
-  Button,
-  Column,
-  Host,
-  OutlinedTextField,
-  Text,
-  useMaterialColors,
-  useNativeState,
-} from '@expo/ui/jetpack-compose';
+import { Button, Column, OutlinedTextField, Text, useNativeState } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, testID } from '@expo/ui/jetpack-compose/modifiers';
 import { useAddHost } from '@mobile/components/connect/use-add-host';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { Stack } from 'expo-router';
 import { useTranslations } from 'use-intl';
 
@@ -16,7 +10,7 @@ import { useTranslations } from 'use-intl';
  * Android, so submit is an in-form button and dismissal is the sheet's own back/swipe. */
 export function AddHostScreen(): React.ReactNode {
   const t = useTranslations('mobile.connect');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const name = useNativeState('');
   const url = useNativeState('');
   const { urlInvalid, urlValid, onUrlChange, submit } = useAddHost();
@@ -26,7 +20,7 @@ export function AddHostScreen(): React.ReactNode {
   return (
     <>
       <Stack.Screen options={{ title: t('add') }} />
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+      <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
         <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[padding(16, 16, 16, 16)]}>
           <OutlinedTextField
             value={name}
@@ -69,7 +63,7 @@ export function AddHostScreen(): React.ReactNode {
             <Text>{t('add')}</Text>
           </Button>
         </Column>
-      </Host>
+      </ThemedHost>
     </>
   );
 }

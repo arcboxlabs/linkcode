@@ -1,14 +1,14 @@
 import {
   Button,
   Column,
-  Host,
   ModalBottomSheet,
   OutlinedTextField,
   Text,
-  useMaterialColors,
   useNativeState,
 } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, imePadding, padding, testID } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useTranslations } from 'use-intl';
 import type { NewTerminalSheetProps } from './new-terminal-sheet.types';
 
@@ -22,7 +22,7 @@ export function NewTerminalSheet({
   onCreate,
 }: NewTerminalSheetProps): React.ReactNode {
   const t = useTranslations('mobile.terminals');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const cwd = useNativeState('');
 
   if (!isPresented) return null;
@@ -35,7 +35,7 @@ export function NewTerminalSheet({
   };
 
   return (
-    <Host style={{ position: 'absolute' }} pointerEvents="box-none">
+    <ThemedHost style={{ position: 'absolute' }} pointerEvents="box-none">
       <ModalBottomSheet onDismissRequest={() => onIsPresentedChange(false)}>
         <Column
           verticalArrangement={{ spacedBy: 12 }}
@@ -72,6 +72,6 @@ export function NewTerminalSheet({
           </Button>
         </Column>
       </ModalBottomSheet>
-    </Host>
+    </ThemedHost>
   );
 }

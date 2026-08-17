@@ -1,9 +1,10 @@
-import { Button, Host, LazyColumn, PullToRefreshBox, Text } from '@expo/ui/jetpack-compose';
+import { Button, LazyColumn, PullToRefreshBox, Text } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding } from '@expo/ui/jetpack-compose/modifiers';
 import { repositoryLabel } from '@linkcode/ui/native';
 import { FormList } from '@mobile/components/form/list.android';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
 import { useTerminalInbox } from '@mobile/components/terminal/use-terminal-inbox';
 import { useState } from 'react';
@@ -51,7 +52,7 @@ export function TerminalsScreen({
           </Button>
         </FormList>
       ) : (
-        <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
           <PullToRefreshBox isRefreshing={refreshing} onRefresh={refresh}>
             <LazyColumn contentPadding={{ top: 8, bottom: 24 }} modifiers={[fillMaxWidth()]}>
               {loadError ? (
@@ -74,7 +75,7 @@ export function TerminalsScreen({
               )}
             </LazyColumn>
           </PullToRefreshBox>
-        </Host>
+        </ThemedHost>
       )}
       <NewTerminalSheet
         isPresented={sheetOpen}

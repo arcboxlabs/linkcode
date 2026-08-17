@@ -1,7 +1,8 @@
-import { Box, ListItem, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { Box, ListItem, Text } from '@expo/ui/jetpack-compose';
 import { background, clickable, clip, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
 import type { SessionStatus } from '@linkcode/schema';
 import { AGENT_LABELS } from '@linkcode/ui/native';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
 import { useThemeColor } from 'heroui-native';
 import type { ThreadRowProps } from './thread-row.types';
@@ -10,7 +11,7 @@ import { threadTitle } from './thread-title';
 /** Android thread row: MD3 ListItem with the status dot drawn as a clipped Box (no icon asset
  * needed) and no disclosure chevron, per MD3. The dot palette matches the session-title dot. */
 export function ThreadRow({ session, now, onPress }: ThreadRowProps): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const [success, warning, muted] = useThemeColor(['success', 'warning', 'muted']);
   const statusColor = {
     starting: warning,

@@ -2,15 +2,15 @@ import {
   Button,
   Checkbox,
   Column,
-  Host,
   OutlinedTextField,
   RadioButton,
   Row,
   Text,
-  useMaterialColors,
   useNativeState,
 } from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth, weight } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useThemeColor } from 'heroui-native';
 import { XIcon } from 'lucide-react-native';
 import { Pressable, Text as RNText, View } from 'react-native';
@@ -32,7 +32,7 @@ export function QuestionPage({
   onCancel,
 }: QuestionPageProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const muted = useThemeColor('muted');
   // Each page owns a distinct native state; the orchestrator remounts pages by key so a stale
   // native write from the previous question cannot leak here.
@@ -73,7 +73,7 @@ export function QuestionPage({
           <XIcon size={14} color={muted} />
         </Pressable>
       </View>
-      <Host matchContents>
+      <ThemedHost matchContents>
         <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>
           <Column>
             {question.options.map((option) => {
@@ -120,7 +120,7 @@ export function QuestionPage({
             <Text>{isLast ? t('submitAnswers') : t('next')}</Text>
           </Button>
         </Column>
-      </Host>
+      </ThemedHost>
     </View>
   );
 }

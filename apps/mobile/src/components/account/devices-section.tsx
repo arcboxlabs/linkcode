@@ -1,5 +1,6 @@
-import { ListItem, Text, TextButton, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { ListItem, Text, TextButton } from '@expo/ui/jetpack-compose';
 import { useDevicesSection } from '@mobile/components/account/use-devices-section';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { useTranslations } from 'use-intl';
@@ -9,7 +10,7 @@ import { useTranslations } from 'use-intl';
  * destructive-only row action. */
 export function DevicesSection(): React.ReactNode {
   const t = useTranslations('mobile.account');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const { devices, devicesError, enrolledId, busyId, refresh, confirmRevoke, describeDevice } =
     useDevicesSection();
 

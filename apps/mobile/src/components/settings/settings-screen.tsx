@@ -3,10 +3,10 @@ import {
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Text,
-  useMaterialColors,
 } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding } from '@expo/ui/jetpack-compose/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormList } from '@mobile/components/form/list.android';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { ToggleRow } from '@mobile/components/form/rows.android';
@@ -188,7 +188,7 @@ export function SettingsScreen(): React.ReactNode {
 }
 
 function AboutBlock({ title, contract }: { title: string; contract: string }): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   return (
     <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[padding(16, 8, 16, 8)]}>

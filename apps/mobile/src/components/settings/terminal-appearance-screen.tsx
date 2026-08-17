@@ -6,7 +6,6 @@ import {
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Text,
-  useMaterialColors,
 } from '@expo/ui/jetpack-compose';
 import {
   background,
@@ -19,6 +18,7 @@ import {
   selectableGroup,
   size,
 } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormList } from '@mobile/components/form/list.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import {
@@ -34,7 +34,7 @@ const SWATCH = 24;
 /** Renders a theme's own colours so the row previews what it selects. `auto` has no theme
  *  of its own — it defers to ghostty's defaults — so it shows a neutral placeholder. */
 function ThemeSwatch({ theme }: { theme?: { background?: string; foreground?: string } }) {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   return (
     <Box
@@ -61,7 +61,7 @@ function ThemeSwatch({ theme }: { theme?: { background?: string; foreground?: st
  * radio group, which draws the selection state the checkmarks carried on iOS. */
 export function TerminalAppearanceScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminalAppearance');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const fontSize = useTerminalPrefsStore((state) => state.fontSize);
   const colorScheme = useTerminalPrefsStore((state) => state.colorScheme);
   const setFontSize = useTerminalPrefsStore((state) => state.setFontSize);

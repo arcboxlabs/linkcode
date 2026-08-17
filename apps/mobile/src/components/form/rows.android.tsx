@@ -1,12 +1,6 @@
-import {
-  CircularProgressIndicator,
-  ListItem,
-  Row,
-  Switch,
-  Text,
-  useMaterialColors,
-} from '@expo/ui/jetpack-compose';
+import { CircularProgressIndicator, ListItem, Row, Switch, Text } from '@expo/ui/jetpack-compose';
 import { padding, toggleable } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 
 /** Quiet in-section message row: empty states, hints, and errors. */
 export function FormHint({
@@ -16,7 +10,7 @@ export function FormHint({
   tone?: 'secondary' | 'error';
   children: string;
 }): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   return (
     <Text

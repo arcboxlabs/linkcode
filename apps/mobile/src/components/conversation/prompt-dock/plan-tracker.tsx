@@ -1,13 +1,8 @@
-import {
-  CircularProgressIndicator,
-  Column,
-  Host,
-  Row,
-  Text,
-  useMaterialColors,
-} from '@expo/ui/jetpack-compose';
+import { CircularProgressIndicator, Column, Row, Text } from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth, size, weight } from '@expo/ui/jetpack-compose/modifiers';
 import type { CurrentPlan } from '@linkcode/ui/native';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -26,7 +21,7 @@ const STATUS_GLYPH = {
  */
 export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
   const t = useTranslations('mobile.chat');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const [expanded, setExpanded] = useState(false);
 
   const entries = plan.item.plan.entries;
@@ -34,7 +29,7 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
 
   return (
     <View className="rounded-xl border border-border bg-surface-secondary/50 px-3 py-1.5">
-      <Host matchContents>
+      <ThemedHost matchContents>
         <Column modifiers={[fillMaxWidth()]}>
           <Row
             verticalAlignment="center"
@@ -92,7 +87,7 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
             </Column>
           ) : null}
         </Column>
-      </Host>
+      </ThemedHost>
     </View>
   );
 }

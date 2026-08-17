@@ -1,5 +1,6 @@
-import { ListItem, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { ListItem, Text } from '@expo/ui/jetpack-compose';
 import { clickable } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import type { NavigationRowProps } from '@mobile/components/form/navigation-row.types';
 
 /** Android form row that pushes a route: an MD3 `ListItem` whose whole-row ripple comes from
@@ -11,7 +12,7 @@ export function NavigationRow({
   badgeText,
   onPress,
 }: NavigationRowProps): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   return (
     <ListItem modifiers={[clickable(onPress)]}>

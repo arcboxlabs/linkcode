@@ -1,5 +1,6 @@
-import { Column, Row, Spacer, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { Column, Row, Spacer, Text } from '@expo/ui/jetpack-compose';
 import { padding, weight } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 
 /** MD3 stand-in for a SwiftUI Form `Section`: a text subheader above the rows and quiet footer
  * text below — the full-width list idiom, not iOS's inset-grouped chrome. `trailing` renders at
@@ -16,7 +17,7 @@ export function FormSection({
   footer?: string;
   children: React.ReactNode;
 }): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   return (
     <Column>

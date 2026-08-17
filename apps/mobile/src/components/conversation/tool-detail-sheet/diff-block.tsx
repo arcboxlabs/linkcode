@@ -1,4 +1,4 @@
-import { Column, Row, Spacer, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { Column, Row, Spacer, Text } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, horizontalScroll, weight } from '@expo/ui/jetpack-compose/modifiers';
 import { diffLines, patchLines } from '@linkcode/ui/native';
 import {
@@ -6,6 +6,7 @@ import {
   DIFF_REMOVED_HEX,
   gutterLine,
 } from '@mobile/components/conversation/tool-detail-sheet/diff-block.shared';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 
 const MONO = { typography: 'bodySmall', fontFamily: 'monospace' } as const;
 
@@ -23,7 +24,7 @@ export function DiffBlock({
    * as `diffStats` — codex ships hunk text alongside a patch). */
   patch?: string;
 }): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const patchRows = patch === undefined ? undefined : patchLines(patch);
   const rows =
     patchRows !== undefined && patchRows.length > 0

@@ -1,13 +1,7 @@
-import {
-  Host,
-  LazyColumn,
-  PullToRefreshBox,
-  Row,
-  Spacer,
-  Text,
-  useMaterialColors,
-} from '@expo/ui/jetpack-compose';
+import { LazyColumn, PullToRefreshBox, Row, Spacer, Text } from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth, padding, weight } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { Fragment, useState } from 'react';
 import type { ThreadListProps } from './thread-list.types';
 import { ThreadRow } from './thread-row';
@@ -23,7 +17,7 @@ export function ThreadList({
   onRefresh,
 }: ThreadListProps): React.ReactNode {
   const { collapsed, setGroupExpanded, now } = useThreadListState();
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = () => {
@@ -32,7 +26,7 @@ export function ThreadList({
   };
 
   return (
-    <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+    <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
       <PullToRefreshBox isRefreshing={refreshing} onRefresh={refresh}>
         <LazyColumn contentPadding={{ top: 4, bottom: 24 }} modifiers={[fillMaxWidth()]}>
           {groups.map((group) => {
@@ -70,6 +64,6 @@ export function ThreadList({
           })}
         </LazyColumn>
       </PullToRefreshBox>
-    </Host>
+    </ThemedHost>
   );
 }

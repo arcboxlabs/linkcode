@@ -1,13 +1,7 @@
-import {
-  Column,
-  Host,
-  ListItem,
-  ModalBottomSheet,
-  RadioButton,
-  Text,
-  useMaterialColors,
-} from '@expo/ui/jetpack-compose';
+import { Column, ListItem, ModalBottomSheet, RadioButton, Text } from '@expo/ui/jetpack-compose';
 import { clickable, padding, verticalScroll } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 
 export interface SheetPickerOption {
   id: string;
@@ -46,12 +40,12 @@ export function SheetPicker({
   sections: SheetPickerSection[];
   actions?: SheetPickerAction[];
 }): React.ReactNode {
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
 
   if (!open) return null;
 
   return (
-    <Host style={{ position: 'absolute' }} pointerEvents="box-none">
+    <ThemedHost style={{ position: 'absolute' }} pointerEvents="box-none">
       <ModalBottomSheet onDismissRequest={onClose}>
         <Column modifiers={[verticalScroll(), padding(0, 0, 0, 16)]}>
           {sections.map((section) => (
@@ -111,6 +105,6 @@ export function SheetPicker({
           ))}
         </Column>
       </ModalBottomSheet>
-    </Host>
+    </ThemedHost>
   );
 }

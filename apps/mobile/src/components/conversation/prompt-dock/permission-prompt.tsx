@@ -1,10 +1,12 @@
-import { Column, Host, OutlinedButton, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { Column, OutlinedButton, Text } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import type { PermissionPromptProps } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
 import {
   DANGER_KINDS,
   detailRows,
 } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useThemeColor } from 'heroui-native';
 import { XIcon } from 'lucide-react-native';
 import { Pressable, Text as RNText, View } from 'react-native';
@@ -22,7 +24,7 @@ export function PermissionPrompt({
   onRespond,
 }: PermissionPromptProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const muted = useThemeColor('muted');
 
   return (
@@ -50,7 +52,7 @@ export function PermissionPrompt({
           {row.value}
         </RNText>
       ))}
-      <Host matchContents>
+      <ThemedHost matchContents>
         <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[fillMaxWidth()]}>
           {options.map((option) => (
             <OutlinedButton
@@ -64,7 +66,7 @@ export function PermissionPrompt({
             </OutlinedButton>
           ))}
         </Column>
-      </Host>
+      </ThemedHost>
     </View>
   );
 }

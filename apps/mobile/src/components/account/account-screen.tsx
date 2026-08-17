@@ -1,7 +1,8 @@
-import { ListItem, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { ListItem, Text } from '@expo/ui/jetpack-compose';
 import { clickable } from '@expo/ui/jetpack-compose/modifiers';
 import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormList } from '@mobile/components/form/list.android';
 import { FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
@@ -12,7 +13,7 @@ import { useTranslations } from 'use-intl';
  * row — MD3's shape for a destructive entry in a settings list. */
 export function AccountScreen(): React.ReactNode {
   const t = useTranslations('mobile.account');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const account = useCloudAccount();
 
   return (

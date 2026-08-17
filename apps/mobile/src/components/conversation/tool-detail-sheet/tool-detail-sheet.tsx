@@ -1,4 +1,4 @@
-import { Column, Host, ModalBottomSheet, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { Column, ModalBottomSheet, Text } from '@expo/ui/jetpack-compose';
 import {
   fillMaxWidth,
   horizontalScroll,
@@ -6,6 +6,8 @@ import {
   verticalScroll,
 } from '@expo/ui/jetpack-compose/modifiers';
 import type { ToolCall } from '@linkcode/schema';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useTranslations } from 'use-intl';
 import { DiffBlock } from './diff-block';
 import { toolDetailContent } from './tool-detail-content';
@@ -26,13 +28,13 @@ export function ToolDetailSheet({
   onDismiss: () => void;
 }): React.ReactNode {
   const t = useTranslations('mobile.chat');
-  const colors = useMaterialColors();
+  const colors = useAppMaterialColors();
   const { metadata, contents, failure, command, rawOutput } = toolDetailContent(toolCall);
 
   if (toolCall === null) return null;
 
   return (
-    <Host style={{ position: 'absolute' }} pointerEvents="box-none">
+    <ThemedHost style={{ position: 'absolute' }} pointerEvents="box-none">
       <ModalBottomSheet onDismissRequest={onDismiss}>
         <Column
           verticalArrangement={{ spacedBy: 12 }}
@@ -109,6 +111,6 @@ export function ToolDetailSheet({
           ) : null}
         </Column>
       </ModalBottomSheet>
-    </Host>
+    </ThemedHost>
   );
 }
