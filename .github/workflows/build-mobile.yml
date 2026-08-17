@@ -75,9 +75,9 @@ jobs:
             exit 1
           fi
 
-  # Store builds always sign, so the immutable config bundle is unconditionally required: this
-  # job renders both platform modules in one invocation from the pinned publisher checkout and
-  # fails with an actionable error when the release-environment pins are absent.
+  # Store builds always sign, so the immutable config bundle is unconditionally required. This
+  # job downloads one release-input descriptor and renders both platform modules from the exact
+  # publisher/source commits it binds.
   render-config:
     name: Render immutable config
     needs: preflight
@@ -162,14 +162,11 @@ jobs:
         uses: ./.github/actions/render-release-config
         with:
           app: mobile
+          release-inputs-url: https://config.linkcode.ai/release/v1/linkcode/stable.json
           publisher-repository: ${{ steps.repositories.outputs.publisher-full }}
           publisher-token: ${{ steps.publisher-token.outputs.token }}
           source-repository: ${{ steps.repositories.outputs.source-full }}
           source-token: ${{ steps.source-token.outputs.token }}
-          revision: ${{ vars.CONFIG_RELEASE_REVISION }}
-          keyrings: ${{ vars.CONFIG_RELEASE_KEYRINGS }}
-          release-manifest-ios: ${{ vars.CONFIG_RELEASE_MANIFEST_IOS }}
-          release-manifest-android: ${{ vars.CONFIG_RELEASE_MANIFEST_ANDROID }}
 
       - name: Upload generated config modules
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

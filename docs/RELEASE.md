@@ -89,7 +89,9 @@ Desktop signing and R2 secrets live in the repo's GitHub **`release` Environment
 
 ## Immutable config bundle (build-time render)
 
-Signed desktop builds and every mobile store build embed an immutable config bundle (bootstrap endpoints, public keyrings, bundled defaults) rendered at build time by the config publisher — the client never re-implements rendering. The emergency channel is disabled when its endpoint is `null` and its public keyring is empty; explicit emergency brands must provide both together. The `render-config` job in `build-desktop.yml` (signed builds only) and `build-mobile.yml` (always) calls `.github/actions/render-release-config`, which checks out publisher code from protected `CONFIG_PUBLISHER_REPO` at `publisherGitSha` and structural data from protected `CONFIG_SOURCE_REPO` at the independent `sourceGitSha`. It renders through `pnpm -F @linkcode/<app> config:render` and verifies the manifest's digest bindings (revision bytes, public keyring bytes, target identity, telemetry endpoint, expected snapshot SHA-256). Nothing falls back to a mutable ref, an unvalidated or cross-organization repository, a global install, or stale generated output.
+Signed desktop builds and every mobile store build embed an immutable config bundle (bootstrap endpoints, public keyrings, bundled defaults) rendered at build time by the config publisher — the client never re-implements rendering. The emergency channel is disabled when its endpoint is `null` and its public keyring is empty; explicit emergency brands must provide both together. The official `render-config` jobs download one atomic descriptor from `https://config.linkcode.ai/release/v1/linkcode/stable.json`. The descriptor carries the exact revision, public keyring, and Desktop/iOS/Android release-manifest bytes with individual SHA-256 digests. The workflow rejects redirects, oversized responses, malformed or noncanonical Base64, unknown fields, digest drift, missing targets, and manifests that do not share one source/publisher/revision/keyring identity.
+
+After that validation, `.github/actions/render-release-config` checks out publisher code from protected `CONFIG_PUBLISHER_REPO` at `publisherGitSha` and structural data from protected `CONFIG_SOURCE_REPO` at the independent `sourceGitSha`. It renders through `pnpm -F @linkcode/<app> config:render` and re-verifies the manifest's digest bindings (revision bytes, public keyring bytes, target identity, telemetry endpoint, expected snapshot SHA-256). Nothing falls back to a mutable Git ref, an unvalidated or cross-organization repository, a global install, or stale generated output.
 
 Each checkout uses its own short-lived installation token minted from the organization secrets
 `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY`. Trusted workflow steps mint these tokens before checking out
@@ -99,11 +101,12 @@ the selected publisher or source repository. The App must be installed on both p
 repositories. Missing secrets or installation access fail before rendering; no long-lived
 config-read token is used.
 
-Production rendering reads the root of `CONFIG_SOURCE_REPO` and remains bound to the manifest's
-exact publisher/source commits, input bytes, target, and expected snapshot digest. Client releases
-do not wait for a Pages deployment or require observer publication evidence. Workflow code may
-select only that root or the reviewed `examples/acme-zenith` root used by the nonproduction pilot;
-configuration data cannot supply a path.
+Production rendering reads the root of `CONFIG_SOURCE_REPO` and remains bound to the downloaded
+manifest's exact publisher/source commits, input bytes, target, and expected snapshot digest. It
+depends on the normal document origin being available, but does not use a Cloudflare API token,
+deployment observer, or copied JSON variables. Workflow code may select only that root or the
+reviewed `examples/acme-zenith` root used by the nonproduction pilot; configuration data cannot
+supply a path.
 
 Inputs live in the GitHub **`release` environment** and a missing value fails the build with an actionable error:
 
@@ -115,8 +118,12 @@ Inputs live in the GitHub **`release` environment** and a missing value fails th
   manifest, layers, and assets. It has the same owner restriction and receives a separate token.
   The two repository values must differ. Current values are `arcboxlabs/linkcodehq` and
   `arcboxlabs/linkcode-config`, respectively.
-- `CONFIG_RELEASE_REVISION` / `CONFIG_RELEASE_KEYRINGS` (vars) — exact revision-metadata and public-keyrings JSON bytes; the manifest pins their SHA-256s, so drifted content fails closed. Public keys only — private keys never enter this repo or its CI.
-- `CONFIG_RELEASE_MANIFEST_DESKTOP` / `CONFIG_RELEASE_MANIFEST_IOS` / `CONFIG_RELEASE_MANIFEST_ANDROID` (vars) — release-render manifest v2 JSON per production target, pinning `publisherGitSha`, `sourceGitSha`, brand/platform/channel, telemetry endpoint, revision and public-keyring byte digests, and the expected snapshot digest. Optional `publicationEvidence` remains accepted and strictly parsed for compatibility, but its presence and Pages deployment state do not gate a client release. Version 1 remains accepted only for the reviewed nonproduction fixture.
+
+No `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS`, or
+`CONFIG_RELEASE_MANIFEST_*` Environment variable is used by the official LinkCode
+Desktop or Mobile flow. The composite action retains inline JSON inputs only for
+the committed nonproduction matrix fixture; they cannot be combined with a
+release-input URL.
 
 Enforcement: `LINKCODE_REQUIRE_CONFIG_BUNDLE=1` (set for signed desktop builds) makes the Vite main build fail without `apps/desktop/generated/config-build-bundle.json` and makes `verify-artifacts.mts` require the staged asar copy, which is always byte-compared against the generated render. Mobile gates twice: `pnpm -F @linkcode/mobile config:verify-release` before `eas build`, and the `eas-build-pre-install` hook inside the EAS project archive rejects the committed `{ bundle: null }` sentinel on production profiles (the root `.easignore` — which replaces `.gitignore` for EAS archiving — deliberately lets the generated modules into the archive).
 
@@ -191,11 +198,12 @@ credentials are organization secrets. Trusted workflow steps report
 missing bot credentials before checking out selected client code, and the input scripts report
 missing render, signing, or upload values without receiving those bot credentials:
 
-- `release` vars: `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO`, `CONFIG_RELEASE_REVISION`, and
-  `CONFIG_RELEASE_KEYRINGS`. Both repository vars must be canonical, different
-  `arcboxlabs/repository` identities; malformed, absent, cross-organization, and equal values fail
-  before token minting or checkout.
-  Revision/keyring values are exact JSON bytes already digest-pinned by each release manifest.
+- Official LinkCode `release` vars: `CONFIG_PUBLISHER_REPO` and `CONFIG_SOURCE_REPO`. Both must be
+  canonical, different `arcboxlabs/repository` identities; malformed, absent,
+  cross-organization, and equal values fail before token minting or checkout.
+- A nonproduction brand-matrix build additionally uses `CONFIG_RELEASE_REVISION` and
+  `CONFIG_RELEASE_KEYRINGS` for its committed Acme/Zenith fixture. Official Desktop and Mobile
+  releases never read those compatibility inputs.
 - Config checkouts: organization secrets `BOT_APP_ID` and `BOT_APP_PRIVATE_KEY` mint separate,
   short-lived installation tokens with **Contents: read** only on the validated publisher
   and source repositories. The workflow requests no write or organization permission and never
