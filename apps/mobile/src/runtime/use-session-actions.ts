@@ -1,5 +1,6 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import type {
+  EffortLevel,
   PermissionOutcome,
   QuestionOutcome,
   SessionId,
@@ -10,7 +11,7 @@ import { useCallback, useState } from 'react';
 
 /** Which composer action failed. Failures carry no message: the daemon's reasons are not
  * user-actionable here, and the caller owns the copy. */
-export type SessionActionFailure = 'send' | 'stop';
+export type SessionActionFailure = 'send' | 'stop' | 'control';
 
 export interface SessionActions {
   /** The turn is in flight, so the composer's single action should read as stop, not send. */
@@ -24,6 +25,11 @@ export interface SessionActions {
   readonly failedResponseIds: ReadonlySet<string>;
   readonly send: (text: string) => void;
   readonly stop: () => void;
+  /** Live control switches; the pick reflects back via the session's `*-update` events, so a
+   * rejected switch simply leaves the previous value showing. */
+  readonly setModel: (model: { id: string; accountId?: string }) => void;
+  readonly setEffort: (effort: EffortLevel) => void;
+  readonly setApprovalPolicy: (policyId: string) => void;
   readonly respondPermission: (requestId: string, outcome: PermissionOutcome) => void;
   readonly respondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
 }
@@ -54,6 +60,33 @@ export function useSessionActions(
     if (!sessionId) return;
     client.cancel(sessionId).catch(() => setFailure('stop'));
   }, [client, sessionId]);
+
+  const setModel = useCallback(
+    (model: { id: string; accountId?: string }) => {
+      if (!sessionId) return;
+      setFailure(null);
+      client.setModel(sessionId, model.id, model.accountId).catch(() => setFailure('control'));
+    },
+    [client, sessionId],
+  );
+
+  const setEffort = useCallback(
+    (effort: EffortLevel) => {
+      if (!sessionId) return;
+      setFailure(null);
+      client.setEffort(sessionId, effort).catch(() => setFailure('control'));
+    },
+    [client, sessionId],
+  );
+
+  const setApprovalPolicy = useCallback(
+    (policyId: string) => {
+      if (!sessionId) return;
+      setFailure(null);
+      client.setApprovalPolicy(sessionId, policyId).catch(() => setFailure('control'));
+    },
+    [client, sessionId],
+  );
 
   const respond = useCallback(
     (requestId: string, send_: () => Promise<unknown>) => {
@@ -90,6 +123,9 @@ export function useSessionActions(
     failedResponseIds,
     send,
     stop,
+    setModel,
+    setEffort,
+    setApprovalPolicy,
     respondPermission,
     respondQuestion,
   };

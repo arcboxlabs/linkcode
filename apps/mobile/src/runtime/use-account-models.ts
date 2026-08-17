@@ -10,7 +10,7 @@ import { useState } from 'react';
  * picker never briefly offers a set the enabled list would have narrowed. The head of the list is
  * what an unpicked start runs on. The agent's own catalog models are deliberately not offered — a
  * model nobody enabled an account for is not on offer (same rule as the desktop draft picker). */
-export function useAccountModels(kind: AgentKind): ModelOption[] | null {
+export function useAccountModels(kind: AgentKind | null): ModelOption[] | null {
   const client = useLinkCodeClient();
   const [sources, setSources] = useState<{
     accounts: Accounts;
@@ -28,7 +28,7 @@ export function useAccountModels(kind: AgentKind): ModelOption[] | null {
     [client],
   );
 
-  if (!sources) return null;
+  if (!sources || kind === null) return null;
   // `description` carries the account label and `accountId` rides along, so a pick names the
   // account it came from — two accounts can legitimately serve the same model id.
   return enabledAccountModels(sources.accounts, sources.providers, kind).map(
