@@ -32,12 +32,14 @@ function TabsNavigator(): React.ReactNode {
 
   return (
     <NativeTabs>
+      {/* `md` is the Android glyph — without it the converter leaves the icon undefined and the
+          tab renders label-only; `sf` is never read there. */}
       <NativeTabs.Trigger name="threads">
-        <NativeTabs.Trigger.Icon sf="bubble.left.and.text.bubble.right" />
+        <NativeTabs.Trigger.Icon sf="bubble.left.and.text.bubble.right" md="chat" />
         <NativeTabs.Trigger.Label>{tThreads('title')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="terminals">
-        <NativeTabs.Trigger.Icon sf="apple.terminal" />
+        <NativeTabs.Trigger.Icon sf="apple.terminal" md="terminal" />
         <NativeTabs.Trigger.Label>{tTerminals('title')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       {/* iOS 26's separated tab-bar slot (the `search` role) carries the focused tab's primary

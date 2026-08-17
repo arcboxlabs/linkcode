@@ -54,6 +54,7 @@
     "expo-sharing": "~57.0.3",
     "expo-sqlite": "~57.0.0",
     "expo-status-bar": "~57.0.0",
+    "expo-symbols": "~57.0.2",
     "expo-task-manager": "~57.0.2",
     "expo-updates": "~57.0.6",
     "expo-web-browser": "~57.0.0",

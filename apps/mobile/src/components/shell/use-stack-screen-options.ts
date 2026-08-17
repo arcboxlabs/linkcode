@@ -40,9 +40,10 @@ export function useStackScreenOptions(): StackScreenOptions {
     headerTintColor: accent,
     headerTitleStyle: { color: foreground },
     headerLargeTitleStyle: { color: foreground },
+    // Android has no header blur; painting the header the content color keeps the screen
+    // reading as one surface (the shadow is already off).
     ...(process.env.EXPO_OS !== 'ios' && {
-      headerBlurEffect: 'systemChromeMaterial' as const,
-      headerStyle: { backgroundColor: 'transparent' },
+      headerStyle: { backgroundColor: background },
     }),
     headerShadowVisible: false,
     headerBackButtonDisplayMode: 'minimal',
