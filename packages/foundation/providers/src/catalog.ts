@@ -141,6 +141,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     credentialType: 'api-key',
     variants: {
       anthropic: { baseUrl: 'https://api.stepfun.com' },
+      // Responses serves `step-3.7-flash` only (2026-08).
       'openai-responses': { baseUrl: 'https://api.stepfun.com/v1' },
       'openai-chat': {
         baseUrl: 'https://api.stepfun.com/v1',
