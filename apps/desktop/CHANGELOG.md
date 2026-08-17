@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/arcboxlabs/linkcode/compare/v0.23.1...v0.24.0) (2026-08-17)
+
+
+### Features
+
+* **providers:** add StepFun API support ([#456](https://github.com/arcboxlabs/linkcode/issues/456)) ([c4a2e49](https://github.com/arcboxlabs/linkcode/commit/c4a2e496d0bec512ebb5cf24f0fd17a1a7549480))
+
+
+### Bug Fixes
+
+* prevent daemon fsync crash and Pi catalog failures ([#454](https://github.com/arcboxlabs/linkcode/issues/454)) ([964f04c](https://github.com/arcboxlabs/linkcode/commit/964f04cf87a6aa8a701836ef6c6b851b57cfe031))
+
 ## [0.23.1](https://github.com/arcboxlabs/linkcode/compare/v0.23.0...v0.23.1) (2026-08-17)
 
 
