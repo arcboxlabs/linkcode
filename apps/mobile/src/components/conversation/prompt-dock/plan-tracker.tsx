@@ -1,33 +1,32 @@
-import { DisclosureGroup, Gauge, Host, HStack, Image, Text, VStack } from '@expo/ui/swift-ui';
 import {
-  font,
-  foregroundStyle,
-  frame,
-  gaugeStyle,
-  lineLimit,
-  strikethrough,
-} from '@expo/ui/swift-ui/modifiers';
+  CircularProgressIndicator,
+  Column,
+  Host,
+  Row,
+  Text,
+  useMaterialColors,
+} from '@expo/ui/jetpack-compose';
+import { clickable, fillMaxWidth, size, weight } from '@expo/ui/jetpack-compose/modifiers';
 import type { CurrentPlan } from '@linkcode/ui/native';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const STRIKE = strikethrough({ isActive: true, pattern: 'solid' });
-
-const STATUS_ICON = {
-  pending: 'circle',
-  in_progress: 'circle.lefthalf.filled',
-  completed: 'checkmark.circle.fill',
-  cancelled: 'xmark.circle',
+/** Text stand-ins for the SF status glyphs — no icon assets on the Compose side. */
+const STATUS_GLYPH = {
+  pending: '○',
+  in_progress: '◐',
+  completed: '●',
+  cancelled: '✕',
 } as const;
 
 /**
- * Desktop `StepPromptRow` equivalent: a collapsed `Step N/M · current entry` row with a
- * progress gauge, disclosing the full entry list in place.
+ * Android plan tracker, mirroring the SwiftUI DisclosureGroup: a collapsed `Step N/M · current
+ * entry` row with a circular progress ring, expanding the full entry list in place on tap.
  */
 export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const colors = useMaterialColors();
   const [expanded, setExpanded] = useState(false);
 
   const entries = plan.item.plan.entries;
@@ -36,56 +35,63 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
   return (
     <View className="rounded-xl border border-border bg-surface-secondary/50 px-3 py-1.5">
       <Host matchContents>
-        <DisclosureGroup isExpanded={expanded} onIsExpandedChange={setExpanded}>
-          <DisclosureGroup.Label>
-            <HStack spacing={8}>
-              <Gauge
-                value={plan.currentIndex + 1}
-                max={plan.total}
-                modifiers={[gaugeStyle('circularCapacity'), frame({ width: 18, height: 18 })]}
-              />
-              <Text modifiers={[font({ textStyle: 'footnote', weight: 'semibold' })]}>
-                {t('stepLabel', {
-                  current: plan.currentIndex + 1,
-                  total: plan.total,
-                })}
-              </Text>
-              <Text
-                modifiers={[
-                  font({ textStyle: 'footnote' }),
-                  SECONDARY,
-                  lineLimit(1),
-                  ...(plan.complete ? [STRIKE] : []),
-                ]}
-              >
-                {current.content}
-              </Text>
-            </HStack>
-          </DisclosureGroup.Label>
-          <VStack alignment="leading" spacing={6}>
-            {entries.map((entry, index) => (
-              <HStack
-                // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; plans replace wholesale
-                key={index}
-                spacing={8}
-              >
-                <Image
-                  systemName={STATUS_ICON[entry.status]}
-                  size={14}
-                  modifiers={entry.status === 'completed' ? [] : [SECONDARY]}
-                />
-                <Text
-                  modifiers={[
-                    font({ textStyle: 'footnote' }),
-                    ...(entry.status === 'completed' ? [SECONDARY, STRIKE] : []),
-                  ]}
+        <Column modifiers={[fillMaxWidth()]}>
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement={{ spacedBy: 8 }}
+            modifiers={[clickable(() => setExpanded((current_) => !current_)), fillMaxWidth()]}
+          >
+            <CircularProgressIndicator
+              progress={(plan.currentIndex + 1) / plan.total}
+              strokeWidth={2}
+              modifiers={[size(18, 18)]}
+            />
+            <Text style={{ typography: 'labelLarge' }}>
+              {t('stepLabel', { current: plan.currentIndex + 1, total: plan.total })}
+            </Text>
+            <Text
+              style={{
+                typography: 'bodySmall',
+                textDecoration: plan.complete ? 'lineThrough' : 'none',
+              }}
+              color={colors.onSurfaceVariant}
+              maxLines={1}
+              overflow="ellipsis"
+              modifiers={[weight(1)]}
+            >
+              {current.content}
+            </Text>
+          </Row>
+          {expanded ? (
+            <Column verticalArrangement={{ spacedBy: 6 }} modifiers={[fillMaxWidth()]}>
+              {entries.map((entry, index) => (
+                <Row
+                  // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; plans replace wholesale
+                  key={index}
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 8 }}
                 >
-                  {entry.content}
-                </Text>
-              </HStack>
-            ))}
-          </VStack>
-        </DisclosureGroup>
+                  <Text
+                    style={{ typography: 'bodySmall' }}
+                    color={entry.status === 'completed' ? colors.primary : colors.onSurfaceVariant}
+                  >
+                    {STATUS_GLYPH[entry.status]}
+                  </Text>
+                  <Text
+                    style={{
+                      typography: 'bodySmall',
+                      textDecoration: entry.status === 'completed' ? 'lineThrough' : 'none',
+                    }}
+                    color={entry.status === 'completed' ? colors.onSurfaceVariant : undefined}
+                    modifiers={[weight(1)]}
+                  >
+                    {entry.content}
+                  </Text>
+                </Row>
+              ))}
+            </Column>
+          ) : null}
+        </Column>
       </Host>
     </View>
   );

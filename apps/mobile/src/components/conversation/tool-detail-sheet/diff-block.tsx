@@ -1,18 +1,15 @@
-import { HStack, ScrollView, Spacer, Text, VStack } from '@expo/ui/swift-ui';
-import { font, foregroundStyle, lineLimit } from '@expo/ui/swift-ui/modifiers';
+import { Column, Row, Spacer, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, horizontalScroll, weight } from '@expo/ui/jetpack-compose/modifiers';
 import { diffLines, patchLines } from '@linkcode/ui/native';
-import { SECONDARY } from '@mobile/components/form/styles.ios';
+import {
+  DIFF_ADDED_HEX,
+  DIFF_REMOVED_HEX,
+  gutterLine,
+} from '@mobile/components/conversation/tool-detail-sheet/diff-block.shared';
 
-const MONO_FOOTNOTE = font({ textStyle: 'footnote', design: 'monospaced' });
-const ADDED = foregroundStyle('#28A745');
-const REMOVED = foregroundStyle('#D73A49');
+const MONO = { typography: 'bodySmall', fontFamily: 'monospace' } as const;
 
-function gutterLine(row: { type: 'add' | 'del' | 'ctx'; text: string }): string {
-  const gutter = row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' ';
-  return `${gutter} ${row.text || ' '}`;
-}
-
-/** Unified-diff card for a single path inside the tool-detail sheet. */
+/** Android unified-diff card for a single path inside the tool-detail sheet. */
 export function DiffBlock({
   path,
   oldText,
@@ -26,6 +23,7 @@ export function DiffBlock({
    * as `diffStats` — codex ships hunk text alongside a patch). */
   patch?: string;
 }): React.ReactNode {
+  const colors = useMaterialColors();
   const patchRows = patch === undefined ? undefined : patchLines(patch);
   const rows =
     patchRows !== undefined && patchRows.length > 0
@@ -35,28 +33,51 @@ export function DiffBlock({
   const deletions = rows.filter((row) => row.type === 'del').length;
 
   return (
-    <VStack alignment="leading" spacing={4}>
-      <HStack spacing={6}>
-        <Text modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(1)]}>{path}</Text>
+    <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[fillMaxWidth()]}>
+      <Row
+        verticalAlignment="center"
+        horizontalArrangement={{ spacedBy: 6 }}
+        modifiers={[fillMaxWidth()]}
+      >
+        <Text
+          style={MONO}
+          color={colors.onSurfaceVariant}
+          maxLines={1}
+          overflow="ellipsis"
+          modifiers={[weight(1)]}
+        >
+          {path}
+        </Text>
         <Spacer />
-        {additions > 0 ? <Text modifiers={[MONO_FOOTNOTE, ADDED]}>+{additions}</Text> : null}
-        {deletions > 0 ? <Text modifiers={[MONO_FOOTNOTE, REMOVED]}>−{deletions}</Text> : null}
-      </HStack>
-      <ScrollView axes="horizontal">
-        <VStack alignment="leading" spacing={0}>
-          {rows.map((row) => (
-            <Text
-              key={row.id}
-              modifiers={[
-                MONO_FOOTNOTE,
-                ...(row.type === 'add' ? [ADDED] : row.type === 'del' ? [REMOVED] : [SECONDARY]),
-              ]}
-            >
-              {gutterLine(row)}
-            </Text>
-          ))}
-        </VStack>
-      </ScrollView>
-    </VStack>
+        {additions > 0 ? (
+          <Text style={MONO} color={DIFF_ADDED_HEX}>
+            +{additions}
+          </Text>
+        ) : null}
+        {deletions > 0 ? (
+          <Text style={MONO} color={DIFF_REMOVED_HEX}>
+            −{deletions}
+          </Text>
+        ) : null}
+      </Row>
+      <Column modifiers={[horizontalScroll(), fillMaxWidth()]}>
+        {rows.map((row) => (
+          <Text
+            key={row.id}
+            style={MONO}
+            softWrap={false}
+            color={
+              row.type === 'add'
+                ? DIFF_ADDED_HEX
+                : row.type === 'del'
+                  ? DIFF_REMOVED_HEX
+                  : colors.onSurfaceVariant
+            }
+          >
+            {gutterLine(row)}
+          </Text>
+        ))}
+      </Column>
+    </Column>
   );
 }

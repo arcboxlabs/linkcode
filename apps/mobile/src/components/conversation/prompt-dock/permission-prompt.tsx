@@ -1,125 +1,69 @@
-import { Button, Host, HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
+import { Column, Host, OutlinedButton, Text, useMaterialColors } from '@expo/ui/jetpack-compose';
+import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
+import type { PermissionPromptProps } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
 import {
-  buttonStyle,
-  contentShape,
-  disabled,
-  font,
-  foregroundStyle,
-  lineLimit,
-  onTapGesture,
-  shapes,
-} from '@expo/ui/swift-ui/modifiers';
-import type { PermissionOption, PermissionOutcome, ToolCallUpdate } from '@linkcode/schema';
-import { View } from 'react-native';
+  DANGER_KINDS,
+  detailRows,
+} from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
+import { useThemeColor } from 'heroui-native';
+import { XIcon } from 'lucide-react-native';
+import { Pressable, Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const TERTIARY = foregroundStyle({ type: 'hierarchical', style: 'tertiary' });
-const MONO_FOOTNOTE = font({ textStyle: 'footnote', design: 'monospaced' });
-const WHOLE_ROW = contentShape(shapes.rectangle());
-
-const DANGER_KINDS = new Set(['reject_once', 'reject_always']);
-
-interface DetailRow {
-  key: string;
-  value: string;
-}
-
-/** The most identifying facts of the pending call: touched paths, then command/url inputs.
- * Raw input JSON is deliberately not dumped — an unrecognized tool still shows its scalar
- * fields through `locations`/`content`, and the model keeps the rest. */
-function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
-  const rows: DetailRow[] = [];
-  if (toolCall.locations != null) {
-    for (let i = 0, len = toolCall.locations.length; i < len; i++) {
-      const location = toolCall.locations[i];
-      rows.push({ key: `loc:${location.path}`, value: location.path });
-    }
-  }
-  if (toolCall.content != null) {
-    for (let i = 0, len = toolCall.content.length; i < len; i++) {
-      const content = toolCall.content[i];
-      if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
-        rows.push({ key: `diff:${content.path}`, value: content.path });
-      }
-    }
-  }
-  const input = toolCall.rawInput;
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-    const record = input as Record<string, unknown>;
-    const pathKeys = ['file_path', 'path', 'notebook_path', 'filePath'];
-    for (let i = 0, len = pathKeys.length; i < len; i++) {
-      const key = pathKeys[i];
-      const value = record[key];
-      if (typeof value === 'string' && !rows.some((row) => row.value === value)) {
-        rows.push({ key: `path:${key}`, value });
-        break;
-      }
-    }
-    if (typeof record.command === 'string') rows.push({ key: 'command', value: record.command });
-    if (typeof record.url === 'string') rows.push({ key: 'url', value: record.url });
-  }
-  return rows;
-}
-
 /**
- * Desktop `PermissionPrompt` grammar on SwiftUI: title + skip, mono detail rows, one tappable
- * row per option (deny options draw destructive red). The RN shell provides the card chrome so
- * it themes with the rest of the conversation surface.
+ * Android permission prompt: the same grammar as the SwiftUI card — title + skip, mono detail
+ * rows — with the option rows as MD3 outlined buttons (deny options in the error color). The RN
+ * shell provides the card chrome so it themes with the rest of the conversation surface.
  */
 export function PermissionPrompt({
   toolCall,
   options,
   responding,
   onRespond,
-}: {
-  toolCall: ToolCallUpdate;
-  options: PermissionOption[];
-  responding: boolean;
-  onRespond: (outcome: PermissionOutcome) => void;
-}): React.ReactNode {
+}: PermissionPromptProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const colors = useMaterialColors();
+  const muted = useThemeColor('muted');
 
   return (
-    <View className="rounded-xl border border-border bg-background px-3 py-2.5">
+    <View className="gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5">
+      <View className="flex-row items-center gap-2">
+        <RNText className="flex-1 font-semibold text-foreground text-subhead" numberOfLines={2}>
+          {t('allowTitle', { title: toolCall.title ?? '' })}
+        </RNText>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          disabled={responding}
+          onPress={() => onRespond({ outcome: 'cancelled' })}
+        >
+          <XIcon size={14} color={muted} />
+        </Pressable>
+      </View>
+      {detailRows(toolCall).map((row) => (
+        <RNText
+          key={row.key}
+          className="text-footnote text-muted"
+          style={{ fontFamily: 'monospace' }}
+          numberOfLines={2}
+        >
+          {row.value}
+        </RNText>
+      ))}
       <Host matchContents>
-        <VStack alignment="leading" spacing={10}>
-          <HStack spacing={8}>
-            <Text
-              modifiers={[font({ textStyle: 'subheadline', weight: 'semibold' }), lineLimit(2)]}
+        <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[fillMaxWidth()]}>
+          {options.map((option) => (
+            <OutlinedButton
+              key={option.optionId}
+              enabled={!responding}
+              colors={DANGER_KINDS.has(option.kind) ? { contentColor: colors.error } : undefined}
+              onClick={() => onRespond({ outcome: 'selected', optionId: option.optionId })}
+              modifiers={[fillMaxWidth()]}
             >
-              {t('allowTitle', { title: toolCall.title ?? '' })}
-            </Text>
-            <Spacer />
-            <Image
-              systemName="xmark"
-              size={13}
-              modifiers={[
-                TERTIARY,
-                WHOLE_ROW,
-                onTapGesture(() => {
-                  if (!responding) onRespond({ outcome: 'cancelled' });
-                }),
-              ]}
-            />
-          </HStack>
-          {detailRows(toolCall).map((row) => (
-            <Text key={row.key} modifiers={[MONO_FOOTNOTE, SECONDARY, lineLimit(2)]}>
-              {row.value}
-            </Text>
+              <Text>{option.name}</Text>
+            </OutlinedButton>
           ))}
-          <VStack alignment="leading" spacing={4}>
-            {options.map((option) => (
-              <Button
-                key={option.optionId}
-                label={option.name}
-                role={DANGER_KINDS.has(option.kind) ? 'destructive' : undefined}
-                onPress={() => onRespond({ outcome: 'selected', optionId: option.optionId })}
-                modifiers={[buttonStyle('bordered'), disabled(responding)]}
-              />
-            ))}
-          </VStack>
-        </VStack>
+        </Column>
       </Host>
     </View>
   );
