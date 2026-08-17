@@ -40,7 +40,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 24,
   },
   content: {
     gap: 48,
@@ -156,14 +155,14 @@ export default function SignInScreen() {
     <ScrollView
       className="flex-1 bg-background"
       style={iosStyles.screen}
+      // Safe areas are padded in here rather than via UIKit inset adjustment: adjusted insets
+      // extend a flexGrow container past the viewport, leaving a scroll range on a fitting screen.
       contentContainerStyle={[
         styles.scrollContent,
-        Platform.OS === 'android' && {
-          paddingTop: insets.top + 24,
-          paddingBottom: insets.bottom + 24,
-        },
+        { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
       ]}
-      contentInsetAdjustmentBehavior="automatic"
+      // Fits-on-screen content must not drag; overflow (large accessibility type) still scrolls.
+      alwaysBounceVertical={false}
     >
       <View style={styles.content}>
         <View style={styles.hero}>
