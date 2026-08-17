@@ -134,6 +134,24 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     secretPlaceholder: 'sk-…',
   },
   {
+    id: 'stepfun',
+    label: 'StepFun',
+    group: 'direct',
+    kind: 'endpoint',
+    credentialType: 'api-key',
+    variants: {
+      anthropic: { baseUrl: 'https://api.stepfun.com' },
+      // Responses serves `step-3.7-flash` only (2026-08).
+      'openai-responses': { baseUrl: 'https://api.stepfun.com/v1' },
+      'openai-chat': {
+        baseUrl: 'https://api.stepfun.com/v1',
+        knownProvider: { opencode: 'stepfun' },
+      },
+    },
+    models: { url: 'https://api.stepfun.com/v1/models', wire: 'openai' },
+    secretPlaceholder: 'sk-…',
+  },
+  {
     id: LINKCODE_GATEWAY_SERVICE_ID,
     label: 'LinkCode Gateway',
     group: 'gateway',

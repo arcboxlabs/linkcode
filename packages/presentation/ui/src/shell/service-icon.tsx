@@ -6,6 +6,7 @@ import CloudflareColorGlyph from '~icons/lobe-icons/cloudflare-color';
 import DeepSeekColorGlyph from '~icons/lobe-icons/deepseek-color';
 import OpenAiGlyph from '~icons/lobe-icons/openai';
 import OpenRouterGlyph from '~icons/lobe-icons/openrouter';
+import StepFunColorGlyph from '~icons/lobe-icons/stepfun-color';
 import VercelGlyph from '~icons/lobe-icons/vercel';
 import XaiGlyph from '~icons/lobe-icons/xai';
 import { cn } from '../lib/cn';
@@ -32,6 +33,7 @@ const SERVICE_GLYPHS: Record<string, typeof AnthropicGlyph> = {
   'openai-api': OpenAiGlyph,
   xai: XaiGlyph,
   deepseek: DeepSeekColorGlyph,
+  stepfun: StepFunColorGlyph,
   openrouter: OpenRouterGlyph,
   'vercel-gateway': VercelGlyph,
   'cloudflare-gateway': CloudflareColorGlyph,
