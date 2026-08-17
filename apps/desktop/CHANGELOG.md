@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/arcboxlabs/linkcode/compare/v0.23.0...v0.23.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** hand off billing to hosted console ([#408](https://github.com/arcboxlabs/linkcode/issues/408)) ([b72ba7c](https://github.com/arcboxlabs/linkcode/commit/b72ba7c1569a8d1f6cd8d1ede1390539a0203469))
+
 ## [0.23.0](https://github.com/arcboxlabs/linkcode/compare/v0.22.0...v0.23.0) (2026-08-17)
 
 
