@@ -15,10 +15,10 @@ import { createProviderConfigStore } from '../provider-store';
 import { createInMemoryVault } from './fixtures/in-memory-vault';
 
 const fsMocks = vi.hoisted(() => ({
-  openTargets: new Map<number, string>(),
+  openTargets: new Map<number, { path: string; flags: string }>(),
   renameTarget: null as string | null,
   renameTargets: [] as string[],
-  syncTargets: [] as string[],
+  syncTargets: [] as Array<{ path: string; flags: string }>,
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -33,7 +33,7 @@ vi.mock('node:fs', async (importOriginal) => {
       }
     },
     fsyncSync(descriptor: number) {
-      fsMocks.syncTargets.push(fsMocks.openTargets.get(descriptor) ?? '');
+      fsMocks.syncTargets.push(fsMocks.openTargets.get(descriptor) ?? { path: '', flags: '' });
       actual.fsyncSync(descriptor);
     },
     openSync(
@@ -42,7 +42,7 @@ vi.mock('node:fs', async (importOriginal) => {
       mode?: Parameters<typeof actual.openSync>[2],
     ) {
       const descriptor = actual.openSync(path, flags, mode);
-      fsMocks.openTargets.set(descriptor, String(path));
+      fsMocks.openTargets.set(descriptor, { path: String(path), flags: String(flags) });
       return descriptor;
     },
     renameSync(
@@ -115,9 +115,12 @@ describe('provider config persistence', () => {
     expect(store.getAccounts()).toEqual([oauthAccount]);
     expect(statSync(config).mode & 0o777).toBe(0o600);
     expect(fsMocks.renameTargets).toEqual([config]);
-    expect(fsMocks.syncTargets[0]).toContain(join(dir, '.config.'));
-    expect(fsMocks.syncTargets[0]?.endsWith('.tmp')).toBe(true);
-    expect(fsMocks.syncTargets.slice(1)).toEqual(process.platform === 'win32' ? [] : [dir]);
+    expect(fsMocks.syncTargets[0]?.path).toContain(join(dir, '.config.'));
+    expect(fsMocks.syncTargets[0]).toMatchObject({ flags: 'wx' });
+    expect(fsMocks.syncTargets[0]?.path.endsWith('.tmp')).toBe(true);
+    expect(fsMocks.syncTargets.slice(1).map(({ path }) => path)).toEqual(
+      process.platform === 'win32' ? [] : [dir],
+    );
   });
 
   it('rejects corrupt JSON without replacing the file or publishing memory', () => {
