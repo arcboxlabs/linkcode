@@ -18,6 +18,7 @@ import {
   BellIcon,
   BotIcon,
   CodeXmlIcon,
+  CreditCardIcon,
   HistoryIcon,
   InfoIcon,
   KeyRoundIcon,
@@ -37,6 +38,7 @@ import { DEFAULT_LAYOUT } from '../shell/store/model';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { AppearanceTab } from './appearance-tab';
+import { BillingTab } from './billing-tab';
 import { DeveloperTab } from './developer-tab';
 import { GeneralTab } from './general-tab';
 import { HistoryImportTab } from './history-import-tab';
@@ -148,6 +150,14 @@ export function SettingsView(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: category === 'providers',
           onClick: () => setCategory('providers'),
+        },
+        {
+          key: 'billing',
+          icon: <CreditCardIcon className="size-4" />,
+          label: t('tabs.billing'),
+          keywords: searchKeywords.billing,
+          active: category === 'billing',
+          onClick: () => setCategory('billing'),
         },
         {
           key: 'plugins',
@@ -309,6 +319,8 @@ function renderSettingsPanel(
       return <AboutTab />;
     case 'providers':
       return <ProvidersTab />;
+    case 'billing':
+      return <BillingTab />;
     case 'plugins':
       return <PluginsTab />;
     case 'agents':

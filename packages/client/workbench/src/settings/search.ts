@@ -26,6 +26,7 @@ export interface SettingsSearchKeywords {
   about: readonly string[];
   agents: readonly string[];
   providers: readonly string[];
+  billing: readonly string[];
   plugins: readonly string[];
   imChannel: readonly string[];
   historyImport: readonly string[];
@@ -91,6 +92,7 @@ export function useSettingsSearchKeywords(): SettingsSearchKeywords {
       t('providers.accountModel'),
       ...PROVIDER_SERVICES.map((service) => t(`providers.serviceName.${service}`)),
     ],
+    billing: [t('billing.description'), t('billing.openOnWeb')],
     imChannel: [t('imChannel.connectTitle'), t('imChannel.bindings'), t('imChannel.autoMirror')],
     plugins: [
       t('plugins.title'),

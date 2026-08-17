@@ -1,8 +1,16 @@
 import { resolve } from 'node:path';
+import { apiKeyClient } from '@better-auth/api-key/client';
 import { electronClient } from '@better-auth/electron/client';
+import { createHostedBillingUrl } from '@linkcode/cloud';
 import { createAuthClient } from 'better-auth/client';
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { CLOUD_CLAIM_DEEP_LINK_CHANNEL } from '../../shared/cloud';
+import { organizationClient } from 'better-auth/client/plugins';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { z } from 'zod';
+import {
+  CLOUD_CLAIM_DEEP_LINK_CHANNEL,
+  CLOUD_CREATE_GATEWAY_KEY_CHANNEL,
+  CLOUD_OPEN_HOSTED_BILLING_CHANNEL,
+} from '../../shared/cloud';
 import { CLOUD_AUTH_SCHEME } from '../constants';
 import { createSafeStorage } from './storage';
 
@@ -39,10 +47,32 @@ export const authClient = createAuthClient({
       // privileged scheme); the footer renders initials.
       userImageProxy: { enabled: false },
     }),
+    organizationClient(),
+    apiKeyClient(),
   ],
 });
 
 export type CloudAuthClient = typeof authClient;
+
+function claimDeepLink(): boolean {
+  return process.defaultApp && typeof process.argv[1] === 'string'
+    ? app.setAsDefaultProtocolClient(CLOUD_AUTH_SCHEME, process.execPath, [
+        resolve(process.argv[1]),
+      ])
+    : app.setAsDefaultProtocolClient(CLOUD_AUTH_SCHEME);
+}
+
+async function createGatewayKey(name: unknown): Promise<string> {
+  const parsedName = z.string().trim().min(1).max(80).parse(name);
+  const session = await authClient.getSession();
+  if (session.error) throw new Error(session.error.message);
+  const organizationId = session.data?.session.activeOrganizationId;
+  if (!organizationId) throw new Error('Sign in to LinkCode Cloud, then try again');
+
+  const created = await authClient.apiKey.create({ name: parsedName, organizationId });
+  if (created.error) throw new Error(created.error.message);
+  return created.data.key;
+}
 
 /**
  * Wire the auth client into main. Once a config object is passed, every feature must be opted into
@@ -59,11 +89,14 @@ export function setupCloudAuth(): void {
   // Re-assert this app as the scheme's OS default right before sign-in, so the callback routes to
   // THIS running app even if another instance registered the scheme after startup. Mirrors the
   // plugin's own registration (dev shells must pass execPath + entry argv, packaged builds don't).
-  ipcMain.handle(CLOUD_CLAIM_DEEP_LINK_CHANNEL, () =>
-    process.defaultApp && typeof process.argv[1] === 'string'
-      ? app.setAsDefaultProtocolClient(CLOUD_AUTH_SCHEME, process.execPath, [
-          resolve(process.argv[1]),
-        ])
-      : app.setAsDefaultProtocolClient(CLOUD_AUTH_SCHEME),
+  ipcMain.handle(CLOUD_CLAIM_DEEP_LINK_CHANNEL, claimDeepLink);
+  ipcMain.handle(CLOUD_OPEN_HOSTED_BILLING_CHANNEL, async () => {
+    claimDeepLink();
+    await shell.openExternal(
+      createHostedBillingUrl({ returnTarget: `${CLOUD_AUTH_SCHEME}://billing/return` }),
+    );
+  });
+  ipcMain.handle(CLOUD_CREATE_GATEWAY_KEY_CHANNEL, (_event, name: unknown) =>
+    createGatewayKey(name),
   );
 }

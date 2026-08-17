@@ -15,6 +15,7 @@ import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './c
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
+import { UsageReportCard } from './usage-report-card';
 
 /** Composer behavior that every app shell must carry as one unit. Keeping the complete controller
  * required prevents a custom shell from silently dropping only mode, slash, or shell actions. */
@@ -79,6 +80,8 @@ export interface ConversationSurfaceProps {
   onOpenVideoPreview?: (path: string) => void;
   /** Opens workspace changes in the shell's review surface. */
   onReviewChanges?: () => void;
+  /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
+  onOpenBilling?: () => void;
   /** Hosts inline content on the daemon's ephemeral origin (sandboxed html previews). */
   onHostArtifact?: (content: string, mimeType: string) => Promise<{ url: string }>;
   /** Promotes a hosted/preview URL to the shell's browser surface; default: new tab. */
@@ -117,6 +120,7 @@ export function ConversationSurface({
   onOpenFileArtifact,
   onOpenVideoPreview,
   onReviewChanges,
+  onOpenBilling,
   onHostArtifact,
   onOpenPreviewUrl,
   onPickAttachmentFiles,
@@ -160,10 +164,12 @@ export function ConversationSurface({
               promptEditState={promptEditState}
               onEditPrompt={onEditPrompt}
               onReviewChanges={onReviewChanges}
+              onOpenBilling={onOpenBilling}
             />
           </CommandCatalogProvider>
         </ArtifactHostActionsProvider>
       </div>
+      {conversation.usageReport && <UsageReportCard report={conversation.usageReport} />}
       <ConversationPromptDock
         conversation={conversation}
         showPlan={showPlanInPromptDock}

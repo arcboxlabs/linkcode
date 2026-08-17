@@ -1436,6 +1436,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const cancelling = this.cancelling;
     this.cancelling = false;
     this.turnActive = false;
+    if (
+      msg.subtype === 'success' &&
+      this.emitGatewayError({
+        statusCode: msg.api_error_status,
+      })
+    ) {
+      this.teardown();
+      if (!cancelling) this.emitStatus('idle');
+      return;
+    }
     if (msg.subtype === 'success' && msg.api_error_status === 401) {
       this.emitError(
         'Claude authentication failed — sign in to Claude',
@@ -1467,7 +1477,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
       // failure — consume the flag instead of surfacing it as an error.
     } else {
-      this.emitError(claudeResultErrorMessage(msg), undefined, true);
+      const message = claudeResultErrorMessage(msg);
+      this.emitProviderError(message, { message });
     }
     this.teardown();
     // A result can beat interrupt()'s control ack. Keep the gate closed until onCancel returns so

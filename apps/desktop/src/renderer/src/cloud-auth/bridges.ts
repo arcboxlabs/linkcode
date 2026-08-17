@@ -36,6 +36,10 @@ export interface CloudDataBridges {
      * called right before a sign-in. Resolves to whether the OS accepted it.
      */
     claimDeepLink: () => Promise<boolean>;
+    /** Opens Cloud's hosted billing surface in the system browser. */
+    openHostedBilling: () => Promise<void>;
+    /** Mints a LinkCode Gateway key in the signed-in user's active Cloud organization. */
+    createGatewayKey: (name: string) => Promise<string>;
     /** IM Channel management (`/im/*`); same session-in-main model as listHosts. */
     im: CloudImSource;
   };
@@ -47,6 +51,10 @@ const cloudSource = window.linkcodeCloud;
 export const cloudDataBridge: CloudDataBridges['linkcodeCloud'] = {
   listHosts: () => traceRendererIpc('cloud.list-hosts', () => cloudSource.listHosts()),
   claimDeepLink: () => traceRendererIpc('cloud.claim-deep-link', () => cloudSource.claimDeepLink()),
+  openHostedBilling: () =>
+    traceRendererIpc('cloud.open-hosted-billing', () => cloudSource.openHostedBilling()),
+  createGatewayKey: (name) =>
+    traceRendererIpc('cloud.create-gateway-key', () => cloudSource.createGatewayKey(name)),
   im: {
     overview: () => traceRendererIpc('cloud.im.overview', () => cloudSource.im.overview()),
     bindings: () => traceRendererIpc('cloud.im.bindings', () => cloudSource.im.bindings()),

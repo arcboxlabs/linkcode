@@ -1,4 +1,4 @@
-import { serviceById } from '@linkcode/providers';
+import { LINKCODE_GATEWAY_SERVICE_ID, serviceById } from '@linkcode/providers';
 import type { Account, AgentKind, ProvidersConfig } from '@linkcode/schema';
 import { getAccounts, getProviderConfig, setAccounts, setProviderConfig } from '@linkcode/sdk';
 import { AccountDetail, AccountList } from '@linkcode/ui';
@@ -14,6 +14,7 @@ import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import { useData, useMutation } from '../../runtime/tayori';
+import type { LinkCodeGatewayAccess } from './add-flow';
 import { AddAccountForm, EditAccountForm, ServiceCatalogView } from './add-flow';
 import { useModelSources } from './model-selection';
 import { useProvidersSettingsStore } from './store';
@@ -29,7 +30,11 @@ import {
  * Transport-backed — it must render inside `WorkbenchProviders`, but may sit above the connection
  * gate, degrading to loading/error while the daemon is down.
  */
-export function ProvidersSettingsPanel(): React.ReactNode {
+export function ProvidersSettingsPanel({
+  linkCodeGateway,
+}: {
+  linkCodeGateway?: LinkCodeGatewayAccess;
+} = {}): React.ReactNode {
   const t = useTranslations('settings.providers');
   const {
     data: accounts,
@@ -78,7 +83,10 @@ export function ProvidersSettingsPanel(): React.ReactNode {
   const handleAdd = async (account: Account): Promise<void> => {
     await saveAccounts.trigger({ accounts: [...pool, account] });
     await mutateAccounts();
-    closeDialog();
+    if (account.service === LINKCODE_GATEWAY_SERVICE_ID) {
+      select(account.id);
+      startEdit();
+    } else closeDialog();
   };
 
   const handleUpdate = async (account: Account): Promise<void> => {
@@ -112,7 +120,15 @@ export function ProvidersSettingsPanel(): React.ReactNode {
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
       <p className="text-muted-foreground text-sm">{t('hint')}</p>
-      <AccountList {...accountList} loading={accountsLoading} onSelect={select} onAdd={startAdd} />
+      <AccountList
+        {...accountList}
+        loading={accountsLoading}
+        onSelect={select}
+        onAdd={startAdd}
+        onUseLinkCodeGateway={
+          linkCodeGateway ? () => pickService(LINKCODE_GATEWAY_SERVICE_ID) : undefined
+        }
+      />
       <Dialog
         open={dialogOpen}
         disablePointerDismissal={busy}
@@ -133,7 +149,10 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                 <DialogTitle>{t('chooseService')}</DialogTitle>
               </DialogHeader>
               <DialogPanel>
-                <ServiceCatalogView onPick={pickService} />
+                <ServiceCatalogView
+                  onPick={pickService}
+                  linkCodeGatewayAvailable={linkCodeGateway !== undefined}
+                />
               </DialogPanel>
             </>
           ) : (
@@ -149,6 +168,7 @@ export function ProvidersSettingsPanel(): React.ReactNode {
                     runtimes={runtimes}
                     onboarding={onboarding}
                     busy={busy}
+                    linkCodeGateway={linkCodeGateway}
                     onBack={() => {
                       cancelSubscriptionLogin();
                       backToCatalog();

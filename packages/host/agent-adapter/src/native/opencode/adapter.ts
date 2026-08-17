@@ -1085,7 +1085,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       );
       return;
     }
-    this.emitError(message);
+    const data = error.data as {
+      statusCode?: number;
+      responseBody?: string;
+      message?: string;
+    };
+    this.emitProviderError(message, {
+      statusCode: data.statusCode,
+      responseBody: data.responseBody,
+    });
   }
 
   /** Answer a `permission.asked` through the shared permission round-trip: Allow→`once`,

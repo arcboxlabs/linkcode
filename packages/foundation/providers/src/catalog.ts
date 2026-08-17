@@ -56,6 +56,8 @@ export type ServiceDescriptor =
   /** Free-form endpoint — the full account form. */
   | { id: 'custom'; label: string; group: 'custom'; kind: 'custom' };
 
+export const LINKCODE_GATEWAY_SERVICE_ID = 'linkcode-gateway';
+
 export const SERVICE_CATALOG: ServiceDescriptor[] = [
   { id: 'claude-sub', label: 'Claude', group: 'subscription', kind: 'oauth', agent: 'claude-code' },
   { id: 'chatgpt-sub', label: 'ChatGPT', group: 'subscription', kind: 'oauth', agent: 'codex' },
@@ -130,6 +132,17 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     // Service root, not the `/anthropic` variant's path — that one serves no list.
     models: { url: 'https://api.deepseek.com/models', wire: 'openai' },
     secretPlaceholder: 'sk-…',
+  },
+  {
+    id: LINKCODE_GATEWAY_SERVICE_ID,
+    label: 'LinkCode Gateway',
+    group: 'gateway',
+    kind: 'endpoint',
+    credentialType: 'auth-token',
+    variants: {
+      'openai-chat': { baseUrl: 'https://gateway.linkcode.ai/v1' },
+    },
+    models: { url: 'https://gateway.linkcode.ai/v1/models', wire: 'openai' },
   },
   {
     id: 'openrouter',

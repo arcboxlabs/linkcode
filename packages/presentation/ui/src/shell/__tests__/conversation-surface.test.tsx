@@ -18,6 +18,10 @@ function translateKey(key: string): string {
 
 vi.mock('use-intl', () => ({
   useTranslations: () => translateKey,
+  useFormatter: () => ({
+    dateTime: (value: Date) => value.toISOString(),
+    number: String,
+  }),
 }));
 
 const { scrollToBottom } = vi.hoisted(() => ({ scrollToBottom: vi.fn() }));
@@ -140,6 +144,23 @@ describe('ConversationSurface prompt card', () => {
   it('shows any reflected normalized effort even when the adapter does not offer it', () => {
     render(surface(undefined, { ...EMPTY_CONVERSATION, currentEffort: 'max' }));
     expect(screen.getByRole('button', { name: RE_MAX_EFFORT })).toBeTruthy();
+  });
+
+  it('renders a structured usage report that has no transcript item', () => {
+    render(
+      surface(undefined, {
+        ...EMPTY_CONVERSATION,
+        usageReport: {
+          session: { totalCostUsd: 1.25 },
+          rateLimits: { windows: [{ id: 'five-hour', utilization: 42 }] },
+          behaviors: { day: { skills: [{ name: 'review', pct: 60 }], mcpServers: [] } },
+        },
+      }),
+    );
+
+    expect(screen.getByText('title')).toBeTruthy();
+    expect(screen.getByText('1.25')).toBeTruthy();
+    expect(screen.getByText('skill · review')).toBeTruthy();
   });
 
   it('hides the composer while a prompt card is visible and preserves its draft', () => {

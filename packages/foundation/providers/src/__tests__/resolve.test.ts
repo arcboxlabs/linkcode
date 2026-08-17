@@ -162,6 +162,29 @@ describe('resolveBinding: variant chosen per agent', () => {
     ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
   });
 
+  it('preserves LinkCode Gateway as an OpenAI Chat endpoint', () => {
+    const gateway = account({
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-gateway-key' },
+    });
+    expect(resolveBinding(gateway, 'claude-code')).toEqual({
+      tier: 'translate',
+      protocol: 'openai-chat',
+      baseUrl: 'https://gateway.linkcode.ai/v1',
+    });
+    for (const kind of ['opencode', 'pi'] as const) {
+      expect(resolveBinding(gateway, kind)).toEqual({
+        tier: 'native',
+        protocol: 'openai-chat',
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+      });
+    }
+    expect(resolveBinding(gateway, 'codex')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
+  });
+
   it('leaves opencode and pi on their known-provider variant when a responses one exists', () => {
     // The added responses variants carry no knownProvider, so provider-routed agents are untouched.
     for (const kind of ['opencode', 'pi'] as const) {
@@ -283,6 +306,10 @@ describe('catalog helpers', () => {
       wire: 'openai',
     });
     expect(modelListSource('anthropic-api')?.wire).toBe('anthropic');
+    expect(modelListSource('linkcode-gateway')).toEqual({
+      url: 'https://gateway.linkcode.ai/v1/models',
+      wire: 'openai',
+    });
     // Both Cloudflare routes serve no list, and oauth services have no secret to ask with.
     expect(modelListSource('cloudflare-gateway')).toBeUndefined();
     expect(modelListSource('cloudflare-anthropic')).toBeUndefined();

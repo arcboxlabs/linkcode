@@ -1,6 +1,7 @@
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import { useNavigationHistoryStore, useProvidersSettingsStore } from '@linkcode/workbench';
 import { systemBridge } from '@renderer/ipc';
+import { cloudDataBridge } from '../cloud-auth/bridges';
 import { openDesktopSettings, useDesktopSettingsStore } from '../settings/store';
 import { DesktopShell } from './desktop-shell';
 
@@ -15,6 +16,9 @@ export function DesktopWorkbenchShell({ header, ...props }: WorkbenchShellProps)
       onOpenProviderSettings={() => {
         useProvidersSettingsStore.getState().startAdd();
         openDesktopSettings('providers');
+      }}
+      onOpenBilling={() => {
+        void cloudDataBridge.openHostedBilling();
       }}
       onOpenAutomations={() => useNavigationHistoryStore.getState().openOverlay('automations')}
       onImportHistory={() => openDesktopSettings('history-import')}

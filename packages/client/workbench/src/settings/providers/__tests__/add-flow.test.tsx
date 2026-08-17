@@ -4,7 +4,7 @@ import type { AgentRuntimes } from '@linkcode/schema';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRuntimeOnboarding } from '../../../agent-runtime/onboarding';
-import { AddAccountForm } from '../add-flow';
+import { AddAccountForm, ServiceCatalogView } from '../add-flow';
 
 function translateKey(key: string): string {
   return key;
@@ -179,6 +179,51 @@ describe('non-subscription account creation', () => {
 
     // Each agent resolves its own shape, so the user is never asked to pick one.
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  });
+
+  it('adds LinkCode Gateway only after the explicit user action', async () => {
+    const createKey = vi.fn().mockResolvedValue('lc-gateway-key');
+    const onSubmit = vi.fn();
+    render(
+      <AddAccountForm
+        serviceId="linkcode-gateway"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        linkCodeGateway={{
+          signedIn: true,
+          signingIn: false,
+          signIn: vi.fn(),
+          createKey,
+        }}
+        onBack={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(createKey).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'linkCodeUseGateway' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(createKey).toHaveBeenCalledWith('serviceName.linkcode-gateway');
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: 'linkcode-gateway',
+        credential: { type: 'auth-token', token: 'lc-gateway-key' },
+      }),
+    );
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('endpoint');
+  });
+
+  it('keeps the Desktop-only Gateway out of clients without its host bridge', () => {
+    const onPick = vi.fn();
+    const { rerender } = render(<ServiceCatalogView onPick={onPick} />);
+    expect(screen.queryByText('serviceName.linkcode-gateway')).toBeNull();
+
+    rerender(<ServiceCatalogView onPick={onPick} linkCodeGatewayAvailable />);
+    fireEvent.click(screen.getByText('serviceName.linkcode-gateway'));
+    expect(onPick).toHaveBeenCalledWith('linkcode-gateway');
   });
 
   it('stores template values instead of a resolved endpoint', async () => {

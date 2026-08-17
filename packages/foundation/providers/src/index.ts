@@ -7,6 +7,7 @@ export type {
 } from './catalog';
 export {
   endpointServiceById,
+  LINKCODE_GATEWAY_SERVICE_ID,
   modelListSource,
   SERVICE_CATALOG,
   serviceById,
