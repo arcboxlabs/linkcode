@@ -1,54 +1,64 @@
-import { Host, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
-import { tag } from '@expo/ui/swift-ui/modifiers';
-import type { AgentKind, ApprovalPolicyState, EffortLevel } from '@linkcode/schema';
-import type { EffortOption, ModelOption } from '@linkcode/ui/native';
 import { AgentIcon, groupModelsByProvider, modelChoiceKey } from '@linkcode/ui/native';
-import { OptionChip } from '@mobile/components/conversation/option-chip';
+import type {
+  SessionApprovalChipProps,
+  SessionSelectorChipProps,
+} from '@mobile/components/conversation/session-tools.types';
+import { ToolChip } from '@mobile/components/conversation/tool-chip.android';
+import type { SheetPickerSection } from '@mobile/components/form/sheet-picker.android';
+import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
 import { useThemeColor } from 'heroui-native';
+import { ShieldIcon } from 'lucide-react-native';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-/** The live session's approval chip: a ghost shield opening the adapter-advertised policy menu.
- * Absent state means the adapter has no switchable policies, so nothing renders. Selection is
- * server-reflected — the checkmark moves once `approval-policy-update` echoes the switch. */
+/** The live session's approval chip on Android. Selection is server-reflected — the radio moves
+ * once `approval-policy-update` echoes the switch, so a rejected switch just leaves the old
+ * value showing. */
 export function SessionApprovalChip({
   approvalPolicy,
   onPolicyChange,
-}: {
-  approvalPolicy: ApprovalPolicyState | null;
-  onPolicyChange: (policyId: string) => void;
-}): React.ReactNode {
+}: SessionApprovalChipProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
+  const [open, setOpen] = useState(false);
   if (!approvalPolicy || approvalPolicy.availablePolicies.length === 0) return null;
 
   // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- one lookup against a handful of policies per render
   const current = approvalPolicy.availablePolicies.find(
     (policy) => policy.policyId === approvalPolicy.currentPolicyId,
   );
+
   return (
-    <Host matchContents>
-      <OptionChip
-        sf="shield"
+    <>
+      <ToolChip
+        icon={ShieldIcon}
         label={t('approvalLabel')}
         value={current?.name ?? approvalPolicy.currentPolicyId}
         iconOnly
-      >
-        <Picker selection={approvalPolicy.currentPolicyId} onSelectionChange={onPolicyChange}>
-          {approvalPolicy.availablePolicies.map((policy) => (
-            <UIText key={policy.policyId} modifiers={[tag(policy.policyId)]}>
-              {policy.name}
-            </UIText>
-          ))}
-        </Picker>
-      </OptionChip>
-    </Host>
+        onPress={() => setOpen(true)}
+      />
+      <SheetPicker
+        open={open}
+        onClose={() => setOpen(false)}
+        sections={[
+          {
+            id: 'policy',
+            title: t('approvalLabel'),
+            selection: approvalPolicy.currentPolicyId,
+            options: approvalPolicy.availablePolicies.map((policy) => ({
+              id: policy.policyId,
+              label: policy.name,
+            })),
+            onSelect: onPolicyChange,
+          },
+        ]}
+      />
+    </>
   );
 }
 
-/** The live session's selector: the harness brand mark beside one menu with Model / Effort
- * submenus. No harness submenu (the agent is fixed) and no "Default" entries — a running session
- * is always on a concrete value, and the checkmarks follow the `model-update` / `effort-update`
- * echoes rather than any local pick. */
+/** The live session's selector on Android: Model / Effort sections, no harness section (the agent
+ * is fixed) and no "Default" entries — a running session is always on a concrete value. */
 export function SessionSelectorChip({
   kind,
   selectorValue,
@@ -58,21 +68,10 @@ export function SessionSelectorChip({
   effortOptions,
   currentEffort,
   onEffortChange,
-}: {
-  kind: AgentKind;
-  /** Text on the chip — the running model (and effort), or a placeholder. */
-  selectorValue: string;
-  /** Account-backed options; null while loading (model submenu hidden). */
-  models: ModelOption[] | null;
-  /** `modelChoiceKey` of the entry matching the running model, or null while unknown. */
-  currentModelKey: string | null;
-  onModelChange: (model: ModelOption) => void;
-  effortOptions: EffortOption[] | undefined;
-  currentEffort: EffortLevel | null;
-  onEffortChange: (effort: EffortLevel) => void;
-}): React.ReactNode {
+}: SessionSelectorChipProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const muted = useThemeColor('muted');
+  const [open, setOpen] = useState(false);
   const hasModels = models !== null && models.length > 0;
   const hasEfforts = effortOptions !== undefined && effortOptions.length > 0;
   if (!hasModels && !hasEfforts) return null;
@@ -81,57 +80,49 @@ export function SessionSelectorChip({
   // as the web's provider grouping; a single-account list repeating its account is noise.
   const spansAccounts = models !== null && groupModelsByProvider(models) !== null;
 
+  const sections: SheetPickerSection[] = [];
+  if (hasModels) {
+    sections.push({
+      id: 'model',
+      title: t('modelLabel'),
+      selection: currentModelKey,
+      options: models.map((model) => ({
+        id: modelChoiceKey(model),
+        label:
+          spansAccounts && model.description
+            ? `${model.label} — ${model.description}`
+            : model.label,
+      })),
+      onSelect(key) {
+        const option = models.find((model) => modelChoiceKey(model) === key);
+        if (option) onModelChange(option);
+      },
+    });
+  }
+  if (hasEfforts) {
+    sections.push({
+      id: 'effort',
+      title: t('effortLabel'),
+      selection: currentEffort,
+      options: effortOptions.map((option) => ({ id: option.id, label: option.label })),
+      onSelect(value) {
+        const option = effortOptions.find((candidate) => candidate.id === value);
+        if (option) onEffortChange(option.id);
+      },
+    });
+  }
+
   return (
     <View className="flex-row items-center">
       {/* Footnote's 13pt metric, so the mark scales with the chip text beside it. */}
       <AgentIcon kind={kind} variant="ghost" size={13} color={muted} />
-      <Host matchContents>
-        {/* Keyed by menu shape: children added to an already-created Menu never reach the
-            native UIMenu, so late-loading models/efforts must remount the chip. */}
-        <OptionChip
-          key={`${kind} ${models?.length ?? 0} ${effortOptions?.length ?? 0}`}
-          label={t('modelLabel')}
-          value={selectorValue}
-          maxValueWidth={150}
-        >
-          {hasModels ? (
-            <Menu label={t('modelLabel')} systemImage="cpu">
-              <Picker
-                selection={currentModelKey ?? undefined}
-                onSelectionChange={(key: string) => {
-                  const option = models.find((model) => modelChoiceKey(model) === key);
-                  if (option) onModelChange(option);
-                }}
-              >
-                {models.map((model) => (
-                  <UIText key={modelChoiceKey(model)} modifiers={[tag(modelChoiceKey(model))]}>
-                    {spansAccounts && model.description
-                      ? `${model.label} — ${model.description}`
-                      : model.label}
-                  </UIText>
-                ))}
-              </Picker>
-            </Menu>
-          ) : null}
-          {hasEfforts ? (
-            <Menu label={t('effortLabel')} systemImage="gauge">
-              <Picker
-                selection={currentEffort ?? undefined}
-                onSelectionChange={(value: string) => {
-                  const option = effortOptions.find((candidate) => candidate.id === value);
-                  if (option) onEffortChange(option.id);
-                }}
-              >
-                {effortOptions.map((option) => (
-                  <UIText key={option.id} modifiers={[tag(option.id)]}>
-                    {option.label}
-                  </UIText>
-                ))}
-              </Picker>
-            </Menu>
-          ) : null}
-        </OptionChip>
-      </Host>
+      <ToolChip
+        label={t('modelLabel')}
+        value={selectorValue}
+        maxValueWidth={150}
+        onPress={() => setOpen(true)}
+      />
+      <SheetPicker open={open} onClose={() => setOpen(false)} sections={sections} />
     </View>
   );
 }
