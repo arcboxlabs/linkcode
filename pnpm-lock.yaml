@@ -458,6 +458,9 @@ importers:
       '@linkcode/i18n':
         specifier: workspace:*
         version: link:../../packages/presentation/i18n
+      '@linkcode/providers':
+        specifier: workspace:*
+        version: link:../../packages/foundation/providers
       '@linkcode/schema':
         specifier: workspace:*
         version: link:../../packages/foundation/schema

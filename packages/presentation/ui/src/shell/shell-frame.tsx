@@ -9,9 +9,9 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
+import type { ModelOption } from '../agent-models';
 import type { ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
-import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
 import type { ConversationComposerController } from './conversation-surface';

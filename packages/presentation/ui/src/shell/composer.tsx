@@ -22,6 +22,9 @@ import { ShieldIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { effortOptionsForModel } from '../agent-efforts';
+import type { ModelOption } from '../agent-models';
+import { resolveModel } from '../agent-models';
 import type { ChatAttachment } from '../chat/attachments';
 import { Attachments } from '../chat/attachments';
 import {
@@ -31,9 +34,6 @@ import {
   PromptInputTools,
 } from '../chat/prompt-input';
 import { cn } from '../lib/cn';
-import { effortOptionsForModel } from './agent-efforts';
-import type { ModelOption } from './agent-models';
-import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { ComposerAttachment } from './composer-attachments';
 import {

@@ -32,11 +32,11 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { ModelOption } from '../agent-models';
+import { resolveModel } from '../agent-models';
 import { AGENT_LABELS } from '../chat/agent-icon';
 import { cn } from '../lib/cn';
 import { repositoryLabel } from '../repository-label';
-import type { ModelOption } from './agent-models';
-import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, MentionItem } from './composer';

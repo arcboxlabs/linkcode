@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { effortOptionsForModel } from '../shell/agent-efforts';
-import type { ModelOption } from '../shell/agent-models';
-import { groupModelsByProvider, resolveModel, switchesAccount } from '../shell/agent-models';
+import { effortOptionsForModel } from '../agent-efforts';
+import type { ModelOption } from '../agent-models';
+import { groupModelsByProvider, resolveModel, switchesAccount } from '../agent-models';
 
 // Ids and aliases straight from `CURATED_AGENT_MODELS`; the prefix rules under test are about the
 // shape of the ids a provider serves, not about where the list came from.

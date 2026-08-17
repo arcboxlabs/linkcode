@@ -1,6 +1,7 @@
 import type { AgentKind, ContentBlock, EffortLevel, QuestionOutcome } from '@linkcode/schema';
 import { useRef } from 'react';
 import type { StickToBottomContext } from 'use-stick-to-bottom';
+import type { ModelOption } from '../agent-models';
 import { ArtifactHostActionsProvider } from '../chat/artifacts/context';
 import { CommandCatalogProvider } from '../chat/command-brand';
 import type { PermissionDecision } from '../chat/conversation-prompts';
@@ -8,7 +9,6 @@ import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
 import type { ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
-import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
