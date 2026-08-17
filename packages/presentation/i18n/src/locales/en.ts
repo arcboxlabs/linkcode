@@ -1131,7 +1131,7 @@ export const en = {
         'openai-api': 'A key from platform.openai.com',
         xai: 'A key from console.x.ai',
         deepseek: 'A key from platform.deepseek.com',
-        stepfun: 'A key from platform.stepfun.ai',
+        stepfun: 'A key from platform.stepfun.com',
         'linkcode-gateway': 'Use LinkCode credits without bringing an API key',
         openrouter: 'Aggregation gateway',
         'vercel-gateway': 'Server-side translating gateway',

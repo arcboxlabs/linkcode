@@ -153,21 +153,15 @@ describe('resolveBinding: variant chosen per agent', () => {
       baseUrl: 'https://api.stepfun.com/v1',
       knownProvider: 'stepfun',
     });
-    for (const kind of ['pi', 'grok-build'] as const) {
-      expect(resolveBinding(stepfun, kind)).toEqual({
-        tier: 'unavailable',
-        reason: 'protocol-unsupported',
-      });
-    }
-    expect(
-      resolveBinding(
-        account({
-          service: 'stepfun',
-          endpoint: { baseUrl: 'https://proxy.example.com/v1', protocol: 'openai-chat' },
-        }),
-        'pi',
-      ),
-    ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
+    expect(resolveBinding(stepfun, 'pi')).toEqual({
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.stepfun.com',
+    });
+    expect(resolveBinding(stepfun, 'grok-build')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
   });
 
   it('reaches codex on every service whose endpoint serves the Responses API', () => {

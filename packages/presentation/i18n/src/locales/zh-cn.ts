@@ -1104,7 +1104,7 @@ export const zhCN = {
         'openai-api': 'platform.openai.com 的密钥',
         xai: 'console.x.ai 的密钥',
         deepseek: 'platform.deepseek.com 的密钥',
-        stepfun: 'platform.stepfun.ai 的密钥',
+        stepfun: 'platform.stepfun.com 的密钥',
         'linkcode-gateway': '无需自带 API 密钥，直接使用 LinkCode 额度',
         openrouter: '聚合网关',
         'vercel-gateway': '服务端翻译网关',

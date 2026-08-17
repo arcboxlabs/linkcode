@@ -50,8 +50,6 @@ export type ServiceDescriptor =
       /** How the one secret authenticates. Service-level: every variant accepts the same secret. */
       credentialType: 'api-key' | 'auth-token';
       variants: Partial<Record<AccountProtocol, ServiceVariant>>;
-      /** Restrict agents when a provider-routed SDK does not carry this service's model catalog. */
-      supportedAgents?: AgentKind[];
       models?: ServiceModelList;
       secretPlaceholder?: string;
     }
@@ -149,9 +147,8 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
         knownProvider: { opencode: 'stepfun' },
       },
     },
-    // Pi's bundled provider catalog has no StepFun entry, so a key cannot select its wire/models.
-    supportedAgents: ['claude-code', 'codex', 'opencode'],
     models: { url: 'https://api.stepfun.com/v1/models', wire: 'openai' },
+    secretPlaceholder: 'sk-…',
   },
   {
     id: LINKCODE_GATEWAY_SERVICE_ID,
