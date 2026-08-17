@@ -40,6 +40,20 @@ describe('HistoryService', () => {
     expect(state.readCalls).toBe(2);
   });
 
+  it('hands the injected MCP server names to cold reads', async () => {
+    const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    const service = new HistoryService(fakeHistoryFactory(state), {
+      ttlMs: 60000,
+      injectedMcpServerNames: (kind) => (kind === 'opencode' ? ['linkcode-sim'] : []),
+    });
+
+    await Effect.runPromise(service.read('opencode', { historyId }));
+    expect(state.lastReadOptions?.mcpServerNames).toEqual(['linkcode-sim']);
+
+    await Effect.runPromise(service.read('codex', { historyId }));
+    expect(state.lastReadOptions?.mcpServerNames).toBeUndefined();
+  });
+
   it('removes injected resource context from provider history', async () => {
     const state = {
       listCalls: 0,

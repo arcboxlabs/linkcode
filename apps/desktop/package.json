@@ -1,6 +1,6 @@
 {
   "name": "@linkcode/desktop",
-  "version": "0.22.0",
+  "version": "0.24.0",
   "private": true,
   "description": "LinkCode desktop application",
   "homepage": "https://linkcode.ai",
@@ -32,7 +32,9 @@
   },
   "author": "ArcBox Labs <team@arcbox.dev>",
   "dependencies": {
+    "@better-auth/api-key": "1.7.0-rc.2",
     "@better-auth/electron": "1.7.0-rc.2",
+    "@linkcode/cloud": "file:../../packages/vendor/linkcode-cloud-0.1.0.tgz",
     "@linkcode/common": "workspace:*",
     "@linkcode/daemon": "workspace:*",
     "@linkcode/ipc": "workspace:*",
@@ -49,6 +51,7 @@
     "@electron/asar": "^4.2.1",
     "@hookform/resolvers": "^5.5.7",
     "@iconify-json/material-icon-theme": "catalog:",
+    "@iconify-json/simple-icons": "catalog:",
     "@linkcode/ui": "workspace:*",
     "@linkcode/workbench": "workspace:*",
     "@proj-airi/lobe-icons": "catalog:",

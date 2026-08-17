@@ -86,6 +86,7 @@ export function DesktopShell({
   onDownloadAgent,
   onContinueUnverified,
   onOpenProviderSettings,
+  onOpenBilling,
   conversation,
   onEditPrompt,
   respondingRequestIds,
@@ -457,6 +458,7 @@ export function DesktopShell({
           cwd={active?.cwd}
           runtimeCues={runtimeCues}
           onOpenProviderSettings={onOpenProviderSettings}
+          onOpenBilling={onOpenBilling}
           respondingRequestIds={respondingRequestIds}
           responseErrors={responseErrors}
           TerminalBlockComponent={TerminalBlockComponent}

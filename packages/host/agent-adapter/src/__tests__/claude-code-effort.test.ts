@@ -109,14 +109,17 @@ afterEach(() => {
   nextQueryError = null;
 });
 
-async function makeAdapter(effort?: EffortLevel): Promise<{
+async function makeAdapter(
+  effort?: EffortLevel,
+  config?: Record<string, unknown>,
+): Promise<{
   adapter: ClaudeCodeAdapter;
   events: AgentEvent[];
 }> {
   const adapter = new ClaudeCodeAdapter();
   const events: AgentEvent[] = [];
   adapter.onEvent((e) => events.push(e));
-  await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', effort });
+  await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', effort, config });
   return { adapter, events };
 }
 
@@ -751,6 +754,62 @@ describe('ClaudeCodeAdapter auth failure', () => {
     // The swallowed turn must not emit a usage or a phantom stop.
     expect(events.some((e) => e.type === 'stop')).toBe(false);
     expect(events.some((e) => e.type === 'token-usage')).toBe(false);
+  });
+});
+
+describe('ClaudeCodeAdapter gateway billing failures', () => {
+  const translatedGateway = {
+    baseUrl: 'http://127.0.0.1:5123',
+    upstreamBaseUrl: 'https://gateway.linkcode.ai/v1',
+  };
+
+  it.each([
+    [402, 'insufficient_credits'],
+    [503, 'billing_unavailable'],
+  ] as const)('recognizes a translated Gateway HTTP %i', async (statusCode, code) => {
+    const { adapter, events } = await makeAdapter(undefined, translatedGateway);
+    events.length = 0;
+    await prompt(adapter);
+    queries[0].push({
+      type: 'result',
+      subtype: 'success',
+      api_error_status: statusCode,
+      result: 'Gateway request failed',
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {},
+    });
+    await waitIdle(events);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'error', code, recoverable: true }),
+    );
+    expect(events.some((event) => event.type === 'stop')).toBe(false);
+    expect(events.some((event) => event.type === 'token-usage')).toBe(false);
+  });
+
+  it('does not reinterpret successful assistant text as a billing error', async () => {
+    const { adapter, events } = await makeAdapter(undefined, translatedGateway);
+    events.length = 0;
+    await prompt(adapter);
+    queries[0].push({
+      type: 'result',
+      subtype: 'success',
+      result: 'The phrase insufficient_credits appears in this answer.',
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: { input_tokens: 3, output_tokens: 5 },
+    });
+    await waitIdle(events);
+
+    expect(events.some((event) => event.type === 'error')).toBe(false);
+    expect(events).toContainEqual({ type: 'stop', stopReason: 'end_turn' });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'token-usage',
+        usage: expect.objectContaining({ inputTokens: 3, outputTokens: 5 }),
+      }),
+    );
   });
 });
 

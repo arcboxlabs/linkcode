@@ -457,13 +457,14 @@ function writeConfigFields(
   mkdirSync(directory, { recursive: true });
   const temporaryPath = join(directory, `.config.${process.pid}.${randomUUID()}.tmp`);
   try {
-    writeFileSync(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, {
-      encoding: 'utf8',
-      flag: 'wx',
-      mode: 0o600,
-    });
-    chmodSync(temporaryPath, 0o600);
-    fsyncPath(temporaryPath);
+    const descriptor = openSync(temporaryPath, 'wx', 0o600);
+    try {
+      writeFileSync(descriptor, `${JSON.stringify(file, null, 2)}\n`, { encoding: 'utf8' });
+      chmodSync(temporaryPath, 0o600);
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
     renameSync(temporaryPath, path);
     if (process.platform !== 'win32') fsyncPath(directory);
   } finally {

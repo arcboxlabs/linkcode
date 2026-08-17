@@ -417,6 +417,197 @@ describe('mapCodexHistoryEvents', () => {
     ]);
   });
 
+  it("replays MCP callable names under the live adapter's mcp slug", () => {
+    // Callable namespaces are only a fallback and cannot distinguish a delimiter from a server suffix.
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1 + 1"}',
+        call_id: 'call_mcp1',
+      }),
+      responseItem({ type: 'function_call_output', call_id: 'call_mcp1', output: '2' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__computer_use__',
+        name: 'click',
+        arguments: '{}',
+        call_id: 'call_mcp2',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_save_comment',
+        arguments: '{}',
+        call_id: 'call_mcp3',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__repo__prod',
+        name: 'search_files',
+        arguments: '{}',
+        call_id: 'call_mcp4',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'collaboration',
+        name: 'send_message',
+        arguments: '{}',
+        call_id: 'call_builtin',
+      }),
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp1', 'mcp__node_repl__js'],
+      ['call_mcp2', 'computer_use__.click'],
+      ['call_mcp3', 'mcp__linear__save_comment'],
+      // A `__`-bearing server name would mis-split the slug — the raw dotted title survives.
+      ['call_mcp4', 'repo__prod.search_files'],
+      ['call_builtin', 'send_message'],
+    ]);
+    expect(tools[0].kind).toBe('other');
+    expect(tools[1]).toMatchObject({ status: 'completed', kind: 'other' });
+  });
+
+  it('prefers persisted raw MCP identity over lossy callable names', () => {
+    const longToolName =
+      'extremely-lengthy-function-name-that-absolutely-surpasses-all-reasonable-limits';
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__acme__',
+        name: 'lookup',
+        arguments: '{}',
+        call_id: 'call_trailing_delimiter',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_trailing_delimiter',
+          invocation: { server: 'acme__', tool: 'lookup', arguments: {} },
+        },
+      },
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_trailing_delimiter',
+        output: 'found',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__server_one',
+        name: 'extremely_lengthy_function_name_that_absolut_0123456789ab',
+        arguments: '{}',
+        call_id: 'call_sanitized',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call_sanitized',
+            server: 'server.one',
+            tool: longToolName,
+            arguments: {},
+            status: 'completed',
+          },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_sanitized', output: 'found' }),
+    ]);
+
+    expect(toolCalls(events).map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_trailing_delimiter', 'acme__.lookup'],
+      ['call_trailing_delimiter', 'acme__.lookup'],
+      ['call_sanitized', `mcp__server.one__${longToolName}`],
+      ['call_sanitized', `mcp__server.one__${longToolName}`],
+    ]);
+  });
+
+  it('recovers only matching legacy dotless Codex Apps callable identities', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__github',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_legacy_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_legacy_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_legacy_app', output: 'created' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_mismatched_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_mismatched_app',
+          invocation: { server: 'codex_apps', tool: 'github_create_issue', arguments: {} },
+        },
+      },
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_mismatched_app',
+        output: 'created',
+      }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__linear',
+        name: '_create_issue',
+        arguments: '{}',
+        call_id: 'call_modern_app',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_modern_app',
+          invocation: { server: 'codex_apps', tool: 'linear_create_issue', arguments: {} },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call_modern_app',
+            server: 'codex_apps',
+            tool: 'github.create_issue',
+            arguments: {},
+            status: 'completed',
+          },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_modern_app', output: 'created' }),
+    ]);
+
+    expect(toolCalls(events).map((tool) => [tool.toolCallId, tool.title])).toEqual([
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_legacy_app', 'mcp__github__create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_mismatched_app', 'mcp__codex_apps__github_create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
+      ['call_modern_app', 'mcp__github__create_issue'],
+    ]);
+  });
+
   it('settles an aborted run and a declined run as failed with the raw text as the record', () => {
     const events = mapCodexHistoryEvents(HID, [
       responseItem({
@@ -447,6 +638,320 @@ describe('mapCodexHistoryEvents', () => {
     expect(settled[0].content).toEqual([
       { type: 'content', content: { type: 'text', text: 'aborted by user after 89.0s' } },
     ]);
+  });
+
+  it('replays code-mode MCP calls from their mcp_tool_call_end event rows (CODE-576)', () => {
+    // Real 0.144.6 shapes: nested code-mode MCP calls persist ONLY as this event; its call_id is
+    // the live mcpToolCall item id, and `result` is a serialized Rust Result (`Ok`/`Err`).
+    const events = mapCodexHistoryEvents(HID, [
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'exec-957cc4b0',
+          invocation: {
+            server: 'codex_apps',
+            tool: 'linear.list_issues',
+            arguments: { limit: 50, orderBy: 'updatedAt' },
+          },
+          result: { Ok: { content: [{ type: 'text', text: 'reauth required' }], isError: true } },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'exec-06f8d6de',
+          invocation: { server: 'node_repl', tool: 'js', arguments: { code: '1 + 1' } },
+          result: { Ok: { content: [{ type: 'text', text: '2' }] } },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_err1',
+          invocation: { server: 'github', tool: 'search' },
+          result: { Err: 'connection reset' },
+        },
+      },
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools).toHaveLength(3);
+    expect(tools[0]).toMatchObject({
+      toolCallId: 'exec-957cc4b0',
+      title: 'mcp__linear__list_issues',
+      kind: 'other',
+      status: 'failed',
+      rawInput: { limit: 50, orderBy: 'updatedAt' },
+    });
+    expect(tools[1]).toMatchObject({
+      toolCallId: 'exec-06f8d6de',
+      title: 'mcp__node_repl__js',
+      status: 'completed',
+    });
+    expect(tools[2]).toMatchObject({
+      toolCallId: 'call_err1',
+      title: 'mcp__github__search',
+      status: 'failed',
+      rawOutput: 'connection reset',
+    });
+  });
+
+  it('reconciles a response-backed MCP call with its end row instead of a third card (CODE-576)', () => {
+    // Legacy direct-MCP rollouts persist all three rows for one call, in this observed order;
+    // the announce/settle pair is the replay, but the end row alone carries the structured
+    // failure verdict (`isError`/`Err`) — it must win over the settle's output-text heuristic.
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__codex_apps__github',
+        name: '_search_issues',
+        arguments: '{"query":"is:open"}',
+        call_id: 'call_dual1',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_dual1',
+          invocation: { server: 'codex_apps', tool: 'github.search_issues' },
+          result: { Ok: { content: [], isError: true } },
+        },
+      },
+      responseItem({ type: 'function_call_output', call_id: 'call_dual1', output: 'no results' }),
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1"}',
+        call_id: 'call_dual2',
+      }),
+      responseItem({
+        type: 'function_call_output',
+        call_id: 'call_dual2',
+        output: 'aborted by user after 1.0s',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_dual2',
+          invocation: { server: 'node_repl', tool: 'js' },
+          result: { Ok: { content: [{ type: 'text', text: '1' }] } },
+        },
+      },
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.title, tool.status])).toEqual([
+      ['call_dual1', 'mcp__github__search_issues', 'in_progress'],
+      ['call_dual1', 'mcp__github__search_issues', 'failed'],
+      ['call_dual2', 'mcp__node_repl__js', 'in_progress'],
+      ['call_dual2', 'mcp__node_repl__js', 'completed'],
+    ]);
+  });
+
+  it('settles response-backed MCP calls from end rows when output is missing', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__node_repl',
+        name: 'js',
+        arguments: '{"code":"1"}',
+        call_id: 'call_missing_success',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_missing_success',
+          invocation: { server: 'node_repl', tool: 'js' },
+          result: { Ok: { content: [{ type: 'text', text: '1' }] } },
+        },
+      },
+      responseItem({
+        type: 'function_call',
+        namespace: 'mcp__github',
+        name: 'search',
+        arguments: '{}',
+        call_id: 'call_missing_failure',
+      }),
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'call_missing_failure',
+          invocation: { server: 'github', tool: 'search' },
+          result: { Err: 'connection reset' },
+        },
+      },
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools.map((tool) => [tool.toolCallId, tool.status])).toEqual([
+      ['call_missing_success', 'in_progress'],
+      ['call_missing_success', 'completed'],
+      ['call_missing_failure', 'in_progress'],
+      ['call_missing_failure', 'failed'],
+    ]);
+    expect(tools[1].rawOutput).toEqual({ content: [{ type: 'text', text: '1' }] });
+    expect(tools[3].rawOutput).toBe('connection reset');
+  });
+
+  it('replays an oversized MCP result status-only (CODE-576)', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'exec-huge',
+          invocation: { server: 'github', tool: 'fetch_file' },
+          result: {
+            Ok: { content: [{ type: 'text', text: 'A'.repeat(256 * 1024 + 1) }], isError: true },
+          },
+        },
+      },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'exec-cjk',
+          invocation: { server: 'github', tool: 'fetch_file' },
+          // Under the cap in UTF-16 code units but over it in UTF-8 bytes (3 bytes per CJK char)
+          // — the transport frames bytes, so this must also drop.
+          result: { Ok: { content: [{ type: 'text', text: '猫'.repeat(100 * 1024) }] } },
+        },
+      },
+    ]);
+
+    const tools = toolCalls(events);
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toMatchObject({
+      toolCallId: 'exec-huge',
+      title: 'mcp__github__fetch_file',
+      status: 'failed',
+    });
+    expect(tools[0].rawOutput).toBeUndefined();
+    expect(tools[1]).toMatchObject({ toolCallId: 'exec-cjk', status: 'completed' });
+    expect(tools[1].rawOutput).toBeUndefined();
+  });
+
+  it('unwraps the code-mode Script envelope and fails a failed script (CODE-576)', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'custom_tool_call',
+        name: 'exec',
+        input: 'const r = await tools.exec_command({cmd: "ls"});',
+        call_id: 'call_script1',
+      }),
+      responseItem({
+        type: 'custom_tool_call_output',
+        call_id: 'call_script1',
+        // Code-mode outputs are arrays of input_text parts; the envelope is the first part.
+        output: [
+          { type: 'input_text', text: 'Script completed\nWall time 0.3 seconds\nOutput:\n' },
+          { type: 'input_text', text: 'file-a\nfile-b' },
+        ],
+      }),
+      responseItem({
+        type: 'custom_tool_call',
+        name: 'exec',
+        input: 'throw new Error("boom");',
+        call_id: 'call_script2',
+      }),
+      responseItem({
+        type: 'custom_tool_call_output',
+        call_id: 'call_script2',
+        output: 'Script failed\nWall time 0.0 seconds\nOutput:\nError: boom',
+      }),
+      responseItem({
+        type: 'custom_tool_call',
+        name: 'exec',
+        input: 'await tools.exec_command({cmd: "sleep 60"});',
+        call_id: 'call_script3',
+      }),
+      responseItem({
+        type: 'custom_tool_call_output',
+        call_id: 'call_script3',
+        output: 'Script running with cell ID 3\nWall time 10.0 seconds\nOutput:\npartial',
+      }),
+    ]);
+
+    const settled = toolCalls(events).filter((tool) => tool.status !== 'in_progress');
+    expect(settled[0]).toMatchObject({
+      toolCallId: 'call_script1',
+      title: 'exec',
+      kind: 'execute',
+      status: 'completed',
+    });
+    expect(settled[0].content).toEqual([
+      { type: 'content', content: { type: 'text', text: 'file-a\nfile-b' } },
+    ]);
+    expect(settled[1]).toMatchObject({ status: 'failed' });
+    expect(settled[1].content).toEqual([
+      { type: 'content', content: { type: 'text', text: 'Error: boom' } },
+    ]);
+    // A yield-timeout receipt is an intermediate snapshot of a still-running script, not a failure.
+    expect(settled[2]).toMatchObject({ status: 'completed' });
+    expect(settled[2].content).toEqual([
+      { type: 'content', content: { type: 'text', text: 'partial' } },
+    ]);
+  });
+
+  it('fails an apply_patch whose settle is a verification-failure receipt (CODE-576)', () => {
+    const patch = '*** Begin Patch\n*** Update File: a.ts\n@@\n-old\n+new\n*** End Patch';
+    const receipt = 'apply_patch verification failed: Failed to find expected lines in a.ts';
+    const events = mapCodexHistoryEvents(HID, [
+      responseItem({
+        type: 'custom_tool_call',
+        name: 'apply_patch',
+        input: patch,
+        call_id: 'call_patch1',
+      }),
+      responseItem({ type: 'custom_tool_call_output', call_id: 'call_patch1', output: receipt }),
+    ]);
+
+    const settled = toolCalls(events).at(-1);
+    expect(settled).toMatchObject({ status: 'failed' });
+    expect(settled?.content.at(-1)).toEqual({
+      type: 'content',
+      content: { type: 'text', text: receipt },
+    });
+  });
+
+  it('drops the 0.144.6 skill-expansion and recommended-plugins rows beside the typed prompt (CODE-576)', () => {
+    const typed = '$linear:linear list our issues';
+    const events = mapCodexHistoryEvents(HID, [
+      { type: 'event_msg', payload: { type: 'user_message', message: typed } },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: '<recommended_plugins>\nlinear\n</recommended_plugins>' },
+        ],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: typed }],
+      }),
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '<skill>\n<name>linear:linear</name>\n<path>/tmp/SKILL.md</path>\n---\nname: linear\n---\nbody',
+          },
+        ],
+      }),
+    ]);
+
+    const users = events.filter((entry) => entry.event.type === 'user-message');
+    expect(users).toHaveLength(1);
+    expect(users[0].event).toMatchObject({ content: [{ type: 'text', text: typed }] });
   });
 
   it('replays apply_patch like the live fileChange item: diff blocks kept through settle', () => {

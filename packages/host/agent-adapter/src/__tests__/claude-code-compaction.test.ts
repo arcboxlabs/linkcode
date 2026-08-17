@@ -308,6 +308,7 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
       records: new Map(),
       droppedRows: [],
       parentUuidByUuid: new Map(),
+      toolUses: new Map(),
       toolUseResults: new Map(),
       toolUsePatches: new Map(),
       ...partial,
@@ -320,6 +321,7 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     constructor(
       private readonly messages: SessionMessage[],
       private readonly supplement: ClaudeTranscriptSupplement,
+      private readonly paginate = false,
     ) {
       super();
     }
@@ -327,7 +329,12 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     protected override loadSdk<T>(): Promise<T> {
       return Promise.resolve({
         getSessionInfo: () => Promise.resolve(undefined),
-        getSessionMessages: () => Promise.resolve(this.messages),
+        getSessionMessages: (_sessionId: string, options?: { limit?: number; offset?: number }) => {
+          if (!this.paginate) return Promise.resolve(this.messages);
+          const offset = options?.offset ?? 0;
+          const end = options?.limit === undefined ? undefined : offset + options.limit;
+          return Promise.resolve(this.messages.slice(offset, end));
+        },
         listSubagents: () => Promise.resolve([]),
       } as T);
     }
@@ -431,7 +438,9 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
     }
   });
 
-  it('replays an Edit settle with the recovered patch instead of the announce fragment', async () => {
+  it('recovers a page-start Edit settle with the patch replacing its announce fragment', async () => {
+    const input = { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' };
+    const parentToolCallId = 'toolu_parent';
     const patch = {
       type: 'diff' as const,
       change: 'modify' as const,
@@ -440,29 +449,135 @@ describe('ClaudeCodeAdapter readHistory transcript supplement', () => {
       newText: 'b',
       patch: { format: 'git_patch' as const, text: '@@ -12,3 +12,3 @@\n ctx\n-a\n+b' },
     };
-    const adapter = new HistoryClaude(
-      [
-        row('assistant', 'a0', [
-          {
-            type: 'tool_use',
-            id: 'toolu_1',
-            name: 'Edit',
-            input: { file_path: 'src/a.ts', old_string: 'a', new_string: 'b' },
-          },
-        ]),
-        row('user', 'u0', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'updated' }]),
+    const announce = row('assistant', 'a0', [
+      { type: 'tool_use', id: 'toolu_edit', name: 'Edit', input },
+    ]);
+    const settle = row('user', 'u0', [
+      { type: 'tool_result', tool_use_id: 'toolu_edit', content: 'updated' },
+    ]);
+    const toolUseResult = {
+      filePath: 'src/a.ts',
+      oldString: 'a',
+      newString: 'b',
+      userModified: false,
+      replaceAll: true,
+      structuredPatch: [
+        { oldStart: 12, oldLines: 3, newStart: 12, newLines: 3, lines: [' ctx', '-a', '+b'] },
       ],
-      supplementOf({ toolUsePatches: new Map([['toolu_1', [patch]]]) }),
-    );
-    const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
-    const settle = result.events.at(-1)?.event;
-    expect(settle?.type).toBe('tool-call');
-    if (settle?.type === 'tool-call') {
-      // Superseded, not stacked — one diff, matching what the live settle emits.
-      expect(settle.toolCall.content).toEqual([
-        patch,
-        { type: 'content', content: { type: 'text', text: 'updated' } },
-      ]);
+    };
+    const supplement = buildClaudeTranscriptSupplement([
+      JSON.stringify({
+        type: 'assistant',
+        uuid: announce.uuid,
+        sessionId: SESSION,
+        parent_tool_use_id: parentToolCallId,
+        message: announce.message,
+      }),
+      JSON.stringify({
+        type: 'user',
+        uuid: settle.uuid,
+        sessionId: SESSION,
+        message: settle.message,
+        toolUseResult,
+      }),
+    ]);
+    const adapter = new HistoryClaude([announce, settle], supplement, true);
+
+    const first = await adapter.readHistory({ historyId: asHistoryId(SESSION), limit: 1 });
+    expect(first.cursor).toBe('1');
+    if (!first.cursor) throw new Error('expected a second history page');
+    const second = await adapter.readHistory({
+      historyId: asHistoryId(SESSION),
+      limit: 1,
+      cursor: first.cursor,
+    });
+    expect(second.events).toHaveLength(1);
+    const event = second.events[0].event;
+    expect(event.type).toBe('tool-call');
+    if (event.type === 'tool-call') {
+      expect(event.toolCall).toEqual({
+        toolCallId: 'toolu_edit',
+        parentToolCallId,
+        title: 'Edit',
+        kind: 'edit',
+        status: 'completed',
+        content: [patch, { type: 'content', content: { type: 'text', text: 'updated' } }],
+        rawInput: input,
+        rawOutput: {
+          filePath: 'src/a.ts',
+          oldString: 'a',
+          newString: 'b',
+          userModified: false,
+          replaceAll: true,
+        },
+      });
+    }
+  });
+
+  it('recovers a ToolSearch snapshot when a cursor page begins with its settle', async () => {
+    const input = { query: 'select:WebSearch' };
+    const parentToolCallId = 'toolu_parent';
+    const announce = row('assistant', 'a0', [
+      { type: 'tool_use', id: 'toolu_search', name: 'ToolSearch', input },
+    ]);
+    const settle = row('user', 'u0', [
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_search',
+        content: [{ type: 'tool_reference', tool_name: 'WebSearch' }],
+      },
+    ]);
+    const supplement = buildClaudeTranscriptSupplement([
+      JSON.stringify({
+        type: 'assistant',
+        uuid: announce.uuid,
+        sessionId: SESSION,
+        parent_tool_use_id: parentToolCallId,
+        message: announce.message,
+      }),
+      JSON.stringify({
+        type: 'user',
+        uuid: settle.uuid,
+        sessionId: SESSION,
+        message: settle.message,
+      }),
+    ]);
+    const adapter = new HistoryClaude([announce, settle], supplement, true);
+
+    const first = await adapter.readHistory({ historyId: asHistoryId(SESSION), limit: 1 });
+    expect(first.events.map((event) => `${event.event.type}:${event.itemId ?? ''}`)).toEqual([
+      'tool-call:toolu_search',
+    ]);
+    expect(first.cursor).toBe('1');
+    if (!first.cursor) throw new Error('expected a second history page');
+
+    const second = await adapter.readHistory({
+      historyId: asHistoryId(SESSION),
+      limit: 1,
+      cursor: first.cursor,
+    });
+    expect(second.cursor).toBeUndefined();
+    expect(second.events.map((event) => `${event.event.type}:${event.itemId ?? ''}`)).toEqual([
+      'tool-call:toolu_search',
+    ]);
+    const event = second.events[0].event;
+    expect(event.type).toBe('tool-call');
+    if (event.type === 'tool-call') {
+      expect(event.toolCall).toEqual({
+        toolCallId: 'toolu_search',
+        parentToolCallId,
+        title: 'ToolSearch',
+        kind: 'search',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: { type: 'text', text: 'WebSearch' },
+          },
+        ],
+        rawInput: input,
+        rawOutput: [{ type: 'tool_reference', tool_name: 'WebSearch' }],
+      });
     }
   });
 

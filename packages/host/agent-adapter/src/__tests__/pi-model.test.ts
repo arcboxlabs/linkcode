@@ -11,6 +11,7 @@ interface Model {
   provider: string;
   id: string;
   name?: string;
+  baseUrl?: string;
   reasoning: boolean;
   thinkingLevelMap?: Record<string, string | null>;
 }
@@ -28,6 +29,7 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
     create: () => ({
       find: (provider: string, id: string) =>
         sdk.models.find((m) => m.provider === provider && m.id === id),
+      getAll: () => sdk.models,
       getAvailable: () => sdk.models,
       registerProvider: sdk.registerProvider,
     }),
@@ -155,6 +157,71 @@ describe('Pi dynamic model catalog', () => {
       baseUrl: 'https://gateway.example.test/v1',
       apiKey: 'account-key',
     });
+  });
+
+  it('qualifies a bare model with the resolved known provider', async () => {
+    await start({ model: 'nulls', config: { knownProvider: 'other' } });
+
+    expect(sdk.createOptions).toMatchObject({ model: sdk.models[1] });
+  });
+
+  it('loads a catalog and qualifies a legacy bare model through a unique matching endpoint', async () => {
+    sdk.models.push(
+      {
+        provider: 'opencode',
+        id: 'deepseek-v4-flash',
+        baseUrl: 'https://opencode.ai/zen/v1',
+        reasoning: true,
+      },
+      {
+        provider: 'opencode-go',
+        id: 'deepseek-v4-flash',
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        reasoning: true,
+      },
+    );
+
+    const options = {
+      model: 'deepseek-v4-flash',
+      config: { apiKey: 'account-key', baseUrl: 'https://opencode.ai/zen/go/v1' },
+    };
+    const catalog = await new PiAdapter().startCatalog(options);
+    expect(catalog.models).toContainEqual(
+      expect.objectContaining({ id: 'opencode-go/deepseek-v4-flash' }),
+    );
+
+    await start(options);
+
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('opencode-go', 'account-key');
+    expect(sdk.createOptions).toMatchObject({ model: sdk.models[3] });
+  });
+
+  it('keeps a qualified model authoritative over provider hints', async () => {
+    await start({ model: 'other/nulls', config: { knownProvider: 'openai' } });
+
+    expect(sdk.createOptions).toMatchObject({ model: sdk.models[1] });
+  });
+
+  it('rejects a bare model when its provider cannot be resolved uniquely', async () => {
+    sdk.models[1].baseUrl = 'https://gateway.example.test/v1';
+    sdk.models.push({
+      provider: 'third',
+      id: 'nulls',
+      baseUrl: 'https://gateway.example.test/v1',
+      reasoning: false,
+    });
+
+    await expect(
+      start({ model: 'nulls', config: { baseUrl: 'https://gateway.example.test/v1' } }),
+    ).rejects.toThrow("pi: model must be 'provider/modelId' (got 'nulls')");
+    expect(sdk.createOptions).toBeNull();
+  });
+
+  it('rejects a bare model when the account provides no provider evidence', async () => {
+    await expect(start({ model: 'gpt' })).rejects.toThrow(
+      "pi: model must be 'provider/modelId' (got 'gpt')",
+    );
+    expect(sdk.createOptions).toBeNull();
   });
 
   it('switches model and effort live and reflects SDK readback', async () => {

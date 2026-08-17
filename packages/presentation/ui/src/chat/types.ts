@@ -17,6 +17,7 @@ import type {
   TokenUsage,
   ToolCall,
   ToolCallUpdate,
+  UsageReport,
 } from '@linkcode/schema';
 
 export type ConversationTurnId = string | null;
@@ -109,6 +110,8 @@ export interface ConversationViewModel {
   status: SessionStatus | null;
   /** Latest cumulative token usage. */
   usage: TokenUsage | null;
+  /** Latest structured provider usage snapshot; absent in consumers predating this surface. */
+  usageReport?: UsageReport | null;
   /** Active session mode id (e.g. plan / accept-edits), from `current-mode-update`. */
   currentModeId: string | null;
   /** Advertised approval-policy state (the permission axis), from `approval-policy-update`;

@@ -1,8 +1,10 @@
+import { Buffer } from 'node:buffer';
 import type { Plan, ToolCall, ToolCallContent, ToolCallLocation } from '@linkcode/schema';
-import { isRecord, stringField, textFromUnknown } from '../../history-util';
+import { isRecord, recordField, stringField, textFromUnknown } from '../../history-util';
 import { toolKindFromName } from '../../util';
 import {
   CODEX_PLAN_ID,
+  codexMcpSlug,
   codexPlanEntries,
   execToolCall,
   fileChangeToolCall,
@@ -22,6 +24,7 @@ export type CodexToolAnnounce = { toolCall: ToolCall } | { plan: Plan };
 export function codexToolAnnounce(
   callId: string,
   payload: Record<string, unknown>,
+  persistedMcpIdentity?: { server: string; tool: string },
 ): CodexToolAnnounce {
   const payloadType = stringField(payload, 'type');
   const name = stringField(payload, 'name');
@@ -74,6 +77,21 @@ export function codexToolAnnounce(
 
   // function_call: JSON-encoded `arguments`.
   const args = parseArguments(payload);
+  const mcp = codexReplayMcpIdentity(payload, persistedMcpIdentity);
+  if (mcp) {
+    // Converge with the live adapter's `mcp__<server>__<tool>` slug (and its kind) so a
+    // replayed MCP call renders like the live turn did.
+    return {
+      toolCall: {
+        toolCallId: callId,
+        title: codexMcpSlug(mcp.server, mcp.tool),
+        kind: 'other',
+        status: 'in_progress',
+        content: [],
+        rawInput: args,
+      },
+    };
+  }
   if (name === 'update_plan') {
     const plan = planFromArgs(args);
     if (plan) return { plan };
@@ -111,6 +129,92 @@ export function codexToolAnnounce(
       content: [],
       rawInput: args,
     },
+  };
+}
+
+const MCP_NAMESPACE_PREFIX = 'mcp__';
+const PLUGIN_APPS_SERVER = 'codex_apps';
+const PLUGIN_APPS_NAMESPACE_PREFIX = `${PLUGIN_APPS_SERVER}__`;
+
+function codexReplayMcpIdentity(
+  payload: Record<string, unknown>,
+  persisted: { server: string; tool: string } | undefined,
+): { server: string; tool: string } | undefined {
+  const callable = codexMcpToolName(payload);
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  // Legacy Codex Apps persisted `github_create_issue`; only the callable retained its connector
+  // boundary.
+  if (
+    callable &&
+    persisted?.server === PLUGIN_APPS_SERVER &&
+    !persisted.tool.includes('.') &&
+    namespace?.startsWith(`${MCP_NAMESPACE_PREFIX}${PLUGIN_APPS_NAMESPACE_PREFIX}`) &&
+    name?.[0] === '_' &&
+    persisted.tool === `${callable.server}_${callable.tool}`
+  ) {
+    return callable;
+  }
+  return persisted ?? callable;
+}
+
+/** Callable names are lossy; raw completed identities take precedence outside the legacy case. */
+function codexMcpToolName(
+  payload: Record<string, unknown>,
+): { server: string; tool: string } | undefined {
+  const namespace = stringField(payload, 'namespace');
+  const name = stringField(payload, 'name');
+  if (!namespace || !name || !namespace.startsWith(MCP_NAMESPACE_PREFIX)) return undefined;
+  let server = namespace.slice(MCP_NAMESPACE_PREFIX.length);
+  let tool = name;
+  if (server.startsWith(PLUGIN_APPS_NAMESPACE_PREFIX)) {
+    server = server.slice(PLUGIN_APPS_NAMESPACE_PREFIX.length);
+    if (tool[0] === '_') tool = tool.slice(1);
+  }
+  return server.length > 0 && tool.length > 0 ? { server, tool } : undefined;
+}
+
+/** One replayed event must fit a history page's transport budget on its own
+ * (`sliceHistoryEventPage`); MCP results are provider-unbounded (real rollouts carry multi-MB
+ * ones), so oversized results replay status-only. */
+const MCP_RESULT_MAX_JSON_BYTES = 256 * 1024;
+
+/** Whether an `mcp_tool_call_end` row records a failure. `result` is a serialized Rust Result —
+ * `{Ok: CallToolResult}` / `{Err: string}` — and an Ok carrying `isError` is still a failed call
+ * (mirrors McpToolCallEndEvent::is_success). */
+export function codexMcpEndFailed(payload: Record<string, unknown>): boolean {
+  const result = recordField(payload, 'result');
+  const ok = result?.Ok;
+  return result?.Err !== undefined || (isRecord(ok) && ok.isError === true);
+}
+
+/**
+ * An `event_msg mcp_tool_call_end` row settled into the live `mcpToolCall` item shape. Codex
+ * persists nested code-mode MCP calls ONLY as this event (no response_item), and its `call_id` IS
+ * the live item id, so replayed and live cards converge by id — codex's own ThreadHistoryBuilder
+ * rebuilds thread items from this same row. (Verified against codex-rs rust-v0.144.6.)
+ */
+export function codexMcpEndToolCall(payload: Record<string, unknown>): ToolCall | undefined {
+  const callId = stringField(payload, 'call_id');
+  const invocation = recordField(payload, 'invocation');
+  if (!callId || !invocation) return undefined;
+  const server = stringField(invocation, 'server');
+  const tool = stringField(invocation, 'tool');
+  if (!server || !tool) return undefined;
+  const result = recordField(payload, 'result');
+  const raw = result?.Ok ?? result?.Err;
+  return {
+    toolCallId: callId,
+    title: codexMcpSlug(server, tool),
+    kind: 'other',
+    status: codexMcpEndFailed(payload) ? 'failed' : 'completed',
+    content: [],
+    rawInput: invocation.arguments,
+    rawOutput:
+      raw !== undefined &&
+      Buffer.byteLength(JSON.stringify(raw), 'utf8') <= MCP_RESULT_MAX_JSON_BYTES
+        ? raw
+        : undefined,
   };
 }
 
@@ -175,11 +279,17 @@ const OUTPUT_MARKER = '\nOutput:\n';
 /** Declined runs persist `<tool> failed for \`cmd\`: reason` — anchored so a command whose own
  * output happens to contain the phrase is not misread as a decline. */
 const DECLINED_OUTPUT_RE = /^\w+ failed for `/;
+/** The code-mode script envelope (`prepend_script_status` in codex-rs): a status line, a wall-time
+ * line, then the body. Array-part outputs join with an artifact newline — consumed by the `\n?`. */
+const SCRIPT_ENVELOPE_RE =
+  /^Script (completed|failed|terminated|running with cell ID [^\n]*)\nWall time [^\n]*\nOutput:\n\n?/;
 
 /**
  * Unwrap the freeform-exec output envelope (`Chunk ID: … / Process exited with code N /
- * Output:\n<body>`; apply_patch uses `Exit code: N`). Cancelled runs persist `aborted by user
- * after Ns` and declined ones `<tool> failed for \`…\`: …` — both settle as failed with the raw
+ * Output:\n<body>`; apply_patch uses `Exit code: N`) and the code-mode script envelope
+ * (`Script <status> / Wall time Ns / Output:\n<body>`, failed on a failed/terminated script).
+ * Cancelled runs persist `aborted by user after Ns`, declined ones `<tool> failed for \`…\`: …`,
+ * and unapplied patches `apply_patch verification failed: …` — all settle as failed with the raw
  * text as the record.
  */
 function parseCodexToolOutput(output: string): {
@@ -187,8 +297,21 @@ function parseCodexToolOutput(output: string): {
   exitCode?: number;
   failed: boolean;
 } {
-  if (output.startsWith('aborted by user') || DECLINED_OUTPUT_RE.test(output)) {
+  if (
+    output.startsWith('aborted by user') ||
+    output.startsWith('apply_patch verification failed') ||
+    DECLINED_OUTPUT_RE.test(output)
+  ) {
     return { body: output, failed: true };
+  }
+  if (output.startsWith('Script ')) {
+    const envelope = SCRIPT_ENVELOPE_RE.exec(output);
+    if (envelope) {
+      return {
+        body: output.slice(envelope[0].length),
+        failed: envelope[1] === 'failed' || envelope[1] === 'terminated',
+      };
+    }
   }
   if (output.startsWith('Chunk ID:') || output.startsWith('Exit code:')) {
     const exitMatch = EXIT_CODE_RE.exec(output);

@@ -135,6 +135,35 @@ describe('resolveBinding: variant chosen per agent', () => {
     });
   });
 
+  it('routes a StepFun key over each supported native protocol', () => {
+    const stepfun = account({ service: 'stepfun' });
+    expect(resolveBinding(stepfun, 'claude-code')).toEqual({
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.stepfun.com',
+    });
+    expect(resolveBinding(stepfun, 'codex')).toEqual({
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://api.stepfun.com/v1',
+    });
+    expect(resolveBinding(stepfun, 'opencode')).toEqual({
+      tier: 'native',
+      protocol: 'openai-chat',
+      baseUrl: 'https://api.stepfun.com/v1',
+      knownProvider: 'stepfun',
+    });
+    expect(resolveBinding(stepfun, 'pi')).toEqual({
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.stepfun.com',
+    });
+    expect(resolveBinding(stepfun, 'grok-build')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
+  });
+
   it('reaches codex on every service whose endpoint serves the Responses API', () => {
     // Verified against vendor docs 2026-08: xAI, OpenRouter and Vercel all serve POST /responses
     // at the base URL declared here, so codex must have a target on each.
@@ -160,6 +189,29 @@ describe('resolveBinding: variant chosen per agent', () => {
         'codex',
       ),
     ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
+  });
+
+  it('preserves LinkCode Gateway as an OpenAI Chat endpoint', () => {
+    const gateway = account({
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-gateway-key' },
+    });
+    expect(resolveBinding(gateway, 'claude-code')).toEqual({
+      tier: 'translate',
+      protocol: 'openai-chat',
+      baseUrl: 'https://gateway.linkcode.ai/v1',
+    });
+    for (const kind of ['opencode', 'pi'] as const) {
+      expect(resolveBinding(gateway, kind)).toEqual({
+        tier: 'native',
+        protocol: 'openai-chat',
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+      });
+    }
+    expect(resolveBinding(gateway, 'codex')).toEqual({
+      tier: 'unavailable',
+      reason: 'protocol-unsupported',
+    });
   });
 
   it('leaves opencode and pi on their known-provider variant when a responses one exists', () => {
@@ -282,7 +334,15 @@ describe('catalog helpers', () => {
       url: 'https://api.deepseek.com/models',
       wire: 'openai',
     });
+    expect(modelListSource('stepfun')).toEqual({
+      url: 'https://api.stepfun.com/v1/models',
+      wire: 'openai',
+    });
     expect(modelListSource('anthropic-api')?.wire).toBe('anthropic');
+    expect(modelListSource('linkcode-gateway')).toEqual({
+      url: 'https://gateway.linkcode.ai/v1/models',
+      wire: 'openai',
+    });
     // Both Cloudflare routes serve no list, and oauth services have no secret to ask with.
     expect(modelListSource('cloudflare-gateway')).toBeUndefined();
     expect(modelListSource('cloudflare-anthropic')).toBeUndefined();

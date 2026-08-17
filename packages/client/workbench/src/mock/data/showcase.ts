@@ -384,20 +384,47 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         title: 'Search chat renderers',
         kind: 'search',
         status: 'completed',
-        content: [],
+        content: [
+          {
+            type: 'content',
+            content: textBlock(
+              'packages/presentation/ui/src/chat/conversation-view.tsx\npackages/client/core/src/conversation.ts',
+            ),
+          },
+        ],
         rawInput: {
           query: 'permission-request|tool-call|plan',
           glob: '**/*.{ts,tsx}',
           cwd: '/mock/linkcode',
         },
+        // Claude's real Grep envelope: scalar counts, no matches array.
+        rawOutput: { mode: 'files_with_matches', numFiles: 2, numMatches: 12 },
+      },
+      {
+        toolCallId: 'mock-tool-toolsearch-select',
+        title: 'ToolSearch',
+        kind: 'search',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: textBlock('WebSearch\nmcp__linear__get_issue\nmcp__linear__save_issue'),
+          },
+        ],
+        rawInput: { query: 'select:WebSearch,mcp__linear__get_issue,mcp__linear__save_issue' },
         rawOutput: {
-          matches: [
-            'packages/presentation/ui/src/chat/conversation-view.tsx',
-            'packages/client/core/src/conversation.ts',
-          ],
-          files: 2,
-          elapsedMs: 17,
+          query: 'select:WebSearch,mcp__linear__get_issue,mcp__linear__save_issue',
+          total_deferred_tools: 110,
         },
+      },
+      {
+        toolCallId: 'mock-tool-toolsearch-empty',
+        title: 'ToolSearch',
+        kind: 'search',
+        status: 'completed',
+        content: [{ type: 'content', content: textBlock('No matching deferred tools found') }],
+        rawInput: { query: '+jupyter notebook edit', max_results: 5 },
+        rawOutput: { query: '+jupyter notebook edit', total_deferred_tools: 110 },
       },
     ],
     files: [
@@ -631,6 +658,16 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         rawInput: { id: 'CODE-228', includeRelations: true },
         rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
       },
+      // Adjacent same-brand calls form a dedicated brand group ("Used Linear 2 times").
+      {
+        toolCallId: 'mock-tool-mcp-slug-save',
+        title: 'mcp__linear__save_issue',
+        kind: 'other',
+        status: 'completed',
+        content: [{ type: 'content', content: textBlock('CODE-228 moved to In Review.') }],
+        rawInput: { id: 'CODE-228', state: 'In Review' },
+        rawOutput: { content: [{ type: 'text', text: 'CODE-228' }] },
+      },
       {
         toolCallId: 'mock-tool-task-review',
         title: 'Review metadata policy',
@@ -662,6 +699,13 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           locations: [{ path: 'packages/presentation/ui/src/chat/activity-groups.ts', line: 42 }],
           content: [],
           rawInput: { path: 'packages/presentation/ui/src/chat/activity-groups.ts' },
+        },
+        {
+          toolCallId: 'mock-activity-read-bodyless',
+          title: 'Inspect activity boundaries',
+          kind: 'read',
+          status: 'completed',
+          content: [],
         },
         {
           toolCallId: 'mock-activity-execute-failed',

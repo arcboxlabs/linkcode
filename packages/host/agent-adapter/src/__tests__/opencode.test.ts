@@ -36,6 +36,9 @@ vi.mock('../native/opencode/serve', async (importOriginal) => ({
 
 import { FakeEventStream } from './fake-event-stream';
 
+/** The config's `mcp` server entries `start()` reads — set BEFORE starting the adapter. */
+let mcpConfigFixture: Record<string, unknown> = {};
+
 class FakeClient {
   readonly stream = new FakeEventStream();
   subscribeError: Error | null = null;
@@ -58,6 +61,9 @@ class FakeClient {
   };
   readonly app = {
     agents: vi.fn(() => ({ data: [] as unknown[] })),
+  };
+  readonly config = {
+    get: vi.fn(() => ({ data: { mcp: mcpConfigFixture } })),
   };
   readonly provider = {
     list: vi.fn(() => ({
@@ -82,6 +88,7 @@ sdkMock.createOpencode = () => {
 
 afterEach(() => {
   closeServer.mockClear();
+  mcpConfigFixture = {};
 });
 
 async function makeAdapter(): Promise<{ adapter: OpenCodeAdapter; events: AgentEvent[] }> {
@@ -316,6 +323,72 @@ describe('OpenCodeAdapter.consumeEvents', () => {
           content: [{ type: 'content', content: { type: 'text', text: 'hi\n' } }],
         }),
       }),
+    ]);
+  });
+
+  it('normalizes MCP tool parts to the shared mcp slug from injected and configured servers', async () => {
+    mcpConfigFixture = { notion: { type: 'remote', url: 'http://127.0.0.1:7778/mcp' } };
+    const adapter = new OpenCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((e) => events.push(e));
+    await adapter.start({
+      kind: 'opencode',
+      cwd: '/tmp/repo',
+      mcpServers: [
+        { type: 'http', name: 'linear', url: 'http://127.0.0.1:7777/mcp' },
+        { type: 'http', name: 'repo__prod', url: 'http://127.0.0.1:7779/mcp' },
+      ],
+    });
+
+    const part = (id: string, tool: string) => ({
+      id,
+      sessionID: 'sess-1',
+      messageID: 'msg-1',
+      type: 'tool' as const,
+      callID: `call-${id}`,
+      tool,
+      state: { status: 'running' as const, input: { limit: 50 }, time: { start: 0 } },
+    });
+    client.stream.push({
+      id: 'e-mcp-injected',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 0, part: part('prt-mcp-1', 'linear_list_issues') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-mcp-configured',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 1, part: part('prt-mcp-2', 'notion_search_pages') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-builtin',
+      type: 'message.part.updated',
+      properties: { sessionID: 'sess-1', time: 2, part: part('prt-builtin', 'bash') },
+    });
+    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
+    client.stream.push({
+      id: 'e-mcp-ambiguous',
+      type: 'message.part.updated',
+      properties: {
+        sessionID: 'sess-1',
+        time: 3,
+        part: part('prt-mcp-ambiguous', 'repo__prod_search_files'),
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.filter((event) => event.type === 'tool-call')).toHaveLength(4);
+    });
+    const titles = events.reduce<string[]>((all, event) => {
+      if (event.type === 'tool-call') all.push(event.toolCall.title);
+      return all;
+    }, []);
+    expect(titles).toEqual([
+      'mcp__linear__list_issues',
+      'mcp__notion__search_pages',
+      'bash',
+      'repo__prod_search_files',
     ]);
   });
 

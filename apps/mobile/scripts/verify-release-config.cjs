@@ -41,17 +41,18 @@ function loadGeneratedBundle(platform, configDir = CONFIG_DIR) {
   if (bundle.platform !== platform) {
     throw new Error(`${path} targets ${String(bundle.platform)}, expected ${platform}`);
   }
-  if (
-    !bundle.endpoints ||
-    bundle.endpoints.emergency === null ||
-    bundle.endpoints.emergency === undefined
-  ) {
-    throw new Error(`${path} carries no emergency endpoint`);
-  }
+  const emergencyEndpoint = bundle.endpoints && bundle.endpoints.emergency;
   const emergencyKeyring = bundle.keyrings && bundle.keyrings.emergency;
-  // eslint-disable-next-line sukka/prefer-foxts-object-size -- This pre-install gate has no dependencies.
-  if (!emergencyKeyring || Object.keys(emergencyKeyring).length === 0) {
-    throw new Error(`${path} carries no emergency public keys`);
+  const emergencyKeyCount =
+    emergencyKeyring && typeof emergencyKeyring === 'object' && !Array.isArray(emergencyKeyring)
+      ? Reflect.ownKeys(emergencyKeyring).length
+      : -1;
+  if (
+    (emergencyEndpoint !== null && typeof emergencyEndpoint !== 'string') ||
+    emergencyKeyCount < 0 ||
+    (emergencyEndpoint === null) !== (emergencyKeyCount === 0)
+  ) {
+    throw new Error(`${path} emergency endpoint and keyring must be enabled together`);
   }
   if (Object.values(emergencyKeyring).some((key) => CONFORMANCE_FIXTURE_PUBLIC_KEYS.has(key))) {
     throw new Error(`${path} emergency keyring contains the conformance fixture key`);

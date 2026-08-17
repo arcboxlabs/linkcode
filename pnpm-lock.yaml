@@ -9,6 +9,9 @@ catalogs:
     '@iconify-json/material-icon-theme':
       specifier: ^1.2.69
       version: 1.2.69
+    '@iconify-json/simple-icons':
+      specifier: ^1.2.92
+      version: 1.2.92
     '@proj-airi/lobe-icons':
       specifier: ^1.0.19
       version: 1.0.19
@@ -135,6 +138,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
         version: 1.0.19
@@ -280,9 +286,15 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@better-auth/api-key':
+        specifier: 1.7.0-rc.2
+        version: 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))
       '@better-auth/electron':
         specifier: 1.7.0-rc.2
         version: 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))(electron@43.2.0)
+      '@linkcode/cloud':
+        specifier: file:../../packages/vendor/linkcode-cloud-0.1.0.tgz
+        version: file:packages/vendor/linkcode-cloud-0.1.0.tgz
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/foundation/common
@@ -326,6 +338,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@linkcode/ui':
         specifier: workspace:*
         version: link:../../packages/presentation/ui
@@ -426,8 +441,8 @@ importers:
   apps/mobile:
     dependencies:
       '@better-auth/expo':
-        specifier: 1.7.0-rc.1
-        version: 1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))
+        specifier: 1.7.0-rc.2
+        version: 1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))
       '@expo/ui':
         specifier: 57.0.7
         version: 57.0.7(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(expo@57.0.4)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -633,6 +648,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.5.7
         version: 5.5.7(@sinclair/typebox@0.27.10)(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.83.0(react@19.3.0-canary-96fcba90-20260728))(zod@4.4.3)
+      '@linkcode/cloud':
+        specifier: file:../../packages/vendor/linkcode-cloud-0.1.0.tgz
+        version: file:packages/vendor/linkcode-cloud-0.1.0.tgz
       '@linkcode/common':
         specifier: workspace:*
         version: link:../../packages/foundation/common
@@ -694,6 +712,9 @@ importers:
       '@iconify-json/material-icon-theme':
         specifier: 'catalog:'
         version: 1.2.69
+      '@iconify-json/simple-icons':
+        specifier: 'catalog:'
+        version: 1.2.92
       '@proj-airi/lobe-icons':
         specifier: 'catalog:'
         version: 1.0.19
@@ -1177,8 +1198,8 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       '@pierre/trees':
-        specifier: 1.0.0-beta.5
-        version: 1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
+        specifier: 1.0.0-beta.6
+        version: 1.0.0-beta.6(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
       '@shikijs/core':
         specifier: ^4.3.1
         version: 4.3.1
@@ -2036,6 +2057,14 @@ packages:
       '@types/react':
         optional: true
 
+  '@better-auth/api-key@1.7.0-rc.2':
+    resolution: {integrity: sha512-7fyxJhOKKWQ+TtLTvCjxfZU+blE+jvwe4rzunz1RfOafuWEukE2ofRQ8uOMG4ZUYG6SO+tVKxsFDnbJZj2Da3g==}
+    peerDependencies:
+      '@better-auth/core': ^1.7.0-rc.2
+      '@better-auth/utils': 0.4.2
+      better-auth: ^1.7.0-rc.2
+      better-call: 1.3.7
+
   '@better-auth/core@1.7.0-rc.2':
     resolution: {integrity: sha512-NreNGg68j4qUVVYTcC1DtvRTwSJdCavH5igrMyTO5ghZxnzL4G539uRIzOZmJ64MLzOyOwzWH+JHqpVaj0ZRxw==}
     peerDependencies:
@@ -2080,11 +2109,11 @@ packages:
       electron:
         optional: true
 
-  '@better-auth/expo@1.7.0-rc.1':
-    resolution: {integrity: sha512-AT6kVbGYrtjro5Wyfyy+B7Fg16txQIz6XcGzKIGUcvoerCb73t579MYcJonGpVBss6zXChG7KqJlFMxW7vySaw==}
+  '@better-auth/expo@1.7.0-rc.2':
+    resolution: {integrity: sha512-6NorKVKPfdhTouX8pvnBemSsPUdZxqdB+FAyDvw2aPza4k3x58zv4vn6l53imba1w2IsI56k4HEpnT31s0pwwA==}
     peerDependencies:
-      '@better-auth/core': ^1.7.0-rc.1
-      better-auth: ^1.7.0-rc.1
+      '@better-auth/core': ^1.7.0-rc.2
+      better-auth: ^1.7.0-rc.2
       expo-constants: '>=17.0.0'
       expo-linking: '>=7.0.0'
       expo-network: '>=8.0.7'
@@ -3207,6 +3236,9 @@ packages:
   '@iconify-json/material-icon-theme@1.2.69':
     resolution: {integrity: sha512-BqVadW0C19qyzp7Gtl2z0wExBFhfGKDPrgq4ajnGUe9atBcqSwz/yULCbZWzjPlOPrFFu4P3hhfs8Vl503nhEg==}
 
+  '@iconify-json/simple-icons@1.2.92':
+    resolution: {integrity: sha512-hR0ozxR97t1dzWw+esoxFijZ15gagt7EIgF3CNifu2yICXhS7gnun4Y+j+odJQtNSl7wvqMdoLbViIShwe/fdw==}
+
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
@@ -3454,6 +3486,10 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  '@linkcode/cloud@file:packages/vendor/linkcode-cloud-0.1.0.tgz':
+    resolution: {integrity: sha512-i38bW7xCv8Us+iW3ZDKV64cB3riTvk2rbnbppvrdl+BLNL96VE484yiQ9sopunYaxrRWy7Qi8txFecGh2/s++w==, tarball: file:packages/vendor/linkcode-cloud-0.1.0.tgz}
+    version: 0.1.0
 
   '@linkcode/tunnel@0.1.0':
     resolution: {integrity: sha512-vRUQJApK4IDOicEOJ6B3PD5yBacFOL6Xr4Wel6UpG53TDSkkmv0W5uZw6vX7OMtWthI/S70yyVkvXtFOFho//w==}
@@ -3913,8 +3949,28 @@ packages:
       shiki:
         optional: true
 
-  '@pierre/trees@1.0.0-beta.5':
-    resolution: {integrity: sha512-IzxkB9qv6GLbeEXObhlAD205LfYHiLeRwJdnaIdX0f5keTZF4X9EfiuEQ3QiyxOxouVVmUX3rX7m6a8zNMo/wA==}
+  '@pierre/theming@1.0.0':
+    resolution: {integrity: sha512-WsdrnhKfjeyXGDikZmN9pkpeZ5S/cl6EE72feiSc0tlynT1tMYqXqouhuv/foK+PY9OEnebOAVRQn3+rAstR8g==}
+    peerDependencies:
+      '@pierre/theme': ^1.1.0
+      '@shikijs/themes': ^3.0.0 || ^4.0.0
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+      shiki: ^4.3.0
+    peerDependenciesMeta:
+      '@pierre/theme':
+        optional: true
+      '@shikijs/themes':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      shiki:
+        optional: true
+
+  '@pierre/trees@1.0.0-beta.6':
+    resolution: {integrity: sha512-zxeuSFM9TveM7b5XofweJALCtm/tGYV9HZzdbf7Uf+kBxIlUyz24/EHaGRjB0dsmmfDQl2ETz7AWwJ15lhSnpw==}
     peerDependencies:
       react: ^18.3.1 || ^19.0.0
       react-dom: ^18.3.1 || ^19.0.0
@@ -12357,6 +12413,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
+  '@better-auth/api-key@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(better-call@1.3.7(zod@4.4.3))':
+    dependencies:
+      '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
+      '@better-auth/utils': 0.4.2
+      better-auth: 1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0)))
+      better-call: 1.3.7(zod@4.4.3)
+      zod: 4.4.3
+
   '@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)':
     dependencies:
       '@better-auth/utils': 0.4.2
@@ -12389,7 +12453,7 @@ snapshots:
     optionalDependencies:
       electron: 43.2.0
 
-  '@better-auth/expo@1.7.0-rc.1(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))':
+  '@better-auth/expo@1.7.0-rc.2(@better-auth/core@1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2))(better-auth@1.7.0-rc.2(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(kysely@0.29.4))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.1)(yaml@2.9.0))))(expo-constants@57.0.3)(expo-linking@57.0.2)(expo-network@57.0.1(expo@57.0.4)(react@19.2.3))(expo-web-browser@57.0.0(expo@57.0.4)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)))':
     dependencies:
       '@better-auth/core': 1.7.0-rc.2(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.7)(kysely@0.29.4)(nanostores@1.4.2)
       '@better-fetch/fetch': 1.3.1
@@ -13573,6 +13637,10 @@ snapshots:
     dependencies:
       '@iconify/types': 2.0.0
 
+  '@iconify-json/simple-icons@1.2.92':
+    dependencies:
+      '@iconify/types': 2.0.0
+
   '@iconify/types@2.0.0': {}
 
   '@iconify/utils@3.1.3':
@@ -13875,6 +13943,8 @@ snapshots:
       yjs: 13.6.31
     optionalDependencies:
       typescript: '@typescript/typescript6@6.0.2'
+
+  '@linkcode/cloud@file:packages/vendor/linkcode-cloud-0.1.0.tgz': {}
 
   '@linkcode/tunnel@0.1.0': {}
 
@@ -14265,9 +14335,17 @@ snapshots:
       react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
       shiki: 4.3.0
 
-  '@pierre/trees@1.0.0-beta.5(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)':
+  '@pierre/theming@1.0.0(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)':
+    optionalDependencies:
+      '@pierre/theme': 1.1.0
+      '@shikijs/themes': 4.3.1
+      react: 19.3.0-canary-96fcba90-20260728
+      react-dom: 19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728)
+      shiki: 4.3.0
+
+  '@pierre/trees@1.0.0-beta.6(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)':
     dependencies:
-      '@pierre/theming': 0.0.2(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
+      '@pierre/theming': 1.0.0(@pierre/theme@1.1.0)(@shikijs/themes@4.3.1)(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)(shiki@4.3.0)
       preact: 11.0.0-beta.0
       preact-render-to-string: 6.6.5(preact@11.0.0-beta.0)
       react: 19.3.0-canary-96fcba90-20260728

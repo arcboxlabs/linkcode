@@ -8,9 +8,12 @@ import { CheckIcon, ChevronDownIcon, CopyIcon, PencilIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
+import { CommandBrandGlyph, commandBrandChipStyle } from './command-brand';
+import { useCatalogCommand } from './command-catalog';
 import { ContentBlockView } from './content-block-view';
 import { positionalBlockEntries } from './content-derived-keys';
 import { contentBlocksText } from './conversation-text';
+import { Chip } from './link-chip';
 import { Message, MessageAction, MessageActions, MessageContent } from './message';
 import type { ConversationItem, PromptEditState } from './types';
 import { useCopyButton } from './use-copy-button';
@@ -18,6 +21,19 @@ import { useCopyButton } from './use-copy-button';
 /** Long pastes collapse past this many source lines. */
 const COLLAPSE_LINE_COUNT = 20;
 const COPY_FEEDBACK_MS = 2000;
+
+const RE_WHITESPACE = /\s/;
+
+/** A command echo is exactly what the composer sent: `/name` and optional single-line argument
+ * text. Multi-line arguments keep block rendering — a bare span would collapse their newlines. */
+function commandEcho(text: string): { name: string; args: string } | undefined {
+  if (text[0] !== '/' || text.includes('\n')) return undefined;
+  const body = text.slice(1);
+  const nameEnd = body.search(RE_WHITESPACE);
+  if (nameEnd === 0 || body.length === 0) return undefined;
+  if (nameEnd === -1) return { name: body, args: '' };
+  return { name: body.slice(0, nameEnd), args: body.slice(nameEnd).trim() };
+}
 
 type MessageItem = Extract<ConversationItem, { kind: 'message' }>;
 
@@ -91,6 +107,11 @@ export function UserMessage({
     }
   }
 
+  // A catalog-matched `/command args` echo chips its invocation like the composer draft did.
+  // Unknown leading slashes (paths, prose) stay plain text.
+  const echo = item.blocks.length === 1 ? commandEcho(text) : undefined;
+  const echoedCommand = useCatalogCommand(echo?.name);
+
   return (
     <Message from="user">
       <MessageContent
@@ -153,9 +174,18 @@ export function UserMessage({
         ) : (
           <>
             <div className={collapsible && !expanded ? 'line-clamp-[20]' : undefined}>
-              {positionalBlockEntries(item.blocks).map(({ block, key }) => (
-                <ContentBlockView key={key} block={block} />
-              ))}
+              {echo && echoedCommand ? (
+                <p>
+                  <Chip style={commandBrandChipStyle(echoedCommand)} variant="info">
+                    <CommandBrandGlyph className="size-3.5" command={echoedCommand} />/{echo.name}
+                  </Chip>
+                  {echo.args ? <span className="ms-1.5">{echo.args}</span> : null}
+                </p>
+              ) : (
+                positionalBlockEntries(item.blocks).map(({ block, key }) => (
+                  <ContentBlockView key={key} block={block} />
+                ))
+              )}
             </div>
             {collapsible ? (
               <Button

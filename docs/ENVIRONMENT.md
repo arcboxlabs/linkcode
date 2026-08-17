@@ -110,7 +110,7 @@ client configuration or new build.
 | `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` | `apps/desktop/scripts/stage-sidecar.mts` | `aarch64-linux-gnu-gcc` for the linux-arm64 sidecar cross-build. |
 | `NODE_OPTIONS` | `.github/workflows/ci.yml` | `--max-old-space-size=4096` for every CI job. |
 | `POSTHOG_HOST` | desktop/mobile build workflows | Organization Actions variable mapped to the platform-specific PostHog host for production bundles. |
-| `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO`, `CONFIG_RELEASE_REVISION`, `CONFIG_RELEASE_KEYRINGS` | release workflows | Protected `release` environment vars. The repository vars are different canonical `arcboxlabs/repository` identities for publisher code and structural source data; trusted steps validate them before minting separate repository-scoped read tokens. Current values are `arcboxlabs/linkcodehq` and `arcboxlabs/linkcode-config`. Release manifests bind their commits independently and digest-bind the exact revision/public-keyring JSON inputs. |
+| `CONFIG_PUBLISHER_REPO`, `CONFIG_SOURCE_REPO` | release workflows | Protected `release` Environment vars. They are different canonical `arcboxlabs/repository` identities for publisher code and structural source data; trusted steps validate them before minting separate repository-scoped read tokens. Current values are `arcboxlabs/linkcodehq` and `arcboxlabs/linkcode-config`. Official releases download digest-bound revision/keyring/manifest bytes from `config.linkcode.ai` instead of Actions variables. The nonproduction brand-matrix fixture retains compatibility inputs documented in [`RELEASE.md`](RELEASE.md). |
 
 ## Release-only secrets
 

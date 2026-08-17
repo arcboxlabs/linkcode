@@ -64,6 +64,39 @@ export function toolCallDisplayText(toolCall: ToolCall): string {
     .join('\n');
 }
 
+export interface ToolSearchPresentation {
+  query: string;
+  /** `select` loads named tools verbatim; `search` ranks by keywords. Drives the header verb. */
+  mode: 'select' | 'search';
+  /** Matched tool names, one per row. */
+  names: string[];
+  /** Prose settle text (zero-match notice, error detail) shown instead of rows. */
+  message?: string;
+}
+
+/** Deferred-tool names are single identifier tokens; prose means the tool is talking instead. */
+const TOOL_NAME_LINE_RE = /^[\w.-]+$/;
+
+/** Claude's ToolSearch loads deferred tools and settles with a name-per-line list (the adapter
+ * flattens its `tool_reference` blocks). ToolCall carries no adapter id, so match only the exact
+ * Claude title/input shape. */
+export function toolSearchPresentation(toolCall: ToolCall): ToolSearchPresentation | undefined {
+  if (toolCall.title !== 'ToolSearch' || toolCall.kind !== 'search') return undefined;
+  const query = stringValue(recordValue(toolCall.rawInput), ['query']);
+  if (!query) return undefined;
+  const mode = query.startsWith('select:') ? 'select' : 'search';
+  const text = toolCallDisplayText(toolCall);
+  const lines = [...new Set(text.split('\n').filter((line) => line.length > 0))];
+  if (
+    toolCall.status === 'completed' &&
+    lines.length > 0 &&
+    lines.every((line) => TOOL_NAME_LINE_RE.test(line))
+  ) {
+    return { query, mode, names: lines };
+  }
+  return { query, mode, names: [], message: text.length > 0 ? text : undefined };
+}
+
 export function toolCallExecuteText(toolCall: ToolCall): string | undefined {
   const displayText = toolCallDisplayText(toolCall);
   if (displayText) return displayText;

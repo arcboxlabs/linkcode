@@ -405,6 +405,7 @@ const EMPTY_SUPPLEMENT: ClaudeTranscriptSupplement = {
   records: new Map(),
   droppedRows: [],
   parentUuidByUuid: new Map(),
+  toolUses: new Map(),
   toolUseResults: new Map(),
   toolUsePatches: new Map(),
 };
@@ -701,6 +702,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       supplement.toolUseResults,
       supplement.toolUsePatches,
       supplement.parentUuidByUuid,
+      supplement.toolUses,
     );
     const events: AgentHistoryEvent[] = [];
     // Splice each subagent's transcript right after its spawn announce so children land inside the
@@ -1434,6 +1436,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const cancelling = this.cancelling;
     this.cancelling = false;
     this.turnActive = false;
+    if (
+      msg.subtype === 'success' &&
+      this.emitGatewayError({
+        statusCode: msg.api_error_status,
+      })
+    ) {
+      this.teardown();
+      if (!cancelling) this.emitStatus('idle');
+      return;
+    }
     if (msg.subtype === 'success' && msg.api_error_status === 401) {
       this.emitError(
         'Claude authentication failed — sign in to Claude',
@@ -1465,7 +1477,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
       // failure — consume the flag instead of surfacing it as an error.
     } else {
-      this.emitError(claudeResultErrorMessage(msg), undefined, true);
+      const message = claudeResultErrorMessage(msg);
+      this.emitProviderError(message, { message });
     }
     this.teardown();
     // A result can beat interrupt()'s control ack. Keep the gate closed until onCancel returns so
@@ -1745,6 +1758,9 @@ export interface ClaudeTranscriptSupplement {
   /** Message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`, but Claude
    * requires the predecessor message id when forking immediately before a historical prompt. */
   parentUuidByUuid: Map<string, string | null>;
+  /** tool_use_id → announce snapshot. Cursor pages can begin at the matching result row, after
+   * the stateful mapper's in-page announce map has been reset. */
+  toolUses: Map<string, ToolCall>;
   /** tool_use_id → projected `toolUseResult` envelope (`toolUseResultEnvelope`), another field
    * `getSessionMessages` strips per row. Keyed only for unambiguous single-result rows. */
   toolUseResults: Map<string, Record<string, unknown>>;
@@ -1769,6 +1785,7 @@ export function buildClaudeTranscriptSupplement(
 ): ClaudeTranscriptSupplement {
   const records = new Map<string, ClaudeCompactionRecord>();
   const parentUuidByUuid = new Map<string, string | null>();
+  const toolUses = new Map<string, ToolCall>();
   const toolUseResults = new Map<string, Record<string, unknown>>();
   const toolUsePatches = new Map<string, ToolCallContent[]>();
   /** Conversation rows in file order, with the index of the last boundary seen before each. */
@@ -1804,11 +1821,12 @@ export function buildClaudeTranscriptSupplement(
       records.set(uuid, pending ?? { compactionId: uuid });
       pending = null;
     } else if (row.type !== 'user' && row.type !== 'assistant') continue;
-    // Harvested before the exclusions: tool_use ids are globally unique, so keying a row the
-    // timeline itself skips is harmless.
+    // Result fields are harvested before the exclusions: tool_use ids are globally unique, so
+    // keying a result row the timeline itself skips is harmless.
     if (row.type === 'user') harvestToolUseResult(toolUseResults, toolUsePatches, row);
     // Same exclusions as the SDK's own reader: meta rows, sidechains, and teammate rows.
     if (row.isMeta === true || row.isSidechain === true || row.teamName) continue;
+    if (row.type === 'assistant') harvestToolUses(toolUses, row);
     rows.push({
       row: {
         type: row.type,
@@ -1831,9 +1849,19 @@ export function buildClaudeTranscriptSupplement(
       if (r.boundariesBefore < boundaries) dropped.push(r.row);
       return dropped;
     }, []),
+    toolUses,
     toolUseResults,
     toolUsePatches,
   };
+}
+
+function harvestToolUses(toolUses: Map<string, ToolCall>, row: Record<string, unknown>): void {
+  const parentToolCallId = stringField(row, 'parent_tool_use_id');
+  for (const block of messageContentBlocks(row.message)) {
+    if (isToolUseBlock(block)) {
+      toolUses.set(block.id, claudeToolCallFromUse(block, parentToolCallId));
+    }
+  }
 }
 
 /** Key a raw result row's `toolUseResult` projections by its tool_use id. The field is row-level, so
@@ -1987,6 +2015,8 @@ export function createClaudeHistoryEventMapper(
   toolUsePatches?: ReadonlyMap<string, ToolCallContent[]>,
   /** Raw message ancestry recovered from the transcript; absent for nested subagent reads. */
   parentUuidByUuid?: ReadonlyMap<string, string | null>,
+  /** Announce snapshots recovered from the raw transcript, for cursor pages starting at settle. */
+  toolUses?: ReadonlyMap<string, ToolCall>,
 ): (message: SessionMessage) => AgentHistoryEvent[] {
   const announced = new Map<string, ToolCall>();
   /** Last model announced to the timeline; assistant rows re-announce only on change. */
@@ -2047,24 +2077,14 @@ export function createClaudeHistoryEventMapper(
       if (text) events.push(text);
       for (const block of blocks) {
         if (!isToolUseBlock(block)) continue;
-        events.push(
-          toolEvent({
-            toolCallId: block.id,
-            parentToolCallId: parent,
-            title: block.name,
-            kind: claudeToolKind(block.name),
-            status: 'in_progress',
-            content: toolInputContent(block.name, block.input) ?? [],
-            rawInput: block.input,
-          }),
-        );
+        events.push(toolEvent(claudeToolCallFromUse(block, parent)));
       }
       return events;
     }
 
     const results = blocks.filter((block) => isToolResultBlock(block));
     for (const block of results) {
-      const existing = announced.get(block.tool_use_id);
+      const existing = announced.get(block.tool_use_id) ?? toolUses?.get(block.tool_use_id);
       events.push(
         toolEvent({
           toolCallId: block.tool_use_id,
@@ -2117,6 +2137,18 @@ interface ClaudeToolResultBlock {
   tool_use_id: string;
   is_error?: unknown;
   content?: unknown;
+}
+
+function claudeToolCallFromUse(block: ClaudeToolUseBlock, parentToolCallId?: string): ToolCall {
+  return {
+    toolCallId: block.id,
+    parentToolCallId,
+    title: block.name,
+    kind: claudeToolKind(block.name),
+    status: 'in_progress',
+    content: toolInputContent(block.name, block.input) ?? [],
+    rawInput: block.input,
+  };
 }
 
 interface ClaudeThinkingBlock {

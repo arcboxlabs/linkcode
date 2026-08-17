@@ -1,7 +1,9 @@
 import type { ToolCall } from '@linkcode/schema';
 import { Badge } from 'coss-ui/components/badge';
+import { ToolCaseIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import { toolCallDiffStats } from '../diff-utils';
+import { cn } from '../lib/cn';
 import type { ToolMetadata } from '../tool-utils';
 import {
   hasToolBody,
@@ -9,9 +11,11 @@ import {
   toolCallContextSummary,
   toolCallFailureMessage,
   toolCallMetadata,
+  toolCallSearchCounts,
 } from '../tool-utils';
+import { IntegrationIcon, integrationBrand } from './integration-brand';
 import { Tool, ToolContent, ToolHeader } from './tool';
-import { toolCallDisplayText } from './tool-result-content';
+import { toolCallDisplayText, toolSearchPresentation } from './tool-result-content';
 import { ToolResultPreview } from './tool-result-preview';
 
 function ToolMetadataList({ metadata }: { metadata: ToolMetadata[] }): React.ReactNode {
@@ -49,10 +53,11 @@ export function ToolCallBody({
     toolCall.kind === 'execute' ? undefined : toolCallFailureMessage(toolCall);
   const failureMessage =
     rawFailureMessage && !contentText.includes(rawFailureMessage) ? rawFailureMessage : undefined;
+  const metadata = toolCall.kind === 'search' ? [] : toolCallMetadata(toolCall);
 
   return (
     <>
-      <ToolMetadataList metadata={toolCallMetadata(toolCall)} />
+      <ToolMetadataList metadata={metadata} />
       <ToolResultPreview TerminalBlockComponent={TerminalBlockComponent} toolCall={toolCall} />
 
       {failureMessage ? (
@@ -88,10 +93,68 @@ export function ToolCallItem({
   const tt = useTranslations('workbench.tool');
 
   const hasBody = hasToolBody(toolCall);
-  const summary = toolCallContextSummary(toolCall);
   const diffTotals = toolCallDiffStats(toolCall);
   const mcp = mcpToolName(toolCall.title);
-  const title = mcp?.tool ?? toolCall.title;
+  const running = !declined && (toolCall.status === 'pending' || toolCall.status === 'in_progress');
+  const completed = !declined && toolCall.status === 'completed';
+
+  // Search headers are humanized: ToolSearch gets a localized verb (never its raw select: query),
+  // and other search calls summarize settle counts — raw patterns live only in the body card.
+  const toolSearch = toolSearchPresentation(toolCall);
+  const searchCounts = toolSearch ? undefined : toolCallSearchCounts(toolCall);
+  let title = mcp?.tool ?? toolCall.title;
+  let summary = toolCallContextSummary(toolCall);
+  // Glyph priority: caller-supplied plugin icon, ToolSearch toolbox, integration brand, kind
+  // icon. State glyphs override inside ToolIcon — except failed, which keeps a supplied glyph.
+  const brand = mcp ? integrationBrand(mcp.server) : undefined;
+  let headerIcon = icon;
+  if (toolSearch && !headerIcon) {
+    headerIcon = (
+      <ToolCaseIcon
+        className={cn('size-3.5 shrink-0', running ? 'text-foreground' : 'text-muted-foreground')}
+      />
+    );
+  }
+  if (brand && !headerIcon) {
+    headerIcon = (
+      <IntegrationIcon
+        brand={brand}
+        className={running ? 'text-foreground' : 'text-muted-foreground'}
+      />
+    );
+  }
+  if (toolSearch) {
+    title =
+      toolSearch.mode === 'select'
+        ? running
+          ? tt('toolSearch.selecting')
+          : // History reads can lose the result rows (the SDK strips tool_use_result), so a
+            // settle without names keeps the neutral label instead of "Selected 0 tools".
+            completed && toolSearch.names.length > 0
+            ? tt('toolSearch.selected', { count: toolSearch.names.length })
+            : tt('toolSearch.select')
+        : running
+          ? tt('toolSearch.searching')
+          : completed
+            ? tt('toolSearch.searched')
+            : tt('toolSearch.search');
+    summary = toolSearch.mode === 'search' ? { label: toolSearch.query } : undefined;
+  } else if (searchCounts) {
+    const label = [
+      searchCounts.matches === undefined
+        ? undefined
+        : tt('searchSummary.matches', { count: searchCounts.matches }),
+      searchCounts.files === undefined
+        ? undefined
+        : tt('searchSummary.files', { count: searchCounts.files }),
+    ]
+      .filter((part) => part !== undefined)
+      .join(' · ');
+    summary = {
+      label: summary ? `${summary.label} · ${label}` : label,
+      tooltip: summary?.tooltip,
+    };
+  }
 
   return (
     <Tool>
@@ -101,7 +164,7 @@ export function ToolCallItem({
         declined={declined}
         diffStats={diffTotals}
         hasBody={hasBody}
-        icon={icon}
+        icon={headerIcon}
         kind={toolCall.kind}
         status={toolCall.status}
         statusLabel={

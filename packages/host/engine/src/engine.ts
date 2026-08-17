@@ -101,8 +101,18 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.stateDir,
     fileHost,
   );
-  const history = new HistoryService(factory);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
+  const translator = deps.translator;
+  const startOptions = new SessionStartOptionsResolver(
+    providerStore,
+    translator,
+    deps.simulatorMcp,
+    customMcp,
+    plugins,
+  );
+  const history = new HistoryService(factory, {
+    injectedMcpServerNames: (kind) => startOptions.injectedMcpServerNames(kind),
+  });
   const runtimes = yield* AgentRuntimeService.make(
     {
       initial: deps.agentRuntimes,
@@ -186,14 +196,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const resourceRequests = new ResourceRequestHandler(transport, resources, responder);
-  const translator = deps.translator;
-  const startOptions = new SessionStartOptionsResolver(
-    providerStore,
-    translator,
-    deps.simulatorMcp,
-    customMcp,
-    plugins,
-  );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,
     records,

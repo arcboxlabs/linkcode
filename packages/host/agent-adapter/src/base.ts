@@ -7,7 +7,6 @@ import type {
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
@@ -36,8 +35,10 @@ import { AGENT_INPUT_CAPABILITIES, textBlock } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { Listeners } from '@linkcode/transport';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import type { AgentAdapter, AgentStartCatalogOptions } from './adapter';
+import type { AgentAdapter, AgentHistoryReadContext, AgentStartCatalogOptions } from './adapter';
 import { nextMessageId, nextRequestId } from './adapter';
+import type { ProviderErrorDetails } from './gateway-error';
+import { linkCodeGatewayError } from './gateway-error';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
@@ -110,7 +111,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     return Promise.resolve({ sessions: [] });
   }
 
-  readHistory(_opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+  readHistory(_opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
     return Promise.reject(new Error(`${this.kind}: history read is not supported`));
   }
 
@@ -388,6 +389,29 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
   protected emitError(message: string, code?: string, recoverable = true): void {
     this.emit({ type: 'error', message, code, recoverable });
+  }
+
+  private providerBaseUrl(): unknown {
+    return this.opts?.config?.upstreamBaseUrl ?? this.opts?.config?.baseUrl;
+  }
+
+  protected emitProviderError(message: string, details: ProviderErrorDetails = {}): void {
+    const gatewayError = linkCodeGatewayError(this.providerBaseUrl(), {
+      message,
+      ...details,
+    });
+    if (gatewayError) {
+      this.emitError(gatewayError.message, gatewayError.code, gatewayError.recoverable);
+    } else {
+      this.emitError(message);
+    }
+  }
+
+  protected emitGatewayError(details: ProviderErrorDetails): boolean {
+    const gatewayError = linkCodeGatewayError(this.providerBaseUrl(), details);
+    if (!gatewayError) return false;
+    this.emitError(gatewayError.message, gatewayError.code, gatewayError.recoverable);
+    return true;
   }
 
   // ── Permission round-trip (resolved by a `permission-response` AgentInput, by id) ──

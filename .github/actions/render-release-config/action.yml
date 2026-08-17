@@ -1,9 +1,9 @@
 name: Render release config
 description: >
-  Renders the immutable build-time config bundle for a signed release. Checks out the config
-  publisher and structural source at the exact commits pinned by the release manifest(s), then
-  invokes the app's config:render through the pinned checkout. Every input is explicit: a missing
-  value fails the build with an actionable error, and nothing is fetched from a mutable ref.
+  Renders the immutable build-time config bundle for a signed release. Downloads one digest-bound
+  descriptor or accepts a reviewed nonproduction fixture, checks out the config publisher and
+  structural source at its exact commits, then invokes the app's config:render through the pinned
+  checkout. Missing, malformed, mixed, or drifted inputs fail closed.
 
 inputs:
   app:
@@ -25,12 +25,16 @@ inputs:
     description: Reviewed source root (repository root for production or examples/acme-zenith)
     required: false
     default: "."
+  release-inputs-url:
+    description: Atomic HTTPS release-input descriptor; mutually exclusive with inline JSON inputs
+    required: false
+    default: ""
   revision:
-    description: Config revision metadata JSON content (vars.CONFIG_RELEASE_REVISION)
+    description: Config revision metadata JSON content for nonproduction fixtures
     required: false
     default: ""
   keyrings:
-    description: Public keyrings JSON content (vars.CONFIG_RELEASE_KEYRINGS)
+    description: Public keyrings JSON content for nonproduction fixtures
     required: false
     default: ""
   brand-artifacts:
@@ -62,6 +66,7 @@ runs:
         SOURCE_REPO: ${{ inputs.source-repository }}
         SOURCE_TOKEN: ${{ inputs.source-token }}
         SOURCE_ROOT: ${{ inputs.source-root }}
+        RELEASE_INPUTS_URL: ${{ inputs.release-inputs-url }}
         REVISION_JSON: ${{ inputs.revision }}
         KEYRINGS_JSON: ${{ inputs.keyrings }}
         MANIFEST_DESKTOP: ${{ inputs.release-manifest }}
@@ -88,26 +93,47 @@ runs:
           exit 1
         fi
 
-        missing=()
-        [ -n "$REVISION_JSON" ] || missing+=(CONFIG_RELEASE_REVISION)
-        [ -n "$KEYRINGS_JSON" ] || missing+=(CONFIG_RELEASE_KEYRINGS)
-        case "$APP" in
-          desktop) [ -n "$MANIFEST_DESKTOP" ] || missing+=(CONFIG_RELEASE_MANIFEST_DESKTOP) ;;
-          mobile)
-            [ -n "$MANIFEST_IOS" ] || missing+=(CONFIG_RELEASE_MANIFEST_IOS)
-            [ -n "$MANIFEST_ANDROID" ] || missing+=(CONFIG_RELEASE_MANIFEST_ANDROID)
-            ;;
-          *) echo "::error::render-release-config: unknown app '$APP'"; exit 1 ;;
-        esac
-        if [ "${#missing[@]}" -gt 0 ]; then
-          echo "::error::Release builds embed an immutable config bundle rendered from the pinned config publisher checkout, but these release-environment inputs are missing: ${missing[*]}. Configure them in the GitHub 'release' environment (see docs/RELEASE.md, 'Immutable config bundle')."
-          exit 1
-        fi
-
         work="$RUNNER_TEMP/config-render-$APP"
         mkdir -p "$work"
-        printf '%s' "$REVISION_JSON" > "$work/revision.json"
-        printf '%s' "$KEYRINGS_JSON" > "$work/keyrings.json"
+        write_json() {
+          printf '%s\n' "${1%$'\n'}" > "$2"
+        }
+        if [ -n "$RELEASE_INPUTS_URL" ]; then
+          if [ -n "$REVISION_JSON$KEYRINGS_JSON$MANIFEST_DESKTOP$MANIFEST_IOS$MANIFEST_ANDROID" ]; then
+            echo "::error::release-inputs-url cannot be combined with inline release JSON"
+            exit 1
+          fi
+          node .github/scripts/config-release-inputs.mjs \
+            --app "$APP" --url "$RELEASE_INPUTS_URL" --out "$work/downloaded"
+          cp "$work/downloaded/revision.json" "$work/revision.json"
+          cp "$work/downloaded/keyrings.json" "$work/keyrings.json"
+          case "$APP" in
+            desktop) cp "$work/downloaded/manifest-desktop.json" "$work/manifest-desktop.json" ;;
+            mobile)
+              cp "$work/downloaded/manifest-ios.json" "$work/manifest-ios.json"
+              cp "$work/downloaded/manifest-android.json" "$work/manifest-android.json"
+              ;;
+            *) echo "::error::render-release-config: unknown app '$APP'"; exit 1 ;;
+          esac
+        else
+          missing=()
+          [ -n "$REVISION_JSON" ] || missing+=(CONFIG_RELEASE_REVISION)
+          [ -n "$KEYRINGS_JSON" ] || missing+=(CONFIG_RELEASE_KEYRINGS)
+          case "$APP" in
+            desktop) [ -n "$MANIFEST_DESKTOP" ] || missing+=(CONFIG_RELEASE_MANIFEST_DESKTOP) ;;
+            mobile)
+              [ -n "$MANIFEST_IOS" ] || missing+=(CONFIG_RELEASE_MANIFEST_IOS)
+              [ -n "$MANIFEST_ANDROID" ] || missing+=(CONFIG_RELEASE_MANIFEST_ANDROID)
+              ;;
+            *) echo "::error::render-release-config: unknown app '$APP'"; exit 1 ;;
+          esac
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::render-release-config requires release-inputs-url or a complete reviewed nonproduction fixture"
+            exit 1
+          fi
+          write_json "$REVISION_JSON" "$work/revision.json"
+          write_json "$KEYRINGS_JSON" "$work/keyrings.json"
+        fi
 
         pin() { jq -er "$2" "$1"; }
         # Validated at top level before any $(pin …) use: inside command substitution a failure
@@ -119,15 +145,24 @@ runs:
               exit 1
             fi
           done
+          if [ "$SOURCE_ROOT" = . ] &&
+             ! jq -e '.releaseManifestFormatVersion == 2' "$1" > /dev/null; then
+            echo "::error::Production release manifest $1 requires format version 2"
+            exit 1
+          fi
         }
 
         if [ "$APP" = desktop ]; then
-          printf '%s' "$MANIFEST_DESKTOP" > "$work/manifest-desktop.json"
+          if [ -z "$RELEASE_INPUTS_URL" ]; then
+            write_json "$MANIFEST_DESKTOP" "$work/manifest-desktop.json"
+          fi
           check_manifest "$work/manifest-desktop.json"
           primary="$work/manifest-desktop.json"
         else
-          printf '%s' "$MANIFEST_IOS" > "$work/manifest-ios.json"
-          printf '%s' "$MANIFEST_ANDROID" > "$work/manifest-android.json"
+          if [ -z "$RELEASE_INPUTS_URL" ]; then
+            write_json "$MANIFEST_IOS" "$work/manifest-ios.json"
+            write_json "$MANIFEST_ANDROID" "$work/manifest-android.json"
+          fi
           check_manifest "$work/manifest-ios.json"
           check_manifest "$work/manifest-android.json"
           primary="$work/manifest-ios.json"

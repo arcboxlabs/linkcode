@@ -1,11 +1,15 @@
 import { Collapsible, CollapsibleTrigger } from 'coss-ui/components/collapsible';
-import { PencilIcon, SearchIcon, SparklesIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
+import { PencilIcon, SparklesIcon, TelescopeIcon, TerminalIcon, WrenchIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { TimelineEntry } from './activity-groups';
 import type { ActivitySummaryCategory, ActivitySummaryClause } from './activity-summary';
-import { activityRunCurrentDescriptor, settledActivityRunDescriptor } from './activity-summary';
+import {
+  activityRunBrand,
+  activityRunCurrentDescriptor,
+  settledActivityRunDescriptor,
+} from './activity-summary';
 import type { QuestionConversationItem } from './conversation-prompts';
 import { ChatDisclosureContent } from './disclosure-content';
 import {
@@ -15,6 +19,8 @@ import {
   ChatDisclosureChevron,
   ChatDisclosureIconSlot,
 } from './disclosure-header';
+import type { IntegrationBrand } from './integration-brand';
+import { INTEGRATION_LABELS, IntegrationIcon } from './integration-brand';
 import { QuestionCallItem } from './question-call-item';
 import { Shimmer } from './shimmer';
 import { ThoughtBlock } from './thought-block';
@@ -43,6 +49,8 @@ export function ActivityRun({
   const t = useTranslations('workbench.activityRun');
   const current = activityRunCurrentDescriptor(run.items);
   const settled = settledActivityRunDescriptor(run.items);
+  const brand = activityRunBrand(run.items);
+  const brandLabel = brand === undefined ? undefined : INTEGRATION_LABELS[brand];
   const firstClause = settled.clauses[0];
   const failureClause = firstClause.category === 'failure' ? firstClause : undefined;
   const hasFailure = failureClause !== undefined;
@@ -53,6 +61,12 @@ export function ActivityRun({
         ? t('failed', { count: clause.count })
         : t('failedMany');
     }
+    // A dedicated brand group names its integration ("Used Linear 2 times").
+    if (brandLabel !== undefined && clause.category === 'integration') {
+      return clause.count <= EXACT_ACTIVITY_COUNT_MAX
+        ? t('settled.integrationBrand', { brand: brandLabel, count: clause.count })
+        : t('settledMany.integrationBrand', { brand: brandLabel });
+    }
     return clause.count <= EXACT_ACTIVITY_COUNT_MAX
       ? t(`settled.${clause.category}`, { count: clause.count })
       : t(`settledMany.${clause.category}`);
@@ -62,7 +76,10 @@ export function ActivityRun({
     ? [
         {
           key: `running-${current.kind}`,
-          text: t(`running.${current.kind}`),
+          text:
+            brandLabel !== undefined && current.kind === 'other'
+              ? t('running.integrationBrand', { brand: brandLabel })
+              : t(`running.${current.kind}`),
           failure: false,
         },
         ...(currentSummary
@@ -98,6 +115,7 @@ export function ActivityRun({
       >
         <ChatDisclosureIconSlot>
           <ActivityRunIcon
+            brand={brand}
             category={iconCategory}
             failed={hasFailure}
             running={current !== undefined}
@@ -136,7 +154,7 @@ export function ActivityRun({
         ) : null}
         <ChatDisclosureChevron />
       </CollapsibleTrigger>
-      <ChatDisclosureContent bodyClassName="space-y-0.5">
+      <ChatDisclosureContent bodyClassName="space-y-0.5 [&>[data-slot=collapsible]>*:first-child]:py-0.5">
         {run.items.map((item) => {
           if (item.kind === 'reasoning') {
             return (
@@ -189,25 +207,37 @@ const ACTIVITY_ICONS: Record<
   files: PencilIcon,
   integration: WrenchIcon,
   command: TerminalIcon,
-  explore: SearchIcon,
+  explore: TelescopeIcon,
   thinking: SparklesIcon,
 };
 
 function ActivityRunIcon({
+  brand,
   category,
   failed,
   running,
 }: {
+  /** A single-brand run wears its integration glyph instead of the category glyph. */
+  brand?: IntegrationBrand;
   category?: SettledActivityCategory;
   failed: boolean;
   running: boolean;
 }): React.ReactNode {
   // The shimmering label already signals activity, so a running head keeps its category
   // glyph (no spinner) and only brightens it.
+  const tint = failed
+    ? 'text-destructive-foreground'
+    : running
+      ? 'text-foreground'
+      : 'text-muted-foreground';
+  // A brand glyph persists through failure (the red failure clause carries the state) but
+  // never wears the destructive tint — a red Linear logo reads as the integration itself
+  // being broken.
+  if (brand) {
+    return <IntegrationIcon brand={brand} className={failed ? 'text-muted-foreground' : tint} />;
+  }
   const Icon = category ? ACTIVITY_ICONS[category] : WrenchIcon;
-  if (failed) return <Icon className="size-3.5 shrink-0 text-destructive-foreground" />;
-  if (running) return <Icon className="size-3.5 shrink-0 text-foreground" />;
-  return <Icon className="size-3.5 shrink-0 text-muted-foreground" />;
+  return <Icon className={cn('size-3.5 shrink-0', tint)} />;
 }
 
 function primarySettledCategory(

@@ -1,4 +1,7 @@
+import { mcpToolName } from '../tool-utils';
 import type { ActivityRunItem } from './activity-groups';
+import type { IntegrationBrand } from './integration-brand';
+import { integrationBrand } from './integration-brand';
 import { publicReasoningSummary } from './reasoning-summary';
 
 export type ActivitySummaryCategory =
@@ -95,6 +98,34 @@ export function settledActivityRunDescriptor(
 
 function activityCategory(item: ActivityRunItem): ActivityCategory {
   return item.kind === 'reasoning' ? 'thinking' : toolDescriptor(item.toolCall.kind).category;
+}
+
+/** The known integration a run item belongs to, resolved from its MCP server name. */
+export function activityItemBrand(item: ActivityRunItem): IntegrationBrand | undefined {
+  if (item.kind !== 'tool') return undefined;
+  const mcp = mcpToolName(item.toolCall.title);
+  return mcp ? integrationBrand(mcp.server) : undefined;
+}
+
+/** The one brand a run's header may wear: a running branded call always wins (the group is
+ * visibly doing that integration's work right now); otherwise the run must resolve to a single
+ * distinct brand — mixed-brand runs keep their category glyph. */
+export function activityRunBrand(items: readonly ActivityRunItem[]): IntegrationBrand | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind !== 'tool' || !isActiveTool(item)) continue;
+    const brand = activityItemBrand(item);
+    if (brand) return brand;
+  }
+
+  let single: IntegrationBrand | undefined;
+  for (const item of items) {
+    const brand = activityItemBrand(item);
+    if (!brand) continue;
+    if (single !== undefined && single !== brand) return undefined;
+    single = brand;
+  }
+  return single;
 }
 
 type ToolActivityDescriptor = Exclude<ActivityCurrentDescriptor, { kind: 'reasoning' }>;

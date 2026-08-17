@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 const rBlobUrl = /^blob:/;
+const RE_SVG_DATA_URI = /^data:image\/svg\+xml;base64,/;
 
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
@@ -224,6 +225,19 @@ describe('dev mock transport', () => {
           name: 'review',
           description: 'Review the current changes',
           argumentHint: '<path>',
+        },
+        {
+          name: 'documents',
+          description: 'Create and edit Word and Google Docs files',
+          displayName: 'Documents',
+          brandColor: '#2563EB',
+          iconDataUri: expect.stringMatching(RE_SVG_DATA_URI),
+        },
+        {
+          name: 'sync-linear',
+          description: 'Sync issues into the tracker',
+          displayName: 'Linear',
+          brandColor: '#5E6AD2',
         },
         {
           name: 'usage',

@@ -16,7 +16,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
-    "@better-auth/expo": "1.7.0-rc.1",
+    "@better-auth/expo": "1.7.0-rc.2",
     "@expo/ui": "57.0.7",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@linkcode/client-core": "workspace:*",
