@@ -15,7 +15,7 @@ import {
   repositoryLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
-import { SECONDARY } from '@mobile/components/form/styles';
+import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';

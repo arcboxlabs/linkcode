@@ -25,7 +25,7 @@ import {
   toolCallFailureMessage,
   toolCallMetadata,
 } from '@linkcode/ui/native';
-import { SECONDARY } from '@mobile/components/form/styles';
+import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { useTranslations } from 'use-intl';
 import { DiffBlock } from './diff-block';
 

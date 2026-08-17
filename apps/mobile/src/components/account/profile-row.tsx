@@ -1,6 +1,6 @@
 import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import { font } from '@expo/ui/swift-ui/modifiers';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
+import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import type { CloudUser } from '@mobile/runtime/cloud/account';
 
 /** SF Symbol rather than the account's picture: `@expo/ui`'s `Image` takes SF Symbols, asset

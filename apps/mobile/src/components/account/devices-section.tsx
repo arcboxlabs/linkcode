@@ -9,7 +9,7 @@ import {
   VStack,
 } from '@expo/ui/swift-ui';
 import { badge, buttonStyle, disabled, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
+import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import { signOutOfCloud } from '@mobile/runtime/cloud/account';
 import type { CloudDevice } from '@mobile/runtime/cloud/devices';
 import { fetchDevices, getEnrolledDeviceId, revokeDevice } from '@mobile/runtime/cloud/devices';

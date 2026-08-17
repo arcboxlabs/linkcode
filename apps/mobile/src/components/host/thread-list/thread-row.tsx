@@ -8,7 +8,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import type { SessionInfo, SessionStatus } from '@linkcode/schema';
 import { AGENT_LABELS, repositoryLabel } from '@linkcode/ui/native';
-import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles';
+import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles.ios';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
 
 /** SwiftUI's semantic colours standing in for the `bg-*` tokens the RN dot used. */

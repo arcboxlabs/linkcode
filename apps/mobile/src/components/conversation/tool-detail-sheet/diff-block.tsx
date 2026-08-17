@@ -1,7 +1,7 @@
 import { HStack, ScrollView, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import { font, foregroundStyle, lineLimit } from '@expo/ui/swift-ui/modifiers';
 import { diffLines, patchLines } from '@linkcode/ui/native';
-import { SECONDARY } from '@mobile/components/form/styles';
+import { SECONDARY } from '@mobile/components/form/styles.ios';
 
 const MONO_FOOTNOTE = font({ textStyle: 'footnote', design: 'monospaced' });
 const ADDED = foregroundStyle('#28A745');

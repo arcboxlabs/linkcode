@@ -1,7 +1,7 @@
 import { Button, HStack, ProgressView, Section, Spacer, Text } from '@expo/ui/swift-ui';
 import { buttonStyle, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
+import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import { ensureDeviceRegistered } from '@mobile/runtime/cloud/devices';
 import type { OnlineHost } from '@mobile/runtime/cloud/hosts';
 import { fetchOnlineHosts } from '@mobile/runtime/cloud/hosts';

@@ -5,7 +5,7 @@ import {
   multilineTextAlignment,
   textSelection,
 } from '@expo/ui/swift-ui/modifiers';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
+import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import { useTranslations } from 'use-intl';
 
 const CENTERED = multilineTextAlignment('center');
