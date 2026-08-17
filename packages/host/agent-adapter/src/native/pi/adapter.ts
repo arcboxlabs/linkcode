@@ -137,12 +137,26 @@ function createConfiguredRegistry(
 ) {
   const authStorage = pi.AuthStorage.create();
   const modelRegistry = pi.ModelRegistry.create(authStorage);
-  const ref = opts.model ? parseModel(opts.model) : null;
+  const cred = readAgentCredential(opts.config);
+  let ref = opts.model ? parseModel(opts.model) : null;
   if (!ref && opts.model) {
-    throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
+    const endpointProviders = new Set<string>();
+    if (cred.baseUrl) {
+      for (const model of modelRegistry.getAll()) {
+        if (model.id === opts.model && model.baseUrl === cred.baseUrl) {
+          endpointProviders.add(model.provider);
+        }
+      }
+    }
+    const endpointProvider =
+      endpointProviders.size === 1 ? endpointProviders.values().next().value : undefined;
+    const provider = fallbackProvider ?? cred.knownProvider ?? endpointProvider;
+    if (!provider) {
+      throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
+    }
+    ref = { provider, modelId: opts.model };
   }
 
-  const cred = readAgentCredential(opts.config);
   const key = cred.apiKey ?? cred.authToken;
   // The model ref decides which provider pi routes through, so it wins; a resumed session's own
   // last-routed provider comes next, being direct evidence rather than a catalog default; the
