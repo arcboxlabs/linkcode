@@ -166,7 +166,14 @@ deployment state is checked.
 - `distribution.desktop` may be `null` only for plan validation. Every build requires an object containing
   `credentialEnvironment`, `r2Bucket`, `r2Prefix`, and `updateUrl`. `credentialEnvironment` must be
   exactly `release`; no per-brand Environment is part of this contract. Both URL and prefix must end
-  in the same brand/channel path, and prefixes in one bucket must not overlap.
+  in the same brand/channel path. An entry may additionally contain the exact-key
+  `legacyDestination` object `{ r2Bucket, r2Prefix, updateUrl }`. Its prefix need not contain the
+  brand/channel segments, allowing an immutable pre-matrix updater feed to remain reachable; when
+  present, Desktop packaging and upload use that destination instead of the standard one. Uploading
+  to a legacy destination additionally requires the workflow ref to be the exact `v<package-version>`
+  tag, preventing a manual `master` dispatch from replacing an installed app's feed. The field is
+  generic and is accepted only from the reviewed matrix entry—brand IDs do not imply it. Standard and
+  legacy R2 bucket/prefix pairs and update URL paths must not overlap within or across brands.
 - `distribution.mobile` may be `null` only for plan validation. Every build requires `easProjectId`, its
   exact `https://u.expo.dev/<id>` URL, iOS `appleTeamId`/`ascAppId`, and Android
   `track: "internal"`. EAS project IDs and App Store Connect app IDs must be unique across brands.
