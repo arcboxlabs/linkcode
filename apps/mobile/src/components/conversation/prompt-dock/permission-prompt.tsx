@@ -7,7 +7,6 @@ import {
 } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { useThemeColor } from 'heroui-native';
 import { XIcon } from 'lucide-react-native';
 import { Pressable, Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -25,12 +24,18 @@ export function PermissionPrompt({
 }: PermissionPromptProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
   const colors = useAppMaterialColors();
-  const muted = useThemeColor('muted');
 
   return (
-    <View className="gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5">
+    <View
+      className="gap-2.5 rounded-xl border px-3 py-2.5"
+      style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+    >
       <View className="flex-row items-center gap-2">
-        <RNText className="flex-1 font-semibold text-foreground text-subhead" numberOfLines={2}>
+        <RNText
+          className="flex-1 font-semibold text-subhead"
+          style={{ color: colors.onSurface }}
+          numberOfLines={2}
+        >
           {t('allowTitle', { title: toolCall.title ?? '' })}
         </RNText>
         <Pressable
@@ -39,14 +44,14 @@ export function PermissionPrompt({
           disabled={responding}
           onPress={() => onRespond({ outcome: 'cancelled' })}
         >
-          <XIcon size={14} color={muted} />
+          <XIcon size={14} color={colors.onSurfaceVariant} />
         </Pressable>
       </View>
       {detailRows(toolCall).map((row) => (
         <RNText
           key={row.key}
-          className="text-footnote text-muted"
-          style={{ fontFamily: 'monospace' }}
+          className="text-footnote"
+          style={{ fontFamily: 'monospace', color: colors.onSurfaceVariant }}
           numberOfLines={2}
         >
           {row.value}

@@ -1,12 +1,14 @@
+import { Button, Text as ComposeText } from '@expo/ui/jetpack-compose';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import type { HostConnectionStateProps } from '@mobile/components/host/host-connection-state.types';
-import { Button, useThemeColor } from 'heroui-native';
 import { WifiOffIcon } from 'lucide-react-native';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /** Android full-screen fallback while a host connection is being established or has failed.
- * Deliberately plain RN: the failure text stays selectable (`selectable`), which Compose text
- * cannot offer, and nothing here is list chrome that would want MD3 dress. */
+ * The text stays RN so the failure detail remains selectable (Compose text cannot offer that);
+ * colors come from the Material palette so it matches the Compose surfaces around it. */
 export function HostConnectionState({
   status,
   url,
@@ -14,31 +16,40 @@ export function HostConnectionState({
   onRetry,
 }: HostConnectionStateProps): React.ReactNode {
   const t = useTranslations('mobile.connection');
-  const muted = useThemeColor('muted');
+  const colors = useAppMaterialColors();
 
   return (
     <View className="flex-1 items-center justify-center gap-4 px-6">
       {status === 'connecting' ? (
         <>
-          <ActivityIndicator />
-          <Text className="text-muted">{t('connecting')}</Text>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ color: colors.onSurfaceVariant }}>{t('connecting')}</Text>
         </>
       ) : (
         <>
-          <WifiOffIcon size={44} color={muted} strokeWidth={1.5} />
+          <WifiOffIcon size={44} color={colors.onSurfaceVariant} strokeWidth={1.5} />
           <View className="items-center gap-1.5">
-            <Text className="text-center font-semibold text-foreground text-title">
+            <Text
+              className="text-center font-semibold text-title"
+              style={{ color: colors.onSurface }}
+            >
               {t('unavailableTitle')}
             </Text>
-            <Text selectable className="text-center text-muted">
+            <Text selectable className="text-center" style={{ color: colors.onSurfaceVariant }}>
               {t('error', { url })}
             </Text>
           </View>
-          <Button onPress={onRetry}>
-            <Button.Label>{t('retry')}</Button.Label>
-          </Button>
+          <ThemedHost matchContents>
+            <Button onClick={onRetry}>
+              <ComposeText>{t('retry')}</ComposeText>
+            </Button>
+          </ThemedHost>
           {failure ? (
-            <Text selectable className="text-center text-footnote text-muted">
+            <Text
+              selectable
+              className="text-center text-footnote"
+              style={{ color: colors.onSurfaceVariant }}
+            >
               {failure}
             </Text>
           ) : null}

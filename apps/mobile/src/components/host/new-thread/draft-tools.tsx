@@ -6,6 +6,7 @@ import {
   modelChoiceKey,
 } from '@linkcode/ui/native';
 import { ToolChip } from '@mobile/components/conversation/tool-chip.android';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import type { SheetPickerSection } from '@mobile/components/form/sheet-picker.android';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
 import type {
@@ -13,7 +14,6 @@ import type {
   ApprovalChipProps,
 } from '@mobile/components/host/new-thread/draft-tools.types';
 import { clearable, DEFAULT_TAG } from '@mobile/components/host/new-thread/draft-tools.types';
-import { useThemeColor } from 'heroui-native';
 import { ShieldIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -74,7 +74,7 @@ export function AgentSelectorChip({
   onEffortChange,
 }: AgentSelectorChipProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
-  const muted = useThemeColor('muted');
+  const colors = useAppMaterialColors();
   const [open, setOpen] = useState(false);
   // The account label joins a row only when the list spans several accounts — the same threshold
   // as the web's provider grouping; a single-account list repeating its account is noise.
@@ -129,7 +129,7 @@ export function AgentSelectorChip({
   return (
     <View className="flex-row items-center">
       {/* Footnote's 13pt metric, so the mark scales with the chip text beside it. */}
-      <AgentIcon kind={kind} variant="ghost" size={13} color={muted} />
+      <AgentIcon kind={kind} variant="ghost" size={13} color={colors.onSurfaceVariant} />
       <ToolChip
         label={t('modelLabel')}
         value={selectorValue}

@@ -4,9 +4,9 @@ import type {
   SessionSelectorChipProps,
 } from '@mobile/components/conversation/session-tools.types';
 import { ToolChip } from '@mobile/components/conversation/tool-chip.android';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import type { SheetPickerSection } from '@mobile/components/form/sheet-picker.android';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
-import { useThemeColor } from 'heroui-native';
 import { ShieldIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -70,7 +70,7 @@ export function SessionSelectorChip({
   onEffortChange,
 }: SessionSelectorChipProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
-  const muted = useThemeColor('muted');
+  const colors = useAppMaterialColors();
   const [open, setOpen] = useState(false);
   const hasModels = models !== null && models.length > 0;
   const hasEfforts = effortOptions !== undefined && effortOptions.length > 0;
@@ -115,7 +115,7 @@ export function SessionSelectorChip({
   return (
     <View className="flex-row items-center">
       {/* Footnote's 13pt metric, so the mark scales with the chip text beside it. */}
-      <AgentIcon kind={kind} variant="ghost" size={13} color={muted} />
+      <AgentIcon kind={kind} variant="ghost" size={13} color={colors.onSurfaceVariant} />
       <ToolChip
         label={t('modelLabel')}
         value={selectorValue}

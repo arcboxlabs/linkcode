@@ -1,5 +1,5 @@
+import { useChromeColors } from '@mobile/components/shell/use-chrome-colors';
 import type { Stack } from 'expo-router';
-import { useThemeColor } from 'heroui-native';
 import { NavigationBarBackdrop } from '../../../modules/linkcode-navigation-bar-backdrop';
 import { USES_IOS_26_NAVIGATION } from './ios-26-navigation';
 
@@ -30,23 +30,24 @@ export const LARGE_TITLE_HEADER_OPTIONS: StackScreenOptions = {
 };
 
 /** Theme-synced native-stack chrome; every Stack in the app spreads these defaults.
- * Screens opt into a header per route via `Stack.Screen` options. */
+ * Screens opt into a header per route via `Stack.Screen` options. Colors come from the
+ * platform-split chrome palette: app tokens on iOS, Material You roles on Android. */
 export function useStackScreenOptions(): StackScreenOptions {
-  const [background, foreground, accent] = useThemeColor(['background', 'foreground', 'accent']);
+  const chrome = useChromeColors();
 
   return {
     headerShown: false,
     headerLargeTitleEnabled: false,
-    headerTintColor: accent,
-    headerTitleStyle: { color: foreground },
-    headerLargeTitleStyle: { color: foreground },
+    headerTintColor: chrome.tint,
+    headerTitleStyle: { color: chrome.title },
+    headerLargeTitleStyle: { color: chrome.title },
     // Android has no header blur; painting the header the content color keeps the screen
     // reading as one surface (the shadow is already off).
     ...(process.env.EXPO_OS !== 'ios' && {
-      headerStyle: { backgroundColor: background },
+      headerStyle: { backgroundColor: chrome.background },
     }),
     headerShadowVisible: false,
     headerBackButtonDisplayMode: 'minimal',
-    contentStyle: { backgroundColor: background },
+    contentStyle: { backgroundColor: chrome.background },
   };
 }

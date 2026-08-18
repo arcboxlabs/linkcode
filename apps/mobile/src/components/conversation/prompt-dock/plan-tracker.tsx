@@ -28,7 +28,10 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
   const current = entries[plan.currentIndex];
 
   return (
-    <View className="rounded-xl border border-border bg-surface-secondary/50 px-3 py-1.5">
+    <View
+      className="rounded-xl border px-3 py-1.5"
+      style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+    >
       <ThemedHost matchContents>
         <Column modifiers={[fillMaxWidth()]}>
           <Row

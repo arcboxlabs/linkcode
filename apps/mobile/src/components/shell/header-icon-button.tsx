@@ -1,4 +1,4 @@
-import { useThemeColor } from 'heroui-native';
+import { useChromeColors } from '@mobile/components/shell/use-chrome-colors';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable } from 'react-native';
 
@@ -13,7 +13,7 @@ export function HeaderIconButton({
   label: string;
   onPress: () => void;
 }): React.ReactNode {
-  const foreground = useThemeColor('foreground');
+  const { title } = useChromeColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -23,7 +23,7 @@ export function HeaderIconButton({
       className="h-9 w-9 items-center justify-center"
       style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
     >
-      <Icon size={21} color={foreground} strokeWidth={2} />
+      <Icon size={21} color={title} strokeWidth={2} />
     </Pressable>
   );
 }

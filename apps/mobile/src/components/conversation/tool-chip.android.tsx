@@ -1,4 +1,4 @@
-import { useThemeColor } from 'heroui-native';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, Text } from 'react-native';
 
@@ -24,7 +24,7 @@ export function ToolChip({
   maxValueWidth?: number;
   onPress: () => void;
 }): React.ReactNode {
-  const muted = useThemeColor('muted');
+  const colors = useAppMaterialColors();
 
   return (
     <Pressable
@@ -33,12 +33,12 @@ export function ToolChip({
       onPress={onPress}
       className="flex-row items-center gap-1 px-1.5 py-2"
     >
-      {Icon ? <Icon size={15} color={muted} /> : null}
+      {Icon ? <Icon size={15} color={colors.onSurfaceVariant} /> : null}
       {iconOnly ? null : (
         <Text
-          className="text-footnote text-muted"
+          className="text-footnote"
           numberOfLines={1}
-          style={maxValueWidth === undefined ? undefined : { maxWidth: maxValueWidth }}
+          style={{ color: colors.onSurfaceVariant, maxWidth: maxValueWidth }}
         >
           {value}
         </Text>

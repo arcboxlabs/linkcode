@@ -4,6 +4,7 @@ import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-op
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { PrimaryActionFab } from '@mobile/components/shell/primary-action-fab';
+import { useChromeColors } from '@mobile/components/shell/use-chrome-colors';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
@@ -19,6 +20,7 @@ export default function ThreadsRoute(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
   const hostHeaderOptions = useHostHeaderOptions();
+  const chrome = useChromeColors();
   const connection = useHostConnection();
 
   const primaryAction: PrimaryAction | null =
@@ -34,7 +36,7 @@ export default function ThreadsRoute(): React.ReactNode {
   const trailingActions = useTrailingActions(primaryAction);
 
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1" style={{ backgroundColor: chrome.background }}>
       <Stack.Screen
         options={{
           ...VISIBLE_HEADER_OPTIONS,

@@ -11,7 +11,6 @@ import {
 import { clickable, fillMaxWidth, weight } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { useThemeColor } from 'heroui-native';
 import { XIcon } from 'lucide-react-native';
 import { Pressable, Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -33,7 +32,6 @@ export function QuestionPage({
 }: QuestionPageProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
   const colors = useAppMaterialColors();
-  const muted = useThemeColor('muted');
   // Each page owns a distinct native state; the orchestrator remounts pages by key so a stale
   // native write from the previous question cannot leak here.
   const customText = useNativeState(draft.customText);
@@ -56,21 +54,26 @@ export function QuestionPage({
   };
 
   return (
-    <View className="gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5">
+    <View
+      className="gap-2.5 rounded-xl border px-3 py-2.5"
+      style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+    >
       <View className="flex-row items-center gap-2">
         {question.header ? (
-          <RNText className="font-semibold text-caption text-muted">{question.header}</RNText>
+          <RNText className="font-semibold text-caption" style={{ color: colors.onSurfaceVariant }}>
+            {question.header}
+          </RNText>
         ) : null}
-        <RNText className="flex-1 font-semibold text-foreground text-subhead">
+        <RNText className="flex-1 font-semibold text-subhead" style={{ color: colors.onSurface }}>
           {question.prompt}
         </RNText>
         {total > 1 ? (
-          <RNText className="text-caption text-muted">
+          <RNText className="text-caption" style={{ color: colors.onSurfaceVariant }}>
             {t('questionProgress', { current, total })}
           </RNText>
         ) : null}
         <Pressable accessibilityRole="button" hitSlop={8} disabled={responding} onPress={onCancel}>
-          <XIcon size={14} color={muted} />
+          <XIcon size={14} color={colors.onSurfaceVariant} />
         </Pressable>
       </View>
       <ThemedHost matchContents>

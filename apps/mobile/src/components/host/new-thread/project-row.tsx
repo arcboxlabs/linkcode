@@ -1,7 +1,7 @@
 import { repositoryLabel } from '@linkcode/ui/native';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
 import type { ProjectRowProps } from '@mobile/components/host/new-thread/project-row.types';
-import { useThemeColor } from 'heroui-native';
 import { ChevronsUpDownIcon, FolderIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
@@ -18,18 +18,19 @@ export function ProjectRow({
   onCustomPathChange,
 }: ProjectRowProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
-  const muted = useThemeColor('muted');
+  const colors = useAppMaterialColors();
   const [open, setOpen] = useState(false);
 
   if (workspaces.length === 0) {
     return (
       <View className="flex-row items-center gap-2 px-6 pb-1.5">
-        <FolderIcon size={15} color={muted} strokeWidth={2} />
+        <FolderIcon size={15} color={colors.onSurfaceVariant} strokeWidth={2} />
         <TextInput
           testID="thread-cwd-input"
-          className="flex-1 py-1 text-callout text-foreground"
+          className="flex-1 py-1 text-callout"
+          style={{ color: colors.onSurface }}
           placeholder={t('cwdPlaceholder')}
-          placeholderTextColor={muted}
+          placeholderTextColor={colors.onSurfaceVariant}
           value={customPath}
           onChangeText={onCustomPathChange}
           autoCapitalize="none"
@@ -47,9 +48,11 @@ export function ProjectRow({
         onPress={() => setOpen(true)}
         className="flex-row items-center gap-2 py-1"
       >
-        <FolderIcon size={15} color={muted} strokeWidth={2} />
-        <Text className="text-callout text-foreground">{workspaceLabel}</Text>
-        <ChevronsUpDownIcon size={11} color={muted} />
+        <FolderIcon size={15} color={colors.onSurfaceVariant} strokeWidth={2} />
+        <Text className="text-callout" style={{ color: colors.onSurface }}>
+          {workspaceLabel}
+        </Text>
+        <ChevronsUpDownIcon size={11} color={colors.onSurfaceVariant} />
       </Pressable>
       <SheetPicker
         open={open}
