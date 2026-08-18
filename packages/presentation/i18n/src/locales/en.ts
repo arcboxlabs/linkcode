@@ -1080,6 +1080,7 @@ export const en = {
         refresh: 'Fetch list',
         fetchFailed: 'Could not read the model list',
         secretFirst: 'Enter the key first, then fetch the model list',
+        required: 'Select at least one model before adding the account.',
         add: 'Add',
         addPlaceholder: 'Add a model id by hand',
       },

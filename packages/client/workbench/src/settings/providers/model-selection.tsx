@@ -21,6 +21,7 @@ export interface ModelSelectionProps {
   selected: AccountModel[];
   onChange: (models: AccountModel[]) => void;
   disabled?: boolean;
+  required?: boolean;
 }
 
 /**
@@ -72,6 +73,7 @@ export function ModelSelection({
   selected,
   onChange,
   disabled = false,
+  required = false,
 }: ModelSelectionProps): React.ReactNode {
   const t = useTranslations('settings.providers');
   const [fetched, setFetched] = useState<AccountModel[]>([]);
@@ -112,7 +114,14 @@ export function ModelSelection({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-sm">{t('models.label')}</span>
+        <span className="font-medium text-sm">
+          {t('models.label')}
+          {required ? (
+            <span aria-hidden="true" className="text-destructive">
+              {' *'}
+            </span>
+          ) : null}
+        </span>
         {onFetch ? (
           <Button
             type="button"
@@ -131,6 +140,11 @@ export function ModelSelection({
       <p className="text-muted-foreground text-xs">
         {onFetch ? t('models.hint') : t('models.hintUnlistable')}
       </p>
+      {required && selected.length === 0 ? (
+        <p aria-live="polite" className="text-destructive text-xs">
+          {t('models.required')}
+        </p>
+      ) : null}
       {error !== undefined ? <p className="text-destructive text-xs">{error}</p> : null}
       {listed.length > 0 ? (
         <div className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
