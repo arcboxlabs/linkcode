@@ -3,6 +3,7 @@ import { ThreadsScreen } from '@mobile/components/host/threads-screen';
 import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-options';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { PrimaryActionFab } from '@mobile/components/shell/primary-action-fab';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
@@ -45,6 +46,7 @@ export default function ThreadsRoute(): React.ReactNode {
       <HostClientGate>
         <ThreadsScreen />
       </HostClientGate>
+      <PrimaryActionFab action={primaryAction} />
     </View>
   );
 }

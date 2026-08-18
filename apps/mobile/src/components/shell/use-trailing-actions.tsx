@@ -12,9 +12,10 @@ type TrailingHeaderOptions = Pick<
   'headerRight' | 'unstable_headerRightItems'
 >;
 
-/** Trailing navigation-bar chrome for the tab screens: the screen's primary action — except on
- * iOS 26, whose tab-bar slot already carries it — then the overflow menu that leads to Settings.
- * Native bar items are iOS-only, so Android keeps RN header buttons. */
+/** Trailing navigation-bar chrome for the tab screens: on iOS the screen's primary action —
+ * except on iOS 26, whose tab-bar slot already carries it — then the overflow menu that leads to
+ * Settings. Native bar items are iOS-only; Android keeps an RN overflow button and carries the
+ * primary action as a floating action button instead (`PrimaryActionFab`). */
 export function useTrailingActions(primary: PrimaryAction | null): TrailingHeaderOptions {
   const t = useTranslations('mobile.settings');
   const router = useRouter();
@@ -50,9 +51,6 @@ export function useTrailingActions(primary: PrimaryAction | null): TrailingHeade
   return {
     headerRight: () => (
       <View className="flex-row">
-        {primary ? (
-          <HeaderIconButton icon={primary.icon} label={primary.label} onPress={primary.onPress} />
-        ) : null}
         <HeaderIconButton
           icon={EllipsisIcon}
           label={t('more')}

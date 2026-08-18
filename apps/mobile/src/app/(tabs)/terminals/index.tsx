@@ -2,6 +2,7 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-options';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { PrimaryActionFab } from '@mobile/components/shell/primary-action-fab';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { TerminalsScreen } from '@mobile/components/terminal/terminals-screen';
@@ -51,6 +52,7 @@ export default function TerminalsRoute(): React.ReactNode {
           onSheetOpenChange={setSheetOpen}
         />
       </HostClientGate>
+      <PrimaryActionFab action={primaryAction} />
     </View>
   );
 }
