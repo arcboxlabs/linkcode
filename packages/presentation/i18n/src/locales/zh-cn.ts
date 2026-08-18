@@ -1055,6 +1055,8 @@ export const zhCN = {
         refresh: '获取列表',
         fetchFailed: '获取模型列表失败',
         secretFirst: '请先填写密钥，再获取模型列表',
+        defaultModel: '{model}是默认模型',
+        makeDefault: '将{model}设为默认模型',
         add: '添加',
         addPlaceholder: '手动添加模型 ID',
       },

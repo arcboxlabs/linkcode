@@ -84,6 +84,30 @@ describe('ModelSelection', () => {
     expect(screen.getAllByText('already')).toHaveLength(1);
   });
 
+  it('moves a picked model to the head when it becomes the default', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelection
+        selected={[
+          { id: 'model-a', label: 'Model A' },
+          { id: 'model-b', label: 'Model B' },
+        ]}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'models.defaultModel' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'models.makeDefault' }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      { id: 'model-b', label: 'Model B' },
+      { id: 'model-a', label: 'Model A' },
+    ]);
+  });
+
   it("surfaces the fetch failure's own reason instead of swallowing it", async () => {
     const onFetch = vi.fn().mockRejectedValue(new Error('401 Unauthorized — invalid api key'));
     render(<Harness onFetch={onFetch} />);

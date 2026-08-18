@@ -1083,6 +1083,8 @@ export const en = {
         refresh: 'Fetch list',
         fetchFailed: 'Could not read the model list',
         secretFirst: 'Enter the key first, then fetch the model list',
+        defaultModel: '{model} is the default model',
+        makeDefault: 'Make {model} the default model',
         add: 'Add',
         addPlaceholder: 'Add a model id by hand',
       },
