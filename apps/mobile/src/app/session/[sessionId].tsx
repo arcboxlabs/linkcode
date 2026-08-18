@@ -22,6 +22,7 @@ import {
 import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
+import { HeaderMenuButton } from '@mobile/components/shell/header-menu-button';
 import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useAccountModels } from '@mobile/runtime/use-account-models';
@@ -32,10 +33,8 @@ import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { noop } from 'foxact/noop';
-import { useThemeColor } from 'heroui-native';
-import { EllipsisIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Pressable, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
@@ -60,7 +59,6 @@ function SessionScreen(): React.ReactNode {
   const tSettings = useTranslations('mobile.settings');
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
-  const muted = useThemeColor('muted');
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
     sessionId: string;
@@ -133,16 +131,6 @@ function SessionScreen(): React.ReactNode {
     if (sessionId) void Clipboard.setStringAsync(sessionId);
   };
 
-  // Android fallback only — native bar items are iOS-only, so the menu degrades to an alert.
-  const showMenu = (): void => {
-    if (!sessionId) return;
-    Alert.alert(title, undefined, [
-      { text: tChat('stopThread'), style: 'destructive', onPress: stopThread },
-      { text: tChat('copyThreadId'), onPress: copyThreadId },
-      { text: tChat('cancel'), style: 'cancel' },
-    ]);
-  };
-
   // Inverted list: index 0 renders at the visual bottom, so newest items pin there.
   const reversed = [...conversation.items].reverse();
 
@@ -185,14 +173,18 @@ function SessionScreen(): React.ReactNode {
               }
             : {
                 headerRight: () => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={tSettings('more')}
-                    onPress={showMenu}
-                    className="size-8 items-center justify-center"
-                  >
-                    <EllipsisIcon size={18} color={muted} />
-                  </Pressable>
+                  <HeaderMenuButton
+                    label={tSettings('more')}
+                    actions={[
+                      { id: 'copy', label: tChat('copyThreadId'), onPress: copyThreadId },
+                      {
+                        id: 'stop',
+                        label: tChat('stopThread'),
+                        destructive: true,
+                        onPress: stopThread,
+                      },
+                    ]}
+                  />
                 ),
               }),
         }}

@@ -1,10 +1,9 @@
-import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import { HeaderMenuButton } from '@mobile/components/shell/header-menu-button';
 import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import type { NativeStackHeaderItem, NativeStackNavigationOptions } from 'expo-router';
 import { useRouter } from 'expo-router';
-import { EllipsisIcon } from 'lucide-react-native';
-import { Platform, View } from 'react-native';
+import { Platform } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 type TrailingHeaderOptions = Pick<
@@ -14,8 +13,8 @@ type TrailingHeaderOptions = Pick<
 
 /** Trailing navigation-bar chrome for the tab screens: on iOS the screen's primary action —
  * except on iOS 26, whose tab-bar slot already carries it — then the overflow menu that leads to
- * Settings. Native bar items are iOS-only; Android keeps an RN overflow button and carries the
- * primary action as a floating action button instead (`PrimaryActionFab`). */
+ * Settings. Native bar items are iOS-only; Android renders the overflow as a Compose
+ * `DropdownMenu` and carries the primary action as a floating action button (`PrimaryActionFab`). */
 export function useTrailingActions(primary: PrimaryAction | null): TrailingHeaderOptions {
   const t = useTranslations('mobile.settings');
   const router = useRouter();
@@ -50,13 +49,10 @@ export function useTrailingActions(primary: PrimaryAction | null): TrailingHeade
 
   return {
     headerRight: () => (
-      <View className="flex-row">
-        <HeaderIconButton
-          icon={EllipsisIcon}
-          label={t('more')}
-          onPress={() => router.push('/settings')}
-        />
-      </View>
+      <HeaderMenuButton
+        label={t('more')}
+        actions={[{ id: 'settings', label: t('title'), onPress: () => router.push('/settings') }]}
+      />
     ),
   };
 }
