@@ -3,6 +3,7 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { AgentSelectorChip, ApprovalChip } from '@mobile/components/host/new-thread/draft-tools';
 import { ProjectRow } from '@mobile/components/host/new-thread/project-row';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useNewThreadDraft } from '@mobile/runtime/use-new-thread-draft';
 import { Stack, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
@@ -15,9 +16,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  * starts on the host with the prompt riding behind it. A root push, so it covers the tab bar. */
 export default function NewThreadRoute(): React.ReactNode {
   const insets = useSafeAreaInsets();
+  const palette = useNativePalette();
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingBottom: insets.bottom }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: palette.background, paddingBottom: insets.bottom }}
+    >
       {/* Title-less on purpose: the composer says everything, and the bare back chevron keeps
           the page reading as a sheet of options rather than a destination. */}
       <Stack.Screen options={{ ...VISIBLE_HEADER_OPTIONS, title: '' }} />

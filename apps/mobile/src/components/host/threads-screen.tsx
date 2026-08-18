@@ -5,23 +5,41 @@ import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { noop } from 'foxact/noop';
+import { useEffect } from 'react';
+import { BackHandler } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-/** Android threads inbox body. The search bar is the toolbar's collapsing magnifier field —
- * the iOS-only placement props are left off. */
-export function ThreadsScreen(): React.ReactNode {
+/** Android threads inbox body. The search field lives in the route's header (the M3 search view
+ * swaps the top app bar's content via `useSearchHeaderOptions`); this screen only filters by the
+ * route-owned query and collapses the search on hardware back. */
+export function ThreadsScreen({
+  searchOpen = false,
+  onCloseSearch = noop,
+  query = '',
+}: {
+  searchOpen?: boolean;
+  onCloseSearch?: () => void;
+  query?: string;
+  onQueryChange?: (query: string) => void;
+}): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const { loading, groups, hasQuery, onSearchChange, groupLabel, onRefresh } = useThreadInbox();
+  const { loading, groups, hasQuery, groupLabel, onRefresh } = useThreadInbox(query);
+
+  // The hardware back gesture collapses the search first, as every Android search view does.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onCloseSearch();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [searchOpen, onCloseSearch]);
 
   return (
     <>
-      <Stack.SearchBar
-        placeholder={t('searchPlaceholder')}
-        autoCapitalize="none"
-        onChangeText={onSearchChange}
-      />
       {loading ? (
         <FormList>
           <FormLoadingRow />

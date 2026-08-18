@@ -1,5 +1,5 @@
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
-import { useChromeColors } from '@mobile/components/shell/use-chrome-colors';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useHostRegistryStore, useSelectedHost } from '@mobile/stores/host-store';
 import { useRouter } from 'expo-router';
 import { ChevronsUpDownIcon } from 'lucide-react-native';
@@ -18,7 +18,7 @@ export function HostSwitcherButton(): React.ReactNode {
   const setLastActiveHostId = useHostRegistryStore((state) => state.setLastActiveHostId);
   const selected = useSelectedHost();
   const [open, setOpen] = useState(false);
-  const chrome = useChromeColors();
+  const palette = useNativePalette();
 
   if (!selected) return null;
 
@@ -32,12 +32,12 @@ export function HostSwitcherButton(): React.ReactNode {
       >
         <Text
           className="font-semibold text-headline"
-          style={{ color: chrome.title }}
+          style={{ color: palette.text }}
           numberOfLines={1}
         >
           {selected.name}
         </Text>
-        <ChevronsUpDownIcon size={14} color={chrome.subtle} />
+        <ChevronsUpDownIcon size={14} color={palette.textSecondary} />
       </Pressable>
       <SheetPicker
         open={open}

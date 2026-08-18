@@ -13,7 +13,7 @@ import type {
   ApprovalChipProps,
 } from '@mobile/components/host/new-thread/draft-tools.types';
 import { clearable, DEFAULT_TAG } from '@mobile/components/host/new-thread/draft-tools.types';
-import { useThemeColor } from 'heroui-native';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
@@ -59,7 +59,7 @@ export function AgentSelectorChip({
   onEffortChange,
 }: AgentSelectorChipProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
-  const muted = useThemeColor('muted');
+  const palette = useNativePalette();
   // The account label joins a row only when the list spans several accounts — the same threshold
   // as the web's provider grouping; a single-account list repeating its account is noise.
   const spansAccounts = models !== null && groupModelsByProvider(models) !== null;
@@ -67,7 +67,7 @@ export function AgentSelectorChip({
   return (
     <View className="flex-row items-center">
       {/* Footnote's 13pt metric, so the mark scales with the chip text beside it. */}
-      <AgentIcon kind={kind} variant="ghost" size={13} color={muted} />
+      <AgentIcon kind={kind} variant="ghost" size={13} color={palette.textSecondary} />
       <Host matchContents>
         {/* Keyed by menu shape: children added to an already-created Menu never reach the
             native UIMenu, so late-loading models/efforts must remount the chip. */}

@@ -1,4 +1,5 @@
 import { BrandMark } from '@mobile/components/shell/brand-mark';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { resolveStartupTarget } from '@mobile/runtime/startup';
 import { useHostRegistryHydrated, useHostRegistryStore } from '@mobile/stores/host-store';
@@ -12,6 +13,7 @@ import { View } from 'react-native';
  */
 export default function StartupScreen() {
   const hydrated = useHostRegistryHydrated();
+  const palette = useNativePalette();
   const account = useCloudAccount();
   const hosts = useHostRegistryStore((state) => state.hosts);
   const lastActiveHostId = useHostRegistryStore((state) => state.lastActiveHostId);
@@ -20,7 +22,10 @@ export default function StartupScreen() {
   // saved hosts must not block on a slow or offline cloud session check.
   if (!hydrated || (hosts.length === 0 && account.status === 'loading')) {
     return (
-      <View className="flex-1 items-center justify-center gap-6 bg-background">
+      <View
+        className="flex-1 items-center justify-center gap-6"
+        style={{ backgroundColor: palette.background }}
+      >
         <BrandMark />
         <Spinner />
       </View>

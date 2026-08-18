@@ -1,15 +1,15 @@
 import { BrandMark } from '@mobile/components/shell/brand-mark';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { signInToCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { isAppleSignInCancel, signInWithApple } from '@mobile/runtime/cloud/idp';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { Color, Redirect, useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { Button } from 'heroui-native';
 import { useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,21 +18,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
-
-const iosColors = {
-  accent: Platform.OS === 'ios' ? Color.ios.systemBlue : undefined,
-};
-
-const iosStyles = StyleSheet.create({
-  screen: Platform.OS === 'ios' ? { backgroundColor: Color.ios.systemBackground } : {},
-  label: Platform.OS === 'ios' ? { color: Color.ios.label } : {},
-  secondaryLabel: Platform.OS === 'ios' ? { color: Color.ios.secondaryLabel } : {},
-  danger: Platform.OS === 'ios' ? { color: Color.ios.systemRed } : {},
-  primaryButton: Platform.OS === 'ios' ? { backgroundColor: Color.ios.systemBlue } : {},
-  primaryButtonLabel: Platform.OS === 'ios' ? { color: 'white' } : {},
-  secondaryButton: Platform.OS === 'ios' ? { backgroundColor: Color.ios.secondarySystemFill } : {},
-  accentLabel: Platform.OS === 'ios' ? { color: Color.ios.systemBlue } : {},
-});
 
 const styles = StyleSheet.create({
   scrollContent: {
@@ -108,6 +93,7 @@ export default function SignInScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
+  const palette = useNativePalette();
   const account = useCloudAccount();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -127,11 +113,11 @@ export default function SignInScreen() {
   if (appleAvailable === null || account.status === 'loading') {
     return (
       <View
-        className="flex-1 items-center justify-center gap-6 bg-background"
-        style={iosStyles.screen}
+        className="flex-1 items-center justify-center gap-6"
+        style={{ backgroundColor: palette.background }}
       >
         <BrandMark size={80} />
-        <ActivityIndicator accessibilityRole="progressbar" color={iosColors.accent} />
+        <ActivityIndicator accessibilityRole="progressbar" color={palette.tint} />
       </View>
     );
   }
@@ -153,8 +139,8 @@ export default function SignInScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-background"
-      style={iosStyles.screen}
+      className="flex-1"
+      style={{ backgroundColor: palette.background }}
       // Safe areas are padded in here rather than via UIKit inset adjustment: adjusted insets
       // extend a flexGrow container past the viewport, leaving a scroll range on a fitting screen.
       contentContainerStyle={[
@@ -169,16 +155,16 @@ export default function SignInScreen() {
           <BrandMark size={80} />
           <Text
             accessibilityRole="header"
-            className="font-bold text-foreground"
+            className="font-bold"
             dynamicTypeRamp="largeTitle"
-            style={[styles.title, iosStyles.label]}
+            style={[styles.title, { color: palette.text }]}
           >
             LinkCode
           </Text>
           <Text
-            className="text-center text-muted"
+            className="text-center"
             dynamicTypeRamp="body"
-            style={[styles.tagline, iosStyles.secondaryLabel]}
+            style={[styles.tagline, { color: palette.textSecondary }]}
           >
             {t('tagline')}
           </Text>
@@ -189,16 +175,16 @@ export default function SignInScreen() {
             {busy ? (
               <ActivityIndicator
                 accessibilityRole="progressbar"
-                color={iosColors.accent}
+                color={palette.tint}
                 size="small"
               />
             ) : failed ? (
               <Text
                 accessibilityRole="alert"
-                className="text-center text-danger"
+                className="text-center"
                 dynamicTypeRamp="footnote"
                 selectable
-                style={[styles.error, iosStyles.danger]}
+                style={[styles.error, { color: palette.danger }]}
               >
                 {t('error')}
               </Text>
@@ -228,7 +214,7 @@ export default function SignInScreen() {
             size="md"
             style={[
               styles.authButton,
-              appleAvailable ? iosStyles.secondaryButton : iosStyles.primaryButton,
+              { backgroundColor: appleAvailable ? palette.surface : palette.tint },
             ]}
             variant={appleAvailable ? 'secondary' : 'primary'}
             onPress={() => {
@@ -239,7 +225,7 @@ export default function SignInScreen() {
               dynamicTypeRamp="body"
               style={[
                 styles.buttonLabel,
-                appleAvailable ? iosStyles.label : iosStyles.primaryButtonLabel,
+                { color: appleAvailable ? palette.text : palette.onTint },
               ]}
             >
               {appleAvailable ? t('other') : t('signIn')}
@@ -253,7 +239,7 @@ export default function SignInScreen() {
           >
             <Button.Label
               dynamicTypeRamp="body"
-              style={[styles.buttonLabel, iosStyles.accentLabel]}
+              style={[styles.buttonLabel, { color: palette.tint }]}
             >
               {t('skip')}
             </Button.Label>

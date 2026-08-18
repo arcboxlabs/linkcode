@@ -18,6 +18,7 @@ import {
   onTapGesture,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import type { QuestionPageProps } from './question-page.types';
@@ -40,6 +41,7 @@ export function QuestionPage({
   onCancel,
 }: QuestionPageProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const palette = useNativePalette();
   // Each page owns a distinct native state. Remounting after a structured selection guarantees
   // that an asynchronous native write from the previous question/answer mode cannot leak here.
   const customText = useNativeState(draft.customText);
@@ -62,7 +64,10 @@ export function QuestionPage({
   };
 
   return (
-    <View className="rounded-xl border border-border bg-background px-3 py-2.5">
+    <View
+      className="rounded-xl border px-3 py-2.5"
+      style={{ backgroundColor: palette.background, borderColor: palette.outline }}
+    >
       <Host matchContents>
         <VStack alignment="leading" spacing={10}>
           <HStack spacing={8}>

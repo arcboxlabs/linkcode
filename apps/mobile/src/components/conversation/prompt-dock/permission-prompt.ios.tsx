@@ -14,6 +14,7 @@ import {
   DANGER_KINDS,
   detailRows,
 } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
@@ -34,9 +35,13 @@ export function PermissionPrompt({
   onRespond,
 }: PermissionPromptProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const palette = useNativePalette();
 
   return (
-    <View className="rounded-xl border border-border bg-background px-3 py-2.5">
+    <View
+      className="rounded-xl border px-3 py-2.5"
+      style={{ backgroundColor: palette.background, borderColor: palette.outline }}
+    >
       <Host matchContents>
         <VStack alignment="leading" spacing={10}>
           <HStack spacing={8}>

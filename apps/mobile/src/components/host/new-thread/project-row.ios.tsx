@@ -9,8 +9,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { repositoryLabel } from '@linkcode/ui/native';
 import type { ProjectRowProps } from '@mobile/components/host/new-thread/project-row.types';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { Color } from 'expo-router';
-import { useThemeColor } from 'heroui-native';
 import { FolderIcon } from 'lucide-react-native';
 import { TextInput, View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -34,17 +34,18 @@ export function ProjectRow({
   onCustomPathChange,
 }: ProjectRowProps): React.ReactNode {
   const t = useTranslations('mobile.sessions');
-  const muted = useThemeColor('muted');
+  const palette = useNativePalette();
 
   if (workspaces.length === 0) {
     return (
       <View className="flex-row items-center gap-2 px-6 pb-1.5">
-        <FolderIcon size={15} color={muted} strokeWidth={2} />
+        <FolderIcon size={15} color={palette.textSecondary} strokeWidth={2} />
         <TextInput
           testID="thread-cwd-input"
-          className="flex-1 py-1 text-callout text-foreground"
+          className="flex-1 py-1 text-callout"
+          style={{ color: palette.text }}
           placeholder={t('cwdPlaceholder')}
-          placeholderTextColor={muted}
+          placeholderTextColor={palette.textSecondary}
           value={customPath}
           onChangeText={onCustomPathChange}
           autoCapitalize="none"

@@ -1,6 +1,6 @@
 import type { PermissionOutcome, QuestionOutcome } from '@linkcode/schema';
 import type { CurrentPlan, PromptConversationItem } from '@linkcode/ui/native';
-import { useThemeColor } from 'heroui-native';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -70,7 +70,7 @@ function PermissionPager({
 }): React.ReactNode {
   const t = useTranslations('mobile.chat');
   const [page, setPage] = useState(0);
-  const muted = useThemeColor('muted');
+  const palette = useNativePalette();
   const pageIndex = Math.min(page, approvals.length - 1);
   const approval = approvals[pageIndex];
 
@@ -84,9 +84,9 @@ function PermissionPager({
             onPress={() => setPage(pageIndex - 1)}
             className="size-8 items-center justify-center"
           >
-            <ChevronLeftIcon size={14} color={muted} />
+            <ChevronLeftIcon size={14} color={palette.textSecondary} />
           </Pressable>
-          <Text className="text-footnote text-muted">
+          <Text className="text-footnote" style={{ color: palette.textSecondary }}>
             {t('questionProgress', { current: pageIndex + 1, total: approvals.length })}
           </Text>
           <Pressable
@@ -95,7 +95,7 @@ function PermissionPager({
             onPress={() => setPage(pageIndex + 1)}
             className="size-8 items-center justify-center"
           >
-            <ChevronRightIcon size={14} color={muted} />
+            <ChevronRightIcon size={14} color={palette.textSecondary} />
           </Pressable>
         </View>
       ) : null}

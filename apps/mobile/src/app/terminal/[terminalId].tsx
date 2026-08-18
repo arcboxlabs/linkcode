@@ -1,6 +1,7 @@
 import { TerminalIdSchema } from '@linkcode/schema';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import TerminalRenderer from '@mobile/components/terminal/terminal-renderer';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { resolveTerminalTheme, useTerminalPrefsStore } from '@mobile/stores/terminal-prefs-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,6 +25,7 @@ function TerminalScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminal');
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const palette = useNativePalette();
   const params = useLocalSearchParams<{ terminalId: string; takeover?: string }>();
   const parsed = TerminalIdSchema.safeParse(params.terminalId);
   const terminalId = parsed.success ? parsed.data : null;
@@ -55,15 +57,19 @@ function TerminalScreen(): React.ReactNode {
 
   return (
     <View
-      className="flex-1 bg-background"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      className="flex-1"
+      style={{
+        backgroundColor: palette.background,
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+      }}
     >
       <View className="flex-row items-center gap-2 px-3 py-2">
         <Button variant="ghost" size="sm" onPress={detach}>
           <Button.Label>{t('detach')}</Button.Label>
         </Button>
         <View className="min-w-0 flex-1">
-          <Text className="text-body text-foreground" numberOfLines={1}>
+          <Text className="text-body" style={{ color: palette.text }} numberOfLines={1}>
             {terminal?.cwd ?? t('title')}
           </Text>
         </View>
@@ -83,7 +89,10 @@ function TerminalScreen(): React.ReactNode {
         </Text>
       ) : null}
       {exit ? (
-        <Text className="bg-default/10 px-4 py-2 text-footnote text-muted">
+        <Text
+          className="bg-default/10 px-4 py-2 text-footnote"
+          style={{ color: palette.textSecondary }}
+        >
           {exit.code === null ? t('exitedSignal') : t('exited', { code: exit.code })}
         </Text>
       ) : null}
@@ -91,7 +100,9 @@ function TerminalScreen(): React.ReactNode {
       {status === 'attaching' ? (
         <View className="flex-1 items-center justify-center gap-3">
           <Spinner />
-          <Text className="text-muted text-subhead">{t('attaching')}</Text>
+          <Text className="text-subhead" style={{ color: palette.textSecondary }}>
+            {t('attaching')}
+          </Text>
         </View>
       ) : status === 'error' ? (
         <View className="flex-1 items-center justify-center">
@@ -119,7 +130,10 @@ function TerminalScreen(): React.ReactNode {
               <Button.Label>{t('close')}</Button.Label>
             </Button>
           ) : terminal?.managed ? (
-            <Text className="flex-1 py-2 text-center text-muted text-subhead">
+            <Text
+              className="flex-1 py-2 text-center text-subhead"
+              style={{ color: palette.textSecondary }}
+            >
               {t('managedReadOnly')}
             </Text>
           ) : (

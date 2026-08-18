@@ -1,7 +1,8 @@
 import type { ConversationItem } from '@linkcode/client-core';
 import type { ContentBlock, ToolCall } from '@linkcode/schema';
 import { NativeMarkdown } from '@linkcode/ui/native';
-import { Spinner, useThemeColor } from 'heroui-native';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
+import { Spinner } from 'heroui-native';
 import { ChevronDownIcon, ChevronRightIcon, CircleAlertIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -38,13 +39,19 @@ export function TimelineItem({
   onPressTool?: (toolCall: ToolCall) => void;
 }): React.ReactNode {
   const t = useTranslations('mobile.conversation');
+  const palette = useNativePalette();
 
   switch (item.kind) {
     case 'message':
       return item.role === 'user' ? (
         <View className="flex-row justify-end">
-          <View className="max-w-[85%] rounded-2xl bg-surface-secondary px-4 py-2.5">
-            <Text className="text-body text-foreground">{blocksToText(item.blocks)}</Text>
+          <View
+            className="max-w-[85%] rounded-2xl px-4 py-2.5"
+            style={{ backgroundColor: palette.surface }}
+          >
+            <Text className="text-body" style={{ color: palette.text }}>
+              {blocksToText(item.blocks)}
+            </Text>
           </View>
         </View>
       ) : (
@@ -54,8 +61,12 @@ export function TimelineItem({
               // eslint-disable-next-line @eslint-react/no-array-index-key -- blocks carry no ids; the array only ever appends while streaming
               <NativeMarkdown key={index} source={block.text} streaming={item.isStreaming} />
             ) : (
-              // eslint-disable-next-line @eslint-react/no-array-index-key -- see above
-              <Text key={index} className="italic text-muted text-subhead">
+              <Text
+                // eslint-disable-next-line @eslint-react/no-array-index-key -- see above
+                key={index}
+                className="italic text-subhead"
+                style={{ color: palette.textSecondary }}
+              >
                 [{block.type}]
               </Text>
             ),
@@ -74,17 +85,27 @@ export function TimelineItem({
       );
     case 'plan':
       return (
-        <View className="gap-1.5 rounded-lg bg-surface-secondary px-3 py-2.5">
-          <Text className="font-semibold text-caption text-muted uppercase">{t('plan')}</Text>
+        <View
+          className="gap-1.5 rounded-lg px-3 py-2.5"
+          style={{ backgroundColor: palette.surface }}
+        >
+          <Text
+            className="font-semibold text-caption uppercase"
+            style={{ color: palette.textSecondary }}
+          >
+            {t('plan')}
+          </Text>
           {item.plan.entries.map((entry, index) => (
             <Text
               // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; index is stable because plans are replaced wholesale
               key={index}
-              className={
-                entry.status === 'completed' || entry.status === 'cancelled'
-                  ? 'text-muted text-subhead'
-                  : 'text-foreground text-subhead'
-              }
+              className="text-subhead"
+              style={{
+                color:
+                  entry.status === 'completed' || entry.status === 'cancelled'
+                    ? palette.textSecondary
+                    : palette.text,
+              }}
             >
               {PLAN_STATUS_MARK[entry.status]} {entry.content}
             </Text>
@@ -123,15 +144,19 @@ export function TimelineItem({
       if (item.status === 'in_progress') {
         return (
           <View className="flex-row items-center justify-center gap-2 px-2">
-            <Text className="font-semibold text-footnote text-muted">{t('compacting')}</Text>
+            <Text className="font-semibold text-footnote" style={{ color: palette.textSecondary }}>
+              {t('compacting')}
+            </Text>
           </View>
         );
       }
       return (
         <View className="flex-row items-center justify-center gap-2 px-2">
-          <Text className="font-semibold text-footnote text-muted">{t('compacted')}</Text>
+          <Text className="font-semibold text-footnote" style={{ color: palette.textSecondary }}>
+            {t('compacted')}
+          </Text>
           {item.preTokens !== undefined && item.postTokens !== undefined ? (
-            <Text className="text-footnote text-muted">
+            <Text className="text-footnote" style={{ color: palette.textSecondary }}>
               {t('compactedTokens', {
                 pre: formatTokens(item.preTokens),
                 post: formatTokens(item.postTokens),
@@ -147,7 +172,7 @@ export function TimelineItem({
 
 function ReasoningRow({ text, streaming }: { text: string; streaming: boolean }): React.ReactNode {
   const t = useTranslations('mobile.conversation');
-  const muted = useThemeColor('muted');
+  const palette = useNativePalette();
   const [open, setOpen] = useState(false);
   const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
@@ -158,10 +183,16 @@ function ReasoningRow({ text, streaming }: { text: string; streaming: boolean })
         className="flex-row items-center gap-1.5"
         onPress={() => setOpen((current) => !current)}
       >
-        <Text className="text-muted text-subhead">{t('reasoning')}</Text>
-        {streaming ? <Spinner size="sm" /> : <Chevron size={14} color={muted} />}
+        <Text className="text-subhead" style={{ color: palette.textSecondary }}>
+          {t('reasoning')}
+        </Text>
+        {streaming ? <Spinner size="sm" /> : <Chevron size={14} color={palette.textSecondary} />}
       </Pressable>
-      {open ? <Text className="text-muted text-subhead">{text}</Text> : null}
+      {open ? (
+        <Text className="text-subhead" style={{ color: palette.textSecondary }}>
+          {text}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -179,7 +210,7 @@ function ToolRow({
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   onPress?: () => void;
 }): React.ReactNode {
-  const [muted, danger] = useThemeColor(['muted', 'danger']);
+  const palette = useNativePalette();
 
   return (
     <Pressable
@@ -188,14 +219,18 @@ function ToolRow({
       onPress={onPress}
       className="flex-row items-center gap-1"
     >
-      <Text className="shrink text-muted text-subhead" numberOfLines={1}>
+      <Text
+        className="shrink text-subhead"
+        style={{ color: palette.textSecondary }}
+        numberOfLines={1}
+      >
         {title}
       </Text>
-      {status === 'failed' ? <CircleAlertIcon size={13} color={danger} /> : null}
+      {status === 'failed' ? <CircleAlertIcon size={13} color={palette.danger} /> : null}
       {status === 'in_progress' ? (
         <Spinner size="sm" />
       ) : (
-        <ChevronRightIcon size={14} color={muted} />
+        <ChevronRightIcon size={14} color={palette.textSecondary} />
       )}
     </Pressable>
   );

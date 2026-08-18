@@ -10,14 +10,36 @@ import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
 import { Stack, useRouter } from 'expo-router';
+import { noop } from 'foxact/noop';
+import { useCallback } from 'react';
 import { useTranslations } from 'use-intl';
 
+/** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
+type SearchBarChangeEvent = Parameters<
+  NonNullable<React.ComponentProps<typeof Stack.SearchBar>['onChangeText']>
+>[0];
+
 /** Threads inbox body: grouped sessions under collapsible headers, with the native search bar
- * stacked below the navigation bar. */
-export function ThreadsScreen(): React.ReactNode {
+ * stacked below the navigation bar. The open/close props are the Android toggle; iOS search is
+ * always available in the header and writes back into the route-owned query. */
+export function ThreadsScreen({
+  query = '',
+  onQueryChange = noop,
+}: {
+  searchOpen?: boolean;
+  onCloseSearch?: () => void;
+  query?: string;
+  onQueryChange?: (query: string) => void;
+}): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const { loading, groups, hasQuery, onSearchChange, groupLabel, onRefresh } = useThreadInbox();
+  const { loading, groups, hasQuery, groupLabel, onRefresh } = useThreadInbox(query);
+
+  // Stable so the search bar's options object survives a keystroke without re-registering.
+  const onSearchChange = useCallback(
+    (event: SearchBarChangeEvent) => onQueryChange(event.nativeEvent.text),
+    [onQueryChange],
+  );
 
   return (
     <>

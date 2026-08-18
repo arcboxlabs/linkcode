@@ -8,6 +8,7 @@ import {
   strikethrough,
 } from '@expo/ui/swift-ui/modifiers';
 import type { CurrentPlan } from '@linkcode/ui/native';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -28,13 +29,17 @@ const STATUS_ICON = {
  */
 export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const palette = useNativePalette();
   const [expanded, setExpanded] = useState(false);
 
   const entries = plan.item.plan.entries;
   const current = entries[plan.currentIndex];
 
   return (
-    <View className="rounded-xl border border-border bg-surface-secondary/50 px-3 py-1.5">
+    <View
+      className="rounded-xl border px-3 py-1.5"
+      style={{ backgroundColor: palette.surface, borderColor: palette.outline }}
+    >
       <Host matchContents>
         <DisclosureGroup isExpanded={expanded} onIsExpandedChange={setExpanded}>
           <DisclosureGroup.Label>

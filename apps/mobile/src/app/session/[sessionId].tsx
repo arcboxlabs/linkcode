@@ -25,6 +25,7 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { HeaderMenuButton } from '@mobile/components/shell/header-menu-button';
 import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useAccountModels } from '@mobile/runtime/use-account-models';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
@@ -59,6 +60,7 @@ function SessionScreen(): React.ReactNode {
   const tSettings = useTranslations('mobile.settings');
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  const palette = useNativePalette();
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
     sessionId: string;
@@ -136,8 +138,11 @@ function SessionScreen(): React.ReactNode {
 
   return (
     <View
-      className="flex-1 bg-background"
-      style={{ paddingBottom: USES_IOS_26_NAVIGATION ? 0 : insets.bottom }}
+      className="flex-1"
+      style={{
+        backgroundColor: palette.background,
+        paddingBottom: USES_IOS_26_NAVIGATION ? 0 : insets.bottom,
+      }}
     >
       <Stack.Screen
         options={{
