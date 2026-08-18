@@ -1047,6 +1047,9 @@ export const en = {
       hint: 'Connect subscriptions, AI gateways, or custom endpoints to your agents; one account can back several agents, and each agent uses one account at a time.',
       searchPlaceholder: 'Search accounts…',
       addAccount: 'Add account',
+      orderHint:
+        'Drag accounts to set their priority. New tasks use the first model from the first compatible account.',
+      reorderAccount: 'Reorder {label}',
       customService: 'Custom endpoint',
       noMatches: 'No matching accounts.',
       emptyTitle: 'No accounts yet',
