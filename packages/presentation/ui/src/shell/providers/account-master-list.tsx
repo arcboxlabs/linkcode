@@ -12,7 +12,7 @@ import { ChevronRightIcon, GripVerticalIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ServiceIcon } from '../service-icon';
-import { SIDEBAR_SORTABLE_SENSORS } from '../sidebar';
+import { SORTABLE_SENSORS } from '../sortable-sensors';
 import type { ProviderAccountRouting } from './routing';
 
 export interface ProviderAccountListItem {
@@ -108,11 +108,11 @@ export function AccountList({
           </Button>
         </div>
       </div>
-      {accounts.length > 1 ? (
+      {canReorder && accounts.length > 1 ? (
         <p className="text-muted-foreground text-xs">{t('orderHint')}</p>
       ) : null}
       <Card className="overflow-hidden">
-        <DragDropProvider sensors={SIDEBAR_SORTABLE_SENSORS} onDragEnd={handleDragEnd}>
+        <DragDropProvider sensors={SORTABLE_SENSORS} onDragEnd={handleDragEnd}>
           <ul className="divide-y divide-border">
             {loading && accounts.length === 0 ? (
               <>

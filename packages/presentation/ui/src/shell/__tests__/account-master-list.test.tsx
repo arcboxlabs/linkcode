@@ -9,8 +9,9 @@ function reversed(items: string[]): string[] {
   return [...items].reverse();
 }
 
-function passthrough(key: string): string {
-  return key;
+function passthrough(key: string, values?: Record<string, unknown>): string {
+  const interpolation = values ? Object.values(values).join(',') : '';
+  return interpolation ? `${key}:${interpolation}` : key;
 }
 
 function translations(): typeof passthrough {
@@ -78,7 +79,8 @@ describe('AccountList', () => {
       />,
     );
 
-    expect(screen.getAllByRole('button', { name: 'reorderAccount' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'reorderAccount:Account A' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'reorderAccount:Account B' })).toBeTruthy();
     act(() => dnd.onDragEnd?.({ canceled: false }));
 
     expect(dnd.move).toHaveBeenCalledWith(['account-a', 'account-b'], { canceled: false });
@@ -97,10 +99,15 @@ describe('AccountList', () => {
       />,
     );
 
+    expect(screen.getByText('orderHint')).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('searchPlaceholder'), {
       target: { value: 'Account A' },
     });
-    expect(screen.getByRole('button', { name: 'reorderAccount' })).toHaveProperty('disabled', true);
+    expect(screen.queryByText('orderHint')).toBeNull();
+    expect(screen.getByRole('button', { name: 'reorderAccount:Account A' })).toHaveProperty(
+      'disabled',
+      true,
+    );
     act(() => dnd.onDragEnd?.({ canceled: false }));
 
     expect(onReorder).not.toHaveBeenCalled();

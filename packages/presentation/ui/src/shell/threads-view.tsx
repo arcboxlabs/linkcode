@@ -17,10 +17,10 @@ import {
   PinnedSection,
   SectionAccordionTrigger,
   ShowMoreToggle,
-  SIDEBAR_SORTABLE_SENSORS,
   ThreadGroupHeader,
   ThreadRow,
 } from './sidebar';
+import { SORTABLE_SENSORS } from './sortable-sensors';
 
 const SIDEBAR_SECTIONS = [
   'pinned',
@@ -154,7 +154,7 @@ export function ThreadsView({
 
   return (
     <DragDropProvider
-      sensors={SIDEBAR_SORTABLE_SENSORS}
+      sensors={SORTABLE_SENSORS}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >

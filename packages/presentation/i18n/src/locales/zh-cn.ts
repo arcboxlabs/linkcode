@@ -1023,6 +1023,7 @@ export const zhCN = {
       addAccount: '添加账号',
       orderHint: '拖动账号调整优先级；新建任务默认使用首个兼容账号的首个模型。',
       reorderAccount: '调整{label}的顺序',
+      reorderFailed: '保存账号顺序失败',
       customService: '自定义端点',
       noMatches: '没有匹配的账号。',
       emptyTitle: '尚未添加账号',

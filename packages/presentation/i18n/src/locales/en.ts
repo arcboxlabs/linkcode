@@ -1050,6 +1050,7 @@ export const en = {
       orderHint:
         'Drag accounts to set their priority. New tasks use the first model from the first compatible account.',
       reorderAccount: 'Reorder {label}',
+      reorderFailed: 'Could not save account order',
       customService: 'Custom endpoint',
       noMatches: 'No matching accounts.',
       emptyTitle: 'No accounts yet',

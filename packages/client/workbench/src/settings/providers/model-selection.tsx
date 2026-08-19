@@ -1,6 +1,7 @@
 import { CURATED_AGENT_MODELS } from '@linkcode/providers';
 import type { AccountModel, AccountSecret, AgentKind } from '@linkcode/schema';
 import { getAgentCatalog, probeAccountModels } from '@linkcode/sdk';
+import { cn } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Checkbox } from 'coss-ui/components/checkbox';
 import { Input } from 'coss-ui/components/input';
@@ -166,7 +167,10 @@ export function ModelSelection({
                     aria-label={t(isDefault ? 'models.defaultModel' : 'models.makeDefault', {
                       model: model.label ?? model.id,
                     })}
-                    className="me-0.5 size-7 shrink-0 text-label-tertiary disabled:opacity-100"
+                    className={cn(
+                      'me-0.5 size-7 shrink-0 text-label-tertiary',
+                      isDefault && 'disabled:opacity-100',
+                    )}
                     onClick={() => makeDefault(model)}
                   >
                     <StarIcon className={isDefault ? 'size-3.5 fill-current' : 'size-3.5'} />
