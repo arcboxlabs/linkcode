@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/arcboxlabs/linkcode/compare/v0.25.0...v0.25.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **assets:** update aigateway to 0.6.0 ([#461](https://github.com/arcboxlabs/linkcode/issues/461)) ([5673022](https://github.com/arcboxlabs/linkcode/commit/56730223e541c976faf6f2fd93b1449988be8029))
+
 ## [0.25.0](https://github.com/arcboxlabs/linkcode/compare/v0.24.0...v0.25.0) (2026-08-20)
 
 
