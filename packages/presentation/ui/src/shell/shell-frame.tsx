@@ -56,6 +56,8 @@ export interface ShellFrameProps
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
+  /** Harnesses enabled for new threads; null while provider configuration is loading. */
+  selectableHarnesses: AgentKind[] | null;
   /** The models each agent may run on, pooled from the accounts enabled for it, in the order the
    * pickers offer them — the head is the agent's default. */
   accountModels: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
@@ -132,6 +134,7 @@ export function ShellFrame({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
+  selectableHarnesses,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -223,6 +226,7 @@ export function ShellFrame({
             runtimeCues={runtimeCues}
             attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
+            selectableHarnesses={selectableHarnesses}
             accountModels={accountModels}
             preferredEfforts={newSessionPreferredEfforts}
             preferredBranches={newSessionPreferredBranches}

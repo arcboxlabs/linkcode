@@ -79,6 +79,7 @@ export function DesktopShell({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
+  selectableHarnesses,
   accountModels,
   newSessionPreferredEfforts,
   newSessionPreferredBranches,
@@ -428,6 +429,7 @@ export function DesktopShell({
           runtimeCues={runtimeCues}
           attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
+          selectableHarnesses={selectableHarnesses}
           accountModels={accountModels}
           preferredEfforts={newSessionPreferredEfforts}
           preferredBranches={newSessionPreferredBranches}
