@@ -1086,6 +1086,7 @@ export const en = {
         secretFirst: 'Enter the key first, then fetch the model list',
         defaultModel: '{model} is the default model',
         makeDefault: 'Make {model} the default model',
+        required: 'Select at least one model before adding the account.',
         add: 'Add',
         addPlaceholder: 'Add a model id by hand',
       },
