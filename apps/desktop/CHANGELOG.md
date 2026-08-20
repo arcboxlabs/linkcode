@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.25.0](https://github.com/arcboxlabs/linkcode/compare/v0.24.0...v0.25.0) (2026-08-20)
+
+
+### Features
+
+* **providers:** allow ordering accounts and selecting default models ([#459](https://github.com/arcboxlabs/linkcode/issues/459)) ([e57e4ab](https://github.com/arcboxlabs/linkcode/commit/e57e4ab6cb8948ac9392d83083fd915e6e8e9d4e))
+
+
+### Bug Fixes
+
+* **release:** preserve reviewed legacy destinations ([#448](https://github.com/arcboxlabs/linkcode/issues/448)) ([4e710cd](https://github.com/arcboxlabs/linkcode/commit/4e710cd6f6c1ffe2c1ea051c73eee62ef49b3c1f))
+* **workbench:** hide disabled harnesses from new tasks ([#460](https://github.com/arcboxlabs/linkcode/issues/460)) ([03a6b01](https://github.com/arcboxlabs/linkcode/commit/03a6b01b72acf0e084481881f6f74aa19cf3037b))
+* **workbench:** require models when adding providers ([#458](https://github.com/arcboxlabs/linkcode/issues/458)) ([41c4fde](https://github.com/arcboxlabs/linkcode/commit/41c4fde9711dbe07676a423175ced788b8a21fed))
+
 ## [0.24.0](https://github.com/arcboxlabs/linkcode/compare/v0.23.1...v0.24.0) (2026-08-17)
 
 
