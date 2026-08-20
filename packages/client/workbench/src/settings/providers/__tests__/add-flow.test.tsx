@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRuntimeOnboarding } from '../../../agent-runtime/onboarding';
 import { AddAccountForm, ServiceCatalogView } from '../add-flow';
+import type { ModelSources } from '../model-selection';
 
 function translateKey(key: string): string {
   return key;
@@ -39,6 +40,13 @@ function signedOutRuntimes(): AgentRuntimes {
   };
 }
 
+function addModel(id = 'test-model'): void {
+  fireEvent.change(screen.getByPlaceholderText('models.addPlaceholder'), {
+    target: { value: id },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'models.add' }));
+}
+
 describe('subscription account creation', () => {
   it('starts Claude login and creates the account only from the success callback', () => {
     const login = vi.fn();
@@ -57,6 +65,8 @@ describe('subscription account creation', () => {
       />,
     );
 
+    expect(screen.queryByRole('button', { name: 'login' })).toBeNull();
+    addModel('claude-sonnet-5');
     fireEvent.click(screen.getByRole('button', { name: 'login' }));
     expect(login).toHaveBeenCalledWith('claude-code', expect.any(Function));
     expect(onSubmit).not.toHaveBeenCalled();
@@ -67,6 +77,7 @@ describe('subscription account creation', () => {
       expect.objectContaining({
         service: 'claude-sub',
         credential: { type: 'oauth', agent: 'claude-code' },
+        models: [{ id: 'claude-sonnet-5' }],
       }),
     );
   });
@@ -126,12 +137,17 @@ describe('subscription account creation', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+    const submit = screen.getByRole('button', { name: 'form.submit' });
+    expect(submit).toHaveProperty('disabled', true);
+    expect(screen.getByText('models.required')).toBeTruthy();
+    addModel('gpt-5.6-sol');
+    fireEvent.click(submit);
     expect(login).not.toHaveBeenCalled();
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
         service: 'chatgpt-sub',
         credential: { type: 'oauth', agent: 'codex' },
+        models: [{ id: 'gpt-5.6-sol' }],
       }),
     );
   });
@@ -154,12 +170,16 @@ describe('non-subscription account creation', () => {
 
     fireEvent.change(screen.getByPlaceholderText('sk-ant-…'), { target: { value: 'sk-ant-test' } });
     fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+    await waitFor(() => expect(onSubmit).not.toHaveBeenCalled());
+    addModel('claude-sonnet-5');
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
     expect(login).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({
           service: 'anthropic-api',
           credential: { type: 'api-key', key: 'sk-ant-test' },
+          models: [{ id: 'claude-sonnet-5' }],
         }),
       ),
     );
@@ -187,6 +207,7 @@ describe('non-subscription account creation', () => {
     const secret = document.querySelector<HTMLInputElement>('input[type="password"]');
     if (!secret) throw new Error('credential input missing');
     fireEvent.change(secret, { target: { value: 'stepfun-test-key' } });
+    addModel('step-3.5-flash');
     fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
 
     await waitFor(() =>
@@ -194,6 +215,7 @@ describe('non-subscription account creation', () => {
         expect.objectContaining({
           service: 'stepfun',
           credential: { type: 'api-key', key: 'stepfun-test-key' },
+          models: [{ id: 'step-3.5-flash' }],
         }),
       ),
     );
@@ -217,10 +239,17 @@ describe('non-subscription account creation', () => {
 
   it('adds LinkCode Gateway only after the explicit user action', async () => {
     const createKey = vi.fn().mockResolvedValue('lc-gateway-key');
+    const probeInline = vi.fn().mockResolvedValue([{ id: 'anthropic/claude-sonnet-5' }]);
+    const sources: ModelSources = {
+      probeInline,
+      probeAccount: vi.fn(),
+      oauth: vi.fn(),
+    };
     const onSubmit = vi.fn();
     render(
       <AddAccountForm
         serviceId="linkcode-gateway"
+        sources={sources}
         runtimes={undefined}
         onboarding={onboarding()}
         busy={false}
@@ -241,10 +270,15 @@ describe('non-subscription account creation', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(createKey).toHaveBeenCalledWith('serviceName.linkcode-gateway');
+    expect(probeInline).toHaveBeenCalledWith('linkcode-gateway', {
+      type: 'auth-token',
+      token: 'lc-gateway-key',
+    });
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
         service: 'linkcode-gateway',
         credential: { type: 'auth-token', token: 'lc-gateway-key' },
+        models: [{ id: 'anthropic/claude-sonnet-5' }],
       }),
     );
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('endpoint');
@@ -282,6 +316,7 @@ describe('non-subscription account creation', () => {
     const secret = container.querySelector('input[type="password"]');
     if (!secret) throw new Error('credential input missing');
     fireEvent.change(secret, { target: { value: 'cf-token' } });
+    addModel('gateway-model');
     fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -290,8 +325,40 @@ describe('non-subscription account creation', () => {
       service: 'cloudflare-gateway',
       credential: { type: 'auth-token', token: 'cf-token' },
       endpointParams: { account_id: '8f3a', gateway_id: 'prod' },
+      models: [{ id: 'gateway-model' }],
     });
     // One key can resolve to a different endpoint per agent, so none is pinned here.
     expect(account).not.toHaveProperty('endpoint');
+  });
+
+  it('requires a model for a custom endpoint', async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AddAccountForm
+        serviceId="custom"
+        runtimes={undefined}
+        onboarding={onboarding()}
+        busy={false}
+        onBack={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'form.label' }), {
+      target: { value: 'Private endpoint' },
+    });
+    const secret = container.querySelector('input[type="password"]');
+    if (!secret) throw new Error('credential input missing');
+    fireEvent.change(secret, { target: { value: 'private-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+    await waitFor(() => expect(onSubmit).not.toHaveBeenCalled());
+
+    addModel('private-model');
+    fireEvent.click(screen.getByRole('button', { name: 'form.submit' }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ models: [{ id: 'private-model' }] }),
+      ),
+    );
   });
 });

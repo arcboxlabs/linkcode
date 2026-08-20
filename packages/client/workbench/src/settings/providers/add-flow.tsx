@@ -9,7 +9,13 @@ import {
   serviceProtocols,
   templatePlaceholders,
 } from '@linkcode/providers';
-import type { Account, AccountModel, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import type {
+  Account,
+  AccountModel,
+  AccountProtocol,
+  AccountSecret,
+  AgentRuntimes,
+} from '@linkcode/schema';
 import { AccountModelSchema } from '@linkcode/schema';
 import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
@@ -49,13 +55,13 @@ function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdA
 function oauthAccount(
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
   label: string,
-  models: AccountModel[] = [],
+  models: AccountModel[],
 ): Account {
   return {
     ...newAccountBase(label),
     service: service.id,
     credential: { type: 'oauth', agent: service.agent },
-    ...(models.length > 0 && { models }),
+    models,
   };
 }
 
@@ -75,7 +81,7 @@ function catalogAccount(service: EndpointService, draft: CatalogDraft): Account 
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
     ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
-    ...(draft.models.length > 0 && { models: draft.models }),
+    models: draft.models,
   };
 }
 
@@ -214,6 +220,7 @@ export function AddAccountForm({
         <LinkCodeGatewayForm
           service={service}
           access={linkCodeGateway}
+          sources={sources}
           busy={busy}
           onSubmit={onSubmit}
         />
@@ -239,11 +246,13 @@ type LinkCodeGatewayDraft = z.infer<typeof LinkCodeGatewayDraftSchema>;
 function LinkCodeGatewayForm({
   service,
   access,
+  sources,
   busy,
   onSubmit,
 }: {
   service: Extract<ServiceDescriptor, { kind: 'endpoint' }>;
   access: LinkCodeGatewayAccess | undefined;
+  sources: ModelSources | undefined;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -257,6 +266,7 @@ function LinkCodeGatewayForm({
     resolver: zodResolver(LinkCodeGatewayDraftSchema),
     defaultValues: { label: t(`serviceName.${service.id}`) },
   });
+  const [createdKey, setCreatedKey] = useState<string | undefined>(undefined);
 
   if (!access?.signedIn) {
     return (
@@ -281,11 +291,17 @@ function LinkCodeGatewayForm({
       className="flex flex-col gap-3"
       onSubmit={handleSubmit(async ({ label }) => {
         try {
-          const key = await access.createKey(label);
+          if (!sources) throw new Error(t('models.fetchFailed'));
+          const key = createdKey ?? (await access.createKey(label));
+          setCreatedKey(key);
+          const credential: AccountSecret = { type: 'auth-token', token: key };
+          const models = await sources.probeInline(service.id, credential);
+          if (models.length === 0) throw new Error(t('models.required'));
           onSubmit({
             ...newAccountBase(label),
             service: service.id,
-            credential: { type: 'auth-token', token: key },
+            credential,
+            models,
           });
         } catch (error) {
           setError('root', {
@@ -305,7 +321,7 @@ function LinkCodeGatewayForm({
         </p>
       ) : null}
       <div className="flex justify-end pt-1">
-        <Button type="submit" size="sm" disabled={busy || isSubmitting}>
+        <Button type="submit" size="sm" disabled={busy || isSubmitting || !sources}>
           {t('linkCodeUseGateway')}
         </Button>
       </div>
@@ -444,6 +460,7 @@ function OauthCreateForm({
   const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
   const loginInProgress =
     cue.state === 'needs-login' && (cue.phase === 'opening' || cue.phase === 'awaiting-code');
+  const hasModels = models.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -461,6 +478,7 @@ function OauthCreateForm({
         disabled={busy || loginInProgress}
         onChange={setModels}
         onFetch={fetchModels}
+        required
         selected={models}
       />
       {loggedIn ? (
@@ -474,7 +492,7 @@ function OauthCreateForm({
             <Button
               type="button"
               size="sm"
-              disabled={busy || label.trim() === ''}
+              disabled={busy || label.trim() === '' || !hasModels}
               onClick={() => onSubmit(oauthAccount(service, label, models))}
             >
               {t('form.submit')}
@@ -488,7 +506,7 @@ function OauthCreateForm({
           onDownload={onboarding.download}
           onContinueUnverified={onboarding.acknowledgeUnverified}
           onLogin={
-            busy || label.trim() === ''
+            !hasModels || busy || label.trim() === ''
               ? undefined
               : (kind) => {
                   onboarding.login(kind, () => onSubmit(oauthAccount(service, label, models)));
@@ -506,7 +524,7 @@ const CatalogDraftSchema = z.object({
   label: z.string().min(1),
   secret: z.string().min(1),
   placeholders: z.record(z.string(), z.string()),
-  models: z.array(AccountModelSchema),
+  models: z.array(AccountModelSchema).min(1),
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
@@ -606,6 +624,7 @@ function CatalogAccountForm({
             disabled={busy}
             onChange={field.onChange}
             onFetch={fetchModels}
+            required
             selected={field.value}
           />
         )}
@@ -630,6 +649,9 @@ const CustomDraftSchema = z.object({
   protocol: z.string(),
   models: z.array(AccountModelSchema),
 });
+const CustomCreateDraftSchema = CustomDraftSchema.extend({
+  models: z.array(AccountModelSchema).min(1),
+});
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
@@ -651,7 +673,7 @@ function CustomAccountForm({
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
-    resolver: zodResolver(CustomDraftSchema),
+    resolver: zodResolver(account === undefined ? CustomCreateDraftSchema : CustomDraftSchema),
     defaultValues: {
       label: account?.label ?? '',
       type:
@@ -747,6 +769,7 @@ function CustomAccountForm({
             disabled={busy}
             onChange={field.onChange}
             onFetch={fetchModels}
+            required={account === undefined}
             selected={field.value}
           />
         )}

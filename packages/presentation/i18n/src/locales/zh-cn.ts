@@ -1053,6 +1053,7 @@ export const zhCN = {
         refresh: '获取列表',
         fetchFailed: '获取模型列表失败',
         secretFirst: '请先填写密钥，再获取模型列表',
+        required: '至少选择一个模型后才能添加账号。',
         add: '添加',
         addPlaceholder: '手动添加模型 ID',
       },
