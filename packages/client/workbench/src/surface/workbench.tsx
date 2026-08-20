@@ -13,6 +13,7 @@ import { MessageIdSchema, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
+  getProviderConfig,
   hostArtifact,
   hostWorkspaceFile,
   readWorkspaceFile,
@@ -57,8 +58,11 @@ import { RuntimeNewSessionBranchPicker } from '../git/new-session-branch-picker'
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
-import { useMutation } from '../runtime/tayori';
-import { useAccountModelOptions } from '../settings/providers/model-options';
+import { useData, useMutation } from '../runtime/tayori';
+import {
+  selectableHarnessKinds,
+  useAccountModelOptions,
+} from '../settings/providers/model-options';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { useSidebarOrderStore } from '../sidebar/order-store';
@@ -242,6 +246,8 @@ function WorkbenchSessionSurface({
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const accountModels = useAccountModelOptions();
+  const { data: providers } = useData(getProviderConfig, {});
+  const selectableHarnesses = providers === undefined ? null : selectableHarnessKinds(providers);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -660,6 +666,7 @@ function WorkbenchSessionSurface({
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       accountModels={accountModels}
+      selectableHarnesses={selectableHarnesses}
       agentCatalogs={agentCatalogs}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       newSessionPreferredBranches={newSessionPreferredBranches}

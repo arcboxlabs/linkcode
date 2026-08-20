@@ -38,6 +38,11 @@ export function accountModelOptions(
   return options;
 }
 
+/** Harnesses offered when creating a thread; missing config entries retain the enabled default. */
+export function selectableHarnessKinds(providers: ProvidersConfig): AgentKind[] {
+  return AgentKindSchema.options.filter((kind) => providers[kind]?.enabled ?? true);
+}
+
 /** `null` until both daemon-owned sources have loaded, so a picker never briefly offers a set that
  * is not actually available — or one the enabled list would have narrowed. */
 export function useAccountModelOptions(): Partial<Record<AgentKind, ModelOption[]>> | null {
