@@ -1,11 +1,12 @@
 import { CURATED_AGENT_MODELS } from '@linkcode/providers';
 import type { AccountModel, AccountSecret, AgentKind } from '@linkcode/schema';
 import { getAgentCatalog, probeAccountModels } from '@linkcode/sdk';
+import { cn } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Checkbox } from 'coss-ui/components/checkbox';
 import { Input } from 'coss-ui/components/input';
 import { extractErrorMessage } from 'foxts/extract-error-message';
-import { PlusIcon, RefreshCwIcon } from 'lucide-react';
+import { PlusIcon, RefreshCwIcon, StarIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useMutation } from '../../runtime/tayori';
@@ -111,6 +112,10 @@ export function ModelSelection({
     setDraft('');
   };
 
+  const makeDefault = (model: AccountModel): void => {
+    onChange([model, ...selected.filter((candidate) => candidate.id !== model.id)]);
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -148,22 +153,46 @@ export function ModelSelection({
       {error !== undefined ? <p className="text-destructive text-xs">{error}</p> : null}
       {listed.length > 0 ? (
         <div className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
-          {listed.map((model) => (
-            <label
-              className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-(--density-row-py) hover:bg-muted/50"
-              key={model.id}
-            >
-              <Checkbox
-                checked={picked.has(model.id)}
-                disabled={disabled}
-                onCheckedChange={(next) => toggle(model, next)}
-              />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">{model.id}</span>
-              {model.label !== undefined ? (
-                <span className="shrink-0 text-label-tertiary text-xs">{model.label}</span>
-              ) : null}
-            </label>
-          ))}
+          {listed.map((model) => {
+            const isPicked = picked.has(model.id);
+            const isDefault = selected[0]?.id === model.id;
+            return (
+              <div
+                className="flex min-w-0 items-center rounded-md hover:bg-muted/50"
+                key={model.id}
+              >
+                <label className="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-(--density-row-py)">
+                  <Checkbox
+                    checked={isPicked}
+                    disabled={disabled}
+                    onCheckedChange={(next) => toggle(model, next)}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{model.id}</span>
+                  {model.label === undefined ? null : (
+                    <span className="shrink-0 text-label-tertiary text-xs">{model.label}</span>
+                  )}
+                </label>
+                {isPicked ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    disabled={disabled || isDefault}
+                    aria-label={t(isDefault ? 'models.defaultModel' : 'models.makeDefault', {
+                      model: model.label ?? model.id,
+                    })}
+                    className={cn(
+                      'me-0.5 size-7 shrink-0 text-label-tertiary',
+                      isDefault && 'disabled:opacity-100',
+                    )}
+                    onClick={() => makeDefault(model)}
+                  >
+                    <StarIcon className={isDefault ? 'size-3.5 fill-current' : 'size-3.5'} />
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
       <div className="flex gap-2">

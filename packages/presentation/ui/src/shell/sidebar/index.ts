@@ -11,7 +11,6 @@ export { PinnedSection } from './pinned-section';
 export { SectionAccordionTrigger } from './section-header';
 export type { ShowMoreToggleProps } from './show-more-toggle';
 export { ShowMoreToggle } from './show-more-toggle';
-export { SIDEBAR_SORTABLE_SENSORS } from './sortable-sensors';
 export type {
   SidebarSectionKey,
   ThreadGroupActions,

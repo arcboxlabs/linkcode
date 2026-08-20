@@ -7,8 +7,9 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelSelection } from '../model-selection';
 
-function translateKey(key: string): string {
-  return key;
+function translateKey(key: string, values?: Record<string, unknown>): string {
+  const interpolation = values ? Object.values(values).join(',') : '';
+  return interpolation ? `${key}:${interpolation}` : key;
 }
 
 vi.mock('use-intl', () => ({
@@ -82,6 +83,50 @@ describe('ModelSelection', () => {
     fireEvent.change(input, { target: { value: 'already' } });
     fireEvent.click(screen.getByRole('button', { name: RE_ADD }));
     expect(screen.getAllByText('already')).toHaveLength(1);
+  });
+
+  it('moves a picked model to the head when it becomes the default', () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelection
+        selected={[
+          { id: 'model-a', label: 'Model A' },
+          { id: 'model-b', label: 'Model B' },
+        ]}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'models.defaultModel:Model A' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'models.makeDefault:Model B' }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      { id: 'model-b', label: 'Model B' },
+      { id: 'model-a', label: 'Model A' },
+    ]);
+  });
+
+  it('keeps only the disabled default marker fully opaque while the form is busy', () => {
+    render(
+      <ModelSelection
+        selected={[
+          { id: 'model-a', label: 'Model A' },
+          { id: 'model-b', label: 'Model B' },
+        ]}
+        onChange={vi.fn()}
+        disabled
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'models.defaultModel:Model A' }).className).toContain(
+      'disabled:opacity-100',
+    );
+    expect(
+      screen.getByRole('button', { name: 'models.makeDefault:Model B' }).className,
+    ).not.toContain('disabled:opacity-100');
   });
 
   it("surfaces the fetch failure's own reason instead of swallowing it", async () => {
