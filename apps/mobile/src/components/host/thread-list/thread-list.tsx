@@ -1,15 +1,29 @@
-import { LazyColumn, PullToRefreshBox, Row, Spacer, Text } from '@expo/ui/jetpack-compose';
+import {
+  AnimatedVisibility,
+  Column,
+  EnterTransition,
+  ExitTransition,
+  Icon,
+  LazyColumn,
+  PullToRefreshBox,
+  Row,
+  Spacer,
+  Text,
+} from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth, padding, weight } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { Fragment, useState } from 'react';
+import expandLessGlyph from '../../../../assets/icons/expand-less.xml';
+import expandMoreGlyph from '../../../../assets/icons/expand-more.xml';
 import type { ThreadListProps } from './thread-list.types';
 import { ThreadRow } from './thread-row';
 import { useThreadListState } from './use-thread-list-state';
 
 /** Android thread inbox body. Compose has no collapsible Section: each group renders a clickable
- * MD3 subheader row and conditionally its rows. PullToRefreshBox takes a controlled flag instead
- * of awaiting the promise, so the spinner state is adapted here. */
+ * MD3 subheader row with an expand chevron, and its rows collapse through `AnimatedVisibility`
+ * (the M3 expand/shrink motion; rows stay mounted). PullToRefreshBox takes a controlled flag
+ * instead of awaiting the promise, so the spinner state is adapted here. */
 export function ThreadList({
   groups,
   labelFor,
@@ -45,20 +59,30 @@ export function ThreadList({
                     {labelFor(group)}
                   </Text>
                   <Spacer modifiers={[weight(1)]} />
-                  <Text style={{ typography: 'labelMedium' }} color={colors.onSurfaceVariant}>
-                    {expanded ? '▾' : '▸'}
-                  </Text>
+                  <Icon
+                    source={expanded ? expandLessGlyph : expandMoreGlyph}
+                    size={20}
+                    tint={colors.onSurfaceVariant}
+                  />
                 </Row>
-                {expanded
-                  ? group.sessions.map((session) => (
+                <AnimatedVisibility
+                  visible={expanded}
+                  enterTransition={EnterTransition.expandVertically().plus(
+                    EnterTransition.fadeIn(),
+                  )}
+                  exitTransition={ExitTransition.shrinkVertically().plus(ExitTransition.fadeOut())}
+                >
+                  <Column modifiers={[fillMaxWidth()]}>
+                    {group.sessions.map((session) => (
                       <ThreadRow
                         key={session.sessionId}
                         session={session}
                         now={now}
                         onPress={() => onOpenThread(session.sessionId)}
                       />
-                    ))
-                  : null}
+                    ))}
+                  </Column>
+                </AnimatedVisibility>
               </Fragment>
             );
           })}
