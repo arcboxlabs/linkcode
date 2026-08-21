@@ -28,6 +28,7 @@ export const ContentBlockSchema = z.discriminatedUnion('type', [
     type: z.literal('image'),
     data: z.string(), // base64
     mimeType: z.string(),
+    name: z.string().optional(),
     uri: z.string().optional(),
     annotations: AnnotationsSchema.optional(),
   }),

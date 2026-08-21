@@ -710,6 +710,32 @@ describe('OpenCodeAdapter prompt dispatch', () => {
       parts: [{ type: 'text', text: 'hi' }],
     });
   });
+
+  it('forwards image attachment names as file part filenames', async () => {
+    const { adapter } = await makeAdapter();
+
+    await adapter.send({
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'review this' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png', name: 'architecture.png' },
+      ],
+    });
+
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parts: [
+          { type: 'text', text: 'review this' },
+          {
+            type: 'file',
+            mime: 'image/png',
+            filename: 'architecture.png',
+            url: 'data:image/png;base64,cG5n',
+          },
+        ],
+      }),
+    );
+  });
 });
 
 describe('OpenCodeAdapter permission round-trip', () => {

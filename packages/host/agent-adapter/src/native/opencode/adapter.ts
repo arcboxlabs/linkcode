@@ -492,6 +492,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         (image): FilePartInput => ({
           type: 'file',
           mime: image.mimeType,
+          filename: image.name,
           url: `data:${image.mimeType};base64,${image.data}`,
         }),
       ),
