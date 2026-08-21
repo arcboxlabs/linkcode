@@ -19,11 +19,15 @@ export function RootNavigator(): React.ReactNode {
           name="add-host"
           options={{
             ...VISIBLE_HEADER_OPTIONS,
-            presentation: 'formSheet',
-            sheetAllowedDetents: [1],
-            sheetGrabberVisible: false,
-            headerBackVisible: false,
             title: '',
+            // iOS-only: Android's formSheet drops the native header (no title, no dismissal),
+            // so the deep-linked route pushes with the standard toolbar there instead.
+            ...(process.env.EXPO_OS === 'ios' && {
+              presentation: 'formSheet' as const,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: false,
+              headerBackVisible: false,
+            }),
           }}
         />
       </Stack>

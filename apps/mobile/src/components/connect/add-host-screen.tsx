@@ -6,8 +6,10 @@ import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { Stack } from 'expo-router';
 import { useTranslations } from 'use-intl';
 
-/** Android add-host form. The iOS header bar items (`unstable_header*Items`) don't exist on
- * Android, so submit is an in-form button and dismissal is the sheet's own back/swipe. */
+/** Android add-host form, reached only by deep link — the connect screen opens the in-place
+ * bottom sheet instead. Pushed with the standard toolbar (Android's formSheet drops the header);
+ * the iOS header bar items (`unstable_header*Items`) don't exist here, so submit is an in-form
+ * button and dismissal is the toolbar back arrow. */
 export function AddHostScreen(): React.ReactNode {
   const t = useTranslations('mobile.connect');
   const colors = useAppMaterialColors();
