@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.2](https://github.com/arcboxlabs/linkcode/compare/v0.25.1...v0.25.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **attachments:** preserve original image filenames ([#463](https://github.com/arcboxlabs/linkcode/issues/463)) ([c5e864b](https://github.com/arcboxlabs/linkcode/commit/c5e864bc9742629af0907c48add1ecff1567c713))
+* **engine:** reach model endpoints through fake-IP tunnels ([f382df6](https://github.com/arcboxlabs/linkcode/commit/f382df6a45222c8a4939bfc503494f21c3b8141d))
+
 ## [0.25.1](https://github.com/arcboxlabs/linkcode/compare/v0.25.0...v0.25.1) (2026-08-20)
 
 
