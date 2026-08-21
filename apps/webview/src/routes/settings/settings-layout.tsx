@@ -74,6 +74,14 @@ export function SettingsLayout(): React.ReactNode {
           active: isActive(pathname, 'notifications'),
           render: <Link to="/settings/notifications" />,
         },
+        {
+          key: 'billing',
+          icon: <CreditCardIcon className="size-4" />,
+          label: t('tabs.billing'),
+          keywords: searchKeywords.billing,
+          active: isActive(pathname, 'billing'),
+          render: <Link to="/settings/billing" />,
+        },
       ],
     },
     {
@@ -95,14 +103,6 @@ export function SettingsLayout(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: isActive(pathname, 'providers'),
           render: <Link to="/settings/providers" />,
-        },
-        {
-          key: 'billing',
-          icon: <CreditCardIcon className="size-4" />,
-          label: t('tabs.billing'),
-          keywords: searchKeywords.billing,
-          active: isActive(pathname, 'billing'),
-          render: <Link to="/settings/billing" />,
         },
         {
           key: 'plugins',

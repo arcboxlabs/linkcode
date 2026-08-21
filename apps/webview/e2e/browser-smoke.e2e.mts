@@ -364,11 +364,11 @@ async function verifyProductionEntry(browser: Browser): Promise<void> {
       await page.goto(`${server.origin}/settings/billing`, { waitUntil: 'domcontentloaded' });
       await page
         .getByText(
-          'LinkCode only displays the balance summary; top-ups, orders, subscriptions, and checkout remain on the web.',
+          'To manage top-ups, orders, subscriptions, and checkout, use LinkCode Cloud on the web.',
         )
         .waitFor();
       await page.getByText('Sign in to LinkCode Cloud to view your balance.').waitFor();
-      await page.getByRole('button', { name: 'Manage on the web' }).waitFor();
+      await page.getByRole('button', { name: 'Sign in to LinkCode Cloud' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).click();
       await page.waitForURL(`${server.origin}/`);

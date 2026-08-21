@@ -26,6 +26,8 @@ describe('BillingSettingsPanel', () => {
 
     expect(screen.getByText('description')).toBeTruthy();
     expect(screen.getByText('hostedHint')).toBeTruthy();
+    expect(screen.getByText('creditsBalance')).toBeTruthy();
+    expect(screen.getByText('availableBalance')).toBeTruthy();
     expect(screen.getByText('12.50')).toBeTruthy();
     expect(screen.getByText('USD')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'openOnWeb' }));
