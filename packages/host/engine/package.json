@@ -17,6 +17,7 @@
     "@linkcode/providers": "workspace:*",
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
+    "@microsoft/antissrf": "^1.0.0",
     "acorn": "^8.17.0",
     "croner": "^10.0.1",
     "effect": "4.0.0-beta.98",

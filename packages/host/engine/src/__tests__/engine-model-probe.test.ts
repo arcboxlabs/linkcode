@@ -1,10 +1,10 @@
 import type { Server } from 'node:http';
-import { createServer } from 'node:http';
+import { Agent, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { WirePayload } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { probeEndpointModels, requestModelListAtAddress } from '../agent/model-probe';
+import { probeEndpointModels, requestPublicModelList } from '../agent/model-probe';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { createSessionHarness } from './fixtures/session-harness';
 
@@ -42,8 +42,9 @@ let relay: Server | undefined;
 const localModelProbe: typeof probeEndpointModels = (source, secret) => {
   const resolved = new URL(source.url);
   const local = `${baseUrl(nullthrow(relay, 'relay not started'))}${resolved.pathname}${resolved.search}`;
+  // An unguarded agent: the relay is on loopback, which the probe policy exists to refuse.
   return probeEndpointModels({ ...source, url: local }, secret, (url, headers) =>
-    requestModelListAtAddress(url, headers, { address: '127.0.0.1', family: 4 }),
+    requestPublicModelList(url, headers, undefined, new Agent()),
   );
 };
 
