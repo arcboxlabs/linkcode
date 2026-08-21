@@ -346,6 +346,22 @@ describe('mapCodexHistoryEvents', () => {
     }
   });
 
+  it('does not pair distinct marker prompts containing lone surrogates', () => {
+    const events = mapCodexHistoryEvents(HID, [
+      {
+        type: 'event_msg',
+        payload: { type: 'user_message', message: '# AGENTS.md instructions\u{D800}' },
+      },
+      responseItem({
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '# AGENTS.md instructions\u{D801}' }],
+      }),
+    ]);
+
+    expect(events).toHaveLength(0);
+  });
+
   it('still drops a glued row when an unmarked twin of one part was echoed as a real prompt', () => {
     // The echoed prompt text coincides with the glued row's env part; the AGENTS.md part was
     // never echoed, so the injected row must stay filtered while the real prompt replays.

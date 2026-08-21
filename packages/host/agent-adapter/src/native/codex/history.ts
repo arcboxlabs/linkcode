@@ -129,7 +129,7 @@ export function isSyntheticCodexUserPayload(
 /** Equality-only stand-in for a prompt text, so holding one per row stays a few dozen bytes even
  * when the text is a pasted file or an injected AGENTS.md blob. */
 function promptTextFingerprint(text: string): string {
-  return createHash('sha256').update(text).digest('base64url');
+  return createHash('sha256').update(text, 'utf16le').digest('base64url');
 }
 
 /** The parts of a user row the synthetic judgment needs, small enough to hold for every user row
