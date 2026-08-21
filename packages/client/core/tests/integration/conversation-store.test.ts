@@ -73,6 +73,54 @@ describe('createConversationStore', () => {
     close();
   });
 
+  it('enriches a lossy seeded prompt with its live image instead of appending a duplicate', async () => {
+    const { client, send, close } = await harness();
+    const livePrompt: AgentEvent = {
+      type: 'user-message',
+      messageId: 'host-prompt' as MessageId,
+      content: [
+        { type: 'text', text: 'describe this image' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+      ],
+      branchCursor: 'live-cursor',
+    };
+    const reply: AgentEvent = {
+      type: 'agent-message',
+      messageId: 'reply' as MessageId,
+      content: [{ type: 'text', text: 'It is a test image.' }],
+    };
+    send(livePrompt);
+    send(reply);
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        // Some provider histories retain the prompt text but omit its image blocks.
+        {
+          event: {
+            type: 'user-message',
+            messageId: 'provider-prompt' as MessageId,
+            content: [{ type: 'text', text: 'describe this image' }],
+            branchCursor: 'provider-cursor',
+          },
+        },
+        { event: reply },
+      ],
+      uptoSeq: 2,
+    });
+
+    const messages = store.getSnapshot().items.filter((item) => item.kind === 'message');
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({
+      id: 'provider-prompt',
+      role: 'user',
+      blocks: livePrompt.content,
+      branchCursor: 'provider-cursor',
+    });
+    expect(messages[1]).toMatchObject({ id: 'reply', role: 'assistant' });
+    close();
+  });
+
   it('consumes only one matching seed row for repeated prompt content', async () => {
     const { client, send, close } = await harness();
     send(userText('repeat', 'host-1'));
