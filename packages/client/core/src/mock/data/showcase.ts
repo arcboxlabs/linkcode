@@ -126,7 +126,7 @@ export const SHOWCASE_PLAN: Plan = {
 
 export const SHOWCASE_PERMISSION_DIFF: Extract<ToolCall['content'][number], { type: 'diff' }> = {
   type: 'diff',
-  path: 'packages/client/workbench/src/mock/dev-mock-transport.ts',
+  path: 'packages/client/core/src/mock/dev-mock-transport.ts',
   oldText: "const coverage = 'thin';\n",
   newText: "const coverage = 'rich';\n",
 };
@@ -271,7 +271,7 @@ export const SHOWCASE_STREAM_START_DELAY_MS = 1000;
 export const SHOWCASE_STREAM_CHUNK_LATENCY_MS = 220;
 
 export const SHOWCASE_TERMINAL_START_OUTPUT =
-  '$ pnpm vitest run packages/client/workbench/src/mock\n' +
+  '$ pnpm vitest run packages/client/core/src/mock\n' +
   '\u{1B}[32mPASS\u{1B}[0m dev mock transport (4)\n' +
   '\u{1B}[33mWARN\u{1B}[0m retry fixture exercised\n' +
   '\u{1B}[31mFAIL\u{1B}[0m expected negative-path fixture\n';
@@ -552,7 +552,7 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
         kind: 'execute',
         status: 'completed',
         content: [{ type: 'terminal', terminalId }],
-        rawInput: { command: 'pnpm vitest run packages/client/workbench/src/mock' },
+        rawInput: { command: 'pnpm vitest run packages/client/core/src/mock' },
       },
       {
         toolCallId: 'mock-tool-execute-lint',
@@ -781,11 +781,11 @@ export function createShowcaseToolBursts(terminalId = SHOWCASE_TERMINAL_ID): Sho
           title: 'Move activity fixture',
           kind: 'move',
           status: 'completed',
-          locations: [{ path: 'packages/client/workbench/src/mock/data/showcase.ts' }],
+          locations: [{ path: 'packages/client/core/src/mock/data/showcase.ts' }],
           content: [],
           rawInput: {
-            path: 'packages/client/workbench/src/mock/data/activity.ts',
-            move_path: 'packages/client/workbench/src/mock/data/showcase.ts',
+            path: 'packages/client/core/src/mock/data/activity.ts',
+            move_path: 'packages/client/core/src/mock/data/showcase.ts',
           },
         },
         {

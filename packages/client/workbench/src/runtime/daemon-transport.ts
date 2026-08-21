@@ -1,6 +1,6 @@
+import { createDevMockTransport } from '@linkcode/client-core/mock';
 import type { Transport } from '@linkcode/transport';
 import { SocketIoTransport } from '@linkcode/transport';
-import { createDevMockTransport } from '../mock/dev-mock-transport';
 
 /**
  * Construct the transport the workbench data plane rides on. `--mode mock` (dev only) swaps the

@@ -5,9 +5,12 @@ import { z } from 'zod';
 import { create } from 'zustand';
 import { createJSONStorage } from 'zustand/middleware';
 
-const HOST_URL_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:']);
+// `mock:` stays accepted in release schemas so a dev-added mock host never poisons the persisted
+// registry blob; its transport is what refuses to dial outside dev builds.
+const HOST_URL_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:', 'mock:']);
 
-/** http(s) dials the daemon's Socket.IO listener; ws(s) dials a raw WebSocket listener. */
+/** http(s) dials the daemon's Socket.IO listener; ws(s) dials a raw WebSocket listener; `mock:`
+ * runs the in-process mock host (dev builds only). */
 export const HostUrlSchema = z.string().refine((value) => {
   try {
     return HOST_URL_PROTOCOLS.has(new URL(value).protocol);

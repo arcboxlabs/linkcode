@@ -1,4 +1,3 @@
-import { LinkCodeClient } from '@linkcode/client-core';
 import type {
   Accounts,
   AgentEvent,
@@ -10,6 +9,7 @@ import type {
 import { nullthrow } from 'foxts/guard';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
+import { LinkCodeClient } from '../../src';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 const rBlobUrl = /^blob:/;
@@ -636,7 +636,7 @@ describe('dev mock transport', () => {
       true,
     );
     expect(tools.some((tool) => tool.status === 'failed')).toBe(true);
-    expect(terminalOutput).toContain('pnpm vitest run packages/client/workbench/src/mock');
+    expect(terminalOutput).toContain('pnpm vitest run packages/client/core/src/mock');
     expect(terminalOutput).toContain('mock terminal stream finished');
 
     const streamChunks = events.filter(
