@@ -23,11 +23,10 @@ export function contentToText(content: ContentBlock[]): string {
  * from — the target shape differs per vendor, so only this extraction step is shared. */
 export function imageBlocksFrom(
   content: ContentBlock[],
-): Array<{ data: string; mimeType: string }> {
-  return content.reduce<Array<{ data: string; mimeType: string }>>((images, c) => {
-    if (c.type === 'image') images.push({ data: c.data, mimeType: c.mimeType });
-    return images;
-  }, []);
+): Array<Extract<ContentBlock, { type: 'image' }>> {
+  return content.filter(
+    (block): block is Extract<ContentBlock, { type: 'image' }> => block.type === 'image',
+  );
 }
 
 const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as const;

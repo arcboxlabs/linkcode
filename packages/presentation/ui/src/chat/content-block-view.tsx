@@ -36,9 +36,10 @@ export function ContentBlockView({
     case 'image':
       return (
         <img
-          alt=""
+          alt={block.name ?? ''}
           className="my-2 max-h-80 max-w-full rounded-xl border border-border"
           src={block.uri ?? `data:${block.mimeType};base64,${block.data}`}
+          title={block.name}
         />
       );
     case 'audio':

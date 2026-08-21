@@ -391,7 +391,12 @@ describe('Composer command menu', () => {
 
     expect(onSend).toHaveBeenCalledExactlyOnceWith([
       { type: 'text', text: 'ship it' },
-      { type: 'image', data: expect.any(String) as string, mimeType: 'image/png' },
+      {
+        type: 'image',
+        data: expect.any(String) as string,
+        mimeType: 'image/png',
+        name: 'probe.png',
+      },
     ]);
     expect(screen.queryByRole('img', { name: 'probe.png' })).toBeNull();
   });
