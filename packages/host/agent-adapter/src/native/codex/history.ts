@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
@@ -116,21 +117,28 @@ function isCodexImageMarker(parts: unknown[], index: number): boolean {
  * so the row is rescued when every marker-bearing part is echoed as an `event_msg`/`user_message`
  * (real prompts always are, both TUI- and app-server-written; injected rows never are). Only the
  * marked parts count — an unmarked part that happens to equal a real prompt must not drag the
- * injected parts of a glued row back in. Rollouts without event_msg rows degrade to marker-only. */
+ * injected parts of a glued row back in. Rollouts without event_msg rows degrade to marker-only.
+ * Echo comparison is by {@link promptTextFingerprint}, so scans never retain prompt bodies. */
 export function isSyntheticCodexUserPayload(
   payload: JsonRecord,
-  realPromptTexts?: ReadonlySet<string>,
+  realPromptFingerprints?: ReadonlySet<string>,
 ): boolean {
-  return isSyntheticCodexUserDigest(digestCodexUserPayload(payload), realPromptTexts);
+  return isSyntheticCodexUserDigest(digestCodexUserPayload(payload), realPromptFingerprints);
+}
+
+/** Equality-only stand-in for a prompt text, so holding one per row stays a few dozen bytes even
+ * when the text is a pasted file or an injected AGENTS.md blob. */
+function promptTextFingerprint(text: string): string {
+  return createHash('sha256').update(text).digest('base64url');
 }
 
 /** The parts of a user row the synthetic judgment needs, small enough to hold for every user row
  * of a rollout while the surrounding rows stream by (the judgment needs the complete echoed-prompt
  * set, which is only known at end of file). */
 interface CodexUserRowDigest {
-  markedTexts: string[];
+  markedFingerprints: string[];
   hasImage: boolean;
-  echoedText: string;
+  echoedFingerprint: string;
 }
 
 function digestCodexUserPayload(payload: JsonRecord): CodexUserRowDigest {
@@ -141,36 +149,41 @@ function digestCodexUserPayload(payload: JsonRecord): CodexUserRowDigest {
     (part) => isRecord(part) && stringField(part, 'type') === 'input_image',
   );
   return {
-    markedTexts: texts.filter((text) => isSyntheticCodexUserText(text)),
+    markedFingerprints: texts.flatMap((text) =>
+      isSyntheticCodexUserText(text) ? [promptTextFingerprint(text)] : [],
+    ),
     hasImage,
-    echoedText: hasImage
-      ? texts.filter((_text, index) => !isCodexImageMarker(parts, index)).join('')
+    echoedFingerprint: hasImage
+      ? promptTextFingerprint(
+          texts.filter((_text, index) => !isCodexImageMarker(parts, index)).join(''),
+        )
       : '',
   };
 }
 
 function isSyntheticCodexUserDigest(
   digest: CodexUserRowDigest,
-  realPromptTexts?: ReadonlySet<string>,
+  realPromptFingerprints?: ReadonlySet<string>,
 ): boolean {
-  if (digest.markedTexts.length === 0) return false;
-  if (!realPromptTexts) return true;
-  if (digest.markedTexts.every((text) => realPromptTexts.has(text))) return false;
+  if (digest.markedFingerprints.length === 0) return false;
+  if (!realPromptFingerprints) return true;
+  if (digest.markedFingerprints.every((print) => realPromptFingerprints.has(print))) return false;
   if (!digest.hasImage) return true;
-  return !realPromptTexts.has(digest.echoedText);
+  return !realPromptFingerprints.has(digest.echoedFingerprint);
 }
 
-/** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */
-export function collectCodexPromptTexts(rows: JsonRecord[]): Set<string> {
-  const texts = new Set<string>();
+/** Fingerprints of the texts codex echoed as `event_msg`/`user_message` rows — the real prompts
+ * of the rollout. */
+export function collectCodexPromptFingerprints(rows: JsonRecord[]): Set<string> {
+  const prints = new Set<string>();
   for (const row of rows) {
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'user_message') continue;
     const message = stringField(payload, 'message');
-    if (message) texts.add(message);
+    if (message) prints.add(promptTextFingerprint(message));
   }
-  return texts;
+  return prints;
 }
 
 /** Convert Codex's persisted response content without trusting an arbitrary URL or local path.
@@ -397,7 +410,7 @@ async function readCodexTranscriptSummary(
   path: string,
   index: Map<string, CodexIndexEntry>,
 ): Promise<CodexTranscriptSummary | undefined> {
-  const promptTexts = new Set<string>();
+  const promptFingerprints = new Set<string>();
   const userRows: PendingUserRow[] = [];
 
   let id: string | undefined;
@@ -428,7 +441,7 @@ async function readCodexTranscriptSummary(
       case 'event_msg': {
         if (stringField(payload, 'type') !== 'user_message') break;
         const message = stringField(payload, 'message');
-        if (message) promptTexts.add(message);
+        if (message) promptFingerprints.add(promptTextFingerprint(message));
         break;
       }
       case 'session_meta': {
@@ -480,7 +493,7 @@ async function readCodexTranscriptSummary(
 
   let firstUserText: string | undefined;
   for (const userRow of userRows) {
-    if (isSyntheticCodexUserDigest(userRow.digest, promptTexts) || userRow.empty) continue;
+    if (isSyntheticCodexUserDigest(userRow.digest, promptFingerprints) || userRow.empty) continue;
     messageCount += 1;
     if (userRow.preview !== undefined) firstUserText ??= userRow.preview;
   }
@@ -614,7 +627,7 @@ export function mapCodexHistoryEvents(
   const events: AgentHistoryEvent[] = [];
   const announced = new Map<string, ToolCall>();
   const persistedMcpIdentities = collectCodexMcpIdentities(rows);
-  const promptTexts = collectCodexPromptTexts(rows);
+  const promptFingerprints = collectCodexPromptFingerprints(rows);
   const { callIds: respondedCallIds, outputCallIds: responseOutputCallIds } =
     collectRespondedToolCallIds(rows);
   const mcpEndStates = collectMcpEndStates(rows);
@@ -711,7 +724,7 @@ export function mapCodexHistoryEvents(
 
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
-    if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) return;
+    if (role === 'user' && isSyntheticCodexUserPayload(payload, promptFingerprints)) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
     const event =

@@ -1,7 +1,16 @@
+import { createReadStream } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Delegating spy: lets tests assert WHICH rollout files a lookup opened — the observable
+// difference between the filename fast path and the whole-corpus fallback.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, createReadStream: vi.fn(actual.createReadStream) };
+});
+
 import { asHistoryId } from '../history-util';
 import {
   findCodexTranscript,
@@ -106,9 +115,10 @@ describe('codex rollout file reads', () => {
     expect(summaries.map((summary) => summary.id)).toEqual([THREAD_ID]);
   });
 
-  it('finds a transcript through the filename fast path', async () => {
-    // A decoy whose name carries a different id must not satisfy the lookup.
-    await writeRollout(
+  it('finds a transcript through the filename fast path without opening the rest', async () => {
+    // A decoy whose name carries a different id must not satisfy the lookup — and the fast path
+    // must never even open it (a fallback full scan would, which is the OOM this guards against).
+    const decoyPath = await writeRollout(
       'sessions/2026/08/01/rollout-2026-08-01T09-00-00-019f0000-aaaa-7bbb-8ccc-dddd00000000.jsonl',
       rolloutLines('019f0000-aaaa-7bbb-8ccc-dddd00000000'),
     );
@@ -117,8 +127,11 @@ describe('codex rollout file reads', () => {
       rolloutLines(THREAD_ID),
     );
 
+    vi.mocked(createReadStream).mockClear();
     const found = await findCodexTranscript(asHistoryId(THREAD_ID), home);
     expect(found).toMatchObject({ id: THREAD_ID, title: 'real prompt' });
+    const opened = vi.mocked(createReadStream).mock.calls.map((call) => String(call[0]));
+    expect(opened).not.toContain(decoyPath);
   });
 
   it('falls back to the full scan when the filename does not carry the id', async () => {
