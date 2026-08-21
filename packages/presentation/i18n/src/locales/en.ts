@@ -1178,8 +1178,14 @@ export const en = {
     },
     billing: {
       title: 'Billing',
-      description: 'Balance, top-ups, orders, and subscriptions are managed on LinkCode Cloud.',
-      hostedHint: 'LinkCode does not read or process billing or checkout data.',
+      description: "View the active organization's LinkCode Credits balance.",
+      hostedHint:
+        'LinkCode only displays the balance summary; top-ups, orders, subscriptions, and checkout remain on the web.',
+      availableBalance: 'Available balance',
+      signedOut: 'Sign in to LinkCode Cloud to view your balance.',
+      signIn: 'Sign in to LinkCode Cloud',
+      missingOrganization: 'The current Cloud session has no active organization.',
+      loadError: 'The balance is temporarily unavailable. Try again later.',
       openOnWeb: 'Manage on the web',
     },
     imChannel: {

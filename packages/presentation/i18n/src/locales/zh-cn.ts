@@ -1147,8 +1147,13 @@ export const zhCN = {
     },
     billing: {
       title: '账单',
-      description: '余额、充值、订单和订阅均由 LinkCode Cloud 网页端管理。',
-      hostedHint: 'LinkCode 不读取或处理账单与结账数据。',
+      description: '查看当前组织的 LinkCode Credits 余额。',
+      hostedHint: 'LinkCode 仅显示余额摘要；充值、订单、订阅和结账仍在网页端处理。',
+      availableBalance: '可用余额',
+      signedOut: '登录 LinkCode Cloud 后查看余额。',
+      signIn: '登录 LinkCode Cloud',
+      missingOrganization: '当前 Cloud 会话没有活动组织。',
+      loadError: '暂时无法加载余额，请稍后重试。',
       openOnWeb: '前往网页端管理',
     },
     imChannel: {
