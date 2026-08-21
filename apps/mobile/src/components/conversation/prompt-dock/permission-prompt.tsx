@@ -57,7 +57,7 @@ export function PermissionPrompt({
           {row.value}
         </RNText>
       ))}
-      <ThemedHost matchContents>
+      <ThemedHost matchContents={{ vertical: true }}>
         <Column verticalArrangement={{ spacedBy: 4 }} modifiers={[fillMaxWidth()]}>
           {options.map((option) => (
             <OutlinedButton

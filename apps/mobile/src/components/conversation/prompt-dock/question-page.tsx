@@ -76,9 +76,9 @@ export function QuestionPage({
           <XIcon size={14} color={colors.onSurfaceVariant} />
         </Pressable>
       </View>
-      <ThemedHost matchContents>
+      <ThemedHost matchContents={{ vertical: true }}>
         <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>
-          <Column>
+          <Column verticalArrangement={{ spacedBy: 2 }}>
             {question.options.map((option) => {
               const selected = draft.selected.includes(option.optionId);
               return (

@@ -32,7 +32,7 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
       className="rounded-xl border px-3 py-1.5"
       style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
     >
-      <ThemedHost matchContents>
+      <ThemedHost matchContents={{ vertical: true }}>
         <Column modifiers={[fillMaxWidth()]}>
           <Row
             verticalAlignment="center"
