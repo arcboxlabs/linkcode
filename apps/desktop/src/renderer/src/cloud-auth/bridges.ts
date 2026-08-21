@@ -4,7 +4,7 @@
  * process's inferred types across the process boundary, so the vendor's stable shape is mirrored here.
  */
 
-import type { CloudHost, CloudImSource } from '@linkcode/workbench';
+import type { CloudBillingSummary, CloudHost, CloudImSource } from '@linkcode/workbench';
 import { traceRendererIpc } from '../ipc';
 
 /** The authenticated user, as normalized by the electron plugin. Extra IdP fields are preserved. */
@@ -31,6 +31,8 @@ export interface CloudDataBridges {
   linkcodeCloud: {
     /** Lists the signed-in account's online hosts; main attaches the session and validates. */
     listHosts: () => Promise<CloudHost[]>;
+    /** Reads the active organization's balance; null means the session has no active organization. */
+    billingSummary: () => Promise<CloudBillingSummary | null>;
     /**
      * Re-asserts this app as the scheme's OS default so the OAuth callback routes back here;
      * called right before a sign-in. Resolves to whether the OS accepted it.
@@ -50,6 +52,8 @@ const cloudSource = window.linkcodeCloud;
 /** First-party cloud IPC with fixed span names and no payload/result attributes. */
 export const cloudDataBridge: CloudDataBridges['linkcodeCloud'] = {
   listHosts: () => traceRendererIpc('cloud.list-hosts', () => cloudSource.listHosts()),
+  billingSummary: () =>
+    traceRendererIpc('cloud.get-billing-summary', () => cloudSource.billingSummary()),
   claimDeepLink: () => traceRendererIpc('cloud.claim-deep-link', () => cloudSource.claimDeepLink()),
   openHostedBilling: () =>
     traceRendererIpc('cloud.open-hosted-billing', () => cloudSource.openHostedBilling()),

@@ -1,3 +1,4 @@
+export * from './billing';
 export * from './hosts';
 export * from './im';
 export * from './im-source';
