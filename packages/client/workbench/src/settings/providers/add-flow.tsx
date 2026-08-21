@@ -34,7 +34,7 @@ import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
 import { Controller, useForm } from 'react-hook-form';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import type { ModelSources } from './model-selection';
@@ -137,11 +137,17 @@ export function ServiceCatalogView({
   linkCodeGatewayAvailable?: boolean;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
+  const locale = useLocale();
+  // tracking-widest (0.1em) inflates Latin glyphs beside CJK, making e.g. "API" in
+  // "API 直连" read as full-width. CJK glyphs carry natural sidebearings, so skip it.
+  const groupLabelTracking = locale.startsWith('zh') ? '' : ' tracking-widest';
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
       {GROUPS.map((group) => (
         <div key={group} className="flex flex-col gap-2">
-          <span className="font-semibold text-2xs text-muted-foreground uppercase tracking-widest">
+          <span
+            className={`font-semibold text-2xs text-muted-foreground uppercase${groupLabelTracking}`}
+          >
             {t(`group.${group}`)}
           </span>
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
