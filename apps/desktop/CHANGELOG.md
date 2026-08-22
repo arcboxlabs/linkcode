@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.3](https://github.com/arcboxlabs/linkcode/compare/v0.25.2...v0.25.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* **i18n:** normalize CJK punctuation and fix tracking-widest on zh-CN group labels ([#467](https://github.com/arcboxlabs/linkcode/issues/467)) ([63b3813](https://github.com/arcboxlabs/linkcode/commit/63b3813061b1676418a525d8885cbe69aeaaf2b2))
+
 ## [0.25.2](https://github.com/arcboxlabs/linkcode/compare/v0.25.1...v0.25.2) (2026-08-21)
 
 
