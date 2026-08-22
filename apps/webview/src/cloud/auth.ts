@@ -1,3 +1,4 @@
+import { organizationClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
 /**
@@ -13,6 +14,7 @@ export const authClient = createAuthClient({
   // The API mounts better-auth at /auth, not the client default /api/auth.
   basePath: '/auth',
   fetchOptions: { credentials: 'include' },
+  plugins: [organizationClient()],
 });
 
 /**

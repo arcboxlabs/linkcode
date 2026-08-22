@@ -19,10 +19,10 @@ export default defineConfig({
           }),
         ],
         resolve: {
-          // Mirror apps/desktop's `@renderer` path alias (apps/desktop/tsconfig.json +
-          // electron.vite.config.ts) so the desktop unit tests resolve under this runner.
+          // Mirror app source aliases so renderer unit tests resolve under this runner.
           alias: {
             '@renderer': fileURLToPath(new URL('./apps/desktop/src/renderer/src', import.meta.url)),
+            '@webview': fileURLToPath(new URL('./apps/webview/src', import.meta.url)),
           },
         },
         test: {

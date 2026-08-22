@@ -10,6 +10,7 @@ import * as Sentry from '@sentry/electron/main';
 import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { DESKTOP_SPAN_NAMES, DESKTOP_TRANSACTION_NAMES } from '../sentry-privacy';
 import { applyThemePreference } from './appearance';
+import { registerCloudBillingBridge } from './cloud-auth/billing';
 import { authClient, setupCloudAuth } from './cloud-auth/client';
 import { registerCloudImBridge } from './cloud-auth/im';
 import { registerCloudTunnelBridge } from './cloud-auth/tunnel';
@@ -62,8 +63,9 @@ if (app.requestSingleInstanceLock()) {
   // Wire the LinkCode Cloud auth protocol + IPC bridges. Must run BEFORE app is ready: the plugin
   // registers a privileged scheme via protocol.registerSchemesAsPrivileged, which throws once ready.
   setupCloudAuth();
-  // Cloud data bridges (online hosts, IM Channel). Not scheme-related, but registered here
+  // Cloud data bridges (billing, online hosts, IM Channel). Not scheme-related, but registered here
   // alongside the rest of the cloud wiring; ipcMain.handle is safe before the app is ready.
+  registerCloudBillingBridge();
   registerCloudTunnelBridge();
   registerCloudImBridge();
 

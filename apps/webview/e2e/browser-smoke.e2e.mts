@@ -352,6 +352,9 @@ async function verifyProductionEntry(browser: Browser): Promise<void> {
         },
         { daemonUrl: daemon.origin },
       );
+      await context.route('**/auth/get-session', async (route) => {
+        await route.fulfill({ body: 'null', contentType: 'application/json', status: 200 });
+      });
       const page = await context.newPage();
       monitorApplicationErrors(page, server.origin, appErrors);
       await page.goto(server.origin, { waitUntil: 'domcontentloaded' });
@@ -359,8 +362,13 @@ async function verifyProductionEntry(browser: Browser): Promise<void> {
       await page.getByRole('link', { name: 'Open settings' }).click();
       await page.waitForURL(`${server.origin}/settings`);
       await page.goto(`${server.origin}/settings/billing`, { waitUntil: 'domcontentloaded' });
-      await page.getByText('LinkCode does not read or process billing or checkout data.').waitFor();
-      await page.getByRole('button', { name: 'Manage on the web' }).waitFor();
+      await page
+        .getByText(
+          'To manage top-ups, orders, subscriptions, and checkout, use LinkCode Cloud on the web.',
+        )
+        .waitFor();
+      await page.getByText('Sign in to LinkCode Cloud to view your balance.').waitFor();
+      await page.getByRole('button', { name: 'Sign in to LinkCode Cloud' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).waitFor();
       await page.getByRole('link', { name: 'Back' }).click();
       await page.waitForURL(`${server.origin}/`);

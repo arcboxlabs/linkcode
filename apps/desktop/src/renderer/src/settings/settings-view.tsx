@@ -129,6 +129,14 @@ export function SettingsView(): React.ReactNode {
           active: category === 'notifications',
           onClick: () => setCategory('notifications'),
         },
+        {
+          key: 'billing',
+          icon: <CreditCardIcon className="size-4" />,
+          label: t('tabs.billing'),
+          keywords: searchKeywords.billing,
+          active: category === 'billing',
+          onClick: () => setCategory('billing'),
+        },
       ],
     },
     {
@@ -150,14 +158,6 @@ export function SettingsView(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: category === 'providers',
           onClick: () => setCategory('providers'),
-        },
-        {
-          key: 'billing',
-          icon: <CreditCardIcon className="size-4" />,
-          label: t('tabs.billing'),
-          keywords: searchKeywords.billing,
-          active: category === 'billing',
-          onClick: () => setCategory('billing'),
         },
         {
           key: 'plugins',
