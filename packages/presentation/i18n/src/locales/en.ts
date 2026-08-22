@@ -783,7 +783,7 @@ export const en = {
   settings: {
     title: 'Settings',
     back: 'Back',
-    searchPlaceholder: 'Search settings...',
+    searchPlaceholder: 'Search settings…',
     searchNoResults: 'No matching settings.',
     groups: {
       personal: 'Personal',

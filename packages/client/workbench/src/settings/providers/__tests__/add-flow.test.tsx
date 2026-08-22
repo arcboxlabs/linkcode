@@ -12,6 +12,7 @@ function translateKey(key: string): string {
 }
 
 vi.mock('use-intl', () => ({
+  useLocale: () => 'en',
   useTranslations: () => translateKey,
 }));
 
