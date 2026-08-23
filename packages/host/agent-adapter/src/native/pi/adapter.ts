@@ -138,7 +138,14 @@ function createConfiguredRegistry(
   const authStorage = pi.AuthStorage.create();
   const modelRegistry = pi.ModelRegistry.create(authStorage);
   const cred = readAgentCredential(opts.config);
-  let ref = opts.model ? parseModel(opts.model) : null;
+  // An account model id is endpoint-owned and may contain slashes; its resolved provider is the
+  // routing boundary. Only unbound model strings carry Pi's `provider/modelId` representation.
+  let ref =
+    opts.model && cred.knownProvider
+      ? { provider: cred.knownProvider, modelId: opts.model }
+      : opts.model
+        ? parseModel(opts.model)
+        : null;
   if (!ref && opts.model) {
     const endpointProviders = new Set<string>();
     if (cred.baseUrl) {
@@ -158,9 +165,7 @@ function createConfiguredRegistry(
   }
 
   const key = cred.apiKey ?? cred.authToken;
-  // The model ref decides which provider pi routes through, so it wins; a resumed session's own
-  // last-routed provider comes next, being direct evidence rather than a catalog default; the
-  // resolved known provider only replaces the "first available provider" guess.
+  // A resumed session's last-routed provider is used when no explicit account model selected one.
   const provider =
     ref?.provider ??
     fallbackProvider ??

@@ -196,8 +196,33 @@ describe('Pi dynamic model catalog', () => {
     expect(sdk.createOptions).toMatchObject({ model: sdk.models[3] });
   });
 
-  it('keeps a qualified model authoritative over provider hints', async () => {
-    await start({ model: 'other/nulls', config: { knownProvider: 'openai' } });
+  it.each([
+    ['openrouter', 'anthropic/claude-sonnet-4.6'],
+    ['vercel-ai-gateway', 'anthropic/claude-sonnet-4.6'],
+    ['gateway', 'vendor/family/model'],
+  ])('keeps the complete account model id under known provider %s', async (provider, modelId) => {
+    const accountModel = { provider, id: modelId, reasoning: false };
+    sdk.models.push(accountModel);
+
+    await start({
+      model: modelId,
+      config: {
+        apiKey: 'account-key',
+        baseUrl: 'https://gateway.example.test/v1',
+        knownProvider: provider,
+      },
+    });
+
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith(provider, 'account-key');
+    expect(sdk.registerProvider).toHaveBeenCalledWith(provider, {
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'account-key',
+    });
+    expect(sdk.createOptions).toMatchObject({ model: accountModel });
+  });
+
+  it('keeps a Pi-qualified model authoritative without account provider evidence', async () => {
+    await start({ model: 'other/nulls' });
 
     expect(sdk.createOptions).toMatchObject({ model: sdk.models[1] });
   });
