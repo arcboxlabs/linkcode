@@ -8,6 +8,7 @@ export function useNativePalette(): NativePalette {
 
   return {
     background: colors.surface,
+    groupedBackground: colors.surface,
     surface: colors.surfaceContainerHigh,
     text: colors.onSurface,
     textSecondary: colors.onSurfaceVariant,

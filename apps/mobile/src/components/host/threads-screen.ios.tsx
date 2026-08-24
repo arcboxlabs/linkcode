@@ -1,11 +1,5 @@
-import {
-  Form,
-  Host,
-  ProgressView,
-  Section,
-  Button as UIButton,
-  Text as UIText,
-} from '@expo/ui/swift-ui';
+import { Form, Host, Section, Button as UIButton, Text as UIText } from '@expo/ui/swift-ui';
+import { LoadingView } from '@mobile/components/form/loading-view.ios';
 import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
@@ -55,11 +49,7 @@ export function ThreadsScreen({
       {/* The list needs the viewport as its proposed size, otherwise SwiftUI collapses it. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         {loading ? (
-          <Form>
-            <Section>
-              <ProgressView />
-            </Section>
-          </Form>
+          <LoadingView />
         ) : groups.length === 0 ? (
           // A query that matched nothing is not an empty inbox: saying "no threads yet" there
           // reads as though the existing threads were lost, and offering to start one is no

@@ -1,7 +1,8 @@
 import { Button, Text } from '@expo/ui/jetpack-compose';
 import { padding } from '@expo/ui/jetpack-compose/modifiers';
 import { FormList } from '@mobile/components/form/list.android';
-import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
+import { LoadingView } from '@mobile/components/form/loading-view.android';
+import { FormHint } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
@@ -41,9 +42,7 @@ export function ThreadsScreen({
   return (
     <>
       {loading ? (
-        <FormList>
-          <FormLoadingRow />
-        </FormList>
+        <LoadingView />
       ) : groups.length === 0 ? (
         // A query that matched nothing is not an empty inbox: saying "no threads yet" there
         // reads as though the existing threads were lost, and offering to start one is no

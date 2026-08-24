@@ -1,5 +1,5 @@
-import { CircularProgressIndicator, ListItem, Row, Switch, Text } from '@expo/ui/jetpack-compose';
-import { padding, toggleable } from '@expo/ui/jetpack-compose/modifiers';
+import { ContainedLoadingIndicator, ListItem, Row, Switch, Text } from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, padding, toggleable } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 
 /** Quiet in-section message row: empty states, hints, and errors. */
@@ -23,11 +23,17 @@ export function FormHint({
   );
 }
 
-/** Centered in-section loading row, the `ProgressView` stand-in. */
+/** Centered in-section loading row, the `ProgressView` stand-in. Without `fillMaxWidth` the Row
+ * wraps its content and the "centered" indicator sits at the start edge. The indicator carries
+ * the refresh indicator's colors (`PullToRefreshDefaults`) so every load state reads as one. */
 export function FormLoadingRow(): React.ReactNode {
+  const colors = useAppMaterialColors();
   return (
-    <Row horizontalArrangement="center" modifiers={[padding(16, 12, 16, 12)]}>
-      <CircularProgressIndicator />
+    <Row horizontalArrangement="center" modifiers={[fillMaxWidth(), padding(16, 12, 16, 12)]}>
+      <ContainedLoadingIndicator
+        color={colors.primary}
+        containerColor={colors.surfaceContainerHigh}
+      />
     </Row>
   );
 }

@@ -1,14 +1,7 @@
-import {
-  Button,
-  ContentUnavailableView,
-  Form,
-  Host,
-  ProgressView,
-  Section,
-  Text,
-} from '@expo/ui/swift-ui';
+import { Button, ContentUnavailableView, Form, Host, Section, Text } from '@expo/ui/swift-ui';
 import { foregroundStyle, refreshable } from '@expo/ui/swift-ui/modifiers';
 import { repositoryLabel } from '@linkcode/ui/native';
+import { LoadingView } from '@mobile/components/form/loading-view.ios';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
 import { useTerminalInbox } from '@mobile/components/terminal/use-terminal-inbox';
@@ -45,7 +38,7 @@ export function TerminalsScreen({
       {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         {loading ? (
-          <ProgressView />
+          <LoadingView />
         ) : loadError && terminals.length === 0 ? (
           <Form>
             <Section>

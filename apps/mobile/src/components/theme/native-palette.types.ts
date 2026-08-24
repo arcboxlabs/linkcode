@@ -6,6 +6,8 @@ import type { ColorValue } from 'react-native';
 export interface NativePalette {
   /** Screens and navigation chrome. */
   background: ColorValue;
+  /** Grouped list/form screens, and the load states that stand in for them. */
+  groupedBackground: ColorValue;
   /** Raised cards: composer, bubbles, prompt cards. */
   surface: ColorValue;
   text: ColorValue;

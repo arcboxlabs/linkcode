@@ -1,4 +1,4 @@
-import { CircularProgressIndicator } from '@expo/ui/jetpack-compose';
+import { LoadingIndicator } from '@expo/ui/jetpack-compose';
 import { size } from '@expo/ui/jetpack-compose/modifiers';
 import { ManualHostRow } from '@mobile/components/connect/manual-host-row';
 import { useDiscoveredHosts } from '@mobile/components/connect/use-discovered-hosts';
@@ -14,9 +14,7 @@ export function DiscoveredHostsSection(): React.ReactNode {
   return (
     <FormSection
       title={t('discovery.title')}
-      trailing={
-        status === 'error' ? undefined : <CircularProgressIndicator modifiers={[size(16, 16)]} />
-      }
+      trailing={status === 'error' ? undefined : <LoadingIndicator modifiers={[size(16, 16)]} />}
     >
       {status === 'error' ? (
         <FormHint tone="error">{t('discovery.error')}</FormHint>

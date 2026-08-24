@@ -4,7 +4,7 @@ import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormList } from '@mobile/components/form/list.android';
-import { FormLoadingRow } from '@mobile/components/form/rows.android';
+import { LoadingView } from '@mobile/components/form/loading-view.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { useTranslations } from 'use-intl';
@@ -16,31 +16,27 @@ export function AccountScreen(): React.ReactNode {
   const colors = useAppMaterialColors();
   const account = useCloudAccount();
 
+  if (account.status !== 'signed-in') return <LoadingView />;
+
   return (
     <FormList>
-      {account.status !== 'signed-in' ? (
-        <FormLoadingRow />
-      ) : (
-        <>
-          <FormSection>
-            <ProfileRow user={account.user} />
-          </FormSection>
-          <DevicesSection />
-          <FormSection>
-            <ListItem
-              modifiers={[
-                clickable(() => {
-                  void signOutOfCloud();
-                }),
-              ]}
-            >
-              <ListItem.HeadlineContent>
-                <Text color={colors.error}>{t('signOut')}</Text>
-              </ListItem.HeadlineContent>
-            </ListItem>
-          </FormSection>
-        </>
-      )}
+      <FormSection>
+        <ProfileRow user={account.user} />
+      </FormSection>
+      <DevicesSection />
+      <FormSection>
+        <ListItem
+          modifiers={[
+            clickable(() => {
+              void signOutOfCloud();
+            }),
+          ]}
+        >
+          <ListItem.HeadlineContent>
+            <Text color={colors.error}>{t('signOut')}</Text>
+          </ListItem.HeadlineContent>
+        </ListItem>
+      </FormSection>
     </FormList>
   );
 }

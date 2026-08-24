@@ -6,6 +6,7 @@ import { Color } from 'expo-router';
  * controls, which never invert their glyph. */
 const IOS_PALETTE: NativePalette = {
   background: Color.ios.systemBackground,
+  groupedBackground: Color.ios.systemGroupedBackground,
   surface: Color.ios.secondarySystemBackground,
   text: Color.ios.label,
   textSecondary: Color.ios.secondaryLabel,

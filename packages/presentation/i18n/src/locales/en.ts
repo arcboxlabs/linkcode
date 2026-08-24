@@ -1419,7 +1419,6 @@ export const en = {
       cancel: 'Cancel',
     },
     connection: {
-      connecting: 'Connecting to the host…',
       unavailableTitle: 'Host unavailable',
       error: 'Unable to reach the host at {url}.',
       retry: 'Retry',

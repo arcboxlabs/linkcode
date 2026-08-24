@@ -1,15 +1,7 @@
-import {
-  Button,
-  HStack,
-  ProgressView,
-  Section,
-  Spacer,
-  SwipeActions,
-  Text,
-  VStack,
-} from '@expo/ui/swift-ui';
+import { Button, HStack, Section, Spacer, SwipeActions, Text, VStack } from '@expo/ui/swift-ui';
 import { badge, buttonStyle, disabled, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useDevicesSection } from '@mobile/components/account/use-devices-section';
+import { FormLoadingRow } from '@mobile/components/form/loading-view.ios';
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import { useTranslations } from 'use-intl';
 
@@ -37,7 +29,7 @@ export function DevicesSection(): React.ReactNode {
       {devicesError ? (
         <Text modifiers={[foregroundStyle('red')]}>{t('devicesError')}</Text>
       ) : devices === null ? (
-        <ProgressView />
+        <FormLoadingRow />
       ) : devices.length === 0 ? (
         <Text modifiers={[SECONDARY]}>{t('devicesEmpty')}</Text>
       ) : (

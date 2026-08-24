@@ -2,8 +2,9 @@ import { Button, LazyColumn, PullToRefreshBox, Text } from '@expo/ui/jetpack-com
 import { fillMaxWidth, padding } from '@expo/ui/jetpack-compose/modifiers';
 import { repositoryLabel } from '@linkcode/ui/native';
 import { FormList } from '@mobile/components/form/list.android';
+import { LoadingView } from '@mobile/components/form/loading-view.android';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
+import { FormHint } from '@mobile/components/form/rows.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
 import { useTerminalInbox } from '@mobile/components/terminal/use-terminal-inbox';
@@ -41,9 +42,7 @@ export function TerminalsScreen({
   return (
     <>
       {loading ? (
-        <FormList>
-          <FormLoadingRow />
-        </FormList>
+        <LoadingView />
       ) : loadError && terminals.length === 0 ? (
         <FormList>
           <FormHint tone="error">{t('loadError', { error: loadError })}</FormHint>

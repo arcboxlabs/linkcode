@@ -1,6 +1,7 @@
-import { Button, HStack, ProgressView, Section, Spacer, Text } from '@expo/ui/swift-ui';
+import { Button, HStack, Section, Spacer, Text } from '@expo/ui/swift-ui';
 import { buttonStyle, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useMyMachines } from '@mobile/components/connect/use-my-machines';
+import { FormLoadingRow } from '@mobile/components/form/loading-view.ios';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
 import { useTranslations } from 'use-intl';
@@ -29,7 +30,7 @@ export function MyMachinesSection({ userId }: { userId: string }): React.ReactNo
       {hostsError ? (
         <Text modifiers={[foregroundStyle('red')]}>{t('error')}</Text>
       ) : onlineHosts === null ? (
-        <ProgressView />
+        <FormLoadingRow />
       ) : onlineHosts.length === 0 ? (
         <Text modifiers={[SECONDARY]}>{t('empty')}</Text>
       ) : (
