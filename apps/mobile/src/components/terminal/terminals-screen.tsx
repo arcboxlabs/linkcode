@@ -53,7 +53,12 @@ export function TerminalsScreen({
         </FormList>
       ) : (
         <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
-          <PullToRefreshBox isRefreshing={refreshing} onRefresh={refresh}>
+          {/* topCenter: see thread-list.tsx — restores the indicator alignment expo-ui drops. */}
+          <PullToRefreshBox
+            contentAlignment="topCenter"
+            isRefreshing={refreshing}
+            onRefresh={refresh}
+          >
             <LazyColumn contentPadding={{ top: 8, bottom: 24 }} modifiers={[fillMaxWidth()]}>
               {loadError ? (
                 <FormHint tone="error">{t('loadError', { error: loadError })}</FormHint>

@@ -41,7 +41,9 @@ export function ThreadList({
 
   return (
     <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
-      <PullToRefreshBox isRefreshing={refreshing} onRefresh={refresh}>
+      {/* expo-ui's indicator slot drops Compose's align(TopCenter); topCenter restores it, and the
+       * fillMaxWidth child is unaffected. */}
+      <PullToRefreshBox contentAlignment="topCenter" isRefreshing={refreshing} onRefresh={refresh}>
         <LazyColumn contentPadding={{ top: 4, bottom: 24 }} modifiers={[fillMaxWidth()]}>
           {groups.map((group) => {
             const expanded = !collapsed.has(group.key);
