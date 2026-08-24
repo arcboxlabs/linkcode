@@ -94,9 +94,18 @@ function effortLevels(model: PiModel): PiEffort[] {
     return level !== 'xhigh' || mapped !== undefined;
   });
 }
-function modelOptions(models: PiModel[]) {
+/**
+ * How a session names a model on the wire. An account-bound session speaks the account's own
+ * vocabulary — endpoint-owned ids, unprefixed — because that is the list the client picks from;
+ * qualifying them leaves the picker unable to match the id the session reflects back at it.
+ */
+function advertisedModelId(model: PiModel, accountProvider: string | undefined): string {
+  return model.provider === accountProvider ? model.id : `${model.provider}/${model.id}`;
+}
+
+function modelOptions(models: PiModel[], accountProvider?: string) {
   return models.map((model) => ({
-    id: `${model.provider}/${model.id}`,
+    id: advertisedModelId(model, accountProvider),
     label: model.name,
     description: `${model.provider}/${model.id}`,
     effortLevels: effortLevels(model),
@@ -177,14 +186,21 @@ function createConfiguredRegistry(
   opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
   fallbackProvider?: string,
 ) {
-  const authStorage = pi.AuthStorage.create();
-  const modelRegistry = pi.ModelRegistry.create(authStorage);
   const cred = readAgentCredential(opts.config);
+  const key = cred.apiKey ?? cred.authToken;
+  // Pi reads a provider's endpoint params only off a *stored* credential — `setRuntimeApiKey` carries
+  // no env and `registerProvider` has no env field — so seed the store instead. In-memory, because
+  // `set()` on the file-backed store would leave the account's secret in ~/.pi/agent/auth.json.
+  const seeded =
+    key && cred.knownProvider && cred.providerEnv
+      ? { [cred.knownProvider]: { type: 'api_key' as const, key, env: cred.providerEnv } }
+      : undefined;
+  const authStorage = seeded ? pi.AuthStorage.inMemory(seeded) : pi.AuthStorage.create();
+  const modelRegistry = pi.ModelRegistry.create(authStorage);
   const ref = opts.model
     ? resolveModelRef(modelRegistry, opts.model, cred, fallbackProvider)
     : null;
 
-  const key = cred.apiKey ?? cred.authToken;
   // An explicit model fixes routing; without one, resume evidence outranks the account default.
   const provider =
     ref?.provider ??
@@ -194,12 +210,13 @@ function createConfiguredRegistry(
   if (!provider && (key || cred.baseUrl)) {
     throw new Error('pi: cannot target credential without a provider/model');
   }
-  if (key && provider) authStorage.setRuntimeApiKey(provider, key);
-  if (cred.baseUrl) {
+  if (key && provider && !seeded) authStorage.setRuntimeApiKey(provider, key);
+  if (!seeded && cred.baseUrl) {
     // baseUrl override only: a models-less registerProvider rewrites the URL and leaves each
     // model's wire at pi's built-in value, so this works exactly when that provider's built-in
     // wire already matches the endpoint. Pointing a provider at a differently-shaped endpoint is
     // not expressible without supplying full model metadata (see @linkcode/providers AGENTS.md).
+    // A seeded provider is the escape hatch: it templates its own per-model URL from the env above.
     modelRegistry.registerProvider(provider, {
       baseUrl: cred.baseUrl,
       ...(key && { apiKey: key }),
@@ -254,8 +271,8 @@ export class PiAdapter extends BaseAgentAdapter {
 
   override async startCatalog(opts: AgentStartCatalogOptions = {}): Promise<AgentStartCatalog> {
     const pi = await this.importSdk();
-    const { modelRegistry } = createConfiguredRegistry(pi, opts);
-    const models = modelOptions(modelRegistry.getAvailable());
+    const { modelRegistry, credential } = createConfiguredRegistry(pi, opts);
+    const models = modelOptions(modelRegistry.getAvailable(), credential.knownProvider);
     return {
       models,
       policies: [...POLICIES],
@@ -374,7 +391,9 @@ export class PiAdapter extends BaseAgentAdapter {
       if (this.lifecycle === generation && this.session === session) this.handleEvent(ev);
     });
     const runningModel = session.model ?? model;
-    if (runningModel) this.emitModel(`${runningModel.provider}/${runningModel.id}`);
+    if (runningModel) {
+      this.emitModel(advertisedModelId(runningModel, this.credential.knownProvider));
+    }
     this.emitModels(
       modelOptions(
         this.credentialProviderId
@@ -382,6 +401,7 @@ export class PiAdapter extends BaseAgentAdapter {
               .getAvailable()
               .filter((item) => item.provider === this.credentialProviderId)
           : modelRegistry.getAvailable(),
+        this.credential.knownProvider,
       ),
     );
     this.emitApprovalPolicy({ availablePolicies: [...POLICIES], currentPolicyId: this.policyId });
@@ -476,7 +496,9 @@ export class PiAdapter extends BaseAgentAdapter {
     const model = registry.find(ref.provider, ref.modelId);
     if (!model) throw new Error(`pi: unknown model '${value}'`);
     await session.setModel(model);
-    if (session.model) this.emitModel(`${session.model.provider}/${session.model.id}`);
+    if (session.model) {
+      this.emitModel(advertisedModelId(session.model, this.credential.knownProvider));
+    }
     if (isEffort(session.thinkingLevel)) this.emitEffort(session.thinkingLevel);
   }
 

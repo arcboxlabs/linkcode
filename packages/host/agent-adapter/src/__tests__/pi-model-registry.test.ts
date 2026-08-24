@@ -54,7 +54,9 @@ describe('Pi model registry integration', () => {
       config: { authToken: 'dummy', baseUrl, knownProvider: provider },
     });
 
-    expect(events).toContainEqual({ type: 'model-update', model: `${provider}/${modelId}` });
+    // An account-bound session reflects the account's own id, unprefixed: the client's picker is
+    // built from the account's model list and has no other vocabulary to match against.
+    expect(events).toContainEqual({ type: 'model-update', model: modelId });
     await adapter.stop();
   });
 });
