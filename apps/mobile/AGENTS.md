@@ -83,10 +83,12 @@ over: **sign-in** (`AppleAuthenticationButton` is an RN view and `@expo/ui` has 
 Apple), the **conversation surface** — timeline, composer, and the screen holding them (excluded by
 the redesign decision; the composer also rides `react-native-keyboard-controller`), the **terminal
 canvas** (`expo-libghostty`), the **startup splash** (`BrandMark` is a bundled RN image), and the
-**navigation header** (react-navigation). Two smaller losses are accepted rather than worked
+**navigation header** (react-navigation). One smaller loss is accepted rather than worked
 around: `Image` takes SF Symbols, asset-catalog names, and local file URIs but **never a remote
-URL**, so the account avatar is an SF Symbol; and the agent brand marks are RN SVG components, so
-thread rows and the new-thread picker name the agent in text instead.
+URL**, so the account avatar is an SF Symbol. The agent brand marks (RN SVG) do cross into rows
+now: the iOS thread row hosts `AgentIcon` through `RNHostView` (`matchContents`, pointer events
+off), and the Android row uses vector-drawable copies of the lobe glyphs in `assets/icons/` —
+but the new-thread picker and selector sheets still name the agent in text.
 
 ## Styling & version pins
 
