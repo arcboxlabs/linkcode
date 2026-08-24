@@ -25,7 +25,10 @@ import type {
   LinkCodePluginRelease,
   ManagedAssetArtifact,
 } from '@linkcode/schema';
-import { InstalledLinkCodePluginSchema, LinkCodePluginManifestSchema } from '@linkcode/schema';
+import {
+  InstalledLinkCodePluginSchema,
+  LinkCodePluginManifestReaderSchema,
+} from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { extract as tarExtract } from 'tar';
 import { loadPluginConfigValues, pluginSecretStore, savePluginConfigValues } from '../config';
@@ -42,7 +45,7 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
 
   list(): InstalledLinkCodePluginEntry[] {
     const entries: InstalledLinkCodePluginEntry[] = [];
-    for (const record of readRegistry()) {
+    for (const record of currentRegistryRecords()) {
       const manifest = readManifest(record.path);
       if (manifest === undefined) continue;
       entries.push({ installed: record, manifest });
@@ -78,25 +81,54 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     }
     const settings = manifest.settings;
     const secrets = pluginSecretStore(this.vault);
-    const nonSecret = loadPluginConfigValues(pluginId);
+    const previousNonSecret = loadPluginConfigValues(pluginId);
+    const nextNonSecret = { ...previousNonSecret };
+    const secretPatch = new Map<string, string | undefined>();
 
     if (patch.remove) {
       for (const fieldId of patch.remove) {
         const field = settings[fieldId];
         if (field === undefined) continue;
-        if (field.secret) secrets.delete(`${pluginId}.${fieldId}`);
-        else delete nonSecret[fieldId];
+        if (field.secret) secretPatch.set(`${pluginId}.${fieldId}`, undefined);
+        else delete nextNonSecret[fieldId];
       }
     }
     if (patch.set) {
       for (const [fieldId, value] of Object.entries(patch.set)) {
         const field = settings[fieldId];
         if (field === undefined) continue;
-        if (field.secret) secrets.set(`${pluginId}.${fieldId}`, String(value));
-        else nonSecret[fieldId] = value;
+        if (field.secret) secretPatch.set(`${pluginId}.${fieldId}`, String(value));
+        else nextNonSecret[fieldId] = value;
       }
     }
-    savePluginConfigValues(pluginId, nonSecret);
+    const previousSecrets = new Map(
+      [...secretPatch.keys()].map((key) => [key, secrets.get(key)] as const),
+    );
+
+    // There is no cross-file transaction between config.json and the vault. Commit config first;
+    // if the vault write then fails, restore config and every affected secret to their snapshots.
+    savePluginConfigValues(pluginId, nextNonSecret);
+    try {
+      applySecretPatch(secrets, secretPatch);
+    } catch (error) {
+      try {
+        applySecretPatch(secrets, previousSecrets);
+      } catch (rollbackError) {
+        logger.warn(
+          { error: rollbackError, pluginId, operation: 'plugin.settings.rollback-vault' },
+          'Failed to restore plugin secrets after a settings write failure',
+        );
+      }
+      try {
+        savePluginConfigValues(pluginId, previousNonSecret);
+      } catch (rollbackError) {
+        logger.warn(
+          { error: rollbackError, pluginId, operation: 'plugin.settings.rollback-config' },
+          'Failed to restore plugin config after a settings write failure',
+        );
+      }
+      throw error;
+    }
     return Promise.resolve();
   }
 
@@ -112,9 +144,11 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     if (httpsUrls.length === 0) {
       throw new Error('Plugin release has no HTTPS download URL');
     }
+    const previousRecords = readRegistry().filter((entry) => entry.id === manifest.id);
     const targetDir = pluginPackageDir(manifest.id, manifest.version);
     const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
     const tgzPath = join(stagingDir, 'package.tgz');
+    let installedManifest: LinkCodePluginManifest;
     mkdirSync(stagingDir, { recursive: true });
     try {
       const downloadArtifact: ManagedAssetArtifact = {
@@ -126,11 +160,12 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       await downloadVerified(downloadArtifact, tgzPath, {});
       await tarExtract({ file: tgzPath, cwd: stagingDir, strip: 1 });
       const onDisk = readManifest(stagingDir);
-      if (onDisk?.id !== manifest.id || onDisk?.version !== manifest.version) {
+      if (onDisk?.id !== manifest.id || onDisk.version !== manifest.version) {
         throw new Error(
           `Extracted manifest does not match release ${manifest.id}@${manifest.version}`,
         );
       }
+      installedManifest = onDisk;
       rmSync(targetDir, { recursive: true, force: true });
       mkdirSync(dirname(targetDir), { recursive: true });
       renameSync(stagingDir, targetDir);
@@ -150,23 +185,47 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       path: targetDir,
     };
     upsertRegistry(record);
+    // A plugin id has one active settings block and one wire identity, so keep exactly one installed
+    // version. Remove stale package directories only after the new package and registry record exist.
+    for (const previous of previousRecords) {
+      if (previous.path === targetDir) continue;
+      try {
+        rmSync(previous.path, { recursive: true, force: true });
+      } catch (error) {
+        logger.warn(
+          { error, pluginId: manifest.id, path: previous.path, operation: 'plugin.install.gc' },
+          'Failed to remove stale plugin package',
+        );
+      }
+    }
     logger.info(
       { pluginId: manifest.id, version: manifest.version, operation: 'plugin.install' },
       'Installed LinkCode plugin',
     );
-    return { installed: record, manifest };
+    return { installed: record, manifest: installedManifest };
   }
 
   uninstall(pluginId: string): Promise<void> {
-    const record = readRegistry().find((entry) => entry.id === pluginId);
-    if (record) {
-      rmSync(record.path, { recursive: true, force: true });
-      writeRegistry(readRegistry().filter((entry) => entry.id !== pluginId));
+    const records = readRegistry();
+    const matches = records.filter((entry) => entry.id === pluginId);
+    if (matches.length > 0) {
+      for (const record of matches) rmSync(record.path, { recursive: true, force: true });
+      writeRegistry(records.filter((entry) => entry.id !== pluginId));
     }
     // Non-secret values are dropped by writing an empty block; secret values are pruned below.
     savePluginConfigValues(pluginId, {});
     prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
     return Promise.resolve();
+  }
+}
+
+function applySecretPatch(
+  secrets: SecretStore,
+  patch: ReadonlyMap<string, string | null | undefined>,
+): void {
+  for (const [key, value] of patch) {
+    if (value === null || value === undefined) secrets.delete(key);
+    else secrets.set(key, value);
   }
 }
 
@@ -195,10 +254,16 @@ function readRegistry(): InstalledLinkCodePlugin[] {
   return records;
 }
 
+function currentRegistryRecords(): InstalledLinkCodePlugin[] {
+  const latestById = new Map<string, InstalledLinkCodePlugin>();
+  for (const record of readRegistry()) latestById.set(record.id, record);
+  // Old builds could write duplicate versions. The newest registry entry wins for reads, while the
+  // next successful install or uninstall compacts the registry and removes every stale package dir.
+  return [...latestById.values()];
+}
+
 function upsertRegistry(record: InstalledLinkCodePlugin): void {
-  const next = readRegistry().filter(
-    (entry) => entry.id !== record.id || entry.version !== record.version,
-  );
+  const next = readRegistry().filter((entry) => entry.id !== record.id);
   next.push(record);
   writeRegistry(next);
 }
@@ -237,7 +302,7 @@ function readManifest(packageDir: string): LinkCodePluginManifest | undefined {
     logger.warn({ err, packageDir, operation: 'plugin.manifest' }, 'Malformed plugin manifest');
     return undefined;
   }
-  const result = LinkCodePluginManifestSchema.safeParse(parsed);
+  const result = LinkCodePluginManifestReaderSchema.safeParse(parsed);
   if (!result.success) {
     logger.warn({ packageDir, operation: 'plugin.manifest' }, 'Dropping invalid plugin manifest');
     return undefined;

@@ -193,6 +193,30 @@ describe('plugin-market.refresh', () => {
     await engine.stop();
   });
 
+  it('refuses a disabled marketplace without calling refresh', async () => {
+    const refresh = vi.fn();
+    const { engine, sent, inject } = harness({
+      linkCodeMarketplace: fakeMarketplace({
+        list: () => [{ ...MARKETPLACE, enabled: false }],
+        refresh,
+      }).service,
+    });
+    await engine.start();
+    inject({
+      kind: 'plugin-market.refresh',
+      clientReqId: 'r1',
+      marketplaceId: 'linkcode-official',
+    });
+    expect(sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r1',
+      code: 'forbidden',
+      message: 'Marketplace is disabled: linkcode-official',
+    });
+    expect(refresh).not.toHaveBeenCalled();
+    await engine.stop();
+  });
+
   it('fails unsupported when the host has no marketplace plane', async () => {
     const { engine, sent, inject } = harness();
     await engine.start();
@@ -275,6 +299,28 @@ describe('plugin-market.install', () => {
       code: 'not_found',
       message: 'Unknown marketplace release: arcbox/latex@9.9.9',
     });
+    expect(install).not.toHaveBeenCalled();
+    await engine.stop();
+  });
+
+  it('refuses installs from a disabled marketplace without resolving or installing', async () => {
+    const { store, install } = fakeStore();
+    const { service, resolveRelease } = fakeMarketplace({
+      list: () => [{ ...MARKETPLACE, enabled: false }],
+    });
+    const { engine, sent, inject } = harness({
+      linkCodePluginStore: store,
+      linkCodeMarketplace: service,
+    });
+    await engine.start();
+    inject({ kind: 'plugin-market.install', clientReqId: 'r1', release: IDENTITY });
+    expect(sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r1',
+      code: 'forbidden',
+      message: 'Marketplace is disabled: linkcode-official',
+    });
+    expect(resolveRelease).not.toHaveBeenCalled();
     expect(install).not.toHaveBeenCalled();
     await engine.stop();
   });

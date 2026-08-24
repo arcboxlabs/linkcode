@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -28,12 +29,13 @@ export function pluginPackageDir(pluginId: string, version: string): string {
   return join(pluginsRoot(), ...safe, version);
 }
 
-/** Staging dir beside the package dir, so publish is one same-volume `rename`. */
+/** Unique staging dir beside the package dir, so concurrent installs publish through one same-volume
+ * `rename` without sharing a partially extracted archive. */
 export function makePluginTmpDir(pluginId: string, version: string): string {
   const dir = pluginPackageDir(pluginId, version);
   const parent = join(dir, '..');
   mkdirSync(dir, { recursive: true });
-  return join(parent, `.tmp-${process.pid}-${version}`);
+  return join(parent, `.tmp-${process.pid}-${version}-${randomUUID()}`);
 }
 
 /** Resolve product channel for callers that must not reach into the paths module's side effects. */

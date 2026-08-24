@@ -63,10 +63,18 @@ export class DaemonLinkCodeMarketplaceService implements LinkCodeMarketplaceServ
   }
 
   async refresh(marketplaceId: string): Promise<MarketplaceRefreshResult> {
+    return this.refreshIndex(marketplaceId, false);
+  }
+
+  private async refreshIndex(
+    marketplaceId: string,
+    retriedWithoutValidators: boolean,
+  ): Promise<MarketplaceRefreshResult> {
     const config = nullthrow(
       this.marketplaces.find((entry) => entry.id === marketplaceId),
       `Unknown marketplace: ${marketplaceId}`,
     );
+    if (!config.enabled) throw new Error(`Marketplace is disabled: ${marketplaceId}`);
     const url = config.source.url;
     // Validators are only replayed against the exact URL that produced them.
     const state = readRefreshState(marketplaceId);
@@ -81,15 +89,28 @@ export class DaemonLinkCodeMarketplaceService implements LinkCodeMarketplaceServ
       signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     });
     if (response.status === 304) {
+      const cachedIndex = readIndexCache(marketplaceId);
+      if (cachedIndex === undefined) {
+        if (retriedWithoutValidators) {
+          throw new Error('Marketplace returned HTTP 304 without a usable cached index');
+        }
+        // A validator is only meaningful alongside the index it validates. If local state was
+        // deleted or corrupted, remove it and retry once without conditional request headers.
+        dropCachedIndexAndValidators(marketplaceId);
+        logger.warn(
+          { marketplaceId, operation: 'marketplace.refresh' },
+          'Received HTTP 304 without a usable cached index; retrying unconditionally',
+        );
+        return this.refreshIndex(marketplaceId, true);
+      }
       if (validators !== undefined) {
         writeRefreshState({ ...validators, checkedAt: Date.now() });
       }
       // A 304 means the remote index is unchanged, not that the catalog is empty. Reuse the
       // daemon's persisted index so clients can replace their snapshot safely even when they do not
       // retain the previous response in memory (for example after an uninstall or page remount).
-      const cachedIndex = readIndexCache(marketplaceId);
       return {
-        releases: cachedIndex === undefined ? [] : flattenReleases(cachedIndex),
+        releases: flattenReleases(cachedIndex),
         notModified: true,
       };
     }
@@ -113,7 +134,7 @@ export class DaemonLinkCodeMarketplaceService implements LinkCodeMarketplaceServ
   resolveRelease(identity: LinkCodeMarketplaceReleaseIdentity): LinkCodePluginRelease | undefined {
     const config = this.marketplaces.find((entry) => entry.id === identity.marketplaceId);
     const index = readIndexCache(identity.marketplaceId);
-    if (config === undefined || index === undefined) return undefined;
+    if (index === undefined || !config?.enabled) return undefined;
     const plugin = index.plugins.find((entry) => entry.id === identity.pluginId);
     const release = plugin?.releases.find(
       (candidate) => candidate.manifest.version === identity.version,
@@ -127,6 +148,11 @@ export class DaemonLinkCodeMarketplaceService implements LinkCodeMarketplaceServ
       },
     };
   }
+}
+
+function dropCachedIndexAndValidators(marketplaceId: string): void {
+  rmSync(marketplaceIndexCachePath(marketplaceId), { force: true });
+  rmSync(marketplaceRefreshStatePath(marketplaceId), { force: true });
 }
 
 function resolveMirrorUrl(url: string, indexUrl: string): string {

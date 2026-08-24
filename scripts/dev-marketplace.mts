@@ -11,8 +11,8 @@
  * Point the dev daemon at it with:
  *   LINKCODE_MARKETPLACE_URL=http://127.0.0.1:18741/index.json pnpm -F @linkcode/daemon dev
  *
- * The manifest's mcp-server args point at the INSTALLED copy under the dev channel's plugin
- * store (~/.linkcode.development/plugins/...), so a session genuinely runs the artifact the
+ * The manifest's mcp-server entry is package-relative, so the Engine resolves it against the
+ * installed copy under the dev channel's plugin store. A session genuinely runs the artifact the
  * installer published — not the repo's dist.
  */
 
@@ -79,6 +79,7 @@ const manifest = {
     preset: {
       type: 'enum',
       label: '服务商',
+      description: '会根据 @qq.com / @163.com 自动识别；腾讯企业邮箱请手动选择 exmail。',
       enum: ['163', 'qq', 'exmail'],
       default: '163',
     },

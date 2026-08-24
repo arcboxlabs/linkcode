@@ -81,6 +81,8 @@ function createSmtpTransporter(config: MailConfig): SmtpTransporter {
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.secure,
+    // On the non-secure port, require STARTTLS instead of silently falling back to plaintext.
+    requireTLS: !config.smtp.secure,
     auth: { user: config.smtp.user, pass: config.smtp.password },
   });
 }

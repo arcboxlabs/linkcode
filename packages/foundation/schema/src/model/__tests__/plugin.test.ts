@@ -293,6 +293,18 @@ describe('LinkCode plugin package contracts', () => {
     expect(LinkCodePluginManifestSchema.safeParse(mailManifest).success).toBe(true);
   });
 
+  it('rejects password settings unless they are routed to the secret vault', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: {
+          ...mailManifest.settings,
+          authcode: { ...mailManifest.settings.authcode, secret: false },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it.each(['/tmp/index.js', '../dist/index.js', String.raw`dist\index.js`])(
     'rejects a non-package-relative mcp entry %s',
     (entry) => {

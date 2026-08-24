@@ -36,12 +36,35 @@ function parsePreset(value: string | undefined): MailPreset | null {
   throw new ConfigError(`MAIL_PRESET must be one of: 163, qq, exmail (got: ${value})`);
 }
 
+/** Infer the two consumer-mail presets whose domains uniquely identify their provider. */
+export function inferPresetFromEmail(user: string): MailPreset | null {
+  const domain = user.trim().toLowerCase().split('@').at(-1);
+  if (domain === 'qq.com') return 'qq';
+  if (domain === '163.com') return '163';
+  return null;
+}
+
+function resolvePreset(user: string, configuredPreset: MailPreset | null): MailPreset | null {
+  // The settings form has a backwards-compatible default of 163. Prefer a recognisable account
+  // suffix so a QQ account cannot accidentally be sent to 163's IMAP/SMTP endpoints.
+  return inferPresetFromEmail(user) ?? configuredPreset;
+}
+
 function defaultImapPort(secure: boolean): number {
   return secure ? 993 : 143;
 }
 
 function defaultSmtpPort(secure: boolean): number {
   return secure ? 465 : 587;
+}
+
+function parsePort(value: string | undefined, name: string): number | null {
+  if (value === undefined || value === '') return null;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new ConfigError(`${name} must be an integer between 1 and 65535 (got: ${value})`);
+  }
+  return port;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): MailConfig {
@@ -55,7 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MailConfig {
     );
   }
 
-  const preset = parsePreset(env.MAIL_PRESET);
+  const preset = resolvePreset(user, parsePreset(env.MAIL_PRESET));
   const presetHosts = preset ? PRESETS[preset] : null;
 
   const imapHost = env.IMAP?.trim() || presetHosts?.imap.host;
@@ -70,9 +93,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MailConfig {
 
   const imapSecure = parseBool(env.IMAP_SECURE, true);
   const smtpSecure = parseBool(env.SMTP_SECURE, true);
-  // A preset pins host+port; a custom host override falls back to the secure-derived default port.
-  const imapPort = presetHosts && !env.IMAP ? presetHosts.imap.port : defaultImapPort(imapSecure);
-  const smtpPort = presetHosts && !env.SMTP ? presetHosts.smtp.port : defaultSmtpPort(smtpSecure);
+  // Precedence: explicit port env > preset's pinned port (host not overridden) > secure default.
+  const imapPort =
+    parsePort(env.IMAP_PORT, 'IMAP_PORT') ??
+    (presetHosts && !env.IMAP ? presetHosts.imap.port : defaultImapPort(imapSecure));
+  const smtpPort =
+    parsePort(env.SMTP_PORT, 'SMTP_PORT') ??
+    (presetHosts && !env.SMTP ? presetHosts.smtp.port : defaultSmtpPort(smtpSecure));
 
   const smtpUser = env.SMTP_USER?.trim() || user;
   // `||` not `??`: an empty SMTP_PASSWORD would otherwise log in with no credential.

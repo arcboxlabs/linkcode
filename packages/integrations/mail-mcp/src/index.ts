@@ -9,7 +9,9 @@ import { MailImap } from './imap';
 import { MailSmtp } from './smtp';
 import { registerMailTools } from './tools';
 
-const VERSION = '0.0.0';
+// Build-time injected from package.json by tsup `define`; the fallback only covers unbundled runs.
+declare const __MAIL_MCP_VERSION__: string | undefined;
+const VERSION = typeof __MAIL_MCP_VERSION__ === 'string' ? __MAIL_MCP_VERSION__ : '0.0.0';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -27,7 +29,7 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   let shuttingDown = false;
-  const shutdown = (signal: string): void => {
+  const shutdown = (exitProcess = false): void => {
     if (shuttingDown) return;
     shuttingDown = true;
     void (async () => {
@@ -38,12 +40,15 @@ async function main(): Promise<void> {
       }
       await Promise.allSettled([imap.close(), smtp.close()]);
       process.exitCode = 0;
-      if (signal) process.exit(0);
+      if (exitProcess) process.exit(0);
     })();
   };
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown(true));
+  process.on('SIGTERM', () => shutdown(true));
+  // The daemon owns stdin. If it dies or closes the MCP session, do not leave this plugin process
+  // running with open IMAP/SMTP sockets.
+  transport.onclose = () => shutdown(true);
 }
 
 main().catch((error) => {

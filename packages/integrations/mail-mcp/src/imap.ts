@@ -60,9 +60,11 @@ export interface MailboxLock {
 
 export interface ImapFlowPort {
   readonly mailbox: MailboxObject | false;
-  connect(): Promise<void>;
+  // Property-style so tests can reference the vi.fn() doubles without an unbound-method warning.
+  connect: () => Promise<void>;
   logout(): Promise<void>;
   close(): void;
+  on(event: 'error' | 'close', handler: (error?: unknown) => void): void;
   list(options?: { statusQuery?: Partial<Record<string, boolean>> }): Promise<ListResponse[]>;
   getMailboxLock(path: string, options?: { readOnly?: boolean }): Promise<MailboxLock>;
   search(query: SearchObject, options?: { uid?: boolean }): Promise<number[] | false>;
@@ -107,10 +109,18 @@ export interface MailImapClient {
 
 export type ImapFlowFactory = (config: MailConfig) => ImapFlowPort;
 
+/** The subset of ImapFlow's EventEmitter surface used to keep cached connections healthy. */
+interface EventedImapFlowPort {
+  on(event: 'close', listener: () => void): unknown;
+  on(event: 'error', listener: (error: Error) => void): unknown;
+}
+
 const SEEN_FLAG = String.raw`\Seen`;
 
 export class MailImap implements MailImapClient {
   private flow: ImapFlowPort | undefined;
+  private connecting: Promise<ImapFlowPort> | undefined;
+  private pendingFlow: ImapFlowPort | undefined;
 
   constructor(
     private readonly config: MailConfig,
@@ -257,9 +267,10 @@ export class MailImap implements MailImapClient {
   }
 
   async close(): Promise<void> {
-    const flow = this.flow;
+    const flow = this.flow ?? this.pendingFlow;
     if (!flow) return;
     this.flow = undefined;
+    this.pendingFlow = undefined;
     try {
       await flow.logout();
     } catch {
@@ -269,11 +280,53 @@ export class MailImap implements MailImapClient {
 
   private async ensureConnected(): Promise<ImapFlowPort> {
     if (this.flow) return this.flow;
-    const flow = this.flowFactory ? this.flowFactory(this.config) : createImapFlow(this.config);
-    await flow.connect();
-    this.flow = flow;
-    return flow;
+    if (this.connecting) return this.connecting;
+    const connecting = this.connect();
+    this.connecting = connecting;
+    try {
+      return await connecting;
+    } finally {
+      if (this.connecting === connecting) this.connecting = undefined;
+    }
   }
+
+  private async connect(): Promise<ImapFlowPort> {
+    const flow = this.flowFactory ? this.flowFactory(this.config) : createImapFlow(this.config);
+    this.pendingFlow = flow;
+    this.attachLifecycleHandlers(flow);
+    try {
+      await flow.connect();
+      // `close()` may have been called while the asynchronous connect was in progress.
+      if (this.pendingFlow !== flow) {
+        flow.close();
+        throw new Error('IMAP connection closed while connecting');
+      }
+      this.flow = flow;
+      return flow;
+    } finally {
+      if (this.pendingFlow === flow) this.pendingFlow = undefined;
+    }
+  }
+
+  private attachLifecycleHandlers(flow: ImapFlowPort): void {
+    if (!isEventedImapFlow(flow)) return;
+    flow.on('close', () => this.invalidateFlow(flow));
+    // An EventEmitter `error` event without a listener terminates Node. Log it on stderr (stdout
+    // is MCP JSON-RPC) and invalidate the cached flow so the next tool call establishes a socket.
+    flow.on('error', (error) => {
+      this.invalidateFlow(flow);
+      process.stderr.write(`[linkcode-mail-mcp] IMAP connection error: ${error.message}\n`);
+    });
+  }
+
+  private invalidateFlow(flow: ImapFlowPort): void {
+    if (this.flow === flow) this.flow = undefined;
+    if (this.pendingFlow === flow) this.pendingFlow = undefined;
+  }
+}
+
+function isEventedImapFlow(flow: ImapFlowPort): flow is ImapFlowPort & EventedImapFlowPort {
+  return 'on' in flow && typeof flow.on === 'function';
 }
 
 function createImapFlow(config: MailConfig): ImapFlowPort {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from '../config';
+import { ConfigError, inferPresetFromEmail, loadConfig } from '../config';
+
+const RE_IMAP_PORT = /IMAP_PORT/;
 
 describe('loadConfig presets', () => {
   it.each([
@@ -19,11 +21,37 @@ describe('loadConfig presets', () => {
     },
   );
 
+  it('corrects a mismatched configured preset from a QQ account suffix', () => {
+    const cfg = loadConfig({
+      MAIL_USER: 'user@qq.com',
+      MAIL_PASSWORD: 'qq-authorisation-code',
+      MAIL_PRESET: '163',
+    });
+    expect(cfg.imap.host).toBe('imap.qq.com');
+    expect(cfg.smtp.host).toBe('smtp.qq.com');
+  });
+
+  it('infers a preset when the account suffix is known and MAIL_PRESET is absent', () => {
+    const cfg = loadConfig({ MAIL_USER: 'user@163.com', MAIL_PASSWORD: '163-authorisation-code' });
+    expect(cfg.imap.host).toBe('imap.163.com');
+    expect(cfg.smtp.host).toBe('smtp.163.com');
+  });
+
   it('defaults SMTP_USER/SMTP_PASSWORD/SMTP_FROM to the mail account', () => {
     const cfg = loadConfig({ MAIL_USER: 'u@163.com', MAIL_PASSWORD: 'code', MAIL_PRESET: '163' });
     expect(cfg.smtp.user).toBe('u@163.com');
     expect(cfg.smtp.password).toBe('code');
     expect(cfg.smtpFrom).toBe('u@163.com');
+  });
+});
+
+describe('inferPresetFromEmail', () => {
+  it.each([
+    ['person@qq.com', 'qq'],
+    ['PERSON@163.COM', '163'],
+    ['person@example.com', null],
+  ] as const)('maps %s to %s', (email, expected) => {
+    expect(inferPresetFromEmail(email)).toBe(expected);
   });
 });
 
@@ -64,6 +92,24 @@ describe('loadConfig overrides', () => {
     });
     expect(cfg.imap.port).toBe(993);
     expect(cfg.smtp.port).toBe(465);
+  });
+
+  it('IMAP_PORT/SMTP_PORT override preset and default ports', () => {
+    const cfg = loadConfig({
+      MAIL_USER: 'u',
+      MAIL_PASSWORD: 'p',
+      MAIL_PRESET: '163',
+      IMAP_PORT: '1993',
+      SMTP_PORT: '2465',
+    });
+    expect(cfg.imap.port).toBe(1993);
+    expect(cfg.smtp.port).toBe(2465);
+  });
+
+  it('rejects a non-numeric port', () => {
+    expect(() =>
+      loadConfig({ MAIL_USER: 'u', MAIL_PASSWORD: 'p', MAIL_PRESET: '163', IMAP_PORT: 'abc' }),
+    ).toThrow(RE_IMAP_PORT);
   });
 });
 

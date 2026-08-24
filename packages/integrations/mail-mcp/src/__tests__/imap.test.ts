@@ -1,6 +1,7 @@
+import { trueFn } from 'foxts/noop';
 import type { MailboxObject } from 'imapflow';
 import { describe, expect, it, vi } from 'vitest';
-import type { ImapFlowPort, MailImapClient, ReplyOrigin } from '../imap';
+import type { ImapFlowFactory, ImapFlowPort, MailImapClient, ReplyOrigin } from '../imap';
 import { MailImap } from '../imap';
 import type { MailConfig } from '../types';
 
@@ -32,6 +33,7 @@ function makeFlow(overrides: Partial<ImapFlowPort> = {}, mailboxExists = 10): Im
     connect: vi.fn(),
     logout: vi.fn(),
     close: vi.fn(),
+    on: vi.fn(),
     list: vi.fn(),
     getMailboxLock: vi.fn().mockResolvedValue(lock),
     search: vi.fn(),
@@ -46,6 +48,25 @@ function makeFlow(overrides: Partial<ImapFlowPort> = {}, mailboxExists = 10): Im
 
 function makeImap(flow: ImapFlowPort): MailImapClient {
   return new MailImap(makeConfig(), () => flow);
+}
+
+function makeEventedFlow(
+  overrides: Partial<ImapFlowPort> = {},
+): ImapFlowPort & { emit(event: 'close' | 'error', error?: Error): void } {
+  const listeners = new Map<string, Array<(error?: Error) => void>>();
+  const flow = makeFlow(overrides) as ImapFlowPort & {
+    on(event: 'close' | 'error', listener: (error?: Error) => void): void;
+    emit(event: 'close' | 'error', error?: Error): void;
+  };
+  flow.on = (event, listener) => {
+    const existing = listeners.get(event) ?? [];
+    existing.push(listener);
+    listeners.set(event, existing);
+  };
+  flow.emit = (event, error) => {
+    for (const listener of listeners.get(event) ?? []) listener(error);
+  };
+  return flow;
 }
 
 describe('MailImap.listFolders', () => {
@@ -63,6 +84,58 @@ describe('MailImap.listFolders', () => {
       { path: 'INBOX', specialUse: String.raw`\Inbox`, messages: 5, unseen: 2 },
       { path: 'Sent', specialUse: String.raw`\Sent`, messages: 3, unseen: undefined },
     ]);
+  });
+
+  it('shares an in-flight connection across concurrent calls', async () => {
+    let resolveConnect: (() => void) | undefined;
+    const connect = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveConnect = resolve;
+        }),
+    );
+    const flow = makeFlow({ connect, list: vi.fn().mockResolvedValue([]) });
+    const factory = vi.fn<ImapFlowFactory>(() => flow);
+    const imap = new MailImap(makeConfig(), factory);
+
+    const first = imap.listFolders();
+    const second = imap.listFolders();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledTimes(1);
+
+    resolveConnect?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+  });
+
+  it('drops a closed connection and reconnects on the next call', async () => {
+    const first = makeEventedFlow({ list: vi.fn().mockResolvedValue([]) });
+    const second = makeEventedFlow({ list: vi.fn().mockResolvedValue([]) });
+    const factory = vi.fn<ImapFlowFactory>().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const imap = new MailImap(makeConfig(), factory);
+
+    await imap.listFolders();
+    first.emit('close');
+    await imap.listFolders();
+
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(second.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles an IMAP error, logs to stderr, and reconnects', async () => {
+    const first = makeEventedFlow({ list: vi.fn().mockResolvedValue([]) });
+    const second = makeEventedFlow({ list: vi.fn().mockResolvedValue([]) });
+    const factory = vi.fn<ImapFlowFactory>().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(trueFn);
+    const imap = new MailImap(makeConfig(), factory);
+
+    await imap.listFolders();
+    first.emit('error', new Error('socket reset'));
+    await imap.listFolders();
+
+    expect(stderr).toHaveBeenCalledWith(
+      '[linkcode-mail-mcp] IMAP connection error: socket reset\n',
+    );
+    expect(factory).toHaveBeenCalledTimes(2);
   });
 });
 

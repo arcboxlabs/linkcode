@@ -105,11 +105,20 @@ export class LinkCodePluginMarketRequestHandler {
             }),
           );
         }
-        if (!marketplace.list().some((entry) => entry.id === marketplaceId)) {
+        const config = marketplace.list().find((entry) => entry.id === marketplaceId);
+        if (config === undefined) {
           return Effect.fail(
             new RequestError({
               code: 'not_found',
               message: `Unknown marketplace: ${marketplaceId}`,
+            }),
+          );
+        }
+        if (!config.enabled) {
+          return Effect.fail(
+            new RequestError({
+              code: 'forbidden',
+              message: `Marketplace is disabled: ${marketplaceId}`,
             }),
           );
         }
@@ -137,6 +146,23 @@ export class LinkCodePluginMarketRequestHandler {
           new RequestError({
             code: 'unsupported',
             message: 'Plugin marketplaces are unavailable on this host',
+          }),
+        );
+      }
+      const config = marketplace.list().find((entry) => entry.id === payload.release.marketplaceId);
+      if (config === undefined) {
+        return Effect.fail(
+          new RequestError({
+            code: 'not_found',
+            message: `Unknown marketplace: ${payload.release.marketplaceId}`,
+          }),
+        );
+      }
+      if (!config.enabled) {
+        return Effect.fail(
+          new RequestError({
+            code: 'forbidden',
+            message: `Marketplace is disabled: ${payload.release.marketplaceId}`,
           }),
         );
       }

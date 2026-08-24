@@ -1,8 +1,9 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LinkCodeMarketplaceConfigList } from '@linkcode/schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { marketplaceIndexCachePath } from '../marketplace/paths';
 import type { MarketplaceIndexResponse } from '../marketplace/service';
 import { DaemonLinkCodeMarketplaceService } from '../marketplace/service';
 
@@ -126,6 +127,48 @@ describe('DaemonLinkCodeMarketplaceService.refresh', () => {
         version: '1.2.0',
       }),
     ).toBeDefined();
+  });
+
+  it('drops stale validators and retries unconditionally when a 304 has no readable cache', async () => {
+    let calls = 0;
+    const fetchIndex = vi.fn(() => {
+      calls += 1;
+      return Promise.resolve(
+        calls === 1
+          ? fakeResponse(200, JSON.stringify(INDEX), { etag: '"index-v1"' })
+          : calls === 2
+            ? fakeResponse(304)
+            : fakeResponse(200, JSON.stringify(INDEX), { etag: '"index-v2"' }),
+      );
+    });
+    const service = new DaemonLinkCodeMarketplaceService(MARKETPLACES, fetchIndex);
+
+    await service.refresh('linkcode-official');
+    writeFileSync(marketplaceIndexCachePath('linkcode-official'), '{broken', 'utf8');
+    const result = await service.refresh('linkcode-official');
+
+    expect(result.releases).toHaveLength(1);
+    expect(fetchIndex).toHaveBeenNthCalledWith(
+      3,
+      'https://plugins.example/index.json',
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
+  it('does not refresh or resolve releases from a disabled marketplace', async () => {
+    const disabled: LinkCodeMarketplaceConfigList = [{ ...MARKETPLACES[0], enabled: false }];
+    const fetchIndex = vi.fn();
+    const service = new DaemonLinkCodeMarketplaceService(disabled, fetchIndex);
+
+    await expect(service.refresh('linkcode-official')).rejects.toThrow('Marketplace is disabled');
+    expect(fetchIndex).not.toHaveBeenCalled();
+    expect(
+      service.resolveRelease({
+        marketplaceId: 'linkcode-official',
+        pluginId: 'arcbox/latex',
+        version: '1.2.0',
+      }),
+    ).toBeUndefined();
   });
 
   it('discards cached validators when the configured source URL changed', async () => {

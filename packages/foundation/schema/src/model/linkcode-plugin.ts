@@ -146,6 +146,13 @@ export const LinkCodePluginSettingFieldSchema = z
         path: ['enum'],
       });
     }
+    if (field.type === 'password' && field.secret !== true) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'A password setting must be secret',
+        path: ['secret'],
+      });
+    }
   });
 export type LinkCodePluginSettingField = z.infer<typeof LinkCodePluginSettingFieldSchema>;
 
@@ -258,7 +265,7 @@ export const LinkCodePluginManifestSchema = z
 export type LinkCodePluginManifest = z.infer<typeof LinkCodePluginManifestSchema>;
 
 /** Forward-compatible marketplace reader for additive fields within manifest version 1. */
-const LinkCodePluginManifestReaderSchema = z
+export const LinkCodePluginManifestReaderSchema = z
   .object(linkCodePluginManifestFields)
   .superRefine(rejectDuplicateComponents)
   .superRefine(rejectUnresolvedEnvBindings);

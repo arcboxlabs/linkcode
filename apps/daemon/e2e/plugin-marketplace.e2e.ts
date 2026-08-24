@@ -122,6 +122,13 @@ async function main(): Promise<void> {
     );
     const second = await client.refreshPluginMarketplace(MARKETPLACE_ID);
     assert.equal(second.notModified, true, 'second refresh did not hit the ETag cache');
+    assert(
+      second.releases.some(
+        (entry) =>
+          entry.pluginId === PLUGIN_ID && entry.release.manifest.version === PLUGIN_VERSION,
+      ),
+      '304 refresh cleared the cached catalog',
+    );
 
     // 3. Install from the cached catalog; the package lands in the Store.
     const installed = await client.installLinkCodePlugin({
