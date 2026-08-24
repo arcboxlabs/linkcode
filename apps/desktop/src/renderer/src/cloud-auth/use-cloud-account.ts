@@ -18,6 +18,7 @@ function openAccountCenter(): void {
 
 export interface CloudAccountView {
   account: CloudAccount | null;
+  loaded: boolean;
   authenticating: boolean;
   signIn: () => void;
   signOut: () => void;
@@ -32,9 +33,10 @@ export interface CloudAccountView {
  * issuing a throttled bust token to re-request the same URL.
  */
 export function useCloudAccount(): CloudAccountView {
-  const { user, authenticating, signIn, signOut } = useCloudAuthStore(
+  const { user, loaded, authenticating, signIn, signOut } = useCloudAuthStore(
     useShallow((state) => ({
       user: state.user,
+      loaded: state.loaded,
       authenticating: state.authenticating,
       signIn: state.signIn,
       signOut: state.signOut,
@@ -54,7 +56,7 @@ export function useCloudAccount(): CloudAccountView {
     ? { name: user.name, email: user.email, image: bustAvatar(user.image, avatarBust) }
     : null;
 
-  return { account, authenticating, signIn, signOut, manageAccount: openAccountCenter };
+  return { account, loaded, authenticating, signIn, signOut, manageAccount: openAccountCenter };
 }
 
 /** Appends a focus-scoped cache-bust token to the stable avatar URL so a new avatar re-renders. */

@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   CLOUD_CLAIM_DEEP_LINK_CHANNEL,
   CLOUD_CREATE_GATEWAY_KEY_CHANNEL,
+  CLOUD_GET_BILLING_SUMMARY_CHANNEL,
   CLOUD_IM_BINDINGS_CHANNEL,
   CLOUD_IM_CREATE_BINDING_CHANNEL,
   CLOUD_IM_DELETE_BINDING_CHANNEL,
@@ -54,10 +55,11 @@ contextBridge.exposeInMainWorld('linkcodeConfig', configBridge);
 // coexists with the bridge above.
 setupRenderer();
 
-// Cloud data bridge: the renderer lists the account's online hosts through main (which holds the
-// keychain session). Kept off the SystemBridge — it's cloud-account data, not a window/OS capability.
+// Cloud data bridge: main holds the keychain session for these account-scoped requests. Kept off
+// the SystemBridge — this is Cloud account data, not a window/OS capability.
 contextBridge.exposeInMainWorld('linkcodeCloud', {
   listHosts: () => ipcRenderer.invoke(CLOUD_LIST_HOSTS_CHANNEL),
+  billingSummary: () => ipcRenderer.invoke(CLOUD_GET_BILLING_SUMMARY_CHANNEL),
   claimDeepLink: () => ipcRenderer.invoke(CLOUD_CLAIM_DEEP_LINK_CHANNEL),
   openHostedBilling: () => ipcRenderer.invoke(CLOUD_OPEN_HOSTED_BILLING_CHANNEL),
   createGatewayKey: (name: string) => ipcRenderer.invoke(CLOUD_CREATE_GATEWAY_KEY_CHANNEL, name),
