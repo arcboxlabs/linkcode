@@ -1,13 +1,13 @@
 import { AgentKindSchema } from '@linkcode/schema';
-import {
-  AGENT_LABELS,
-  AgentIcon,
-  groupModelsByProvider,
-  modelChoiceKey,
-} from '@linkcode/ui/native';
+import { AGENT_LABELS, AgentIcon } from '@linkcode/ui/native';
 import { ToolChip } from '@mobile/components/conversation/tool-chip.android';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
-import type { SheetPickerSection } from '@mobile/components/form/sheet-picker.android';
+import { SelectorSheet } from '@mobile/components/form/selector-sheet.android';
+import type {
+  SelectorChipAxis,
+  SelectorModelAxis,
+} from '@mobile/components/form/selector-sheet.types';
+import { modelAxisGroups } from '@mobile/components/form/selector-sheet.types';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
 import type {
   AgentSelectorChipProps,
@@ -59,9 +59,9 @@ export function ApprovalChip({
   );
 }
 
-/** The draft's combined selector on Android: the harness brand mark beside one chip opening a
- * sheet with Agent / Model / Effort sections — the same groups the iOS UIMenu nests as submenus,
- * flattened because bottom sheets don't nest. */
+/** The draft's combined selector on Android: the harness brand mark beside one chip opening the
+ * structured `SelectorSheet` — the same Agent / Model / Effort axes the iOS UIMenu nests as
+ * submenus. A "Default" entry leads the model and effort axes; picking it clears the pick. */
 export function AgentSelectorChip({
   kind,
   onKindChange,
@@ -76,46 +76,34 @@ export function AgentSelectorChip({
   const t = useTranslations('mobile.sessions');
   const colors = useAppMaterialColors();
   const [open, setOpen] = useState(false);
-  // The account label joins a row only when the list spans several accounts — the same threshold
-  // as the web's provider grouping; a single-account list repeating its account is noise.
-  const spansAccounts = models !== null && groupModelsByProvider(models) !== null;
 
-  const sections: SheetPickerSection[] = [
-    {
-      id: 'kind',
-      title: t('kindLabel'),
-      selection: kind,
-      options: AgentKindSchema.options.map((option) => ({
-        id: option,
-        label: AGENT_LABELS[option],
-      })),
-      onSelect(id) {
-        const parsed = AgentKindSchema.safeParse(id);
-        if (parsed.success) onKindChange(parsed.data);
-      },
+  const harnessAxis: SelectorChipAxis = {
+    title: t('kindLabel'),
+    selection: kind,
+    options: AgentKindSchema.options.map((option) => ({
+      id: option,
+      label: AGENT_LABELS[option],
+    })),
+    onSelect(id) {
+      const parsed = AgentKindSchema.safeParse(id);
+      if (parsed.success) onKindChange(parsed.data);
     },
-  ];
+  };
+  let modelAxis: SelectorModelAxis | undefined;
   if (models !== null && models.length > 0) {
-    sections.push({
-      id: 'model',
+    modelAxis = {
       title: t('modelLabel'),
       selection: modelKey ?? DEFAULT_TAG,
-      options: [
-        { id: DEFAULT_TAG, label: t('defaultOption') },
-        ...models.map((model) => ({
-          id: modelChoiceKey(model),
-          label:
-            spansAccounts && model.description
-              ? `${model.label} — ${model.description}`
-              : model.label,
-        })),
+      groups: [
+        { label: null, options: [{ id: DEFAULT_TAG, label: t('defaultOption') }] },
+        ...modelAxisGroups(models),
       ],
       onSelect: clearable(onModelKeyChange),
-    });
+    };
   }
+  let effortAxis: SelectorChipAxis | undefined;
   if (effortOptions !== undefined && effortOptions.length > 0) {
-    sections.push({
-      id: 'effort',
+    effortAxis = {
       title: t('effortLabel'),
       selection: effort ?? DEFAULT_TAG,
       options: [
@@ -123,7 +111,7 @@ export function AgentSelectorChip({
         ...effortOptions.map((option) => ({ id: option.id, label: option.label })),
       ],
       onSelect: clearable(onEffortChange),
-    });
+    };
   }
 
   return (
@@ -136,7 +124,13 @@ export function AgentSelectorChip({
         maxValueWidth={150}
         onPress={() => setOpen(true)}
       />
-      <SheetPicker open={open} onClose={() => setOpen(false)} sections={sections} />
+      <SelectorSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        harness={harnessAxis}
+        model={modelAxis}
+        effort={effortAxis}
+      />
     </View>
   );
 }

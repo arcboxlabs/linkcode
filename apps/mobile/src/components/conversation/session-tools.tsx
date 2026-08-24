@@ -1,11 +1,16 @@
-import { AgentIcon, groupModelsByProvider, modelChoiceKey } from '@linkcode/ui/native';
+import { AgentIcon, modelChoiceKey } from '@linkcode/ui/native';
 import type {
   SessionApprovalChipProps,
   SessionSelectorChipProps,
 } from '@mobile/components/conversation/session-tools.types';
 import { ToolChip } from '@mobile/components/conversation/tool-chip.android';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
-import type { SheetPickerSection } from '@mobile/components/form/sheet-picker.android';
+import { SelectorSheet } from '@mobile/components/form/selector-sheet.android';
+import type {
+  SelectorChipAxis,
+  SelectorModelAxis,
+} from '@mobile/components/form/selector-sheet.types';
+import { modelAxisGroups } from '@mobile/components/form/selector-sheet.types';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
 import { ShieldIcon } from 'lucide-react-native';
 import { useState } from 'react';
@@ -57,8 +62,9 @@ export function SessionApprovalChip({
   );
 }
 
-/** The live session's selector on Android: Model / Effort sections, no harness section (the agent
- * is fixed) and no "Default" entries — a running session is always on a concrete value. */
+/** The live session's selector on Android: the structured `SelectorSheet` with Model / Effort
+ * axes, no harness axis (the agent is fixed) and no "Default" entries — a running session is
+ * always on a concrete value. Selections are server-reflected like the approval chip. */
 export function SessionSelectorChip({
   kind,
   selectorValue,
@@ -72,36 +78,22 @@ export function SessionSelectorChip({
   const t = useTranslations('mobile.sessions');
   const colors = useAppMaterialColors();
   const [open, setOpen] = useState(false);
-  const hasModels = models !== null && models.length > 0;
-  const hasEfforts = effortOptions !== undefined && effortOptions.length > 0;
-  if (!hasModels && !hasEfforts) return null;
 
-  // The account label joins a row only when the list spans several accounts — the same threshold
-  // as the web's provider grouping; a single-account list repeating its account is noise.
-  const spansAccounts = models !== null && groupModelsByProvider(models) !== null;
-
-  const sections: SheetPickerSection[] = [];
-  if (hasModels) {
-    sections.push({
-      id: 'model',
+  let modelAxis: SelectorModelAxis | undefined;
+  if (models !== null && models.length > 0) {
+    modelAxis = {
       title: t('modelLabel'),
       selection: currentModelKey,
-      options: models.map((model) => ({
-        id: modelChoiceKey(model),
-        label:
-          spansAccounts && model.description
-            ? `${model.label} — ${model.description}`
-            : model.label,
-      })),
+      groups: modelAxisGroups(models),
       onSelect(key) {
         const option = models.find((model) => modelChoiceKey(model) === key);
         if (option) onModelChange(option);
       },
-    });
+    };
   }
-  if (hasEfforts) {
-    sections.push({
-      id: 'effort',
+  let effortAxis: SelectorChipAxis | undefined;
+  if (effortOptions !== undefined && effortOptions.length > 0) {
+    effortAxis = {
       title: t('effortLabel'),
       selection: currentEffort,
       options: effortOptions.map((option) => ({ id: option.id, label: option.label })),
@@ -109,8 +101,9 @@ export function SessionSelectorChip({
         const option = effortOptions.find((candidate) => candidate.id === value);
         if (option) onEffortChange(option.id);
       },
-    });
+    };
   }
+  if (modelAxis === undefined && effortAxis === undefined) return null;
 
   return (
     <View className="flex-row items-center">
@@ -122,7 +115,12 @@ export function SessionSelectorChip({
         maxValueWidth={150}
         onPress={() => setOpen(true)}
       />
-      <SheetPicker open={open} onClose={() => setOpen(false)} sections={sections} />
+      <SelectorSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        model={modelAxis}
+        effort={effortAxis}
+      />
     </View>
   );
 }
