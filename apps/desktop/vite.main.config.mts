@@ -18,6 +18,11 @@ export default defineConfig({
     ...(generatedConfig?.brandIdentityJson !== undefined && {
       'import.meta.env.MAIN_VITE_BRAND_IDENTITY': JSON.stringify(generatedConfig.brandIdentityJson),
     }),
+    ...(generatedConfig?.agentRestrictionsJson !== undefined && {
+      'import.meta.env.MAIN_VITE_AGENT_RESTRICTIONS': JSON.stringify(
+        generatedConfig.agentRestrictionsJson,
+      ),
+    }),
   },
   envPrefix: ['MAIN_VITE_', 'VITE_'],
   resolve: {

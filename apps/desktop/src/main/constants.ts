@@ -3,6 +3,8 @@ import { parseProfileName } from '@linkcode/schema/daemon-runtime';
 import { workspacesDirName } from '@linkcode/schema/product';
 import { app, dialog } from 'electron';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import type { DesktopAgentRestrictions } from './agent-restrictions';
+import { parseDesktopAgentRestrictions } from './agent-restrictions';
 import { deriveDesktopBrandBase, parseDesktopBrandIdentity } from './brand';
 
 /**
@@ -44,6 +46,14 @@ export const PROFILE = resolveProfile();
  * artifact throws here and aborts boot — a branded build must never fall back to LinkCode. */
 const BRAND = parseDesktopBrandIdentity(import.meta.env.MAIN_VITE_BRAND_IDENTITY);
 const BRAND_BASE = BRAND === null ? null : deriveDesktopBrandBase(BRAND, CHANNEL);
+
+/** Build-time agent/service allowlist (CODE-618): unrestricted on default LinkCode builds. A
+ * malformed inlined snapshot throws here and aborts boot, same fail-closed contract as BRAND. Its
+ * own define (not folded into brand.ts) so a brand can restrict without declaring an identity,
+ * and so this module never needs to import config.ts (which would cycle back into constants.ts). */
+export const AGENT_RESTRICTIONS: DesktopAgentRestrictions = parseDesktopAgentRestrictions(
+  import.meta.env.MAIN_VITE_AGENT_RESTRICTIONS,
+);
 
 const BASE_NAME =
   BRAND_BASE?.appName ?? (CHANNEL === 'development' ? 'LinkCode Development' : 'LinkCode');

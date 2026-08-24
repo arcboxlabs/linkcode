@@ -3,13 +3,19 @@ import { defineInvokes } from '@moeru/eventa';
 import { createContext as createRendererContext } from '@moeru/eventa/adapters/electron/renderer';
 import type { IpcRenderer } from 'electron';
 import type { SystemBridge } from './bridge';
-import type { BrowserDownloadDone, DesktopSettings, UpdaterState } from './context';
+import type {
+  AgentRestrictionsSnapshot,
+  BrowserDownloadDone,
+  DesktopSettings,
+  UpdaterState,
+} from './context';
 import {
   BROWSER_DOWNLOAD_DONE_CHANNEL,
   BROWSER_OPEN_TAB_CHANNEL,
   BROWSER_SHORTCUT_CHANNEL,
   DAEMON_RUNTIME_CHANGED_CHANNEL,
   DAEMON_URL_SNAPSHOT_CHANNEL,
+  IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL,
   NOTIFICATION_CLICKED_CHANNEL,
   SETTINGS_OPEN_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
@@ -28,6 +34,11 @@ const FALLBACK_SETTINGS: DesktopSettings = {
   locale: null,
   daemonUrl: null,
   historyImportOnboardingHandled: true,
+};
+
+const FALLBACK_RESTRICTIONS: AgentRestrictionsSnapshot = {
+  allowedAgents: null,
+  allowedServices: null,
 };
 
 export function createElectronSystemBridge(
@@ -114,6 +125,12 @@ export function createElectronSystemBridge(
         ipcRenderer.on(NOTIFICATION_CLICKED_CHANNEL, handler);
         return () => ipcRenderer.removeListener(NOTIFICATION_CLICKED_CHANNEL, handler);
       },
+    },
+    identity: {
+      restrictions: () =>
+        (ipcRenderer.sendSync(IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL) as
+          | AgentRestrictionsSnapshot
+          | undefined) ?? FALLBACK_RESTRICTIONS,
     },
     browser: {
       onOpenTab(cb) {

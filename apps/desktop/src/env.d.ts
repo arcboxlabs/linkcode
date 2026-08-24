@@ -11,6 +11,10 @@ interface ImportMetaEnv {
    * the default LinkCode identity. Inlined only from generated output — never from ambient env,
    * which vite.main.config.ts rejects outright. */
   readonly MAIN_VITE_BRAND_IDENTITY?: string;
+  /** Build-time agent/service restriction snapshot (config:render, CODE-618); unset builds are
+   * unrestricted. Inlined only from generated output — never from ambient env, which
+   * vite.main.config.ts rejects outright. */
+  readonly MAIN_VITE_AGENT_RESTRICTIONS?: string;
   /** Public PostHog project configuration; both values are required or analytics no-ops. */
   readonly RENDERER_VITE_POSTHOG_PROJECT_TOKEN?: string;
   readonly RENDERER_VITE_POSTHOG_HOST?: string;

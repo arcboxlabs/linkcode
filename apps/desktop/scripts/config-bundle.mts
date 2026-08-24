@@ -19,6 +19,8 @@ import {
 } from '../src/build/electron-builder-brand';
 
 interface GeneratedConfigBundleBase {
+  /** Agent/service allowlist snapshot (CODE-618), undefined when the brand declares neither. */
+  readonly agentRestrictionsJson?: string;
   readonly bootstrapJson: string;
   readonly bundleText: string;
 }
@@ -103,6 +105,12 @@ export function loadGeneratedConfigBundle(
         'the generated bootstrap is immutable',
     );
   }
+  if (env.MAIN_VITE_AGENT_RESTRICTIONS) {
+    throw new Error(
+      'MAIN_VITE_AGENT_RESTRICTIONS must not be set when a generated config bundle exists; ' +
+        'the generated restriction snapshot is immutable',
+    );
+  }
   const bundleText = readFileSync(bundlePath, 'utf8');
   const bundle = parseConfigBuildBundle(JSON.parse(bundleText));
   if (bundle.platform !== 'desktop') {
@@ -176,7 +184,17 @@ export function loadGeneratedConfigBundle(
     publicKeys: bundle.keyrings.normal,
     telemetryEndpoint: bundle.endpoints.telemetry,
   };
+  // Absent on the bundle (the common case) omits the field entirely, so an unrestricted build's
+  // vite.main.config.mts define step never inlines MAIN_VITE_AGENT_RESTRICTIONS.
+  const agentRestrictionsJson =
+    bundle.agents === undefined && bundle.services === undefined
+      ? undefined
+      : JSON.stringify({
+          ...(bundle.agents !== undefined && { agents: bundle.agents }),
+          ...(bundle.services !== undefined && { services: bundle.services }),
+        });
   const generatedBase = {
+    ...(agentRestrictionsJson !== undefined && { agentRestrictionsJson }),
     bootstrapJson: JSON.stringify(bootstrap),
     bundleText,
   };
