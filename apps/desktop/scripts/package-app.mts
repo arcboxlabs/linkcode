@@ -27,7 +27,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
+import type { AgentKind } from '@linkcode/schema';
 import crossSpawn from 'cross-spawn';
+import { agentFilesExcludes } from '../src/build/agent-package-excludes';
 import { assertStagedConfigMatchesGenerated } from './package-config.mts';
 import { mergeUpdateFeeds } from './update-feed.mts';
 
@@ -164,6 +166,27 @@ function updateFeedName(arch: BuilderArch): string {
  * silently re-brand the artifact, so they are refused outright. */
 const IDENTITY_OVERRIDE_RE = /^-c\.(?:appId|productName|protocols)\b/;
 
+/** The rendered build bundle's declared agents, or `null` if absent/unrendered (CODE-618). */
+function stagedAllowedAgents(): readonly AgentKind[] | null {
+  const bundlePath = join(desktopDir, 'out', 'config', 'build-bundle.json');
+  if (!existsSync(bundlePath)) return null;
+  const bundle = JSON.parse(readFileSync(bundlePath, 'utf8')) as { agents?: unknown };
+  return Array.isArray(bundle.agents) ? (bundle.agents as AgentKind[]) : null;
+}
+
+/**
+ * Wraps `configPath` in a temporary `extends` overlay adding `excludes` to `files` — electron-
+ * builder concatenates an extended config's `files` array rather than replacing it. `configPath`
+ * is always absolute here, which `extends` also resolves as-is (only relative `extends` targets
+ * resolve against the project dir — see electron-builder-brand.ts).
+ */
+function withFilesOverlay(configPath: string, excludes: readonly string[]): string {
+  if (excludes.length === 0) return configPath;
+  const overlayPath = join(tmpdir(), 'linkcode-desktop-agent-excludes.json');
+  writeFileSync(overlayPath, JSON.stringify({ extends: configPath, files: excludes }));
+  return overlayPath;
+}
+
 function build(): void {
   // Both extend the shared electron-builder.yml base; each adds its own deep-link scheme (release
   // `linkcode://`, dev shell `linkcode-dev://`). The base is never passed directly — it has none.
@@ -188,6 +211,10 @@ function build(): void {
     : branded
       ? brandConfig
       : 'electron-builder.release.yml';
+  const configPath = branded ? config : join(desktopDir, config);
+  // Restricted-brand SDK exclusion (CODE-618): absent bundle agents is a no-op, so an unbranded
+  // (or unrestricted) build passes `configPath` through unmodified.
+  const finalConfigPath = withFilesOverlay(configPath, agentFilesExcludes(stagedAllowedAgents()));
   const brandIcon = join(desktopDir, 'out', 'config', 'brand-assets', 'icon.png');
   const feeds = new Map<string, string>();
   for (const arch of stagedArches()) {
@@ -206,7 +233,7 @@ function build(): void {
         '--projectDir',
         target,
         '--config',
-        branded ? config : join(desktopDir, config),
+        finalConfigPath,
         // projectDir is the staging dir, so config-relative paths would resolve under it; redirect
         // output back to where CI/verify-artifacts expect it and icons to the shared repo-root
         // assets — or, on branded builds, to the staged brand assets only.
