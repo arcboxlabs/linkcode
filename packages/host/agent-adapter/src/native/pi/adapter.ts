@@ -31,6 +31,7 @@ import { invariant } from 'foxts/guard';
 import type { AgentStartCatalogOptions, BrowserToolsetFactory } from '../../adapter';
 import { renderBrowserToolResult } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
+import type { AgentCredential } from '../../credential';
 import { readAgentCredential } from '../../credential';
 import { decodeHistoryBranchCursor } from '../../history-branch';
 import { asHistoryId } from '../../history-util';
@@ -130,18 +131,18 @@ function piCommandCatalog(
   return commands;
 }
 
-function createConfiguredRegistry(
-  pi: PiSdk,
-  opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
+/**
+ * Resolve a model string against Pi's registry. Session start and mid-session set-model must share
+ * this — a divergence makes an id that starts a session unselectable inside it.
+ */
+function resolveModelRef(
+  modelRegistry: PiRegistry,
+  model: string,
+  cred: Pick<AgentCredential, 'knownProvider' | 'baseUrl'>,
   fallbackProvider?: string,
 ) {
-  const authStorage = pi.AuthStorage.create();
-  const modelRegistry = pi.ModelRegistry.create(authStorage);
-  const cred = readAgentCredential(opts.config);
-  const parsedRef = opts.model ? parseModel(opts.model) : null;
-  const accountRef =
-    opts.model && cred.knownProvider ? { provider: cred.knownProvider, modelId: opts.model } : null;
-  let ref = accountRef ?? parsedRef;
+  const parsedRef = parseModel(model);
+  const accountRef = cred.knownProvider ? { provider: cred.knownProvider, modelId: model } : null;
   // Account model ids are endpoint-owned. A same-provider Pi-qualified pin is unwrapped only when
   // its opaque account form is absent and the qualified registry entry exists.
   if (
@@ -150,25 +151,38 @@ function createConfiguredRegistry(
     !modelRegistry.find(accountRef.provider, accountRef.modelId) &&
     modelRegistry.find(parsedRef.provider, parsedRef.modelId)
   ) {
-    ref = parsedRef;
+    return parsedRef;
   }
-  if (!ref && opts.model) {
-    const endpointProviders = new Set<string>();
-    if (cred.baseUrl) {
-      for (const model of modelRegistry.getAll()) {
-        if (model.id === opts.model && model.baseUrl === cred.baseUrl) {
-          endpointProviders.add(model.provider);
-        }
+  const ref = accountRef ?? parsedRef;
+  if (ref) return ref;
+  const endpointProviders = new Set<string>();
+  if (cred.baseUrl) {
+    for (const entry of modelRegistry.getAll()) {
+      if (entry.id === model && entry.baseUrl === cred.baseUrl) {
+        endpointProviders.add(entry.provider);
       }
     }
-    const endpointProvider =
-      endpointProviders.size === 1 ? endpointProviders.values().next().value : undefined;
-    const provider = fallbackProvider ?? endpointProvider;
-    if (!provider) {
-      throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
-    }
-    ref = { provider, modelId: opts.model };
   }
+  const endpointProvider =
+    endpointProviders.size === 1 ? endpointProviders.values().next().value : undefined;
+  const provider = fallbackProvider ?? endpointProvider;
+  if (!provider) {
+    throw new Error(`pi: model must be 'provider/modelId' (got '${model}')`);
+  }
+  return { provider, modelId: model };
+}
+
+function createConfiguredRegistry(
+  pi: PiSdk,
+  opts: Pick<AgentStartCatalogOptions, 'model' | 'config'>,
+  fallbackProvider?: string,
+) {
+  const authStorage = pi.AuthStorage.create();
+  const modelRegistry = pi.ModelRegistry.create(authStorage);
+  const cred = readAgentCredential(opts.config);
+  const ref = opts.model
+    ? resolveModelRef(modelRegistry, opts.model, cred, fallbackProvider)
+    : null;
 
   const key = cred.apiKey ?? cred.authToken;
   // An explicit model fixes routing; without one, resume evidence outranks the account default.
@@ -195,6 +209,7 @@ function createConfiguredRegistry(
     authStorage,
     modelRegistry,
     ref,
+    credential: cred,
     credentialProviderId: key || cred.baseUrl ? provider : null,
   };
 }
@@ -219,6 +234,7 @@ export class PiAdapter extends BaseAgentAdapter {
   private resumeFrom: AgentHistoryId | null = null;
   private pendingBranchManager: SessionManager | null = null;
   private credentialProviderId: string | null = null;
+  private credential: Pick<AgentCredential, 'knownProvider' | 'baseUrl'> = {};
   private policyId: PiPolicy = 'default';
   private readonly sessionAllowedTools = new Set<string>();
   private initialEffort: PiEffort | null = null;
@@ -320,12 +336,10 @@ export class PiAdapter extends BaseAgentAdapter {
     }
     // Inject the account's key as a runtime override so it outranks ~/.pi/agent/auth.json and env
     // vars; a gateway base URL is registered on the model registry, overriding the provider's URL.
-    const { authStorage, modelRegistry, ref, credentialProviderId } = createConfiguredRegistry(
-      pi,
-      opts,
-      savedProvider,
-    );
+    const { authStorage, modelRegistry, ref, credential, credentialProviderId } =
+      createConfiguredRegistry(pi, opts, savedProvider);
     this.modelRegistry = modelRegistry;
+    this.credential = credential;
     this.credentialProviderId = credentialProviderId;
     let model = ref ? modelRegistry.find(ref.provider, ref.modelId) : undefined;
     if (ref && !model) {
@@ -455,8 +469,7 @@ export class PiAdapter extends BaseAgentAdapter {
     const session = this.session;
     const registry = this.modelRegistry;
     if (!session || !registry) throw new Error('pi: session not started');
-    const ref = parseModel(value);
-    if (!ref) throw new Error(`pi: model must be 'provider/modelId' (got '${value}')`);
+    const ref = resolveModelRef(registry, value, this.credential, session.model?.provider);
     if (this.credentialProviderId && ref.provider !== this.credentialProviderId) {
       throw new Error(`pi: this session's credential is scoped to '${this.credentialProviderId}'`);
     }
