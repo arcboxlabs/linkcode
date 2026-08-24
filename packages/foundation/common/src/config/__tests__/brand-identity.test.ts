@@ -216,6 +216,79 @@ describe('parseBrandIdentityArtifact', () => {
   });
 });
 
+describe('agents/services (CODE-618)', () => {
+  it('accepts an artifact without either field', () => {
+    const identity = parseBrandIdentityArtifact(structuredClone(fixture));
+    expect(identity.agents).toBeUndefined();
+    expect(identity.services).toBeUndefined();
+  });
+
+  it('accepts a restricted artifact declaring both fields', () => {
+    const identity = parseBrandIdentityArtifact(
+      mutate((artifact) => {
+        artifact.agents = ['pi'];
+        artifact.services = ['linkcode-gateway'];
+      }),
+    );
+    expect(identity.agents).toEqual(['pi']);
+    expect(identity.services).toEqual(['linkcode-gateway']);
+  });
+
+  it('rejects an empty agents or services array', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = [];
+        }),
+      ),
+    ).toThrow('non-empty array');
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = [];
+        }),
+      ),
+    ).toThrow('non-empty array');
+  });
+
+  it('rejects an unknown agent kind', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = ['not-a-kind'];
+        }),
+      ),
+    ).toThrow('unknown agent');
+  });
+
+  it('rejects a malformed service id', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = ['Not_Valid'];
+        }),
+      ),
+    ).toThrow('invalid service id');
+  });
+
+  it('rejects duplicates in either array', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = ['pi', 'pi'];
+        }),
+      ),
+    ).toThrow('duplicates');
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = ['linkcode-gateway', 'linkcode-gateway'];
+        }),
+      ),
+    ).toThrow('duplicates');
+  });
+});
+
 describe('assertBrandIdentityMatchesBundle', () => {
   const bundle = parseConfigBuildBundle(structuredClone(bundleFixture));
 

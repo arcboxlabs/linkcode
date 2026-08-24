@@ -1,5 +1,6 @@
 import canonicalize from 'canonicalize';
 import { z } from 'zod';
+import { AgentKindSchema } from './model/primitives';
 
 export const CONFIG_CONTRACT_VERSION = 1;
 export const CONFIG_BUILD_BUNDLE_VERSION = 1;
@@ -12,6 +13,7 @@ export const APPLY_MODES = ['hot', 'cold'] as const;
 export const OPERATING_SYSTEMS = ['windows', 'macos', 'linux', 'ios', 'android'] as const;
 
 const RE_BRAND_ID = /^[a-z][a-z0-9-]{0,62}$/;
+const RE_SERVICE_ID = /^[a-z][a-z0-9-]{0,62}$/;
 const RE_CONFIG_KEY = /^(?:app|content|feature|modules|params|ui)(?:\.[a-z][A-Za-z0-9]*)+$/;
 const RE_CONFIG_VERSION = /^[\dA-Z][\w.-]{0,127}$/i;
 const RE_DECIMAL = /^(?:0|[1-9]\d*)$/;
@@ -260,6 +262,8 @@ export type ConfigBuildBundleSnapshotEnvelope = z.infer<
 
 export const ConfigBuildBundleSchema = z
   .strictObject({
+    // Absent = unrestricted (every agent/service allowed); a brand only ever narrows this set.
+    agents: z.array(AgentKindSchema).min(1).optional(),
     brandId: BrandIdSchema,
     buildBundleVersion: z.literal(CONFIG_BUILD_BUNDLE_VERSION),
     channel: ConfigChannelSchema,
@@ -268,6 +272,8 @@ export const ConfigBuildBundleSchema = z
     maximumSchemaVersion: z.number().int(),
     platform: ConfigPlatformSchema,
     provenance: ConfigBuildBundleProvenanceSchema,
+    // Free-form ids (this package must not depend on the providers catalog); shape-checked only.
+    services: z.array(z.string().regex(RE_SERVICE_ID)).min(1).optional(),
     snapshot: ConfigBuildBundleSnapshotEnvelopeSchema,
   })
   .superRefine((bundle, context) => {
@@ -282,6 +288,20 @@ export const ConfigBuildBundleSchema = z
           path: ['keyrings', kind],
         });
       }
+    }
+    if (bundle.agents !== undefined && new Set(bundle.agents).size !== bundle.agents.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'agents must not contain duplicates',
+        path: ['agents'],
+      });
+    }
+    if (bundle.services !== undefined && new Set(bundle.services).size !== bundle.services.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'services must not contain duplicates',
+        path: ['services'],
+      });
     }
     if (bundle.maximumSchemaVersion < bundle.provenance.schemaVersion) {
       context.addIssue({
