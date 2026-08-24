@@ -1,15 +1,29 @@
-import type { PluginList } from '@linkcode/client-core';
+import type {
+  LinkCodePluginConfigView,
+  PluginList,
+  PluginMarketReleaseEntry,
+} from '@linkcode/client-core';
 import type { Plugin, PluginComponentKind, StandaloneSkill } from '@linkcode/schema';
 import type {
+  LinkCodeCatalogCardView,
+  LinkCodeInstalledPluginRow,
   PluginCardView,
   PluginMcpServerRow,
   PluginProviderGroup,
   SkillRowView,
 } from '@linkcode/ui';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /** Pure projections from the discovery result to presentation view-models. No React, no I/O. */
 
-export type { PluginCardView, PluginMcpServerRow, PluginProviderGroup, SkillRowView };
+export type {
+  LinkCodeCatalogCardView,
+  LinkCodeInstalledPluginRow,
+  PluginCardView,
+  PluginMcpServerRow,
+  PluginProviderGroup,
+  SkillRowView,
+};
 
 export function pluginCardView(plugin: Plugin): PluginCardView {
   const title = plugin.displayName ?? plugin.name;
@@ -157,4 +171,51 @@ export function pluginMcpServerRows(plugins: readonly Plugin[]): PluginMcpServer
     }
   }
   return rows;
+}
+
+/** The plugin id's name segment — the masked config read carries no display name. */
+function linkcodePluginTitle(pluginId: string): string {
+  return pluginId.split('/').at(-1) ?? pluginId;
+}
+
+/** A marketplace release entry to its catalog card. */
+export function linkcodeCatalogCard(
+  marketplaceId: string,
+  entry: PluginMarketReleaseEntry,
+  installed: boolean,
+): LinkCodeCatalogCardView {
+  const manifest = entry.release.manifest;
+  const title = manifest.displayName ?? linkcodePluginTitle(entry.pluginId);
+  return {
+    key: `${marketplaceId}:${entry.pluginId}`,
+    marketplaceId,
+    pluginId: entry.pluginId,
+    version: manifest.version,
+    title,
+    description: manifest.description,
+    installed,
+    searchText: [entry.pluginId, title, manifest.description ?? '', ...manifest.keywords]
+      .join('\n')
+      .toLowerCase(),
+  };
+}
+
+/** A masked plugin config read to its installed-list row. */
+export function linkcodeInstalledRow(view: LinkCodePluginConfigView): LinkCodeInstalledPluginRow {
+  return {
+    key: view.id,
+    pluginId: view.id,
+    title: linkcodePluginTitle(view.id),
+    version: view.version,
+    hasSettings: !isObjectEmpty(view.settings),
+  };
+}
+
+export function filterLinkCodeCatalogCards(
+  cards: readonly LinkCodeCatalogCardView[],
+  query: string,
+): LinkCodeCatalogCardView[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [...cards];
+  return cards.filter((card) => card.searchText.includes(needle));
 }

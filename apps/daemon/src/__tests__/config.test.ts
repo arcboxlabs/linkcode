@@ -473,6 +473,91 @@ describe('loadConfig custom MCP servers', () => {
   });
 });
 
+function writeMarketplacesConfig(marketplaces: unknown): void {
+  const dir = join(process.env.HOME ?? '', '.linkcode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ marketplaces }));
+}
+
+describe('loadConfig marketplaces', () => {
+  afterEach(() => {
+    delete process.env.LINKCODE_MARKETPLACE_URL;
+  });
+
+  it('defaults to the official marketplace when config.json names none', () => {
+    expect(loadConfig(vault).marketplaces).toEqual([
+      {
+        id: 'linkcode-official',
+        displayName: 'LinkCode Official',
+        source: { type: 'remote', url: 'https://plugins.linkcode.ai/index.json' },
+        enabled: true,
+      },
+    ]);
+  });
+
+  it('keeps valid entries and drops invalid or duplicate ones, logging each drop', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeMarketplacesConfig([
+      {
+        id: 'community',
+        source: { type: 'remote', url: 'https://example.com/index.json' },
+        enabled: true,
+      },
+      {
+        id: 'community',
+        source: { type: 'remote', url: 'https://other.example/index.json' },
+        enabled: true,
+      },
+      {
+        id: 'insecure',
+        source: { type: 'remote', url: 'http://example.com/index.json' },
+        enabled: true,
+      },
+    ]);
+
+    expect(loadConfig(vault).marketplaces).toEqual([
+      {
+        id: 'community',
+        source: { type: 'remote', url: 'https://example.com/index.json' },
+        enabled: true,
+      },
+    ]);
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the default when the field is not an array', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    writeMarketplacesConfig({ not: 'an array' });
+
+    expect(loadConfig(vault).marketplaces[0]?.id).toBe('linkcode-official');
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("lets LINKCODE_MARKETPLACE_URL retarget the official marketplace's index URL", () => {
+    process.env.LINKCODE_MARKETPLACE_URL = 'https://staging.example/index.json';
+
+    expect(loadConfig(vault).marketplaces).toEqual([
+      {
+        id: 'linkcode-official',
+        displayName: 'LinkCode Official',
+        source: { type: 'remote', url: 'https://staging.example/index.json' },
+        enabled: true,
+      },
+    ]);
+  });
+
+  it('ignores a non-HTTPS LINKCODE_MARKETPLACE_URL, logging the drop', () => {
+    const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);
+    process.env.LINKCODE_MARKETPLACE_URL = 'http://insecure.example/index.json';
+
+    expect(loadConfig(vault).marketplaces[0]?.source).toEqual({
+      type: 'remote',
+      url: 'https://plugins.linkcode.ai/index.json',
+    });
+    expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
 describe('createProviderConfigStore', () => {
   it('does not publish provider, account, or custom MCP state when persistence fails', () => {
     const oldProviders = { codex: { enabled: true } } as const;

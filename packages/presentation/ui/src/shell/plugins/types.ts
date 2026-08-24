@@ -80,3 +80,28 @@ export interface CustomMcpServerRow {
   enabled: boolean;
   secretKeys: string[];
 }
+
+/** One entry of a LinkCode marketplace catalog (the daemon-refreshed index). */
+export interface LinkCodeCatalogCardView {
+  /** `${marketplaceId}:${pluginId}` — stable across refreshes. */
+  key: string;
+  marketplaceId: string;
+  pluginId: string;
+  version: string;
+  title: string;
+  description: string | undefined;
+  installed: boolean;
+  /** Precomputed lowercase haystack for the client-side filter. */
+  searchText: string;
+}
+
+/** One installed LinkCode plugin (from the masked `plugin-config.listed` read). */
+export interface LinkCodeInstalledPluginRow {
+  /** The plugin id — stable across config writes. */
+  key: string;
+  pluginId: string;
+  title: string;
+  version: string;
+  /** Whether the manifest declares settings; the configure action renders only when true. */
+  hasSettings: boolean;
+}

@@ -7,6 +7,8 @@ import type { TranslatorService } from './agent/translator';
 import type { AssetService } from './asset/service';
 import type { LoopStore, ScheduleStore } from './automation';
 import type { GitService } from './git/git-service';
+import type { LinkCodePluginStore } from './plugin/linkcode-store';
+import type { LinkCodeMarketplaceService } from './plugin/market-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { ResourceStore } from './resource/resource-store';
 import type { SessionStore } from './session/session-store';
@@ -40,6 +42,13 @@ export interface EngineDeps {
    * The default is volatile and never asks anyone, so an embedding without one is not gated. */
   simulatorConsent?: SimulatorConsentService;
   providerStore?: ProviderConfigStore;
+  /** LinkCode-installed plugin store (manifests + declared settings + install/uninstall). The
+   * daemon supplies a persistent on-disk implementation; an absent Engine injects none, so
+   * plugin MCP-server components and `plugin-config.*` wire stay empty. */
+  linkCodePluginStore?: LinkCodePluginStore;
+  /** Marketplace plane behind `plugin-market.*`: configured sources, index refresh, and the cached
+   * catalog installs resolve from. Absent Engines list nothing and reject refresh/install. */
+  linkCodeMarketplace?: LinkCodeMarketplaceService;
   modelProbe?: ModelProbe;
   git?: GitService;
   fileSuggest?: FileSuggestService;

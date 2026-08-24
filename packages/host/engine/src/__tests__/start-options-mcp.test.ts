@@ -13,6 +13,7 @@ import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { CustomMcpServerService } from '../agent/custom-mcp-service';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
+import { InMemoryLinkCodePluginStore } from '../plugin/linkcode-store';
 import { PluginService } from '../plugin/service';
 import { SessionStartOptionsResolver } from '../session/start-options-resolver';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
@@ -351,5 +352,77 @@ describe('custom MCP injection at session start', () => {
 
     expect(options.mcpServers).toBeUndefined();
     expect(warnings).toEqual([{ serverName: 'github', reason: 'provider-preflight-failed' }]);
+  });
+});
+
+describe('LinkCode plugin MCP injection at session start', () => {
+  it('resolves a package-relative entry point against the installed plugin root', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: {
+                MAIL_USER: 'account',
+                MAIL_PASSWORD: 'authcode',
+                MAIL_PRESET: 'preset',
+              },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            authcode: { type: 'password', secret: true },
+            preset: { type: 'enum', enum: ['163', 'qq'] },
+          },
+          assets: [],
+        },
+      },
+      { account: 'user@qq.com', authcode: 'authorization-code', preset: 'qq' },
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+        env: {
+          MAIL_USER: 'user@qq.com',
+          MAIL_PASSWORD: 'authorization-code',
+          MAIL_PRESET: 'qq',
+        },
+      },
+    ]);
+    expect(warnings).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
-import type { AgentKind, McpWarning, SessionId, StartOptions } from '@linkcode/schema';
+import { resolve as resolvePath } from 'node:path';
+import type { AgentKind, McpServer, McpWarning, SessionId, StartOptions } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { CustomMcpServerService } from '../agent/custom-mcp-service';
@@ -7,6 +8,7 @@ import { applyProviderDefaults } from '../agent/provider-config';
 import type { TranslatorService } from '../agent/translator';
 import { translationUpstream, withTranslatorEndpoint } from '../agent/translator';
 import { OperationError, RequestError } from '../failure';
+import type { LinkCodePluginStore } from '../plugin/linkcode-store';
 import type { PluginService } from '../plugin/service';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
 import { MCP_CAPABLE_AGENT_KINDS, SIMULATOR_MCP_SERVER_NAME } from './mcp-capability';
@@ -28,6 +30,7 @@ export class SessionStartOptionsResolver {
     private readonly simulatorMcp?: SimulatorMcpProvider,
     private readonly customMcp?: CustomMcpServerService,
     private readonly plugins?: PluginService,
+    private readonly linkCodePluginStore?: LinkCodePluginStore,
   ) {}
 
   resolve(
@@ -44,6 +47,7 @@ export class SessionStartOptionsResolver {
     const { translator } = this;
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
+    const withPluginMcpServers = this.withPluginMcpServers.bind(this);
     return Effect.gen(function* () {
       if (defaults.unavailable) {
         // Starting anyway would point the agent at an endpoint it cannot speak, which surfaces
@@ -66,9 +70,10 @@ export class SessionStartOptionsResolver {
         );
       }
       const custom = yield* withCustomMcpServers(defaults.options);
-      const resolved = withSimulatorMcp(custom.options, sessionId);
+      const pluginInjected = withPluginMcpServers(custom.options, custom.warnings);
+      const resolved = withSimulatorMcp(pluginInjected.options, sessionId);
       const upstream = translationUpstream(resolved);
-      if (!upstream) return { options: resolved, ...account, warnings: custom.warnings };
+      if (!upstream) return { options: resolved, ...account, warnings: pluginInjected.warnings };
       if (!translator) {
         return yield* Effect.fail(
           new RequestError({
@@ -102,6 +107,14 @@ export class SessionStartOptionsResolver {
     if (!MCP_CAPABLE_AGENT_KINDS.has(kind)) return [];
     const names = (this.customMcp?.listEnabled() ?? []).map((entry) => entry.server.name);
     if (this.simulatorMcp) names.push(SIMULATOR_MCP_SERVER_NAME);
+    if (this.linkCodePluginStore) {
+      for (const entry of this.linkCodePluginStore.list()) {
+        if (!entry.installed.enabled) continue;
+        for (const component of entry.manifest.components) {
+          if (component.kind === 'mcp-server') names.push(component.name);
+        }
+      }
+    }
     return names;
   }
 
@@ -163,6 +176,64 @@ export class SessionStartOptionsResolver {
         };
       }),
     );
+  }
+
+  /** Fold enabled LinkCode plugin mcp-server components into the session's server list, resolving
+   * each component's `env` mapping against the plugin's stored settings. Same warning contract as
+   * custom-MCP: an unsupported agent or a name collision is a user-visible advisory, not a drop. */
+  private withPluginMcpServers(
+    options: StartOptions,
+    warnings: McpWarning[],
+  ): { options: StartOptions; warnings: McpWarning[] } {
+    const store = this.linkCodePluginStore;
+    if (store === undefined) return { options, warnings };
+    const entries = store.list().filter((entry) => entry.installed.enabled);
+    if (entries.length === 0) return { options, warnings };
+    if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
+      for (const entry of entries) {
+        for (const component of entry.manifest.components) {
+          if (component.kind === 'mcp-server') {
+            warnings.push({ serverName: component.name, reason: 'agent-unsupported' });
+          }
+        }
+      }
+      return { options, warnings };
+    }
+    const servers = [...(options.mcpServers ?? [])];
+    for (const entry of entries) {
+      const settings = store.getSettings(entry.installed.id);
+      for (const component of entry.manifest.components) {
+        if (component.kind !== 'mcp-server') continue;
+        if (servers.some((server) => server.name === component.name)) {
+          warnings.push({ serverName: component.name, reason: 'name-conflict' });
+          continue;
+        }
+        const env: Record<string, string> = {};
+        if (component.env) {
+          for (const [envVar, settingId] of Object.entries(component.env)) {
+            if (settingId in settings) env[envVar] = String(settings[settingId]);
+          }
+        }
+        const server: McpServer = {
+          type: 'stdio',
+          name: component.name,
+          command: component.command,
+          ...(component.entry && {
+            args: [resolvePath(entry.installed.path, component.entry), ...(component.args ?? [])],
+          }),
+          ...(!component.entry && component.args && { args: component.args }),
+          ...(!isObjectEmpty(env) && { env }),
+        };
+        servers.push(server);
+      }
+    }
+    return {
+      options:
+        servers.length === 0 && options.mcpServers === undefined
+          ? options
+          : { ...options, mcpServers: servers },
+      warnings,
+    };
   }
 
   /** Append the session's simulator MCP endpoint for agents whose SDK can consume it. */

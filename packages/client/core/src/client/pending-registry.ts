@@ -15,6 +15,12 @@ import type {
   HostedArtifact,
   HostedFile,
   HostedSessionResource,
+  LinkCodeMarketplaceConfig,
+  LinkCodeMarketplaceReleaseIdentity,
+  LinkCodePluginId,
+  LinkCodePluginRelease,
+  LinkCodePluginSettings,
+  LinkCodePluginVersion,
   LoopInspection,
   LoopRecord,
   ManagedAssetStatus,
@@ -76,6 +82,38 @@ export interface PluginMutation {
   pendingAuthApps?: string[];
 }
 
+/** A stored LinkCode plugin setting value: the manifest's restricted JSON-Schema subset maps to
+ * these primitives. */
+export type PluginConfigValue = string | number | boolean;
+
+/** One entry of a `plugin-market.refreshed` reply: a catalog release keyed by plugin id. */
+export interface PluginMarketReleaseEntry {
+  pluginId: string;
+  release: LinkCodePluginRelease;
+}
+
+/** The `plugin-market.refreshed` payload as one value; `notModified` (304) carries cached releases. */
+export interface PluginMarketRefresh {
+  marketplaceId: string;
+  releases: PluginMarketReleaseEntry[];
+  notModified?: boolean;
+}
+
+/** One row of `plugin-config.listed`: a plugin's settings field schemas plus its masked values —
+ * secret fields appear in `settings` but never in `values`. */
+export interface LinkCodePluginConfigView {
+  id: LinkCodePluginId;
+  version: LinkCodePluginVersion;
+  settings: LinkCodePluginSettings;
+  values: Record<string, PluginConfigValue>;
+}
+
+/** The `plugin-config.updated` payload: the plugin's post-patch masked values. */
+export interface LinkCodePluginConfigUpdate {
+  pluginId: LinkCodePluginId;
+  values: Record<string, PluginConfigValue>;
+}
+
 export type RandomUUID = () => string;
 
 export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
@@ -106,6 +144,12 @@ export interface PendingValueMap {
   pluginList: PluginList;
   pluginMutation: PluginMutation;
   skillSetEnabled: StandaloneSkill;
+  pluginMarketList: LinkCodeMarketplaceConfig[];
+  pluginMarketRefresh: PluginMarketRefresh;
+  pluginMarketInstall: LinkCodeMarketplaceReleaseIdentity;
+  pluginMarketUninstall: LinkCodePluginId;
+  pluginConfigList: LinkCodePluginConfigView[];
+  pluginConfigUpdate: LinkCodePluginConfigUpdate;
   agentRuntimeList: AgentRuntimes;
   agentCatalog: AgentStartCatalog;
   assetList: ManagedAssetStatus[];
@@ -168,6 +212,12 @@ export class PendingRegistry {
     pluginList: new Map(),
     pluginMutation: new Map(),
     skillSetEnabled: new Map(),
+    pluginMarketList: new Map(),
+    pluginMarketRefresh: new Map(),
+    pluginMarketInstall: new Map(),
+    pluginMarketUninstall: new Map(),
+    pluginConfigList: new Map(),
+    pluginConfigUpdate: new Map(),
     agentRuntimeList: new Map(),
     agentCatalog: new Map(),
     assetList: new Map(),

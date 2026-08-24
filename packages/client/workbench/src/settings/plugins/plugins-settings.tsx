@@ -13,6 +13,7 @@ import {
   useSetSkillEnabled,
   useUninstallPlugin,
 } from './hooks';
+import { LinkCodeMarketTab } from './linkcode-tab';
 import { McpTab } from './mcp-settings';
 import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows } from './view';
 
@@ -159,6 +160,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
         />
       }
       mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
+      linkcodeTab={<LinkCodeMarketTab searchQuery={searchQuery} />}
       skillsTab={
         <SkillsTab
           busy={mutating || toggleSkill.isMutating}

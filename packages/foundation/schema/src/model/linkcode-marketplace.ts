@@ -8,10 +8,23 @@ import {
 import { TimestampSchema } from './primitives';
 
 const HTTPS_URL_RE = /^https:\/\//i;
+const HTTP_URL_RE = /^http:\/\//i;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** http is accepted for loopback hosts only — local debug marketplaces (RFC 8252's exception). */
+function isAllowedMarketplaceUrl(url: string): boolean {
+  if (HTTPS_URL_RE.test(url)) return true;
+  if (!HTTP_URL_RE.test(url)) return false;
+  try {
+    return LOOPBACK_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 const LinkCodeMarketplaceHttpsUrlSchema = z
   .url()
-  .refine((url) => HTTPS_URL_RE.test(url), 'Expected an absolute HTTPS URL');
+  .refine((url) => isAllowedMarketplaceUrl(url), 'Expected an absolute HTTPS URL');
 
 /** HTTPS index configured by the user; the remote document never chooses its local identity. */
 export const LinkCodeMarketplaceRemoteSourceSchema = z.object({

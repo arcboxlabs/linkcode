@@ -44,7 +44,9 @@ import {
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
+import { DaemonLinkCodeMarketplaceService } from './marketplace/service';
 import { daemonStateDir } from './paths';
+import { DaemonLinkCodePluginStore } from './plugin-store/store';
 import { createProviderConfigStore } from './provider-store';
 import { resolveSidecarPath, SidecarPtyBackend } from './pty/sidecar';
 import { createResourceStore } from './resource-store';
@@ -185,6 +187,8 @@ async function main(): Promise<void> {
         config.accounts ?? [],
         config.customMcpServers ?? [],
       );
+      const linkCodePluginStore = new DaemonLinkCodePluginStore(vault);
+      const linkCodeMarketplace = new DaemonLinkCodeMarketplaceService(config.marketplaces);
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
       const gc = assets.gcAtBoot();
@@ -250,6 +254,8 @@ async function main(): Promise<void> {
       }
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
+        linkCodePluginStore,
+        linkCodeMarketplace,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         simulators,
         simulatorMcp,

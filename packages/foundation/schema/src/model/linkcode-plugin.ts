@@ -106,6 +106,89 @@ const linkCodePluginSkillFields = {
 export const LinkCodePluginSkillSchema = z.strictObject(linkCodePluginSkillFields);
 export type LinkCodePluginSkill = z.infer<typeof LinkCodePluginSkillSchema>;
 
+/** Setting value types a manifest may declare; the host renders and stores only these. */
+export const LinkCodePluginSettingTypeSchema = z.enum([
+  'string',
+  'password',
+  'enum',
+  'boolean',
+  'number',
+]);
+export type LinkCodePluginSettingType = z.infer<typeof LinkCodePluginSettingTypeSchema>;
+
+/**
+ * One declared configuration input. `secret: true` routes the value to the vault (never
+ * `config.json`, never returned unmasked); the rest mirror a constrained JSON-Schema field so the
+ * host can render a form without executing plugin code.
+ */
+export const LinkCodePluginSettingFieldSchema = z
+  .strictObject({
+    type: LinkCodePluginSettingTypeSchema,
+    label: z.string().min(1).optional(),
+    description: z.string().optional(),
+    secret: z.boolean().optional(),
+    required: z.boolean().optional(),
+    default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    enum: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.type === 'enum' && (!field.enum || field.enum.length === 0)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'An enum setting must list at least one option',
+        path: ['enum'],
+      });
+    }
+    if (field.type !== 'enum' && field.enum !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'enum options are only valid on an enum setting',
+        path: ['enum'],
+      });
+    }
+  });
+export type LinkCodePluginSettingField = z.infer<typeof LinkCodePluginSettingFieldSchema>;
+
+export const LinkCodePluginSettingsSchema = z.record(
+  z.string().refine(isSafeIdSegment, 'Expected a safe lowercase setting id'),
+  LinkCodePluginSettingFieldSchema,
+);
+export type LinkCodePluginSettings = z.infer<typeof LinkCodePluginSettingsSchema>;
+
+const linkCodePluginMcpServerFields = {
+  kind: z.literal('mcp-server'),
+  name: z.string().refine(isSafeIdSegment, 'Expected a safe lowercase server name'),
+  description: z.string().optional(),
+  command: z.string().min(1),
+  /** Package-relative entry point. When present, the host resolves it under the installed plugin
+   * root and prepends it to args, so manifests never need to contain machine-specific paths. */
+  entry: LinkCodePluginPackagePathSchema.optional(),
+  args: z.array(z.string().min(1)).optional(),
+  /** Maps env-var name to a setting field id; the host resolves stored setting values into env at
+   * session start. Keys not declared here are not injected. */
+  env: z.record(z.string().min(1), z.string().min(1)).optional(),
+} as const;
+
+/** A plugin-shipped MCP server the host spawns per session, fed by the manifest's declared settings. */
+export const LinkCodePluginMcpServerComponentSchema = z.strictObject(linkCodePluginMcpServerFields);
+export type LinkCodePluginMcpServerComponent = z.infer<
+  typeof LinkCodePluginMcpServerComponentSchema
+>;
+
+/** A manifest component — a skill or an MCP server the host materializes. */
+export const LinkCodePluginComponentSchema = z.union([
+  LinkCodePluginSkillSchema,
+  LinkCodePluginMcpServerComponentSchema,
+]);
+export type LinkCodePluginComponent = z.infer<typeof LinkCodePluginComponentSchema>;
+
+/** Non-strict reader union: strips unknown component keys so a newer peer's additive field does
+ * not hide a compatible release from an older reader. */
+const LinkCodePluginComponentReaderSchema = z.union([
+  z.object(linkCodePluginSkillFields),
+  z.object(linkCodePluginMcpServerFields),
+]);
+
 const linkCodePluginManifestFields = {
   manifestVersion: z.literal(1),
   id: LinkCodePluginIdSchema,
@@ -116,13 +199,15 @@ const linkCodePluginManifestFields = {
   category: z.string().min(1).optional(),
   keywords: z.array(z.string().min(1)),
   links: PluginLinksSchema.optional(),
-  components: z.array(z.object(linkCodePluginSkillFields)).min(1),
+  components: z.array(LinkCodePluginComponentReaderSchema).min(1),
+  /** Declared configuration inputs the host renders and stores; an MCP-server component reads these. */
+  settings: LinkCodePluginSettingsSchema.optional(),
   /** Trusted managed-tool requirements; URLs and exact asset versions remain host-owned. */
   assets: z.array(PluginAssetRequirementSchema),
 } as const;
 
 function rejectDuplicateComponents(
-  manifest: { components: LinkCodePluginSkill[] },
+  manifest: { components: LinkCodePluginComponent[] },
   ctx: z.RefinementCtx,
 ): void {
   const names = new Set<string>();
@@ -139,6 +224,26 @@ function rejectDuplicateComponents(
   }
 }
 
+/** Rejects an MCP-server component whose `env` maps to a setting id the manifest never declares. */
+function rejectUnresolvedEnvBindings(
+  manifest: { components: LinkCodePluginComponent[]; settings?: LinkCodePluginSettings },
+  ctx: z.RefinementCtx,
+): void {
+  const declared = new Set(manifest.settings ? Object.keys(manifest.settings) : []);
+  for (const [index, component] of manifest.components.entries()) {
+    if (component.kind !== 'mcp-server' || !component.env) continue;
+    for (const [envName, settingId] of Object.entries(component.env)) {
+      if (!declared.has(settingId)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `env ${envName} references undeclared setting "${settingId}"`,
+          path: ['components', index, 'env', envName],
+        });
+      }
+    }
+  }
+}
+
 /**
  * Agent-independent package manifest. Provider-specific discovery remains on `PluginSchema`; this
  * contract is the source format LinkCode installs once and projects into supported agents.
@@ -146,15 +251,17 @@ function rejectDuplicateComponents(
 export const LinkCodePluginManifestSchema = z
   .strictObject({
     ...linkCodePluginManifestFields,
-    components: z.array(LinkCodePluginSkillSchema).min(1),
+    components: z.array(LinkCodePluginComponentSchema).min(1),
   })
-  .superRefine(rejectDuplicateComponents);
+  .superRefine(rejectDuplicateComponents)
+  .superRefine(rejectUnresolvedEnvBindings);
 export type LinkCodePluginManifest = z.infer<typeof LinkCodePluginManifestSchema>;
 
 /** Forward-compatible marketplace reader for additive fields within manifest version 1. */
 const LinkCodePluginManifestReaderSchema = z
   .object(linkCodePluginManifestFields)
-  .superRefine(rejectDuplicateComponents);
+  .superRefine(rejectDuplicateComponents)
+  .superRefine(rejectUnresolvedEnvBindings);
 
 export const LinkCodePluginArchiveFormatSchema = z.enum(['tgz', 'zip']);
 export type LinkCodePluginArchiveFormat = z.infer<typeof LinkCodePluginArchiveFormatSchema>;

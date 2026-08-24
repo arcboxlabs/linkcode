@@ -26,6 +26,9 @@ import type {
   HostedFile,
   HostedSessionResource,
   InstalledAsset,
+  LinkCodeMarketplaceConfig,
+  LinkCodeMarketplaceReleaseIdentity,
+  LinkCodePluginId,
   LoopId,
   LoopInspection,
   LoopIteration,
@@ -90,7 +93,11 @@ import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
 import type {
+  LinkCodePluginConfigUpdate,
+  LinkCodePluginConfigView,
+  PluginConfigValue,
   PluginList,
+  PluginMarketRefresh,
   PluginMutation,
   RandomUUID,
   RequestAck,
@@ -103,7 +110,16 @@ export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
 export type { SequencedAgentEvent } from './client/event-buffer';
-export type { PluginList, PluginMutation, SessionStartResult } from './client/pending-registry';
+export type {
+  LinkCodePluginConfigUpdate,
+  LinkCodePluginConfigView,
+  PluginConfigValue,
+  PluginList,
+  PluginMarketRefresh,
+  PluginMarketReleaseEntry,
+  PluginMutation,
+  SessionStartResult,
+} from './client/pending-registry';
 
 type EventCb = (event: AgentEvent, seq: number) => void;
 type TerminalOutputCb = (data: string) => void;
@@ -419,6 +435,35 @@ export class LinkCodeClient {
         break;
       case 'skill.updated':
         this.pending.resolve('skillSetEnabled', p.replyTo, p.skill);
+        break;
+      case 'plugin-market.listed':
+        this.pending.resolve('pluginMarketList', p.replyTo, p.marketplaces);
+        break;
+      case 'plugin-market.refreshed':
+        this.pending.resolve('pluginMarketRefresh', p.replyTo, {
+          marketplaceId: p.marketplaceId,
+          releases: p.releases,
+          ...(p.notModified === true && { notModified: true }),
+        });
+        break;
+      case 'plugin-market.installed':
+        this.pending.resolve('pluginMarketInstall', p.replyTo, {
+          marketplaceId: p.marketplaceId,
+          pluginId: p.pluginId,
+          version: p.version,
+        });
+        break;
+      case 'plugin-market.uninstalled':
+        this.pending.resolve('pluginMarketUninstall', p.replyTo, p.pluginId);
+        break;
+      case 'plugin-config.listed':
+        this.pending.resolve('pluginConfigList', p.replyTo, p.plugins);
+        break;
+      case 'plugin-config.updated':
+        this.pending.resolve('pluginConfigUpdate', p.replyTo, {
+          pluginId: p.pluginId,
+          values: p.values,
+        });
         break;
       case 'config.probe-models.result':
         this.pending.resolve('accountModels', p.replyTo, p.models);
@@ -901,6 +946,42 @@ export class LinkCodeClient {
     cwd?: string;
   }): Promise<StandaloneSkill> {
     return this.control.setSkillEnabled(params);
+  }
+
+  /** The configured LinkCode marketplaces. */
+  listPluginMarketplaces(): Promise<LinkCodeMarketplaceConfig[]> {
+    return this.control.listPluginMarketplaces();
+  }
+
+  /** Refresh one marketplace index; `notModified` replies carry the cached catalog. */
+  refreshPluginMarketplace(marketplaceId: string): Promise<PluginMarketRefresh> {
+    return this.control.refreshPluginMarketplace(marketplaceId);
+  }
+
+  /** Install a marketplace release; resolves with the installed release identity. */
+  installLinkCodePlugin(
+    release: LinkCodeMarketplaceReleaseIdentity,
+  ): Promise<LinkCodeMarketplaceReleaseIdentity> {
+    return this.control.installLinkCodePlugin(release);
+  }
+
+  /** Uninstall a LinkCode plugin; resolves with its id. */
+  uninstallLinkCodePlugin(pluginId: LinkCodePluginId): Promise<LinkCodePluginId> {
+    return this.control.uninstallLinkCodePlugin(pluginId);
+  }
+
+  /** Masked settings read for installed LinkCode plugins — secret values are never returned. */
+  listLinkCodePluginConfigs(): Promise<LinkCodePluginConfigView[]> {
+    return this.control.listLinkCodePluginConfigs();
+  }
+
+  /** Per-key settings patch; resolves with the plugin's post-patch masked values. */
+  setLinkCodePluginConfig(params: {
+    pluginId: LinkCodePluginId;
+    set?: Record<string, PluginConfigValue>;
+    remove?: string[];
+  }): Promise<LinkCodePluginConfigUpdate> {
+    return this.control.setLinkCodePluginConfig(params);
   }
 
   listAgentRuntimes(): Promise<AgentRuntimes> {

@@ -9,6 +9,18 @@ export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
 export type { LoopStore, ScheduleStore } from './automation';
 export type { EngineDeps } from './deps';
+export type {
+  InMemoryLinkCodePluginStore,
+  InstalledLinkCodePluginEntry,
+  LinkCodePluginStore,
+  PluginConfigPatch,
+  PluginConfigValue,
+} from './plugin/linkcode-store';
+export type {
+  LinkCodeMarketplaceService,
+  MarketplaceCatalogEntry,
+  MarketplaceRefreshResult,
+} from './plugin/market-service';
 export { PreviewRouteRegistry } from './preview/route-registry';
 export type { ResourceStore } from './resource/resource-store';
 export {

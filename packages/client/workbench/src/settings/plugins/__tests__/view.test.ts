@@ -2,7 +2,10 @@ import type { PluginList } from '@linkcode/client-core';
 import type { Plugin } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  filterLinkCodeCatalogCards,
   filterPluginCards,
+  linkcodeCatalogCard,
+  linkcodeInstalledRow,
   pluginCardView,
   pluginMcpServerRows,
   pluginProviderGroups,
@@ -270,5 +273,103 @@ describe('pluginMcpServerRows', () => {
         enabled: true,
       },
     ]);
+  });
+});
+
+describe('linkcodeCatalogCard', () => {
+  it('projects a marketplace release entry to a catalog card with install state', () => {
+    const card = linkcodeCatalogCard(
+      'linkcode-official',
+      {
+        pluginId: 'linkcode/mail',
+        release: {
+          manifest: {
+            manifestVersion: 1,
+            id: 'linkcode/mail',
+            version: '1.0.0',
+            displayName: 'Mail (163 / QQ)',
+            description: 'Receive and send mail.',
+            keywords: ['mail'],
+            components: [
+              { kind: 'mcp-server', name: 'mail', command: 'npx', env: { MAIL_USER: 'account' } },
+            ],
+            settings: { account: { type: 'string', required: true } },
+            assets: [],
+          },
+          artifact: {
+            urls: ['plugins/mail-1.0.0.tgz'],
+            integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+            format: 'tgz',
+          },
+        },
+      },
+      true,
+    );
+
+    expect(card).toMatchObject({
+      key: 'linkcode-official:linkcode/mail',
+      marketplaceId: 'linkcode-official',
+      pluginId: 'linkcode/mail',
+      version: '1.0.0',
+      title: 'Mail (163 / QQ)',
+      installed: true,
+    });
+    expect(card.searchText).toContain('linkcode/mail');
+  });
+});
+
+describe('linkcodeInstalledRow', () => {
+  it('derives the title from the id and flags settings-bearing plugins', () => {
+    expect(
+      linkcodeInstalledRow({
+        id: 'linkcode/mail',
+        version: '1.0.0',
+        settings: { account: { type: 'string' } },
+        values: {},
+      }),
+    ).toEqual({
+      key: 'linkcode/mail',
+      pluginId: 'linkcode/mail',
+      title: 'mail',
+      version: '1.0.0',
+      hasSettings: true,
+    });
+    expect(
+      linkcodeInstalledRow({ id: 'linkcode/notes', version: '0.2.0', settings: {}, values: {} })
+        .hasSettings,
+    ).toBe(false);
+  });
+});
+
+describe('filterLinkCodeCatalogCards', () => {
+  it('filters by the precomputed haystack, blank query keeps all', () => {
+    const cards = [
+      linkcodeCatalogCard(
+        'linkcode-official',
+        {
+          pluginId: 'linkcode/mail',
+          release: {
+            manifest: {
+              manifestVersion: 1,
+              id: 'linkcode/mail',
+              version: '1.0.0',
+              displayName: 'Mail',
+              keywords: [],
+              components: [{ kind: 'mcp-server', name: 'mail', command: 'npx' }],
+              assets: [],
+            },
+            artifact: {
+              urls: ['plugins/mail-1.0.0.tgz'],
+              integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+              format: 'tgz',
+            },
+          },
+        },
+        false,
+      ),
+    ];
+    expect(filterLinkCodeCatalogCards(cards, '')).toHaveLength(1);
+    expect(filterLinkCodeCatalogCards(cards, 'mail')).toHaveLength(1);
+    expect(filterLinkCodeCatalogCards(cards, 'zzz')).toHaveLength(0);
   });
 });

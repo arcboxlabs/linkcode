@@ -51,7 +51,7 @@ export interface SecretStore {
  * impossible. Domain knowledge (which keys exist, what they mean) belongs to the owning module, not
  * here — this is only the list of who has a slice.
  */
-export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'custom-mcp' | 'device';
+export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'custom-mcp' | 'plugin' | 'device';
 
 export type SecretProtection = 'os-keyring' | 'plaintext';
 

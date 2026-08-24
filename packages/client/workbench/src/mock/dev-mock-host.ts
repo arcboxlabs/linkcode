@@ -11,6 +11,7 @@ import type {
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
   EffortLevel,
+  LinkCodePluginSettings,
   ManagedAssetId,
   ManagedAssetKey,
   ManagedAssetStatus,
@@ -51,6 +52,7 @@ import { MOCK_COMMAND_CATALOG, mockCommandFixture } from './data/commands';
 import { MOCK_WORKSPACE_FILES, mockFileFixture } from './data/files';
 import { gitFixtureFor } from './data/git';
 import { SEED_HISTORY } from './data/history';
+import { SEED_LINKCODE_MARKETPLACES, SEED_LINKCODE_RELEASES } from './data/linkcode-marketplace';
 import { createLongThreadScript } from './data/long-thread';
 import { SEED_MODEL_CATALOGS } from './data/models';
 import { SEED_PLUGIN_PROVIDER_STATUS, SEED_PLUGINS, SEED_STANDALONE_SKILLS } from './data/plugins';
@@ -192,6 +194,31 @@ export class DevMockHost {
   private customMcpServers: CustomMcpServer[] = [];
   private readonly plugins: Plugin[] = structuredClone(SEED_PLUGINS);
   private readonly standaloneSkills: StandaloneSkill[] = structuredClone(SEED_STANDALONE_SKILLS);
+  /** Installed LinkCode plugins with their full settings (secrets included, like the daemon's
+   * vault); `plugin-config.*` serves the masked projection. */
+  private readonly linkCodeInstalled = new Map<
+    string,
+    {
+      marketplaceId: string;
+      version: string;
+      values: Record<string, string | number | boolean>;
+    }
+  >([
+    [
+      'linkcode/mail',
+      {
+        marketplaceId: 'linkcode-official',
+        version: '1.0.0',
+        values: {
+          account: 'you@163.com',
+          password: 'mock-authorization-code',
+          preset: '163',
+          maxBodyChars: 8000,
+          readonly: false,
+        },
+      },
+    ],
+  ]);
   private readonly permissions = new Map<string, PendingPermission>();
   private readonly questions = new Map<string, PendingQuestion>();
   private history: AgentHistorySession[] = [];
@@ -477,6 +504,105 @@ export class DevMockHost {
             plugin.components.some((component) => component.kind === 'app') && {
               pendingAuthApps: ['Mock Connector'],
             }),
+        });
+        break;
+      }
+      case 'plugin-market.list.get':
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin-market.listed',
+          replyTo: p.clientReqId,
+          marketplaces: SEED_LINKCODE_MARKETPLACES,
+        });
+        break;
+      case 'plugin-market.refresh': {
+        await wait(CONTROL_LATENCY_MS);
+        if (!SEED_LINKCODE_MARKETPLACES.some((market) => market.id === p.marketplaceId)) {
+          this.sendFailure(p.clientReqId, `Unknown marketplace: ${p.marketplaceId}`);
+          break;
+        }
+        this.send({
+          kind: 'plugin-market.refreshed',
+          replyTo: p.clientReqId,
+          marketplaceId: p.marketplaceId,
+          releases: SEED_LINKCODE_RELEASES,
+        });
+        break;
+      }
+      case 'plugin-market.install': {
+        await wait(CONTROL_LATENCY_MS);
+        const known = SEED_LINKCODE_RELEASES.some(
+          (candidate) =>
+            candidate.pluginId === p.release.pluginId &&
+            candidate.release.manifest.version === p.release.version,
+        );
+        if (!known) {
+          this.sendFailure(
+            p.clientReqId,
+            `Unknown marketplace release: ${p.release.pluginId}@${p.release.version}`,
+          );
+          break;
+        }
+        this.linkCodeInstalled.set(p.release.pluginId, {
+          marketplaceId: p.release.marketplaceId,
+          version: p.release.version,
+          values: {},
+        });
+        this.send({
+          kind: 'plugin-market.installed',
+          replyTo: p.clientReqId,
+          marketplaceId: p.release.marketplaceId,
+          pluginId: p.release.pluginId,
+          version: p.release.version,
+        });
+        break;
+      }
+      case 'plugin-market.uninstall': {
+        await wait(CONTROL_LATENCY_MS);
+        if (!this.linkCodeInstalled.delete(p.pluginId)) {
+          this.sendFailure(p.clientReqId, `Unknown plugin: ${p.pluginId}`);
+          break;
+        }
+        this.send({
+          kind: 'plugin-market.uninstalled',
+          replyTo: p.clientReqId,
+          pluginId: p.pluginId,
+        });
+        break;
+      }
+      case 'plugin-config.list.get': {
+        await wait(CONTROL_LATENCY_MS);
+        this.send({
+          kind: 'plugin-config.listed',
+          replyTo: p.clientReqId,
+          plugins: this.linkCodeConfigViews(),
+        });
+        break;
+      }
+      case 'plugin-config.set': {
+        await wait(CONTROL_LATENCY_MS);
+        const installed = this.linkCodeInstalled.get(p.pluginId);
+        const settings = SEED_LINKCODE_RELEASES.find(
+          (candidate) => candidate.pluginId === p.pluginId,
+        )?.release.manifest.settings;
+        if (installed === undefined || settings === undefined) {
+          this.sendFailure(p.clientReqId, `Unknown plugin: ${p.pluginId}`);
+          break;
+        }
+        if (p.remove) {
+          const removed = new Set(p.remove);
+          installed.values = Object.fromEntries(
+            Object.entries(installed.values).filter(([key]) => !removed.has(key)),
+          );
+        }
+        if (p.set) {
+          for (const [key, value] of Object.entries(p.set)) installed.values[key] = value;
+        }
+        this.send({
+          kind: 'plugin-config.updated',
+          replyTo: p.clientReqId,
+          pluginId: p.pluginId,
+          values: maskLinkCodePluginValues(settings, installed.values),
         });
         break;
       }
@@ -1667,6 +1793,29 @@ export class DevMockHost {
     this.send({ kind: 'request.failed', replyTo, message, ...reporting });
   }
 
+  /** The masked `plugin-config.listed` projection: only installed plugins whose manifest declares
+   * settings, secret values omitted — mirrors the daemon's PluginConfigService. */
+  private linkCodeConfigViews(): Array<{
+    id: string;
+    version: string;
+    settings: LinkCodePluginSettings;
+    values: Record<string, string | number | boolean>;
+  }> {
+    const views = [];
+    for (const [pluginId, installed] of this.linkCodeInstalled) {
+      const seed = SEED_LINKCODE_RELEASES.find((candidate) => candidate.pluginId === pluginId);
+      const settings = seed?.release.manifest.settings;
+      if (settings === undefined) continue;
+      views.push({
+        id: pluginId,
+        version: installed.version,
+        settings,
+        values: maskLinkCodePluginValues(settings, installed.values),
+      });
+    }
+    return views;
+  }
+
   private nextSessionId(): SessionId {
     this.sessionSeq += 1;
     return `mock-sess-${Date.now().toString(36)}-${this.sessionSeq.toString(36)}` as SessionId;
@@ -1725,6 +1874,19 @@ const PATH_SEPARATORS_RE = /[/\\]+/;
 
 function lastPathSegment(cwd: string): string {
   return cwd.split(PATH_SEPARATORS_RE).findLast((part) => part.length > 0) ?? cwd;
+}
+
+/** Mirror of the daemon's masked plugin-config projection: secret fields never reach the client. */
+function maskLinkCodePluginValues(
+  settings: LinkCodePluginSettings,
+  values: Readonly<Record<string, string | number | boolean>>,
+): Record<string, string | number | boolean> {
+  const masked: Record<string, string | number | boolean> = {};
+  for (const [fieldId, field] of Object.entries(settings)) {
+    if (field.secret) continue;
+    if (fieldId in values) masked[fieldId] = values[fieldId];
+  }
+  return masked;
 }
 
 /** Mirror of the daemon's masked projection: env/header values never reach the client. */

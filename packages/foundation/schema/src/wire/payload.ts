@@ -13,6 +13,8 @@ import { keepAliveWireVariants } from './keep-alive';
 import { loopWireVariants } from './loop';
 import { managedAssetWireVariants } from './managed-asset';
 import { pluginWireVariants } from './plugin';
+import { pluginConfigWireVariants } from './plugin-config';
+import { pluginMarketWireVariants } from './plugin-market';
 import { requestWireVariants } from './request';
 import { resourceWireVariants } from './resource';
 import { scheduleWireVariants } from './schedule';
@@ -33,6 +35,8 @@ const wirePayloadVariants = [
   ...agentLoginWireVariants,
   ...managedAssetWireVariants,
   ...pluginWireVariants,
+  ...pluginConfigWireVariants,
+  ...pluginMarketWireVariants,
   ...workspaceWireVariants,
   ...gitWireVariants,
   ...fileWireVariants,

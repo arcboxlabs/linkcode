@@ -14,6 +14,13 @@ import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
 import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from 'coss-ui/components/select';
 import { Textarea } from 'coss-ui/components/textarea';
 import { noop } from 'foxts/noop';
 import { Trash2Icon, UndoIcon } from 'lucide-react';
@@ -58,6 +65,28 @@ const McpFormSchema = z
 type McpForm = z.infer<typeof McpFormSchema>;
 
 type DialogState = { mode: 'closed' } | { mode: 'add' } | { mode: 'edit'; id: string };
+
+/** Email server templates that prefill the stdio form for 163 / QQ / exmail. */
+const MAIL_TEMPLATES = [
+  { value: '163', preset: '163', nameKey: 'template163' },
+  { value: 'qq', preset: 'qq', nameKey: 'templateQq' },
+  { value: 'exmail', preset: 'exmail', nameKey: 'templateExmail' },
+] as const;
+
+function mailTemplateForm(preset: string, name: string): McpForm {
+  return {
+    name,
+    transport: 'stdio',
+    command: 'npx',
+    args: '-y\n@linkcode/mail-mcp',
+    url: '',
+    secrets: [
+      { key: 'MAIL_USER', value: '', remove: false },
+      { key: 'MAIL_PASSWORD', value: '', remove: false },
+      { key: 'MAIL_PRESET', value: preset, remove: false },
+    ],
+  };
+}
 
 export interface McpTabProps {
   pluginRows: PluginMcpServerRow[];
@@ -159,10 +188,12 @@ function CustomServerDialog({
   onSubmit: (draft: CustomMcpServerDraft) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.plugins.mcp');
+  const [template, setTemplate] = useState('');
   const {
     control,
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<McpForm>({
     resolver: zodResolver(McpFormSchema),
@@ -176,6 +207,12 @@ function CustomServerDialog({
       : previous.server.type === 'stdio'
         ? previous.server.envKeys.length
         : previous.server.headerKeys.length;
+
+  const applyTemplate = (value: string): void => {
+    setTemplate(value);
+    const tpl = MAIL_TEMPLATES.find((m) => m.value === value);
+    reset(tpl ? mailTemplateForm(tpl.preset, t(tpl.nameKey)) : formDefaults(undefined));
+  };
 
   const submit = handleSubmit((form) => {
     const secretRows: Array<{ key: string; value: string; remove: boolean }> = [];
@@ -213,6 +250,24 @@ function CustomServerDialog({
             errors={rhfErrorsToFormErrors(errors)}
             onSubmit={submit}
           >
+            {previous === undefined && (
+              <Field>
+                <FieldLabel>{t('form.mailTemplate')}</FieldLabel>
+                <Select value={template} onValueChange={(value) => applyTemplate(value ?? '')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectPopup>
+                    <SelectItem value="">{t('form.mailTemplateNone')}</SelectItem>
+                    {MAIL_TEMPLATES.map((tpl) => (
+                      <SelectItem key={tpl.value} value={tpl.value}>
+                        {t(tpl.nameKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </Field>
+            )}
             <Field name="name">
               <FieldLabel>{t('form.name')}</FieldLabel>
               <Input {...register('name')} autoFocus />
