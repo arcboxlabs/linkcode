@@ -25,6 +25,11 @@ import { AgentKindSchema } from '@linkcode/schema';
 import { AGENT_LABELS, repositoryLabel } from '@linkcode/ui/native';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { BUNDLED_CONFIG_BOOTSTRAP } from '../../runtime/config/bundled';
+
+/** Build-time agent allowlist (CODE-618); unrestricted builds see every known kind. */
+const SELECTABLE_KINDS: readonly AgentKind[] =
+  BUNDLED_CONFIG_BOOTSTRAP.allowedAgents ?? AgentKindSchema.options;
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 const FOOTNOTE = font({ textStyle: 'footnote' });
@@ -46,7 +51,7 @@ export function NewThreadSheet({
 }): React.ReactNode {
   const t = useTranslations('mobile.sessions');
 
-  const [kind, setKind] = useState<AgentKind>(AgentKindSchema.options[0]);
+  const [kind, setKind] = useState<AgentKind>(SELECTABLE_KINDS[0]);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const customPath = useNativeState('');
 
@@ -73,20 +78,23 @@ export function NewThreadSheet({
       >
         <Form>
           {/* Segmented rather than the old icon chips: the agent brand marks are RN SVG
-            components, which have no place in a SwiftUI view tree. */}
-          <Section title={t('kindLabel')}>
-            <Picker
-              selection={kind}
-              onSelectionChange={setKind}
-              modifiers={[pickerStyle('segmented')]}
-            >
-              {AgentKindSchema.options.map((option) => (
-                <Text key={option} modifiers={[tag(option)]}>
-                  {AGENT_LABELS[option]}
-                </Text>
-              ))}
-            </Picker>
-          </Section>
+            components, which have no place in a SwiftUI view tree. Hidden entirely (rather than
+            disabled) once a restricted build leaves only one selectable kind pinned above. */}
+          {SELECTABLE_KINDS.length > 1 && (
+            <Section title={t('kindLabel')}>
+              <Picker
+                selection={kind}
+                onSelectionChange={setKind}
+                modifiers={[pickerStyle('segmented')]}
+              >
+                {SELECTABLE_KINDS.map((option) => (
+                  <Text key={option} modifiers={[tag(option)]}>
+                    {AGENT_LABELS[option]}
+                  </Text>
+                ))}
+              </Picker>
+            </Section>
+          )}
 
           {ordered.length > 0 ? (
             // An inline picker draws the selection checkmark itself, replacing the hand-placed one.
