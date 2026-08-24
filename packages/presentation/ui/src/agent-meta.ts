@@ -9,7 +9,7 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   'grok-build': 'Grok Build',
 };
 
-// Fallback for kinds without a brand glyph (e.g. `pi`, `grok-build`).
+// Safety fallback if an icon renderer cannot provide a brand glyph.
 export const AGENT_INITIALS: Record<AgentKind, string> = {
   'claude-code': 'CC',
   codex: 'CX',
