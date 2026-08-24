@@ -17,19 +17,29 @@ describe('Pi model registry integration', () => {
     {
       provider: 'anthropic',
       modelId: 'claude-sonnet-4-6',
+      inputModel: 'claude-sonnet-4-6',
       baseUrl: 'https://api.anthropic.com',
     },
     {
       provider: 'openrouter',
       modelId: 'anthropic/claude-sonnet-4.6',
+      inputModel: 'anthropic/claude-sonnet-4.6',
       baseUrl: 'https://openrouter.ai/api/v1',
     },
     {
       provider: 'vercel-ai-gateway',
       modelId: 'anthropic/claude-sonnet-4.6',
+      inputModel: 'anthropic/claude-sonnet-4.6',
       baseUrl: 'https://ai-gateway.vercel.sh/v1',
     },
-  ])('starts $provider account model $modelId', async ({ provider, modelId, baseUrl }) => {
+    {
+      provider: 'openrouter',
+      modelId: 'anthropic/claude-sonnet-4.6',
+      inputModel: 'openrouter/anthropic/claude-sonnet-4.6',
+      baseUrl: 'https://openrouter.ai/api/v1',
+    },
+  ])('resolves $provider input $inputModel to $modelId', async (testCase) => {
+    const { provider, modelId, inputModel, baseUrl } = testCase;
     const root = mkdtempSync(join(tmpdir(), 'pi-model-registry-'));
     roots.push(root);
     vi.stubEnv('PI_CODING_AGENT_DIR', root);
@@ -40,7 +50,7 @@ describe('Pi model registry integration', () => {
     await adapter.start({
       kind: 'pi',
       cwd: root,
-      model: modelId,
+      model: inputModel,
       config: { authToken: 'dummy', baseUrl, knownProvider: provider },
     });
 

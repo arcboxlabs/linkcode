@@ -221,6 +221,31 @@ describe('Pi dynamic model catalog', () => {
     expect(sdk.createOptions).toMatchObject({ model: accountModel });
   });
 
+  it('keeps a qualified-looking account model under the selected provider', async () => {
+    const accountModel = { provider: 'openai', id: 'other/nulls', reasoning: false };
+    sdk.models.push(accountModel);
+
+    await start({ model: 'other/nulls', config: { knownProvider: 'openai' } });
+
+    expect(sdk.createOptions).toMatchObject({ model: accountModel });
+  });
+
+  it('unwraps a same-provider Pi-qualified replay when its opaque account id is absent', async () => {
+    const accountModel = {
+      provider: 'openrouter',
+      id: 'anthropic/claude-sonnet-4.6',
+      reasoning: false,
+    };
+    sdk.models.push(accountModel);
+
+    await start({
+      model: 'openrouter/anthropic/claude-sonnet-4.6',
+      config: { knownProvider: 'openrouter' },
+    });
+
+    expect(sdk.createOptions).toMatchObject({ model: accountModel });
+  });
+
   it('keeps a Pi-qualified model authoritative without account provider evidence', async () => {
     await start({ model: 'other/nulls' });
 
@@ -318,5 +343,35 @@ describe('Pi native resume', () => {
     // The session's own last-routed provider outranks the account's catalog default: registering
     // the key under `openai` would leave the model pi actually resumes without credentials.
     expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('other', 'account-key');
+  });
+
+  it('uses an explicit account model instead of the resumed provider', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-resume-'));
+    vi.stubEnv('PI_CODING_AGENT_DIR', root);
+    mkdirSync(join(root, 'sessions', 'slug'), { recursive: true });
+    writeFileSync(join(root, 'sessions', 'slug', '2026_resume-id.jsonl'), '');
+    sdk.open.mockReturnValue({
+      getBranch: () => [{ type: 'model_change', provider: 'other', modelId: 'nulls' }],
+      getCwd: () => '/saved/cwd',
+    });
+    const adapter = new PiAdapter();
+    adapter.onEvent(noop);
+
+    await adapter.resumeHistory(
+      { historyId: asHistoryId('resume-id') },
+      {
+        kind: 'pi',
+        cwd: '/caller',
+        model: 'gpt',
+        config: {
+          apiKey: 'account-key',
+          baseUrl: 'https://gateway.example.test/v1',
+          knownProvider: 'openai',
+        },
+      },
+    );
+
+    expect(sdk.setRuntimeApiKey).toHaveBeenCalledWith('openai', 'account-key');
+    expect(sdk.createOptions).toMatchObject({ model: sdk.models[0] });
   });
 });

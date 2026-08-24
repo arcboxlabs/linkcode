@@ -138,14 +138,20 @@ function createConfiguredRegistry(
   const authStorage = pi.AuthStorage.create();
   const modelRegistry = pi.ModelRegistry.create(authStorage);
   const cred = readAgentCredential(opts.config);
-  // An account model id is endpoint-owned and may contain slashes; its resolved provider is the
-  // routing boundary. Only unbound model strings carry Pi's `provider/modelId` representation.
-  let ref =
-    opts.model && cred.knownProvider
-      ? { provider: cred.knownProvider, modelId: opts.model }
-      : opts.model
-        ? parseModel(opts.model)
-        : null;
+  const parsedRef = opts.model ? parseModel(opts.model) : null;
+  const accountRef =
+    opts.model && cred.knownProvider ? { provider: cred.knownProvider, modelId: opts.model } : null;
+  let ref = accountRef ?? parsedRef;
+  // Account model ids are endpoint-owned. A same-provider Pi-qualified pin is unwrapped only when
+  // its opaque account form is absent and the qualified registry entry exists.
+  if (
+    accountRef &&
+    parsedRef?.provider === accountRef.provider &&
+    !modelRegistry.find(accountRef.provider, accountRef.modelId) &&
+    modelRegistry.find(parsedRef.provider, parsedRef.modelId)
+  ) {
+    ref = parsedRef;
+  }
   if (!ref && opts.model) {
     const endpointProviders = new Set<string>();
     if (cred.baseUrl) {
@@ -157,7 +163,7 @@ function createConfiguredRegistry(
     }
     const endpointProvider =
       endpointProviders.size === 1 ? endpointProviders.values().next().value : undefined;
-    const provider = fallbackProvider ?? cred.knownProvider ?? endpointProvider;
+    const provider = fallbackProvider ?? endpointProvider;
     if (!provider) {
       throw new Error(`pi: model must be 'provider/modelId' (got '${opts.model}')`);
     }
@@ -165,7 +171,7 @@ function createConfiguredRegistry(
   }
 
   const key = cred.apiKey ?? cred.authToken;
-  // A resumed session's last-routed provider is used when no explicit account model selected one.
+  // An explicit model fixes routing; without one, resume evidence outranks the account default.
   const provider =
     ref?.provider ??
     fallbackProvider ??
