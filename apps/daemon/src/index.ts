@@ -26,6 +26,7 @@ import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
 import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { restrictedAdapterFactory } from './agent-factory';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
@@ -34,6 +35,7 @@ import { startCloudUplink } from './cloud/uplink';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
+  daemonAllowedAgents,
   daemonChannel,
   daemonProfile,
   databasePath,
@@ -186,7 +188,10 @@ async function main(): Promise<void> {
         config.customMcpServers ?? [],
       );
       const assets = new AssetManager();
-      const consentedAgents = consentedManagedAgents(assets);
+      const allowedAgents = daemonAllowedAgents();
+      const consentedAgents = consentedManagedAgents(assets).filter(
+        (kind) => allowedAgents === null || allowedAgents.includes(kind),
+      );
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
         yield* Effect.logInfo('Removed superseded managed assets', {
@@ -249,6 +254,7 @@ async function main(): Promise<void> {
         yield* Effect.addFinalizer(() => finalize(() => simulatorMcp.close()));
       }
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
+        factory: restrictedAdapterFactory(allowedAgents),
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         simulators,

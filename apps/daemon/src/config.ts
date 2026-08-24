@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { daemonRuntimeFilePath } from '@linkcode/common/node';
 import type {
   Accounts,
+  AgentKind,
   CustomMcpServer,
   ProvidersConfig,
   SimulatorConsentState,
@@ -86,6 +87,19 @@ export function databasePath(): string {
 /** Daemon-owned root for managed git worktrees. */
 export function worktreeRoot(): string {
   return join(daemonStateDir(), 'worktrees');
+}
+
+/**
+ * Restricted-brand agent allowlist (CODE-618): `LINKCODE_ALLOWED_AGENTS` — injected by the desktop
+ * supervisor from the build's identity, comma-separated — gates which adapter kinds this daemon
+ * will spawn. Absent (the default, unbranded build) means unrestricted: `null`, never an empty
+ * array, so every downstream check can treat "no restriction" as "skip the check".
+ */
+export function daemonAllowedAgents(): readonly AgentKind[] | null {
+  const raw = process.env.LINKCODE_ALLOWED_AGENTS;
+  if (raw === undefined || raw === '') return null;
+  const kinds = raw.split(',').map((entry) => AgentKindSchema.parse(entry.trim()));
+  return kinds.length > 0 ? kinds : null;
 }
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */
