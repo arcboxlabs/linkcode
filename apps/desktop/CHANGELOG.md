@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.26.0](https://github.com/arcboxlabs/linkcode/compare/v0.25.2...v0.26.0) (2026-08-24)
+
+
+### Features
+
+* **settings:** add usage and billing balance ([#468](https://github.com/arcboxlabs/linkcode/issues/468)) ([5d2e3a4](https://github.com/arcboxlabs/linkcode/commit/5d2e3a41cae2aae70489672d66594b9d6b305a77))
+
+
+### Bug Fixes
+
+* **i18n:** normalize CJK punctuation and fix tracking-widest on zh-CN group labels ([#467](https://github.com/arcboxlabs/linkcode/issues/467)) ([63b3813](https://github.com/arcboxlabs/linkcode/commit/63b3813061b1676418a525d8885cbe69aeaaf2b2))
+* **ui:** use official agent icons ([#475](https://github.com/arcboxlabs/linkcode/issues/475)) ([1fb2a9b](https://github.com/arcboxlabs/linkcode/commit/1fb2a9b6ed2d8fbaa61eac7b5d4cb90535760df9))
+
 ## [0.25.2](https://github.com/arcboxlabs/linkcode/compare/v0.25.1...v0.25.2) (2026-08-21)
 
 
