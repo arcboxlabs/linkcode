@@ -159,6 +159,7 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     credentialType: 'auth-token',
     variants: {
       'openai-chat': { baseUrl: 'https://gateway.linkcode.ai/v1' },
+      'openai-responses': { baseUrl: 'https://gateway.linkcode.ai/v1' },
     },
     models: { url: 'https://gateway.linkcode.ai/v1/models', wire: 'openai' },
   },

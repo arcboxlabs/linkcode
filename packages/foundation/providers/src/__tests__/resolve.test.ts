@@ -191,7 +191,7 @@ describe('resolveBinding: variant chosen per agent', () => {
     ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
   });
 
-  it('preserves LinkCode Gateway as an OpenAI Chat endpoint', () => {
+  it('serves LinkCode Gateway over both OpenAI wires', () => {
     const gateway = account({
       service: 'linkcode-gateway',
       credential: { type: 'auth-token', token: 'lc-gateway-key' },
@@ -209,8 +209,9 @@ describe('resolveBinding: variant chosen per agent', () => {
       });
     }
     expect(resolveBinding(gateway, 'codex')).toEqual({
-      tier: 'unavailable',
-      reason: 'protocol-unsupported',
+      tier: 'native',
+      protocol: 'openai-responses',
+      baseUrl: 'https://gateway.linkcode.ai/v1',
     });
   });
 
