@@ -3,7 +3,7 @@ import type { LinkCodeCatalogCardView, LinkCodeInstalledPluginRow } from '@linkc
 import { LinkCodeCatalogSection, LinkCodeInstalledSection } from '@linkcode/ui';
 import { Card } from 'coss-ui/components/card';
 import { noop } from 'foxts/noop';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   useInstallLinkCodePlugin,
@@ -35,6 +35,10 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
   const uninstall = useUninstallLinkCodePlugin();
   const save = useSetLinkCodePluginConfig();
   const [configuring, setConfiguring] = useState<LinkCodePluginId | null>(null);
+  // Synchronous re-entry gates: `isMutating` updates on the next render, so a fast double action
+  // could otherwise fire two wire requests before the busy state disables the buttons.
+  const lifecyclePendingRef = useRef(false);
+  const savePendingRef = useRef(false);
 
   const installedVersions = new Map((configs ?? []).map((view) => [view.id, view.version]));
   const rows = configs?.map(linkcodeInstalledRow);
@@ -46,33 +50,50 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
   const enabledMarketplaces = marketplaces?.filter((marketplace) => marketplace.enabled);
 
   const onInstall = async (card: LinkCodeCatalogCardView): Promise<void> => {
-    await install.trigger({
-      release: {
-        marketplaceId: card.marketplaceId,
-        pluginId: card.pluginId,
-        version: card.version,
-      },
-    });
-    await mutateConfigs();
+    if (lifecyclePendingRef.current) return;
+    lifecyclePendingRef.current = true;
+    try {
+      await install.trigger({
+        release: {
+          marketplaceId: card.marketplaceId,
+          pluginId: card.pluginId,
+          version: card.version,
+        },
+      });
+      await mutateConfigs();
+    } finally {
+      lifecyclePendingRef.current = false;
+    }
   };
 
   const onUninstall = async (row: LinkCodeInstalledPluginRow): Promise<void> => {
-    await uninstall.trigger({ pluginId: row.pluginId });
-    await mutateConfigs();
+    if (lifecyclePendingRef.current) return;
+    lifecyclePendingRef.current = true;
+    try {
+      await uninstall.trigger({ pluginId: row.pluginId });
+      await mutateConfigs();
+    } finally {
+      lifecyclePendingRef.current = false;
+    }
   };
 
   const onSubmitConfig = async (patch: LinkCodePluginConfigPatch): Promise<void> => {
-    if (editing === undefined) return;
-    const result = await save.trigger({ pluginId: editing.id, ...patch });
-    // Fold the post-patch masked values into the cache instead of re-listing.
-    await mutateConfigs(
-      (current) =>
-        current?.map((view) =>
-          view.id === result.pluginId ? { ...view, values: result.values } : view,
-        ),
-      { revalidate: false },
-    );
-    setConfiguring(null);
+    if (editing === undefined || savePendingRef.current) return;
+    savePendingRef.current = true;
+    try {
+      const result = await save.trigger({ pluginId: editing.id, ...patch });
+      // Fold the post-patch masked values into the cache instead of re-listing.
+      await mutateConfigs(
+        (current) =>
+          current?.map((view) =>
+            view.id === result.pluginId ? { ...view, values: result.values } : view,
+          ),
+        { revalidate: false },
+      );
+      setConfiguring((current) => (current === editing.id ? null : current));
+    } finally {
+      savePendingRef.current = false;
+    }
   };
 
   return (

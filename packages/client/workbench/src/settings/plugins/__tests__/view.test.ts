@@ -276,33 +276,33 @@ describe('pluginMcpServerRows', () => {
   });
 });
 
-describe('linkcodeCatalogCards', () => {
-  function catalogEntry(version: string): PluginMarketReleaseEntry {
-    return {
-      pluginId: 'linkcode/mail',
-      release: {
-        manifest: {
-          manifestVersion: 1,
-          id: 'linkcode/mail',
-          version,
-          displayName: 'Mail (163 / QQ)',
-          description: 'Receive and send mail.',
-          keywords: ['mail'],
-          components: [
-            { kind: 'mcp-server', name: 'mail', command: 'npx', env: { MAIL_USER: 'account' } },
-          ],
-          settings: { account: { type: 'string', required: true } },
-          assets: [],
-        },
-        artifact: {
-          urls: [`plugins/mail-${version}.tgz`],
-          integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-          format: 'tgz',
-        },
+function catalogEntry(version: string): PluginMarketReleaseEntry {
+  return {
+    pluginId: 'linkcode/mail',
+    release: {
+      manifest: {
+        manifestVersion: 1,
+        id: 'linkcode/mail',
+        version,
+        displayName: 'Mail (163 / QQ)',
+        description: 'Receive and send mail.',
+        keywords: ['mail'],
+        components: [
+          { kind: 'mcp-server', name: 'mail', command: 'npx', env: { MAIL_USER: 'account' } },
+        ],
+        settings: { account: { type: 'string', required: true } },
+        assets: [],
       },
-    };
-  }
+      artifact: {
+        urls: [`plugins/mail-${version}.tgz`],
+        integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        format: 'tgz',
+      },
+    },
+  };
+}
 
+describe('linkcodeCatalogCards', () => {
   it('projects a marketplace release entry to a catalog card with install state', () => {
     const [card] = linkcodeCatalogCards(
       'linkcode-official',
@@ -320,7 +320,7 @@ describe('linkcodeCatalogCards', () => {
       updateAvailable: false,
       installedNewer: false,
     });
-    expect(card?.searchText).toContain('linkcode/mail');
+    expect(card.searchText).toContain('linkcode/mail');
   });
 
   it('distinguishes not-installed from an upgrade to an older installed version', () => {

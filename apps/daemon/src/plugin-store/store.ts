@@ -100,21 +100,24 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     const settings = manifest.settings;
     const secrets = pluginSecretStore(this.vault);
     const previousNonSecret = loadPluginConfigValues(pluginId);
-    const nextNonSecret = { ...previousNonSecret };
+    let nextNonSecret = { ...previousNonSecret };
     const secretPatch = new Map<string, string | undefined>();
 
     if (patch.remove) {
       for (const fieldId of patch.remove) {
+        if (!(fieldId in settings)) continue;
         const field = settings[fieldId];
-        if (field === undefined) continue;
         if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, undefined);
-        else delete nextNonSecret[fieldId];
+        else {
+          const { [fieldId]: _removed, ...rest } = nextNonSecret;
+          nextNonSecret = rest;
+        }
       }
     }
     if (patch.set) {
       for (const [fieldId, value] of Object.entries(patch.set)) {
+        if (!(fieldId in settings)) continue;
         const field = settings[fieldId];
-        if (field === undefined) continue;
         if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, String(value));
         else nextNonSecret[fieldId] = value;
       }
@@ -150,37 +153,41 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     return Promise.resolve();
   }
 
-  /** Serializes installs of one plugin id; a concurrent second install would otherwise publish to
-   * the same package dir and delete the first install's just-renamed package. */
+  /** Serializes installs and uninstalls per plugin id; a concurrent second mutation would
+   * otherwise publish to / delete the same package dir and leave the registry inconsistent. */
   private readonly installChains = new Map<string, Promise<unknown>>();
 
   install(
     release: LinkCodePluginRelease,
     marketplaceId: string,
   ): Promise<InstalledLinkCodePluginEntry> {
-    const pluginId = release.manifest.id;
+    return this.serialize(release.manifest.id, () => installExclusive(release, marketplaceId));
+  }
+
+  uninstall(pluginId: string): Promise<void> {
+    return this.serialize(pluginId, () => {
+      const records = readRegistry();
+      const matches = records.filter((entry) => entry.id === pluginId);
+      if (matches.length > 0) {
+        for (const record of matches) rmSync(record.path, { recursive: true, force: true });
+        writeRegistry(records.filter((entry) => entry.id !== pluginId));
+      }
+      // Non-secret values are dropped by writing an empty block; secret values are pruned below.
+      savePluginConfigValues(pluginId, {});
+      prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
+    });
+  }
+
+  private serialize<T>(pluginId: string, task: () => Promise<T> | T): Promise<T> {
     const run = (this.installChains.get(pluginId) ?? Promise.resolve())
       .catch(noop)
-      .then(() => installExclusive(release, marketplaceId));
+      .then(() => task());
     this.installChains.set(pluginId, run);
     const settle = (): void => {
       if (this.installChains.get(pluginId) === run) this.installChains.delete(pluginId);
     };
     void run.catch(noop).finally(settle);
     return run;
-  }
-
-  uninstall(pluginId: string): Promise<void> {
-    const records = readRegistry();
-    const matches = records.filter((entry) => entry.id === pluginId);
-    if (matches.length > 0) {
-      for (const record of matches) rmSync(record.path, { recursive: true, force: true });
-      writeRegistry(records.filter((entry) => entry.id !== pluginId));
-    }
-    // Non-secret values are dropped by writing an empty block; secret values are pruned below.
-    savePluginConfigValues(pluginId, {});
-    prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
-    return Promise.resolve();
   }
 }
 

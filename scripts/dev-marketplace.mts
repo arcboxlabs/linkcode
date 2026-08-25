@@ -80,7 +80,7 @@ const manifest = {
 };
 
 // Minimal newline-delimited-JSON stdio MCP server with zero dependencies.
-const MCP_PAYLOAD = `#!/usr/bin/env node
+const MCP_PAYLOAD = String.raw`#!/usr/bin/env node
 'use strict';
 const readline = require('node:readline');
 
@@ -98,10 +98,10 @@ const ECHO_TOOL = {
 };
 
 function reply(id, result) {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n');
 }
 function replyError(id, code, message) {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\\n');
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n');
 }
 
 const rl = readline.createInterface({ input: process.stdin });

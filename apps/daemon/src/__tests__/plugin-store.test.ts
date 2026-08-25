@@ -195,6 +195,33 @@ describe('DaemonLinkCodePluginStore', () => {
     ]);
   });
 
+  it('applies an uninstall issued during an install after the install completes', async () => {
+    // The install stalls in extraction; the uninstall must queue behind it, not race the
+    // still-incomplete registry read and let the plugin come back after being removed.
+    mocks.tarExtract.mockImplementation(async ({ cwd }: { cwd: string }) => {
+      await wait(20);
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(manifest('0.2.0')));
+    });
+    const release = {
+      manifest: manifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    await Promise.all([
+      store.install(release, 'linkcode-official'),
+      store.uninstall('arcbox/latex'),
+    ]);
+
+    expect(store.get('arcbox/latex')).toBeUndefined();
+    expect(existsSync(pluginPackageDir('arcbox/latex', '0.2.0'))).toBe(false);
+    expect(JSON.parse(readFileSync(pluginRegistryPath(), 'utf8'))).toEqual([]);
+  });
+
   it('keeps the live package and registry intact when a reinstall fails before publishing', async () => {
     const live = record('0.2.0');
     writePackage(live, manifest('0.2.0', 'live-skill'));

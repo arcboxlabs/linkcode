@@ -316,6 +316,12 @@ describe('saveProviderConfiguration', () => {
   });
 });
 
+function writeCustomMcpConfig(customMcpServers: unknown): void {
+  const dir = join(process.env.HOME ?? '', '.linkcode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers }));
+}
+
 describe('loadConfig custom MCP servers', () => {
   const validServer = {
     id: 'custom-1',
@@ -328,12 +334,6 @@ describe('loadConfig custom MCP servers', () => {
     },
     createdAt: 1,
   } as const satisfies CustomMcpServer;
-
-  function writeCustomMcpConfig(customMcpServers: unknown): void {
-    const dir = join(process.env.HOME ?? '', '.linkcode');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'config.json'), JSON.stringify({ customMcpServers }));
-  }
 
   it('keeps valid servers and drops an invalid one without blanking the rest', () => {
     const errorSpy = vi.spyOn(logger, 'warn').mockImplementation(noop);

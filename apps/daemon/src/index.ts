@@ -289,30 +289,29 @@ async function main(): Promise<void> {
       const EngineReady = Layer.effectDiscard(
         Effect.gen(function* () {
           const engine = yield* EngineService;
-          void agentRuntimesReady
-            .then((agentRuntimes) => {
-              for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
-                void assets
-                  .ensure(managedAgentAssetId(kind))
-                  .catch((err) => {
-                    logger.warn(
-                      { err, agentKind: kind, operation: 'asset.ensure' },
-                      'Managed agent install failed',
+          void (async () => {
+            const agentRuntimes = await agentRuntimesReady;
+            for (const kind of agentsToRefresh(consentedAgents, agentRuntimes, assets)) {
+              void assets
+                .ensure(managedAgentAssetId(kind))
+                .catch((err) => {
+                  logger.warn(
+                    { err, agentKind: kind, operation: 'asset.ensure' },
+                    'Managed agent install failed',
+                  );
+                })
+                .then((installed) => {
+                  if (installed) {
+                    logger.info(
+                      { agentKind: kind, operation: 'asset.ensure' },
+                      'Managed agent runtime ready',
                     );
-                  })
-                  .then((installed) => {
-                    if (installed) {
-                      logger.info(
-                        { agentKind: kind, operation: 'asset.ensure' },
-                        'Managed agent runtime ready',
-                      );
-                    }
-                  });
-              }
-            })
-            .catch((err) => {
-              logger.warn({ err, operation: 'agent.probe' }, 'Boot agent probe failed');
-            });
+                  }
+                });
+            }
+          })().catch((err) => {
+            logger.warn({ err, operation: 'agent.probe' }, 'Boot agent probe failed');
+          });
           // Runs before any listener binds, so `workspace.list` always includes the chat workspace.
           yield* engine.ensureChatWorkspace(chatWorkspaceRoot());
         }),

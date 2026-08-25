@@ -19,7 +19,8 @@ export function pluginRegistryPath(): string {
 /** Escapes a plugin id (`publisher/name`) into a stable two-level path; the id's `/` is the level. */
 export function pluginPackageDir(pluginId: string, version: string): string {
   const segments = pluginId.split('/');
-  const safe = segments.length === 2 ? segments : ['unmanaged', pluginId.replace(RE_PATH_SEP, '_')];
+  const safe =
+    segments.length === 2 ? segments : ['unmanaged', pluginId.replaceAll(RE_PATH_SEP, '_')];
   return join(pluginsRoot(), ...safe, version);
 }
 

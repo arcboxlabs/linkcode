@@ -170,25 +170,27 @@ describe('injectedMcpServerNames', () => {
   });
 });
 
-describe('account binding at session start', () => {
-  function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
-    const store = new InMemoryProviderConfigStore();
-    // An account with nothing picked refuses to start; these cases are about endpoints.
-    store.update({
-      providers: { [agent]: { enabled: true, enabledAccountIds: [account.id] } },
-      accounts: [{ ...account, models: [{ id: 'picked-model' }] }],
-    });
-    return store;
-  }
+function storeWith(acc: Account, agent: AgentKind): InMemoryProviderConfigStore {
+  const store = new InMemoryProviderConfigStore();
+  // An account with nothing picked refuses to start; these cases are about endpoints.
+  store.update({
+    providers: { [agent]: { enabled: true, enabledAccountIds: [acc.id] } },
+    accounts: [{ ...acc, models: [{ id: 'picked-model' }] }],
+  });
+  return store;
+}
 
-  const account = (overrides: Partial<Account>): Account => ({
+function account(overrides: Partial<Account>): Account {
+  return {
     id: 'acc_1',
     label: 'Test',
     credential: { type: 'api-key', key: 'sk-test' },
     createdAt: 0,
     ...overrides,
-  });
+  };
+}
 
+describe('account binding at session start', () => {
   it('refuses an agent whose account picked no model, but lets one with none resolve its own', async () => {
     const store = new InMemoryProviderConfigStore();
     store.update({ accounts: [account({ service: 'openai-api' })] });
@@ -248,16 +250,19 @@ describe('account binding at session start', () => {
 
 describe('custom MCP injection at session start', () => {
   it('folds enabled custom servers in for claude-code, codex, and opencode', async () => {
-    for (const kind of ['claude-code', 'codex', 'opencode'] as const) {
-      const resolver = new SessionStartOptionsResolver(
-        new InMemoryProviderConfigStore(),
-        undefined,
-        undefined,
-        customService(customEntry('github'), customEntry('disabled-one', false)),
-      );
-      const { options: resolved, warnings } = await Effect.runPromise(
-        resolver.resolve({ kind, cwd: '/repo' }, SESSION),
-      );
+    const kinds = ['claude-code', 'codex', 'opencode'] as const;
+    const results = await Promise.all(
+      kinds.map((kind) => {
+        const resolver = new SessionStartOptionsResolver(
+          new InMemoryProviderConfigStore(),
+          undefined,
+          undefined,
+          customService(customEntry('github'), customEntry('disabled-one', false)),
+        );
+        return Effect.runPromise(resolver.resolve({ kind, cwd: '/repo' }, SESSION));
+      }),
+    );
+    for (const { options: resolved, warnings } of results) {
       expect(resolved.mcpServers).toEqual([customEntry('github').server]);
       expect(warnings).toEqual([]);
     }

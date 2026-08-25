@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     const before = await client.listLinkCodePluginConfigs();
     const view = before.find((entry) => entry.id === PLUGIN_ID);
     assert(view, 'installed plugin missing from plugin-config.list');
-    assert(view.settings.token?.secret, 'token must be a secret field');
+    assert(view.settings.token.secret, 'token must be a secret field');
     assert.equal(view.values.token, undefined, 'secret value leaked in masked read');
 
     await client.setLinkCodePluginConfig({
@@ -155,9 +155,11 @@ async function main(): Promise<void> {
     const configFile = JSON.parse(readFileSync(join(home, '.linkcode', 'config.json'), 'utf8')) as {
       pluginConfigs?: Record<string, Record<string, unknown>>;
     };
-    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.greeting, '你好');
-    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.mode, 'shout');
-    assert(!('token' in (configFile.pluginConfigs?.[PLUGIN_ID] ?? {})), 'secret in config.json');
+    const pluginConfig = configFile.pluginConfigs?.[PLUGIN_ID];
+    assert(pluginConfig, 'installed plugin config missing from config.json');
+    assert.equal(pluginConfig.greeting, '你好');
+    assert.equal(pluginConfig.mode, 'shout');
+    assert(!('token' in pluginConfig), 'secret in config.json');
     const secretsFile = JSON.parse(
       readFileSync(join(home, '.linkcode', 'secrets.json'), 'utf8'),
     ) as {
@@ -174,8 +176,9 @@ async function main(): Promise<void> {
 
     const after = await client.listLinkCodePluginConfigs();
     const afterView = after.find((entry) => entry.id === PLUGIN_ID);
-    assert.equal(afterView?.values.greeting, '你好');
-    assert.equal(afterView?.values.token, undefined, 'secret value leaked after set');
+    assert(afterView, 'installed plugin missing after set');
+    assert.equal(afterView.values.greeting, '你好');
+    assert.equal(afterView.values.token, undefined, 'secret value leaked after set');
 
     // 5. Uninstall removes the package and prunes its config.
     const removed = await client.uninstallLinkCodePlugin(PLUGIN_ID);
@@ -186,8 +189,10 @@ async function main(): Promise<void> {
     const shutdown = await waitFor(() => exit ?? false, 50, AbortSignal.timeout(10000));
     assert.deepEqual(shutdown, { code: 0, signal: null });
 
+    // eslint-disable-next-line no-console -- e2e progress line; the daemon's own logs are captured below.
     console.log('PASS marketplace refresh (ETag 304), install, settings vault split, uninstall');
   } catch (error) {
+    // eslint-disable-next-line no-console -- dump the captured daemon log on failure for triage.
     console.error(logs.join('').slice(-8000));
     throw error;
   } finally {

@@ -319,8 +319,12 @@ export function savePluginConfigValues(
 ): void {
   const file = readConfigFile();
   const configs = isRecord(file.pluginConfigs) ? { ...file.pluginConfigs } : {};
-  if (isObjectEmpty(values)) delete configs[pluginId];
-  else configs[pluginId] = values;
+  if (isObjectEmpty(values)) {
+    const { [pluginId]: _removed, ...rest } = configs;
+    writeConfigFields(file, { pluginConfigs: rest });
+    return;
+  }
+  configs[pluginId] = values;
   writeConfigFields(file, { pluginConfigs: configs });
 }
 
