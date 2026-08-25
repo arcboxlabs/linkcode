@@ -20,6 +20,13 @@ export function createInMemoryVault(protection: SecretProtection = 'os-keyring')
     return {
       protection,
       get: (key) => refs.get(prefix + key) ?? null,
+      keys: () => {
+        const keys: string[] = [];
+        for (const ref of refs.keys()) {
+          if (ref.startsWith(prefix)) keys.push(ref.slice(prefix.length));
+        }
+        return keys;
+      },
       set(key, secret) {
         refs.set(prefix + key, secret);
       },

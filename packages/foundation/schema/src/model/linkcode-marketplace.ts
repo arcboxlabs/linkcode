@@ -12,7 +12,7 @@ const HTTP_URL_RE = /^http:\/\//i;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /** http is accepted for loopback hosts only — local debug marketplaces (RFC 8252's exception). */
-function isAllowedMarketplaceUrl(url: string): boolean {
+export function isAllowedMarketplaceUrl(url: string): boolean {
   if (HTTPS_URL_RE.test(url)) return true;
   if (!HTTP_URL_RE.test(url)) return false;
   try {
@@ -24,7 +24,10 @@ function isAllowedMarketplaceUrl(url: string): boolean {
 
 const LinkCodeMarketplaceHttpsUrlSchema = z
   .url()
-  .refine((url) => isAllowedMarketplaceUrl(url), 'Expected an absolute HTTPS URL');
+  .refine(
+    (url) => isAllowedMarketplaceUrl(url),
+    'Expected an absolute HTTPS URL (plain HTTP on loopback hosts only)',
+  );
 
 /** HTTPS index configured by the user; the remote document never chooses its local identity. */
 export const LinkCodeMarketplaceRemoteSourceSchema = z.object({

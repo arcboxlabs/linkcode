@@ -82,10 +82,11 @@ describe('LinkCodePluginConfigDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    // preset stays at its manifest default and was never stored, so it is deliberately absent
+    // from the patch — writing it would freeze today's default against future manifest upgrades.
     expect(onSubmit).toHaveBeenCalledWith({
       set: {
         account: 'new@163.com',
-        preset: '163',
         maxBodyChars: 4000,
         readonly: true,
       },

@@ -17,9 +17,9 @@ const marketplaceScript = join(repoRoot, 'scripts', 'dev-marketplace.mts');
 const fixtureIndex = join(repoRoot, 'node_modules', '.cache', 'dev-marketplace', 'index.json');
 
 const MARKETPLACE_ID = 'linkcode-official';
-const PLUGIN_ID = 'linkcode/mail';
+const PLUGIN_ID = 'linkcode/echo';
 const PLUGIN_VERSION = '0.1.0';
-const AUTHCODE = 'e2e-secret-authcode';
+const SECRET_TOKEN = 'e2e-secret-token';
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
         (entry) =>
           entry.pluginId === PLUGIN_ID && entry.release.manifest.version === PLUGIN_VERSION,
       ),
-      'catalog does not list linkcode/mail',
+      'catalog does not list linkcode/echo',
     );
     const second = await client.refreshPluginMarketplace(MARKETPLACE_ID);
     assert.equal(second.notModified, true, 'second refresh did not hit the ETag cache');
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
       version: PLUGIN_VERSION,
     });
     assert.equal(installed.pluginId, PLUGIN_ID);
-    const packageDir = join(home, '.linkcode', 'plugins', 'linkcode', 'mail', PLUGIN_VERSION);
+    const packageDir = join(home, '.linkcode', 'plugins', 'linkcode', 'echo', PLUGIN_VERSION);
     assert(existsSync(join(packageDir, 'manifest.json')), 'installed manifest.json missing');
     assert(existsSync(join(packageDir, 'dist', 'index.js')), 'installed dist/index.js missing');
 
@@ -145,37 +145,37 @@ async function main(): Promise<void> {
     const before = await client.listLinkCodePluginConfigs();
     const view = before.find((entry) => entry.id === PLUGIN_ID);
     assert(view, 'installed plugin missing from plugin-config.list');
-    assert(view.settings.authcode?.secret, 'authcode must be a secret field');
-    assert.equal(view.values.authcode, undefined, 'secret value leaked in masked read');
+    assert(view.settings.token?.secret, 'token must be a secret field');
+    assert.equal(view.values.token, undefined, 'secret value leaked in masked read');
 
     await client.setLinkCodePluginConfig({
       pluginId: PLUGIN_ID,
-      set: { account: 'user@163.com', authcode: AUTHCODE, preset: 'qq' },
+      set: { greeting: '你好', token: SECRET_TOKEN, mode: 'shout' },
     });
     const configFile = JSON.parse(readFileSync(join(home, '.linkcode', 'config.json'), 'utf8')) as {
       pluginConfigs?: Record<string, Record<string, unknown>>;
     };
-    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.account, 'user@163.com');
-    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.preset, 'qq');
-    assert(!('authcode' in (configFile.pluginConfigs?.[PLUGIN_ID] ?? {})), 'secret in config.json');
+    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.greeting, '你好');
+    assert.equal(configFile.pluginConfigs?.[PLUGIN_ID]?.mode, 'shout');
+    assert(!('token' in (configFile.pluginConfigs?.[PLUGIN_ID] ?? {})), 'secret in config.json');
     const secretsFile = JSON.parse(
       readFileSync(join(home, '.linkcode', 'secrets.json'), 'utf8'),
     ) as {
       protection: 'os-keyring' | 'plaintext';
     };
     // A fake HOME has no login keychain, so the vault degrades to plaintext on disk (with a boot
-    // warning). Either way the authcode belongs in secrets.json — just never in config.json.
+    // warning). Either way the token belongs in secrets.json — just never in config.json.
     const secretsRaw = readFileSync(join(home, '.linkcode', 'secrets.json'), 'utf8');
     if (secretsFile.protection === 'os-keyring') {
-      assert(!secretsRaw.includes(AUTHCODE), 'authcode stored in plaintext under os-keyring');
+      assert(!secretsRaw.includes(SECRET_TOKEN), 'token stored in plaintext under os-keyring');
     } else {
-      assert(secretsRaw.includes(AUTHCODE), 'authcode missing from the vault');
+      assert(secretsRaw.includes(SECRET_TOKEN), 'token missing from the vault');
     }
 
     const after = await client.listLinkCodePluginConfigs();
     const afterView = after.find((entry) => entry.id === PLUGIN_ID);
-    assert.equal(afterView?.values.account, 'user@163.com');
-    assert.equal(afterView?.values.authcode, undefined, 'secret value leaked after set');
+    assert.equal(afterView?.values.greeting, '你好');
+    assert.equal(afterView?.values.token, undefined, 'secret value leaked after set');
 
     // 5. Uninstall removes the package and prunes its config.
     const removed = await client.uninstallLinkCodePlugin(PLUGIN_ID);

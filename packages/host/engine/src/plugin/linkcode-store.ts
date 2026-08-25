@@ -31,7 +31,8 @@ export interface PluginConfigPatch {
 export interface LinkCodePluginStore {
   list(): InstalledLinkCodePluginEntry[];
   get(pluginId: string): InstalledLinkCodePluginEntry | undefined;
-  /** Merged setting values (non-secret from config, secret from the vault) for a plugin. */
+  /** Merged effective setting values (non-secret from config, secret from the vault), with each
+   * manifest-declared `default` folded in when the field has no stored value. */
   getSettings(pluginId: string): Record<string, PluginConfigValue>;
   /** Per-key patch; the store splits secret vs non-secret per the manifest. */
   setSettings(pluginId: string, patch: PluginConfigPatch): Promise<void>;
@@ -66,9 +67,14 @@ export class InMemoryLinkCodePluginStore implements LinkCodePluginStore {
   }
 
   getSettings(pluginId: string): Record<string, PluginConfigValue> {
-    const map = this.values.get(pluginId);
-    if (!map) return {};
-    return Object.fromEntries(map);
+    const merged = Object.fromEntries(this.values.get(pluginId) ?? []);
+    const settings = this.entries.get(pluginId)?.manifest.settings;
+    for (const [fieldId, field] of Object.entries(settings ?? {})) {
+      // Mirrors the daemon store: defaults fold in for missing values, but never for secrets.
+      if (field.secret === true) continue;
+      if (!(fieldId in merged) && field.default !== undefined) merged[fieldId] = field.default;
+    }
+    return merged;
   }
 
   setSettings(pluginId: string, patch: PluginConfigPatch): Promise<void> {

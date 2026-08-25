@@ -89,13 +89,32 @@ describe('config wire schema — custom MCP servers', () => {
     expect(parsed.ok).toBe(true);
   });
 
-  it('rejects an mcp warning outside the closed reason set', () => {
+  it('passes an unknown mcp warning reason through untouched (forward-compat)', () => {
+    // A newer daemon may add reasons; an older reader must not drop the whole session.started
+    // frame over one unrecognized value, so reason stays a bare non-empty string on the wire.
     const parsed = parseWireMessage(
       envelope({
         kind: 'session.started',
         replyTo: 'request-1',
         sessionId: 'session-1',
         mcpWarnings: [{ serverName: 'github', reason: 'broker-unavailable' }],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok && parsed.message.payload.kind === 'session.started') {
+      expect(parsed.message.payload.mcpWarnings).toEqual([
+        { serverName: 'github', reason: 'broker-unavailable' },
+      ]);
+    }
+  });
+
+  it('still rejects a malformed mcp warning', () => {
+    const parsed = parseWireMessage(
+      envelope({
+        kind: 'session.started',
+        replyTo: 'request-1',
+        sessionId: 'session-1',
+        mcpWarnings: [{ serverName: 'github', reason: '' }],
       }),
     );
     expect(parsed.ok).toBe(false);

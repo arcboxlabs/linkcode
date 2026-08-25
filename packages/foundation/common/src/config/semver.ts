@@ -117,6 +117,21 @@ export function isValidSemver(value: string): boolean {
   return parseSemver(value) !== null;
 }
 
+/** Whether `value` carries a prerelease segment. Not `includes('-')`: build metadata may contain a
+ * hyphen (`1.0.0+build-7` is a stable release). False for anything that fails to parse. */
+export function isPrereleaseSemver(value: string): boolean {
+  return (parseSemver(value)?.prerelease.length ?? 0) > 0;
+}
+
+/** Compares two semver strings: negative when `left` is older, 0 on equality (build metadata
+ * ignored), positive when `left` is newer; null when either side fails to parse. */
+export function compareSemverStrings(left: string, right: string): number | null {
+  const parsedLeft = parseSemver(left);
+  const parsedRight = parseSemver(right);
+  if (parsedLeft === null || parsedRight === null) return null;
+  return compareSemver(parsedLeft, parsedRight);
+}
+
 export function isValidVersionRange(value: string): boolean {
   return parseVersionRange(value) !== null;
 }

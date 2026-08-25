@@ -9,7 +9,9 @@ import type {
 
 /** A plugin's settings as the wire exposes them: the manifest's field schemas plus the non-secret
  * values. Secret fields appear in `settings` (so the client renders a masked input) but never in
- * `values` — the same masked-edit contract custom-MCP uses. */
+ * `values` — the same masked-edit contract custom-MCP uses. Every installed plugin appears here,
+ * even one declaring no settings (`settings: {}`), so this list doubles as the installed
+ * inventory: "has settings" must never decide "is installed". */
 export interface PluginConfigView {
   readonly id: string;
   readonly version: string;
@@ -28,7 +30,7 @@ export class PluginConfigService {
   list(): PluginConfigView[] {
     return this.store
       .list()
-      .flatMap((entry) => viewFor(entry, this.store.getSettings(entry.installed.id)));
+      .map((entry) => viewFor(entry, this.store.getSettings(entry.installed.id)));
   }
 
   /** Per-key patch; the store splits secret vs non-secret per the manifest. */
@@ -68,16 +70,13 @@ export class PluginConfigService {
 function viewFor(
   entry: InstalledLinkCodePluginEntry,
   merged: Record<string, PluginConfigValue>,
-): PluginConfigView[] {
-  if (entry.manifest.settings === undefined) return [];
-  return [
-    {
-      id: entry.installed.id,
-      version: entry.installed.version,
-      settings: entry.manifest.settings,
-      values: maskValues(entry, merged),
-    },
-  ];
+): PluginConfigView {
+  return {
+    id: entry.installed.id,
+    version: entry.installed.version,
+    settings: entry.manifest.settings ?? {},
+    values: maskValues(entry, merged),
+  };
 }
 
 function maskValues(

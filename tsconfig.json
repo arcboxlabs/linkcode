@@ -32,7 +32,6 @@
     { "path": "packages/host/engine/tests" },
     { "path": "packages/host/sim" },
     { "path": "packages/integrations/im-render" },
-    { "path": "packages/integrations/mail-mcp" },
     { "path": "packages/presentation/i18n" },
     { "path": "packages/presentation/ui" },
     { "path": "packages/system-plane/ipc" }

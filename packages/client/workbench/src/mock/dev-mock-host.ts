@@ -205,16 +205,16 @@ export class DevMockHost {
     }
   >([
     [
-      'linkcode/mail',
+      'linkcode/echo',
       {
         marketplaceId: 'linkcode-official',
-        version: '1.0.0',
+        version: '0.1.0',
         values: {
-          account: 'you@163.com',
-          password: 'mock-authorization-code',
-          preset: '163',
-          maxBodyChars: 8000,
-          readonly: false,
+          greeting: 'Hello',
+          token: 'mock-secret-token',
+          mode: 'plain',
+          maxChars: 1000,
+          preview: false,
         },
       },
     ],
@@ -1793,8 +1793,9 @@ export class DevMockHost {
     this.send({ kind: 'request.failed', replyTo, message, ...reporting });
   }
 
-  /** The masked `plugin-config.listed` projection: only installed plugins whose manifest declares
-   * settings, secret values omitted — mirrors the daemon's PluginConfigService. */
+  /** The masked `plugin-config.listed` projection: every installed plugin appears (a plugin with
+   * no declared settings gets `settings: {}`), secret values omitted — mirrors the daemon's
+   * PluginConfigService. */
   private linkCodeConfigViews(): Array<{
     id: string;
     version: string;
@@ -1804,8 +1805,7 @@ export class DevMockHost {
     const views = [];
     for (const [pluginId, installed] of this.linkCodeInstalled) {
       const seed = SEED_LINKCODE_RELEASES.find((candidate) => candidate.pluginId === pluginId);
-      const settings = seed?.release.manifest.settings;
-      if (settings === undefined) continue;
+      const settings = seed?.release.manifest.settings ?? {};
       views.push({
         id: pluginId,
         version: installed.version,

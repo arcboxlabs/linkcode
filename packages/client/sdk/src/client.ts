@@ -361,7 +361,7 @@ export class LinkCodeSdkClient {
     return toResult(this.raw.listPluginMarketplaces());
   }
 
-  /** Refresh one marketplace index; `notModified` replies carry no releases. */
+  /** Refresh one marketplace index; `notModified` replies carry the cached catalog. */
   refreshPluginMarketplace(marketplaceId: string): RequestResult<PluginMarketRefresh> {
     return toResult(this.raw.refreshPluginMarketplace(marketplaceId));
   }

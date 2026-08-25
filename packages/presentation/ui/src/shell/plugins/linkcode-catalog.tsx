@@ -201,6 +201,13 @@ function CatalogCard({
   onInstall: (card: LinkCodeCatalogCardView) => void;
 }): React.ReactNode {
   const t = useTranslations('settings.plugins');
+  // An `installedNewer` card must still offer its action: the catalog's pick is the stable release
+  // when a prerelease is installed, and hiding the button there leaves no way back off the beta.
+  const actionLabel = card.installedNewer
+    ? t('linkcode.switchVersion')
+    : card.updateAvailable
+      ? t('update')
+      : t('install');
   return (
     <Card className="flex items-start justify-between gap-4 p-4">
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -208,6 +215,9 @@ function CatalogCard({
           <span className="truncate font-medium text-sm">{card.title}</span>
           <span className="text-2xs text-label-tertiary tabular-nums">v{card.version}</span>
           {card.installed ? <Badge variant="secondary">{t('linkcode.installed')}</Badge> : null}
+          {card.installedNewer ? (
+            <Badge variant="secondary">{t('linkcode.installedNewer')}</Badge>
+          ) : null}
         </div>
         {card.description === undefined ? null : (
           <p className="line-clamp-2 text-muted-foreground text-xs">{card.description}</p>
@@ -223,7 +233,7 @@ function CatalogCard({
           onClick={() => onInstall(card)}
         >
           <DownloadIcon className="size-4" />
-          {t('install')}
+          {actionLabel}
         </Button>
       )}
     </Card>

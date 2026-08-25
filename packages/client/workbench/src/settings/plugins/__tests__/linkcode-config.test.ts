@@ -119,6 +119,21 @@ describe('buildPluginConfigPatch', () => {
     expect(withoutStored.remove).toBeUndefined();
   });
 
+  it('stores a value equal to the manifest default as a removal, so upgrades can change it', () => {
+    const patch = buildPluginConfigPatch(
+      SETTINGS,
+      { preset: 'qq', maxBodyChars: 4000 },
+      {
+        ...pluginConfigDefaults(SETTINGS, { preset: 'qq', maxBodyChars: 4000 }),
+        preset: '163',
+        maxBodyChars: '8000',
+      },
+    );
+
+    expect(patch.set).toBeUndefined();
+    expect(patch.remove).toEqual(['preset', 'maxBodyChars']);
+  });
+
   it('omits both sides of an empty patch', () => {
     const patch = buildPluginConfigPatch({ nickname: { type: 'string' } }, {}, { nickname: '' });
     expect(patch).toEqual({});

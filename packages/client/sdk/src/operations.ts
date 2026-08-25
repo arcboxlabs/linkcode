@@ -355,8 +355,8 @@ export function getPluginMarketplaces(
   return resolveClient(options).listPluginMarketplaces();
 }
 
-/** Refresh one marketplace index. A `notModified` reply carries no releases — the caller keeps
- * the catalog it already has. */
+/** Refresh one marketplace index. A `notModified` reply still carries the cached catalog — the
+ * daemon re-flattens its persisted index, so callers can replace their snapshot outright. */
 export function refreshPluginMarketplace(
   options: Options<{ marketplaceId: string }>,
 ): RequestResult<PluginMarketRefresh> {

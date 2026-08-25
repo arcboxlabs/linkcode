@@ -67,6 +67,13 @@ export function validatePluginConfigField(
  * - `password` fields write only when the user typed something; blank keeps the stored secret.
  * - `string` / `enum` / `number` write their typed value, or remove the key when cleared —
  *   but only if the key had a stored value (removing an absent key would be noise).
+ * - A non-secret value equal to the manifest `default` is stored as a removal, not a write:
+ *   freezing today's default into config.json would silently win over a future manifest upgrade
+ *   that changes the default.
+ *
+ * The `fieldId in values` guards only suppress noise, and only for fields with no `default`: the
+ * masked read folds defaults in, so for a defaulted field the key is present whether or not
+ * anything is stored. Removing an already-absent key is a harmless no-op either way.
  */
 export function buildPluginConfigPatch(
   settings: LinkCodePluginSettings,
@@ -79,7 +86,12 @@ export function buildPluginConfigPatch(
     if (!(fieldId in form)) continue;
     const raw = form[fieldId];
     if (field.type === 'boolean') {
-      set[fieldId] = raw === true;
+      const typed = raw === true;
+      if (field.default !== undefined && typed === field.default) {
+        if (fieldId in values) remove.push(fieldId);
+      } else {
+        set[fieldId] = typed;
+      }
       continue;
     }
     const value = typeof raw === 'string' ? raw : String(raw);
@@ -87,7 +99,12 @@ export function buildPluginConfigPatch(
       if (!field.secret && fieldId in values) remove.push(fieldId);
       continue;
     }
-    set[fieldId] = field.type === 'number' ? Number(value) : value;
+    const typed = field.type === 'number' ? Number(value) : value;
+    if (!field.secret && field.default !== undefined && typed === field.default) {
+      if (fieldId in values) remove.push(fieldId);
+      continue;
+    }
+    set[fieldId] = typed;
   }
   return {
     ...(!isObjectEmpty(set) && { set }),

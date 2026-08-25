@@ -27,9 +27,11 @@ import type {
 } from '@linkcode/schema';
 import {
   InstalledLinkCodePluginSchema,
+  isAllowedMarketplaceUrl,
   LinkCodePluginManifestReaderSchema,
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { noop } from 'foxts/noop';
 import { extract as tarExtract } from 'tar';
 import { loadPluginConfigValues, pluginSecretStore, savePluginConfigValues } from '../config';
 import { logger } from '../logger';
@@ -65,10 +67,14 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     const merged: Record<string, PluginConfigValue> = {};
     for (const [fieldId, field] of Object.entries(manifest.settings)) {
       if (field.secret) {
-        const stored = secrets.get(`${pluginId}.${fieldId}`);
+        // No default folding for secrets: a secret's default would be a plaintext credential in
+        // the manifest, injected into env while the masked read hides where it came from.
+        const stored = secrets.get(`${pluginId}/${fieldId}`);
         if (stored !== null) merged[fieldId] = stored;
       } else if (fieldId in nonSecret) {
         merged[fieldId] = nonSecret[fieldId];
+      } else if (field.default !== undefined) {
+        merged[fieldId] = field.default;
       }
     }
     return merged;
@@ -89,7 +95,7 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       for (const fieldId of patch.remove) {
         const field = settings[fieldId];
         if (field === undefined) continue;
-        if (field.secret) secretPatch.set(`${pluginId}.${fieldId}`, undefined);
+        if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, undefined);
         else delete nextNonSecret[fieldId];
       }
     }
@@ -97,7 +103,7 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       for (const [fieldId, value] of Object.entries(patch.set)) {
         const field = settings[fieldId];
         if (field === undefined) continue;
-        if (field.secret) secretPatch.set(`${pluginId}.${fieldId}`, String(value));
+        if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, String(value));
         else nextNonSecret[fieldId] = value;
       }
     }
@@ -132,77 +138,24 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     return Promise.resolve();
   }
 
-  async install(
+  /** Serializes installs of one plugin id; a concurrent second install would otherwise publish to
+   * the same package dir and delete the first install's just-renamed package. */
+  private readonly installChains = new Map<string, Promise<unknown>>();
+
+  install(
     release: LinkCodePluginRelease,
     marketplaceId: string,
   ): Promise<InstalledLinkCodePluginEntry> {
-    const { manifest, artifact } = release;
-    if (artifact.format !== 'tgz') {
-      throw new Error(`Unsupported plugin archive format: ${artifact.format}`);
-    }
-    const httpsUrls = artifact.urls.filter((url): url is string => typeof url === 'string');
-    if (httpsUrls.length === 0) {
-      throw new Error('Plugin release has no HTTPS download URL');
-    }
-    const previousRecords = readRegistry().filter((entry) => entry.id === manifest.id);
-    const targetDir = pluginPackageDir(manifest.id, manifest.version);
-    const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
-    const tgzPath = join(stagingDir, 'package.tgz');
-    let installedManifest: LinkCodePluginManifest;
-    mkdirSync(stagingDir, { recursive: true });
-    try {
-      const downloadArtifact: ManagedAssetArtifact = {
-        urls: httpsUrls,
-        integrity: artifact.integrity,
-        size: artifact.size,
-        format: 'tgz',
-      };
-      await downloadVerified(downloadArtifact, tgzPath, {});
-      await tarExtract({ file: tgzPath, cwd: stagingDir, strip: 1 });
-      const onDisk = readManifest(stagingDir);
-      if (onDisk?.id !== manifest.id || onDisk.version !== manifest.version) {
-        throw new Error(
-          `Extracted manifest does not match release ${manifest.id}@${manifest.version}`,
-        );
-      }
-      installedManifest = onDisk;
-      rmSync(targetDir, { recursive: true, force: true });
-      mkdirSync(dirname(targetDir), { recursive: true });
-      renameSync(stagingDir, targetDir);
-    } catch (error) {
-      rmSync(stagingDir, { recursive: true, force: true });
-      throw new Error(
-        `Failed to install plugin ${manifest.id}: ${extractErrorMessage(error) ?? 'unknown'}`,
-        { cause: error },
-      );
-    }
-    const record: InstalledLinkCodePlugin = {
-      id: manifest.id,
-      version: manifest.version,
-      marketplaceId,
-      integrity: artifact.integrity,
-      enabled: true,
-      path: targetDir,
+    const pluginId = release.manifest.id;
+    const run = (this.installChains.get(pluginId) ?? Promise.resolve())
+      .catch(noop)
+      .then(() => installExclusive(release, marketplaceId));
+    this.installChains.set(pluginId, run);
+    const settle = (): void => {
+      if (this.installChains.get(pluginId) === run) this.installChains.delete(pluginId);
     };
-    upsertRegistry(record);
-    // A plugin id has one active settings block and one wire identity, so keep exactly one installed
-    // version. Remove stale package directories only after the new package and registry record exist.
-    for (const previous of previousRecords) {
-      if (previous.path === targetDir) continue;
-      try {
-        rmSync(previous.path, { recursive: true, force: true });
-      } catch (error) {
-        logger.warn(
-          { error, pluginId: manifest.id, path: previous.path, operation: 'plugin.install.gc' },
-          'Failed to remove stale plugin package',
-        );
-      }
-    }
-    logger.info(
-      { pluginId: manifest.id, version: manifest.version, operation: 'plugin.install' },
-      'Installed LinkCode plugin',
-    );
-    return { installed: record, manifest: installedManifest };
+    void run.catch(noop).finally(settle);
+    return run;
   }
 
   uninstall(pluginId: string): Promise<void> {
@@ -217,6 +170,81 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
     return Promise.resolve();
   }
+}
+
+async function installExclusive(
+  release: LinkCodePluginRelease,
+  marketplaceId: string,
+): Promise<InstalledLinkCodePluginEntry> {
+  const { manifest, artifact } = release;
+  if (artifact.format !== 'tgz') {
+    throw new Error(`Unsupported plugin archive format: ${artifact.format}`);
+  }
+  // Mirrors arrive absolutized against the index URL; keep only schemes the marketplace source
+  // itself may use (https, plus loopback http for dev marketplaces).
+  const downloadUrls = artifact.urls.filter((url) => isAllowedMarketplaceUrl(url));
+  if (downloadUrls.length === 0) {
+    throw new Error('Plugin release has no HTTPS (or loopback HTTP) download URL');
+  }
+  const previousRecords = readRegistry().filter((entry) => entry.id === manifest.id);
+  const targetDir = pluginPackageDir(manifest.id, manifest.version);
+  const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
+  const tgzPath = join(stagingDir, 'package.tgz');
+  let installedManifest: LinkCodePluginManifest;
+  mkdirSync(stagingDir, { recursive: true });
+  try {
+    const downloadArtifact: ManagedAssetArtifact = {
+      urls: downloadUrls,
+      integrity: artifact.integrity,
+      size: artifact.size,
+      format: 'tgz',
+    };
+    await downloadVerified(downloadArtifact, tgzPath, {});
+    await tarExtract({ file: tgzPath, cwd: stagingDir, strip: 1 });
+    const onDisk = readManifest(stagingDir);
+    if (onDisk?.id !== manifest.id || onDisk.version !== manifest.version) {
+      throw new Error(
+        `Extracted manifest does not match release ${manifest.id}@${manifest.version}`,
+      );
+    }
+    installedManifest = onDisk;
+    rmSync(targetDir, { recursive: true, force: true });
+    mkdirSync(dirname(targetDir), { recursive: true });
+    renameSync(stagingDir, targetDir);
+  } catch (error) {
+    rmSync(stagingDir, { recursive: true, force: true });
+    throw new Error(
+      `Failed to install plugin ${manifest.id}: ${extractErrorMessage(error) ?? 'unknown'}`,
+      { cause: error },
+    );
+  }
+  const record: InstalledLinkCodePlugin = {
+    id: manifest.id,
+    version: manifest.version,
+    marketplaceId,
+    integrity: artifact.integrity,
+    enabled: true,
+    path: targetDir,
+  };
+  upsertRegistry(record);
+  // A plugin id has one active settings block and one wire identity, so keep exactly one installed
+  // version. Remove stale package directories only after the new package and registry record exist.
+  for (const previous of previousRecords) {
+    if (previous.path === targetDir) continue;
+    try {
+      rmSync(previous.path, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn(
+        { error, pluginId: manifest.id, path: previous.path, operation: 'plugin.install.gc' },
+        'Failed to remove stale plugin package',
+      );
+    }
+  }
+  logger.info(
+    { pluginId: manifest.id, version: manifest.version, operation: 'plugin.install' },
+    'Installed LinkCode plugin',
+  );
+  return { installed: record, manifest: installedManifest };
 }
 
 function applySecretPatch(
@@ -311,25 +339,18 @@ function readManifest(packageDir: string): LinkCodePluginManifest | undefined {
 }
 
 function prunePluginSecrets(secrets: SecretStore, pluginId: string): void {
-  // replaceAll on the `plugin` namespace keeps every OTHER plugin's secrets and drops this one's,
-  // in a single write — the same prune-on-delete property the vault hands other namespaces.
+  // Prune by key prefix, never by re-deriving keys from each surviving plugin's manifest: a
+  // manifest that is unreadable (corrupt, or schema-drifted after an upgrade) must not turn an
+  // unrelated plugin's secrets into "orphans" that replaceAll then deletes.
+  // The separator must be `/`, not `.`: dots are legal inside both id segments (a `linkcode/mail.pro`
+  // plugin would have its keys match a `linkcode/mail.` prefix), while `/` can never appear in a
+  // setting id and a plugin id always has exactly two segments, so the prefix is unambiguous.
+  const prefix = `${pluginId}/`;
   const surviving = new Map<string, string>();
-  for (const entry of readRegistry()) {
-    if (entry.id === pluginId) continue;
-    for (const fieldId of secretFieldIds(entry)) {
-      const value = secrets.get(`${entry.id}.${fieldId}`);
-      if (value !== null) surviving.set(`${entry.id}.${fieldId}`, value);
-    }
+  for (const key of secrets.keys()) {
+    if (key.startsWith(prefix)) continue;
+    const value = secrets.get(key);
+    if (value !== null) surviving.set(key, value);
   }
   secrets.replaceAll(surviving);
-}
-
-function secretFieldIds(record: InstalledLinkCodePlugin): string[] {
-  const manifest = readManifest(record.path);
-  if (manifest?.settings === undefined) return [];
-  const ids: string[] = [];
-  for (const [fieldId, field] of Object.entries(manifest.settings)) {
-    if (field.secret) ids.push(fieldId);
-  }
-  return ids;
 }

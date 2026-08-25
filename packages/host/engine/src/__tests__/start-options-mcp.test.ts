@@ -425,4 +425,127 @@ describe('LinkCode plugin MCP injection at session start', () => {
     ]);
     expect(warnings).toEqual([]);
   });
+
+  it('spawns without a missing-config advisory when a setting has no stored value', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: { MAIL_USER: 'account', MAIL_PASSWORD: 'authcode' },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            authcode: { type: 'password', secret: true },
+          },
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    // The missing-config advisory is deferred until clients tolerate unknown warning reasons;
+    // until then a missing setting is just an absent env var, not a warning.
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('injects manifest defaults for settings with no stored value', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: { MAIL_USER: 'account', MAIL_PRESET: 'preset' },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            preset: { type: 'enum', enum: ['163', 'qq'], default: '163' },
+          },
+          assets: [],
+        },
+      },
+      { account: 'user@163.com' },
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+        env: { MAIL_USER: 'user@163.com', MAIL_PRESET: '163' },
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
 });

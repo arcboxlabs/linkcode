@@ -324,7 +324,7 @@ export function savePluginConfigValues(
   writeConfigFields(file, { pluginConfigs: configs });
 }
 
-/** The daemon's `plugin` vault namespace, for secret setting values keyed `<pluginId>.<fieldId>`. */
+/** The daemon's `plugin` vault namespace, for secret setting values keyed `<pluginId>/<fieldId>`. */
 export function pluginSecretStore(vault: SecretVault): SecretStore {
   return pluginSecrets(vault);
 }

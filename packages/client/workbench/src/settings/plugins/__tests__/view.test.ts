@@ -1,10 +1,10 @@
-import type { PluginList } from '@linkcode/client-core';
+import type { PluginList, PluginMarketReleaseEntry } from '@linkcode/client-core';
 import type { Plugin } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
   filterLinkCodeCatalogCards,
   filterPluginCards,
-  linkcodeCatalogCard,
+  linkcodeCatalogCards,
   linkcodeInstalledRow,
   pluginCardView,
   pluginMcpServerRows,
@@ -276,34 +276,38 @@ describe('pluginMcpServerRows', () => {
   });
 });
 
-describe('linkcodeCatalogCard', () => {
-  it('projects a marketplace release entry to a catalog card with install state', () => {
-    const card = linkcodeCatalogCard(
-      'linkcode-official',
-      {
-        pluginId: 'linkcode/mail',
-        release: {
-          manifest: {
-            manifestVersion: 1,
-            id: 'linkcode/mail',
-            version: '1.0.0',
-            displayName: 'Mail (163 / QQ)',
-            description: 'Receive and send mail.',
-            keywords: ['mail'],
-            components: [
-              { kind: 'mcp-server', name: 'mail', command: 'npx', env: { MAIL_USER: 'account' } },
-            ],
-            settings: { account: { type: 'string', required: true } },
-            assets: [],
-          },
-          artifact: {
-            urls: ['plugins/mail-1.0.0.tgz'],
-            integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-            format: 'tgz',
-          },
+describe('linkcodeCatalogCards', () => {
+  function catalogEntry(version: string): PluginMarketReleaseEntry {
+    return {
+      pluginId: 'linkcode/mail',
+      release: {
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version,
+          displayName: 'Mail (163 / QQ)',
+          description: 'Receive and send mail.',
+          keywords: ['mail'],
+          components: [
+            { kind: 'mcp-server', name: 'mail', command: 'npx', env: { MAIL_USER: 'account' } },
+          ],
+          settings: { account: { type: 'string', required: true } },
+          assets: [],
+        },
+        artifact: {
+          urls: [`plugins/mail-${version}.tgz`],
+          integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+          format: 'tgz',
         },
       },
-      true,
+    };
+  }
+
+  it('projects a marketplace release entry to a catalog card with install state', () => {
+    const [card] = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.0.0')],
+      new Map([['linkcode/mail', '1.0.0']]),
     );
 
     expect(card).toMatchObject({
@@ -313,8 +317,129 @@ describe('linkcodeCatalogCard', () => {
       version: '1.0.0',
       title: 'Mail (163 / QQ)',
       installed: true,
+      updateAvailable: false,
+      installedNewer: false,
     });
-    expect(card.searchText).toContain('linkcode/mail');
+    expect(card?.searchText).toContain('linkcode/mail');
+  });
+
+  it('distinguishes not-installed from an upgrade to an older installed version', () => {
+    const [notInstalled] = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.0.0')],
+      new Map(),
+    );
+    expect(notInstalled).toMatchObject({
+      installed: false,
+      updateAvailable: false,
+      installedNewer: false,
+    });
+
+    const [upgrade] = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.0.0')],
+      new Map([['linkcode/mail', '0.9.0']]),
+    );
+    expect(upgrade).toMatchObject({
+      installed: false,
+      updateAvailable: true,
+      installedNewer: false,
+    });
+  });
+
+  it('flags a newer-than-catalog install as neither installed nor an update', () => {
+    const [card] = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.0.0')],
+      new Map([['linkcode/mail', '1.1.0']]),
+    );
+
+    expect(card).toMatchObject({ installed: false, updateAvailable: false, installedNewer: true });
+  });
+
+  it('leaves a prerelease install switchable back to the stable release', () => {
+    // The catalog prefers 1.9.0, so the installed beta reads as installedNewer — but the card must
+    // stay actionable (`installed: false`) or there is no way off the prerelease.
+    const [card] = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.9.0'), catalogEntry('2.0.0-beta.1')],
+      new Map([['linkcode/mail', '2.0.0-beta.1']]),
+    );
+
+    expect(card).toMatchObject({
+      version: '1.9.0',
+      installed: false,
+      updateAvailable: false,
+      installedNewer: true,
+    });
+  });
+
+  it('folds every published version of one plugin into a single card at the latest version', () => {
+    // 0.10.0 outranks 0.9.0 numerically — a lexicographic compare would pick 0.9.0.
+    const cards = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('0.9.0'), catalogEntry('0.10.0')],
+      new Map(),
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      pluginId: 'linkcode/mail',
+      version: '0.10.0',
+      installed: false,
+      updateAvailable: false,
+    });
+  });
+
+  it('lets a stable release outrank a higher prerelease', () => {
+    const cards = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.9.0'), catalogEntry('2.0.0-beta.1')],
+      new Map(),
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ version: '1.9.0' });
+  });
+
+  it('still cards a plugin whose only releases are prereleases, at the newest one', () => {
+    const cards = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('2.0.0-beta.1'), catalogEntry('2.0.0-beta.2')],
+      new Map(),
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ version: '2.0.0-beta.2' });
+  });
+
+  it('treats a hyphen in build metadata as stable, not as a prerelease', () => {
+    const cards = linkcodeCatalogCards(
+      'linkcode-official',
+      [catalogEntry('1.9.0'), catalogEntry('2.0.0+build-7')],
+      new Map(),
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ version: '2.0.0+build-7' });
+  });
+
+  it('compares the installed version against the latest release, not just any release', () => {
+    const releases = [catalogEntry('0.9.0'), catalogEntry('0.10.0')];
+
+    const [behind] = linkcodeCatalogCards(
+      'linkcode-official',
+      releases,
+      new Map([['linkcode/mail', '0.9.0']]),
+    );
+    expect(behind).toMatchObject({ version: '0.10.0', installed: false, updateAvailable: true });
+
+    const [upToDate] = linkcodeCatalogCards(
+      'linkcode-official',
+      releases,
+      new Map([['linkcode/mail', '0.10.0']]),
+    );
+    expect(upToDate).toMatchObject({ installed: true, updateAvailable: false });
   });
 });
 
@@ -343,9 +468,9 @@ describe('linkcodeInstalledRow', () => {
 
 describe('filterLinkCodeCatalogCards', () => {
   it('filters by the precomputed haystack, blank query keeps all', () => {
-    const cards = [
-      linkcodeCatalogCard(
-        'linkcode-official',
+    const cards = linkcodeCatalogCards(
+      'linkcode-official',
+      [
         {
           pluginId: 'linkcode/mail',
           release: {
@@ -365,9 +490,9 @@ describe('filterLinkCodeCatalogCards', () => {
             },
           },
         },
-        false,
-      ),
-    ];
+      ],
+      new Map(),
+    );
     expect(filterLinkCodeCatalogCards(cards, '')).toHaveLength(1);
     expect(filterLinkCodeCatalogCards(cards, 'mail')).toHaveLength(1);
     expect(filterLinkCodeCatalogCards(cards, 'zzz')).toHaveLength(0);

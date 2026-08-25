@@ -83,14 +83,20 @@ export interface CustomMcpServerRow {
 
 /** One entry of a LinkCode marketplace catalog (the daemon-refreshed index). */
 export interface LinkCodeCatalogCardView {
-  /** `${marketplaceId}:${pluginId}` — stable across refreshes. */
+  /** `${marketplaceId}:${pluginId}` — one card per plugin (its latest release), stable across refreshes. */
   key: string;
   marketplaceId: string;
   pluginId: string;
   version: string;
   title: string;
   description: string | undefined;
+  /** This exact version is installed. */
   installed: boolean;
+  /** An older version of this plugin is installed — the install action upgrades it. */
+  updateAvailable: boolean;
+  /** A newer version than the catalog's pick is installed — usually a prerelease, since the catalog
+   * prefers the stable release. The action stays available and switches to the carded version. */
+  installedNewer: boolean;
   /** Precomputed lowercase haystack for the client-side filter. */
   searchText: string;
 }

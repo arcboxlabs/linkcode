@@ -96,13 +96,10 @@ export const CustomMcpServerPatchOpSchema = z.discriminatedUnion('op', [
 ]);
 export type CustomMcpServerPatchOp = z.infer<typeof CustomMcpServerPatchOpSchema>;
 
-/** Session-start advisory about custom MCP injection, carried on `session.started`. */
-export const McpWarningReasonSchema = z.enum([
-  'agent-unsupported',
-  'name-conflict',
-  'provider-unsupported',
-  'provider-preflight-failed',
-]);
+/** Session-start advisory about custom MCP injection, carried on `session.started`. Deliberately
+ * a bare string, never an enum: a strict enum makes an older client reject the whole
+ * `session.started` frame when a newer daemon adds a reason, instead of just displaying it. */
+export const McpWarningReasonSchema = z.string().min(1);
 export type McpWarningReason = z.infer<typeof McpWarningReasonSchema>;
 
 export const McpWarningSchema = z.object({

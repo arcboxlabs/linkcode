@@ -17,7 +17,7 @@ import {
 } from './hooks';
 import type { LinkCodePluginConfigPatch } from './linkcode-config-dialog';
 import { LinkCodePluginConfigDialog } from './linkcode-config-dialog';
-import { filterLinkCodeCatalogCards, linkcodeCatalogCard, linkcodeInstalledRow } from './view';
+import { filterLinkCodeCatalogCards, linkcodeCatalogCards, linkcodeInstalledRow } from './view';
 
 export interface LinkCodeMarketTabProps {
   searchQuery: string;
@@ -38,11 +38,14 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
   const save = useSetLinkCodePluginConfig();
   const [configuring, setConfiguring] = useState<LinkCodePluginId | null>(null);
 
-  const installedIds = new Set((configs ?? []).map((view) => view.id));
+  const installedVersions = new Map((configs ?? []).map((view) => [view.id, view.version]));
   const rows = configs?.map(linkcodeInstalledRow);
   const configById = new Map((configs ?? []).map((view) => [view.id, view]));
   const editing = configuring === null ? undefined : configById.get(configuring);
   const busy = install.isMutating || uninstall.isMutating;
+  // The daemon rejects refresh/install on a disabled marketplace, so rendering one would leave
+  // its section on loading skeletons forever.
+  const enabledMarketplaces = marketplaces?.filter((marketplace) => marketplace.enabled);
 
   const onInstall = async (card: LinkCodeCatalogCardView): Promise<void> => {
     await install.trigger({
@@ -85,16 +88,18 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
           void onUninstall(row).catch(noop);
         }}
       />
-      {marketplaces === undefined ? null : marketplaces.length === 0 ? (
+      {enabledMarketplaces === undefined ? null : enabledMarketplaces.length === 0 ? (
         <Card className="px-4 py-4">
-          <p className="text-muted-foreground text-sm">{t('noMarketplaces')}</p>
+          <p className="text-muted-foreground text-sm">
+            {marketplaces?.length === 0 ? t('noMarketplaces') : t('allMarketplacesDisabled')}
+          </p>
         </Card>
       ) : (
-        marketplaces.map((marketplace) => (
+        enabledMarketplaces.map((marketplace) => (
           <MarketplaceCatalog
             key={marketplace.id}
             marketplace={marketplace}
-            installedIds={installedIds}
+            installedVersions={installedVersions}
             searchQuery={searchQuery}
             busy={busy}
             onInstall={(card) => {
@@ -122,13 +127,13 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
 
 function MarketplaceCatalog({
   marketplace,
-  installedIds,
+  installedVersions,
   searchQuery,
   busy,
   onInstall,
 }: {
   marketplace: LinkCodeMarketplaceConfig;
-  installedIds: ReadonlySet<string>;
+  installedVersions: ReadonlyMap<string, string>;
   searchQuery: string;
   busy: boolean;
   onInstall: (card: LinkCodeCatalogCardView) => void;
@@ -139,13 +144,11 @@ function MarketplaceCatalog({
     data === undefined
       ? undefined
       : filterLinkCodeCatalogCards(
-          data.releases.map((entry) =>
-            linkcodeCatalogCard(marketplace.id, entry, installedIds.has(entry.pluginId)),
-          ),
+          linkcodeCatalogCards(marketplace.id, data.releases, installedVersions),
           searchQuery,
         );
 
-  // Keep this defensive merge for older daemons that still return an empty 304 payload.
+  // Keep this defensive merge for pre-wire-80 daemons that still return an empty 304 payload.
   const onRefresh = (): void => {
     void mutate(
       async (current): Promise<PluginMarketRefresh> => {

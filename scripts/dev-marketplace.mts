@@ -1,8 +1,9 @@
 /**
- * Dev marketplace for LinkCode plugin debugging: packs @linkcode/mail-mcp into a tgz with a
- * manifest, writes an index.json (schema: LinkCodeMarketplaceIndexSchema), and serves the
- * directory over loopback HTTP with ETag support so the daemon's conditional refresh (304) path
- * is exercised too.
+ * Dev marketplace for LinkCode plugin debugging: packs a synthetic `linkcode/echo` plugin into a
+ * tgz with a manifest, writes an index.json (schema: LinkCodeMarketplaceIndexSchema), and serves
+ * the directory over loopback HTTP with ETag support so the daemon's conditional refresh (304)
+ * path is exercised too. The echo plugin is fully self-contained (its stdio MCP server payload is
+ * inlined below) — real plugins ship via the marketplace index, never via this fixture.
  *
  * Usage:
  *   node scripts/dev-marketplace.mts            # build fixture + serve on 127.0.0.1:18741
@@ -18,24 +19,15 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 import process from 'node:process';
 
 const repoRoot = new URL('..', import.meta.url).pathname;
 const outDir = join(repoRoot, 'node_modules', '.cache', 'dev-marketplace');
-const mailDist = join(repoRoot, 'packages', 'integrations', 'mail-mcp', 'dist');
 
-const PLUGIN_ID = 'linkcode/mail';
+const PLUGIN_ID = 'linkcode/echo';
 const VERSION = '0.1.0';
 const PORT = Number(process.env.DEV_MARKETPLACE_PORT ?? 18741);
 
@@ -45,62 +37,124 @@ const manifest = {
   manifestVersion: 1,
   id: PLUGIN_ID,
   version: VERSION,
-  displayName: '邮箱（163 / QQ）',
-  description: '通过 IMAP 收信、SMTP 发信，支持 163、QQ 和腾讯企业邮箱（授权码登录）。',
-  keywords: ['mail', 'imap', 'smtp', '163', 'qq'],
+  displayName: 'Echo（市场调试）',
+  description: '合成调试插件：回显文本，覆盖 string / password(secret) / enum 三种设置形态。',
+  keywords: ['echo', 'debug', 'marketplace'],
   components: [
     {
       kind: 'mcp-server',
-      name: 'mail',
-      description: 'IMAP/SMTP mail tools (list/search/read/send/reply/mark/move)',
+      name: 'echo',
+      description: 'Echo tool (returns the input text, optionally uppercased)',
       command: 'node',
       entry: 'dist/index.js',
       env: {
-        MAIL_USER: 'account',
-        MAIL_PASSWORD: 'authcode',
-        MAIL_PRESET: 'preset',
+        ECHO_GREETING: 'greeting',
+        ECHO_TOKEN: 'token',
+        ECHO_MODE: 'mode',
       },
     },
   ],
   settings: {
-    account: {
+    greeting: {
       type: 'string',
-      label: '邮箱账号',
-      description: '完整邮箱地址，例如 you@163.com',
+      label: '问候语',
+      description: '回显内容的前缀',
       required: true,
     },
-    authcode: {
+    token: {
       type: 'password',
-      label: '授权码',
-      description: '邮箱网页端生成的客户端授权码，不是登录密码',
+      label: '令牌',
+      description: '仅用于验证 secret 字段走 vault 而不落 config.json',
       secret: true,
       required: true,
     },
-    preset: {
+    mode: {
       type: 'enum',
-      label: '服务商',
-      description: '会根据 @qq.com / @163.com 自动识别；腾讯企业邮箱请手动选择 exmail。',
-      enum: ['163', 'qq', 'exmail'],
-      default: '163',
+      label: '模式',
+      description: 'shout 会把回显内容转成大写',
+      enum: ['plain', 'shout'],
+      default: 'plain',
     },
   },
   assets: [],
 };
 
-function buildFixture(): void {
-  if (!existsSync(join(mailDist, 'index.js'))) {
-    console.error(
-      'packages/integrations/mail-mcp/dist is missing — run: pnpm -F @linkcode/mail-mcp build',
-    );
-    process.exit(1);
+// Minimal newline-delimited-JSON stdio MCP server with zero dependencies.
+const MCP_PAYLOAD = `#!/usr/bin/env node
+'use strict';
+const readline = require('node:readline');
+
+const GREETING = process.env.ECHO_GREETING || 'echo';
+const MODE = process.env.ECHO_MODE || 'plain';
+
+const ECHO_TOOL = {
+  name: 'echo',
+  description: 'Echo the input text back, prefixed with the configured greeting.',
+  inputSchema: {
+    type: 'object',
+    properties: { text: { type: 'string', description: 'Text to echo' } },
+    required: ['text'],
+  },
+};
+
+function reply(id, result) {
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+}
+function replyError(id, code, message) {
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\\n');
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  let msg;
+  try {
+    msg = JSON.parse(line);
+  } catch {
+    return;
   }
+  if (msg.id === undefined || msg.id === null) return; // notification
+  switch (msg.method) {
+    case 'initialize':
+      reply(msg.id, {
+        protocolVersion: (msg.params && msg.params.protocolVersion) || '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'echo', version: '${VERSION}' },
+      });
+      break;
+    case 'ping':
+      reply(msg.id, {});
+      break;
+    case 'tools/list':
+      reply(msg.id, { tools: [ECHO_TOOL] });
+      break;
+    case 'tools/call': {
+      const params = msg.params || {};
+      if (params.name !== 'echo') {
+        replyError(msg.id, -32602, 'unknown tool: ' + params.name);
+        break;
+      }
+      const text = String((params.arguments && params.arguments.text) ?? '');
+      const body = GREETING + ': ' + text;
+      reply(msg.id, {
+        content: [{ type: 'text', text: MODE === 'shout' ? body.toUpperCase() : body }],
+      });
+      break;
+    }
+    default:
+      replyError(msg.id, -32601, 'method not found: ' + msg.method);
+  }
+});
+`;
+
+function buildFixture(): void {
   rmSync(outDir, { recursive: true, force: true });
   const staging = join(outDir, 'staging', 'package');
   mkdirSync(join(staging, 'dist'), { recursive: true });
   writeFileSync(join(staging, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  copyFileSync(join(mailDist, 'index.js'), join(staging, 'dist', 'index.js'));
+  writeFileSync(join(staging, 'dist', 'index.js'), MCP_PAYLOAD);
 
-  const tgzName = `mail-${VERSION}.tgz`;
+  const tgzName = `echo-${VERSION}.tgz`;
   const tgzPath = join(outDir, tgzName);
   // The installer extracts with strip:1, so the archive must wrap everything in one top-level dir.
   execFileSync('tar', ['-czf', tgzPath, '-C', join(outDir, 'staging'), 'package']);

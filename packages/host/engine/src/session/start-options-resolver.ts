@@ -214,6 +214,8 @@ export class SessionStartOptionsResolver {
             if (settingId in settings) env[envVar] = String(settings[settingId]);
           }
         }
+        // No missing-config advisory yet: shipped clients validate `reason` against the old enum
+        // and would drop the whole session.started frame, so emission waits for a tolerant floor.
         const server: McpServer = {
           type: 'stdio',
           name: component.name,

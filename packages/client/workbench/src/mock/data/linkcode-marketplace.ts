@@ -15,70 +15,72 @@ export interface MockLinkCodeCatalogEntry {
   release: LinkCodePluginRelease;
 }
 
-/** Catalog the mock serves for `plugin-market.refresh`: a settings-bearing MCP plugin (the mail
- * plugin's real env surface as manifest settings) and a skill-only plugin with nothing to configure. */
+/** Catalog the mock serves for `plugin-market.refresh`: a settings-bearing MCP plugin (the echo
+ * debug plugin's env surface, exercising every settings field type) and a skill-only plugin with
+ * nothing to configure. */
 export const SEED_LINKCODE_RELEASES: MockLinkCodeCatalogEntry[] = [
   {
-    pluginId: 'linkcode/mail',
+    pluginId: 'linkcode/echo',
     release: {
       manifest: {
         manifestVersion: 1,
-        id: 'linkcode/mail',
-        version: '1.0.0',
-        displayName: 'Mail (163 / QQ)',
-        description: 'Receive and send 163/QQ mail over IMAP + SMTP via an MCP server.',
-        keywords: ['mail', '163', 'qq', 'imap', 'smtp'],
+        id: 'linkcode/echo',
+        version: '0.1.0',
+        displayName: 'Echo',
+        description: 'Echoes text back over a stdio MCP server; a marketplace debug fixture.',
+        keywords: ['echo', 'debug', 'marketplace'],
         components: [
           {
             kind: 'mcp-server',
-            name: 'mail',
-            description: 'Mail tools: list/search/read/send messages',
+            name: 'echo',
+            description: 'Echo tool: returns the input text, optionally uppercased',
             command: 'node',
             entry: 'dist/index.js',
             env: {
-              MAIL_USER: 'account',
-              MAIL_PASSWORD: 'password',
-              MAIL_PRESET: 'preset',
-              MAX_BODY_CHARS: 'maxBodyChars',
+              ECHO_GREETING: 'greeting',
+              ECHO_TOKEN: 'token',
+              ECHO_MODE: 'mode',
+              ECHO_MAX_CHARS: 'maxChars',
+              ECHO_PREVIEW: 'preview',
             },
           },
         ],
         settings: {
-          account: {
+          greeting: {
             type: 'string',
-            label: 'Account',
-            description: 'Full email address, e.g. you@163.com',
+            label: 'Greeting',
+            description: 'Prefix prepended to every echoed text',
             required: true,
           },
-          password: {
+          token: {
             type: 'password',
-            label: 'Authorization code',
-            description: 'The IMAP/SMTP authorization code from the mailbox settings page',
+            label: 'Token',
+            description: 'Only exercised to prove secret fields land in the vault',
             secret: true,
             required: true,
           },
-          preset: {
+          mode: {
             type: 'enum',
-            label: 'Provider preset',
-            enum: ['163', 'qq', 'exmail'],
-            default: '163',
+            label: 'Mode',
+            enum: ['plain', 'shout'],
+            default: 'plain',
           },
-          maxBodyChars: {
+          maxChars: {
             type: 'number',
-            label: 'Max body characters',
-            default: 8000,
+            label: 'Max echo characters',
+            default: 1000,
           },
-          readonly: {
+          preview: {
             type: 'boolean',
-            label: 'Read-only',
-            description: 'Expose read tools only; never send or modify mail',
+            label: 'Preview',
+            description: 'Log every echo to stdout as well',
             default: false,
           },
         },
         assets: [],
       },
       artifact: {
-        urls: ['plugins/mail-1.0.0.tgz'],
+        urls: ['plugins/echo-0.1.0.tgz'],
         integrity: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
         format: 'tgz',
       },

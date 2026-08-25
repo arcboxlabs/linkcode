@@ -156,12 +156,18 @@ describe('DaemonLinkCodeMarketplaceService.refresh', () => {
   });
 
   it('does not refresh or resolve releases from a disabled marketplace', async () => {
+    // Populate the cache through an enabled config first, so the resolveRelease assertion below
+    // actually exercises the disabled gate instead of short-circuiting on an empty cache.
+    const fetchIndex = vi.fn(() => Promise.resolve(fakeResponse(200, JSON.stringify(INDEX))));
+    await new DaemonLinkCodeMarketplaceService(MARKETPLACES, fetchIndex).refresh(
+      'linkcode-official',
+    );
+
     const disabled: LinkCodeMarketplaceConfigList = [{ ...MARKETPLACES[0], enabled: false }];
-    const fetchIndex = vi.fn();
     const service = new DaemonLinkCodeMarketplaceService(disabled, fetchIndex);
 
     await expect(service.refresh('linkcode-official')).rejects.toThrow('Marketplace is disabled');
-    expect(fetchIndex).not.toHaveBeenCalled();
+    expect(fetchIndex).toHaveBeenCalledTimes(1);
     expect(
       service.resolveRelease({
         marketplaceId: 'linkcode-official',
