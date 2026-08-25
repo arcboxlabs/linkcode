@@ -1,7 +1,7 @@
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
 import { SessionIdSchema, SessionResourceSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage, pong } from '@linkcode/transport';
+import { createWireMessage, pong, WsTransport } from '@linkcode/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 
@@ -52,6 +52,23 @@ class ControlledTransport implements Transport {
 afterEach(() => vi.useRealTimers());
 
 describe('LinkCodeClient connection lifetime', () => {
+  it('rejects transports that hide physical reconnects', () => {
+    expect(
+      () => new LinkCodeClient(new WsTransport({ url: 'ws://localhost', reconnect: true })),
+    ).toThrow('create a fresh client generation');
+    expect(
+      () =>
+        new LinkCodeClient(new WsTransport({ url: 'ws://localhost', reconnect: { baseMs: 500 } })),
+    ).toThrow('create a fresh client generation');
+    expect(
+      () =>
+        new LinkCodeClient(
+          new WsTransport({ url: 'ws://localhost', reconnect: { maxRetries: 0 } }),
+        ),
+    ).not.toThrow();
+    expect(() => new LinkCodeClient(new WsTransport({ url: 'ws://localhost' }))).not.toThrow();
+  });
+
   it('becomes ready only after a LinkCode pong and cannot connect twice', async () => {
     const transport = new ControlledTransport();
     const client = new LinkCodeClient(transport);

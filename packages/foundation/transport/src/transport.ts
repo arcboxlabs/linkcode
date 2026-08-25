@@ -12,6 +12,8 @@ export type Unsubscribe = () => void;
  * WireMessage, and upper layers never know whether the connection is local or a tunnel.
  */
 export interface Transport {
+  /** True when carrier recovery can replace the physical connection without emitting `onClose`. */
+  readonly reconnectsTransparently?: boolean;
   connect(): Promise<void>;
   /** Send a wire message. The {@link ValidatedWireMessage} brand is the proof of validity; no parse runs on the send path. */
   send(msg: ValidatedWireMessage): void | Promise<void>;
