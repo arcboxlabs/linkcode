@@ -2,8 +2,14 @@ import type { Agent as HttpAgent } from 'node:http';
 import { request as httpRequest } from 'node:http';
 import type { Agent as HttpsAgent } from 'node:https';
 import { request as httpsRequest } from 'node:https';
-import type { ServiceModelList } from '@linkcode/providers';
-import type { AccountEndpoint, AccountModel, AccountSecret } from '@linkcode/schema';
+import type { EndpointService, ServiceModelList } from '@linkcode/providers';
+import type {
+  AccountEndpoint,
+  AccountModel,
+  AccountProtocol,
+  AccountSecret,
+} from '@linkcode/schema';
+import { AccountProtocolSchema } from '@linkcode/schema';
 import {
   AntiSSRFError,
   AntiSSRFPolicy,
@@ -78,7 +84,7 @@ export type ModelListRequest = (
   headers: Record<string, string>,
   signal?: AbortSignal,
 ) => Promise<ModelListResponse>;
-export type ModelProbe = typeof probeEndpointModels;
+export type ModelProbe = typeof probeServiceModels;
 
 /** A custom account names its own endpoint, so its list path can only be guessed from the protocol.
  * Catalog services never come through here — they carry an explicit URL (`@linkcode/providers`). */
@@ -233,4 +239,50 @@ export async function probeEndpointModels(
     }
   }
   return [...byId.values()];
+}
+
+/**
+ * Every model a service serves, across every variant reachable with this one secret, each tagged
+ * with the protocols whose list actually returned it. Most services serve one list for every
+ * variant (`ServiceVariant.models` absent everywhere), so this makes exactly one request; a
+ * service like LinkCode Gateway, whose `openai-responses` variant lists a strict subset of the
+ * service-level list, makes one request per distinct list and merges the results — a model
+ * returned by more than one list is tagged with every protocol whose list named it, not just the
+ * first.
+ */
+export async function probeServiceModels(
+  service: EndpointService,
+  secret: AccountSecret,
+  request: ModelListRequest = requestPublicModelList,
+): Promise<AccountModel[]> {
+  const byUrl = new Map<string, { source: ServiceModelList; protocols: AccountProtocol[] }>();
+  for (const protocol of AccountProtocolSchema.options) {
+    // A protocol this service does not actually serve (no variant at all) must not fall through
+    // to the service-level list — that would tag every model with a protocol the service never
+    // offered.
+    const variant = service.variants[protocol];
+    if (!variant) continue;
+    const source = variant.models ?? service.models;
+    if (!source) continue;
+    const existing = byUrl.get(source.url);
+    if (existing) existing.protocols.push(protocol);
+    else byUrl.set(source.url, { source, protocols: [protocol] });
+  }
+  if (byUrl.size === 0) throw new Error(`${service.id} serves no model list`);
+
+  const merged = new Map<string, AccountModel>();
+  const lists = await Promise.all(
+    [...byUrl.values()].map(async ({ source, protocols }) => ({
+      models: await probeEndpointModels(source, secret, request),
+      protocols,
+    })),
+  );
+  for (const { models, protocols } of lists) {
+    for (const model of models) {
+      const known = merged.get(model.id);
+      const combined = [...new Set([...(known?.protocols ?? []), ...protocols])];
+      merged.set(model.id, { ...model, protocols: combined });
+    }
+  }
+  return [...merged.values()];
 }
