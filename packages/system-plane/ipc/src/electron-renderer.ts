@@ -36,11 +36,6 @@ const FALLBACK_SETTINGS: DesktopSettings = {
   historyImportOnboardingHandled: true,
 };
 
-const FALLBACK_RESTRICTIONS: AgentRestrictionsSnapshot = {
-  allowedAgents: null,
-  allowedServices: null,
-};
-
 export function createElectronSystemBridge(
   ipcRenderer: IpcRenderer,
   platform: NodeJS.Platform,
@@ -127,10 +122,22 @@ export function createElectronSystemBridge(
       },
     },
     identity: {
-      restrictions: () =>
-        (ipcRenderer.sendSync(IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL) as
+      // Fail closed, unlike settings/daemonUrl above: this gates which agents/services render, so
+      // a missing snapshot must never silently read as unrestricted. Main always registers this
+      // handler before the renderer loads, so its absence is a real defect, not a boot race.
+      // Manual guard rather than foxts/guard's nullthrow: apps/desktop's preload externalizes
+      // every non-workspace dependency by default (vite.preload.config.ts), and this module — like
+      // zod above — must stay free of any package that isn't already bundled in there.
+      restrictions() {
+        const snapshot = ipcRenderer.sendSync(IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL) as
           | AgentRestrictionsSnapshot
-          | undefined) ?? FALLBACK_RESTRICTIONS,
+          | undefined;
+        // eslint-disable-next-line sukka/prefer-nullthrow -- see comment above
+        if (snapshot === undefined) {
+          throw new Error('identity.restrictions snapshot is unavailable');
+        }
+        return snapshot;
+      },
     },
     browser: {
       onOpenTab(cb) {

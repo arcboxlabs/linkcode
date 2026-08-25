@@ -18,6 +18,7 @@
 import {
   cpSync,
   existsSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -182,7 +183,10 @@ function stagedAllowedAgents(): readonly AgentKind[] | null {
  */
 function withFilesOverlay(configPath: string, excludes: readonly string[]): string {
   if (excludes.length === 0) return configPath;
-  const overlayPath = join(tmpdir(), 'linkcode-desktop-agent-excludes.json');
+  // A fresh directory per call, rather than a fixed filename: two concurrent packaging runs (or a
+  // stale file from an interrupted one) must never clobber or race each other.
+  const overlayDir = mkdtempSync(join(tmpdir(), 'linkcode-desktop-agent-excludes-'));
+  const overlayPath = join(overlayDir, 'electron-builder.overlay.json');
   writeFileSync(overlayPath, JSON.stringify({ extends: configPath, files: excludes }));
   return overlayPath;
 }

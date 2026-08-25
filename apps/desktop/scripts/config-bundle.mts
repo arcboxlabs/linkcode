@@ -105,7 +105,7 @@ export function loadGeneratedConfigBundle(
         'the generated bootstrap is immutable',
     );
   }
-  if (env.MAIN_VITE_AGENT_RESTRICTIONS) {
+  if (env.MAIN_VITE_AGENT_RESTRICTIONS !== undefined) {
     throw new Error(
       'MAIN_VITE_AGENT_RESTRICTIONS must not be set when a generated config bundle exists; ' +
         'the generated restriction snapshot is immutable',

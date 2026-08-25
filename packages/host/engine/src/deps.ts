@@ -1,5 +1,5 @@
 import type { AdapterFactory, PluginProviderAdapterFactory } from '@linkcode/agent-adapter';
-import type { AgentRuntimes } from '@linkcode/schema';
+import type { AgentKind, AgentRuntimes } from '@linkcode/schema';
 import type { LoginBinaryResolver } from './agent/login-service';
 import type { ModelProbe } from './agent/model-probe';
 import type { ProviderConfigStore } from './agent/provider-config';
@@ -21,6 +21,10 @@ import type { WorktreeStore } from './worktree/worktree-store';
 /** Optional collaborators the daemon injects; each defaults to an in-memory/no-op implementation. */
 export interface EngineDeps {
   factory?: AdapterFactory;
+  /** Restricted-brand agent allowlist (CODE-618); `undefined` (the default) is unrestricted.
+   * Enforced only at live-session start — a persisted session of an excluded kind stays readable;
+   * only starting a new run of it is refused (`SessionOrchestrator.startLive`). */
+  allowedAgents?: readonly AgentKind[];
   /** Read-only native plugin providers aggregated by the Engine plugin service. */
   pluginFactory?: PluginProviderAdapterFactory;
   sessionStore?: SessionStore;

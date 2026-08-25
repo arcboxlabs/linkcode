@@ -1,7 +1,14 @@
 // Client half of the frozen brand identity artifact v1 (publisher CONTRACT.md "Brand identity
 // artifact v1"). Validation only — derivation stays in the publisher; never reimplement it here.
+//
+// `AgentKind` is imported type-only, never as a value: this module is reached from
+// config-bundle.mts under plain Node (no bundler), and `@linkcode/schema`'s barrel re-exports a
+// directory (`./model`), which plain Node's ESM loader cannot resolve
+// (ERR_UNSUPPORTED_DIR_IMPORT). KNOWN_AGENT_KINDS below is hand-duplicated from
+// AgentKindSchema.options (packages/foundation/schema/src/model/primitives.ts) for the same
+// reason `CONFIG_PLATFORMS`/`CONFIG_CHANNELS` stay package-local — see CODE-618 plan notes on the
+// accepted drift risk.
 import type { AgentKind } from '@linkcode/schema';
-import { AgentKindSchema } from '@linkcode/schema';
 import type { ConfigBuildBundle } from './build-bundle';
 import { isRecord } from './contract';
 import type { ConfigChannel, ConfigPlatform } from './types';
@@ -47,7 +54,7 @@ const ARTIFACT_REQUIRED_KEYS = new Set([
 const ARTIFACT_OPTIONAL_KEYS = new Set(['agents', 'services']);
 const PROVENANCE_KEYS = new Set(['manifestSchemaVersion', 'sourceGitSha']);
 
-const KNOWN_AGENT_KINDS = new Set<string>(AgentKindSchema.options);
+const KNOWN_AGENT_KINDS = new Set<string>(['claude-code', 'codex', 'opencode', 'pi', 'grok-build']);
 
 const RE_BRAND_ID = /^[a-z][a-z0-9-]{0,62}$/;
 const RE_SERVICE_ID = /^[a-z][a-z0-9-]{0,62}$/;

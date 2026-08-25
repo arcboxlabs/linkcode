@@ -1,6 +1,5 @@
 import canonicalize from 'canonicalize';
 import { z } from 'zod';
-import { AgentKindSchema } from './model/primitives';
 
 export const CONFIG_CONTRACT_VERSION = 1;
 export const CONFIG_BUILD_BUNDLE_VERSION = 1;
@@ -11,6 +10,12 @@ export const CONFIG_PLATFORMS = ['desktop', 'ios', 'android'] as const;
 export const CONFIG_CHANNELS = ['canary', 'stable'] as const;
 export const APPLY_MODES = ['hot', 'cold'] as const;
 export const OPERATING_SYSTEMS = ['windows', 'macos', 'linux', 'ios', 'android'] as const;
+// Duplicated from AgentKindSchema (./model/primitives.ts) rather than imported, same as
+// CONFIG_PLATFORMS/CONFIG_CHANNELS above stay local: this file is also reached via
+// `@linkcode/schema/remote-config` from build-time scripts running under plain Node
+// (config-bundle.mts), which — unlike a bundler or tsx — cannot resolve an extensionless
+// relative import across files. Keep in sync with AgentKindSchema's options by hand.
+const CONFIG_BUNDLE_AGENT_KINDS = ['claude-code', 'codex', 'opencode', 'pi', 'grok-build'] as const;
 
 const RE_BRAND_ID = /^[a-z][a-z0-9-]{0,62}$/;
 const RE_SERVICE_ID = /^[a-z][a-z0-9-]{0,62}$/;
@@ -263,7 +268,7 @@ export type ConfigBuildBundleSnapshotEnvelope = z.infer<
 export const ConfigBuildBundleSchema = z
   .strictObject({
     // Absent = unrestricted (every agent/service allowed); a brand only ever narrows this set.
-    agents: z.array(AgentKindSchema).min(1).optional(),
+    agents: z.array(z.enum(CONFIG_BUNDLE_AGENT_KINDS)).min(1).optional(),
     brandId: BrandIdSchema,
     buildBundleVersion: z.literal(CONFIG_BUILD_BUNDLE_VERSION),
     channel: ConfigChannelSchema,

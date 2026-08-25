@@ -159,6 +159,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
+    deps.allowedAgents ?? null,
   );
   simulators?.setSessionValidator((id) => sessions.has(id));
   terminals = deps.ptyBackend

@@ -98,8 +98,7 @@ export function worktreeRoot(): string {
 export function daemonAllowedAgents(): readonly AgentKind[] | null {
   const raw = process.env.LINKCODE_ALLOWED_AGENTS;
   if (raw === undefined || raw === '') return null;
-  const kinds = raw.split(',').map((entry) => AgentKindSchema.parse(entry.trim()));
-  return kinds.length > 0 ? kinds : null;
+  return raw.split(',').map((entry) => AgentKindSchema.parse(entry.trim()));
 }
 
 /** Runtime discovery file advertising the running daemon's bound endpoints, next to config.json. */

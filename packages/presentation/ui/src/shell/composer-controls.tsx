@@ -314,7 +314,10 @@ export function ModelSelectorMenu({
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
-        {harness && showsHarnessPicker ? <AgentIcon kind={harness} variant="brand" /> : null}
+        {/* Kept at >0 (not the submenu's >1 threshold): the icon is the only harness signal once
+            the submenu disappears at exactly one selectable harness — including a standard build
+            where the user manually disabled every harness but one from Settings. */}
+        {harness && harnesses.length > 0 ? <AgentIcon kind={harness} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
           <span className="flex items-center gap-2 font-normal text-muted-foreground">
