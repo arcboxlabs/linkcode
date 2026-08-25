@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   downloadVerified: vi.fn(),
   tarExtract: vi.fn(),
   removeFailurePrefix: undefined as string | undefined,
+  renameFailureDestination: undefined as string | undefined,
   renameFailureSource: undefined as string | undefined,
 }));
 
@@ -33,7 +34,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     renameSync(source: import('node:fs').PathLike, destination: import('node:fs').PathLike): void {
-      if (source === mocks.renameFailureSource) {
+      if (source === mocks.renameFailureSource || destination === mocks.renameFailureDestination) {
         throw Object.assign(new Error('injected rename failure'), { code: 'EACCES' });
       }
       actual.renameSync(source, destination);
@@ -61,6 +62,7 @@ beforeEach(() => {
   mocks.downloadVerified.mockReset().mockResolvedValue(undefined);
   mocks.tarExtract.mockReset();
   mocks.removeFailurePrefix = undefined;
+  mocks.renameFailureDestination = undefined;
   mocks.renameFailureSource = undefined;
 });
 
@@ -251,6 +253,37 @@ describe('DaemonLinkCodePluginStore', () => {
     ).toBe(true);
   });
 
+  it('restores the live package when registry persistence fails after publishing', async () => {
+    const live = record('0.2.0');
+    writePackage(live, manifest('0.2.0', 'live-skill'));
+    writeRegistry([live]);
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(manifest('0.2.0', 'new-skill')));
+    });
+    mocks.renameFailureDestination = pluginRegistryPath();
+    const release = {
+      manifest: manifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    await expect(store.install(release, 'linkcode-official')).rejects.toThrow(
+      'injected rename failure',
+    );
+
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('live-skill');
+    expect(JSON.parse(readFileSync(pluginRegistryPath(), 'utf8'))).toMatchObject([
+      { id: 'arcbox/latex', version: '0.2.0' },
+    ]);
+    expect(readdirSync(join(live.path, '..')).filter((name) => name.startsWith('.tmp-'))).toEqual(
+      [],
+    );
+  });
+
   it('sweeps orphaned staging directories at construction', () => {
     const live = record('0.1.0');
     writePackage(live, manifest('0.1.0'));
@@ -287,11 +320,19 @@ describe('DaemonLinkCodePluginStore', () => {
     const retired = join(live.path, '..', '.tmp-retired-999-versioned');
     mkdirSync(retired, { recursive: true });
     writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.2.0', 'live-skill')));
+    expect([existsSync(legacy.path), existsSync(live.path), existsSync(retired)]).toEqual([
+      false,
+      false,
+      true,
+    ]);
 
     const store = new DaemonLinkCodePluginStore(createInMemoryVault());
 
-    expect(existsSync(legacy.path)).toBe(false);
-    expect(existsSync(live.path)).toBe(true);
+    expect([existsSync(legacy.path), existsSync(live.path), existsSync(retired)]).toEqual([
+      false,
+      true,
+      false,
+    ]);
     expect(store.get('arcbox/latex')?.installed.version).toBe('0.2.0');
   });
 

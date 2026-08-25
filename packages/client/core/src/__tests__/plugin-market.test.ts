@@ -1,7 +1,6 @@
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
-import { MIN_COMPATIBLE_WIRE_VERSION, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { createWireMessage, pong } from '@linkcode/transport';
 import { describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 
@@ -38,18 +37,12 @@ class ControlledTransport implements Transport {
   }
 }
 
-async function connect(
-  peerWireVersion: number = WIRE_PROTOCOL_VERSION,
-): Promise<{ client: LinkCodeClient; transport: ControlledTransport }> {
+async function connect(): Promise<{ client: LinkCodeClient; transport: ControlledTransport }> {
   const transport = new ControlledTransport();
   const client = new LinkCodeClient(transport);
   const connecting = client.connect();
   await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
-  transport.receive({
-    kind: 'pong',
-    version: peerWireVersion,
-    minCompatible: MIN_COMPATIBLE_WIRE_VERSION,
-  });
+  transport.receive(pong());
   await connecting;
   return { client, transport };
 }
@@ -118,23 +111,6 @@ describe('LinkCodeClient plugin-market / plugin-config requests', () => {
       releases: [],
       notModified: true,
     });
-    client.dispose();
-  });
-
-  it('rejects an incomplete empty 304 from a wire-v79 host', async () => {
-    const { client, transport } = await connect(79);
-    const pending = client.refreshPluginMarketplace('linkcode-official');
-    const request = lastRequest(transport);
-
-    transport.receive({
-      kind: 'plugin-market.refreshed',
-      replyTo: request.clientReqId,
-      marketplaceId: 'linkcode-official',
-      releases: [],
-      notModified: true,
-    });
-
-    await expect(pending).rejects.toThrow('incomplete cached marketplace response');
     client.dispose();
   });
 

@@ -1,20 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { linkcodeStateDirName } from '@linkcode/schema';
-import { resolveProductChannel } from '@linkcode/schema/product';
-import { daemonChannel, daemonProfile } from '../paths';
+import { daemonStateDir } from '../paths';
 
 const RE_PATH_SEP = /[/\\]/g;
 
 /** Per-universe LinkCode plugin store root: `<state dir>/plugins`. A fake `$HOME` redirects it,
  *  the same property that isolates an E2E daemon from the release one. */
 export function pluginsRoot(): string {
-  const channel = daemonChannel();
-  const profile = daemonProfile();
-  const stateDir = join(homedir(), linkcodeStateDirName(channel, profile));
-  return join(stateDir, 'plugins');
+  return join(daemonStateDir(), 'plugins');
 }
 
 /** The central install registry: one `InstalledLinkCodePlugin` record per installed version. */
@@ -42,9 +36,4 @@ export function makePluginTmpDir(pluginId: string, version: string): string {
   const parent = join(pluginPackageDir(pluginId, version), '..');
   mkdirSync(parent, { recursive: true });
   return join(parent, `${PLUGIN_STAGING_PREFIX}${process.pid}-${version}-${randomUUID()}`);
-}
-
-/** Resolve product channel for callers that must not reach into the paths module's side effects. */
-export function resolvedChannel(): ReturnType<typeof resolveProductChannel> {
-  return resolveProductChannel(process.env.LINKCODE_CHANNEL, process.env.LINKCODE_BUILD_CHANNEL);
 }

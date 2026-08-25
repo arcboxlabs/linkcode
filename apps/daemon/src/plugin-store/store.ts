@@ -202,8 +202,17 @@ async function installExclusive(
   const targetDir = pluginPackageDir(manifest.id, manifest.version);
   const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
   const tgzPath = join(stagingDir, 'package.tgz');
+  const record: InstalledLinkCodePlugin = {
+    id: manifest.id,
+    version: manifest.version,
+    marketplaceId,
+    integrity: artifact.integrity,
+    enabled: true,
+    path: targetDir,
+  };
   let installedManifest: LinkCodePluginManifest;
   let retiredDir: string | undefined;
+  let published = false;
   mkdirSync(stagingDir, { recursive: true });
   try {
     const downloadArtifact: ManagedAssetArtifact = {
@@ -228,23 +237,24 @@ async function installExclusive(
     // the registry pointed at a missing directory.
     retiredDir = retirePluginPackage(targetDir);
     renameSync(stagingDir, targetDir);
+    published = true;
+    upsertRegistry(record);
   } catch (error) {
-    rmSync(stagingDir, { recursive: true, force: true });
-    if (retiredDir !== undefined) restorePluginPackage(retiredDir, targetDir, manifest.id);
+    try {
+      rmSync(stagingDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      logger.warn(
+        { error: cleanupError, path: stagingDir, operation: 'plugin.install.cleanup-staging' },
+        'Failed to remove plugin staging after an install failure',
+      );
+    }
+    if (published) rollbackPublishedPluginPackage(targetDir, retiredDir, manifest.id);
+    else if (retiredDir !== undefined) restorePluginPackage(retiredDir, targetDir, manifest.id);
     throw new Error(
       `Failed to install plugin ${manifest.id}: ${extractErrorMessage(error) ?? 'unknown'}`,
       { cause: error },
     );
   }
-  const record: InstalledLinkCodePlugin = {
-    id: manifest.id,
-    version: manifest.version,
-    marketplaceId,
-    integrity: artifact.integrity,
-    enabled: true,
-    path: targetDir,
-  };
-  upsertRegistry(record);
   if (retiredDir !== undefined) {
     try {
       rmSync(retiredDir, { recursive: true, force: true });
@@ -275,7 +285,7 @@ async function installExclusive(
   return { installed: record, manifest: installedManifest };
 }
 
-/** Delete incomplete staging dirs, but retain retired backups unless their exact state is known. */
+/** Delete incomplete staging dirs; retain unproven backups until their exact version is reinstalled. */
 function sweepStagingDirs(): void {
   const root = pluginsRoot();
   const records = readRegistry();
@@ -436,6 +446,30 @@ function restorePluginPackage(retiredDir: string, targetDir: string, pluginId: s
       'Failed to restore the previous plugin package after a failed install; it is left at the retired path',
     );
   }
+}
+
+/** Undo a package publish after registry persistence fails; the target is the package just staged. */
+function rollbackPublishedPluginPackage(
+  targetDir: string,
+  retiredDir: string | undefined,
+  pluginId: string,
+): void {
+  try {
+    rmSync(targetDir, { recursive: true, force: true });
+  } catch (error) {
+    logger.error(
+      {
+        error,
+        pluginId,
+        path: targetDir,
+        retiredDir,
+        operation: 'plugin.install.rollback-publish',
+      },
+      'Failed to remove a published plugin after registry persistence failed',
+    );
+    return;
+  }
+  if (retiredDir !== undefined) restorePluginPackage(retiredDir, targetDir, pluginId);
 }
 
 function applySecretPatch(

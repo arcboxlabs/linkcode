@@ -93,6 +93,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
     round-trip through this store can (`__tests__/session-store.test.ts`).
 - **`runtime.json`** — endpoint discovery (`{name,pid,startedAt,listeners:[{type,url}]}`), written
   `0600` only AFTER every listener binds and removed on graceful `SIGINT`/`SIGTERM` shutdown.
+- **Marketplace sources are trusted code origins.** Installed manifests may launch their declared
+  command, args, and env; SRI pins bytes to the index but does not make a hostile index safe. Keep
+  adding sources config/env-only until an explicit consent and trust design is approved.
 
 ## Ports & one-per-profile
 
