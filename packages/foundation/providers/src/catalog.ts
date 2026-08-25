@@ -21,11 +21,19 @@ export interface ServiceVariant {
   /** Ids for this endpoint in an agent's own provider catalog. Present means the agent already
    * carries the wire adapter and model metadata, so it needs only the key injected. */
   knownProvider?: Partial<Record<AgentKind, string>>;
+  /** Overrides the service-level list for this variant only. Needed when one secret reaches
+   * a gateway whose ids differ by protocol — LinkCode Gateway's `openai-responses` variant
+   * lists only the models that speak Responses, a strict subset of the plain `/v1/models`
+   * every other variant (and the service-level fallback below) serves. Absent means this
+   * variant's list is the service-level one. */
+  models?: ServiceModelList;
 }
 
 /**
- * Where to read the ids this service serves. Service-level, not per variant: one secret reaches one
- * model list, and the ids are the same whichever protocol shape an agent ends up using.
+ * Where to read the ids this service serves, by default. One secret can still reach several
+ * different lists — see `ServiceVariant.models` — but every service in this catalog except
+ * LinkCode Gateway serves the same ids regardless of which protocol shape an agent ends up
+ * using, so a per-variant override is the exception, not the rule this field describes.
  *
  * The URL is spelled out rather than derived from a variant's `baseUrl` + protocol, because
  * derivation is wrong for any service whose variants sit on different paths — DeepSeek's
@@ -159,7 +167,15 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
     credentialType: 'auth-token',
     variants: {
       'openai-chat': { baseUrl: 'https://gateway.linkcode.ai/v1' },
-      'openai-responses': { baseUrl: 'https://gateway.linkcode.ai/v1' },
+      // Lists only the models the gateway actually serves on this wire — a strict subset of
+      // the service-level list below, since not every provider behind it speaks Responses.
+      'openai-responses': {
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+        models: {
+          url: 'https://gateway.linkcode.ai/v1/models?protocol=openai-responses',
+          wire: 'openai',
+        },
+      },
     },
     models: { url: 'https://gateway.linkcode.ai/v1/models', wire: 'openai' },
   },
@@ -244,7 +260,24 @@ export function endpointServiceById(id: string | undefined): EndpointService | u
   return service?.kind === 'endpoint' ? service : undefined;
 }
 
-/** Where to read this service's model ids, or undefined when it serves no list. */
+/** Where to read this service's model ids, or undefined when it serves no list. This is the
+ * service-level default — the one list shown by "does this service serve a list at all" checks,
+ * and correct for every service in this catalog except LinkCode Gateway. Use
+ * `modelListSourceForProtocol` when the caller actually has a protocol in hand and the two might
+ * differ. */
 export function modelListSource(id: string | undefined): ServiceModelList | undefined {
   return endpointServiceById(id)?.models;
+}
+
+/** Where to read the ids this service serves *for one protocol* — a variant's own override if it
+ * has one, the service-level default otherwise. */
+export function modelListSourceForProtocol(
+  id: string | undefined,
+  protocol: AccountProtocol,
+): ServiceModelList | undefined {
+  const service = endpointServiceById(id);
+  const variant = service?.variants[protocol];
+  // A protocol the service does not serve at all must not fall through to the service-level
+  // list — that list is scoped to the variants that actually exist, not to every protocol name.
+  return variant && (variant.models ?? service.models);
 }
