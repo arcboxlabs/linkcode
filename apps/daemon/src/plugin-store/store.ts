@@ -245,6 +245,8 @@ async function installExclusive(
     retiredDir = retirePluginPackage(targetDir);
     renameSync(stagingDir, targetDir);
     published = true;
+    // Publish before persisting so a failed registry write can roll the package back; a hard kill
+    // between the two leaves only a harmless orphan/stale-integrity the next install reclaims.
     upsertRegistry(record);
   } catch (error) {
     try {
