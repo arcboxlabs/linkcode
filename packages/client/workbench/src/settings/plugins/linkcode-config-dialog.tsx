@@ -27,6 +27,7 @@ import type { PluginConfigFormValues } from './linkcode-config';
 import {
   buildPluginConfigPatch,
   pluginConfigDefaults,
+  pluginConfigFormKey,
   validatePluginConfigField,
 } from './linkcode-config';
 
@@ -119,6 +120,9 @@ function ConfigField({
 }): React.ReactNode {
   const t = useTranslations('settings.plugins.linkcode');
   const label = field.label ?? fieldId;
+  // Every RHF name and the <Field name> that pairs errors to it: a dotted setting id must not be
+  // read as a nested path (see pluginConfigFormKey).
+  const formKey = pluginConfigFormKey(fieldId);
 
   if (field.type === 'boolean') {
     // Kept out of <Field>: a bare Switch is not a Field control, and base-ui's Fieldset does not
@@ -133,7 +137,7 @@ function ConfigField({
         </div>
         <Controller
           control={control}
-          name={fieldId}
+          name={formKey}
           render={({ field: switchField }) => (
             <Switch
               checked={switchField.value === true}
@@ -152,12 +156,12 @@ function ConfigField({
   };
 
   return (
-    <Field name={fieldId}>
+    <Field name={formKey}>
       <FieldLabel>{label}</FieldLabel>
       {field.type === 'enum' ? (
         <Controller
           control={control}
-          name={fieldId}
+          name={formKey}
           rules={{ validate }}
           render={({ field: selectField }) => (
             <Select
@@ -181,7 +185,7 @@ function ConfigField({
         />
       ) : (
         <Input
-          {...register(fieldId, { validate })}
+          {...register(formKey, { validate })}
           type={
             field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'
           }

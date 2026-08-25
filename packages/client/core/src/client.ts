@@ -204,6 +204,8 @@ type LoopEventCb = (event: LoopEvent) => void;
 type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
+// Wire v79 can return an empty 304 after losing its daemon cache; rejecting preserves client data.
+const PLUGIN_MARKET_CACHED_304_WIRE_VERSION = 80;
 
 /** The message to fail the handshake with, or null when the two builds overlap. */
 function wireIncompatibility(peerVersion: number, peerMinCompatible: number): string | null {
@@ -954,8 +956,19 @@ export class LinkCodeClient {
   }
 
   /** Refresh one marketplace index; `notModified` replies carry the cached catalog. */
-  refreshPluginMarketplace(marketplaceId: string): Promise<PluginMarketRefresh> {
-    return this.control.refreshPluginMarketplace(marketplaceId);
+  async refreshPluginMarketplace(marketplaceId: string): Promise<PluginMarketRefresh> {
+    const refresh = await this.control.refreshPluginMarketplace(marketplaceId);
+    if (
+      this.peerWireVersion !== null &&
+      this.peerWireVersion < PLUGIN_MARKET_CACHED_304_WIRE_VERSION &&
+      refresh.notModified === true &&
+      refresh.releases.length === 0
+    ) {
+      throw new Error(
+        'LinkCodeClient: the host returned an incomplete cached marketplace response; update the host and retry',
+      );
+    }
+    return refresh;
   }
 
   /** Install a marketplace release; resolves with the installed release identity. */

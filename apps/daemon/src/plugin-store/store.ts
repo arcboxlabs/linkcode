@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import type { Dirent } from 'node:fs';
 import {
   chmodSync,
   closeSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -36,14 +39,23 @@ import { extract as tarExtract } from 'tar';
 import { loadPluginConfigValues, pluginSecretStore, savePluginConfigValues } from '../config';
 import { logger } from '../logger';
 import type { SecretStore, SecretVault } from '../secrets';
-import { makePluginTmpDir, pluginPackageDir, pluginRegistryPath } from './paths';
+import {
+  makePluginTmpDir,
+  PLUGIN_RETIRED_INFIX,
+  PLUGIN_STAGING_PREFIX,
+  pluginPackageDir,
+  pluginRegistryPath,
+  pluginsRoot,
+} from './paths';
 
 /** Daemon-backed LinkCode plugin store: reads the install registry + on-disk manifests, splits
  * setting values between `config.json` (non-secret) and the vault `plugin` namespace (secret) per
  * each manifest's `secret` flag, and installs releases by downloading, SRI-verifying, extracting,
  * and atomically renaming into the package dir. */
 export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
-  constructor(private readonly vault: SecretVault) {}
+  constructor(private readonly vault: SecretVault) {
+    sweepStagingDirs();
+  }
 
   list(): InstalledLinkCodePluginEntry[] {
     const entries: InstalledLinkCodePluginEntry[] = [];
@@ -191,6 +203,7 @@ async function installExclusive(
   const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
   const tgzPath = join(stagingDir, 'package.tgz');
   let installedManifest: LinkCodePluginManifest;
+  let retiredDir: string | undefined;
   mkdirSync(stagingDir, { recursive: true });
   try {
     const downloadArtifact: ManagedAssetArtifact = {
@@ -200,7 +213,9 @@ async function installExclusive(
       format: 'tgz',
     };
     await downloadVerified(downloadArtifact, tgzPath, {});
-    await tarExtract({ file: tgzPath, cwd: stagingDir, strip: 1 });
+    // Without `strict`, node-tar only warns when it rejects unsafe members, so a partial archive
+    // whose manifest still matches could otherwise appear to install successfully.
+    await tarExtract({ file: tgzPath, cwd: stagingDir, strip: 1, strict: true });
     const onDisk = readManifest(stagingDir);
     if (onDisk?.id !== manifest.id || onDisk.version !== manifest.version) {
       throw new Error(
@@ -208,11 +223,14 @@ async function installExclusive(
       );
     }
     installedManifest = onDisk;
-    rmSync(targetDir, { recursive: true, force: true });
     mkdirSync(dirname(targetDir), { recursive: true });
+    // Retire the live package before publishing so a failed rename can restore it without leaving
+    // the registry pointed at a missing directory.
+    retiredDir = retirePluginPackage(targetDir);
     renameSync(stagingDir, targetDir);
   } catch (error) {
     rmSync(stagingDir, { recursive: true, force: true });
+    if (retiredDir !== undefined) restorePluginPackage(retiredDir, targetDir, manifest.id);
     throw new Error(
       `Failed to install plugin ${manifest.id}: ${extractErrorMessage(error) ?? 'unknown'}`,
       { cause: error },
@@ -227,6 +245,16 @@ async function installExclusive(
     path: targetDir,
   };
   upsertRegistry(record);
+  if (retiredDir !== undefined) {
+    try {
+      rmSync(retiredDir, { recursive: true, force: true });
+    } catch (error) {
+      logger.warn(
+        { error, pluginId: manifest.id, path: retiredDir, operation: 'plugin.install.gc-retired' },
+        'Failed to remove the retired plugin package after publishing',
+      );
+    }
+  }
   // A plugin id has one active settings block and one wire identity, so keep exactly one installed
   // version. Remove stale package directories only after the new package and registry record exist.
   for (const previous of previousRecords) {
@@ -245,6 +273,169 @@ async function installExclusive(
     'Installed LinkCode plugin',
   );
   return { installed: record, manifest: installedManifest };
+}
+
+/** Delete incomplete staging dirs, but retain retired backups unless their exact state is known. */
+function sweepStagingDirs(): void {
+  const root = pluginsRoot();
+  const records = readRegistry();
+  let swept = 0;
+  let restored = 0;
+  const walk = (dir: string, depth: number): void => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const path = join(dir, entry.name);
+      if (entry.name.startsWith(PLUGIN_STAGING_PREFIX)) {
+        const isRetired = entry.name.startsWith(`${PLUGIN_STAGING_PREFIX}${PLUGIN_RETIRED_INFIX}`);
+        if (isRetired) {
+          const outcome = reconcileRetiredPackage(path, dir, records);
+          if (outcome === 'restored') restored += 1;
+          else if (outcome === 'swept') swept += 1;
+          continue;
+        }
+        try {
+          rmSync(path, { recursive: true, force: true });
+          swept += 1;
+        } catch (error) {
+          logger.warn(
+            { error, path, operation: 'plugin.staging.sweep' },
+            'Failed to remove an orphaned plugin staging directory',
+          );
+        }
+        continue;
+      }
+      // publisher/name/<version>: staging siblings live at depth 2, so stop descending there.
+      if (depth < 2) walk(path, depth + 1);
+    }
+  };
+  walk(root, 0);
+  if (swept > 0 || restored > 0) {
+    logger.info(
+      { swept, restored, operation: 'plugin.staging.sweep' },
+      'Reconciled orphaned plugin staging directories',
+    );
+  }
+}
+
+type RetiredPackageOutcome = 'retained' | 'restored' | 'swept';
+
+function reconcileRetiredPackage(
+  path: string,
+  parentDir: string,
+  records: readonly InstalledLinkCodePlugin[],
+): RetiredPackageOutcome {
+  const manifest = readManifest(path);
+  if (manifest === undefined) {
+    logger.warn(
+      { path, operation: 'plugin.staging.retain' },
+      'Keeping an unverifiable retired plugin package',
+    );
+    return 'retained';
+  }
+
+  const target = pluginPackageDir(manifest.id, manifest.version);
+  const hasExactRecord = records.some(
+    (record) =>
+      record.id === manifest.id && record.version === manifest.version && record.path === target,
+  );
+  if (!hasExactRecord || dirname(target) !== parentDir) {
+    logger.warn(
+      { path, target, operation: 'plugin.staging.retain' },
+      'Keeping a retired plugin package without an exact registry record',
+    );
+    return 'retained';
+  }
+
+  let targetStat: ReturnType<typeof lstatSync> | undefined;
+  try {
+    targetStat = lstatSync(target, { throwIfNoEntry: false });
+  } catch (error) {
+    logger.warn(
+      { error, path, target, operation: 'plugin.staging.inspect' },
+      'Keeping a retired plugin package because its target could not be inspected',
+    );
+    return 'retained';
+  }
+
+  if (targetStat === undefined) {
+    try {
+      renameSync(path, target);
+      return 'restored';
+    } catch (error) {
+      logger.error(
+        { error, path, target, operation: 'plugin.staging.restore' },
+        'Failed to restore a retired plugin package; keeping the backup',
+      );
+      return 'retained';
+    }
+  }
+
+  const published = targetStat.isDirectory() ? readManifest(target) : undefined;
+  if (published?.id !== manifest.id || published.version !== manifest.version) {
+    logger.warn(
+      { path, target, operation: 'plugin.staging.retain' },
+      'Keeping a retired plugin package because its target is occupied',
+    );
+    return 'retained';
+  }
+
+  try {
+    rmSync(path, { recursive: true, force: true });
+    return 'swept';
+  } catch (error) {
+    logger.warn(
+      { error, path, operation: 'plugin.staging.sweep' },
+      'Failed to remove a retired plugin package after a completed publish',
+    );
+    return 'retained';
+  }
+}
+
+/** Move a live package aside so the publish can be undone; undefined when there was nothing there. */
+function retirePluginPackage(targetDir: string): string | undefined {
+  const retired = join(
+    dirname(targetDir),
+    `${PLUGIN_STAGING_PREFIX}${PLUGIN_RETIRED_INFIX}${process.pid}-${randomUUID()}`,
+  );
+  try {
+    renameSync(targetDir, retired);
+    return retired;
+  } catch (error) {
+    // ENOENT is the ordinary first-install case; anything else means the live package is still there
+    // and the caller's own rename will fail, which the catch turns into a clean install failure.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      logger.warn(
+        { error, path: targetDir, operation: 'plugin.install.retire' },
+        'Could not move the existing plugin package aside',
+      );
+    }
+    return undefined;
+  }
+}
+
+/** Put a retired package back after a failed publish. Best-effort: the throw is already in flight. */
+function restorePluginPackage(retiredDir: string, targetDir: string, pluginId: string): void {
+  try {
+    if (lstatSync(targetDir, { throwIfNoEntry: false }) !== undefined) {
+      logger.error(
+        { pluginId, path: targetDir, retiredDir, operation: 'plugin.install.restore' },
+        'Cannot restore the previous plugin package because its target is occupied',
+      );
+      return;
+    }
+    renameSync(retiredDir, targetDir);
+  } catch (error) {
+    logger.error(
+      { error, pluginId, path: targetDir, operation: 'plugin.install.restore' },
+      'Failed to restore the previous plugin package after a failed install; it is left at the retired path',
+    );
+  }
 }
 
 function applySecretPatch(
@@ -339,12 +530,8 @@ function readManifest(packageDir: string): LinkCodePluginManifest | undefined {
 }
 
 function prunePluginSecrets(secrets: SecretStore, pluginId: string): void {
-  // Prune by key prefix, never by re-deriving keys from each surviving plugin's manifest: a
-  // manifest that is unreadable (corrupt, or schema-drifted after an upgrade) must not turn an
-  // unrelated plugin's secrets into "orphans" that replaceAll then deletes.
-  // The separator must be `/`, not `.`: dots are legal inside both id segments (a `linkcode/mail.pro`
-  // plugin would have its keys match a `linkcode/mail.` prefix), while `/` can never appear in a
-  // setting id and a plugin id always has exactly two segments, so the prefix is unambiguous.
+  // Prune by `pluginId/`; `/` is forbidden in ids, while dots are legal and would match siblings.
+  // Do not infer orphans from manifests because unreadable survivors must keep their secrets.
   const prefix = `${pluginId}/`;
   const surviving = new Map<string, string>();
   for (const key of secrets.keys()) {

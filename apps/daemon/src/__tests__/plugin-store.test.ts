@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -15,10 +22,35 @@ import { createInMemoryVault } from './fixtures/in-memory-vault';
 const mocks = vi.hoisted(() => ({
   downloadVerified: vi.fn(),
   tarExtract: vi.fn(),
+  removeFailurePrefix: undefined as string | undefined,
+  renameFailureSource: undefined as string | undefined,
 }));
 
 vi.mock('@linkcode/assets', () => ({ downloadVerified: mocks.downloadVerified }));
 vi.mock('tar', () => ({ extract: mocks.tarExtract }));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    renameSync(source: import('node:fs').PathLike, destination: import('node:fs').PathLike): void {
+      if (source === mocks.renameFailureSource) {
+        throw Object.assign(new Error('injected rename failure'), { code: 'EACCES' });
+      }
+      actual.renameSync(source, destination);
+    },
+    rmSync(...args: Parameters<typeof actual.rmSync>): void {
+      const [path] = args;
+      if (
+        typeof path === 'string' &&
+        mocks.removeFailurePrefix !== undefined &&
+        path.startsWith(mocks.removeFailurePrefix)
+      ) {
+        throw Object.assign(new Error('injected remove failure'), { code: 'EACCES' });
+      }
+      actual.rmSync(...args);
+    },
+  };
+});
 
 let savedHome: string | undefined;
 
@@ -28,6 +60,8 @@ beforeEach(() => {
   process.env.LINKCODE_CHANNEL = 'release';
   mocks.downloadVerified.mockReset().mockResolvedValue(undefined);
   mocks.tarExtract.mockReset();
+  mocks.removeFailurePrefix = undefined;
+  mocks.renameFailureSource = undefined;
 });
 
 afterEach(() => {
@@ -159,14 +193,158 @@ describe('DaemonLinkCodePluginStore', () => {
     ]);
   });
 
+  it('keeps the live package and registry intact when a reinstall fails before publishing', async () => {
+    const live = record('0.2.0');
+    writePackage(live, manifest('0.2.0', 'live-skill'));
+    writeRegistry([live]);
+    // A staged package that fails the id/version check: the common failure shape (download, extract,
+    // or manifest mismatch) must never touch the live package, and must leave no staging sibling.
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(manifest('9.9.9', 'staged-skill')));
+    });
+    const release = {
+      manifest: manifest('0.2.0', 'index-skill'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    await expect(store.install(release, 'linkcode-official')).rejects.toThrow();
+
+    expect(existsSync(live.path)).toBe(true);
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('live-skill');
+    expect(JSON.parse(readFileSync(pluginRegistryPath(), 'utf8'))).toMatchObject([
+      { id: 'arcbox/latex', version: '0.2.0' },
+    ]);
+    const siblings = readdirSync(join(live.path, '..'));
+    expect(siblings.filter((name) => name.startsWith('.tmp-'))).toEqual([]);
+  });
+
+  it('commits the install when retired-package cleanup fails', async () => {
+    const live = record('0.2.0');
+    writePackage(live, manifest('0.2.0', 'live-skill'));
+    writeRegistry([live]);
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(manifest('0.2.0', 'new-skill')));
+    });
+    mocks.removeFailurePrefix = join(live.path, '..', '.tmp-retired-');
+    const release = {
+      manifest: manifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    await expect(store.install(release, 'linkcode-official')).resolves.toMatchObject({
+      installed: { version: '0.2.0' },
+    });
+
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('new-skill');
+    expect(
+      readdirSync(join(live.path, '..')).some((name) => name.startsWith('.tmp-retired-')),
+    ).toBe(true);
+  });
+
+  it('sweeps orphaned staging directories at construction', () => {
+    const live = record('0.1.0');
+    writePackage(live, manifest('0.1.0'));
+    writeRegistry([live]);
+    const orphan = join(live.path, '..', '.tmp-999-0.1.0-abandoned');
+    mkdirSync(orphan, { recursive: true });
+
+    // Construction runs the sweep; the store handle itself is unused here.
+    expect(new DaemonLinkCodePluginStore(createInMemoryVault())).toBeDefined();
+
+    expect(existsSync(orphan)).toBe(false);
+    expect(existsSync(live.path)).toBe(true);
+  });
+
+  it('promotes a retired package back when a hard kill left it as the only copy', () => {
+    // A hard kill between retire and publish leaves this as the registry's only live copy.
+    const live = record('0.1.0');
+    writeRegistry([live]);
+    const retired = join(live.path, '..', '.tmp-retired-999-abandoned');
+    mkdirSync(retired, { recursive: true });
+    writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.1.0', 'live-skill')));
+    expect(existsSync(live.path)).toBe(false);
+
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    expect(existsSync(retired)).toBe(false);
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('live-skill');
+  });
+
+  it('restores a retired package only to its exact recorded version', () => {
+    const legacy = record('0.1.0');
+    const live = record('0.2.0');
+    writeRegistry([legacy, live]);
+    const retired = join(live.path, '..', '.tmp-retired-999-versioned');
+    mkdirSync(retired, { recursive: true });
+    writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.2.0', 'live-skill')));
+
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    expect(existsSync(legacy.path)).toBe(false);
+    expect(existsSync(live.path)).toBe(true);
+    expect(store.get('arcbox/latex')?.installed.version).toBe('0.2.0');
+  });
+
+  it('keeps a retired package when restoring it fails', () => {
+    const live = record('0.1.0');
+    writeRegistry([live]);
+    const retired = join(live.path, '..', '.tmp-retired-999-unrestored');
+    mkdirSync(retired, { recursive: true });
+    writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.1.0', 'live-skill')));
+    mocks.renameFailureSource = retired;
+
+    expect(new DaemonLinkCodePluginStore(createInMemoryVault())).toBeDefined();
+
+    expect(existsSync(retired)).toBe(true);
+    expect(existsSync(live.path)).toBe(false);
+  });
+
+  it('keeps a retired package when its target is occupied by a different package', () => {
+    const live = record('0.1.0');
+    writePackage(live, manifest('9.9.9', 'unexpected-skill'));
+    writeRegistry([live]);
+    const retired = join(live.path, '..', '.tmp-retired-999-conflict');
+    mkdirSync(retired, { recursive: true });
+    writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.1.0', 'live-skill')));
+
+    expect(new DaemonLinkCodePluginStore(createInMemoryVault())).toBeDefined();
+
+    expect(existsSync(retired)).toBe(true);
+    expect(readFileSync(join(live.path, 'manifest.json'), 'utf8')).toContain('9.9.9');
+  });
+
+  it('deletes a retired sibling once its version dir is already back in place', () => {
+    // Once the exact published package is present, the retired copy is redundant.
+    const live = record('0.1.0');
+    writePackage(live, manifest('0.1.0', 'published-skill'));
+    writeRegistry([live]);
+    const retired = join(live.path, '..', '.tmp-retired-999-stale');
+    mkdirSync(retired, { recursive: true });
+    writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.1.0', 'old-skill')));
+
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    expect(existsSync(retired)).toBe(false);
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('published-skill');
+  });
+
   it('uninstall prunes only its own secrets, even beside a dotted sibling id', async () => {
     const installed = record('0.1.0');
     writePackage(installed, settingsManifest('0.1.0'));
     const neighbour: InstalledLinkCodePlugin = {
       ...record('0.3.0'),
-      // Dots are legal inside id segments, so `arcbox/latex.pro` is a real neighbour whose keys
-      // would match a naive `arcbox/latex.` prefix; a corrupt manifest must not turn them into
-      // prunable orphans either.
+      // Dots are legal in ids, so this neighbour matches a naive `arcbox/latex.` secret prefix.
+      // Its corrupt manifest must not make those secrets look orphaned either.
       id: 'arcbox/latex.pro',
       path: pluginPackageDir('arcbox/latex.pro', '0.3.0'),
     };

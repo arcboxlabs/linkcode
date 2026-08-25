@@ -1,6 +1,4 @@
-import type { PluginMarketRefresh } from '@linkcode/client-core';
 import type { LinkCodeMarketplaceConfig, LinkCodePluginId } from '@linkcode/schema';
-import { refreshPluginMarketplace } from '@linkcode/sdk';
 import type { LinkCodeCatalogCardView, LinkCodeInstalledPluginRow } from '@linkcode/ui';
 import { LinkCodeCatalogSection, LinkCodeInstalledSection } from '@linkcode/ui';
 import { Card } from 'coss-ui/components/card';
@@ -148,20 +146,8 @@ function MarketplaceCatalog({
           searchQuery,
         );
 
-  // Keep this defensive merge for pre-wire-80 daemons that still return an empty 304 payload.
   const onRefresh = (): void => {
-    void mutate(
-      async (current): Promise<PluginMarketRefresh> => {
-        const { data: next } = await refreshPluginMarketplace({
-          marketplaceId: marketplace.id,
-        });
-        if (current !== undefined && next.notModified === true) {
-          return { ...next, releases: current.releases };
-        }
-        return next;
-      },
-      { revalidate: false },
-    ).catch(noop);
+    void mutate().catch(noop);
   };
 
   return (

@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { PluginAssetRequirementSchema, PluginAuthorSchema, PluginLinksSchema } from './plugin';
 
 const ID_SEGMENT_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+// MCP server names become provider-config keys, where `.` is a path separator that can reshape or
+// collide with another entry.
+const MCP_SERVER_NAME_RE = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const PACKAGE_PATH_SEGMENT_RE = /^[0-9A-Z][\w.-]*$/i;
 const WINDOWS_RESERVED_SEGMENT_RE = /^(?:aux|con|nul|prn|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const NUMERIC_IDENTIFIER_RE = /^\d+$/;
@@ -164,7 +167,12 @@ export type LinkCodePluginSettings = z.infer<typeof LinkCodePluginSettingsSchema
 
 const linkCodePluginMcpServerFields = {
   kind: z.literal('mcp-server'),
-  name: z.string().refine(isSafeIdSegment, 'Expected a safe lowercase server name'),
+  name: z
+    .string()
+    .refine(
+      (value) => value.length <= MAX_ID_SEGMENT_LENGTH && MCP_SERVER_NAME_RE.test(value),
+      'Expected a safe lowercase server name (letters, digits, _ or -; no dot)',
+    ),
   description: z.string().optional(),
   command: z.string().min(1),
   /** Package-relative entry point. When present, the host resolves it under the installed plugin

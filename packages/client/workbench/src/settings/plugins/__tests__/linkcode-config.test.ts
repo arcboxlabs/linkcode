@@ -11,7 +11,9 @@ const SETTINGS: LinkCodePluginSettings = {
   password: { type: 'password', secret: true, required: true },
   preset: { type: 'enum', enum: ['163', 'qq'], default: '163' },
   nickname: { type: 'string' },
-  maxBodyChars: { type: 'number', default: 8000 },
+  // Dotted on purpose: `.` is legal in a setting id, and it is the shape react-hook-form would
+  // otherwise read as a nested path. Form-value maps below key it as `body$max`.
+  'body.max': { type: 'number', default: 8000 },
   readonly: { type: 'boolean', default: false },
 };
 
@@ -20,7 +22,7 @@ describe('pluginConfigDefaults', () => {
     expect(
       pluginConfigDefaults(SETTINGS, {
         account: 'you@163.com',
-        maxBodyChars: 4000,
+        'body.max': 4000,
         readonly: true,
       }),
     ).toEqual({
@@ -28,7 +30,7 @@ describe('pluginConfigDefaults', () => {
       password: '',
       preset: '163',
       nickname: '',
-      maxBodyChars: '4000',
+      body$max: '4000',
       readonly: true,
     });
   });
@@ -49,9 +51,9 @@ describe('validatePluginConfigField', () => {
   });
 
   it('rejects a non-numeric number field, blank optional number passes', () => {
-    expect(validatePluginConfigField(SETTINGS.maxBodyChars, 'abc')).toBe('invalidNumber');
-    expect(validatePluginConfigField(SETTINGS.maxBodyChars, '42')).toBe(true);
-    expect(validatePluginConfigField(SETTINGS.maxBodyChars, '')).toBe(true);
+    expect(validatePluginConfigField(SETTINGS['body.max'], 'abc')).toBe('invalidNumber');
+    expect(validatePluginConfigField(SETTINGS['body.max'], '42')).toBe(true);
+    expect(validatePluginConfigField(SETTINGS['body.max'], '')).toBe(true);
   });
 
   it('always passes a boolean', () => {
@@ -69,7 +71,7 @@ describe('buildPluginConfigPatch', () => {
         password: 'secret',
         preset: 'qq',
         nickname: '',
-        maxBodyChars: '4000',
+        body$max: '4000',
         readonly: true,
       },
     );
@@ -77,7 +79,7 @@ describe('buildPluginConfigPatch', () => {
       account: 'you@163.com',
       password: 'secret',
       preset: 'qq',
-      maxBodyChars: 4000,
+      'body.max': 4000,
       readonly: true,
     });
     expect(patch.remove).toBeUndefined();
@@ -92,7 +94,7 @@ describe('buildPluginConfigPatch', () => {
         password: '',
         preset: '163',
         nickname: '',
-        maxBodyChars: '8000',
+        body$max: '8000',
         readonly: false,
       },
     );
@@ -122,16 +124,31 @@ describe('buildPluginConfigPatch', () => {
   it('stores a value equal to the manifest default as a removal, so upgrades can change it', () => {
     const patch = buildPluginConfigPatch(
       SETTINGS,
-      { preset: 'qq', maxBodyChars: 4000 },
+      { preset: 'qq', 'body.max': 4000 },
       {
-        ...pluginConfigDefaults(SETTINGS, { preset: 'qq', maxBodyChars: 4000 }),
+        ...pluginConfigDefaults(SETTINGS, { preset: 'qq', 'body.max': 4000 }),
         preset: '163',
-        maxBodyChars: '8000',
+        body$max: '8000',
       },
     );
 
     expect(patch.set).toBeUndefined();
-    expect(patch.remove).toEqual(['preset', 'maxBodyChars']);
+    expect(patch.remove).toEqual(['preset', 'body.max']);
+  });
+
+  it('carries a dotted setting id through the form key back to its real id', () => {
+    // RHF nested the raw dotted key and left its flat default stale, dropping the edit on save.
+    const patch = buildPluginConfigPatch(SETTINGS, { 'body.max': 4000 }, { body$max: '512' });
+
+    expect(patch.set).toEqual({ 'body.max': 512 });
+    expect(patch.remove).toBeUndefined();
+  });
+
+  it('ignores a nested form shape, which is what a raw dotted RHF name would produce', () => {
+    const nested = { body: { max: '512' } } as unknown as Parameters<
+      typeof buildPluginConfigPatch
+    >[2];
+    expect(buildPluginConfigPatch(SETTINGS, {}, nested)).toEqual({});
   });
 
   it('omits both sides of an empty patch', () => {

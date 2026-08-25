@@ -317,6 +317,15 @@ describe('LinkCode plugin package contracts', () => {
     },
   );
 
+  it('rejects a dotted mcp-server name, which would collide as a provider config key', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        components: [{ ...mailManifest.components[0], name: 'mail.server' }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects an mcp-server env binding to an undeclared setting', () => {
     expect(
       LinkCodePluginManifestSchema.safeParse({

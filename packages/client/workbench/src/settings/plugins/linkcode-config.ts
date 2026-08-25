@@ -4,12 +4,15 @@ import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /** Pure helpers for the manifest-driven plugin settings form. No React, no I/O. */
 
-/**
- * Form value shape: every control edits a string except `boolean` (a switch). Conversion to the
- * typed wire value happens in {@link buildPluginConfigPatch}. Secret (`password`) fields always
- * start blank — the masked read never returns them, and blank means "keep the stored value".
- */
+/** Form values use escaped keys and strings except booleans; secret fields start blank so an
+ * untouched secret keeps its stored value. */
 export type PluginConfigFormValues = Record<string, string | boolean>;
+
+/** Escape `.` because RHF treats it as a path separator; `$` is forbidden in setting ids and stays
+ * a literal path segment. */
+export function pluginConfigFormKey(fieldId: string): string {
+  return fieldId.replaceAll('.', '$');
+}
 
 /** Validation outcome tokens the form maps to translated messages. */
 export type PluginConfigFieldError = 'required' | 'invalidNumber';
@@ -20,9 +23,10 @@ export function pluginConfigDefaults(
 ): PluginConfigFormValues {
   const defaults: PluginConfigFormValues = {};
   for (const [fieldId, field] of Object.entries(settings)) {
+    const formKey = pluginConfigFormKey(fieldId);
     const stored = values[fieldId];
     if (field.type === 'boolean') {
-      defaults[fieldId] =
+      defaults[formKey] =
         typeof stored === 'boolean'
           ? stored
           : typeof field.default === 'boolean'
@@ -32,15 +36,15 @@ export function pluginConfigDefaults(
     }
     if (field.secret) {
       // Secret values never arrive over the wire; the blank input carries "keep as-is".
-      defaults[fieldId] = '';
+      defaults[formKey] = '';
       continue;
     }
     // `in` over indexed access: the masked read may omit keys the index-signature type claims exist.
     if (fieldId in values) {
-      defaults[fieldId] = String(values[fieldId]);
+      defaults[formKey] = String(values[fieldId]);
       continue;
     }
-    defaults[fieldId] = field.default === undefined ? '' : String(field.default);
+    defaults[formKey] = field.default === undefined ? '' : String(field.default);
   }
   return defaults;
 }
@@ -83,8 +87,10 @@ export function buildPluginConfigPatch(
   const set: Record<string, PluginConfigValue> = {};
   const remove: string[] = [];
   for (const [fieldId, field] of Object.entries(settings)) {
-    if (!(fieldId in form)) continue;
-    const raw = form[fieldId];
+    // The form is keyed by form key; the patch is keyed by setting id. This is the only crossing.
+    const formKey = pluginConfigFormKey(fieldId);
+    if (!(formKey in form)) continue;
+    const raw = form[formKey];
     if (field.type === 'boolean') {
       const typed = raw === true;
       if (field.default !== undefined && typed === field.default) {

@@ -29,13 +29,19 @@ export function pluginPackageDir(pluginId: string, version: string): string {
   return join(pluginsRoot(), ...safe, version);
 }
 
-/** Unique staging dir beside the package dir, so concurrent installs publish through one same-volume
- * `rename` without sharing a partially extracted archive. */
+/** Staging and retired-package siblings share this prefix so a boot sweep can recognize both. */
+export const PLUGIN_STAGING_PREFIX = '.tmp-';
+
+/** Retired packages use `${PLUGIN_STAGING_PREFIX}${PLUGIN_RETIRED_INFIX}...`; a boot sweep may need
+ * to restore them when a hard kill interrupts publishing. */
+export const PLUGIN_RETIRED_INFIX = 'retired-';
+
+/** Allocate staging beside the target for same-volume rename; create only the parent so failed
+ * installs do not leave an empty version directory. */
 export function makePluginTmpDir(pluginId: string, version: string): string {
-  const dir = pluginPackageDir(pluginId, version);
-  const parent = join(dir, '..');
-  mkdirSync(dir, { recursive: true });
-  return join(parent, `.tmp-${process.pid}-${version}-${randomUUID()}`);
+  const parent = join(pluginPackageDir(pluginId, version), '..');
+  mkdirSync(parent, { recursive: true });
+  return join(parent, `${PLUGIN_STAGING_PREFIX}${process.pid}-${version}-${randomUUID()}`);
 }
 
 /** Resolve product channel for callers that must not reach into the paths module's side effects. */

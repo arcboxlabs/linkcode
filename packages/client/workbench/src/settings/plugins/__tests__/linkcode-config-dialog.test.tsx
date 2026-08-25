@@ -30,7 +30,9 @@ const SETTINGS: LinkCodePluginSettings = {
     required: true,
   },
   preset: { type: 'enum', label: 'Provider preset', enum: ['163', 'qq'], default: '163' },
-  maxBodyChars: { type: 'number', label: 'Max body characters', default: 8000 },
+  // Dotted on purpose: react-hook-form reads `.` as a path separator, so this id is the one shape
+  // that silently dropped its value before `pluginConfigFormKey` escaped it.
+  'body.max': { type: 'number', label: 'Max body characters', default: 8000 },
   readonly: { type: 'boolean', label: 'Read-only', default: false },
 };
 
@@ -87,7 +89,8 @@ describe('LinkCodePluginConfigDialog', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       set: {
         account: 'new@163.com',
-        maxBodyChars: 4000,
+        // Keyed by the real setting id, not the escaped form key the input was registered under.
+        'body.max': 4000,
         readonly: true,
       },
     });
