@@ -24,7 +24,7 @@ import { extractFile, listPackage, statFile } from '@electron/asar';
  */
 import type { AgentKind } from '@linkcode/schema';
 import { keysLength } from 'foxts/property-count';
-import { AGENT_SDK_PACKAGE_PATHS } from '../src/build/agent-package-excludes';
+import { AGENT_SDK_PACKAGE_PATHS } from '../src/build/agent-package-excludes.ts';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;

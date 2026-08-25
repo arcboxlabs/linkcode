@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import type { AgentKind } from '@linkcode/schema';
 import crossSpawn from 'cross-spawn';
-import { agentFilesExcludes } from '../src/build/agent-package-excludes';
+import { agentFilesExcludes } from '../src/build/agent-package-excludes.ts';
 import { assertStagedConfigMatchesGenerated } from './package-config.mts';
 import { mergeUpdateFeeds } from './update-feed.mts';
 
