@@ -16,7 +16,7 @@ import { reauthenticateWithApple, signOutOfIdp } from './idp';
 export type AccountDeletionRevocation = 'completed' | 'failed' | 'not_applicable';
 
 export type AccountDeletionOutcome =
-  | { kind: 'completed'; revocation: AccountDeletionRevocation }
+  | { kind: 'completed'; siwaRevocation: AccountDeletionRevocation }
   | { kind: 'pending'; reference?: string }
   /** Reauthentication itself failed (wrong account, cancelled, expired) — the
    * account is untouched; PONR was never reached. */
@@ -29,7 +29,7 @@ export type AccountDeletionOutcome =
 
 const deletionResponseSchema = z.object({
   status: z.enum(['completed', 'pending']),
-  revocation: z.enum(['completed', 'failed', 'not_applicable']).optional(),
+  siwaRevocation: z.enum(['completed', 'failed', 'not_applicable']).optional(),
   reference: z.string().optional(),
 });
 
@@ -99,7 +99,10 @@ export async function deleteAccount(options: {
   if (parsed.data.status === 'pending') {
     return { kind: 'pending', reference: parsed.data.reference };
   }
-  return { kind: 'completed', revocation: parsed.data.revocation ?? 'not_applicable' };
+  return {
+    kind: 'completed',
+    siwaRevocation: parsed.data.siwaRevocation ?? 'not_applicable',
+  };
 }
 
 /**
