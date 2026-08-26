@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.26.1](https://github.com/arcboxlabs/linkcode/compare/v0.26.0...v0.26.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent-adapter,engine:** stream codex rollout reads and evict expired history caches ([#466](https://github.com/arcboxlabs/linkcode/issues/466)) ([fedc6ec](https://github.com/arcboxlabs/linkcode/commit/fedc6ec6ff505ded1dbeabea9bcd818b7a998ffb))
+* **pi:** preserve account model IDs with slashes ([#471](https://github.com/arcboxlabs/linkcode/issues/471)) ([6bb0633](https://github.com/arcboxlabs/linkcode/commit/6bb0633a5edbffe61b4244fa34b73179bd42b175))
+
 ## [0.26.0](https://github.com/arcboxlabs/linkcode/compare/v0.25.2...v0.26.0) (2026-08-24)
 
 
