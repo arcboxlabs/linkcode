@@ -103,11 +103,9 @@ export function createConversationStore(
   const seedToolIds = new Set<string>();
   /** Content key → seed user rows in transcript order plus the next unconsumed index. */
   const seedPromptRows = new Map<string, SeedPromptQueue>();
-  /** Seed rows carrying their own provider branch cursor; a merged echo never displaces one. */
-  const seedRowCursors = new Set<MessageId>();
   /** Host echo id → its consumed seed row; `trusted` = a provenance-checked fresh-run first
-   * prompt, the only content bind safe to drive cursor fills and rewind translation. */
-  const promptAliases = new Map<MessageId, { seededId: MessageId; trusted: boolean }>();
+   * prompt, the only content bind allowed to drive cursor fills and rewind translation. */
+  const promptAliases = new Map<MessageId, { row: UserMessageEvent; trusted: boolean }>();
   /** The transcript's first user row — the only row a fresh run's first prompt can be. */
   let firstUserRowId: MessageId | undefined;
   if (seed) {
@@ -124,7 +122,6 @@ export function createConversationStore(
           const entry = seedPromptRows.get(key);
           if (entry) entry.rows.push(event);
           else seedPromptRows.set(key, { rows: [event], next: 0 });
-          if (event.branchCursor !== undefined) seedRowCursors.add(event.messageId);
           firstUserRowId ??= event.messageId;
           break;
         }
@@ -143,52 +140,35 @@ export function createConversationStore(
   /** Highest receive seq already examined (not necessarily folded — covered ones may be cut). */
   let consumedSeq = 0;
 
-  /** Re-key an echo to its seed row for the in-place merge. Only a trusted bind may fill a
-   * cursor-less row's cursor; an ambiguous bind dedupes without touching cursors. */
-  const echoAsSeedRow = (
-    event: Extract<AgentEvent, { type: 'user-message' }>,
-    seededId: MessageId,
-    trusted: boolean,
-  ): AgentEvent =>
-    trusted && !seedRowCursors.has(seededId)
-      ? { ...event, messageId: seededId }
-      : { ...event, messageId: seededId, branchCursor: undefined };
-
-  /** Fold one prompt echo: an in-cut echo consumes a matching seed row and later same-id re-echoes
-   * merge into it (provider timestamp kept); unmatched echoes fold as live items. */
+  /** Fold one prompt echo. A bind grants display dedupe only — never content: an in-cut echo
+   * consuming its exact-content seed row is simply not re-folded. A trusted bind's cursor-bearing
+   * re-echo re-advances the seed row itself, so the fresh-run cursor lands without the echo ever
+   * writing blocks; every other echo folds as its own live item. */
   const advancePrompt = (
-    event: Extract<AgentEvent, { type: 'user-message' }>,
+    event: UserMessageEvent,
     seq: number,
     cleanBuffer: boolean,
     receivedAt?: number,
   ): void => {
     const alias = promptAliases.get(event.messageId);
     if (alias !== undefined) {
-      builder.advance(echoAsSeedRow(event, alias.seededId, alias.trusted));
+      const { row, trusted } = alias;
+      if (trusted && row.branchCursor === undefined && event.branchCursor !== undefined) {
+        builder.advance({ ...row, branchCursor: event.branchCursor });
+      }
       return;
     }
     if (seq <= uptoSeq) {
-      const exactSeedRow = takeSeedPrompt(seedPromptRows, event.content);
-      const seedRow =
-        exactSeedRow ??
-        (event.content.some((block) => block.type === 'image')
-          ? takeSeedPrompt(
-              seedPromptRows,
-              event.content.filter((block) => block.type !== 'image'),
-            )
-          : undefined);
-      if (seedRow !== undefined) {
-        const seededId = seedRow.messageId;
+      const row = takeSeedPrompt(seedPromptRows, event.content);
+      if (row !== undefined) {
         // A bare pre-binding echo alone proves nothing (resume/branch runs retain history behind
         // an async ref window); trust also needs uninterrupted fresh-run provenance and no wipe.
         const trusted =
           cleanBuffer &&
-          exactSeedRow !== undefined &&
           client.hasFreshSessionProvenance(sessionId) &&
           event.branchCursor === undefined &&
-          seededId === firstUserRowId;
-        promptAliases.set(event.messageId, { seededId, trusted });
-        builder.advance(echoAsSeedRow(event, seededId, trusted));
+          row.messageId === firstUserRowId;
+        promptAliases.set(event.messageId, { row, trusted });
         return;
       }
     }
@@ -216,7 +196,7 @@ export function createConversationStore(
         // missed cut renders stale until the next reseed — never truncates valid turns).
         const alias = promptAliases.get(event.messageId);
         builder.advance(
-          alias?.trusted ? { ...event, messageId: alias.seededId } : event,
+          alias?.trusted ? { ...event, messageId: alias.row.messageId } : event,
           receivedAt,
         );
         continue;

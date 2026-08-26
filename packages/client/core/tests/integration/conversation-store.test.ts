@@ -134,7 +134,9 @@ describe('createConversationStore', () => {
     close();
   });
 
-  it('enriches a lossy seeded prompt with its live image instead of appending a duplicate', async () => {
+  // A lossy provider row can never exact-match an attachment echo: the echo renders as its own
+  // message — attachments stay on it, the row keeps its cursor — instead of enriching the row.
+  it('renders a lossy seeded prompt and its attachment echo separately', async () => {
     const { client, send, close } = await harness();
     const livePrompt: AgentEvent = {
       type: 'user-message',
@@ -171,14 +173,20 @@ describe('createConversationStore', () => {
     });
 
     const messages = store.getSnapshot().items.filter((item) => item.kind === 'message');
-    expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(3);
     expect(messages[0]).toMatchObject({
       id: 'provider-prompt',
       role: 'user',
-      blocks: livePrompt.content,
+      blocks: [{ type: 'text', text: 'describe this image' }],
       branchCursor: 'provider-cursor',
     });
     expect(messages[1]).toMatchObject({ id: 'reply', role: 'assistant' });
+    expect(messages[2]).toMatchObject({
+      id: 'host-prompt',
+      role: 'user',
+      blocks: livePrompt.content,
+      branchCursor: 'live-cursor',
+    });
     close();
   });
 
@@ -404,13 +412,15 @@ describe('createConversationStore', () => {
 
     const store = createConversationStore(client, sessionId, {
       events: [
-        { event: userText('first prompt', 'provider-u1') },
+        { event: userText('first prompt', 'provider-u1'), ts: 1_700_000_000_000 },
         { event: agentText('reply', 'provider-reply') },
       ],
       uptoSeq: 3,
     });
     expect(userTexts(store)).toEqual(['first prompt']);
     expect(userCursors(store)).toEqual(['live-cursor']);
+    // The cursor fill must not disturb the provider timestamp or duplicate the item.
+    expect(store.getSnapshot().items[0].receivedAt).toBe(1_700_000_000_000);
     expect(store.getSnapshot().items).toHaveLength(2);
     close();
   });
