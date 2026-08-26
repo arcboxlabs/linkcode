@@ -12,6 +12,7 @@ import {
 } from './context';
 import {
   DAEMON_URL_SNAPSHOT_CHANNEL,
+  IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL,
   SETTINGS_SNAPSHOT_CHANNEL,
   systemIpcEvents,
   WINDOW_MAXIMIZED_CHANGED_CHANNEL,
@@ -74,6 +75,13 @@ export function bindElectronSystemIpc({
   };
   ipcMain.on(DAEMON_URL_SNAPSHOT_CHANNEL, handleDaemonUrlSnapshot);
 
+  // Same sendSync rationale: the composer's harness picker must not flash the full agent set
+  // before the first restricted-build render.
+  const handleIdentityRestrictionsSnapshot = (event: IpcMainEvent): void => {
+    event.returnValue = ctx.identity.restrictions();
+  };
+  ipcMain.on(IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL, handleIdentityRestrictionsSnapshot);
+
   const emitMaximizedState = (): void => {
     if (!window.isDestroyed()) {
       window.webContents.send(WINDOW_MAXIMIZED_CHANGED_CHANNEL, ctx.window.isMaximized());
@@ -91,6 +99,10 @@ export function bindElectronSystemIpc({
     for (const removeHandler of Object.values(removeHandlers)) removeHandler();
     ipcMain.removeListener(SETTINGS_SNAPSHOT_CHANNEL, handleSnapshot);
     ipcMain.removeListener(DAEMON_URL_SNAPSHOT_CHANNEL, handleDaemonUrlSnapshot);
+    ipcMain.removeListener(
+      IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL,
+      handleIdentityRestrictionsSnapshot,
+    );
     window.off('maximize', emitMaximizedState);
     window.off('unmaximize', emitMaximizedState);
     window.off('enter-full-screen', emitMaximizedState);

@@ -1,5 +1,14 @@
 // Client half of the frozen brand identity artifact v1 (publisher CONTRACT.md "Brand identity
 // artifact v1"). Validation only — derivation stays in the publisher; never reimplement it here.
+//
+// `AgentKind` is imported type-only, never as a value: this module is reached from
+// config-bundle.mts under plain Node (no bundler), and `@linkcode/schema`'s barrel re-exports a
+// directory (`./model`), which plain Node's ESM loader cannot resolve
+// (ERR_UNSUPPORTED_DIR_IMPORT). KNOWN_AGENT_KINDS below is hand-duplicated from
+// AgentKindSchema.options (packages/foundation/schema/src/model/primitives.ts) for the same
+// reason `CONFIG_PLATFORMS`/`CONFIG_CHANNELS` stay package-local — see CODE-618 plan notes on the
+// accepted drift risk.
+import type { AgentKind } from '@linkcode/schema';
 import type { ConfigBuildBundle } from './build-bundle';
 import { isRecord } from './contract';
 import type { ConfigChannel, ConfigPlatform } from './types';
@@ -13,8 +22,10 @@ export interface BrandIdentityProvenance {
 }
 
 /** Resolved build identity for exactly one brand/platform/channel target. Every field is final:
- * build tooling consumes it verbatim and never re-derives identity from the brand manifest. */
+ * build tooling consumes it verbatim and never re-derives identity from the brand manifest.
+ * `agents`/`services` are absent unless the brand restricts them — absent means unrestricted. */
 export interface BrandIdentityArtifact {
+  readonly agents?: readonly AgentKind[];
   readonly applicationId: string;
   readonly assetsPath: string;
   readonly brandId: string;
@@ -23,11 +34,12 @@ export interface BrandIdentityArtifact {
   readonly displayName: string;
   readonly platform: ConfigPlatform;
   readonly provenance: BrandIdentityProvenance;
+  readonly services?: readonly string[];
   readonly storageNamespace: string;
   readonly urlScheme: string;
 }
 
-const ARTIFACT_KEYS = new Set([
+const ARTIFACT_REQUIRED_KEYS = new Set([
   'applicationId',
   'assetsPath',
   'brandId',
@@ -39,9 +51,13 @@ const ARTIFACT_KEYS = new Set([
   'storageNamespace',
   'urlScheme',
 ]);
+const ARTIFACT_OPTIONAL_KEYS = new Set(['agents', 'services']);
 const PROVENANCE_KEYS = new Set(['manifestSchemaVersion', 'sourceGitSha']);
 
+const KNOWN_AGENT_KINDS = new Set<string>(['claude-code', 'codex', 'opencode', 'pi', 'grok-build']);
+
 const RE_BRAND_ID = /^[a-z][a-z0-9-]{0,62}$/;
+const RE_SERVICE_ID = /^[a-z][a-z0-9-]{0,62}$/;
 const RE_SOURCE_GIT_SHA = /^[0-9a-f]{40}$/;
 const RE_URL_SCHEME = /^[a-z][a-z0-9+.-]*$/;
 // Android application ids reject dashes and uppercase; Apple/desktop ids allow dashes.
@@ -63,15 +79,29 @@ function fail(message: string): never {
 
 function requireExactKeys(
   value: Record<string, unknown>,
-  allowed: ReadonlySet<string>,
+  required: ReadonlySet<string>,
   label: string,
+  optional: ReadonlySet<string> = new Set(),
 ): void {
   for (const key of Object.keys(value)) {
-    if (!allowed.has(key)) fail(`${label} contains unsupported field ${key}`);
+    if (!required.has(key) && !optional.has(key)) {
+      fail(`${label} contains unsupported field ${key}`);
+    }
   }
-  for (const key of allowed) {
+  for (const key of required) {
     if (!(key in value)) fail(`${label} is missing field ${key}`);
   }
+}
+
+function assertNonEmptyUniqueArray<T>(
+  value: unknown,
+  label: string,
+  assertItem: (item: unknown, index: number) => T,
+): T[] {
+  if (!Array.isArray(value) || value.length === 0) fail(`${label} must be a non-empty array`);
+  const items = value.map((item, index) => assertItem(item, index));
+  if (new Set(items).size !== items.length) fail(`${label} must not contain duplicates`);
+  return items;
 }
 
 function assertApplicationId(value: string, platform: ConfigPlatform, label: string): void {
@@ -119,7 +149,7 @@ export function assertBrandIdentityArtifact(
   value: unknown,
 ): asserts value is BrandIdentityArtifact {
   if (!isRecord(value)) fail('artifact must be an object');
-  requireExactKeys(value, ARTIFACT_KEYS, 'artifact');
+  requireExactKeys(value, ARTIFACT_REQUIRED_KEYS, 'artifact', ARTIFACT_OPTIONAL_KEYS);
   if (value.brandIdentityVersion !== BRAND_IDENTITY_VERSION) {
     fail('artifact.brandIdentityVersion is unsupported');
   }
@@ -157,6 +187,22 @@ export function assertBrandIdentityArtifact(
   }
   if (typeof sourceGitSha !== 'string' || !RE_SOURCE_GIT_SHA.test(sourceGitSha)) {
     fail('artifact.provenance.sourceGitSha must be a lowercase 40-hex commit');
+  }
+  if (value.agents !== undefined) {
+    assertNonEmptyUniqueArray(value.agents, 'artifact.agents', (item) => {
+      if (typeof item !== 'string' || !KNOWN_AGENT_KINDS.has(item)) {
+        fail(`artifact.agents contains unknown agent ${String(item)}`);
+      }
+      return item;
+    });
+  }
+  if (value.services !== undefined) {
+    assertNonEmptyUniqueArray(value.services, 'artifact.services', (item) => {
+      if (typeof item !== 'string' || !RE_SERVICE_ID.test(item)) {
+        fail(`artifact.services contains an invalid service id ${String(item)}`);
+      }
+      return item;
+    });
   }
 }
 

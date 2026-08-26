@@ -2,6 +2,7 @@ import type { Conversation } from '@linkcode/client-core';
 import { isRequestFailureReportedInConversation } from '@linkcode/client-core';
 import type {
   AgentInput,
+  AgentKind,
   ContentBlock,
   EffortLevel,
   QuestionOutcome,
@@ -113,6 +114,9 @@ function availableWorkspaceId(
 
 export interface WorkbenchProps {
   shellComponent?: WorkbenchShellComponent;
+  /** Build-time agent allowlist (CODE-618); `null`/absent means unrestricted. The desktop host
+   * threads this in from `systemBridge.identity.restrictions()` — this package stays IPC-free. */
+  allowedAgents?: readonly AgentKind[] | null;
 }
 
 /** A new-session workspace choice, tagged with the resolved workspace it was made against so a
@@ -128,6 +132,7 @@ interface NewSessionWorkspacePick {
  */
 export function Workbench({
   shellComponent: ShellComponent = DefaultWorkbenchShell,
+  allowedAgents = null,
 }: WorkbenchProps): React.ReactNode {
   const rootRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -184,6 +189,7 @@ export function Workbench({
         onWorkspacePick={setWorkspacePick}
         onClearError={() => setErrorMessage(null)}
         onError={handleError}
+        allowedAgents={allowedAgents}
       />
       <WorkbenchCommandPalette sessions={sessions} />
     </div>
@@ -199,6 +205,7 @@ interface WorkbenchSessionSurfaceProps {
   onWorkspacePick: (pick: NewSessionWorkspacePick) => void;
   onClearError: () => void;
   onError: (err: unknown) => void;
+  allowedAgents: readonly AgentKind[] | null;
 }
 
 function WorkbenchSessionSurface({
@@ -210,6 +217,7 @@ function WorkbenchSessionSurface({
   onWorkspacePick,
   onClearError,
   onError,
+  allowedAgents,
 }: WorkbenchSessionSurfaceProps): React.ReactNode {
   const tk = useTranslations('workbench.agentKind');
   const tComposer = useTranslations('workbench.composer');
@@ -247,7 +255,8 @@ function WorkbenchSessionSurface({
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const accountModels = useAccountModelOptions();
   const { data: providers } = useData(getProviderConfig, {});
-  const selectableHarnesses = providers === undefined ? null : selectableHarnessKinds(providers);
+  const selectableHarnesses =
+    providers === undefined ? null : selectableHarnessKinds(providers, allowedAgents);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state

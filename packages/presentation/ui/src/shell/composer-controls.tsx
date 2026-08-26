@@ -299,6 +299,9 @@ export function ModelSelectorMenu({
   const showsModel = harnesses.length > 0 || hasModels || selectedModelId !== null;
 
   if (!hasEfforts && !showsModel && harnesses.length === 0) return null;
+  // A single remaining harness (restricted build, CODE-618, or otherwise) is nothing to pick
+  // between — the picker must disappear rather than offer a menu with one inert entry.
+  const showsHarnessPicker = harnesses.length > 1;
   const selectorLabels: string[] = [];
   if (harness) selectorLabels.push(AGENT_LABELS[harness]);
   if (showsModel) selectorLabels.push(modelLabel);
@@ -311,6 +314,9 @@ export function ModelSelectorMenu({
         disabled={disabled}
         render={<Button className="shrink-0" size="sm" type="button" variant="ghost" />}
       >
+        {/* Kept at >0 (not the submenu's >1 threshold): the icon is the only harness signal once
+            the submenu disappears at exactly one selectable harness — including a standard build
+            where the user manually disabled every harness but one from Settings. */}
         {harness && harnesses.length > 0 ? <AgentIcon kind={harness} variant="brand" /> : null}
         {showsModel ? modelLabel : null}
         {hasEfforts ? (
@@ -325,7 +331,7 @@ export function ModelSelectorMenu({
         <ChevronDownIcon className="size-3 text-label-tertiary" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-56" side="top" sideOffset={8}>
-        {onSelectHarness && harnesses.length > 0 ? (
+        {onSelectHarness && showsHarnessPicker ? (
           <MenuSub>
             <MenuSubTrigger>
               <span>{t('harness')}</span>

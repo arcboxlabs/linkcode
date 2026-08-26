@@ -28,6 +28,10 @@ const listCloudHosts = (): Promise<CloudHost[]> => cloudDataBridge.listHosts();
 // The preload bridge implements CloudImSource verbatim; hand it to the provider as-is.
 const cloudImSource = cloudDataBridge.im;
 
+// Build-time snapshot (CODE-618): read once, like settings/store.ts's snapshot — it never
+// changes for the life of this process, so it need not be a React data source.
+const { allowedAgents } = systemBridge.identity.restrictions();
+
 export function DesktopApp(): React.ReactNode {
   const localeOverride = useDesktopSettingsStore((state) => state.localeOverride);
   const settingsOpen = useNavigationHistoryStore((state) => state.overlay === 'settings');
@@ -46,7 +50,7 @@ export function DesktopApp(): React.ReactNode {
           >
             <SessionNotifier present={presentDesktopNotification} />
             <OverlayUnderlay>
-              <Workbench shellComponent={DesktopWorkbenchShell} />
+              <Workbench shellComponent={DesktopWorkbenchShell} allowedAgents={allowedAgents} />
             </OverlayUnderlay>
             {/* Gated: Automations lists schedules over the data plane, so it mounts inside the gate. */}
             {automationsOpen ? <DesktopAutomationsView /> : null}

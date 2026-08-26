@@ -26,6 +26,7 @@ import * as Sentry from '@sentry/node';
 import type { Runtime } from 'effect';
 import { Cause, Context, Effect, Exit, Layer, Option } from 'effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { filterAgentRuntimes, restrictedAssetService } from './agent-restrictions';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
 import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
@@ -34,6 +35,7 @@ import { startCloudUplink } from './cloud/uplink';
 import type { DaemonConfig } from './config';
 import {
   chatWorkspaceRoot,
+  daemonAllowedAgents,
   daemonChannel,
   daemonProfile,
   databasePath,
@@ -186,7 +188,10 @@ async function main(): Promise<void> {
         config.customMcpServers ?? [],
       );
       const assets = new AssetManager();
-      const consentedAgents = consentedManagedAgents(assets);
+      const allowedAgents = daemonAllowedAgents();
+      const consentedAgents = consentedManagedAgents(assets).filter(
+        (kind) => allowedAgents === null || allowedAgents.includes(kind),
+      );
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
         yield* Effect.logInfo('Removed superseded managed assets', {
@@ -210,8 +215,12 @@ async function main(): Promise<void> {
         const version = assets.wantedVersionOf(id);
         return path && version ? { path, version } : undefined;
       });
-      // Not awaited: CLI probes are slow; listeners must bind without waiting.
-      const agentRuntimesReady = agentRuntimeProber.collect();
+      // Not awaited: CLI probes are slow; listeners must bind without waiting. Filtered so a
+      // restricted build never reports an excluded agent as available, however the probe actually
+      // found it (CODE-618).
+      const agentRuntimesReady = agentRuntimeProber
+        .collect()
+        .then((runtimes) => filterAgentRuntimes(runtimes, allowedAgents));
       const simSidecarPath = resolveSimSidecarPath();
       const simulators = simSidecarPath
         ? new SimulatorService(new SimSidecarClient(simSidecarPath))
@@ -249,6 +258,7 @@ async function main(): Promise<void> {
         yield* Effect.addFinalizer(() => finalize(() => simulatorMcp.close()));
       }
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
+        allowedAgents: allowedAgents ?? undefined,
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         simulators,
@@ -266,9 +276,14 @@ async function main(): Promise<void> {
         previewRoutes,
         browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',
         agentRuntimesReady,
-        assets,
+        // The wire path for a client-initiated `asset.ensure`; the daemon's own boot refresh below
+        // uses the unwrapped `assets` (it already filters its candidate kinds via `consentedAgents`).
+        assets: restrictedAssetService(assets, allowedAgents),
         // Lets the engine refresh (and push) the runtime snapshot after a managed install lands.
-        collectAgentRuntimes: () => agentRuntimeProber.collect(),
+        collectAgentRuntimes: () =>
+          agentRuntimeProber
+            .collect()
+            .then((runtimes) => filterAgentRuntimes(runtimes, allowedAgents)),
         // Spawn path for an interactive claude-code/codex login (managed/detected/SDK binary).
         resolveLoginBinary: (agent) =>
           agent === 'claude-code' || agent === 'codex'

@@ -3,6 +3,7 @@ import { NOTIFICATION_CLICKED_CHANNEL } from '@linkcode/ipc';
 import type { BrowserWindow } from 'electron';
 import { app, dialog, Notification, shell } from 'electron';
 import { applyThemePreference } from './appearance';
+import { AGENT_RESTRICTIONS } from './constants';
 import { resolveDaemonUrl } from './daemon-discovery';
 import { isDaemonManaged, retryDaemonSupervisor } from './daemon-supervisor';
 import { ensureDefaultPickerDirectory } from './default-picker-directory';
@@ -62,6 +63,9 @@ export function systemContextFor(win: BrowserWindow): SystemContext {
       resolveUrl: () => resolveDaemonUrl(),
       isManaged: () => isDaemonManaged(),
       retry: () => retryDaemonSupervisor(),
+    },
+    identity: {
+      restrictions: () => AGENT_RESTRICTIONS,
     },
     notifications: {
       notify({ title, body, clickToken }) {

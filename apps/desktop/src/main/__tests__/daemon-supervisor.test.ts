@@ -231,4 +231,31 @@ describe('daemon supervisor recovery', () => {
     ];
     expect(forkArgs[2].env?.LINKCODE_CHANNEL).toBe('development');
   });
+
+  it('leaves LINKCODE_ALLOWED_AGENTS unset on an unrestricted (default) build', async () => {
+    await startSupervisor();
+
+    const forkArgs = mocks.fork.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined> },
+    ];
+    expect(forkArgs[2].env?.LINKCODE_ALLOWED_AGENTS).toBeUndefined();
+  });
+
+  it('forwards the restricted agent allowlist to the daemon it spawns', async () => {
+    vi.stubEnv('MAIN_VITE_AGENT_RESTRICTIONS', JSON.stringify({ agents: ['pi'] }));
+    try {
+      await startSupervisor();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    const forkArgs = mocks.fork.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined> },
+    ];
+    expect(forkArgs[2].env?.LINKCODE_ALLOWED_AGENTS).toBe('pi');
+  });
 });

@@ -34,8 +34,13 @@ import {
  */
 export function ProvidersSettingsPanel({
   linkCodeGateway,
+  allowedAgents = null,
+  allowedServices = null,
 }: {
   linkCodeGateway?: LinkCodeGatewayAccess;
+  /** Restricted-brand allowlists (CODE-618); `null` (the default) means unrestricted. */
+  allowedAgents?: readonly AgentKind[] | null;
+  allowedServices?: readonly string[] | null;
 } = {}): React.ReactNode {
   const t = useTranslations('settings.providers');
   const {
@@ -180,6 +185,8 @@ export function ProvidersSettingsPanel({
                 <ServiceCatalogView
                   onPick={pickService}
                   linkCodeGatewayAvailable={linkCodeGateway !== undefined}
+                  allowedAgents={allowedAgents}
+                  allowedServices={allowedServices}
                 />
               </DialogPanel>
             </>

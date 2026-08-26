@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { AgentKindSchema } from '@linkcode/schema';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { describe, expect, it } from 'vitest';
 import fixture from '../__fixtures__/brand-identity-v1.json';
@@ -213,6 +214,90 @@ describe('parseBrandIdentityArtifact', () => {
         }),
       ),
     ).not.toThrow();
+  });
+});
+
+describe('agents/services (CODE-618)', () => {
+  it('accepts an artifact without either field', () => {
+    const identity = parseBrandIdentityArtifact(structuredClone(fixture));
+    expect(identity.agents).toBeUndefined();
+    expect(identity.services).toBeUndefined();
+  });
+
+  it('accepts a restricted artifact declaring both fields', () => {
+    const identity = parseBrandIdentityArtifact(
+      mutate((artifact) => {
+        artifact.agents = ['pi'];
+        artifact.services = ['linkcode-gateway'];
+      }),
+    );
+    expect(identity.agents).toEqual(['pi']);
+    expect(identity.services).toEqual(['linkcode-gateway']);
+  });
+
+  // brand-identity.ts hand-duplicates the agent-kind list as KNOWN_AGENT_KINDS (its bare-import
+  // shape keeps it loadable under plain Node ESM); this pins the copy to the real enum.
+  it('accepts every AgentKindSchema kind, catching hand-duplicated list drift', () => {
+    const identity = parseBrandIdentityArtifact(
+      mutate((artifact) => {
+        artifact.agents = [...AgentKindSchema.options];
+      }),
+    );
+    expect(identity.agents).toEqual(AgentKindSchema.options);
+  });
+
+  it('rejects an empty agents or services array', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = [];
+        }),
+      ),
+    ).toThrow('non-empty array');
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = [];
+        }),
+      ),
+    ).toThrow('non-empty array');
+  });
+
+  it('rejects an unknown agent kind', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = ['not-a-kind'];
+        }),
+      ),
+    ).toThrow('unknown agent');
+  });
+
+  it('rejects a malformed service id', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = ['Not_Valid'];
+        }),
+      ),
+    ).toThrow('invalid service id');
+  });
+
+  it('rejects duplicates in either array', () => {
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.agents = ['pi', 'pi'];
+        }),
+      ),
+    ).toThrow('duplicates');
+    expect(() =>
+      parseBrandIdentityArtifact(
+        mutate((artifact) => {
+          artifact.services = ['linkcode-gateway', 'linkcode-gateway'];
+        }),
+      ),
+    ).toThrow('duplicates');
   });
 });
 

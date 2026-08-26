@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { join, sep } from 'node:path';
 import process, { argv } from 'node:process';
+import { extractFile, listPackage, statFile } from '@electron/asar';
 /**
  * Post-pack assertions for the desktop release artifacts, run in CI right after electron-builder
  * (locally: `node scripts/verify-artifacts.mts <mac|win|linux>` from apps/desktop). Asserts: the
@@ -21,8 +22,9 @@ import process, { argv } from 'node:process';
  * at an existing file with a matching sha512; and the unpacked apps carry the bundled daemon and
  * PTY sidecar, so a build never ships a client with no host runtime (CODE-86/87).
  */
-import { extractFile, listPackage, statFile } from '@electron/asar';
+import type { AgentKind } from '@linkcode/schema';
 import { keysLength } from 'foxts/property-count';
+import { AGENT_SDK_PACKAGE_PATHS } from '../src/build/agent-package-excludes.ts';
 
 const RELEASE_DIR = 'release';
 const FEED_URL_LINE = /^ {2}- url: (.+)$/;
@@ -237,6 +239,42 @@ function verifyConfigBundle(resourceDir: string, asarPath: string, problems: str
   }
 }
 
+/**
+ * A restricted brand's package must not ship the excluded agents' SDKs (CODE-618 acceptance a).
+ * Reads the rendered bundle's declared `agents` — absent (the standard/unbranded build) skips
+ * this check entirely, matching today's behavior byte-for-byte. Path segments are matched exactly
+ * (not by prefix) so e.g. `@openai/codex-darwin-*` never false-positives against `@openai/codex`.
+ */
+function verifyNoRestrictedAgentPackages(
+  resourceDir: string,
+  asarPath: string,
+  problems: string[],
+): void {
+  const generated = readOrNull(join('generated', 'config-build-bundle.json'));
+  if (generated === null) return;
+  const bundle = JSON.parse(generated) as { agents?: unknown };
+  if (!Array.isArray(bundle.agents)) return;
+  const allowed = new Set(bundle.agents as AgentKind[]);
+  const excludedPaths = (
+    Object.entries(AGENT_SDK_PACKAGE_PATHS) as Array<[AgentKind, readonly string[]]>
+  )
+    .filter(([kind]) => !allowed.has(kind))
+    .flatMap(([, paths]) => paths);
+  if (excludedPaths.length === 0) return;
+  const entries = new Set(
+    listPackage(asarPath, { isPack: false }).map((raw) => {
+      const normalized = raw.replaceAll('\\', '/');
+      return normalized[0] === '/' ? normalized.slice(1) : normalized;
+    }),
+  );
+  for (const path of excludedPaths) {
+    const shipped = [...entries].some((entry) => entry === path || entry.startsWith(`${path}/`));
+    if (shipped) {
+      problems.push(`${resourceDir}/app.asar: restricted-brand package shipped: ${path}`);
+    }
+  }
+}
+
 /** The packed app must carry the host runtime: bundled daemon in the asar, sidecar beside it. */
 function verifyHostRuntime(resourceDir: string, problems: string[]): void {
   const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
@@ -397,9 +435,11 @@ async function main(): Promise<number> {
     ),
   );
   for (const resourceDir of expected.resourceDirs) {
+    const asarPath = join(RELEASE_DIR, resourceDir, 'app.asar');
     verifyHostRuntime(resourceDir, problems);
     verifyNativeBindings(platform, resourceDir, problems);
-    verifyConfigBundle(resourceDir, join(RELEASE_DIR, resourceDir, 'app.asar'), problems);
+    verifyConfigBundle(resourceDir, asarPath, problems);
+    verifyNoRestrictedAgentPackages(resourceDir, asarPath, problems);
   }
 
   if (problems.length > 0) {

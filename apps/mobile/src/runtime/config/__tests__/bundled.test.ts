@@ -23,6 +23,8 @@ describe('bundledConfigFromModule', () => {
     expect(bootstrap.platform).toBeNull();
     expect(bootstrap.remoteBaseUrl).toBeNull();
     expect(bootstrap.telemetryEndpoint).toBeNull();
+    expect(bootstrap.allowedAgents).toBeNull();
+    expect(bootstrap.allowedServices).toBeNull();
     expect(defaults).toEqual({});
     expect(definitions).toEqual({});
   });
@@ -44,7 +46,19 @@ describe('bundledConfigFromModule', () => {
       expect(defaults['app.displayName']).toBe('Acme Studio');
       expect(defaults['modules.terminal.enabled']).toBe(false);
       expect(definitions['app.displayName'].defaultValue).toBe('Acme Studio');
+      // Neither fixture declares agents/services — absent must stay absent (unrestricted).
+      expect(bootstrap.allowedAgents).toBeNull();
+      expect(bootstrap.allowedServices).toBeNull();
     }
+  });
+
+  it('carries a restricted bundle agents/services through as the allowlists', async () => {
+    const restricted = (await loadFixture('-ios')) as Record<string, unknown>;
+    restricted.agents = ['pi'];
+    restricted.services = ['linkcode-gateway'];
+    const { bootstrap } = bundledConfigFromModule({ bundle: restricted });
+    expect(bootstrap.allowedAgents).toEqual(['pi']);
+    expect(bootstrap.allowedServices).toEqual(['linkcode-gateway']);
   });
 
   it('rejects a desktop bundle instead of running it on mobile', async () => {

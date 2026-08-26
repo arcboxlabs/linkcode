@@ -38,9 +38,19 @@ export function accountModelOptions(
   return options;
 }
 
-/** Harnesses offered when creating a thread; missing config entries retain the enabled default. */
-export function selectableHarnessKinds(providers: ProvidersConfig): AgentKind[] {
-  return AgentKindSchema.options.filter((kind) => providers[kind]?.enabled ?? true);
+/**
+ * Harnesses offered when creating a thread; missing config entries retain the enabled default.
+ * `allowedAgents` narrows this further to a restricted brand's build-time allowlist (CODE-618) —
+ * `null`/absent means unrestricted, so an unbranded build's result is unaffected.
+ */
+export function selectableHarnessKinds(
+  providers: ProvidersConfig,
+  allowedAgents?: readonly AgentKind[] | null,
+): AgentKind[] {
+  const enabled = AgentKindSchema.options.filter((kind) => providers[kind]?.enabled ?? true);
+  if (allowedAgents == null) return enabled;
+  const allowed = new Set(allowedAgents);
+  return enabled.filter((kind) => allowed.has(kind));
 }
 
 /** `null` until both daemon-owned sources have loaded, so a picker never briefly offers a set that

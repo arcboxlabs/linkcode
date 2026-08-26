@@ -1,4 +1,5 @@
 import type {
+  AgentRestrictionsSnapshot,
   BrowserDownloadDone,
   BrowserShortcutAction,
   DesktopSettings,
@@ -81,5 +82,10 @@ export interface SystemBridge {
     onDownloadDone(cb: (result: BrowserDownloadDone) => void): () => void;
     /** Subscribe to app-owned shortcuts captured while a guest webview owns keyboard focus. */
     onShortcut(cb: (action: BrowserShortcutAction) => void): () => void;
+  };
+  identity: {
+    /** Synchronous boot snapshot of the build's agent/service allowlist — same rationale as
+     * `settings.snapshot`: the composer's harness picker needs it before first paint. */
+    restrictions(): AgentRestrictionsSnapshot;
   };
 }
