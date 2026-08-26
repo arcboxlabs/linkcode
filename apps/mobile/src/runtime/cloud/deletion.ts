@@ -73,10 +73,12 @@ export async function deleteAccount(options: {
       body: { idpToken, appleAuthorizationCode },
     });
   } catch {
-    // Ambiguous — the request may have landed past the point of no return.
-    // Treat it the same as an accepted-but-unfinished deletion: the account
-    // must be assumed gone from this point on (design.md §3.4).
-    return { kind: 'pending' };
+    // No response ever arrived — never report acceptance on a guess (D-23,
+    // reversing the original §3.4 "treat as pending" call). Retrying is
+    // always safe: the server's deletion CAS is idempotent, so if this
+    // request actually landed, retrying just observes `completed` without
+    // repeating any side effect.
+    return { kind: 'failed' };
   }
 
   if (response.error) {

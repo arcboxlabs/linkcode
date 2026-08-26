@@ -153,12 +153,12 @@ describe('deleteAccount', () => {
     expect(result).toEqual({ kind: 'pending', reference: 'ref-1' });
   });
 
-  it('treats a thrown network error as pending — never as failed', async () => {
+  it('treats a thrown network error as failed — never assumes acceptance', async () => {
     mocks.fetchAccount.mockRejectedValueOnce(new Error('offline'));
 
     const result = await deleteAccount({ isAppleAvailable: false });
 
-    expect(result).toEqual({ kind: 'pending' });
+    expect(result).toEqual({ kind: 'failed' });
   });
 
   it('treats an unparseable success response as pending rather than completed', async () => {
