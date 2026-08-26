@@ -16,6 +16,10 @@ export interface AgentCredential {
   /** This endpoint's id in the agent's own provider catalog, when it has one. Provider-routed
    * agents (opencode, pi) inject the credential under it instead of guessing a provider. */
   knownProvider?: string;
+  /** Endpoint params under the env names that provider entry reads them by. Present means the agent
+   * builds its own per-model URL, so `baseUrl` must not be injected — one URL cannot serve a
+   * provider whose models sit on different routes. */
+  providerEnv?: Record<string, string>;
   /** Extra environment for the agent process. */
   extraEnv?: Record<string, string>;
 }
@@ -24,11 +28,13 @@ export interface AgentCredential {
 export function readAgentCredential(config: StartOptions['config']): AgentCredential {
   if (!config) return {};
   const extraEnv = readStringRecord(config.extraEnv);
+  const providerEnv = readStringRecord(config.providerEnv);
   return {
     apiKey: readString(config.apiKey),
     authToken: readString(config.authToken),
     baseUrl: readString(config.baseUrl),
     knownProvider: readString(config.knownProvider),
+    ...(providerEnv && { providerEnv }),
     ...(extraEnv && { extraEnv }),
   };
 }

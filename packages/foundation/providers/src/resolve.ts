@@ -1,6 +1,7 @@
 import type { Account, AccountEndpoint, AccountProtocol, AgentKind } from '@linkcode/schema';
 import { AccountProtocolSchema } from '@linkcode/schema';
 import { never } from 'foxts/guard';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import type { EndpointService, ServiceVariant } from './catalog';
 import { endpointServiceById } from './catalog';
 import { fillTemplate, isTemplateFilled } from './template';
@@ -37,6 +38,9 @@ export type ResolvedBinding =
       baseUrl?: string;
       /** The endpoint's id in this agent's own provider catalog, when it has one. */
       knownProvider?: string;
+      /** Endpoint params under the env names this agent's provider entry reads them by. Present
+       * means the agent owns its per-model URL, so `baseUrl` must not be injected. */
+      providerEnv?: Record<string, string>;
     }
   | { tier: 'unavailable'; reason: BindingUnavailableReason };
 
@@ -95,9 +99,16 @@ function resolveService(
   for (const protocol of preferredProtocols(service, kind)) {
     const variant = service.variants[protocol];
     if (!variant) continue;
-    const baseUrl = fillTemplate(variant.baseUrl, account.endpointParams ?? {});
+    const params = account.endpointParams ?? {};
+    const baseUrl = fillTemplate(variant.baseUrl, params);
     if (!isTemplateFilled(baseUrl)) return { tier: 'unavailable', reason: 'endpoint-incomplete' };
-    return bind(kind, protocol, baseUrl, knownProviderFor(variant, kind));
+    return bind(
+      kind,
+      protocol,
+      baseUrl,
+      knownProviderFor(variant, kind),
+      providerEnvFor(variant, kind, params),
+    );
   }
   return { tier: 'unavailable', reason: 'protocol-unsupported' };
 }
@@ -133,8 +144,14 @@ function bind(
   protocol: AccountProtocol,
   baseUrl: string,
   knownProvider: string | undefined,
+  providerEnv?: Record<string, string>,
 ): ResolvedBinding {
-  const resolved = { protocol, baseUrl, ...(knownProvider !== undefined && { knownProvider }) };
+  const resolved = {
+    protocol,
+    baseUrl,
+    ...(knownProvider !== undefined && { knownProvider }),
+    ...(providerEnv !== undefined && { providerEnv }),
+  };
   switch (kind) {
     case 'claude-code':
       if (protocol === 'anthropic') return { tier: 'native', ...resolved };
@@ -161,6 +178,24 @@ function knownProviderFor(
   kind: AgentKind,
 ): string | undefined {
   return variant?.knownProvider?.[kind];
+}
+
+/** The variant's declared env names carrying this account's endpoint params, for agents that
+ * template their own per-model URL. Only the pinned-endpoint path skips it: a URL the user typed
+ * outranks whatever the agent's own catalog would build. */
+function providerEnvFor(
+  variant: ServiceVariant,
+  kind: AgentKind,
+  params: Record<string, string>,
+): Record<string, string> | undefined {
+  const mapping = variant.endpointEnv?.[kind];
+  if (!mapping) return undefined;
+  const env: Record<string, string> = {};
+  for (const [param, name] of Object.entries(mapping)) {
+    const value = params[param];
+    if (value !== undefined) env[name] = value;
+  }
+  return isObjectEmpty(env) ? undefined : env;
 }
 
 /**
