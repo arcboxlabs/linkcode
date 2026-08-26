@@ -50,7 +50,7 @@ export function DeleteAccountSection(): React.ReactNode {
       // Success never says "contact support" — a failed revocation is still
       // a successful deletion, just with a manual Apple follow-up
       // (design.md §3.4, TN3194).
-      if (outcome.siwaRevocation === 'failed') {
+      if (outcome.authorizationRevocation === 'failed') {
         Alert.alert(t('deleteRevocationFailedTitle'), t('deleteRevocationFailedMessage'));
       } else {
         Alert.alert(t('deleteCompleted'));

@@ -67,13 +67,13 @@ describe('deleteAccount', () => {
       authorizationCode: 'apple-code-1',
     });
     mocks.fetchAccount.mockResolvedValueOnce({
-      data: { status: 'completed', siwaRevocation: 'completed' },
+      data: { status: 'completed', authorizationRevocation: 'completed' },
       error: null,
     });
 
     const result = await deleteAccount({ isAppleAvailable: true });
 
-    expect(result).toEqual({ kind: 'completed', siwaRevocation: 'completed' });
+    expect(result).toEqual({ kind: 'completed', authorizationRevocation: 'completed' });
     expect(mocks.fetchAccount).toHaveBeenCalledWith(
       'https://api.linkcode.ai/account',
       expect.objectContaining({
@@ -85,13 +85,13 @@ describe('deleteAccount', () => {
 
   it('on the non-Apple branch, re-runs the browser sign-in and sends the request without an idpToken', async () => {
     mocks.fetchAccount.mockResolvedValueOnce({
-      data: { status: 'completed', siwaRevocation: 'not_applicable' },
+      data: { status: 'completed', authorizationRevocation: 'not_applicable' },
       error: null,
     });
 
     const result = await deleteAccount({ isAppleAvailable: false });
 
-    expect(result).toEqual({ kind: 'completed', siwaRevocation: 'not_applicable' });
+    expect(result).toEqual({ kind: 'completed', authorizationRevocation: 'not_applicable' });
     expect(mocks.signInToCloud).toHaveBeenCalledTimes(1);
     expect(mocks.reauthenticateWithApple).not.toHaveBeenCalled();
     expect(mocks.fetchAccount).toHaveBeenCalledWith(
