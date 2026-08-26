@@ -1,6 +1,6 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
 import { modelListSource } from '@linkcode/providers';
-import type { AccountSecret, WirePayload } from '@linkcode/schema';
+import type { AccountSecret, AgentKind, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -41,11 +41,25 @@ export class AgentRequestHandler {
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
     private readonly probeModels: ModelProbe = probeEndpointModels,
+    /** Restricted-brand allowlist (CODE-618); `null` (the default) is unrestricted. Gates
+     * `agent.catalog`, whose `startCatalog` spawns real agent processes for some kinds. */
+    private readonly allowedAgents: readonly AgentKind[] | null = null,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'agent.catalog':
+        if (this.allowedAgents !== null && !this.allowedAgents.includes(payload.agentKind)) {
+          return this.responder.reply(
+            payload.clientReqId,
+            Effect.fail(
+              new RequestError({
+                code: 'forbidden',
+                message: `${payload.agentKind}: not available in this build`,
+              }),
+            ),
+          );
+        }
         return this.responder.reply(
           payload.clientReqId,
           Effect.tryPromise({

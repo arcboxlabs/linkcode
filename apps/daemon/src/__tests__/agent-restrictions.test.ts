@@ -79,15 +79,39 @@ describe('restrictedAssetService', () => {
     expect(ensure).toHaveBeenCalledWith({ kind: 'tool', name: 'aigateway' });
   });
 
-  it('forwards statuses() and subscribe() untouched', () => {
-    const { assets, statuses, subscribe } = fakeAssets();
+  it('hides a disallowed agent asset from statuses()', () => {
+    const { assets, statuses } = fakeAssets();
+    statuses.mockReturnValue([
+      { id: { kind: 'agent', name: 'codex' } },
+      { id: { kind: 'agent', name: 'pi' } },
+      { id: { kind: 'tool', name: 'aigateway' } },
+    ]);
+    const restricted = restrictedAssetService(assets, ['pi']);
+
+    expect(restricted.statuses().map(({ id }) => id)).toEqual([
+      { kind: 'agent', name: 'pi' },
+      { kind: 'tool', name: 'aigateway' },
+    ]);
+  });
+
+  it('drops a disallowed agent asset from subscribe() events', () => {
+    const { assets, subscribe } = fakeAssets();
+    let emit: ((event: unknown) => void) | undefined;
+    subscribe.mockImplementation((listener: (event: unknown) => void) => {
+      emit = listener;
+      return noop;
+    });
     const restricted = restrictedAssetService(assets, ['pi']);
     const listener = vi.fn();
-
-    restricted.statuses();
     restricted.subscribe(listener);
 
-    expect(statuses).toHaveBeenCalledTimes(1);
-    expect(subscribe).toHaveBeenCalledWith(listener);
+    emit?.({ kind: 'failed', id: { kind: 'agent', name: 'codex' }, error: 'x' });
+    emit?.({ kind: 'failed', id: { kind: 'agent', name: 'pi' }, error: 'x' });
+    emit?.({ kind: 'failed', id: { kind: 'tool', name: 'aigateway' }, error: 'x' });
+
+    expect(listener.mock.calls.map(([event]) => (event as { id: ManagedAssetId }).id)).toEqual([
+      { kind: 'agent', name: 'pi' },
+      { kind: 'tool', name: 'aigateway' },
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { AgentKindSchema } from '@linkcode/schema';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { describe, expect, it } from 'vitest';
 import fixture from '../__fixtures__/brand-identity-v1.json';
@@ -232,6 +233,17 @@ describe('agents/services (CODE-618)', () => {
     );
     expect(identity.agents).toEqual(['pi']);
     expect(identity.services).toEqual(['linkcode-gateway']);
+  });
+
+  // brand-identity.ts hand-duplicates the agent-kind list as KNOWN_AGENT_KINDS (its bare-import
+  // shape keeps it loadable under plain Node ESM); this pins the copy to the real enum.
+  it('accepts every AgentKindSchema kind, catching hand-duplicated list drift', () => {
+    const identity = parseBrandIdentityArtifact(
+      mutate((artifact) => {
+        artifact.agents = [...AgentKindSchema.options];
+      }),
+    );
+    expect(identity.agents).toEqual(AgentKindSchema.options);
   });
 
   it('rejects an empty agents or services array', () => {

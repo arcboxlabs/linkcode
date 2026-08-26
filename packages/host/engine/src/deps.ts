@@ -22,8 +22,10 @@ import type { WorktreeStore } from './worktree/worktree-store';
 export interface EngineDeps {
   factory?: AdapterFactory;
   /** Restricted-brand agent allowlist (CODE-618); `undefined` (the default) is unrestricted.
-   * Enforced only at live-session start — a persisted session of an excluded kind stays readable;
-   * only starting a new run of it is refused (`SessionOrchestrator.startLive`). */
+   * Enforced where an adapter process could actually start — live-session start
+   * (`SessionOrchestrator.startLive`) and `agent.catalog` (`AgentRequestHandler`) — never at the
+   * bare factory used for history reads, so a persisted session of an excluded kind stays
+   * readable; only running it again is refused. */
   allowedAgents?: readonly AgentKind[];
   /** Read-only native plugin providers aggregated by the Engine plugin service. */
   pluginFactory?: PluginProviderAdapterFactory;

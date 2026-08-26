@@ -250,6 +250,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     responder,
     factory,
     deps.modelProbe,
+    deps.allowedAgents ?? null,
   );
   const browserRequests = new BrowserRequestHandler(transport, browserBroker);
   const pluginRequests = new PluginRequestHandler(transport, plugins, responder);

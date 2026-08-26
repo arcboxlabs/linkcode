@@ -65,6 +65,31 @@ describe('restricted-brand agent allowlist', () => {
     expect(h.adapters).toHaveLength(0);
   });
 
+  it('refuses agent.catalog for an excluded kind before any adapter is constructed', async () => {
+    const h = harness(
+      new InMemorySessionStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        allowedAgents: ['pi'],
+      },
+    );
+    await h.engine.start();
+
+    await h.inject({ kind: 'agent.catalog', clientReqId: 'r1', agentKind: 'codex' });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'r1',
+      code: 'forbidden',
+      message: 'codex: not available in this build',
+    });
+    expect(h.adapters).toHaveLength(0);
+  });
+
   it('starts a new session of an allowed kind normally', async () => {
     const h = harness(
       new InMemorySessionStore(),

@@ -20,9 +20,11 @@ export function filterAgentRuntimes(
 }
 
 /**
- * Restricted-brand managed-download gate (CODE-618): wraps the daemon's `AssetService` so a
- * client's `asset.ensure` for an excluded agent kind gets the same "cannot be installed here"
- * refusal `ManagedAssetService` already gives an unpinnable asset — no new failure path to learn.
+ * Restricted-brand managed-download gate (CODE-618): wraps the daemon's `AssetService` so an
+ * excluded agent's managed asset disappears from every surface — `statuses`/`subscribe` never
+ * mention it (keeping this wrapper consistent with `filterAgentRuntimes`'s `missing`), and a
+ * client's `asset.ensure` for it gets the same "cannot be installed here" refusal
+ * `ManagedAssetService` already gives an unpinnable asset — no new failure path to learn.
  * Tool assets (`kind: 'tool'`, e.g. aigateway) are never agent-gated. `null` (unrestricted) returns
  * `assets` unchanged.
  */
@@ -31,12 +33,14 @@ export function restrictedAssetService(
   allowedAgents: readonly AgentKind[] | null,
 ): AssetService {
   if (allowedAgents === null) return assets;
+  const excluded = (id: ManagedAssetId): boolean =>
+    id.kind === 'agent' && !allowedAgents.includes(id.name);
   return {
-    statuses: () => assets.statuses(),
-    subscribe: (listener) => assets.subscribe(listener),
-    ensure: (id: ManagedAssetId) =>
-      id.kind === 'agent' && !allowedAgents.includes(id.name)
-        ? Promise.resolve(undefined)
-        : assets.ensure(id),
+    statuses: () => assets.statuses().filter(({ id }) => !excluded(id)),
+    subscribe: (listener) =>
+      assets.subscribe((event) => {
+        if (!excluded(event.id)) listener(event);
+      }),
+    ensure: (id: ManagedAssetId) => (excluded(id) ? Promise.resolve(undefined) : assets.ensure(id)),
   };
 }

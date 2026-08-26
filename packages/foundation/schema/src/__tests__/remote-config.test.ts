@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AgentKindSchema } from '../model/primitives';
 import { ConfigBuildBundleSchema } from '../remote-config';
 
 // Schema-level fixture only: this file validates shape/consistency of ConfigBuildBundleSchema in
@@ -79,5 +80,15 @@ describe('ConfigBuildBundleSchema agents/services', () => {
 
   it('still fails closed on unknown top-level fields (regression)', () => {
     expect(() => ConfigBuildBundleSchema.parse({ ...validBundle(), extra: 1 })).toThrow();
+  });
+
+  // remote-config.ts hand-duplicates the agent-kind list (its bare-import-only shape keeps it
+  // loadable from build scripts under plain Node ESM); this pins the copy to the real enum.
+  it('accepts every AgentKindSchema kind, catching hand-duplicated list drift', () => {
+    const result = ConfigBuildBundleSchema.parse({
+      ...validBundle(),
+      agents: AgentKindSchema.options,
+    });
+    expect(result.agents).toEqual(AgentKindSchema.options);
   });
 });
