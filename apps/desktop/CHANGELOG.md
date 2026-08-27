@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.27.0](https://github.com/arcboxlabs/linkcode/compare/v0.26.1...v0.27.0) (2026-08-27)
+
+
+### Features
+
+* **providers:** resolve LinkCode Gateway as a Codex-native endpoint ([#477](https://github.com/arcboxlabs/linkcode/issues/477)) ([a79b917](https://github.com/arcboxlabs/linkcode/commit/a79b91709eef28386e1618afd2ffdec110f99ebe))
+
+
+### Bug Fixes
+
+* **client-core:** keep image prompts in place ([#464](https://github.com/arcboxlabs/linkcode/issues/464)) ([d46d560](https://github.com/arcboxlabs/linkcode/commit/d46d5602a106a7bd23497bd3fa267c30fe6aa7f1))
+
 ## [0.26.1](https://github.com/arcboxlabs/linkcode/compare/v0.26.0...v0.26.1) (2026-08-26)
 
 
