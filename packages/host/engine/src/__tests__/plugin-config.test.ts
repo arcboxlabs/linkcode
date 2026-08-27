@@ -77,6 +77,12 @@ describe('PluginConfigService', () => {
     );
     expect((emptySecretError as RequestError).code).toBe('invalid_request');
 
+    // Same authority for a required non-secret: '' would satisfy the membership check with no data.
+    const emptyValueError = await Effect.runPromise(
+      service.applyPatch('linkcode/mail', { set: { account: '' } }).pipe(Effect.flip),
+    );
+    expect((emptyValueError as RequestError).code).toBe('invalid_request');
+
     expect(store.getSettings('linkcode/mail')).toMatchObject({
       account: 'you@163.com',
       authcode: 's3cret',

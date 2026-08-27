@@ -53,11 +53,14 @@ export function validatePluginConfigPatch(
           `Invalid value for plugin setting ${fieldId}: expected ${field.type}`,
         );
       }
-      // The UI contract never sends a blank secret ("blank = keep"); an empty string would be
-      // stored in the vault and then read back as "configured". Reject it at the authority.
-      if (value === '' && field.secret === true) {
+      // '' passes the type check but carries no data, and the required check below only tests
+      // membership — so a non-UI caller could satisfy it with an empty string. Blank is "remove",
+      // never a value: reject at the authority (the UI already converts blanks to removals).
+      if (value === '') {
         throw new PluginConfigValidationError(
-          `Plugin setting ${fieldId} must not be an empty secret`,
+          field.secret === true
+            ? `Plugin setting ${fieldId} must not be an empty secret`
+            : `Plugin setting ${fieldId} must not be an empty value`,
         );
       }
     }
