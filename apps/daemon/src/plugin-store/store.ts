@@ -282,6 +282,26 @@ async function installExclusive(
     enabled: true,
     path: targetDir,
   };
+  // A leftover uninstall marker means the registry had already dropped the id when that
+  // uninstall's settings cleanup failed. Purge before this install re-registers the id, or the
+  // boot sweep would discard the marker unread and the inherited values would survive.
+  const tombstone = pluginUninstallTombstonePath(manifest.id);
+  if (existsSync(tombstone)) {
+    try {
+      savePluginConfigValues(manifest.id, {});
+      prunePluginSecrets(secrets, manifest.id);
+      rmSync(tombstone, { force: true });
+      logger.info(
+        { pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
+        'Purged settings left by a committed but unfinished uninstall',
+      );
+    } catch (error) {
+      logger.warn(
+        { error, pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
+        'Failed to purge settings left by an unfinished uninstall; the marker stays for the boot sweep',
+      );
+    }
+  }
   let installedManifest: LinkCodePluginManifest;
   let retiredDir: string | undefined;
   let published = false;
@@ -353,29 +373,10 @@ async function installExclusive(
     }
   }
   // Reconcile stored settings against the new manifest only after the install commits; a failure
-  // must not roll back a committed install, so it is logged and left for the next upgrade.
-  // A leftover uninstall marker means the previous uninstall committed but its settings cleanup
-  // never ran: the registry had already dropped the id, so this looks like a fresh install.
-  // Purge here — after this install registers the id again, the boot sweep would discard the
-  // marker unread ("still registered") and the inherited values would survive an uninstall.
-  const tombstone = pluginUninstallTombstonePath(manifest.id);
-  const hadPendingUninstall = existsSync(tombstone);
-  if (hadPendingUninstall) {
-    try {
-      savePluginConfigValues(manifest.id, {});
-      prunePluginSecrets(secrets, manifest.id);
-      logger.info(
-        { pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
-        'Purged settings left by a committed but unfinished uninstall',
-      );
-    } catch (error) {
-      logger.warn(
-        { error, pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
-        'Failed to purge settings left by an unfinished uninstall',
-      );
-    }
-    rmSync(tombstone, { force: true });
-  } else if (previousRecords.length > 0) {
+  // must not roll back a committed install, so it is logged and left for the next upgrade. The
+  // tombstone path above runs before the commit, so a pending-uninstall purge can never coexist
+  // with previous records here.
+  if (previousRecords.length > 0) {
     try {
       reconcileSettingsForManifest(installedManifest, secrets);
     } catch (error) {
