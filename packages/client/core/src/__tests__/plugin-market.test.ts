@@ -165,6 +165,7 @@ describe('LinkCodeClient plugin-market / plugin-config requests', () => {
         password: { type: 'password', secret: true, required: true },
       },
       values: { account: 'you@163.com' },
+      configuredSecrets: ['password'] as string[],
     } as const;
     transport.receive({
       kind: 'plugin-config.listed',
@@ -181,14 +182,14 @@ describe('LinkCodeClient plugin-market / plugin-config requests', () => {
     const pending = client.setLinkCodePluginConfig({
       pluginId: 'linkcode/mail',
       set: { preset: 'qq', readonly: true },
-      remove: ['maxBodyChars'],
+      remove: ['api.key'],
     });
     const request = lastRequest(transport);
     expect(request).toMatchObject({
       kind: 'plugin-config.set',
       pluginId: 'linkcode/mail',
       set: { preset: 'qq', readonly: true },
-      remove: ['maxBodyChars'],
+      remove: ['api.key'],
     });
 
     transport.receive({
@@ -196,11 +197,13 @@ describe('LinkCodeClient plugin-market / plugin-config requests', () => {
       replyTo: request.clientReqId,
       pluginId: 'linkcode/mail',
       values: { account: 'you@163.com', preset: 'qq', readonly: true },
+      configuredSecrets: ['password'],
     });
 
     await expect(pending).resolves.toEqual({
       pluginId: 'linkcode/mail',
       values: { account: 'you@163.com', preset: 'qq', readonly: true },
+      configuredSecrets: ['password'],
     });
     client.dispose();
   });

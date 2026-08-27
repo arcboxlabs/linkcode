@@ -43,6 +43,9 @@ export interface LinkCodePluginConfigDialogProps {
   settings: LinkCodePluginSettings;
   /** The masked read: non-secret values only; secret fields arrive absent and render blank. */
   values: Readonly<Record<string, PluginConfigValue>>;
+  /** Presence bits from the masked read: which secret fields hold a stored value. Undefined from an
+   * older daemon, which keeps the lenient "blank = keep" validation. */
+  configuredSecrets?: readonly string[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (patch: LinkCodePluginConfigPatch) => void;
@@ -54,6 +57,7 @@ export function LinkCodePluginConfigDialog({
   title,
   settings,
   values,
+  configuredSecrets,
   busy,
   onClose,
   onSubmit,
@@ -85,6 +89,9 @@ export function LinkCodePluginConfigDialog({
                 key={fieldId}
                 fieldId={fieldId}
                 field={field}
+                secretConfigured={
+                  configuredSecrets === undefined || configuredSecrets.includes(fieldId)
+                }
                 control={control}
                 register={register}
                 busy={busy}
@@ -108,12 +115,14 @@ export function LinkCodePluginConfigDialog({
 function ConfigField({
   fieldId,
   field,
+  secretConfigured,
   control,
   register,
   busy,
 }: {
   fieldId: string;
   field: LinkCodePluginSettingField;
+  secretConfigured: boolean;
   control: Control<PluginConfigFormValues>;
   register: UseFormRegister<PluginConfigFormValues>;
   busy: boolean;
@@ -130,7 +139,9 @@ function ConfigField({
     return (
       <div className="flex items-center justify-between gap-6">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="font-medium text-sm">{label}</span>
+          <span className="font-medium text-sm" id={`${formKey}-label`}>
+            {label}
+          </span>
           {field.description === undefined ? null : (
             <span className="text-muted-foreground text-xs">{field.description}</span>
           )}
@@ -143,6 +154,7 @@ function ConfigField({
               checked={switchField.value === true}
               disabled={busy}
               onCheckedChange={(checked) => switchField.onChange(checked)}
+              aria-labelledby={`${formKey}-label`}
             />
           )}
         />
@@ -151,7 +163,7 @@ function ConfigField({
   }
 
   const validate = (raw: string | boolean): true | string => {
-    const result = validatePluginConfigField(field, raw);
+    const result = validatePluginConfigField(field, raw, secretConfigured);
     return result === true ? true : t(`form.${result}`);
   };
 
@@ -189,7 +201,7 @@ function ConfigField({
           type={
             field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'
           }
-          placeholder={field.secret ? t('form.secretPlaceholder') : undefined}
+          placeholder={secretConfigured && field.secret ? t('form.secretPlaceholder') : undefined}
           disabled={busy}
         />
       )}

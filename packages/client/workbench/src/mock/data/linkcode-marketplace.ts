@@ -16,8 +16,9 @@ export interface MockLinkCodeCatalogEntry {
 }
 
 /** Catalog the mock serves for `plugin-market.refresh`: a settings-bearing MCP plugin (the echo
- * debug plugin's env surface, exercising every settings field type) and a skill-only plugin with
- * nothing to configure. */
+ * debug plugin's env surface, exercising every settings field type) and a skill-only plugin that
+ * the catalog boundary filters out — the mock mirrors the daemon, so it is never listed or
+ * installable. */
 export const SEED_LINKCODE_RELEASES: MockLinkCodeCatalogEntry[] = [
   {
     pluginId: 'linkcode/echo',

@@ -100,18 +100,21 @@ export interface PluginMarketRefresh {
 }
 
 /** One row of `plugin-config.listed`: a plugin's settings field schemas plus its masked values —
- * secret fields appear in `settings` but never in `values`. */
+ * secret fields appear in `settings` but never in `values`; `configuredSecrets` carries their
+ * presence bits (absent from older daemons, which clients read as "configured"). */
 export interface LinkCodePluginConfigView {
   id: LinkCodePluginId;
   version: LinkCodePluginVersion;
   settings: LinkCodePluginSettings;
   values: Record<string, PluginConfigValue>;
+  configuredSecrets?: string[];
 }
 
 /** The `plugin-config.updated` payload: the plugin's post-patch masked values. */
 export interface LinkCodePluginConfigUpdate {
   pluginId: LinkCodePluginId;
   values: Record<string, PluginConfigValue>;
+  configuredSecrets?: string[];
 }
 
 export type RandomUUID = () => string;

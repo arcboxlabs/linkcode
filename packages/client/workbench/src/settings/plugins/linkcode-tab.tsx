@@ -86,7 +86,13 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
       await mutateConfigs(
         (current) =>
           current?.map((view) =>
-            view.id === result.pluginId ? { ...view, values: result.values } : view,
+            view.id === result.pluginId
+              ? {
+                  ...view,
+                  values: result.values,
+                  configuredSecrets: result.configuredSecrets ?? view.configuredSecrets,
+                }
+              : view,
           ),
         { revalidate: false },
       );
@@ -133,6 +139,7 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
           title={editing.id}
           settings={editing.settings}
           values={editing.values}
+          configuredSecrets={editing.configuredSecrets}
           busy={save.isMutating}
           onClose={() => setConfiguring(null)}
           onSubmit={(patch) => {

@@ -37,6 +37,7 @@ import type {
 } from '@linkcode/schema';
 import {
   AGENT_INPUT_CAPABILITIES,
+  isProjectablePluginRelease,
   managedAgentAssetId,
   managedAssetIdEquals,
   managedAssetKey,
@@ -120,6 +121,12 @@ const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = 
   codex: 'high',
   'grok-build': 'high',
 };
+
+/** Mirror of the daemon's catalog/install boundary: releases with no projectable component (the
+ * skill-only seed) are neither listed nor installable. */
+const PROJECTABLE_SEED_LINKCODE_RELEASES = SEED_LINKCODE_RELEASES.filter((entry) =>
+  isProjectablePluginRelease(entry.release),
+);
 
 interface MockSession extends SessionInfo {
   /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
@@ -525,13 +532,13 @@ export class DevMockHost {
           kind: 'plugin-market.refreshed',
           replyTo: p.clientReqId,
           marketplaceId: p.marketplaceId,
-          releases: SEED_LINKCODE_RELEASES,
+          releases: PROJECTABLE_SEED_LINKCODE_RELEASES,
         });
         break;
       }
       case 'plugin-market.install': {
         await wait(CONTROL_LATENCY_MS);
-        const known = SEED_LINKCODE_RELEASES.some(
+        const known = PROJECTABLE_SEED_LINKCODE_RELEASES.some(
           (candidate) =>
             candidate.pluginId === p.release.pluginId &&
             candidate.release.manifest.version === p.release.version,
@@ -603,6 +610,7 @@ export class DevMockHost {
           replyTo: p.clientReqId,
           pluginId: p.pluginId,
           values: maskLinkCodePluginValues(settings, installed.values),
+          configuredSecrets: configuredLinkCodeSecrets(settings, installed.values),
         });
         break;
       }
@@ -1801,6 +1809,7 @@ export class DevMockHost {
     version: string;
     settings: LinkCodePluginSettings;
     values: Record<string, string | number | boolean>;
+    configuredSecrets: string[];
   }> {
     const views = [];
     for (const [pluginId, installed] of this.linkCodeInstalled) {
@@ -1811,6 +1820,7 @@ export class DevMockHost {
         version: installed.version,
         settings,
         values: maskLinkCodePluginValues(settings, installed.values),
+        configuredSecrets: configuredLinkCodeSecrets(settings, installed.values),
       });
     }
     return views;
@@ -1887,6 +1897,18 @@ function maskLinkCodePluginValues(
     if (fieldId in values) masked[fieldId] = values[fieldId];
   }
   return masked;
+}
+
+/** Mirror of the daemon's presence projection: ids of secret fields holding a stored value. */
+function configuredLinkCodeSecrets(
+  settings: LinkCodePluginSettings,
+  values: Readonly<Record<string, string | number | boolean>>,
+): string[] {
+  const ids: string[] = [];
+  for (const [fieldId, field] of Object.entries(settings)) {
+    if (field.secret === true && fieldId in values) ids.push(fieldId);
+  }
+  return ids;
 }
 
 /** Mirror of the daemon's masked projection: env/header values never reach the client. */

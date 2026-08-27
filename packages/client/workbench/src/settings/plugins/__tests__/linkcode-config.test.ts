@@ -46,8 +46,11 @@ describe('validatePluginConfigField', () => {
     expect(validatePluginConfigField(SETTINGS.account, 'you@163.com')).toBe(true);
   });
 
-  it('never rejects a blank secret — blank means keep the stored value', () => {
+  it('treats a blank secret as keep only when a value is already configured', () => {
     expect(validatePluginConfigField(SETTINGS.password, '')).toBe(true);
+    expect(validatePluginConfigField(SETTINGS.password, '', true)).toBe(true);
+    // A newly installed plugin has no stored secret to keep — blank is missing, not keep.
+    expect(validatePluginConfigField(SETTINGS.password, '', false)).toBe('required');
   });
 
   it('rejects a non-numeric number field, blank optional number passes', () => {

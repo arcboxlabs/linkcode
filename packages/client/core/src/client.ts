@@ -463,6 +463,7 @@ export class LinkCodeClient {
         this.pending.resolve('pluginConfigUpdate', p.replyTo, {
           pluginId: p.pluginId,
           values: p.values,
+          configuredSecrets: p.configuredSecrets,
         });
         break;
       case 'config.probe-models.result':
