@@ -44,11 +44,41 @@ const INDEX = {
             id: 'arcbox/latex',
             version: '1.2.0',
             keywords: [],
-            components: [{ kind: 'skill', name: 'latex', entry: 'skills/latex/SKILL.md' }],
+            components: [
+              { kind: 'mcp-server', name: 'latex', command: 'node', entry: 'dist/index.js' },
+            ],
             assets: [],
           },
           artifact: {
             urls: ['releases/arcbox-latex-1.2.0.tgz'],
+            integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+            format: 'tgz',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/** A release with nothing the host can project: no mcp-server component, so installing it would
+ * report success while providing no functionality. Filtered at the catalog/install boundary. */
+const SKILL_ONLY_INDEX = {
+  ...INDEX,
+  plugins: [
+    {
+      id: 'linkcode/notes',
+      releases: [
+        {
+          manifest: {
+            manifestVersion: 1,
+            id: 'linkcode/notes',
+            version: '0.2.0',
+            keywords: [],
+            components: [{ kind: 'skill', name: 'notes', entry: 'skills/notes/SKILL.md' }],
+            assets: [],
+          },
+          artifact: {
+            urls: ['releases/notes-0.2.0.tgz'],
             integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
             format: 'tgz',
           },
@@ -277,5 +307,23 @@ describe('DaemonLinkCodeMarketplaceService.resolveRelease', () => {
     ]) {
       expect(service.resolveRelease(identity)).toBeUndefined();
     }
+  });
+
+  it('hides a skill-only release from the catalog and refuses to resolve it for install', async () => {
+    const fetchIndex = vi.fn(() =>
+      Promise.resolve(fakeResponse(200, JSON.stringify(SKILL_ONLY_INDEX))),
+    );
+    const service = new DaemonLinkCodeMarketplaceService(MARKETPLACES, fetchIndex);
+
+    const result = await service.refresh('linkcode-official');
+
+    expect(result.releases).toEqual([]);
+    expect(
+      service.resolveRelease({
+        marketplaceId: 'linkcode-official',
+        pluginId: 'linkcode/notes',
+        version: '0.2.0',
+      }),
+    ).toBeUndefined();
   });
 });

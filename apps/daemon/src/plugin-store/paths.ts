@@ -31,6 +31,12 @@ export const PLUGIN_STAGING_PREFIX = '.tmp-';
  * to restore them when a hard kill interrupts publishing. */
 export const PLUGIN_RETIRED_INFIX = 'retired-';
 
+/** Marks a committed uninstall whose settings cleanup (config.json + vault) has not finished; the
+ * boot sweep retries the cleanup, or discards the marker when the plugin is still registered. */
+export function pluginUninstallTombstonePath(pluginId: string): string {
+  return join(pluginsRoot(), `.uninstall-${pluginId.replaceAll(RE_PATH_SEP, '~')}.json`);
+}
+
 /** Allocate staging beside the target for same-volume rename; create only the parent so failed
  * installs do not leave an empty version directory. */
 export function makePluginTmpDir(pluginId: string, version: string): string {

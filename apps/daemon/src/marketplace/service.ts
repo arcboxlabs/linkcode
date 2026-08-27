@@ -12,7 +12,11 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fetchWithSystemProxy } from '@linkcode/assets';
-import type { LinkCodeMarketplaceService, MarketplaceRefreshResult } from '@linkcode/engine';
+import type {
+  LinkCodeMarketplaceService,
+  MarketplaceCatalogEntry,
+  MarketplaceRefreshResult,
+} from '@linkcode/engine';
 import type {
   LinkCodeMarketplaceConfigList,
   LinkCodeMarketplaceIndexReader,
@@ -21,6 +25,7 @@ import type {
   LinkCodePluginRelease,
 } from '@linkcode/schema';
 import {
+  isProjectablePluginRelease,
   LinkCodeMarketplaceIndexReaderSchema,
   LinkCodeMarketplaceRefreshStateSchema,
 } from '@linkcode/schema';
@@ -139,7 +144,9 @@ export class DaemonLinkCodeMarketplaceService implements LinkCodeMarketplaceServ
     const release = plugin?.releases.find(
       (candidate) => candidate.manifest.version === identity.version,
     );
-    if (release === undefined) return undefined;
+    // Same boundary as the catalog filter: a release with nothing the host can project (skill-only,
+    // or gated on unconsumed manifest assets) must not install "successfully" into a no-op.
+    if (release === undefined || !isProjectablePluginRelease(release)) return undefined;
     return {
       ...release,
       artifact: {
@@ -180,9 +187,26 @@ function parseIndex(body: string): LinkCodeMarketplaceIndexReader {
 function flattenReleases(
   index: LinkCodeMarketplaceIndexReader,
 ): MarketplaceRefreshResult['releases'] {
-  return index.plugins.flatMap((plugin) =>
-    plugin.releases.map((release) => ({ pluginId: plugin.id, release })),
-  );
+  const entries: MarketplaceCatalogEntry[] = [];
+  for (const plugin of index.plugins) {
+    for (const release of plugin.releases) {
+      if (!isProjectablePluginRelease(release)) {
+        // Deliberate, steady-state filtering: info would spam every refresh for marketplaces that
+        // legitimately carry skill-only releases.
+        logger.debug(
+          {
+            pluginId: plugin.id,
+            version: release.manifest.version,
+            operation: 'marketplace.release.filter',
+          },
+          'Hiding a marketplace release with no projectable component (skill projection and manifest assets are not supported yet)',
+        );
+        continue;
+      }
+      entries.push({ pluginId: plugin.id, release });
+    }
+  }
+  return entries;
 }
 
 function readRefreshState(marketplaceId: string): LinkCodeMarketplaceRefreshState | undefined {

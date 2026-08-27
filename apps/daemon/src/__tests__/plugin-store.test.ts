@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   InstalledLinkCodePlugin,
   LinkCodePluginManifest,
@@ -15,7 +15,14 @@ import type {
 } from '@linkcode/schema';
 import { wait } from 'foxts/wait';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { makePluginTmpDir, pluginPackageDir, pluginRegistryPath } from '../plugin-store/paths';
+import { loadPluginConfigValues } from '../config';
+import {
+  makePluginTmpDir,
+  pluginPackageDir,
+  pluginRegistryPath,
+  pluginsRoot,
+  pluginUninstallTombstonePath,
+} from '../plugin-store/paths';
 import { DaemonLinkCodePluginStore } from '../plugin-store/store';
 import { createInMemoryVault } from './fixtures/in-memory-vault';
 
@@ -343,12 +350,14 @@ describe('DaemonLinkCodePluginStore', () => {
   it('restores a retired package only to its exact recorded version', () => {
     const legacy = record('0.1.0');
     const live = record('0.2.0');
+    // Both versions are really on disk, so the sweep must touch neither except the 0.2.0 restore.
+    writePackage(legacy, manifest('0.1.0', 'legacy-skill'));
     writeRegistry([legacy, live]);
     const retired = join(live.path, '..', '.tmp-retired-999-versioned');
     mkdirSync(retired, { recursive: true });
     writeFileSync(join(retired, 'manifest.json'), JSON.stringify(manifest('0.2.0', 'live-skill')));
     expect([existsSync(legacy.path), existsSync(live.path), existsSync(retired)]).toEqual([
-      false,
+      true,
       false,
       true,
     ]);
@@ -356,10 +365,11 @@ describe('DaemonLinkCodePluginStore', () => {
     const store = new DaemonLinkCodePluginStore(createInMemoryVault());
 
     expect([existsSync(legacy.path), existsSync(live.path), existsSync(retired)]).toEqual([
-      false,
+      true,
       true,
       false,
     ]);
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('live-skill');
     expect(store.get('arcbox/latex')?.installed.version).toBe('0.2.0');
   });
 
@@ -488,6 +498,224 @@ describe('DaemonLinkCodePluginStore', () => {
     expect(store.getSettings('arcbox/latex')).toEqual({
       account: 'old@example.com',
       authcode: 'old-secret',
+    });
+  });
+
+  it('blocks install and uninstall when the registry is malformed, leaving it untouched', async () => {
+    const live = record('0.1.0');
+    writePackage(live, manifest('0.1.0'));
+    writeRegistry([live]);
+    writeFileSync(pluginRegistryPath(), '{corrupted');
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(manifest('0.2.0')));
+    });
+    const release = {
+      manifest: manifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    // A degraded read must never participate in an overwrite: both mutations fail closed.
+    await expect(store.install(release, 'linkcode-official')).rejects.toThrow();
+    await expect(store.uninstall('arcbox/latex')).rejects.toThrow();
+
+    expect(readFileSync(pluginRegistryPath(), 'utf8')).toBe('{corrupted');
+    expect(existsSync(pluginPackageDir('arcbox/latex', '0.2.0'))).toBe(false);
+    expect(existsSync(live.path)).toBe(true);
+  });
+
+  it('refuses mutations when a registry record points outside the store', async () => {
+    const escaped = { ...record('0.1.0'), path: join(dirname(pluginsRoot()), 'escaped-package') };
+    mkdirSync(escaped.path, { recursive: true });
+    writeFileSync(join(escaped.path, 'manifest.json'), JSON.stringify(manifest('0.1.0')));
+    writeRegistry([escaped]);
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    // Reads degrade (the record is dropped); mutations fail closed and never touch the path.
+    expect(store.list()).toEqual([]);
+    await expect(store.uninstall('arcbox/latex')).rejects.toThrow('Invalid plugin install record');
+
+    expect(existsSync(escaped.path)).toBe(true);
+  });
+
+  it('restores the retired package when the registry write fails during uninstall', async () => {
+    const live = record('0.2.0');
+    writePackage(live, manifest('0.2.0', 'live-skill'));
+    writeRegistry([live]);
+    mocks.renameFailureDestination = pluginRegistryPath();
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    await expect(store.uninstall('arcbox/latex')).rejects.toThrow('injected rename failure');
+
+    expect(store.get('arcbox/latex')?.manifest.components[0]?.name).toBe('live-skill');
+    expect(JSON.parse(readFileSync(pluginRegistryPath(), 'utf8'))).toMatchObject([
+      { id: 'arcbox/latex', version: '0.2.0' },
+    ]);
+    expect(readdirSync(join(live.path, '..')).filter((name) => name.startsWith('.tmp-'))).toEqual(
+      [],
+    );
+    expect(readdirSync(pluginsRoot()).filter((name) => name.startsWith('.uninstall-'))).toEqual([]);
+  });
+
+  it('retries a failed settings cleanup at boot via the uninstall marker', async () => {
+    const installed = record('0.1.0');
+    writePackage(installed, settingsManifest('0.1.0'));
+    writeRegistry([installed]);
+    const baseVault = createInMemoryVault();
+    const store = new DaemonLinkCodePluginStore(baseVault);
+    await store.setSettings('arcbox/latex', {
+      set: { account: 'a@example.com', authcode: 'secret-a' },
+    });
+    let failReplaceAll = true;
+    const flakyVault = {
+      ...baseVault,
+      namespace(name: Parameters<typeof baseVault.namespace>[0]) {
+        const secrets = baseVault.namespace(name);
+        if (name !== 'plugin') return secrets;
+        return {
+          ...secrets,
+          replaceAll(entries: ReadonlyMap<string, string>) {
+            if (failReplaceAll) {
+              failReplaceAll = false;
+              throw new Error('vault write failed');
+            }
+            secrets.replaceAll(entries);
+          },
+        };
+      },
+    };
+
+    // The registry commits; the vault failure must not fail the uninstall — the marker retries.
+    await new DaemonLinkCodePluginStore(flakyVault).uninstall('arcbox/latex');
+
+    expect(store.get('arcbox/latex')).toBeUndefined();
+    expect(loadPluginConfigValues('arcbox/latex')).toEqual({});
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBe('secret-a');
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(true);
+
+    // Construction runs the boot sweep, which retries the cleanup and clears the marker.
+    expect(new DaemonLinkCodePluginStore(baseVault)).toBeDefined();
+
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBeUndefined();
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(false);
+  });
+
+  it('rejects settings writes that violate the manifest field schemas', () => {
+    const installed = record('0.1.0');
+    writePackage(installed, settingsManifest('0.1.0'));
+    writeRegistry([installed]);
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    expect(() => store.setSettings('arcbox/latex', { set: { account: 42 } })).toThrow(
+      'Invalid value for plugin setting account',
+    );
+    expect(() => store.setSettings('arcbox/latex', { set: { nickname: 'x' } })).toThrow(
+      'Unknown plugin setting: nickname',
+    );
+    // The UI contract never sends a blank secret ("blank = keep"); the daemon refuses to store one.
+    expect(() => store.setSettings('arcbox/latex', { set: { authcode: '' } })).toThrow(
+      'must not be an empty secret',
+    );
+
+    expect(store.getSettings('arcbox/latex')).toEqual({});
+  });
+
+  it('rejects a patch that leaves a required setting without any value', () => {
+    const installed = record('0.1.0');
+    const requiredManifest = settingsManifest('0.1.0');
+    requiredManifest.settings = {
+      ...requiredManifest.settings,
+      account: { type: 'string', required: true },
+      authcode: { type: 'password', secret: true, required: true },
+    };
+    writePackage(installed, requiredManifest);
+    writeRegistry([installed]);
+    const store = new DaemonLinkCodePluginStore(createInMemoryVault());
+
+    // A blank secret is "keep" only when a value exists; nothing is stored yet.
+    expect(() => store.setSettings('arcbox/latex', { set: { account: 'a@example.com' } })).toThrow(
+      'Missing required plugin setting: authcode',
+    );
+
+    store.setSettings('arcbox/latex', {
+      set: { account: 'a@example.com', authcode: 'secret-a' },
+    });
+    expect(() => store.setSettings('arcbox/latex', { remove: ['account'] })).toThrow(
+      'Missing required plugin setting: account',
+    );
+  });
+
+  it('reconciles stored settings against the new manifest on upgrade', async () => {
+    // v0.1.0: plain + legacy in config.json, creds/quota/verbose/retained in the vault. v0.2.0
+    // drops legacy, flips creds/quota/verbose to non-secret, turns plain into a secret password
+    // field, and keeps retained a secret number.
+    const v1: LinkCodePluginManifest = {
+      ...manifest('0.1.0'),
+      settings: {
+        plain: { type: 'string' },
+        legacy: { type: 'string' },
+        creds: { type: 'password', secret: true },
+        quota: { type: 'number', secret: true },
+        verbose: { type: 'boolean', secret: true },
+        retained: { type: 'number', secret: true },
+      },
+    };
+    const v2: LinkCodePluginManifest = {
+      ...manifest('0.2.0'),
+      settings: {
+        plain: { type: 'password', secret: true },
+        creds: { type: 'string' },
+        quota: { type: 'number' },
+        verbose: { type: 'boolean' },
+        retained: { type: 'number', secret: true },
+      },
+    };
+    const installed = record('0.1.0');
+    writePackage(installed, v1);
+    writeRegistry([installed]);
+    const vault = createInMemoryVault();
+    const store = new DaemonLinkCodePluginStore(vault);
+    await store.setSettings('arcbox/latex', {
+      set: { plain: 'p', legacy: 'l', creds: 'c-value', quota: 42, verbose: true, retained: 7 },
+    });
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(v2));
+    });
+    const release = {
+      manifest: v2,
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+
+    await store.install(release, 'linkcode-official');
+
+    // non-secret → secret moved into the vault; secret → non-secret landed in config.json with its
+    // declared type restored from the vault's string form; the removed field is gone from both.
+    expect(loadPluginConfigValues('arcbox/latex')).toEqual({
+      creds: 'c-value',
+      quota: 42,
+      verbose: true,
+    });
+    expect(vault.refs.get('plugin:arcbox/latex/plain')).toBe('p');
+    // A number secret that stays secret keeps its (stringified) vault value across the upgrade.
+    expect(vault.refs.get('plugin:arcbox/latex/retained')).toBe('7');
+    expect(vault.refs.get('plugin:arcbox/latex/creds')).toBeUndefined();
+    expect(vault.refs.get('plugin:arcbox/latex/quota')).toBeUndefined();
+    expect(vault.refs.get('plugin:arcbox/latex/verbose')).toBeUndefined();
+    expect(vault.refs.get('plugin:arcbox/latex/legacy')).toBeUndefined();
+    expect(store.getSettings('arcbox/latex')).toEqual({
+      plain: 'p',
+      creds: 'c-value',
+      quota: 42,
+      verbose: true,
+      retained: '7',
     });
   });
 });

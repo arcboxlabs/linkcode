@@ -22,18 +22,23 @@ import type {
   PluginConfigPatch,
   PluginConfigValue,
 } from '@linkcode/engine';
+import { validatePluginConfigPatch } from '@linkcode/engine';
 import type {
   InstalledLinkCodePlugin,
   LinkCodePluginManifest,
   LinkCodePluginRelease,
+  LinkCodePluginSettingField,
   ManagedAssetArtifact,
 } from '@linkcode/schema';
 import {
   InstalledLinkCodePluginSchema,
   isAllowedMarketplaceUrl,
+  isValidPluginSettingValue,
+  LinkCodePluginIdSchema,
   LinkCodePluginManifestReaderSchema,
 } from '@linkcode/schema';
 import { extractErrorMessage } from 'foxts/extract-error-message';
+import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { extract as tarExtract } from 'tar';
 import { loadPluginConfigValues, pluginSecretStore, savePluginConfigValues } from '../config';
@@ -46,6 +51,7 @@ import {
   pluginPackageDir,
   pluginRegistryPath,
   pluginsRoot,
+  pluginUninstallTombstonePath,
 } from './paths';
 
 /** Daemon-backed LinkCode plugin store: reads the install registry + on-disk manifests, splits
@@ -55,6 +61,7 @@ import {
 export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
   constructor(private readonly vault: SecretVault) {
     sweepStagingDirs();
+    sweepUninstallTombstones(pluginSecretStore(this.vault));
   }
 
   list(): InstalledLinkCodePluginEntry[] {
@@ -98,6 +105,9 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       throw new Error(`Plugin ${pluginId} declares no settings`);
     }
     const settings = manifest.settings;
+    // The wire only guarantees primitive values — validate against the manifest before persisting.
+    // Throws PluginConfigValidationError, which the engine maps to `invalid_request`.
+    validatePluginConfigPatch(settings, this.getSettings(pluginId), patch);
     const secrets = pluginSecretStore(this.vault);
     const previousNonSecret = loadPluginConfigValues(pluginId);
     let nextNonSecret = { ...previousNonSecret };
@@ -161,20 +171,73 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     release: LinkCodePluginRelease,
     marketplaceId: string,
   ): Promise<InstalledLinkCodePluginEntry> {
-    return this.serialize(release.manifest.id, () => installExclusive(release, marketplaceId));
+    return this.serialize(release.manifest.id, () =>
+      installExclusive(release, marketplaceId, pluginSecretStore(this.vault)),
+    );
   }
 
   uninstall(pluginId: string): Promise<void> {
     return this.serialize(pluginId, () => {
-      const records = readRegistry();
+      const records = readRegistryStrict();
       const matches = records.filter((entry) => entry.id === pluginId);
+      const tombstone = pluginUninstallTombstonePath(pluginId);
       if (matches.length > 0) {
-        for (const record of matches) rmSync(record.path, { recursive: true, force: true });
-        writeRegistry(records.filter((entry) => entry.id !== pluginId));
+        // Retire each live package before committing so a failed registry write can restore them,
+        // exactly as install's publish does; a mid-loop retire failure restores what already moved.
+        const retired: Array<{
+          record: InstalledLinkCodePlugin;
+          retiredDir: string | undefined;
+        }> = [];
+        try {
+          for (const record of matches) {
+            retired.push({ record, retiredDir: retireForUninstall(record) });
+          }
+        } catch (error) {
+          for (const { record, retiredDir } of retired) {
+            if (retiredDir !== undefined) restorePluginPackage(retiredDir, record.path, pluginId);
+          }
+          throw error;
+        }
+        // Written before the registry commit so a crash on either side leaves a retryable cleanup;
+        // the boot sweep discards it unread while the plugin is still registered.
+        writeUninstallTombstone(tombstone, pluginId);
+        try {
+          writeRegistry(records.filter((entry) => entry.id !== pluginId));
+        } catch (error) {
+          for (const { record, retiredDir } of retired) {
+            if (retiredDir !== undefined) restorePluginPackage(retiredDir, record.path, pluginId);
+          }
+          rmSync(tombstone, { force: true });
+          throw error;
+        }
+        for (const { retiredDir } of retired) {
+          if (retiredDir === undefined) continue;
+          try {
+            rmSync(retiredDir, { recursive: true, force: true });
+          } catch (error) {
+            logger.warn(
+              { error, pluginId, path: retiredDir, operation: 'plugin.uninstall.gc-retired' },
+              'Failed to remove the retired plugin package after uninstall',
+            );
+          }
+        }
+      } else {
+        writeUninstallTombstone(tombstone, pluginId);
       }
-      // Non-secret values are dropped by writing an empty block; secret values are pruned below.
-      savePluginConfigValues(pluginId, {});
-      prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
+      // The registry has already committed (or never held the plugin), so a cleanup failure must
+      // not fail the uninstall — the tombstone retries it at the next boot.
+      try {
+        // Non-secret values are dropped by writing an empty block; secret values are pruned.
+        savePluginConfigValues(pluginId, {});
+        prunePluginSecrets(pluginSecretStore(this.vault), pluginId);
+      } catch (error) {
+        logger.error(
+          { error, pluginId, operation: 'plugin.uninstall.cleanup' },
+          'Plugin settings cleanup failed after uninstall; the cleanup marker retries it at boot',
+        );
+        return;
+      }
+      rmSync(tombstone, { force: true });
     });
   }
 
@@ -194,6 +257,7 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
 async function installExclusive(
   release: LinkCodePluginRelease,
   marketplaceId: string,
+  secrets: SecretStore,
 ): Promise<InstalledLinkCodePluginEntry> {
   const { manifest, artifact } = release;
   if (artifact.format !== 'tgz') {
@@ -205,7 +269,7 @@ async function installExclusive(
   if (downloadUrls.length === 0) {
     throw new Error('Plugin release has no HTTPS (or loopback HTTP) download URL');
   }
-  const previousRecords = readRegistry().filter((entry) => entry.id === manifest.id);
+  const previousRecords = readRegistryStrict().filter((entry) => entry.id === manifest.id);
   const targetDir = pluginPackageDir(manifest.id, manifest.version);
   const stagingDir = makePluginTmpDir(manifest.id, manifest.version);
   const tgzPath = join(stagingDir, 'package.tgz');
@@ -284,6 +348,18 @@ async function installExclusive(
       logger.warn(
         { error, pluginId: manifest.id, path: previous.path, operation: 'plugin.install.gc' },
         'Failed to remove stale plugin package',
+      );
+    }
+  }
+  // Reconcile stored settings against the new manifest only after the install commits; a failure
+  // must not roll back a committed install, so it is logged and left for the next upgrade.
+  if (previousRecords.length > 0) {
+    try {
+      reconcileSettingsForManifest(installedManifest, secrets);
+    } catch (error) {
+      logger.warn(
+        { error, pluginId: manifest.id, operation: 'plugin.install.reconcile-settings' },
+        'Failed to reconcile stored plugin settings after an upgrade',
       );
     }
   }
@@ -481,6 +557,154 @@ function rollbackPublishedPluginPackage(
   if (retiredDir !== undefined) restorePluginPackage(retiredDir, targetDir, pluginId);
 }
 
+/** Uninstall's retire is strict: a package that exists but cannot be moved aborts the mutation
+ * before the registry is touched, instead of orphaning the live directory. */
+function retireForUninstall(record: InstalledLinkCodePlugin): string | undefined {
+  if (lstatSync(record.path, { throwIfNoEntry: false }) === undefined) return undefined;
+  return nullthrow(
+    retirePluginPackage(record.path),
+    `Failed to retire the plugin package: ${record.path}`,
+  );
+}
+
+/** Best-effort: a missing marker only means a mid-cleanup crash would not be retried at boot. */
+function writeUninstallTombstone(path: string, pluginId: string): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ pluginId })}\n`, { encoding: 'utf8', mode: 0o600 });
+  } catch (error) {
+    logger.warn(
+      { error, pluginId, path, operation: 'plugin.uninstall.tombstone' },
+      'Failed to persist the uninstall cleanup marker',
+    );
+  }
+}
+
+/**
+ * Retry settings cleanups whose uninstall committed but crashed or failed before config/vault were
+ * pruned. A marker whose plugin is still registered belongs to an aborted uninstall and is
+ * discarded. A corrupt registry blocks the whole sweep: reading it degraded as "not registered"
+ * would wipe the settings of plugins that are, in fact, still installed.
+ */
+function sweepUninstallTombstones(secrets: SecretStore): void {
+  let names: string[];
+  try {
+    names = readdirSync(pluginsRoot());
+  } catch {
+    return;
+  }
+  const markers = names.filter((name) => name.startsWith('.uninstall-') && name.endsWith('.json'));
+  if (markers.length === 0) return;
+  let registered: ReadonlySet<string>;
+  try {
+    registered = new Set(readRegistryStrict().map((record) => record.id));
+  } catch (error) {
+    logger.warn(
+      { error, operation: 'plugin.uninstall.sweep' },
+      'Skipping uninstall cleanup retries while the plugin registry is unreadable',
+    );
+    return;
+  }
+  for (const name of markers) {
+    const path = join(pluginsRoot(), name);
+    let pluginId: string;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      pluginId = LinkCodePluginIdSchema.parse((parsed as { pluginId?: unknown }).pluginId);
+    } catch (error) {
+      logger.warn(
+        { error, path, operation: 'plugin.uninstall.sweep' },
+        'Keeping an unreadable uninstall cleanup marker',
+      );
+      continue;
+    }
+    if (registered.has(pluginId)) {
+      rmSync(path, { force: true });
+      continue;
+    }
+    try {
+      savePluginConfigValues(pluginId, {});
+      prunePluginSecrets(secrets, pluginId);
+      rmSync(path, { force: true });
+      logger.info(
+        { pluginId, operation: 'plugin.uninstall.sweep' },
+        'Retried a plugin settings cleanup after an interrupted uninstall',
+      );
+    } catch (error) {
+      logger.warn(
+        { error, pluginId, operation: 'plugin.uninstall.sweep' },
+        'Plugin settings cleanup retry failed; keeping the marker',
+      );
+    }
+  }
+}
+
+/**
+ * Re-key stored setting values after an upgrade: values whose field vanished or no longer
+ * validates are dropped, and values cross the config/vault boundary when their field's `secret`
+ * classification changed — otherwise a non-secret → secret flip would leave the value in
+ * plaintext in config.json.
+ */
+function reconcileSettingsForManifest(
+  manifest: LinkCodePluginManifest,
+  secrets: SecretStore,
+): void {
+  // Partial: arbitrary-key access can miss, and the honest initializer type keeps
+  // no-unnecessary-condition from reading the undefined checks as dead.
+  const declared: Partial<Record<string, LinkCodePluginSettingField>> = manifest.settings ?? {};
+  const next: Record<string, PluginConfigValue> = {};
+  const secretPatch = new Map<string, string | undefined>();
+  for (const [fieldId, value] of Object.entries(loadPluginConfigValues(manifest.id))) {
+    const field = declared[fieldId];
+    if (field === undefined || !isValidPluginSettingValue(field, value)) continue;
+    if (field.secret) secretPatch.set(`${manifest.id}/${fieldId}`, String(value));
+    else next[fieldId] = value;
+  }
+  const prefix = `${manifest.id}/`;
+  for (const key of secrets.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const field = declared[key.slice(prefix.length)];
+    const value = secrets.get(key);
+    if (field === undefined) {
+      secretPatch.set(key, undefined);
+      continue;
+    }
+    // The vault stores every secret stringified; coerce back to the declared type so a `secret`
+    // classification change moves a usable value instead of dropping it.
+    const coerced = value === null ? undefined : coerceStoredSecretValue(field, value);
+    if (field.secret) {
+      if (coerced === undefined) secretPatch.set(key, undefined);
+      continue;
+    }
+    if (coerced !== undefined) next[key.slice(prefix.length)] = coerced;
+    secretPatch.set(key, undefined);
+  }
+  // Vault before config: a failed config write then leaves an inert duplicate (re-reconciled on
+  // the next upgrade) rather than a value lost between the two stores.
+  applySecretPatch(secrets, secretPatch);
+  savePluginConfigValues(manifest.id, next);
+}
+
+/** The vault stores secrets as strings; restore one to the field's declared type (undefined when
+ * unrecoverable, e.g. a non-numeric string under a number field). */
+function coerceStoredSecretValue(
+  field: LinkCodePluginSettingField,
+  raw: string,
+): PluginConfigValue | undefined {
+  switch (field.type) {
+    case 'number': {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    case 'boolean':
+      return raw === 'true' ? true : raw === 'false' ? false : undefined;
+    case 'enum':
+      return field.enum?.includes(raw) === true ? raw : undefined;
+    default:
+      return raw;
+  }
+}
+
 function applySecretPatch(
   secrets: SecretStore,
   patch: ReadonlyMap<string, string | null | undefined>,
@@ -510,10 +734,45 @@ function readRegistry(): InstalledLinkCodePlugin[] {
   const records: InstalledLinkCodePlugin[] = [];
   for (const value of parsed) {
     const result = InstalledLinkCodePluginSchema.safeParse(value);
-    if (result.success) records.push(result.data);
-    else logger.warn({ operation: 'plugin.registry' }, 'Dropping invalid plugin install record');
+    if (!result.success || !hasExpectedPackagePath(result.data)) {
+      logger.warn({ operation: 'plugin.registry' }, 'Dropping invalid plugin install record');
+    } else {
+      records.push(result.data);
+    }
   }
   return records;
+}
+
+/**
+ * The registry read mutations must use. Only `ENOENT` means a first-run empty registry: any other
+ * read error, malformed JSON, or invalid record fails closed, because a degraded read that
+ * participates in the next `writeRegistry` would silently drop every other installation record.
+ */
+function readRegistryStrict(): InstalledLinkCodePlugin[] {
+  const path = pluginRegistryPath();
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('Plugin registry is not a JSON array');
+  return parsed.map((value: unknown, index) => {
+    const result = InstalledLinkCodePluginSchema.safeParse(value);
+    if (!result.success || !hasExpectedPackagePath(result.data)) {
+      throw new Error(`Invalid plugin install record at index ${index}`, {
+        cause: result.success ? undefined : result.error,
+      });
+    }
+    return result.data;
+  });
+}
+
+/** A record may only name its derived package dir; a corrupted path must never drive a removal. */
+function hasExpectedPackagePath(record: InstalledLinkCodePlugin): boolean {
+  return record.path === pluginPackageDir(record.id, record.version);
 }
 
 function currentRegistryRecords(): InstalledLinkCodePlugin[] {
@@ -525,7 +784,7 @@ function currentRegistryRecords(): InstalledLinkCodePlugin[] {
 }
 
 function upsertRegistry(record: InstalledLinkCodePlugin): void {
-  const next = readRegistry().filter((entry) => entry.id !== record.id);
+  const next = readRegistryStrict().filter((entry) => entry.id !== record.id);
   next.push(record);
   writeRegistry(next);
 }
