@@ -33,7 +33,7 @@ function permissionGranted(settings: Notifications.NotificationPermissionsStatus
 async function ensureNotificationChannel(): Promise<void> {
   if (process.env.EXPO_OS === 'android') {
     await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
-      name: 'Session events',
+      name: 'Thread events',
       importance: Notifications.AndroidImportance.HIGH,
       sound: 'default',
     });
@@ -99,7 +99,7 @@ export async function enableDeviceNotifications(userId: string): Promise<boolean
 }
 
 export async function disableDeviceNotifications(
-  options: { revokeToken?: boolean } = {},
+  options: { revokeToken?: boolean; rollbackOnFailure?: boolean } = {},
 ): Promise<void> {
   const settings = useSettingsStore.getState();
   const wasEnabled = settings.notificationsEnabled;
@@ -111,7 +111,7 @@ export async function disableDeviceNotifications(
   try {
     await tokenCoordinator.revoke(revokeRegisteredDevicePushToken);
   } catch (error) {
-    if (tokenCoordinator.isCurrent(intent)) {
+    if (options.rollbackOnFailure !== false && tokenCoordinator.isCurrent(intent)) {
       tokenCoordinator.selectUser(previousUserId);
       settings.setNotificationsEnabled(true);
     }

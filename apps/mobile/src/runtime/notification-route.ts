@@ -2,7 +2,7 @@ import { SessionIdSchema } from '@linkcode/schema';
 import { z } from 'zod';
 
 const NotificationDataSchema = z.object({
-  hostId: z.string().min(1),
+  tunnelHostId: z.string().min(1),
   sessionId: SessionIdSchema,
 });
 
@@ -21,7 +21,7 @@ export function resolveNotificationRoute(
 ): NotificationTarget | null {
   const parsed = NotificationDataSchema.safeParse(data);
   if (!parsed.success) return null;
-  const host = hosts.find((candidate) => candidate.tunnelHostId === parsed.data.hostId);
+  const host = hosts.find((candidate) => candidate.tunnelHostId === parsed.data.tunnelHostId);
   if (!host) return { type: 'connect' };
   return { type: 'session', hostId: host.id, sessionId: parsed.data.sessionId };
 }

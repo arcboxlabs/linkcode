@@ -13,6 +13,7 @@ import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
 import type { ThemePreference } from '@mobile/stores/settings-store';
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
@@ -45,9 +46,13 @@ export function SettingsScreen(): React.ReactNode {
   const setThemePreference = useSettingsStore((state) => state.setThemePreference);
   const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
   const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
+  const [notificationUpdatePending, setNotificationUpdatePending] = useState(false);
+  const notificationUpdatePendingRef = useRef(false);
 
   const updateNotifications = async (enabled: boolean) => {
-    if (account.status !== 'signed-in') return;
+    if (account.status !== 'signed-in' || notificationUpdatePendingRef.current) return;
+    notificationUpdatePendingRef.current = true;
+    setNotificationUpdatePending(true);
     try {
       if (!enabled) {
         await disableDeviceNotifications();
@@ -65,6 +70,9 @@ export function SettingsScreen(): React.ReactNode {
       ]);
     } catch {
       Alert.alert(t('notificationsErrorTitle'), t('notificationsError'));
+    } finally {
+      notificationUpdatePendingRef.current = false;
+      setNotificationUpdatePending(false);
     }
   };
 
@@ -144,7 +152,7 @@ export function SettingsScreen(): React.ReactNode {
               isOn={notificationsEnabled}
               onIsOnChange={updateNotifications}
               label={t('notifications')}
-              modifiers={[disabled(account.status !== 'signed-in')]}
+              modifiers={[disabled(account.status !== 'signed-in' || notificationUpdatePending)]}
             />
           </Section>
 

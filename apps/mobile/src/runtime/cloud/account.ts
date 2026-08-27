@@ -40,8 +40,11 @@ export async function signInToCloud(): Promise<void> {
 }
 
 export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
-  await disableDeviceNotifications({ revokeToken: options.revokePushToken });
   try {
+    await disableDeviceNotifications({
+      revokeToken: options.revokePushToken,
+      rollbackOnFailure: false,
+    }).catch(noop);
     const { error } = await cloudAuthClient.signOut();
     if (error) throw new Error(`sign-out failed (${error.status})`);
   } finally {
