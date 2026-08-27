@@ -109,7 +109,10 @@ export async function disableDeviceNotifications(
   if (!wasEnabled || options.revokeToken === false) return;
 
   try {
-    await tokenCoordinator.revoke(revokeRegisteredDevicePushToken);
+    await tokenCoordinator.revoke(
+      revokeRegisteredDevicePushToken,
+      Notifications.unregisterForNotificationsAsync,
+    );
   } catch (error) {
     if (options.rollbackOnFailure !== false && tokenCoordinator.isCurrent(intent)) {
       tokenCoordinator.selectUser(previousUserId);

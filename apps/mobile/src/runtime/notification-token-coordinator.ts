@@ -2,6 +2,19 @@ export interface NotificationTokenIntent {
   readonly userId: string | null;
 }
 
+async function revokeTokenEverywhere(
+  revokeRegisteredToken: () => void | PromiseLike<void>,
+  unregisterDeviceToken: () => void | PromiseLike<void>,
+): Promise<void> {
+  const [registeredResult, deviceResult] = await Promise.allSettled([
+    Promise.resolve().then(revokeRegisteredToken),
+    Promise.resolve().then(unregisterDeviceToken),
+  ]);
+  if (registeredResult.status === 'rejected' && deviceResult.status === 'rejected') {
+    throw registeredResult.reason;
+  }
+}
+
 export function createNotificationTokenCoordinator() {
   let intent: NotificationTokenIntent = { userId: null };
   let tail: Promise<unknown> = Promise.resolve();
@@ -34,6 +47,10 @@ export function createNotificationTokenCoordinator() {
         if (intent.userId !== userId) return;
         await registerToken(token);
       }),
-    revoke: (revokeToken: () => void | PromiseLike<void>): Promise<void> => enqueue(revokeToken),
+    revoke: (
+      revokeRegisteredToken: () => void | PromiseLike<void>,
+      unregisterDeviceToken: () => void | PromiseLike<void>,
+    ): Promise<void> =>
+      enqueue(() => revokeTokenEverywhere(revokeRegisteredToken, unregisterDeviceToken)),
   };
 }

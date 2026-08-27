@@ -1,5 +1,5 @@
 import { disableDeviceNotifications } from '@mobile/runtime/notifications';
-import { noop } from 'foxact/noop';
+import { falseFn, noop, trueFn } from 'foxts/noop';
 import { cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 
@@ -40,15 +40,18 @@ export async function signInToCloud(): Promise<void> {
 }
 
 export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
+  let pushDeliveryDisabled = false;
   try {
-    await disableDeviceNotifications({
+    pushDeliveryDisabled = await disableDeviceNotifications({
       revokeToken: options.revokePushToken,
       rollbackOnFailure: false,
-    }).catch(noop);
+    })
+      .then(trueFn)
+      .catch(falseFn);
     const { error } = await cloudAuthClient.signOut();
     if (error) throw new Error(`sign-out failed (${error.status})`);
   } finally {
-    // A different account must enroll this phone under a fresh device row.
-    await clearDeviceEnrollment().catch(noop);
+    // Keep the enrollment if both revocation paths fail so the stale binding remains identifiable.
+    if (pushDeliveryDisabled) await clearDeviceEnrollment().catch(noop);
   }
 }

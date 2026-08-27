@@ -1,3 +1,4 @@
+import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { createNotificationTokenCoordinator } from '../notification-token-coordinator';
 
@@ -29,13 +30,18 @@ describe('notification token coordination', () => {
     );
     await acquiring;
     coordinator.selectUser(null);
-    const revoke = coordinator.revoke(() => {
-      events.push('revoke');
-    });
+    const revoke = coordinator.revoke(
+      () => {
+        events.push('revoke');
+      },
+      () => {
+        events.push('unregister');
+      },
+    );
     releaseToken();
 
     await Promise.all([sync, revoke]);
-    expect(events).toEqual(['acquire', 'revoke']);
+    expect(events).toEqual(['acquire', 'revoke', 'unregister']);
   });
 
   it('runs revocation after an in-flight registration', async () => {
@@ -63,12 +69,32 @@ describe('notification token coordination', () => {
     );
     await registering;
     coordinator.selectUser(null);
-    const revoke = coordinator.revoke(() => {
-      events.push('revoke');
-    });
+    const revoke = coordinator.revoke(
+      () => {
+        events.push('revoke');
+      },
+      () => {
+        events.push('unregister');
+      },
+    );
     releaseRegistration();
 
     await Promise.all([sync, revoke]);
-    expect(events).toEqual(['register:start', 'register:end', 'revoke']);
+    expect(events).toEqual(['register:start', 'register:end', 'revoke', 'unregister']);
+  });
+
+  it('fails revocation only when both the server and native token removal fail', async () => {
+    const coordinator = createNotificationTokenCoordinator();
+    coordinator.selectUser(null);
+
+    await expect(
+      coordinator.revoke(() => Promise.reject(new Error('server failed')), noop),
+    ).resolves.toBeUndefined();
+    await expect(
+      coordinator.revoke(
+        () => Promise.reject(new Error('server failed')),
+        () => Promise.reject(new Error('native failed')),
+      ),
+    ).rejects.toThrow('server failed');
   });
 });
