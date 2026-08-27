@@ -27,6 +27,10 @@ export interface ServiceVariant {
    * every other variant (and the service-level fallback below) serves. Absent means this
    * variant's list is the service-level one. */
   models?: ServiceModelList;
+  /** `endpointParams` key → the env name that agent's own provider entry reads it under. Present
+   * means the agent templates a per-model URL, so injecting one base URL would flatten routes that
+   * differ per model — declare this instead of a base URL for such a provider. */
+  endpointEnv?: Partial<Record<AgentKind, Record<string, string>>>;
 }
 
 /**
@@ -228,6 +232,12 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
       'openai-chat': {
         baseUrl: 'https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/compat',
         knownProvider: { opencode: 'cloudflare-ai-gateway', pi: 'cloudflare-ai-gateway' },
+        // Pi's own entry routes each model to the leg its wire needs — Claude to `/anthropic`, GPT
+        // to `/openai`, Workers AI to `/compat` — so pinning every one of them to `/compat` answers
+        // `400 Compatibility endpoint: v1/messages is not supported` on all but the last group.
+        endpointEnv: {
+          pi: { account_id: 'CLOUDFLARE_ACCOUNT_ID', gateway_id: 'CLOUDFLARE_GATEWAY_ID' },
+        },
       },
     },
   },
