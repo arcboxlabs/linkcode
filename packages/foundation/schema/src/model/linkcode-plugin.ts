@@ -156,8 +156,53 @@ export const LinkCodePluginSettingFieldSchema = z
         path: ['secret'],
       });
     }
+    if (field.default !== undefined) {
+      // valid-typeof compares against literals only, so spell the expected type out per branch.
+      const defaultMatchesType =
+        field.type === 'number'
+          ? typeof field.default === 'number'
+          : field.type === 'boolean'
+            ? typeof field.default === 'boolean'
+            : typeof field.default === 'string';
+      if (!defaultMatchesType) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `A ${field.type} setting's default has the wrong JSON type`,
+          path: ['default'],
+        });
+      } else if (
+        field.type === 'enum' &&
+        field.enum !== undefined &&
+        typeof field.default === 'string' &&
+        !field.enum.includes(field.default)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          message: "An enum setting's default must be one of its options",
+          path: ['default'],
+        });
+      }
+    }
   });
 export type LinkCodePluginSettingField = z.infer<typeof LinkCodePluginSettingFieldSchema>;
+
+/** Runtime check mirroring the manifest schema: does a stored/patched value fit the declared field?
+ * The daemon enforces this on writes and on upgrade reconciliation; the UI is never the authority. */
+export function isValidPluginSettingValue(
+  field: LinkCodePluginSettingField,
+  value: unknown,
+): value is string | number | boolean {
+  switch (field.type) {
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'enum':
+      return typeof value === 'string' && field.enum?.includes(value) === true;
+    default:
+      return typeof value === 'string';
+  }
+}
 
 export const LinkCodePluginSettingsSchema = z.record(
   z.string().refine(isSafeIdSegment, 'Expected a safe lowercase setting id'),
@@ -307,6 +352,19 @@ export const LinkCodePluginReleaseSchema = z.object({
   publishedAt: z.iso.datetime({ offset: true }).optional(),
 });
 export type LinkCodePluginRelease = z.infer<typeof LinkCodePluginReleaseSchema>;
+
+/** Only `mcp-server` components are projected into agents today: a release without one (skill-only,
+ * or gated on manifest `assets` nothing consumes yet) must not present as installable — installing
+ * it would report success while providing no functionality. Filtered at the catalog/install
+ * boundary until skill/asset projection ships. */
+export function isProjectablePluginRelease(release: {
+  manifest: { components: ReadonlyArray<{ kind: string }>; assets: readonly unknown[] };
+}): boolean {
+  return (
+    release.manifest.components.some((component) => component.kind === 'mcp-server') &&
+    release.manifest.assets.length === 0
+  );
+}
 
 /** Mutable local Store state, deliberately separate from manifest and marketplace release data. */
 export const InstalledLinkCodePluginSchema = z.object({

@@ -350,6 +350,21 @@ describe('LinkCode plugin package contracts', () => {
     ).toBe(false);
   });
 
+  it("rejects a default that does not match the setting's type", () => {
+    const accepts = (field: unknown) =>
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: { ...mailManifest.settings, flag: field },
+      }).success;
+    expect(accepts({ type: 'boolean', default: 'false' })).toBe(false);
+    expect(accepts({ type: 'number', default: true })).toBe(false);
+    expect(accepts({ type: 'string', default: 42 })).toBe(false);
+    expect(accepts({ type: 'enum', enum: ['163', 'qq'], default: 'gmail' })).toBe(false);
+    expect(accepts({ type: 'boolean', default: true })).toBe(true);
+    expect(accepts({ type: 'number', default: 42 })).toBe(true);
+    expect(accepts({ type: 'enum', enum: ['163', 'qq'], default: 'qq' })).toBe(true);
+  });
+
   it('the forward-compatible reader strips unknown mcp-server component keys', () => {
     expect(
       LinkCodePluginReleaseSchema.parse({
