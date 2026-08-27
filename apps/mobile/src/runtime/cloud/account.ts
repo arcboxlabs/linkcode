@@ -1,4 +1,5 @@
-import { noop } from 'foxact/noop';
+import { disableDeviceNotifications } from '@mobile/runtime/notifications';
+import { falseFn, noop, trueFn } from 'foxts/noop';
 import { cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 
@@ -38,9 +39,24 @@ export async function signInToCloud(): Promise<void> {
   if (error) throw new Error(`sign-in failed (${error.status})`);
 }
 
-export async function signOutOfCloud(): Promise<void> {
-  await cloudAuthClient.signOut();
-  // Forget the enrollment so a different account signing in on this phone
-  // registers the device under itself instead of silently skipping.
-  await clearDeviceEnrollment().catch(noop);
+export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
+  let pushDeliveryDisabled = false;
+  let signedOut = false;
+  try {
+    pushDeliveryDisabled = await disableDeviceNotifications({
+      revokeToken: options.revokePushToken,
+      rollbackOnFailure: false,
+    })
+      .then(trueFn)
+      .catch(falseFn);
+    const { error } = await cloudAuthClient.signOut();
+    if (error) throw new Error(`sign-out failed (${error.status})`);
+    signedOut = true;
+  } finally {
+    // Retain enrollment whenever a still-live device binding may need recovery after sign-out.
+    const deviceAlreadyRevoked = options.revokePushToken === false;
+    if (pushDeliveryDisabled && (signedOut || deviceAlreadyRevoked)) {
+      await clearDeviceEnrollment().catch(noop);
+    }
+  }
 }
