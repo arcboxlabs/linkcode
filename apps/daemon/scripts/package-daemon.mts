@@ -13,8 +13,9 @@
  * `node --import ./dist/instrument.js dist/index.js` with nothing else on disk.
  *
  * Unlike the desktop bundle (Electron `utilityProcess`, native modules rebuilt to Electron's ABI),
- * this targets plain Node: better-sqlite3 keeps the prebuild-install binary for the build host's
- * Node/OS/arch. It is therefore a same-platform artifact — build it on (or for) each target.
+ * this targets plain Node. better-sqlite3 carries a NAPI prebuild per target, but the host-only
+ * napi-rs optional deps and @sentry's ABI-pinned profiler do not: a same-platform artifact — build
+ * it on (or for) each target.
  *
  * Agent CLI platform binaries are pruned: they are host-arch, ~230 MB each, and the daemon
  * provisions them at runtime through its managed-asset store (@linkcode/assets, CODE-111) exactly
