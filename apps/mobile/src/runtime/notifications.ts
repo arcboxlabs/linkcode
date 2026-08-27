@@ -9,6 +9,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import type { DevicePushToken } from 'expo-notifications';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 export const NOTIFICATION_CHANNEL_ID = 'session-events';
 
@@ -31,7 +32,7 @@ function permissionGranted(settings: Notifications.NotificationPermissionsStatus
 }
 
 async function ensureNotificationChannel(): Promise<void> {
-  if (process.env.EXPO_OS === 'android') {
+  if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
       name: 'Thread events',
       importance: Notifications.AndroidImportance.HIGH,

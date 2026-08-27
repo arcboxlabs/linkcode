@@ -41,6 +41,7 @@ export async function signInToCloud(): Promise<void> {
 
 export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
   let pushDeliveryDisabled = false;
+  let signedOut = false;
   try {
     pushDeliveryDisabled = await disableDeviceNotifications({
       revokeToken: options.revokePushToken,
@@ -50,8 +51,12 @@ export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}
       .catch(falseFn);
     const { error } = await cloudAuthClient.signOut();
     if (error) throw new Error(`sign-out failed (${error.status})`);
+    signedOut = true;
   } finally {
-    // Keep the enrollment if both revocation paths fail so the stale binding remains identifiable.
-    if (pushDeliveryDisabled) await clearDeviceEnrollment().catch(noop);
+    // Retain enrollment whenever a still-live device binding may need recovery after sign-out.
+    const deviceAlreadyRevoked = options.revokePushToken === false;
+    if (pushDeliveryDisabled && (signedOut || deviceAlreadyRevoked)) {
+      await clearDeviceEnrollment().catch(noop);
+    }
   }
 }
