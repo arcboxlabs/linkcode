@@ -10,7 +10,7 @@ import type {
 import { PluginSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CustomMcpServerService } from '../agent/custom-mcp-service';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { InMemoryLinkCodePluginStore } from '../plugin/linkcode-store';
@@ -90,6 +90,55 @@ const failingMcpPreflightFactory: PluginProviderAdapterFactory = (provider) => (
 function pluginServiceWithFailedMcpPreflight(): PluginService {
   return new PluginService(failingMcpPreflightFactory);
 }
+
+function spyingPluginService(): { plugins: PluginService; listNames: ReturnType<typeof vi.fn> } {
+  const listNames = vi.fn(() => Promise.resolve<string[]>([]));
+  const factory: PluginProviderAdapterFactory = (provider) => ({
+    provider,
+    list: () => Promise.resolve([]),
+    listEnabledMcpServerNames: listNames,
+    listStandaloneSkills: () => Promise.resolve([]),
+  });
+  return { plugins: new PluginService(factory), listNames };
+}
+
+describe('Codex native MCP preflight', () => {
+  it('skips the discovery round trip when neither fold has anything to inject', async () => {
+    const { plugins, listNames } = spyingPluginService();
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      plugins,
+      new InMemoryLinkCodePluginStore(),
+    );
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.mcpServers).toBeUndefined();
+    expect(listNames).not.toHaveBeenCalled();
+  });
+
+  it('runs the discovery exactly once per start when a fold has work', async () => {
+    const { plugins, listNames } = spyingPluginService();
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(customEntry('github')),
+      plugins,
+      new InMemoryLinkCodePluginStore(),
+    );
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.mcpServers).toEqual([customEntry('github').server]);
+    expect(listNames).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('simulator MCP injection at session start', () => {
   it('appends the session endpoint for MCP-capable agents', async () => {

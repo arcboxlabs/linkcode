@@ -127,12 +127,18 @@ export class SessionStartOptionsResolver {
    * preflight failed: an override cannot be ruled out, so consumers skip instead of injecting.
    */
   private providerMcpServerNames(options: StartOptions): Effect.Effect<ReadonlySet<string> | null> {
-    if (options.kind === 'codex' && this.plugins) {
-      return this.plugins
-        .enabledMcpServerNames('codex', { cwd: options.cwd })
-        .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }));
+    if (options.kind !== 'codex' || this.plugins === undefined) {
+      return Effect.succeed(new Set<string>());
     }
-    return Effect.succeed(new Set<string>());
+    // Discovery is a real round trip; when neither fold has anything to inject, a bare Codex
+    // session must not pay it.
+    const hasWork =
+      (this.customMcp?.listEnabled().length ?? 0) > 0 ||
+      (this.linkCodePluginStore?.list().some((entry) => entry.installed.enabled) ?? false);
+    if (!hasWork) return Effect.succeed(new Set<string>());
+    return this.plugins
+      .enabledMcpServerNames('codex', { cwd: options.cwd })
+      .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }));
   }
 
   /** Fold enabled custom MCP servers into the session's server list, warning instead of
@@ -152,8 +158,7 @@ export class SessionStartOptionsResolver {
     }
     const servers = [...(options.mcpServers ?? [])];
     for (const entry of enabled) {
-      const names = nativeMcpNames;
-      if (names === null) {
+      if (nativeMcpNames === null) {
         warnings.push({
           serverName: entry.server.name,
           reason: 'provider-preflight-failed',
@@ -170,7 +175,7 @@ export class SessionStartOptionsResolver {
         continue;
       }
       if (
-        names.has(entry.server.name) ||
+        nativeMcpNames.has(entry.server.name) ||
         servers.some((server) => server.name === entry.server.name)
       ) {
         warnings.push({ serverName: entry.server.name, reason: 'name-conflict' });
@@ -211,18 +216,20 @@ export class SessionStartOptionsResolver {
       }
       return { options, warnings };
     }
-    const names = nativeMcpNames;
     const servers = [...(options.mcpServers ?? [])];
     for (const entry of entries) {
       const settings = store.getSettings(entry.installed.id);
       for (const component of entry.manifest.components) {
         if (component.kind !== 'mcp-server') continue;
-        if (names === null) {
+        if (nativeMcpNames === null) {
           // Without the native name set an override cannot be ruled out — skip, don't inject.
           warnings.push({ serverName: component.name, reason: 'provider-preflight-failed' });
           continue;
         }
-        if (names.has(component.name) || servers.some((server) => server.name === component.name)) {
+        if (
+          nativeMcpNames.has(component.name) ||
+          servers.some((server) => server.name === component.name)
+        ) {
           warnings.push({ serverName: component.name, reason: 'name-conflict' });
           continue;
         }
