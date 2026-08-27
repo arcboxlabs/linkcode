@@ -1237,6 +1237,7 @@ export const zhCN = {
     account: {
       title: '账号',
       signOut: '退出登录',
+      signOutError: '无法退出登录，请检查网络后重试。',
       devices: '设备',
       refresh: '刷新',
       devicesEmpty: '该账号还没有注册设备。',
@@ -1365,6 +1366,15 @@ export const zhCN = {
       keepHostsConnected: '保持所有主机连接',
       keepHostsConnectedHint:
         '开启后每台已保存的主机都持续连接，切换是瞬时的，代价是更费电和流量。关闭时只连当前主机，切回去要重新握手。',
+      notifications: '通知',
+      notificationsHint: 'Thread 完成一轮或需要授权时通知你。',
+      notificationsRequiresCloud: '登录 LinkCode Cloud 后可启用远程通知。',
+      notificationsDeniedTitle: '通知已关闭',
+      notificationsDenied: '请在系统设置中允许通知后再启用此功能。',
+      notificationsErrorTitle: '无法更新通知',
+      notificationsError: '请检查网络和系统设置后重试。',
+      openSettings: '打开设置',
+      cancel: '取消',
       legalAndSupport: '法律与支持',
       privacyPolicy: '隐私政策',
       termsOfService: '服务条款',

@@ -1273,6 +1273,7 @@ export const en = {
     account: {
       title: 'Account',
       signOut: 'Sign out',
+      signOutError: 'Could not sign out. Check your connection and try again.',
       devices: 'Devices',
       refresh: 'Refresh',
       devicesEmpty: 'No devices registered on this account yet.',
@@ -1404,6 +1405,15 @@ export const en = {
       keepHostsConnected: 'Keep every host connected',
       keepHostsConnectedHint:
         'Holds a connection to every saved host so switching is instant, at the cost of battery and data. Off keeps only the selected host dialed.',
+      notifications: 'Notifications',
+      notificationsHint: 'Notify you when a Thread finishes a turn or needs approval.',
+      notificationsRequiresCloud: 'Sign in to LinkCode Cloud to enable remote notifications.',
+      notificationsDeniedTitle: 'Notifications are off',
+      notificationsDenied: 'Allow notifications in system settings to enable this feature.',
+      notificationsErrorTitle: 'Could not update notifications',
+      notificationsError: 'Try again after checking your network and system settings.',
+      openSettings: 'Open Settings',
+      cancel: 'Cancel',
       legalAndSupport: 'Legal & Support',
       privacyPolicy: 'Privacy Policy',
       termsOfService: 'Terms of Service',
