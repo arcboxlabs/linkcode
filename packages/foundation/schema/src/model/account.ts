@@ -45,6 +45,11 @@ export type AccountEndpoint = z.infer<typeof AccountEndpointSchema>;
 export const AccountModelSchema = z.object({
   id: z.string().min(1),
   label: z.string().optional(),
+  /** Which protocols this model is known to answer, from probing every variant of the account's
+   * service. Absent means unknown, not "answers nothing" — a pre-catalog bare key, a custom
+   * account, or an account probed before this field existed all have no data here, and absence
+   * must keep offering the model everywhere it always did. Only an explicit set narrows it. */
+  protocols: z.array(AccountProtocolSchema).optional(),
 });
 export type AccountModel = z.infer<typeof AccountModelSchema>;
 
