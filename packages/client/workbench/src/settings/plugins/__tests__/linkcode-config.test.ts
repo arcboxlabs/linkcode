@@ -42,25 +42,24 @@ describe('pluginConfigDefaults', () => {
 
 describe('validatePluginConfigField', () => {
   it('rejects a blank required non-secret field', () => {
-    expect(validatePluginConfigField(SETTINGS.account, '')).toBe('required');
-    expect(validatePluginConfigField(SETTINGS.account, 'you@163.com')).toBe(true);
+    expect(validatePluginConfigField(SETTINGS.account, '', false)).toBe('required');
+    expect(validatePluginConfigField(SETTINGS.account, 'you@163.com', false)).toBe(true);
   });
 
   it('treats a blank secret as keep only when a value is already configured', () => {
-    expect(validatePluginConfigField(SETTINGS.password, '')).toBe(true);
     expect(validatePluginConfigField(SETTINGS.password, '', true)).toBe(true);
     // A newly installed plugin has no stored secret to keep — blank is missing, not keep.
     expect(validatePluginConfigField(SETTINGS.password, '', false)).toBe('required');
   });
 
   it('rejects a non-numeric number field, blank optional number passes', () => {
-    expect(validatePluginConfigField(SETTINGS['body.max'], 'abc')).toBe('invalidNumber');
-    expect(validatePluginConfigField(SETTINGS['body.max'], '42')).toBe(true);
-    expect(validatePluginConfigField(SETTINGS['body.max'], '')).toBe(true);
+    expect(validatePluginConfigField(SETTINGS['body.max'], 'abc', false)).toBe('invalidNumber');
+    expect(validatePluginConfigField(SETTINGS['body.max'], '42', false)).toBe(true);
+    expect(validatePluginConfigField(SETTINGS['body.max'], '', false)).toBe(true);
   });
 
   it('always passes a boolean', () => {
-    expect(validatePluginConfigField(SETTINGS.readonly, false)).toBe(true);
+    expect(validatePluginConfigField(SETTINGS.readonly, false, true)).toBe(true);
   });
 });
 

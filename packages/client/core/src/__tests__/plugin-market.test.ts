@@ -165,6 +165,7 @@ describe('LinkCodeClient plugin-market / plugin-config requests', () => {
         password: { type: 'password', secret: true, required: true },
       },
       values: { account: 'you@163.com' },
+      // Readonly tuple is assignable to the payload's string[] presence bits.
       configuredSecrets: ['password'] as string[],
     } as const;
     transport.receive({

@@ -45,6 +45,7 @@ function renderDialog(
       title="linkcode/mail"
       settings={SETTINGS}
       values={{}}
+      configuredSecrets={[]}
       busy={false}
       onClose={vi.fn()}
       onSubmit={onSubmit}
@@ -56,7 +57,8 @@ function renderDialog(
 
 describe('LinkCodePluginConfigDialog', () => {
   it('renders one control per declared field, secrets masked', () => {
-    renderDialog();
+    // The presence bit is what turns the placeholder into "leave blank to keep".
+    renderDialog({ configuredSecrets: ['password'] });
     expect(screen.getByText('Account')).toBeDefined();
     expect(screen.getByText('Authorization code')).toBeDefined();
     expect(screen.getByText('Provider preset')).toBeDefined();
@@ -77,7 +79,11 @@ describe('LinkCodePluginConfigDialog', () => {
   });
 
   it('submits a typed per-key patch, keeping blank secrets out of it', async () => {
-    const { onSubmit } = renderDialog({ values: { account: 'old@163.com' } });
+    const { onSubmit } = renderDialog({
+      values: { account: 'old@163.com' },
+      // The stored-but-never-echoed secret counts as configured, so its blank means "keep".
+      configuredSecrets: ['password'],
+    });
     fireEvent.change(screen.getByLabelText('Account'), { target: { value: 'new@163.com' } });
     fireEvent.change(screen.getByLabelText('Max body characters'), { target: { value: '4000' } });
     fireEvent.click(screen.getByRole('switch'));
@@ -99,7 +105,8 @@ describe('LinkCodePluginConfigDialog', () => {
   it('blocks submit on a blank required field', async () => {
     const { onSubmit } = renderDialog();
     fireEvent.click(screen.getByRole('button', { name: 'form.save' }));
-    await waitFor(() => expect(screen.getByText('form.required')).toBeDefined());
+    // Both required fields (the string and the never-configured secret) surface their own error.
+    await waitFor(() => expect(screen.getAllByText('form.required').length).toBeGreaterThan(0));
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

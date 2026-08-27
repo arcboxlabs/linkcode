@@ -30,12 +30,14 @@ describe('plugin-config wire schema', () => {
     expect(reply.message.payload.plugins[0]?.values).toEqual({ account: 'you@163.com' });
   });
 
-  it('accepts pre-presence replies, so an older daemon still parses', () => {
+  it('rejects replies without the presence bits, so absence fails loudly', () => {
+    // The field has no shipped-daemon history to stay compatible with, and an absent field would
+    // silently reopen the blank-required-secret bug through lenient fallbacks.
     expect(
       parseWireMessage(
         envelope({ kind: 'plugin-config.listed', replyTo: 'request-1', plugins: [pluginView] }),
       ).ok,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       parseWireMessage(
         envelope({
@@ -45,7 +47,7 @@ describe('plugin-config wire schema', () => {
           values: {},
         }),
       ).ok,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('round-trips a per-key patch and its updated reply', () => {

@@ -51,12 +51,12 @@ export function pluginConfigDefaults(
 
 /** Validate one raw form value against its declared field; `true` passes. `secretConfigured` tells
  * a blank secret apart: "keep the stored value" when one exists, "missing required" when none does
- * (a newly installed plugin has no old value to keep). Callers without presence information (older
- * daemons) pass the default, preserving the previous lenient behavior. */
+ * (a newly installed plugin has no old value to keep). The daemon's masked read always supplies
+ * the presence bits, so there is no lenient fallback to forget. */
 export function validatePluginConfigField(
   field: LinkCodePluginSettingField,
   raw: string | boolean,
-  secretConfigured = true,
+  secretConfigured: boolean,
 ): true | PluginConfigFieldError {
   if (field.type === 'boolean') return true;
   const value = typeof raw === 'string' ? raw : String(raw);

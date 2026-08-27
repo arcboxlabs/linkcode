@@ -451,6 +451,7 @@ describe('linkcodeInstalledRow', () => {
         version: '1.0.0',
         settings: { account: { type: 'string' } },
         values: {},
+        configuredSecrets: [],
       }),
     ).toEqual({
       key: 'linkcode/mail',
@@ -460,8 +461,13 @@ describe('linkcodeInstalledRow', () => {
       hasSettings: true,
     });
     expect(
-      linkcodeInstalledRow({ id: 'linkcode/notes', version: '0.2.0', settings: {}, values: {} })
-        .hasSettings,
+      linkcodeInstalledRow({
+        id: 'linkcode/notes',
+        version: '0.2.0',
+        settings: {},
+        values: {},
+        configuredSecrets: [],
+      }).hasSettings,
     ).toBe(false);
   });
 });

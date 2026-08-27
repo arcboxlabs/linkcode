@@ -43,9 +43,8 @@ export interface LinkCodePluginConfigDialogProps {
   settings: LinkCodePluginSettings;
   /** The masked read: non-secret values only; secret fields arrive absent and render blank. */
   values: Readonly<Record<string, PluginConfigValue>>;
-  /** Presence bits from the masked read: which secret fields hold a stored value. Undefined from an
-   * older daemon, which keeps the lenient "blank = keep" validation. */
-  configuredSecrets?: readonly string[];
+  /** Presence bits from the masked read: which secret fields hold a stored value. */
+  configuredSecrets: readonly string[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (patch: LinkCodePluginConfigPatch) => void;
@@ -89,9 +88,7 @@ export function LinkCodePluginConfigDialog({
                 key={fieldId}
                 fieldId={fieldId}
                 field={field}
-                secretConfigured={
-                  configuredSecrets === undefined || configuredSecrets.includes(fieldId)
-                }
+                secretConfigured={configuredSecrets.includes(fieldId)}
                 control={control}
                 register={register}
                 busy={busy}

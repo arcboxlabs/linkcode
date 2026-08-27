@@ -90,7 +90,7 @@ export function LinkCodeMarketTab({ searchQuery }: LinkCodeMarketTabProps): Reac
               ? {
                   ...view,
                   values: result.values,
-                  configuredSecrets: result.configuredSecrets ?? view.configuredSecrets,
+                  configuredSecrets: result.configuredSecrets,
                 }
               : view,
           ),
