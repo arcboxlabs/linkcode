@@ -70,7 +70,7 @@ export class SessionStartOptionsResolver {
         );
       }
       const custom = yield* withCustomMcpServers(defaults.options);
-      const pluginInjected = withPluginMcpServers(custom.options, custom.warnings);
+      const pluginInjected = yield* withPluginMcpServers(custom.options, custom.warnings);
       const resolved = withSimulatorMcp(pluginInjected.options, sessionId);
       const upstream = translationUpstream(resolved);
       if (!upstream) return { options: resolved, ...account, warnings: pluginInjected.warnings };
@@ -180,15 +180,17 @@ export class SessionStartOptionsResolver {
 
   /** Fold enabled LinkCode plugin mcp-server components into the session's server list, resolving
    * each component's `env` mapping against the plugin's stored settings. Same warning contract as
-   * custom-MCP: an unsupported agent or a name collision is a user-visible advisory, not a drop. */
+   * custom-MCP — an unsupported agent, a failed Codex preflight, or a name collision is a
+   * user-visible advisory, not a drop — including Codex's shared, un-namespaced MCP space, where
+   * an enabled native plugin of the same name would be silently overridden. */
   private withPluginMcpServers(
     options: StartOptions,
     warnings: McpWarning[],
-  ): { options: StartOptions; warnings: McpWarning[] } {
+  ): Effect.Effect<{ options: StartOptions; warnings: McpWarning[] }> {
     const store = this.linkCodePluginStore;
-    if (store === undefined) return { options, warnings };
+    if (store === undefined) return Effect.succeed({ options, warnings });
     const entries = store.list().filter((entry) => entry.installed.enabled);
-    if (entries.length === 0) return { options, warnings };
+    if (entries.length === 0) return Effect.succeed({ options, warnings });
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
       for (const entry of entries) {
         for (const component of entry.manifest.components) {
@@ -197,45 +199,61 @@ export class SessionStartOptionsResolver {
           }
         }
       }
-      return { options, warnings };
+      return Effect.succeed({ options, warnings });
     }
-    const servers = [...(options.mcpServers ?? [])];
-    for (const entry of entries) {
-      const settings = store.getSettings(entry.installed.id);
-      for (const component of entry.manifest.components) {
-        if (component.kind !== 'mcp-server') continue;
-        if (servers.some((server) => server.name === component.name)) {
-          warnings.push({ serverName: component.name, reason: 'name-conflict' });
-          continue;
-        }
-        const env: Record<string, string> = {};
-        if (component.env) {
-          for (const [envVar, settingId] of Object.entries(component.env)) {
-            if (settingId in settings) env[envVar] = String(settings[settingId]);
+    const pluginNames =
+      options.kind === 'codex' && this.plugins
+        ? this.plugins
+            .enabledMcpServerNames('codex', { cwd: options.cwd })
+            .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }))
+        : Effect.succeed(new Set<string>());
+    return Effect.map(pluginNames, (names) => {
+      const servers = [...(options.mcpServers ?? [])];
+      for (const entry of entries) {
+        const settings = store.getSettings(entry.installed.id);
+        for (const component of entry.manifest.components) {
+          if (component.kind !== 'mcp-server') continue;
+          if (names === null) {
+            // Without the native name set an override cannot be ruled out — skip, don't inject.
+            warnings.push({ serverName: component.name, reason: 'provider-preflight-failed' });
+            continue;
           }
+          if (
+            names.has(component.name) ||
+            servers.some((server) => server.name === component.name)
+          ) {
+            warnings.push({ serverName: component.name, reason: 'name-conflict' });
+            continue;
+          }
+          const env: Record<string, string> = {};
+          if (component.env) {
+            for (const [envVar, settingId] of Object.entries(component.env)) {
+              if (settingId in settings) env[envVar] = String(settings[settingId]);
+            }
+          }
+          // No missing-config advisory yet: shipped clients validate `reason` against the old enum
+          // and would drop the whole session.started frame, so emission waits for a tolerant floor.
+          const server: McpServer = {
+            type: 'stdio',
+            name: component.name,
+            command: component.command,
+            ...(component.entry && {
+              args: [resolvePath(entry.installed.path, component.entry), ...(component.args ?? [])],
+            }),
+            ...(!component.entry && component.args && { args: component.args }),
+            ...(!isObjectEmpty(env) && { env }),
+          };
+          servers.push(server);
         }
-        // No missing-config advisory yet: shipped clients validate `reason` against the old enum
-        // and would drop the whole session.started frame, so emission waits for a tolerant floor.
-        const server: McpServer = {
-          type: 'stdio',
-          name: component.name,
-          command: component.command,
-          ...(component.entry && {
-            args: [resolvePath(entry.installed.path, component.entry), ...(component.args ?? [])],
-          }),
-          ...(!component.entry && component.args && { args: component.args }),
-          ...(!isObjectEmpty(env) && { env }),
-        };
-        servers.push(server);
       }
-    }
-    return {
-      options:
-        servers.length === 0 && options.mcpServers === undefined
-          ? options
-          : { ...options, mcpServers: servers },
-      warnings,
-    };
+      return {
+        options:
+          servers.length === 0 && options.mcpServers === undefined
+            ? options
+            : { ...options, mcpServers: servers },
+        warnings,
+      };
+    });
   }
 
   /** Append the session's simulator MCP endpoint for agents whose SDK can consume it. */

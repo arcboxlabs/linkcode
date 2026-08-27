@@ -3,7 +3,10 @@ import type {
   LinkCodeMarketplaceId,
   LinkCodePluginManifest,
   LinkCodePluginRelease,
+  LinkCodePluginSettingField,
+  LinkCodePluginSettings,
 } from '@linkcode/schema';
+import { isValidPluginSettingValue } from '@linkcode/schema';
 
 /** An installed LinkCode plugin: its install record plus the parsed manifest. */
 export interface InstalledLinkCodePluginEntry {
@@ -18,6 +21,65 @@ export type PluginConfigValue = string | number | boolean;
 export interface PluginConfigPatch {
   readonly set?: Readonly<Record<string, PluginConfigValue>>;
   readonly remove?: readonly string[];
+}
+
+/** A patch rejected by the daemon's manifest validation; surfaced as `invalid_request`, never
+ * persisted. Distinct from an I/O failure, which is an `OperationError`. */
+export class PluginConfigValidationError extends Error {
+  override name = 'PluginConfigValidationError';
+}
+
+/**
+ * The daemon-side authority for `plugin-config.set`: the wire only guarantees primitive values, so
+ * every store validates the patch against the manifest before persisting — each `set` value must
+ * fit its declared field (type, enum membership), and the post-patch state must satisfy every
+ * `required` field. `current` is the store's merged effective values (defaults folded, stored
+ * secrets included), exactly what {@link LinkCodePluginStore.getSettings} returns.
+ */
+export function validatePluginConfigPatch(
+  settings: LinkCodePluginSettings,
+  current: Readonly<Record<string, PluginConfigValue>>,
+  patch: PluginConfigPatch,
+): void {
+  if (patch.set) {
+    for (const [fieldId, value] of Object.entries(patch.set)) {
+      const field: LinkCodePluginSettingField | undefined = settings[fieldId];
+      // eslint-disable-next-line sukka/prefer-nullthrow -- the write boundary requires the typed error the engine maps to invalid_request, not nullthrow's TypeError
+      if (field === undefined) {
+        throw new PluginConfigValidationError(`Unknown plugin setting: ${fieldId}`);
+      }
+      if (!isValidPluginSettingValue(field, value)) {
+        throw new PluginConfigValidationError(
+          `Invalid value for plugin setting ${fieldId}: expected ${field.type}`,
+        );
+      }
+      // The UI contract never sends a blank secret ("blank = keep"); an empty string would be
+      // stored in the vault and then read back as "configured". Reject it at the authority.
+      if (value === '' && field.secret === true) {
+        throw new PluginConfigValidationError(
+          `Plugin setting ${fieldId} must not be an empty secret`,
+        );
+      }
+    }
+  }
+  const effective: Record<string, PluginConfigValue> = { ...current };
+  for (const fieldId of patch.remove ?? []) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- the patch is a per-key removal over a plain record
+    delete effective[fieldId];
+  }
+  for (const [fieldId, value] of Object.entries(patch.set ?? {})) effective[fieldId] = value;
+  // A removal of a defaulted field re-exposes the manifest default on the next read, so fold it
+  // back in here rather than rejecting the patch as missing a required value.
+  for (const [fieldId, field] of Object.entries(settings)) {
+    if (!field.secret && field.default !== undefined && !(fieldId in effective)) {
+      effective[fieldId] = field.default;
+    }
+  }
+  for (const [fieldId, field] of Object.entries(settings)) {
+    if (field.required === true && !(fieldId in effective)) {
+      throw new PluginConfigValidationError(`Missing required plugin setting: ${fieldId}`);
+    }
+  }
 }
 
 /**
@@ -78,6 +140,9 @@ export class InMemoryLinkCodePluginStore implements LinkCodePluginStore {
   }
 
   setSettings(pluginId: string, patch: PluginConfigPatch): Promise<void> {
+    // Same manifest validation as the daemon store: tests exercise the real write contract.
+    const settings = this.entries.get(pluginId)?.manifest.settings ?? {};
+    validatePluginConfigPatch(settings, this.getSettings(pluginId), patch);
     let map = this.values.get(pluginId);
     if (!map) {
       map = new Map();

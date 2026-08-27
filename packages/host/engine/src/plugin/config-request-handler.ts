@@ -29,6 +29,7 @@ export class LinkCodePluginConfigRequestHandler {
               version: view.version,
               settings: view.settings,
               values: view.values,
+              configuredSecrets: [...view.configuredSecrets],
             }));
             this.transport.send(
               createWireMessage({
@@ -47,13 +48,14 @@ export class LinkCodePluginConfigRequestHandler {
             .pipe(
               Effect.flatMap(() =>
                 Effect.sync(() => {
-                  const values = this.config.maskedValues(payload.pluginId);
+                  const masked = this.config.maskedView(payload.pluginId);
                   this.transport.send(
                     createWireMessage({
                       kind: 'plugin-config.updated',
                       replyTo: payload.clientReqId,
                       pluginId: payload.pluginId,
-                      values,
+                      values: masked.values,
+                      configuredSecrets: [...masked.configuredSecrets],
                     }),
                   );
                 }),

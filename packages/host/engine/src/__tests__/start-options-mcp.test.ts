@@ -553,4 +553,91 @@ describe('LinkCode plugin MCP injection at session start', () => {
     ]);
     expect(warnings).toEqual([]);
   });
+
+  it('skips a LinkCode plugin whose MCP name collides with a native Codex plugin', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: '/store/plugins/linkcode/mail/0.1.0',
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            { kind: 'mcp-server', name: 'mail', command: 'node', entry: 'dist/index.js' },
+          ],
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      // Codex's MCP space is shared and un-namespaced: the injected config would silently
+      // override the native plugin's, so the collision is a warning, not an override.
+      pluginServiceWithMcp('mail'),
+      store,
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    expect(options.mcpServers).toBeUndefined();
+    expect(warnings).toEqual([{ serverName: 'mail', reason: 'name-conflict' }]);
+  });
+
+  it('skips LinkCode plugin injection when the strict Codex preflight fails', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: '/store/plugins/linkcode/mail/0.1.0',
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            { kind: 'mcp-server', name: 'mail', command: 'node', entry: 'dist/index.js' },
+          ],
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      pluginServiceWithFailedMcpPreflight(),
+      store,
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    // Without the native name set an override cannot be ruled out — skip, don't inject.
+    expect(options.mcpServers).toBeUndefined();
+    expect(warnings).toEqual([{ serverName: 'mail', reason: 'provider-preflight-failed' }]);
+  });
 });

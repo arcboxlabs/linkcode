@@ -16,6 +16,7 @@ export type {
   PluginConfigPatch,
   PluginConfigValue,
 } from './plugin/linkcode-store';
+export { PluginConfigValidationError, validatePluginConfigPatch } from './plugin/linkcode-store';
 export type {
   LinkCodeMarketplaceService,
   MarketplaceCatalogEntry,
