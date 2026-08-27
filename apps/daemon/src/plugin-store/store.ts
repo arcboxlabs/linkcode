@@ -296,10 +296,9 @@ async function installExclusive(
         'Purged settings left by a committed but unfinished uninstall',
       );
     } catch (error) {
-      logger.warn(
-        { error, pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
-        'Failed to purge settings left by an unfinished uninstall; the marker stays for the boot sweep',
-      );
+      throw new Error(`Failed to purge settings for ${manifest.id} before reinstall`, {
+        cause: error,
+      });
     }
   }
   let installedManifest: LinkCodePluginManifest;
@@ -374,8 +373,8 @@ async function installExclusive(
   }
   // Reconcile stored settings against the new manifest only after the install commits; a failure
   // must not roll back a committed install, so it is logged and left for the next upgrade. The
-  // tombstone path above runs before the commit, so a pending-uninstall purge can never coexist
-  // with previous records here.
+  // constructor's sweepUninstallTombstones discards markers for registered ids before any listener
+  // binds, so a tombstone and previousRecords can never coexist here.
   if (previousRecords.length > 0) {
     try {
       reconcileSettingsForManifest(installedManifest, secrets);

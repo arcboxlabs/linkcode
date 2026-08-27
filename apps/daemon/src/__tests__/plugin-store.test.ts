@@ -763,12 +763,66 @@ describe('DaemonLinkCodePluginStore', () => {
         format: 'tgz',
       },
     } satisfies LinkCodePluginRelease;
-    await new DaemonLinkCodePluginStore(baseVault).install(release, 'linkcode-official');
+    const store2 = new DaemonLinkCodePluginStore(baseVault);
+    await store2.install(release, 'linkcode-official');
 
-    // The stale block was purged at install time and the marker consumed; the fresh install
+    // The constructor sweep consumed the marker and purged the stale block; the fresh install
     // starts empty instead of inheriting the uninstalled plugin's values.
     expect(loadPluginConfigValues('arcbox/latex')).toEqual({});
     expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBeUndefined();
     expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(false);
+  });
+
+  it('aborts the reinstall when the install-time pending-uninstall purge fails', async () => {
+    // One store per process is the production shape, so a same-instance uninstall→reinstall never
+    // triggers the constructor sweep — the install-time purge is the only cleanup. If the vault is
+    // still broken it must throw, leaving the id unregistered and the marker for the boot sweep,
+    // rather than committing an install that inherits the uninstalled plugin's credentials.
+    const installed = record('0.2.0');
+    writePackage(installed, settingsManifest('0.2.0'));
+    writeRegistry([installed]);
+    const baseVault = createInMemoryVault();
+    const brokenVault = {
+      ...baseVault,
+      namespace(name: Parameters<typeof baseVault.namespace>[0]) {
+        const secrets = baseVault.namespace(name);
+        if (name !== 'plugin') return secrets;
+        return {
+          ...secrets,
+          replaceAll() {
+            throw new Error('vault write failed');
+          },
+        };
+      },
+    };
+    // Seed the secret through the working vault, then reuse a single broken-vault instance so the
+    // uninstall's prune and the reinstall's purge both fail on the same instance.
+    baseVault.namespace('plugin').replaceAll(new Map([['arcbox/latex/authcode', 'stale-secret']]));
+    const store = new DaemonLinkCodePluginStore(brokenVault);
+    await store.uninstall('arcbox/latex');
+
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(true);
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBe('stale-secret');
+
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(settingsManifest('0.2.0')));
+    });
+    const release = {
+      manifest: settingsManifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+
+    await expect(store.install(release, 'linkcode-official')).rejects.toThrow(
+      'Failed to purge settings for arcbox/latex before reinstall',
+    );
+
+    // Unregistered, marker kept, and the stale secret survives — exactly the state the boot sweep retries.
+    expect(store.get('arcbox/latex')).toBeUndefined();
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(true);
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBe('stale-secret');
   });
 });
