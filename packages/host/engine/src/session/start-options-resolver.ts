@@ -45,6 +45,7 @@ export class SessionStartOptionsResolver {
     const { accountId } = defaults;
     const account = accountId === undefined ? {} : { accountId };
     const { translator } = this;
+    const providerMcpServerNames = this.providerMcpServerNames.bind(this);
     const withCustomMcpServers = this.withCustomMcpServers.bind(this);
     const withSimulatorMcp = this.withSimulatorMcp.bind(this);
     const withPluginMcpServers = this.withPluginMcpServers.bind(this);
@@ -69,8 +70,9 @@ export class SessionStartOptionsResolver {
           }),
         );
       }
-      const custom = yield* withCustomMcpServers(defaults.options);
-      const pluginInjected = yield* withPluginMcpServers(custom.options, custom.warnings);
+      const nativeMcpNames = yield* providerMcpServerNames(defaults.options);
+      const custom = withCustomMcpServers(defaults.options, nativeMcpNames);
+      const pluginInjected = withPluginMcpServers(custom.options, custom.warnings, nativeMcpNames);
       const resolved = withSimulatorMcp(pluginInjected.options, sessionId);
       const upstream = translationUpstream(resolved);
       if (!upstream) return { options: resolved, ...account, warnings: pluginInjected.warnings };
@@ -118,64 +120,71 @@ export class SessionStartOptionsResolver {
     return names;
   }
 
+  /**
+   * Enabled provider-native MCP names for Codex's shared, un-namespaced space — resolved once per
+   * session start and shared by the custom-MCP and LinkCode-plugin folds, since each resolution is
+   * a full discovery round trip (`plugin/list` plus per-plugin detail reads). `null` means the
+   * preflight failed: an override cannot be ruled out, so consumers skip instead of injecting.
+   */
+  private providerMcpServerNames(options: StartOptions): Effect.Effect<ReadonlySet<string> | null> {
+    if (options.kind === 'codex' && this.plugins) {
+      return this.plugins
+        .enabledMcpServerNames('codex', { cwd: options.cwd })
+        .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }));
+    }
+    return Effect.succeed(new Set<string>());
+  }
+
   /** Fold enabled custom MCP servers into the session's server list, warning instead of
    * silently dropping: unsupported agent kinds and name collisions are user-visible facts. */
   private withCustomMcpServers(
     options: StartOptions,
-  ): Effect.Effect<{ options: StartOptions; warnings: McpWarning[] }> {
+    nativeMcpNames: ReadonlySet<string> | null,
+  ): { options: StartOptions; warnings: McpWarning[] } {
     const warnings: McpWarning[] = [];
     const enabled = this.customMcp?.listEnabled() ?? [];
-    if (enabled.length === 0) return Effect.succeed({ options, warnings });
+    if (enabled.length === 0) return { options, warnings };
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
       for (const entry of enabled) {
         warnings.push({ serverName: entry.server.name, reason: 'agent-unsupported' });
       }
-      return Effect.succeed({ options, warnings });
+      return { options, warnings };
     }
-    const pluginNames =
-      options.kind === 'codex' && this.plugins
-        ? this.plugins
-            .enabledMcpServerNames('codex', { cwd: options.cwd })
-            .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }))
-        : Effect.succeed(new Set<string>());
-    return pluginNames.pipe(
-      Effect.map((names) => {
-        const servers = [...(options.mcpServers ?? [])];
-        for (const entry of enabled) {
-          if (names === null) {
-            warnings.push({
-              serverName: entry.server.name,
-              reason: 'provider-preflight-failed',
-            });
-            continue;
-          }
-          if (
-            options.kind === 'codex' &&
-            entry.server.type === 'http' &&
-            entry.server.headers !== undefined &&
-            !isObjectEmpty(entry.server.headers)
-          ) {
-            warnings.push({ serverName: entry.server.name, reason: 'provider-unsupported' });
-            continue;
-          }
-          if (
-            names.has(entry.server.name) ||
-            servers.some((server) => server.name === entry.server.name)
-          ) {
-            warnings.push({ serverName: entry.server.name, reason: 'name-conflict' });
-            continue;
-          }
-          servers.push(entry.server);
-        }
-        return {
-          options:
-            servers.length === 0 && options.mcpServers === undefined
-              ? options
-              : { ...options, mcpServers: servers },
-          warnings,
-        };
-      }),
-    );
+    const servers = [...(options.mcpServers ?? [])];
+    for (const entry of enabled) {
+      const names = nativeMcpNames;
+      if (names === null) {
+        warnings.push({
+          serverName: entry.server.name,
+          reason: 'provider-preflight-failed',
+        });
+        continue;
+      }
+      if (
+        options.kind === 'codex' &&
+        entry.server.type === 'http' &&
+        entry.server.headers !== undefined &&
+        !isObjectEmpty(entry.server.headers)
+      ) {
+        warnings.push({ serverName: entry.server.name, reason: 'provider-unsupported' });
+        continue;
+      }
+      if (
+        names.has(entry.server.name) ||
+        servers.some((server) => server.name === entry.server.name)
+      ) {
+        warnings.push({ serverName: entry.server.name, reason: 'name-conflict' });
+        continue;
+      }
+      servers.push(entry.server);
+    }
+    return {
+      options:
+        servers.length === 0 && options.mcpServers === undefined
+          ? options
+          : { ...options, mcpServers: servers },
+      warnings,
+    };
   }
 
   /** Fold enabled LinkCode plugin mcp-server components into the session's server list, resolving
@@ -186,11 +195,12 @@ export class SessionStartOptionsResolver {
   private withPluginMcpServers(
     options: StartOptions,
     warnings: McpWarning[],
-  ): Effect.Effect<{ options: StartOptions; warnings: McpWarning[] }> {
+    nativeMcpNames: ReadonlySet<string> | null,
+  ): { options: StartOptions; warnings: McpWarning[] } {
     const store = this.linkCodePluginStore;
-    if (store === undefined) return Effect.succeed({ options, warnings });
+    if (store === undefined) return { options, warnings };
     const entries = store.list().filter((entry) => entry.installed.enabled);
-    if (entries.length === 0) return Effect.succeed({ options, warnings });
+    if (entries.length === 0) return { options, warnings };
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
       for (const entry of entries) {
         for (const component of entry.manifest.components) {
@@ -199,61 +209,51 @@ export class SessionStartOptionsResolver {
           }
         }
       }
-      return Effect.succeed({ options, warnings });
+      return { options, warnings };
     }
-    const pluginNames =
-      options.kind === 'codex' && this.plugins
-        ? this.plugins
-            .enabledMcpServerNames('codex', { cwd: options.cwd })
-            .pipe(Effect.match({ onSuccess: (names) => names, onFailure: () => null }))
-        : Effect.succeed(new Set<string>());
-    return Effect.map(pluginNames, (names) => {
-      const servers = [...(options.mcpServers ?? [])];
-      for (const entry of entries) {
-        const settings = store.getSettings(entry.installed.id);
-        for (const component of entry.manifest.components) {
-          if (component.kind !== 'mcp-server') continue;
-          if (names === null) {
-            // Without the native name set an override cannot be ruled out — skip, don't inject.
-            warnings.push({ serverName: component.name, reason: 'provider-preflight-failed' });
-            continue;
-          }
-          if (
-            names.has(component.name) ||
-            servers.some((server) => server.name === component.name)
-          ) {
-            warnings.push({ serverName: component.name, reason: 'name-conflict' });
-            continue;
-          }
-          const env: Record<string, string> = {};
-          if (component.env) {
-            for (const [envVar, settingId] of Object.entries(component.env)) {
-              if (settingId in settings) env[envVar] = String(settings[settingId]);
-            }
-          }
-          // No missing-config advisory yet: shipped clients validate `reason` against the old enum
-          // and would drop the whole session.started frame, so emission waits for a tolerant floor.
-          const server: McpServer = {
-            type: 'stdio',
-            name: component.name,
-            command: component.command,
-            ...(component.entry && {
-              args: [resolvePath(entry.installed.path, component.entry), ...(component.args ?? [])],
-            }),
-            ...(!component.entry && component.args && { args: component.args }),
-            ...(!isObjectEmpty(env) && { env }),
-          };
-          servers.push(server);
+    const names = nativeMcpNames;
+    const servers = [...(options.mcpServers ?? [])];
+    for (const entry of entries) {
+      const settings = store.getSettings(entry.installed.id);
+      for (const component of entry.manifest.components) {
+        if (component.kind !== 'mcp-server') continue;
+        if (names === null) {
+          // Without the native name set an override cannot be ruled out — skip, don't inject.
+          warnings.push({ serverName: component.name, reason: 'provider-preflight-failed' });
+          continue;
         }
+        if (names.has(component.name) || servers.some((server) => server.name === component.name)) {
+          warnings.push({ serverName: component.name, reason: 'name-conflict' });
+          continue;
+        }
+        const env: Record<string, string> = {};
+        if (component.env) {
+          for (const [envVar, settingId] of Object.entries(component.env)) {
+            if (settingId in settings) env[envVar] = String(settings[settingId]);
+          }
+        }
+        // No missing-config advisory yet: shipped clients validate `reason` against the old enum
+        // and would drop the whole session.started frame, so emission waits for a tolerant floor.
+        const server: McpServer = {
+          type: 'stdio',
+          name: component.name,
+          command: component.command,
+          ...(component.entry && {
+            args: [resolvePath(entry.installed.path, component.entry), ...(component.args ?? [])],
+          }),
+          ...(!component.entry && component.args && { args: component.args }),
+          ...(!isObjectEmpty(env) && { env }),
+        };
+        servers.push(server);
       }
-      return {
-        options:
-          servers.length === 0 && options.mcpServers === undefined
-            ? options
-            : { ...options, mcpServers: servers },
-        warnings,
-      };
-    });
+    }
+    return {
+      options:
+        servers.length === 0 && options.mcpServers === undefined
+          ? options
+          : { ...options, mcpServers: servers },
+      warnings,
+    };
   }
 
   /** Append the session's simulator MCP endpoint for agents whose SDK can consume it. */
