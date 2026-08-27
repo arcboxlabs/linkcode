@@ -3,6 +3,7 @@ import type { Dirent } from 'node:fs';
 import {
   chmodSync,
   closeSync,
+  existsSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -353,7 +354,28 @@ async function installExclusive(
   }
   // Reconcile stored settings against the new manifest only after the install commits; a failure
   // must not roll back a committed install, so it is logged and left for the next upgrade.
-  if (previousRecords.length > 0) {
+  // A leftover uninstall marker means the previous uninstall committed but its settings cleanup
+  // never ran: the registry had already dropped the id, so this looks like a fresh install.
+  // Purge here — after this install registers the id again, the boot sweep would discard the
+  // marker unread ("still registered") and the inherited values would survive an uninstall.
+  const tombstone = pluginUninstallTombstonePath(manifest.id);
+  const hadPendingUninstall = existsSync(tombstone);
+  if (hadPendingUninstall) {
+    try {
+      savePluginConfigValues(manifest.id, {});
+      prunePluginSecrets(secrets, manifest.id);
+      logger.info(
+        { pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
+        'Purged settings left by a committed but unfinished uninstall',
+      );
+    } catch (error) {
+      logger.warn(
+        { error, pluginId: manifest.id, operation: 'plugin.install.purge-pending-uninstall' },
+        'Failed to purge settings left by an unfinished uninstall',
+      );
+    }
+    rmSync(tombstone, { force: true });
+  } else if (previousRecords.length > 0) {
     try {
       reconcileSettingsForManifest(installedManifest, secrets);
     } catch (error) {
@@ -640,10 +662,10 @@ function sweepUninstallTombstones(secrets: SecretStore): void {
 }
 
 /**
- * Re-key stored setting values after an upgrade: values whose field vanished or no longer
- * validates are dropped, and values cross the config/vault boundary when their field's `secret`
- * classification changed — otherwise a non-secret → secret flip would leave the value in
- * plaintext in config.json.
+ * Re-key stored setting values after an upgrade. Config-side values whose field vanished or no
+ * longer validates are dropped; a non-secret → secret flip moves the value into the vault, or it
+ * would sit in plaintext config.json. The reverse flip drops from the vault instead of migrating
+ * out — maskValues only honors the current manifest, so a migrated value would come back unmasked.
  */
 function reconcileSettingsForManifest(
   manifest: LinkCodePluginManifest,
@@ -662,47 +684,21 @@ function reconcileSettingsForManifest(
   }
   const prefix = `${manifest.id}/`;
   for (const key of secrets.keys()) {
-    if (!key.startsWith(prefix)) continue;
-    const field = declared[key.slice(prefix.length)];
-    const value = secrets.get(key);
-    if (field === undefined) {
+    // A vanished field goes, obviously. A secret→public flip drops too, by the same logic that
+    // protects the opposite direction: migrating the old secret into plaintext config.json would
+    // serve it unmasked on the next masked read — re-entry costs the user one field. A still
+    // secret field keeps its raw stringified vault value untouched.
+    if (
+      key.startsWith(prefix) &&
+      (declared[key.slice(prefix.length)]?.secret !== true || secrets.get(key) === null)
+    ) {
       secretPatch.set(key, undefined);
-      continue;
     }
-    // The vault stores every secret stringified; coerce back to the declared type so a `secret`
-    // classification change moves a usable value instead of dropping it.
-    const coerced = value === null ? undefined : coerceStoredSecretValue(field, value);
-    if (field.secret) {
-      if (coerced === undefined) secretPatch.set(key, undefined);
-      continue;
-    }
-    if (coerced !== undefined) next[key.slice(prefix.length)] = coerced;
-    secretPatch.set(key, undefined);
   }
   // Vault before config: a failed config write then leaves an inert duplicate (re-reconciled on
   // the next upgrade) rather than a value lost between the two stores.
   applySecretPatch(secrets, secretPatch);
   savePluginConfigValues(manifest.id, next);
-}
-
-/** The vault stores secrets as strings; restore one to the field's declared type (undefined when
- * unrecoverable, e.g. a non-numeric string under a number field). */
-function coerceStoredSecretValue(
-  field: LinkCodePluginSettingField,
-  raw: string,
-): PluginConfigValue | undefined {
-  switch (field.type) {
-    case 'number': {
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    case 'boolean':
-      return raw === 'true' ? true : raw === 'false' ? false : undefined;
-    case 'enum':
-      return field.enum?.includes(raw) === true ? raw : undefined;
-    default:
-      return raw;
-  }
 }
 
 function applySecretPatch(

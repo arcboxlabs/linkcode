@@ -696,13 +696,10 @@ describe('DaemonLinkCodePluginStore', () => {
 
     await store.install(release, 'linkcode-official');
 
-    // non-secret → secret moved into the vault; secret → non-secret landed in config.json with its
-    // declared type restored from the vault's string form; the removed field is gone from both.
-    expect(loadPluginConfigValues('arcbox/latex')).toEqual({
-      creds: 'c-value',
-      quota: 42,
-      verbose: true,
-    });
+    // non-secret → secret moved into the vault; a secret → non-secret flip drops the value rather
+    // than migrating it into plaintext config.json, where the masked read would hand it back
+    // unmasked — re-entry costs the user one field. The dropped/removed fields vanish from both.
+    expect(loadPluginConfigValues('arcbox/latex')).toEqual({});
     expect(vault.refs.get('plugin:arcbox/latex/plain')).toBe('p');
     // A number secret that stays secret keeps its (stringified) vault value across the upgrade.
     expect(vault.refs.get('plugin:arcbox/latex/retained')).toBe('7');
@@ -712,10 +709,66 @@ describe('DaemonLinkCodePluginStore', () => {
     expect(vault.refs.get('plugin:arcbox/latex/legacy')).toBeUndefined();
     expect(store.getSettings('arcbox/latex')).toEqual({
       plain: 'p',
-      creds: 'c-value',
-      quota: 42,
-      verbose: true,
       retained: '7',
     });
+  });
+
+  it('purges settings inherited through a pending uninstall when reinstalling', async () => {
+    // The uninstall committed (registry entry gone, marker kept) but its cleanup failed; a
+    // reinstall must consume that marker instead of registering the id and letting the boot sweep
+    // discard it unread with the old values still in place.
+    const installed = record('0.2.0');
+    writePackage(installed, settingsManifest('0.2.0'));
+    writeRegistry([installed]);
+    const baseVault = createInMemoryVault();
+    let failReplaceAll = true;
+    const flakyVault = {
+      ...baseVault,
+      namespace(name: Parameters<typeof baseVault.namespace>[0]) {
+        const secrets = baseVault.namespace(name);
+        if (name !== 'plugin') return secrets;
+        return {
+          ...secrets,
+          replaceAll(entries: ReadonlyMap<string, string>) {
+            if (failReplaceAll) {
+              failReplaceAll = false;
+              throw new Error('vault write failed');
+            }
+            secrets.replaceAll(entries);
+          },
+        };
+      },
+    };
+    const store = new DaemonLinkCodePluginStore(flakyVault);
+    await store.setSettings('arcbox/latex', {
+      set: { account: 'stale@example.com', authcode: 'stale-secret' },
+    });
+    // The uninstall commits but its vault prune fails: the marker survives alongside the
+    // unreaped secret while the plugin disappears from the registry.
+    await new DaemonLinkCodePluginStore(flakyVault).uninstall('arcbox/latex');
+
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(true);
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBe('stale-secret');
+    expect(store.get('arcbox/latex')).toBeUndefined();
+
+    // Reinstall the same version while the marker is still pending.
+    mocks.tarExtract.mockImplementation(({ cwd }: { cwd: string }) => {
+      writeFileSync(join(cwd, 'manifest.json'), JSON.stringify(settingsManifest('0.2.0')));
+    });
+    const release = {
+      manifest: settingsManifest('0.2.0'),
+      artifact: {
+        urls: ['https://plugins.example/arcbox-latex-0.2.0.tgz'],
+        integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+        format: 'tgz',
+      },
+    } satisfies LinkCodePluginRelease;
+    await new DaemonLinkCodePluginStore(baseVault).install(release, 'linkcode-official');
+
+    // The stale block was purged at install time and the marker consumed; the fresh install
+    // starts empty instead of inheriting the uninstalled plugin's values.
+    expect(loadPluginConfigValues('arcbox/latex')).toEqual({});
+    expect(baseVault.refs.get('plugin:arcbox/latex/authcode')).toBeUndefined();
+    expect(existsSync(pluginUninstallTombstonePath('arcbox/latex'))).toBe(false);
   });
 });
