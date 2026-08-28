@@ -381,8 +381,8 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
           }
         >
       >((acc, [model, usage]) => {
-        // Own data property, never a prototype write: model ids come from the CLI subprocess,
-        // and a `__proto__` key via plain assignment would silently vanish from the report.
+        // Own data property, never a prototype write: model ids come from the CLI subprocess.
+        // (The `UsageReportSchema.parse` below drops a `__proto__` key from the output either way.)
         Object.defineProperty(acc, model, {
           configurable: true,
           enumerable: true,
