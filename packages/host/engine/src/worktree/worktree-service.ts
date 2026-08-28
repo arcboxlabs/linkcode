@@ -314,7 +314,8 @@ export class WorktreeService {
       for (let i = 0, len = groups.length; i < len; i++) {
         const group = groups[i];
         const candidates = yield* readChildDirectories(group);
-        for (const candidate of candidates) {
+        for (let j = 0, candidateCount = candidates.length; j < candidateCount; j++) {
+          const candidate = candidates[j];
           if (this.hasPath(candidate)) continue;
           const identity = yield* identifyManagedWorktree(candidate).pipe(
             Effect.catch((error) =>

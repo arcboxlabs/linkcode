@@ -52,11 +52,12 @@ const localModelProbe: typeof probeServiceModels = (service, secret) => {
   const localized: EndpointService = {
     ...service,
     models: localize(service.models),
-    variants: Object.fromEntries(
-      Object.entries(service.variants).map(([protocol, variant]) => [
-        protocol,
-        variant && { ...variant, models: localize(variant.models) },
-      ]),
+    variants: Object.entries(service.variants).reduce<EndpointService['variants']>(
+      (acc, [protocol, variant]) => {
+        acc[protocol] = variant && { ...variant, models: localize(variant.models) };
+        return acc;
+      },
+      {},
     ),
   };
   // An unguarded agent: the relay is on loopback, which the probe policy exists to refuse.

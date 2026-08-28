@@ -281,7 +281,8 @@ export async function probeServiceModels(
   );
   for (let i = 0, len = lists.length; i < len; i++) {
     const { models, protocols } = lists[i];
-    for (const model of models) {
+    for (let j = 0, modelCount = models.length; j < modelCount; j++) {
+      const model = models[j];
       const known = merged.get(model.id);
       const combined = [...new Set([...(known?.protocols ?? []), ...protocols])];
       merged.set(model.id, { ...model, protocols: combined });

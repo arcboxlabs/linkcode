@@ -6,6 +6,7 @@ import { runCommand } from '../process/run-command';
 
 export const DEFAULT_SUGGEST_LIMIT = 50;
 const MAX_ENUMERATED_FILES = 20000;
+const collator = new Intl.Collator();
 const LIST_CACHE_TTL_MS = 5000;
 const LIST_CACHE_CAPACITY = 256;
 const WALK_MAX_DEPTH = 8;
@@ -44,6 +45,9 @@ const listGitFiles = Effect.fn('FileSuggestService.listGitFiles')(function* (cwd
 const walkFiles = Effect.fn('FileSuggestService.walkFiles')(function* (root: string) {
   const files: string[] = [];
   const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
+  // Both `.length` reads must stay live: the body grows `queue` (the BFS frontier) and `files`
+  // (the enumeration cap) on every iteration — caching either would freeze the walk.
+  // eslint-disable-next-line vibe-proof/prefer-indexed-array-loop -- see above
   for (let head = 0; head < queue.length && files.length < MAX_ENUMERATED_FILES; head++) {
     const { dir, depth } = queue[head];
     const entries = yield* Effect.tryPromise(() => readdir(dir, { withFileTypes: true })).pipe(
@@ -128,7 +132,7 @@ function rankFiles(files: readonly string[], query: string): string[] {
     if (tier === null) continue;
     ranked.push({ file, tier, depth: file.split('/').length });
   }
-  ranked.sort((a, b) => a.tier - b.tier || a.depth - b.depth || a.file.localeCompare(b.file));
+  ranked.sort((a, b) => a.tier - b.tier || a.depth - b.depth || collator.compare(a.file, b.file));
   return ranked.map((entry) => entry.file);
 }
 
