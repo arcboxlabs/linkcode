@@ -43,6 +43,7 @@ import {
 } from './config';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
+import type { ManagedAgentKind } from './managed-agent-refresh';
 import { agentsToRefresh, consentedManagedAgents } from './managed-agent-refresh';
 import { daemonStateDir } from './paths';
 import { createProviderConfigStore } from './provider-store';
@@ -187,6 +188,23 @@ async function main(): Promise<void> {
       );
       const assets = new AssetManager();
       const consentedAgents = consentedManagedAgents(assets);
+      const refreshAgentRuntime = (kind: ManagedAgentKind): Promise<void> =>
+        assets
+          .ensure(managedAgentAssetId(kind))
+          .catch((err) => {
+            logger.warn(
+              { err, agentKind: kind, operation: 'asset.ensure' },
+              'Managed agent install failed',
+            );
+          })
+          .then((installed) => {
+            if (installed) {
+              logger.info(
+                { agentKind: kind, operation: 'asset.ensure' },
+                'Managed agent runtime ready',
+              );
+            }
+          });
       const gc = assets.gcAtBoot();
       if (gc.removed.length > 0) {
         yield* Effect.logInfo('Removed superseded managed assets', {
@@ -287,23 +305,7 @@ async function main(): Promise<void> {
             .then((agentRuntimes) => {
               const refreshable = agentsToRefresh(consentedAgents, agentRuntimes, assets);
               for (let i = 0, len = refreshable.length; i < len; i++) {
-                const kind = refreshable[i];
-                void assets
-                  .ensure(managedAgentAssetId(kind))
-                  .catch((err) => {
-                    logger.warn(
-                      { err, agentKind: kind, operation: 'asset.ensure' },
-                      'Managed agent install failed',
-                    );
-                  })
-                  .then((installed) => {
-                    if (installed) {
-                      logger.info(
-                        { agentKind: kind, operation: 'asset.ensure' },
-                        'Managed agent runtime ready',
-                      );
-                    }
-                  });
+                void refreshAgentRuntime(refreshable[i]);
               }
             })
             .catch((err) => {

@@ -486,11 +486,15 @@ export class LinkCodeClient {
           codec: p.codec,
         });
         break;
-      case 'simulator.stream.frame':
-        for (const cb of this.simulatorFrameSubs.get(p.udid) ?? []) {
-          cb({ udid: p.udid, codec: p.codec, key: p.key, data: p.data });
+      case 'simulator.stream.frame': {
+        const frameSubs = this.simulatorFrameSubs.get(p.udid);
+        if (frameSubs != null) {
+          for (const cb of frameSubs) {
+            cb({ udid: p.udid, codec: p.codec, key: p.key, data: p.data });
+          }
         }
         break;
+      }
       case 'asset.listed':
         this.pending.resolve('assetList', p.replyTo, p.assets);
         break;

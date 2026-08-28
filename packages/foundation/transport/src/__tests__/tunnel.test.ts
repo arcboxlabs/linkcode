@@ -53,7 +53,10 @@ class FakeWebSocket {
   }
 
   emit(type: string, event: unknown): void {
-    for (const cb of this.listeners.get(type) ?? []) cb(event);
+    const callbacks = this.listeners.get(type);
+    if (callbacks != null) {
+      for (const cb of callbacks) cb(event);
+    }
   }
 }
 
