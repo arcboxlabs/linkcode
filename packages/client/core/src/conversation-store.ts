@@ -122,7 +122,8 @@ export function createConversationStore(
   const seedToolIds = new Set<string>();
   const seedUserMessages = new Map<string, SeedUserMessageQueue>();
   if (seed) {
-    for (const { event } of seed.events) {
+    for (let i = 0, len = seed.events.length; i < len; i++) {
+      const { event } = seed.events[i];
       switch (event.type) {
         case 'agent-message':
         case 'agent-message-chunk':
@@ -155,11 +156,15 @@ export function createConversationStore(
   const sync = (): void => {
     if (!seeded) {
       seeded = true;
-      if (seed) for (const entry of seed.events) builder.advance(entry.event, entry.ts);
+      if (seed)
+        for (let i = 0, len = seed.events.length; i < len; i++) {
+          const entry = seed.events[i];
+          builder.advance(entry.event, entry.ts);
+        }
     }
     if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);
-    for (let i = firstIndexAfter(events, consumedSeq); i < events.length; i += 1) {
+    for (let i = firstIndexAfter(events, consumedSeq), len = events.length; i < len; i += 1) {
       const { event, seq, receivedAt } = events[i];
       if (seq > uptoSeq) {
         builder.advance(event, receivedAt);

@@ -70,7 +70,8 @@ export function RuntimeTaskResourcesPanel({
   }
 
   async function addSources(files: File[]): Promise<void> {
-    for (const file of files) {
+    for (let i = 0, len = files.length; i < len; i++) {
+      const file = files[i];
       if (file.size > MAX_ATTACHMENT_BYTES) {
         toastManager.add({ title: t('tooLarge', { name: file.name }), type: 'error' });
         continue;

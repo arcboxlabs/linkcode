@@ -34,7 +34,9 @@ export function PluginsSettingsPanel(): React.ReactNode {
 
   const missingRuntimes = new Set<string>();
   if (runtimes != null) {
-    for (const [kind, runtime] of Object.entries(runtimes)) {
+    const runtimeEntries = Object.entries(runtimes);
+    for (let i = 0, len = runtimeEntries.length; i < len; i++) {
+      const [kind, runtime] = runtimeEntries[i];
       if (runtime.status === 'missing') missingRuntimes.add(kind);
     }
   }

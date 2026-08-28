@@ -356,7 +356,10 @@ export class LinkCodeClient {
     if (wasReady) {
       const subscribers = [...this.connectionCloseSubs];
       this.connectionCloseSubs.clear();
-      for (const cb of subscribers) cb(error);
+      for (let i = 0, len = subscribers.length; i < len; i++) {
+        const cb = subscribers[i];
+        cb(error);
+      }
     }
   }
 

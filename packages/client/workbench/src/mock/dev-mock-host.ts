@@ -263,7 +263,9 @@ export class DevMockHost {
   /** Staged download: throttled progress → settled → correlated reply → runtime re-probe push. */
   private async ensureAsset(clientReqId: string, id: ManagedAssetId): Promise<void> {
     const totalBytes = 66 * 1_048_576;
-    for (const fraction of [0.04, 0.19, 0.42, 0.68, 0.91]) {
+    const fractions = [0.04, 0.19, 0.42, 0.68, 0.91];
+    for (let i = 0, len = fractions.length; i < len; i++) {
+      const fraction = fractions[i];
       this.send({
         kind: 'asset.progress',
         id,
@@ -300,7 +302,8 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, resources, workspaceKind, ...seed } of SEED_SESSIONS) {
+    for (let i = 0, len = SEED_SESSIONS.length; i < len; i++) {
+      const { ageMs, resources, workspaceKind, ...seed } = SEED_SESSIONS[i];
       const createdAt = now - ageMs;
       const session = this.addSession({ ...seed, createdAt, updatedAt: createdAt });
       this.seedResources(session.sessionId, now, resources ?? []);
@@ -443,7 +446,8 @@ export class DevMockHost {
           this.sendFailure(p.clientReqId, 'plugin management is not supported');
           break;
         }
-        for (const installation of plugin.installations) {
+        for (let i = 0, len = plugin.installations.length; i < len; i++) {
+          const installation = plugin.installations[i];
           if (p.scope === undefined || installation.scope === p.scope) {
             installation.enabled = p.enabled;
           }
@@ -780,7 +784,8 @@ export class DevMockHost {
     now: number,
     seeds: readonly SeedSessionResource[],
   ): void {
-    for (const { ageMs, ...seed } of seeds) {
+    for (let i = 0, len = seeds.length; i < len; i++) {
+      const { ageMs, ...seed } = seeds[i];
       const timestamp = now - ageMs;
       const resource: SessionResource = {
         ...seed,
@@ -1312,7 +1317,9 @@ export class DevMockHost {
     for (const session of this.sessions.values()) {
       if (!session.longThread || session.longThreadSeeded) continue;
       session.longThreadSeeded = true;
-      for (const event of createLongThreadScript((slug) => this.nextMessageId(slug))) {
+      const script = createLongThreadScript((slug) => this.nextMessageId(slug));
+      for (let i = 0, len = script.length; i < len; i++) {
+        const event = script[i];
         this.emit(session.sessionId, event);
       }
     }
@@ -1428,7 +1435,8 @@ export class DevMockHost {
       ...toolEvents(bursts.activityRun.afterTask),
     ];
 
-    for (const event of script) {
+    for (let i = 0, len = script.length; i < len; i++) {
+      const event = script[i];
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       if (!(await waitForShowcaseStep(session, epoch))) return false;
       this.emit(session.sessionId, event);
@@ -1440,7 +1448,8 @@ export class DevMockHost {
       toolCall: SHOWCASE_QUESTION.toolCall,
     });
     if (!(await this.emitShowcaseEvent(session, epoch, SHOWCASE_QUESTION))) return false;
-    for (const permission of SHOWCASE_PERMISSIONS) {
+    for (let i = 0, len = SHOWCASE_PERMISSIONS.length; i < len; i++) {
+      const permission = SHOWCASE_PERMISSIONS[i];
       this.permissions.set(permission.requestId, {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,
@@ -1759,7 +1768,8 @@ function applyCustomMcpPatches(
   ops: readonly CustomMcpServerPatchOp[],
 ): CustomMcpServer[] {
   let next = structuredClone(current);
-  for (const op of ops) {
+  for (let i = 0, len = ops.length; i < len; i++) {
+    const op = ops[i];
     switch (op.op) {
       case 'add':
         next.push(structuredClone(op.server));
@@ -1797,7 +1807,9 @@ function applyMockSecretPatch(
   if (!patch) return current;
   const removed = new Set(patch.remove);
   const next: Record<string, string> = {};
-  for (const [key, value] of Object.entries({ ...current, ...patch.set })) {
+  const entries = Object.entries({ ...current, ...patch.set });
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     if (!removed.has(key)) next[key] = value;
   }
   return next;

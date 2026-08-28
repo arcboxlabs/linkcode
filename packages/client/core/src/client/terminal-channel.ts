@@ -319,7 +319,10 @@ export class TerminalChannel {
     set.add(cb);
     const replay = this.replay.get(terminalId);
     if (replay) {
-      for (const event of replay) if (event.type === 'write') cb(event.data);
+      for (let i = 0, len = replay.length; i < len; i++) {
+        const event = replay[i];
+        if (event.type === 'write') cb(event.data);
+      }
     }
     return () => set.delete(cb);
   }
@@ -332,7 +335,11 @@ export class TerminalChannel {
     }
     set.add(cb);
     const replay = this.replay.get(terminalId);
-    if (replay) for (const event of replay) cb(event);
+    if (replay)
+      for (let i = 0, len = replay.length; i < len; i++) {
+        const event = replay[i];
+        cb(event);
+      }
     return () => set.delete(cb);
   }
 
@@ -445,7 +452,10 @@ export class TerminalChannel {
   ): { terminal: TerminalMetadata; truncated: boolean } {
     this.adoptAttachment(terminal, state);
     if (truncated) this.markReplayTruncated(terminal.terminalId);
-    for (const event of replay) this.ingestEvent(terminal.terminalId, event);
+    for (let i = 0, len = replay.length; i < len; i++) {
+      const event = replay[i];
+      this.ingestEvent(terminal.terminalId, event);
+    }
     this.lastSeq.set(
       terminal.terminalId,
       Math.max(this.lastSeq.get(terminal.terminalId) ?? 0, cutoffSeq),
