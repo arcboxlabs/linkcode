@@ -295,9 +295,10 @@ function latestRunValue<K extends keyof SessionPinnedRun>(
 
 /** Spreading an explicit `undefined` would write the key into the persisted record. */
 function definedFields<T extends object>(fields: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(fields).filter(([, value]) => value !== undefined),
-  ) as Partial<T>;
+  return Object.entries(fields).reduce<Partial<T>>((acc, [key, value]) => {
+    if (value !== undefined) (acc as Record<string, unknown>)[key] = value;
+    return acc;
+  }, {});
 }
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {

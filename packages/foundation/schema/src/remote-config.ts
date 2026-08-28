@@ -404,7 +404,19 @@ export function compareMonotonicVersions(left: string, right: string): number {
 export function canonicalSignedPayload(document: unknown): string {
   if (!isRecord(document)) throw new TypeError('signed envelope must be an object');
   SignatureSchema.parse(document.sig);
-  const unsigned = Object.fromEntries(Object.entries(document).filter(([key]) => key !== 'sig'));
+  const unsigned = Object.entries(document).reduce<Record<string, unknown>>((acc, [key, value]) => {
+    if (key !== 'sig') {
+      // Own data property, never a prototype write: a JSON `__proto__` member must survive
+      // into the canonical payload instead of silently mutating (and vanishing from) it.
+      Object.defineProperty(acc, key, {
+        configurable: true,
+        enumerable: true,
+        value,
+        writable: true,
+      });
+    }
+    return acc;
+  }, {});
   assertSignedEnvelopeValue(unsigned, 'signed envelope payload');
   return canonicalizeJson(unsigned);
 }

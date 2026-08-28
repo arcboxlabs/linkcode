@@ -279,9 +279,18 @@ export async function loadEffectiveDefaults(
     const parsed = JSON.parse(await readFile(overridePath, 'utf8')) as unknown;
     if (!isRecord(parsed)) throw new TypeError('Local config override must be an object');
     const patched = applyConfigPatch(defaults, parsed as Readonly<Record<string, JsonValue>>);
-    return Object.fromEntries(
-      Object.entries(patched).filter((entry) => entry[1] !== null),
-    ) as Record<string, ConfigValue>;
+    return Object.entries(patched).reduce<Record<string, ConfigValue>>((acc, [key, value]) => {
+      if (value !== null) {
+        // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the object.
+        Object.defineProperty(acc, key, {
+          configurable: true,
+          enumerable: true,
+          value,
+          writable: true,
+        });
+      }
+      return acc;
+    }, {});
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') return cloneSnapshot(defaults);
     log.warn('Ignoring invalid local config override');
