@@ -40,7 +40,7 @@ export interface ConversationContentProps<T> {
   /** Timeline rows, virtualized: only rows near the viewport are mounted. */
   data: readonly T[];
   /** Row renderer; must return a keyed element (virtua caches measured sizes per key). */
-  // eslint-disable-next-line sukka/react-no-render-function-prop, @typescript-eslint/no-restricted-types -- virtua's windowing contract: only the virtualizer knows which rows are visible, and it requires a keyed ReactElement per row.
+  // eslint-disable-next-line vibe-proof/react-no-render-function-prop, @typescript-eslint/no-restricted-types -- virtua's windowing contract: only the virtualizer knows which rows are visible, and it requires a keyed ReactElement per row.
   children: (item: T, index: number) => React.ReactElement;
   /** Rendered after the virtualized rows, inside the scrolled column (e.g. the thinking row). */
   trailing?: React.ReactNode;

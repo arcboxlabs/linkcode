@@ -172,7 +172,6 @@ describe('ClaudeCodeAdapter session titles', () => {
       await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
       await prompt(adapter);
       queries[0].push({ type: 'system', session_id: 'sess-title' });
-      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
       queries[0].push({
         type: 'result',
         subtype: 'success',
@@ -224,7 +223,6 @@ describe('ClaudeCodeAdapter session titles', () => {
       await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
       await prompt(adapter);
       queries[0].push({ type: 'system', session_id: 'sess-rename' });
-      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
       queries[0].push({
         type: 'result',
         subtype: 'success',
@@ -280,7 +278,6 @@ describe('ClaudeCodeAdapter session titles', () => {
       await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo' });
       await prompt(adapter);
       queries[0].push({ type: 'system', session_id: 'sess-delayed' });
-      // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeQuery.push accepts one provider message at a time
       queries[0].push({
         type: 'result',
         subtype: 'success',

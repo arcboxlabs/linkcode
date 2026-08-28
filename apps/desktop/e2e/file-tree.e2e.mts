@@ -196,7 +196,7 @@ async function run(win: Page): Promise<void> {
       if (!shadow?.textContent?.includes('tree-fixture-config')) continue;
       const html = shadow.innerHTML;
       return {
-        // eslint-disable-next-line sukka/no-regex-in-function -- runs in the page: a hoisted module-scope regex is out of scope for the serialized closure
+        // eslint-disable-next-line vibe-proof/prefer-hoisted-regex -- runs in the page: a hoisted module-scope regex is out of scope for the serialized closure
         tokens: /color:\s*#|--shiki/.test(html),
         sample: html.slice(html.indexOf('tree-fixture-config') - 200, 300),
       };
