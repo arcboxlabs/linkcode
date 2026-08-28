@@ -122,7 +122,8 @@ async function doInstall(
         join(stage, binaryName(descriptor)),
       );
       if (artifact.extraMembers != null) {
-        for (const member of artifact.extraMembers) {
+        for (let i = 0, len = artifact.extraMembers.length; i < len; i++) {
+          const member = artifact.extraMembers[i];
           await extractMember(
             archive,
             artifact.format,
@@ -159,7 +160,9 @@ async function stageClosure(
   options: InstallOptions,
 ): Promise<void> {
   const byTarball = new Map<string, ClosurePackage[]>();
-  for (const pkg of closurePackagesForHost(descriptor.closure, process.platform, process.arch)) {
+  const hostPackages = closurePackagesForHost(descriptor.closure, process.platform, process.arch);
+  for (let i = 0, len = hostPackages.length; i < len; i++) {
+    const pkg = hostPackages[i];
     const key = `${pkg.name}@${pkg.version}`;
     const targets = byTarball.get(key);
     if (targets) targets.push(pkg);
@@ -188,7 +191,8 @@ async function stageClosure(
           },
         },
       );
-      for (const target of targets) {
+      for (let i = 0, len = targets.length; i < len; i++) {
+        const target = targets[i];
         // eslint-disable-next-line no-await-in-loop -- same archive, sequential extract targets
         await extractPackageTree(archive, join(stage, target.path));
       }
@@ -211,7 +215,8 @@ function publish(stage: string, dest: string, expected: readonly string[]): void
     renameSync(stage, dest);
   } catch (error) {
     if (!existsSync(dest)) throw error;
-    for (const file of expected) {
+    for (let i = 0, len = expected.length; i < len; i++) {
+      const file = expected[i];
       const target = join(dest, file);
       if (existsSync(target)) continue;
       try {

@@ -166,7 +166,9 @@ function resolveModelRef(
   if (ref) return ref;
   const endpointProviders = new Set<string>();
   if (cred.baseUrl) {
-    for (const entry of modelRegistry.getAll()) {
+    const registryEntries = modelRegistry.getAll();
+    for (let i = 0, len = registryEntries.length; i < len; i++) {
+      const entry = registryEntries[i];
       if (entry.id === model && entry.baseUrl === cred.baseUrl) {
         endpointProviders.add(entry.provider);
       }

@@ -83,7 +83,8 @@ export function opencodeMcpConfig(
 ): Record<string, McpLocalConfig | McpRemoteConfig> | undefined {
   if (!servers?.length) return undefined;
   const out: Record<string, McpLocalConfig | McpRemoteConfig> = {};
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     out[server.name] =
       server.type === 'http'
         ? {
@@ -181,7 +182,8 @@ function opencodeModelOptions(
 ): AgentModelOption[] {
   const connected = new Set(listed.connected);
   const models: AgentModelOption[] = [];
-  for (const provider of listed.all) {
+  for (let i = 0, len = listed.all.length; i < len; i++) {
+    const provider = listed.all[i];
     if (credentialProviderId) {
       if (provider.id !== credentialProviderId) continue;
     } else if (!connected.has(provider.id) && provider.source !== 'api') {
@@ -722,7 +724,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client) return;
     try {
       const config = await this.client.config.get({ directory: this.directory });
-      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      const configuredNames = Object.keys(config.data?.mcp ?? {});
+      for (let i = 0, len = configuredNames.length; i < len; i++) {
+        const name = configuredNames[i];
+        names.add(name);
+      }
       this.mcpServerNames = [...names];
     } catch {
       // fetch rejects on a dead server — retitling is never worth failing the session for.
@@ -752,7 +758,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const names = new Set(opts.mcpServerNames);
       try {
         const config = await client.config.get({ directory: got.data.directory });
-        for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+        const configuredNames = Object.keys(config.data?.mcp ?? {});
+        for (let i = 0, len = configuredNames.length; i < len; i++) {
+          const name = configuredNames[i];
+          names.add(name);
+        }
       } catch {
         // fetch rejects on a dead server — the read proceeds with the caller's hint set.
       }
@@ -1223,7 +1233,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!answer) return [];
       const selected = new Set(answer.selectedOptionIds);
       const labels: string[] = [];
-      for (const [oi, option] of q.options.entries()) {
+      for (let i = 0, len = q.options.length; i < len; i++) {
+        const oi = i,
+          option = q.options[i];
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const custom = answer.customText?.trim();
@@ -1256,7 +1268,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // cumulative part updates do not retransmit an ever-growing content array.
         const toolCall = toolCallFromPart(part, this.mcpServerNames);
         if (toolCall.status === 'completed' || toolCall.status === 'failed') {
-          for (const content of toolCall.content) this.appendToolContent(part.id, content);
+          for (let i = 0, len = toolCall.content.length; i < len; i++) {
+            const content = toolCall.content[i];
+            this.appendToolContent(part.id, content);
+          }
           this.emitTool({ ...toolCall, content: undefined });
         } else {
           this.emitTool(toolCall);

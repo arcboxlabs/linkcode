@@ -176,7 +176,8 @@ function isSyntheticCodexUserDigest(
  * of the rollout. */
 export function collectCodexPromptFingerprints(rows: JsonRecord[]): Set<string> {
   const prints = new Set<string>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'user_message') continue;
@@ -279,7 +280,8 @@ export function codexHome(environment: NodeJS.ProcessEnv = env): string {
 export async function readCodexIndex(home = codexHome()): Promise<Map<string, CodexIndexEntry>> {
   const rows = await readJsonlFile(join(home, 'session_index.jsonl'));
   const index = new Map<string, CodexIndexEntry>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     const id = stringField(row, 'id');
     if (!id) continue;
     index.set(id, {
@@ -354,12 +356,17 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
   }
   const files: string[] = [];
   const pendingDirs: Array<Promise<string[]>> = [];
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const path = join(root, entry.name);
     if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
-  for (const nestedFiles of await Promise.all(pendingDirs)) appendArrayInPlace(files, nestedFiles);
+  const nested = await Promise.all(pendingDirs);
+  for (let i = 0, len = nested.length; i < len; i++) {
+    const nestedFiles = nested[i];
+    appendArrayInPlace(files, nestedFiles);
+  }
   return files;
 }
 
@@ -492,7 +499,8 @@ async function readCodexTranscriptSummary(
   const fileStat = await statOrUndefined(path);
 
   let firstUserText: string | undefined;
-  for (const userRow of userRows) {
+  for (let i = 0, len = userRows.length; i < len; i++) {
+    const userRow = userRows[i];
     if (isSyntheticCodexUserDigest(userRow.digest, promptFingerprints) || userRow.empty) continue;
     messageCount += 1;
     if (userRow.preview !== undefined) firstUserText ??= userRow.preview;
@@ -579,7 +587,8 @@ function collectRespondedToolCallIds(rows: JsonRecord[]): {
 } {
   const callIds = new Set<string>();
   const outputCallIds = new Set<string>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'response_item') continue;
     const payload = recordField(row, 'payload');
     if (!payload) continue;
@@ -603,7 +612,8 @@ interface McpEndState {
 /** Precomputed so a response output that precedes its MCP end row still gets the structured verdict. */
 function collectMcpEndStates(rows: JsonRecord[]): Map<string, McpEndState> {
   const states = new Map<string, McpEndState>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'mcp_tool_call_end') continue;
@@ -748,7 +758,8 @@ function collectCodexMcpIdentities(
   rows: JsonRecord[],
 ): Map<string, { server: string; tool: string }> {
   const identities = new Map<string, { server: string; tool: string }>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload) continue;

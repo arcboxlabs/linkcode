@@ -203,7 +203,8 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         ),
       );
       const names = new Set<string>();
-      for (const detail of details) {
+      for (let i = 0, len = details.length; i < len; i++) {
+        const detail = details[i];
         for (const name of detail.mcpServers) names.add(name);
       }
       return [...names];
@@ -362,7 +363,9 @@ async function findCodexPlugin(
 ): Promise<{ marketplace: CodexMarketplace; summary: CodexPluginSummary }> {
   // `plugin/installed` answers the same envelope as `plugin/list`, minus the remote catalog.
   const value = await server.request(method, { cwds: opts.cwd ? [opts.cwd] : undefined });
-  for (const marketplace of CodexPluginListSchema.parse(value).marketplaces) {
+  const marketplaces = CodexPluginListSchema.parse(value).marketplaces;
+  for (let i = 0, len = marketplaces.length; i < len; i++) {
+    const marketplace = marketplaces[i];
     const summary = marketplace.plugins.find((plugin) => plugin.id === id);
     if (summary) return { marketplace, summary };
   }
@@ -397,7 +400,8 @@ async function readCodexPluginDetailStrict(
 function codexCatalogEntries(catalog: z.infer<typeof CodexPluginListSchema>) {
   // The remote curated catalog can list one id twice; retain the installed copy, else the first.
   const entries = new Map<string, { marketplace: CodexMarketplace; summary: CodexPluginSummary }>();
-  for (const marketplace of catalog.marketplaces) {
+  for (let i = 0, len = catalog.marketplaces.length; i < len; i++) {
+    const marketplace = catalog.marketplaces[i];
     for (const summary of marketplace.plugins) {
       const seen = entries.get(summary.id);
       if (seen && !summary.installed) continue;
@@ -410,7 +414,8 @@ function codexCatalogEntries(catalog: z.infer<typeof CodexPluginListSchema>) {
 function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {
   const parsed = CodexSkillListSchema.parse(value);
   const skills = new Map<string, StandaloneSkill>();
-  for (const group of parsed.data) {
+  for (let i = 0, len = parsed.data.length; i < len; i++) {
+    const group = parsed.data[i];
     for (const raw of group.skills) {
       const entry = CodexSkillEntrySchema.safeParse(raw);
       if (!entry.success) continue;

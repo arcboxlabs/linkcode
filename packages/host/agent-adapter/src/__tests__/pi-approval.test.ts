@@ -39,7 +39,8 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
       ) {}
       reload() {
         if (this.options.extensionFactories != null) {
-          for (const factory of this.options.extensionFactories) {
+          for (let i = 0, len = this.options.extensionFactories.length; i < len; i++) {
+            const factory = this.options.extensionFactories[i];
             factory({
               on(_name: string, handler: Gate) {
                 sdk.gate = handler;

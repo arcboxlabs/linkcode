@@ -317,7 +317,8 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       'agent-message:u3',
     ]);
 
-    for (const e of result.events) {
+    for (let i = 0, len = result.events.length; i < len; i++) {
+      const e = result.events[i];
       if (e.event.type === 'tool-call' && e.event.toolCall.toolCallId === 'toolu_sub') {
         expect(e.event.toolCall.parentToolCallId).toBe(TASK_ID);
       }

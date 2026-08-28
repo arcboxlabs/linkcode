@@ -227,7 +227,8 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     }
     const documents = await Promise.all(files.map((file) => readJsonRecord(file)));
     const merged: Record<string, string> = {};
-    for (const document of documents) {
+    for (let i = 0, len = documents.length; i < len; i++) {
+      const document = documents[i];
       if (!isRecord(document.skillOverrides)) continue;
       for (const [name, tier] of Object.entries(document.skillOverrides)) {
         if (typeof tier === 'string') merged[name] = tier;
@@ -301,7 +302,8 @@ async function readClaudeSkillsDirectory(
     return [];
   }
   const reads: Array<Promise<StandaloneSkill | undefined>> = [];
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
     reads.push(readClaudeSkill(dir, entry.name, scope));
   }
@@ -345,7 +347,9 @@ function parseSkillFrontmatter(content: string): { name?: string; description?: 
   const match = RE_SKILL_FRONTMATTER.exec(content);
   if (!match) return {};
   const fields: { name?: string; description?: string } = {};
-  for (const line of match[1].split(RE_LINE_BREAK)) {
+  const lines = match[1].split(RE_LINE_BREAK);
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     const separator = line.indexOf(':');
     if (separator <= 0) continue;
     const key = line.slice(0, separator).trim();
@@ -393,14 +397,16 @@ async function normalizeClaudePlugins(
     marketplaces.map((marketplace) => [marketplace.name, marketplace]),
   );
   const records = new Map<string, ClaudePluginRecord>();
-  for (const available of catalog.available) {
+  for (let i = 0, len = catalog.available.length; i < len; i++) {
+    const available = catalog.available[i];
     records.set(available.pluginId, {
       id: available.pluginId,
       available,
       installations: [],
     });
   }
-  for (const installed of catalog.installed) {
+  for (let i = 0, len = catalog.installed.length; i < len; i++) {
+    const installed = catalog.installed[i];
     const record = records.get(installed.id) ?? { id: installed.id, installations: [] };
     record.installations.push(installed);
     records.set(installed.id, record);

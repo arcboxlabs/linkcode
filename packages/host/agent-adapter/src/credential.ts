@@ -96,6 +96,10 @@ function readString(value: unknown): string | undefined {
 function readStringRecord(value: unknown): Record<string, string> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const out: Record<string, string> = {};
-  for (const [key, val] of Object.entries(value)) if (typeof val === 'string') out[key] = val;
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, val] = entries[i];
+    if (typeof val === 'string') out[key] = val;
+  }
   return isObjectEmpty(out) ? undefined : out;
 }

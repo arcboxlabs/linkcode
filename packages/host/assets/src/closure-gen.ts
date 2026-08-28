@@ -79,7 +79,9 @@ function collectNodes(lockfile: Lockfile, rootKey: string): Map<string, ClosureN
     if (!integrity) throw new Error(`no integrity recorded for ${name}@${version}`);
     const snapshot = snapshots[key] ?? {};
     const deps = new Map<string, string>();
-    for (const source of [snapshot.dependencies, snapshot.optionalDependencies]) {
+    const depSources = [snapshot.dependencies, snapshot.optionalDependencies];
+    for (let i = 0, len = depSources.length; i < len; i++) {
+      const source = depSources[i];
       if (source != null) {
         for (const [depName, depVersion] of Object.entries(source)) {
           const childKey = `${depName}@${depVersion}`;

@@ -49,7 +49,8 @@ describe('CATALOG', () => {
   });
 
   it('declares a verifiable baked artifact for every baked platform entry', () => {
-    for (const descriptor of descriptors) {
+    for (let i = 0, len = descriptors.length; i < len; i++) {
+      const descriptor = descriptors[i];
       for (const source of Object.values(descriptor.artifacts)) {
         if (source.kind !== 'baked') continue;
         expect(source.url).toMatch(HTTPS);
@@ -60,7 +61,8 @@ describe('CATALOG', () => {
   });
 
   it('gives windows entries .exe members and posix entries bare members', () => {
-    for (const descriptor of descriptors) {
+    for (let i = 0, len = descriptors.length; i < len; i++) {
+      const descriptor = descriptors[i];
       for (const [key, source] of Object.entries(descriptor.artifacts)) {
         expect(source.member.endsWith('.exe')).toBe(key.startsWith('win32'));
       }
@@ -77,7 +79,9 @@ describe('CATALOG', () => {
   });
 
   it('ships the codex Windows sandbox helpers next to the win32 binaries only', () => {
-    for (const [key, source] of Object.entries(binary(CODEX_ID).artifacts)) {
+    const codexArtifacts = Object.entries(binary(CODEX_ID).artifacts);
+    for (let i = 0, len = codexArtifacts.length; i < len; i++) {
+      const [key, source] = codexArtifacts[i];
       if (source.kind !== 'npm') throw new Error('expected npm source');
       if (!key.startsWith('win32')) {
         expect(source.extraMembers).toBeUndefined();
