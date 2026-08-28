@@ -58,9 +58,9 @@ files:
   # verify-artifacts.mts guards against reintroduction.
   # Dead weight in the deploy closure (CODE-215). @linkcode/* are raw-TS workspace sources —
   # main/preload/daemon all bundle them, and migrations run from out/drizzle, so nothing resolves
-  # them from node_modules at runtime. better-sqlite3/deps is the sqlite3 C amalgamation:
-  # @electron/rebuild needs it at BUILD time (which is why the staging prune must not delete it),
-  # but the compiled build/Release binding is all the app loads.
+  # them from node_modules at runtime. better-sqlite3/deps is the sqlite3 C amalgamation, only ever
+  # compiled if a from-source @electron/rebuild happens (which is why the staging prune must not
+  # delete it); the app loads the shipped NAPI prebuild under better-sqlite3/prebuilds instead.
   - '!node_modules/@linkcode/**'
   - '!node_modules/better-sqlite3/deps/**'
 

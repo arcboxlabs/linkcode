@@ -75,15 +75,23 @@ const EXPECTED: Partial<Record<string, PlatformExpectation>> = {
 };
 
 const SIDECAR_BINARY = argv[2] === 'win' ? 'linkcode-pty.exe' : 'linkcode-pty';
+/** Node's platform name per builder platform — the token better-sqlite3 names its prebuilds by. */
+const NODE_PLATFORM: Partial<Record<string, string>> = {
+  mac: 'darwin',
+  win: 'win32',
+  linux: 'linux',
+};
 /**
- * better-sqlite3's compiled binding, smartUnpacked beside the asar; the daemon requires it at boot.
- * A build where @electron/rebuild silently rebuilt nothing ships the wrong CPU/ABI and every client
- * shows "Unable to connect to the daemon" (broke every release through 0.2.1; see package-app.mts).
+ * better-sqlite3's binding, smartUnpacked beside the asar; the daemon requires it at boot. Since
+ * v13 it is one NAPI prebuild per platform-arch shipped in the tarball (`build/Release` is only
+ * written when node-gyp actually compiles, which it now skips), so what breaks is the staging
+ * prune keeping the wrong target — every client then shows "Unable to connect to the daemon".
  */
-const NATIVE_BINDING = 'node_modules/better-sqlite3/build/Release/better_sqlite3.node'.replaceAll(
-  '/',
-  sep,
-);
+function sqliteBinding(platform: string, arch: string): string | null {
+  const nodePlatform = NODE_PLATFORM[platform];
+  if (nodePlatform === undefined) return null;
+  return `node_modules/better-sqlite3/prebuilds/${nodePlatform}-${arch}.node`.replaceAll('/', sep);
+}
 /**
  * napi-rs platform-package triple for the target this artifact was packed for. napi-rs ships one
  * optional dependency per triple and installs only the host's, so a cross-packed build carries no
@@ -183,8 +191,10 @@ function readBinaryArch(file: string): 'x64' | 'arm64' | null {
  */
 function verifyNativeBindings(platform: string, resourceDir: string, problems: string[]): void {
   const expectedArch = resourceDir.includes('arm64') ? 'arm64' : 'x64';
+  const sqlite = sqliteBinding(platform, expectedArch);
   const keyring = keyringBinding(platform, expectedArch);
-  const bindings: Array<[label: string, path: string]> = [['better-sqlite3', NATIVE_BINDING]];
+  const bindings: Array<[label: string, path: string]> = [];
+  if (sqlite !== null) bindings.push(['better-sqlite3', sqlite]);
   if (keyring !== null) bindings.push(['@napi-rs/keyring', keyring]);
 
   for (const [label, relative] of bindings) {
