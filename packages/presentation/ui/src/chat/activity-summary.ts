@@ -73,7 +73,8 @@ export function settledActivityRunDescriptor(
   let failureCount = 0;
   let hasThinking = false;
 
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind === 'tool' && item.toolCall.status === 'failed') failureCount += 1;
     const category = activityCategory(item);
     if (category === 'thinking') {
@@ -85,7 +86,8 @@ export function settledActivityRunDescriptor(
 
   const clauses: ActivitySummaryClause[] = [];
   if (failureCount > 0) clauses.push({ category: 'failure', count: failureCount });
-  for (const category of SETTLED_CATEGORY_PRIORITY) {
+  for (let i = 0, len = SETTLED_CATEGORY_PRIORITY.length; i < len; i++) {
+    const category = SETTLED_CATEGORY_PRIORITY[i];
     const count = categoryCounts.get(category);
     if (count !== undefined) clauses.push({ category, count });
   }
@@ -119,7 +121,8 @@ export function activityRunBrand(items: readonly ActivityRunItem[]): Integration
   }
 
   let single: IntegrationBrand | undefined;
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     const brand = activityItemBrand(item);
     if (!brand) continue;
     if (single !== undefined && single !== brand) return undefined;

@@ -18,7 +18,8 @@ it('loads the destination and Google favicon concurrently with a local fallback'
     'https://internal.example.test/favicon.ico',
     'https://www.google.com/s2/favicons?domain=https%3A%2F%2Finternal.example.test&sz=32',
   ]);
-  for (const image of images) {
+  for (let i = 0, len = images.length; i < len; i++) {
+    const image = images[i];
     expect(image.getAttribute('alt')).toBe('');
     expect(image.getAttribute('decoding')).toBe('async');
     expect(image.getAttribute('draggable')).toBe('false');

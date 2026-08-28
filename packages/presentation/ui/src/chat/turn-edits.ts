@@ -11,7 +11,8 @@ export function splitTurnSegments<T extends ConversationItem>(
   items: readonly T[],
 ): Array<TurnSegment<T>> {
   const segments: Array<TurnSegment<T>> = [];
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     const current = segments.at(-1);
     // turnId is string | null, never undefined, so a match proves `current` exists.
     if (current?.turnId === item.turnId) current.items.push(item);
@@ -43,7 +44,8 @@ export function advanceTurnSegments<T extends ConversationItem>(
 
   const reused: Array<TurnSegment<T>> = [];
   let covered = 0;
-  for (const segment of prev.segments) {
+  for (let i = 0, len = prev.segments.length; i < len; i++) {
+    const segment = prev.segments[i];
     if (covered + segment.items.length > stable) break;
     reused.push(segment);
     covered += segment.items.length;
@@ -76,7 +78,8 @@ export interface TurnEdits {
  * or declined edit never landed). Null when the turn edited nothing. */
 export function turnFileEdits(items: readonly ConversationItem[]): TurnEdits | null {
   const byPath = new Map<string, TurnFileEdit>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind !== 'tool' || item.toolCall.status !== 'completed') continue;
     for (const content of item.toolCall.content) {
       if (content.type !== 'diff') continue;

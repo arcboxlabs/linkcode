@@ -44,7 +44,8 @@ function optionById<T extends { id: string }>(
   id: string | null,
 ): T | undefined {
   if (options != null) {
-    for (const option of options) {
+    for (let i = 0, len = options.length; i < len; i++) {
+      const option = options[i];
       if (option.id === id) return option;
     }
   }
@@ -55,7 +56,8 @@ function policyById(
   policies: readonly ApprovalPolicy[],
   policyId: string | null,
 ): ApprovalPolicy | undefined {
-  for (const policy of policies) {
+  for (let i = 0, len = policies.length; i < len; i++) {
+    const policy = policies[i];
     if (policy.policyId === policyId) return policy;
   }
   return undefined;

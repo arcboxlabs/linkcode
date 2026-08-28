@@ -158,12 +158,16 @@ function permissionDetails(item: PermissionConversationItem): PermissionDetail[]
 
   const files = new Set<string>();
   if (toolCall.content != null) {
-    for (const item of toolCall.content) {
+    for (let i = 0, len = toolCall.content.length; i < len; i++) {
+      const item = toolCall.content[i];
       if (item.type === 'diff') files.add(item.path);
     }
   }
   if (toolCall.locations != null) {
-    for (const location of toolCall.locations) files.add(location.path);
+    for (let i = 0, len = toolCall.locations.length; i < len; i++) {
+      const location = toolCall.locations[i];
+      files.add(location.path);
+    }
   }
   if (!showRawArguments) {
     const rawPath = stringField(raw, 'path') ?? stringField(raw, 'file_path');

@@ -9,7 +9,8 @@ export function buildCommandLookup(
   commands: readonly AgentCommand[],
 ): ReadonlyMap<string, AgentCommand> {
   const lookup = new Map<string, AgentCommand>();
-  for (const command of commands) {
+  for (let i = 0, len = commands.length; i < len; i++) {
+    const command = commands[i];
     for (const name of [command.name, ...(command.aliases ?? [])]) {
       if (!lookup.has(name)) lookup.set(name, command);
     }

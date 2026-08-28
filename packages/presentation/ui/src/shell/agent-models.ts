@@ -53,7 +53,8 @@ export function groupModelsByProvider(
   const ungrouped: ModelOption[] = [];
   const byProvider = new Map<string, ModelOption[]>();
   if (options != null) {
-    for (const option of options) {
+    for (let i = 0, len = options.length; i < len; i++) {
+      const option = options[i];
       if (option.description === undefined) {
         ungrouped.push(option);
         continue;

@@ -243,7 +243,8 @@ function ActivityRunIcon({
 function primarySettledCategory(
   clauses: readonly ActivitySummaryClause[],
 ): SettledActivityCategory | undefined {
-  for (const clause of clauses) {
+  for (let i = 0, len = clauses.length; i < len; i++) {
+    const clause = clauses[i];
     if (clause.category !== 'failure') return clause.category;
   }
   return undefined;

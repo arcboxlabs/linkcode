@@ -191,7 +191,9 @@ describe('Composer command menu', () => {
     });
 
     const initialActive = editor.getAttribute('aria-activedescendant');
-    for (const key of ['ArrowDown', 'ArrowUp']) {
+    const navigationKeys = ['ArrowDown', 'ArrowUp'];
+    for (let i = 0, len = navigationKeys.length; i < len; i++) {
+      const key = navigationKeys[i];
       for (const modifier of [
         { altKey: true },
         { ctrlKey: true },

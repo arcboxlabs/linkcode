@@ -19,7 +19,8 @@ export function getMessages(locale: Locale): Messages {
 
 export function resolveLocale(input: string | readonly string[] | undefined): Locale {
   const candidates = typeof input === 'string' ? [input] : (input ?? []);
-  for (const candidate of candidates) {
+  for (let i = 0, len = candidates.length; i < len; i++) {
+    const candidate = candidates[i];
     const normalized = normalizeLocale(candidate);
     if (normalized) return normalized;
   }
