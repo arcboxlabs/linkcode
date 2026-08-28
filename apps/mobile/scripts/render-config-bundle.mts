@@ -85,7 +85,8 @@ async function renderInto(
   >;
   try {
     // Both platforms render in one invocation so they can never drift apart in source or inputs.
-    for (const platform of MOBILE_PLATFORMS) {
+    for (let i = 0, len = MOBILE_PLATFORMS.length; i < len; i++) {
+      const platform = MOBILE_PLATFORMS[i];
       const outPath = join(workDir, `${platform}.json`);
       const releaseManifest = releaseManifests[platform];
       // eslint-disable-next-line no-await-in-loop -- renders share pinned checkouts sequentially
@@ -144,9 +145,11 @@ async function renderInto(
 
 function listFiles(dir: string, prefix = ''): string[] {
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     collator.compare(a.name, b.name),
-  )) {
+  );
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), rel));
     else files.push(rel);
@@ -173,13 +176,15 @@ function assertNoDrift(
   const fresh = listFiles(freshDir).filter(relevant);
   const real = listFiles(realDir).filter(relevant);
   const drifted = new Set<string>();
-  for (const file of fresh) {
+  for (let i = 0, len = fresh.length; i < len; i++) {
+    const file = fresh[i];
     if (!real.includes(file)) drifted.add(`${file} (missing from ${label})`);
     else if (digest(join(freshDir, file)) !== digest(join(realDir, file))) {
       drifted.add(`${file} (content drift)`);
     }
   }
-  for (const file of real) {
+  for (let i = 0, len = real.length; i < len; i++) {
+    const file = real[i];
     if (!fresh.includes(file)) drifted.add(`${file} (stale extra file)`);
   }
   if (drifted.size > 0) {

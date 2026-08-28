@@ -367,7 +367,9 @@ function parseEndpoint(value: unknown): string | null {
 function parseKeyring(value: unknown): Readonly<Record<string, string>> {
   if (!isRecord(value)) throw new TypeError('Config keyrings must contain strings');
   const keyring: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     if (typeof entry !== 'string') throw new TypeError('Config keyrings must contain strings');
     keyring[key] = entry;
   }
@@ -376,7 +378,9 @@ function parseKeyring(value: unknown): Readonly<Record<string, string>> {
 
 function parseConfigValues(value: Record<string, unknown>): Readonly<Record<string, ConfigValue>> {
   const defaults: Record<string, ConfigValue> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     if (!isConfigValue(entry)) throw new TypeError('Config defaults must contain JSON values');
     defaults[key] = structuredClone(entry);
   }

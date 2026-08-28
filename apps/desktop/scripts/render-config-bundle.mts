@@ -108,9 +108,11 @@ async function renderInto(
 
 function listFiles(dir: string, prefix = ''): string[] {
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     collator.compare(a.name, b.name),
-  )) {
+  );
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), rel));
     else files.push(rel);
@@ -131,13 +133,15 @@ function assertNoDrift(freshDir: string, generatedDir: string): void {
   const fresh = listFiles(freshDir);
   const generated = listFiles(generatedDir);
   const drifted = new Set<string>();
-  for (const file of fresh) {
+  for (let i = 0, len = fresh.length; i < len; i++) {
+    const file = fresh[i];
     if (!generated.includes(file)) drifted.add(`${file} (missing from generated)`);
     else if (digest(join(freshDir, file)) !== digest(join(generatedDir, file))) {
       drifted.add(`${file} (content drift)`);
     }
   }
-  for (const file of generated) {
+  for (let i = 0, len = generated.length; i < len; i++) {
+    const file = generated[i];
     if (!fresh.includes(file)) drifted.add(`${file} (stale extra file)`);
   }
   if (drifted.size > 0) {

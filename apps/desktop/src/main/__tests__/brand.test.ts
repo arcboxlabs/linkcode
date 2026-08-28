@@ -86,7 +86,9 @@ describe('deriveDesktopBrandBase', () => {
       }),
     );
     if (acme === null || zenith === null) throw new Error('expected identities');
-    for (const channel of ['release', 'development'] as const) {
+    const channels = ['release', 'development'] as const;
+    for (let i = 0, len = channels.length; i < len; i++) {
+      const channel = channels[i];
       const acmeBase = deriveDesktopBrandBase(acme, channel);
       const zenithBase = deriveDesktopBrandBase(zenith, channel);
       expect(zenithBase.storageDirName).not.toBe(acmeBase.storageDirName);
@@ -97,7 +99,9 @@ describe('deriveDesktopBrandBase', () => {
 
   it('never derives the legacy unbranded storage location', () => {
     const identity = nullthrow(parseDesktopBrandIdentity(rawIdentity()), 'expected identity');
-    for (const channel of ['release', 'development'] as const) {
+    const channels = ['release', 'development'] as const;
+    for (let i = 0, len = channels.length; i < len; i++) {
+      const channel = channels[i];
       const base = deriveDesktopBrandBase(identity, channel);
       expect(base.storageDirName).not.toMatch(RE_DEFAULT_PRODUCT);
       expect(base.appId).not.toMatch(RE_DEFAULT_PRODUCT);

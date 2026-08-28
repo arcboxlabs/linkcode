@@ -14,9 +14,11 @@ const collator = new Intl.Collator();
 function listFiles(dir: string, prefix = ''): string[] {
   if (!existsSync(dir)) return [];
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     collator.compare(a.name, b.name),
-  )) {
+  );
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), relative));
     else files.push(relative);
@@ -64,7 +66,8 @@ export function assertStagedConfigMatchesGenerated(desktopDir: string): boolean 
     pairs.map(([, staged]) => staged).sort(),
     'apps/desktop/out/config',
   );
-  for (const [generated, staged] of pairs) {
+  for (let i = 0, len = pairs.length; i < len; i++) {
+    const [generated, staged] = pairs[i];
     if (
       !readFileSync(join(generatedDir, generated)).equals(readFileSync(join(outConfig, staged)))
     ) {

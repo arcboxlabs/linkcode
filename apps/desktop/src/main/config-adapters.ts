@@ -133,7 +133,8 @@ async function readBoundedBody(response: Response): Promise<Uint8Array> {
   }
   const body = new Uint8Array(length);
   let offset = 0;
-  for (const chunk of chunks) {
+  for (let i = 0, len = chunks.length; i < len; i++) {
+    const chunk = chunks[i];
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }

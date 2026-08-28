@@ -94,7 +94,9 @@ function materializeStaging(arch: BuilderArch): string {
   );
   // deploy's file selection skips .gitignore'd paths inconsistently across pnpm versions; sync the
   // build outputs in explicitly so `files: out/**` and `extraResources: sidecar/${arch}` resolve.
-  for (const dir of ['out', 'sidecar']) {
+  const syncDirs = ['out', 'sidecar'];
+  for (let i = 0, len = syncDirs.length; i < len; i++) {
+    const dir = syncDirs[i];
     const dest = join(target, dir);
     rmSync(dest, { recursive: true, force: true });
     cpSync(join(desktopDir, dir), dest, { recursive: true });
@@ -118,10 +120,12 @@ const MARKDOWN_RE = /\.(?:md|markdown)$/i;
 function pruneStaging(target: string): void {
   let files = 0;
   let bytes = 0;
-  for (const entry of readdirSync(join(target, 'node_modules'), {
+  const entries = readdirSync(join(target, 'node_modules'), {
     recursive: true,
     withFileTypes: true,
-  })) {
+  });
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (!entry.isFile()) continue;
     const prunable =
       entry.name.endsWith('.map') ||
@@ -148,7 +152,8 @@ function stagedArches(): BuilderArch[] {
   const staged = BUILDER_ARCHES.filter((arch) => stagedNames.has(arch));
   if (staged.length === 0) throw new Error('no staged sidecar arch; run stage:host-runtime first');
   const arches = requestedArches.length === 0 ? staged : requestedArches;
-  for (const arch of arches) {
+  for (let i = 0, len = arches.length; i < len; i++) {
+    const arch = arches[i];
     if (!staged.includes(arch)) throw new Error(`sidecar/${arch} is not staged`);
   }
   return arches;
@@ -190,7 +195,9 @@ function build(): void {
       : 'electron-builder.release.yml';
   const brandIcon = join(desktopDir, 'out', 'config', 'brand-assets', 'icon.png');
   const feeds = new Map<string, string>();
-  for (const arch of stagedArches()) {
+  const arches = stagedArches();
+  for (let i = 0, len = arches.length; i < len; i++) {
+    const arch = arches[i];
     const target = materializeStaging(arch);
     pruneStaging(target);
     const feedName = updateFeedName(arch);

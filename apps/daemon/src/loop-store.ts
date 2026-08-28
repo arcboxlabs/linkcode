@@ -77,7 +77,8 @@ export function createLoopStore(dbPath: string): LoopStore {
 /** Parse each row through its schema; drop and log a row that fails rather than failing the load. */
 function parseAll<Row, T>(rows: Row[], parse: (row: Row) => T): T[] {
   const parsed: T[] = [];
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     try {
       parsed.push(parse(row));
     } catch {

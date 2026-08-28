@@ -192,7 +192,8 @@ async function verifyLongThreadVirtualization(page: Page): Promise<void> {
         }
       };
       const process = (records: MutationRecord[]): void => {
-        for (const record of records) {
+        for (let i = 0, len = records.length; i < len; i++) {
+          const record = records[i];
           for (const node of record.addedNodes) collect(node);
         }
       };

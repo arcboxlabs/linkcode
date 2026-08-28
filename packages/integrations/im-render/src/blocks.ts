@@ -28,7 +28,8 @@ export function contentBlockToMarkdown(block: ContentBlock): string {
 
 export function contentToMarkdown(blocks: readonly ContentBlock[]): string {
   const parts: string[] = [];
-  for (const block of blocks) {
+  for (let i = 0, len = blocks.length; i < len; i++) {
+    const block = blocks[i];
     const text = contentBlockToMarkdown(block);
     if (text.length > 0) parts.push(text);
   }

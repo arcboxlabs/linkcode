@@ -31,12 +31,14 @@ interface DetailRow {
 function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
   const rows: DetailRow[] = [];
   if (toolCall.locations != null) {
-    for (const location of toolCall.locations) {
+    for (let i = 0, len = toolCall.locations.length; i < len; i++) {
+      const location = toolCall.locations[i];
       rows.push({ key: `loc:${location.path}`, value: location.path });
     }
   }
   if (toolCall.content != null) {
-    for (const content of toolCall.content) {
+    for (let i = 0, len = toolCall.content.length; i < len; i++) {
+      const content = toolCall.content[i];
       if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
         rows.push({ key: `diff:${content.path}`, value: content.path });
       }
@@ -45,7 +47,9 @@ function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
   const input = toolCall.rawInput;
   if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
     const record = input as Record<string, unknown>;
-    for (const key of ['file_path', 'path', 'notebook_path', 'filePath']) {
+    const pathKeys = ['file_path', 'path', 'notebook_path', 'filePath'];
+    for (let i = 0, len = pathKeys.length; i < len; i++) {
+      const key = pathKeys[i];
       const value = record[key];
       if (typeof value === 'string' && !rows.some((row) => row.value === value)) {
         rows.push({ key: `path:${key}`, value });
