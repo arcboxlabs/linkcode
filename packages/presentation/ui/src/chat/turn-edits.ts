@@ -81,7 +81,9 @@ export function turnFileEdits(items: readonly ConversationItem[]): TurnEdits | n
   for (let i = 0, len = items.length; i < len; i++) {
     const item = items[i];
     if (item.kind !== 'tool' || item.toolCall.status !== 'completed') continue;
-    for (const content of item.toolCall.content) {
+    const contents = item.toolCall.content;
+    for (let j = 0, contentCount = contents.length; j < contentCount; j++) {
+      const content = contents[j];
       if (content.type !== 'diff') continue;
       const stats = diffContentStats(content);
       const edit = byPath.get(content.path) ?? { path: content.path, additions: 0, deletions: 0 };

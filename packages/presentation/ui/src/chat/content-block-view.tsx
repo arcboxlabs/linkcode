@@ -10,7 +10,7 @@ import { linkTargetForUri } from './link-target';
 import { Markdown, SmoothMarkdown } from './markdown';
 
 function resourceLabel(uri: string, fallback: string): string {
-  const visible = split0th(uri, '#')?.split('?', 1)[0] ?? '';
+  const visible = split0th(split0th(uri, '#') ?? '', '?') ?? '';
   if (visible.endsWith('/')) return fallback;
   const label = fileBasename(visible);
   return label && !label.includes(':') ? label : fallback;

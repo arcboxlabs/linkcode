@@ -85,9 +85,11 @@ function DirectiveStatePlugin({
 }: Pick<ComposerEditorProps, 'directiveControls' | 'disabled'>): null {
   const [editor] = useLexicalComposerContext();
   // Prop → external-store sync for the chip portals (they can't receive props through Lexical's
-  // decorator boundary); not a state watcher.
+  // decorator boundary); not a state watcher: `store` is a vanilla zustand store keyed by the
+  // Lexical editor instance, not React useState, and the chip portals subscribe to it directly.
   useEffect(() => {
     const store = directiveStateFor(editor);
+    // eslint-disable-next-line vibe-proof/react-no-use-effect-watching -- see above
     store.setState({ directiveControls, disabled });
   }, [editor, directiveControls, disabled]);
   return null;
@@ -104,7 +106,10 @@ function TokenizerPlugin(): null {
 
 function EditablePlugin({ disabled }: { disabled: boolean }): null {
   const [editor] = useLexicalComposerContext();
+  // Prop → imperative sync: `setEditable` is the Lexical editor's own API (not React state);
+  // an effect is the only place to push the prop into the editor instance.
   useEffect(() => {
+    // eslint-disable-next-line vibe-proof/react-no-use-effect-watching -- see above
     editor.setEditable(!disabled);
   }, [editor, disabled]);
   return null;

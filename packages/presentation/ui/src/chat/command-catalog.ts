@@ -11,7 +11,9 @@ export function buildCommandLookup(
   const lookup = new Map<string, AgentCommand>();
   for (let i = 0, len = commands.length; i < len; i++) {
     const command = commands[i];
-    for (const name of [command.name, ...(command.aliases ?? [])]) {
+    const names = [command.name, ...(command.aliases ?? [])];
+    for (let j = 0, nameCount = names.length; j < nameCount; j++) {
+      const name = names[j];
       if (!lookup.has(name)) lookup.set(name, command);
     }
   }

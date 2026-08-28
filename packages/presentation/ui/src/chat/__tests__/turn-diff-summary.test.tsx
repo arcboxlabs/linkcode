@@ -47,8 +47,10 @@ describe('TurnDiffSummary', () => {
     );
     expect(fileButtons).toHaveLength(FILES.length);
     // user-event queues pointer interactions, so these clicks must stay serial.
-    // eslint-disable-next-line no-await-in-loop -- preserve interaction ordering
-    for (const button of fileButtons) await user.click(button);
+    for (let i = 0, len = fileButtons.length; i < len; i++) {
+      // eslint-disable-next-line no-await-in-loop -- preserve interaction ordering
+      await user.click(fileButtons[i]);
+    }
     await user.click(screen.getByRole('button', { name: 'review' }));
 
     expect(openFile.mock.calls).toEqual(FILES.map((file) => [file.path]));
