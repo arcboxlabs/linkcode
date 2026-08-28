@@ -237,6 +237,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const openUdids =
     tabs.udids.length > 0 ? tabs.udids : defaultUdid === null ? EMPTY_UDIDS : [defaultUdid];
   const activeUdid = tabs.activeUdid ?? defaultUdid;
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- a host exposes a handful of simulators at most; a lookup Map would outweigh the scan
   const device = devices?.find((item) => item.udid === activeUdid) ?? null;
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
@@ -249,14 +250,18 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
 
   // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
   // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
-  // land the result for the next switch back.
+  // land the result for the next switch back. No stale-overwrite race exists: writes are keyed
+  // by the udid captured at fetch time (never clobbering another udid's entry), and the ref
+  // guarantees at most one fetch per udid, so no two writes ever target the same key.
   const maskFetchedRef = useRef(new Set<string>());
   useEffect(() => {
     if (udid === null || maskFetchedRef.current.has(udid)) return;
     maskFetchedRef.current.add(udid);
     void client
       .simulatorScreenMask(udid)
+      // eslint-disable-next-line vibe-proof/react-detect-potential-race-condition -- see above
       .then((data) => setMasks((prev) => ({ ...prev, [udid]: data })))
+      // eslint-disable-next-line vibe-proof/react-detect-potential-race-condition -- see above
       .catch(() => setMasks((prev) => ({ ...prev, [udid]: null })));
   }, [client, udid]);
 
