@@ -77,9 +77,8 @@ export function groupTimeline(
     runKey = null;
   };
 
-  for (let i = 0, len = items.length; i < len; i++) {
-    const index = i,
-      item = items[i];
+  for (let index = 0, len = items.length; index < len; index++) {
+    const item = items[index];
     const key = policy.classify(item, {
       index,
       timeline: items,

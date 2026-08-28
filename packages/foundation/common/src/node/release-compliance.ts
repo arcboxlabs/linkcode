@@ -57,9 +57,8 @@ function assertSafeConfigurationValue(
     throw new TypeError(`${path} looks like executable code or an executable-code URL`);
   }
   if (Array.isArray(value)) {
-    for (let i = 0, len = value.length; i < len; i++) {
-      const index = i,
-        entry = value[i];
+    for (let index = 0, len = value.length; index < len; index++) {
+      const entry = value[index];
       assertSafeConfigurationValue(entry, `${path}[${index}]`, disclosedFeatures);
     }
     return;

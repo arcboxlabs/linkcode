@@ -39,9 +39,8 @@ export const LinkCodeMarketplaceConfigListSchema = z
   .array(LinkCodeMarketplaceConfigSchema)
   .superRefine((marketplaces, ctx) => {
     const ids = new Set<string>();
-    for (let i = 0, len = marketplaces.length; i < len; i++) {
-      const index = i,
-        marketplace = marketplaces[i];
+    for (let index = 0, len = marketplaces.length; index < len; index++) {
+      const marketplace = marketplaces[index];
       if (ids.has(marketplace.id)) {
         ctx.addIssue({
           code: 'custom',
@@ -59,9 +58,8 @@ function validateMarketplacePlugin(
   ctx: z.RefinementCtx,
 ): void {
   const versions = new Set<string>();
-  for (let i = 0, len = plugin.releases.length; i < len; i++) {
-    const index = i,
-      release = plugin.releases[i];
+  for (let index = 0, len = plugin.releases.length; index < len; index++) {
+    const release = plugin.releases[index];
     if (release.manifest.id !== plugin.id) {
       ctx.addIssue({
         code: 'custom',
@@ -113,9 +111,8 @@ function rejectDuplicatePlugins(
   ctx: z.RefinementCtx,
 ): void {
   const pluginIds = new Set<string>();
-  for (let i = 0, len = index.plugins.length; i < len; i++) {
-    const pluginIndex = i,
-      plugin = index.plugins[i];
+  for (let pluginIndex = 0, len = index.plugins.length; pluginIndex < len; pluginIndex++) {
+    const plugin = index.plugins[pluginIndex];
     if (pluginIds.has(plugin.id)) {
       ctx.addIssue({
         code: 'custom',

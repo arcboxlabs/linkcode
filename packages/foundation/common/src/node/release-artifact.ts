@@ -220,9 +220,8 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
   }
   const paths = new Set<string>();
   const artifacts: Array<ReleaseArtifactProvenance['artifacts'][number]> = [];
-  for (let i = 0, len = provenance.artifacts.length; i < len; i++) {
-    const index = i,
-      value = provenance.artifacts[i];
+  for (let index = 0, len = provenance.artifacts.length; index < len; index++) {
+    const value = provenance.artifacts[index];
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new TypeError(`release provenance artifact ${index} must be an object`);
     }

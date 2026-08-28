@@ -72,9 +72,8 @@ function assertIJsonValue(value: unknown, label: string): asserts value is JsonV
   }
   if (value === null || typeof value === 'boolean') return;
   if (Array.isArray(value)) {
-    for (let i = 0, len = value.length; i < len; i++) {
-      const index = i,
-        entry = value[i];
+    for (let index = 0, len = value.length; index < len; index++) {
+      const entry = value[index];
       assertIJsonValue(entry, `${label}[${index}]`);
     }
     return;

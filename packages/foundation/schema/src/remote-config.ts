@@ -158,9 +158,8 @@ export const ConfigSnapshotSchema = z
       }
       coveredKeys.add(key);
     }
-    for (let i = 0, len = snapshot.overrides.length; i < len; i++) {
-      const index = i,
-        override = snapshot.overrides[i];
+    for (let index = 0, len = snapshot.overrides.length; index < len; index++) {
+      const override = snapshot.overrides[index];
       const overrideEntries = Object.entries(override.set);
       for (let j = 0, entryCount = overrideEntries.length; j < entryCount; j++) {
         const [key, value] = overrideEntries[j];
@@ -350,9 +349,8 @@ export const EmergencyDocumentSchema = z
   })
   .catchall(SignedJsonValueSchema)
   .superRefine((document, context) => {
-    for (let i = 0, len = document.disabledFeatures.length; i < len; i++) {
-      const index = i,
-        key = document.disabledFeatures[i];
+    for (let index = 0, len = document.disabledFeatures.length; index < len; index++) {
+      const key = document.disabledFeatures[index];
       if (!key.startsWith('feature.') || !isConfigKey(key)) {
         context.addIssue({
           code: 'custom',
@@ -512,9 +510,8 @@ function assertSignedEnvelopeValue(value: unknown, label: string): asserts value
   }
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return;
   if (Array.isArray(value)) {
-    for (let i = 0, len = value.length; i < len; i++) {
-      const index = i,
-        entry = value[i];
+    for (let index = 0, len = value.length; index < len; index++) {
+      const entry = value[index];
       assertSignedEnvelopeValue(entry, `${label}[${index}]`);
     }
     return;

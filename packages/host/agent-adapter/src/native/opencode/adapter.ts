@@ -1235,9 +1235,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!answer) return [];
       const selected = new Set(answer.selectedOptionIds);
       const labels: string[] = [];
-      for (let i = 0, len = q.options.length; i < len; i++) {
-        const oi = i,
-          option = q.options[i];
+      for (let oi = 0, len = q.options.length; oi < len; oi++) {
+        const option = q.options[oi];
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const custom = answer.customText?.trim();

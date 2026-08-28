@@ -381,13 +381,20 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
           }
         >
       >((acc, [model, usage]) => {
-        acc[model] = {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheReadTokens: usage.cacheReadInputTokens,
-          cacheCreationTokens: usage.cacheCreationInputTokens,
-          totalCostUsd: usage.costUSD,
-        };
+        // Own data property, never a prototype write: model ids come from the CLI subprocess,
+        // and a `__proto__` key via plain assignment would silently vanish from the report.
+        Object.defineProperty(acc, model, {
+          configurable: true,
+          enumerable: true,
+          value: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadInputTokens,
+            cacheCreationTokens: usage.cacheCreationInputTokens,
+            totalCostUsd: usage.costUSD,
+          },
+          writable: true,
+        });
         return acc;
       }, {}),
     },
@@ -1217,16 +1224,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
     const byQuestionId = new Map(outcome.answers.map((answer) => [answer.questionId, answer]));
     const answers: Record<string, string> = {};
-    for (let i = 0, len = questions.length; i < len; i++) {
-      const qi = i,
-        question = questions[i];
+    for (let qi = 0, len = questions.length; qi < len; qi++) {
+      const question = questions[qi];
       const answer = byQuestionId.get(`q${qi}`);
       if (!answer) continue;
       const selected = new Set(answer.selectedOptionIds);
       const labels: string[] = [];
-      for (let j = 0, optionCount = question.options.length; j < optionCount; j++) {
-        const oi = j;
-        const option = question.options[j];
+      for (let oi = 0, optionCount = question.options.length; oi < optionCount; oi++) {
+        const option = question.options[oi];
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const value = answer.customText?.trim() || labels.join(', ');

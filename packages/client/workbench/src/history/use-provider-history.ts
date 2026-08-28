@@ -67,9 +67,8 @@ export async function importHistoryGroup({
       );
     }
     const result: HistoryGroupImportResult = { imported: [], failures: [] };
-    for (let i = 0, len = settled.length; i < len; i++) {
-      const index = i,
-        outcome = settled[i];
+    for (let index = 0, len = settled.length; index < len; index++) {
+      const outcome = settled[index];
       const entry = entries[index];
       if (outcome.status === 'fulfilled') result.imported.push(entry.historyId);
       else result.failures.push({ historyId: entry.historyId, error: outcome.reason });
