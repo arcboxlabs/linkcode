@@ -54,7 +54,10 @@ const localModelProbe: typeof probeServiceModels = (service, secret) => {
     models: localize(service.models),
     variants: Object.entries(service.variants).reduce<EndpointService['variants']>(
       (acc, [protocol, variant]) => {
-        acc[protocol] = variant && { ...variant, models: localize(variant.models) };
+        acc[protocol as keyof EndpointService['variants']] = variant && {
+          ...variant,
+          models: localize(variant.models),
+        };
         return acc;
       },
       {},
