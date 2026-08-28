@@ -189,7 +189,9 @@ function opencodeModelOptions(
     } else if (!connected.has(provider.id) && provider.source !== 'api') {
       continue;
     }
-    for (const [modelId, model] of Object.entries(provider.models)) {
+    const modelEntries = Object.entries(provider.models);
+    for (let j = 0, modelCount = modelEntries.length; j < modelCount; j++) {
+      const [modelId, model] = modelEntries[j];
       models.push({
         id: `${provider.id}/${modelId}`,
         label: model.name || modelId,

@@ -167,7 +167,10 @@ export function mapPiHistoryEvents(
       const responseId = typeof message.responseId === 'string' ? message.responseId : undefined;
       const messageTimestamp =
         typeof message.timestamp === 'number' ? message.timestamp : undefined;
-      for (const [contentIndex, block] of message.content.entries()) {
+      const blocks = message.content;
+      for (let j = 0, blockCount = blocks.length; j < blockCount; j++) {
+        const contentIndex = j;
+        const block = blocks[j];
         if (!isRecord(block)) continue;
         if (block.type === 'text') {
           const id = piMessageBlockId(

@@ -20,6 +20,7 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const GIT_SOURCE_RE = /^(?:https?:\/\/|git@)/;
+const collator = new Intl.Collator();
 const settingsWrites = new Map<string, Promise<void>>();
 
 const ClaudeMarketplaceSchema = z.object({
@@ -230,7 +231,9 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
     for (let i = 0, len = documents.length; i < len; i++) {
       const document = documents[i];
       if (!isRecord(document.skillOverrides)) continue;
-      for (const [name, tier] of Object.entries(document.skillOverrides)) {
+      const overrideEntries = Object.entries(document.skillOverrides);
+      for (let j = 0, entryCount = overrideEntries.length; j < entryCount; j++) {
+        const [name, tier] = overrideEntries[j];
         if (typeof tier === 'string') merged[name] = tier;
       }
     }
@@ -310,7 +313,7 @@ async function readClaudeSkillsDirectory(
   const skills = await Promise.all(reads);
   return skills
     .filter((skill) => skill !== undefined)
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => collator.compare(left.id, right.id));
 }
 
 async function readClaudeSkill(
@@ -414,7 +417,7 @@ async function normalizeClaudePlugins(
 
   return Promise.all(
     [...records.values()]
-      .sort((left, right) => left.id.localeCompare(right.id))
+      .sort((left, right) => collator.compare(left.id, right.id))
       .map((record) => normalizeClaudePlugin(record, marketplaceByName)),
   );
 }
@@ -523,8 +526,8 @@ async function readClaudePackage(packagePath: string): Promise<ClaudePackageMeta
     readNamedConfig(join(packagePath, '.lsp.json'), 'lspServers', 'lsp-server'),
   ]);
   const components = componentGroups.flat().sort((left, right) => {
-    const kind = left.kind.localeCompare(right.kind);
-    return kind === 0 ? left.name.localeCompare(right.name) : kind;
+    const kind = collator.compare(left.kind, right.kind);
+    return kind === 0 ? collator.compare(left.name, right.name) : kind;
   });
   return { manifest, components };
 }

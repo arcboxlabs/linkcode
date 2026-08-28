@@ -369,18 +369,27 @@ export function mapClaudeUsageReport(raw: SDKControlGetUsageResponse): UsageRepo
       totalDurationMs: raw.session.total_duration_ms,
       totalLinesAdded: raw.session.total_lines_added,
       totalLinesRemoved: raw.session.total_lines_removed,
-      modelUsage: Object.fromEntries(
-        Object.entries(raw.session.model_usage).map(([model, usage]) => [
-          model,
+      modelUsage: Object.entries(raw.session.model_usage).reduce<
+        Record<
+          string,
           {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheReadTokens: usage.cacheReadInputTokens,
-            cacheCreationTokens: usage.cacheCreationInputTokens,
-            totalCostUsd: usage.costUSD,
-          },
-        ]),
-      ),
+            inputTokens: number;
+            outputTokens: number;
+            cacheReadTokens: number;
+            cacheCreationTokens: number;
+            totalCostUsd: number;
+          }
+        >
+      >((acc, [model, usage]) => {
+        acc[model] = {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheReadTokens: usage.cacheReadInputTokens,
+          cacheCreationTokens: usage.cacheCreationInputTokens,
+          totalCostUsd: usage.costUSD,
+        };
+        return acc;
+      }, {}),
     },
     subscriptionType: raw.subscription_type,
     rateLimits: limits
@@ -742,7 +751,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const rows = [...dropped, ...page];
     for (let i = 0, len = rows.length; i < len; i++) {
       const message = rows[i];
-      for (const event of mapper(message)) pushWithSubagents(event);
+      const mapped = mapper(message);
+      for (let j = 0, eventCount = mapped.length; j < eventCount; j++) {
+        pushWithSubagents(mapped[j]);
+      }
     }
     return {
       session: info
@@ -1212,7 +1224,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       if (!answer) continue;
       const selected = new Set(answer.selectedOptionIds);
       const labels: string[] = [];
-      for (const [oi, option] of question.options.entries()) {
+      for (let j = 0, optionCount = question.options.length; j < optionCount; j++) {
+        const oi = j;
+        const option = question.options[j];
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const value = answer.customText?.trim() || labels.join(', ');
@@ -1431,8 +1445,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // instead of stacking a second card, and do it before the settle below: a completed tool is
       // terminal, so any content emitted after it is silently dropped.
       if (patched) this.emitTool({ toolCallId: block.tool_use_id, content: patched });
-      for (const result of toolResultContent(block.content)) {
-        this.appendToolContent(block.tool_use_id, result);
+      const resultContent = toolResultContent(block.content);
+      for (let j = 0, resultCount = resultContent.length; j < resultCount; j++) {
+        this.appendToolContent(block.tool_use_id, resultContent[j]);
       }
       this.emitTool({
         toolCallId: block.tool_use_id,

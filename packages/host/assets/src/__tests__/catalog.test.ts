@@ -51,7 +51,9 @@ describe('CATALOG', () => {
   it('declares a verifiable baked artifact for every baked platform entry', () => {
     for (let i = 0, len = descriptors.length; i < len; i++) {
       const descriptor = descriptors[i];
-      for (const source of Object.values(descriptor.artifacts)) {
+      const sources = Object.values(descriptor.artifacts);
+      for (let j = 0, sourceCount = sources.length; j < sourceCount; j++) {
+        const source = sources[j];
         if (source.kind !== 'baked') continue;
         expect(source.url).toMatch(HTTPS);
         expect(source.size).toBeGreaterThan(0);
@@ -63,7 +65,9 @@ describe('CATALOG', () => {
   it('gives windows entries .exe members and posix entries bare members', () => {
     for (let i = 0, len = descriptors.length; i < len; i++) {
       const descriptor = descriptors[i];
-      for (const [key, source] of Object.entries(descriptor.artifacts)) {
+      const artifactEntries = Object.entries(descriptor.artifacts);
+      for (let j = 0, entryCount = artifactEntries.length; j < entryCount; j++) {
+        const [key, source] = artifactEntries[j];
         expect(source.member.endsWith('.exe')).toBe(key.startsWith('win32'));
       }
     }

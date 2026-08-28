@@ -171,7 +171,8 @@ export function mapOpencodeHistoryEvents(
       }
       continue;
     }
-    for (const part of parts) {
+    for (let j = 0, partCount = parts.length; j < partCount; j++) {
+      const part = parts[j];
       switch (part.type) {
         case 'text': {
           const event = textHistoryEvent(historyId, 'assistant', part.id, part.text, ts);

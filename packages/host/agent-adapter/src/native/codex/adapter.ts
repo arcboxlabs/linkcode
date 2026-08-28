@@ -93,6 +93,8 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
 
 const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
 
+const collator = new Intl.Collator();
+
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
@@ -102,7 +104,9 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   for (let i = 0, len = response.data.length; i < len; i++) {
     const entry = response.data[i];
     if (!isRecord(entry) || !Array.isArray(entry.skills)) continue;
-    for (const skill of entry.skills) {
+    const skills = entry.skills;
+    for (let j = 0, skillCount = skills.length; j < skillCount; j++) {
+      const skill = skills[j];
       if (!isRecord(skill) || skill.enabled !== true) continue;
       const name = stringField(skill, 'name');
       const path = stringField(skill, 'path');
@@ -124,7 +128,7 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
       });
     }
   }
-  return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...commands.values()].sort((a, b) => collator.compare(a.name, b.name));
 }
 
 /** Composer icons render at chip size; anything bigger than this is not an icon. */
@@ -245,7 +249,8 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
     let effortLevels: EffortLevel[] | undefined;
     if (Array.isArray(advertised)) {
       const supported = new Set<EffortLevel>();
-      for (const option of advertised) {
+      for (let j = 0, optionCount = advertised.length; j < optionCount; j++) {
+        const option = advertised[j];
         if (!isRecord(option)) continue;
         const effort = EffortLevelSchema.safeParse(stringField(option, 'reasoningEffort'));
         if (effort.success && effort.data !== 'ultracode') supported.add(effort.data);
