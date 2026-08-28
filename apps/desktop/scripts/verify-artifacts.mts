@@ -388,10 +388,13 @@ async function main(): Promise<number> {
 
   const problems: string[] = [];
   for (const name of expected.artifacts) {
-    let size: number;
+    let size: number | undefined;
     try {
-      size = statSync(join(RELEASE_DIR, name)).size;
+      size = statSync(join(RELEASE_DIR, name), { throwIfNoEntry: false })?.size;
     } catch {
+      size = undefined;
+    }
+    if (size === undefined) {
       problems.push(`missing artifact: ${name}`);
       continue;
     }

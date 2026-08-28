@@ -47,7 +47,16 @@ export function cloneJson<Value extends JsonValue>(value: Value): Value;
 export function cloneJson(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => cloneJson(entry));
   if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneJson(entry)]));
+    return Object.entries(value).reduce<Record<string, JsonValue>>((acc, [key, entry]) => {
+      // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the clone.
+      Object.defineProperty(acc, key, {
+        configurable: true,
+        enumerable: true,
+        value: cloneJson(entry),
+        writable: true,
+      });
+      return acc;
+    }, {});
   }
   return value;
 }

@@ -27,10 +27,11 @@ function validatedAssetDir(structuralDir: string, assetsPath: string): string {
   }
   let dirStats;
   try {
-    dirStats = lstatSync(dir);
+    dirStats = lstatSync(dir, { throwIfNoEntry: false });
   } catch {
     fail(`brand assets directory ${assetsPath} does not exist`);
   }
+  if (dirStats === undefined) fail(`brand assets directory ${assetsPath} does not exist`);
   if (dirStats.isSymbolicLink()) fail(`brand assets directory ${assetsPath} must not be a symlink`);
   if (!dirStats.isDirectory()) fail(`brand assets path ${assetsPath} is not a directory`);
   return dir;

@@ -4,7 +4,6 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage, pong } from '@linkcode/transport';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { noop } from 'foxact/noop';
-import type * as React from 'react';
 import { expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 import { LinkCodeProvider, useSessions } from '../react';

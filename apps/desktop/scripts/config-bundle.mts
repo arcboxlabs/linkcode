@@ -48,12 +48,13 @@ const BUNDLE_FILE = 'config-build-bundle.json';
 const BRAND_IDENTITY_FILE = 'brand-identity.json';
 const BRAND_BUILDER_FILE = 'electron-builder.brand.json';
 const BRAND_ICON_FILE = 'brand-assets/icon.png';
+const collator = new Intl.Collator();
 
 function listFiles(dir: string, prefix = ''): string[] {
   if (!existsSync(dir)) return [];
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
+    collator.compare(a.name, b.name),
   )) {
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), relative));

@@ -9,11 +9,13 @@ const CONFIG_FILE_PAIRS = [
   ['brand-assets/icon.png', 'brand-assets/icon.png'],
 ] as const;
 
+const collator = new Intl.Collator();
+
 function listFiles(dir: string, prefix = ''): string[] {
   if (!existsSync(dir)) return [];
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
+    collator.compare(a.name, b.name),
   )) {
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), relative));

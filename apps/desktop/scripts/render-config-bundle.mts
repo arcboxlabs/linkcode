@@ -38,6 +38,8 @@ const USAGE = String.raw`Usage: config:render \
   --brand-artifacts             also render the brand identity, staged assets, and builder overlay \
   --check                       verify apps/desktop/generated is byte-identical; never rewrite`;
 
+const collator = new Intl.Collator();
+
 function bail(message: string): never {
   console.error(`config:render: ${message}\n\n${USAGE}`);
   process.exit(1);
@@ -107,7 +109,7 @@ async function renderInto(
 function listFiles(dir: string, prefix = ''): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
+    collator.compare(a.name, b.name),
   )) {
     const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), rel));

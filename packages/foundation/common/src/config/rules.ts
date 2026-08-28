@@ -42,9 +42,16 @@ export function applyConfigPatch(
   values: Readonly<Record<string, JsonValue>>,
   patch: Readonly<Record<string, JsonValue>>,
 ): Record<string, JsonValue> {
-  const result = Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [key, cloneJson(value)]),
-  );
+  const result = Object.entries(values).reduce<Record<string, JsonValue>>((acc, [key, value]) => {
+    // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the result.
+    Object.defineProperty(acc, key, {
+      configurable: true,
+      enumerable: true,
+      value: cloneJson(value),
+      writable: true,
+    });
+    return acc;
+  }, {});
   for (const [key, patchValue] of Object.entries(patch)) {
     if (!isConfigKey(key)) fail(`patch key ${key} is invalid`);
     const merged = applyMergePatch(result[key], patchValue);

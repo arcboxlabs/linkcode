@@ -22,6 +22,7 @@ import type {
   ConfigStorage,
   ConfigTarget,
   ConfigValue,
+  ConfigValueDefinition,
   ConfigValues,
   EvaluationContext,
 } from './types';
@@ -70,12 +71,18 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
       throw new TypeError('maximumSchemaVersion must be a positive safe integer');
     }
     configPointerPath(options.target);
-    const definitions = Object.fromEntries(
-      Object.entries(options.definitions).map(([key, definition]) => [
-        key,
-        { defaultValue: cloneJson(definition.defaultValue), parse: definition.parse },
-      ]),
-    ) as Definitions;
+    const definitions = Object.entries(options.definitions).reduce<
+      Record<string, ConfigValueDefinition>
+    >((acc, [key, definition]) => {
+      // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the object.
+      Object.defineProperty(acc, key, {
+        configurable: true,
+        enumerable: true,
+        value: { defaultValue: cloneJson(definition.defaultValue), parse: definition.parse },
+        writable: true,
+      });
+      return acc;
+    }, {}) as Definitions;
     this.#options = {
       ...options,
       context: { ...options.context },

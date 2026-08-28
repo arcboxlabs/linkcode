@@ -380,7 +380,16 @@ function jsonValue(value: unknown): JsonValue {
   if (typeof value !== 'object') {
     throw new TypeError('release provenance must contain only JSON values');
   }
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
+  return Object.entries(value).reduce<Record<string, JsonValue>>((acc, [key, entry]) => {
+    // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the clone.
+    Object.defineProperty(acc, key, {
+      configurable: true,
+      enumerable: true,
+      value: jsonValue(entry),
+      writable: true,
+    });
+    return acc;
+  }, {});
 }
 
 export function parseReleaseArtifactInputs(

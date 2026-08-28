@@ -126,14 +126,21 @@ export function configBuildBundleDefaults(
 export function definitionsFromDefaults(
   defaults: Readonly<Record<string, ConfigValue>>,
 ): ConfigDefinitions {
-  return Object.fromEntries(
-    Object.entries(defaults).map(([key, defaultValue]) => [
-      key,
-      {
-        defaultValue,
-        parse: (value: ConfigValue) => parseLikeDefault(value, defaultValue),
-      } satisfies ConfigValueDefinition,
-    ]),
+  return Object.entries(defaults).reduce<Record<string, ConfigValueDefinition>>(
+    (acc, [key, defaultValue]) => {
+      // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the object.
+      Object.defineProperty(acc, key, {
+        configurable: true,
+        enumerable: true,
+        value: {
+          defaultValue,
+          parse: (value: ConfigValue) => parseLikeDefault(value, defaultValue),
+        } satisfies ConfigValueDefinition,
+        writable: true,
+      });
+      return acc;
+    },
+    {},
   );
 }
 
