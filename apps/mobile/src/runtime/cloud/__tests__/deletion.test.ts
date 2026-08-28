@@ -1,44 +1,60 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  fetchAccount: vi.fn(),
-  // `vi.hoisted` runs above this file's imports, so `foxts/noop`'s `asyncNoop`
-  // isn't in scope here yet — these three are the narrow exception to using it.
-  // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
-  signOutCloud: vi.fn(() => Promise.resolve()),
-  // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
-  signInToCloud: vi.fn(() => Promise.resolve()),
-  reauthenticateWithApple: vi.fn(),
-  // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
-  signOutOfIdp: vi.fn(() => Promise.resolve()),
-  // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
-  clearDeviceEnrollment: vi.fn(() => Promise.resolve()),
-  captureException: vi.fn(),
-  hosts: [] as Array<{
-    id: string;
-    name: string;
-    createdAt: number;
-    tunnelHostId?: string;
-    url?: string;
-  }>,
-  removeHost: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class IdpTokenAcquisitionError extends Error {
+    override name = 'IdpTokenAcquisitionError';
+  }
+  return {
+    fetchDelete: vi.fn(),
+    fetchRequirements: vi.fn(),
+    // `vi.hoisted` runs above this file's imports, so `foxts/noop`'s `asyncNoop`
+    // isn't in scope here yet — these three are the narrow exception to using it.
+    // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
+    signOutCloud: vi.fn(() => Promise.resolve()),
+    // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
+    reauthenticateToCloud: vi.fn(() => Promise.resolve()),
+    reauthenticateWithApple: vi.fn(),
+    // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
+    signOutOfIdp: vi.fn(() => Promise.resolve()),
+    // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
+    clearDeviceEnrollment: vi.fn(() => Promise.resolve()),
+    captureException: vi.fn(),
+    hosts: [] as Array<{
+      id: string;
+      name: string;
+      createdAt: number;
+      tunnelHostId?: string;
+      url?: string;
+    }>,
+    removeHost: vi.fn(),
+    IdpTokenAcquisitionError,
+  };
+});
 
 vi.mock('@sentry/react-native', () => ({ captureException: mocks.captureException }));
 
 vi.mock('../client', () => ({
   CLOUD_URL: 'https://api.linkcode.ai',
   cloudAuthClient: {
-    $fetch: mocks.fetchAccount,
+    $fetch: (url: string, options: unknown) =>
+      url.endsWith('/deletion-requirements')
+        ? mocks.fetchRequirements(url, options)
+        : mocks.fetchDelete(url, options),
     signOut: mocks.signOutCloud,
   },
 }));
 
 vi.mock('../account', () => ({
-  signInToCloud: mocks.signInToCloud,
+  reauthenticateToCloud: mocks.reauthenticateToCloud,
 }));
 
 vi.mock('../idp', () => ({
+  IdpTokenAcquisitionError: mocks.IdpTokenAcquisitionError,
+  isAppleSignInCancel: (error: unknown) =>
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'ERR_REQUEST_CANCELED',
   reauthenticateWithApple: mocks.reauthenticateWithApple,
   signOutOfIdp: mocks.signOutOfIdp,
 }));
@@ -55,26 +71,46 @@ vi.mock('@mobile/stores/host-store', () => ({
 
 import { deleteAccount, runAccountDeletionTeardown } from '../deletion';
 
+beforeEach(() => {
+  mocks.fetchRequirements.mockResolvedValue({ data: { method: 'browser' }, error: null });
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   mocks.hosts = [];
 });
 
 describe('deleteAccount', () => {
+  it('does not re-authenticate or delete when requirements cannot be read', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: null, error: { status: 503 } });
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'failed' });
+    expect(mocks.reauthenticateWithApple).not.toHaveBeenCalled();
+    expect(mocks.reauthenticateToCloud).not.toHaveBeenCalled();
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { account_deletion_stage: 'requirements' } }),
+    );
+  });
+
   it('on the Apple branch, forwards the fresh idpToken and authorizationCode', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
     mocks.reauthenticateWithApple.mockResolvedValueOnce({
       idpToken: 'jwt-1',
       authorizationCode: 'apple-code-1',
     });
-    mocks.fetchAccount.mockResolvedValueOnce({
+    mocks.fetchDelete.mockResolvedValueOnce({
       data: { status: 'completed', authorizationRevocation: 'completed' },
       error: null,
     });
 
-    const result = await deleteAccount({ isAppleAvailable: true });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'completed', authorizationRevocation: 'completed' });
-    expect(mocks.fetchAccount).toHaveBeenCalledWith(
+    expect(mocks.fetchDelete).toHaveBeenCalledWith(
       'https://api.linkcode.ai/account',
       expect.objectContaining({
         method: 'DELETE',
@@ -84,17 +120,17 @@ describe('deleteAccount', () => {
   });
 
   it('on the non-Apple branch, re-runs the browser sign-in and sends the request without an idpToken', async () => {
-    mocks.fetchAccount.mockResolvedValueOnce({
+    mocks.fetchDelete.mockResolvedValueOnce({
       data: { status: 'completed', authorizationRevocation: 'not_applicable' },
       error: null,
     });
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'completed', authorizationRevocation: 'not_applicable' });
-    expect(mocks.signInToCloud).toHaveBeenCalledTimes(1);
+    expect(mocks.reauthenticateToCloud).toHaveBeenCalledTimes(1);
     expect(mocks.reauthenticateWithApple).not.toHaveBeenCalled();
-    expect(mocks.fetchAccount).toHaveBeenCalledWith(
+    expect(mocks.fetchDelete).toHaveBeenCalledWith(
       'https://api.linkcode.ai/account',
       expect.objectContaining({
         body: { idpToken: undefined, appleAuthorizationCode: undefined },
@@ -103,38 +139,64 @@ describe('deleteAccount', () => {
   });
 
   it('on the non-Apple branch, a failed browser sign-in is reauthentication-failed, and never sends the delete request', async () => {
-    mocks.signInToCloud.mockRejectedValueOnce(new Error('dismissed'));
+    mocks.reauthenticateToCloud.mockRejectedValueOnce(new Error('dismissed'));
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'reauthentication-failed' });
-    expect(mocks.fetchAccount).not.toHaveBeenCalled();
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
   });
 
   it('reports reauthentication-failed without ever sending the delete request', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
     mocks.reauthenticateWithApple.mockRejectedValueOnce(new Error('cancelled'));
 
-    const result = await deleteAccount({ isAppleAvailable: true });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'reauthentication-failed' });
-    expect(mocks.fetchAccount).not.toHaveBeenCalled();
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
+  });
+
+  it('does not report an intentional Apple cancellation', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
+    mocks.reauthenticateWithApple.mockRejectedValueOnce({ code: 'ERR_REQUEST_CANCELED' });
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'reauthentication-failed' });
+    expect(mocks.captureException).not.toHaveBeenCalled();
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
+  });
+
+  it('reports IdP token acquisition separately from the native provider', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
+    mocks.reauthenticateWithApple.mockRejectedValueOnce(
+      new mocks.IdpTokenAcquisitionError('IdP unavailable'),
+    );
+
+    await deleteAccount();
+
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(mocks.IdpTokenAcquisitionError),
+      expect.objectContaining({ tags: { account_deletion_stage: 'idp-token' } }),
+    );
   });
 
   it('maps a 401 response to reauthentication-failed', async () => {
-    mocks.fetchAccount.mockResolvedValueOnce({ data: null, error: { status: 401 } });
+    mocks.fetchDelete.mockResolvedValueOnce({ data: null, error: { status: 401 } });
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'reauthentication-failed' });
   });
 
   it('maps a 409 pre-check response to failed, carrying the biz code through', async () => {
-    mocks.fetchAccount.mockResolvedValueOnce({
+    mocks.fetchDelete.mockResolvedValueOnce({
       data: null,
       error: { status: 409, code: 'ACCOUNT_DELETION_SOLE_ORGANIZATION_OWNER' },
     });
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({
       kind: 'failed',
@@ -143,28 +205,28 @@ describe('deleteAccount', () => {
   });
 
   it('treats a pending server response as pending, carrying the reference through', async () => {
-    mocks.fetchAccount.mockResolvedValueOnce({
+    mocks.fetchDelete.mockResolvedValueOnce({
       data: { status: 'pending', reference: 'ref-1' },
       error: null,
     });
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'pending', reference: 'ref-1' });
   });
 
   it('treats a thrown network error as failed — never assumes acceptance', async () => {
-    mocks.fetchAccount.mockRejectedValueOnce(new Error('offline'));
+    mocks.fetchDelete.mockRejectedValueOnce(new Error('offline'));
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'failed' });
   });
 
   it('treats an unparseable success response as pending rather than completed', async () => {
-    mocks.fetchAccount.mockResolvedValueOnce({ data: { unexpected: true }, error: null });
+    mocks.fetchDelete.mockResolvedValueOnce({ data: { unexpected: true }, error: null });
 
-    const result = await deleteAccount({ isAppleAvailable: false });
+    const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'pending' });
   });

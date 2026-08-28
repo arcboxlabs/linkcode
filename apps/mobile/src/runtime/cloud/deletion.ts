@@ -1,10 +1,15 @@
 import { useHostRegistryStore } from '@mobile/stores/host-store';
 import * as Sentry from '@sentry/react-native';
 import { z } from 'zod';
-import { signInToCloud } from './account';
+import { reauthenticateToCloud } from './account';
 import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
-import { reauthenticateWithApple, signOutOfIdp } from './idp';
+import {
+  IdpTokenAcquisitionError,
+  isAppleSignInCancel,
+  reauthenticateWithApple,
+  signOutOfIdp,
+} from './idp';
 
 /**
  * CODE-292: permanent, in-app account deletion. `deleteAccount` is the whole
@@ -33,34 +38,74 @@ const deletionResponseSchema = z.object({
   reference: z.string().optional(),
 });
 
+const deletionRequirementsSchema = z.object({
+  method: z.enum(['native', 'browser']),
+});
+
+type AccountDeletionFailureStage =
+  | 'requirements'
+  | 'native-provider'
+  | 'idp-token'
+  | 'browser-sign-in'
+  | 'cloud-identity'
+  | 'transport';
+
+function reportFailure(stage: AccountDeletionFailureStage, error: unknown): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console -- local acceptance has no Sentry DSN
+    console.error('Account deletion failed', { stage, error });
+  }
+  Sentry.captureException(error, { tags: { account_deletion_stage: stage } });
+}
+
 /**
- * Re-authenticates and submits the single delete request. `isAppleAvailable`
- * mirrors the sign-in screen's own capability check
- * (`AppleAuthentication.isAvailableAsync()`) — mobile has no local signal for
- * *which* provider a given central identity actually uses (D-19's accepted
- * gap), so, like the sign-in screen, this branches on device capability, not
- * account provider.
+ * Reads the server-owned re-authentication requirement, re-authenticates, and
+ * submits one delete mutation. Device capability is not an account fact.
  */
-export async function deleteAccount(options: {
-  isAppleAvailable: boolean;
-}): Promise<AccountDeletionOutcome> {
+export async function deleteAccount(): Promise<AccountDeletionOutcome> {
   let idpToken: string | undefined;
   let appleAuthorizationCode: string | undefined;
 
+  let method: 'native' | 'browser';
   try {
-    if (options.isAppleAvailable) {
+    const requirements = await cloudAuthClient.$fetch<unknown>(
+      `${CLOUD_URL}/account/deletion-requirements`,
+      {},
+    );
+    if (requirements.error) {
+      throw new Error(`deletion requirements failed (${requirements.error.status})`);
+    }
+    method = deletionRequirementsSchema.parse(requirements.data).method;
+  } catch (error) {
+    reportFailure('requirements', error);
+    return { kind: 'failed' };
+  }
+
+  if (method === 'native') {
+    try {
       const reauth = await reauthenticateWithApple();
       idpToken = reauth.idpToken;
       appleAuthorizationCode = reauth.authorizationCode;
-    } else {
+    } catch (error) {
+      if (!isAppleSignInCancel(error)) {
+        reportFailure(
+          error instanceof IdpTokenAcquisitionError ? 'idp-token' : 'native-provider',
+          error,
+        );
+      }
+      return { kind: 'reauthentication-failed' };
+    }
+  } else {
+    try {
       // No local proof to mint for this branch (D-19's accepted gap) — the
       // request below instead relies on the server's session-freshness
       // check, so re-running the existing browser sign-in flow (which mints
       // a fresh session) *is* this branch's re-authentication.
-      await signInToCloud();
+      await reauthenticateToCloud();
+    } catch (error) {
+      reportFailure('browser-sign-in', error);
+      return { kind: 'reauthentication-failed' };
     }
-  } catch {
-    return { kind: 'reauthentication-failed' };
   }
 
   let response: {
@@ -72,7 +117,8 @@ export async function deleteAccount(options: {
       method: 'DELETE',
       body: { idpToken, appleAuthorizationCode },
     });
-  } catch {
+  } catch (error) {
+    reportFailure('transport', error);
     // No response ever arrived — never report acceptance on a guess (D-23,
     // reversing the original §3.4 "treat as pending" call). Retrying is
     // always safe: the server's deletion CAS is idempotent, so if this
@@ -82,7 +128,10 @@ export async function deleteAccount(options: {
   }
 
   if (response.error) {
-    if (response.error.status === 401) return { kind: 'reauthentication-failed' };
+    if (response.error.status === 401) {
+      reportFailure('cloud-identity', new Error('Cloud rejected account re-authentication'));
+      return { kind: 'reauthentication-failed' };
+    }
     // Any other status (409 pre-check, or a pre-PONR 500): the design's
     // contract is that only a pre-PONR failure returns an error status at
     // all, so the account is untouched either way.

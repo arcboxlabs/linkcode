@@ -34,6 +34,10 @@ interface AppleNativeAuthentication {
   authorizationCode: string;
 }
 
+export class IdpTokenAcquisitionError extends Error {
+  override name = 'IdpTokenAcquisitionError';
+}
+
 /**
  * The shared core of both the sign-in and the account-deletion re-authentication
  * flows: prove the user is present via Face ID / passcode through Apple's native
@@ -67,31 +71,35 @@ async function authenticateWithAppleNatively(): Promise<AppleNativeAuthenticatio
   // Apple only discloses the name on the very first authorization — forward
   // it so the IdP profile starts populated instead of empty.
   const { givenName, familyName } = credential.fullName ?? {};
-  const signedIn = await idpAuthClient.signIn.social({
-    provider: 'apple',
-    idToken: {
-      token: credential.identityToken,
-      nonce: rawNonce,
-      ...((givenName || familyName) && {
-        user: {
-          name: {
-            firstName: givenName ?? undefined,
-            lastName: familyName ?? undefined,
+  try {
+    const signedIn = await idpAuthClient.signIn.social({
+      provider: 'apple',
+      idToken: {
+        token: credential.identityToken,
+        nonce: rawNonce,
+        ...((givenName || familyName) && {
+          user: {
+            name: {
+              firstName: givenName ?? undefined,
+              lastName: familyName ?? undefined,
+            },
           },
-        },
-      }),
-    },
-  });
-  if (signedIn.error) {
-    throw new Error(`IdP sign-in failed (${signedIn.error.status})`);
+        }),
+      },
+    });
+    if (signedIn.error) {
+      throw new Error(`IdP sign-in failed (${signedIn.error.status})`);
+    }
+
+    const jwt = await idpAuthClient.$fetch<unknown>(`${IDP_URL}/api/auth/token`, {});
+    if (jwt.error) throw new Error(`IdP token mint failed (${jwt.error.status})`);
+    const parsed = z.object({ token: z.string().min(1) }).safeParse(jwt.data);
+    if (!parsed.success) throw new Error('IdP token endpoint returned an unexpected shape');
+
+    return { idpToken: parsed.data.token, authorizationCode: credential.authorizationCode };
+  } catch (error) {
+    throw new IdpTokenAcquisitionError('Could not acquire an IdP token', { cause: error });
   }
-
-  const jwt = await idpAuthClient.$fetch<unknown>(`${IDP_URL}/api/auth/token`, {});
-  if (jwt.error) throw new Error(`IdP token mint failed (${jwt.error.status})`);
-  const parsed = z.object({ token: z.string().min(1) }).safeParse(jwt.data);
-  if (!parsed.success) throw new Error('IdP token endpoint returned an unexpected shape');
-
-  return { idpToken: parsed.data.token, authorizationCode: credential.authorizationCode };
 }
 
 export async function signInWithApple(): Promise<void> {

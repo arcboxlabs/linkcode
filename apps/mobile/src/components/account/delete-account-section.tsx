@@ -1,9 +1,7 @@
 import { Button, Section } from '@expo/ui/swift-ui';
 import { disabled } from '@expo/ui/swift-ui/modifiers';
 import { deleteAccount, runAccountDeletionTeardown } from '@mobile/runtime/cloud/deletion';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import { noop } from 'foxact/noop';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 
@@ -15,11 +13,6 @@ import { useTranslations } from 'use-intl';
 export function DeleteAccountSection(): React.ReactNode {
   const t = useTranslations('mobile.account');
   const [busy, setBusy] = useState(false);
-  const [appleAvailable, setAppleAvailable] = useState(false);
-
-  useEffect(() => {
-    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(noop);
-  }, []);
 
   const failureMessage = (code: string | undefined): string => {
     if (code === 'ACCOUNT_DELETION_EMERGENCY_AUDIT_HOLD') return t('deleteEmergencyHold');
@@ -30,7 +23,7 @@ export function DeleteAccountSection(): React.ReactNode {
   const run = async () => {
     setBusy(true);
     try {
-      const outcome = await deleteAccount({ isAppleAvailable: appleAvailable });
+      const outcome = await deleteAccount();
       if (outcome.kind === 'reauthentication-failed') {
         Alert.alert(t('deleteReauthenticationFailed'));
         return;

@@ -1,5 +1,6 @@
 import { noop } from 'foxact/noop';
-import { cloudAuthClient } from './client';
+import { z } from 'zod';
+import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 
 /** The cloud's genericOAuth provider id — the central IdP is the only sign-in path. */
@@ -36,6 +37,28 @@ export async function signInToCloud(): Promise<void> {
     callbackURL: '/connect',
   });
   if (error) throw new Error(`sign-in failed (${error.status})`);
+}
+
+const freshSessionSchema = z.object({
+  session: z.object({ id: z.string().min(1) }),
+});
+
+async function getAuthoritativeSessionId(): Promise<string> {
+  const { data, error } = await cloudAuthClient.$fetch<unknown>(
+    `${CLOUD_URL}/auth/get-session?disableCookieCache=true`,
+    {},
+  );
+  if (error) throw new Error(`session read failed (${error.status})`);
+  return freshSessionSchema.parse(data).session.id;
+}
+
+export async function reauthenticateToCloud(): Promise<void> {
+  const previousSessionId = await getAuthoritativeSessionId();
+  await signInToCloud();
+  const currentSessionId = await getAuthoritativeSessionId();
+  if (currentSessionId === previousSessionId) {
+    throw new Error('browser re-authentication did not create a fresh session');
+  }
 }
 
 export async function signOutOfCloud(): Promise<void> {
