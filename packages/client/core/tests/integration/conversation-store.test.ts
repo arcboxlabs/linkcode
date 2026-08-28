@@ -1,18 +1,45 @@
 import type { AgentEvent, MessageId, SessionId } from '@linkcode/schema';
-import { createWireMessage } from '@linkcode/transport';
+import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
+import { Hub } from '@linkcode/transport/server';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
+import { LinkCodeClient } from '../../src/client';
 import { createConversationStore } from '../../src/conversation-store';
 import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-store' as SessionId;
 
-function userText(text: string, messageId = `user:${text}`): AgentEvent {
+function userText(text: string, messageId = `user:${text}`, branchCursor?: string): AgentEvent {
   return {
     type: 'user-message',
     messageId: messageId as MessageId,
     content: [{ type: 'text', text }],
+    ...(branchCursor !== undefined && { branchCursor }),
   };
+}
+
+function agentText(text: string, messageId: string): AgentEvent {
+  return {
+    type: 'agent-message',
+    messageId: messageId as MessageId,
+    content: [{ type: 'text', text }],
+  };
+}
+
+function userTexts(store: ReturnType<typeof createConversationStore>): string[] {
+  const { items } = store.getSnapshot();
+  return items.flatMap((item) =>
+    item.kind === 'message' && item.role === 'user' && item.blocks[0]?.type === 'text'
+      ? [item.blocks[0].text]
+      : [],
+  );
+}
+
+function userCursors(store: ReturnType<typeof createConversationStore>): Array<string | undefined> {
+  const { items } = store.getSnapshot();
+  return items.flatMap((item) =>
+    item.kind === 'message' && item.role === 'user' ? [item.branchCursor] : [],
+  );
 }
 
 function tick(): Promise<void> {
@@ -21,14 +48,48 @@ function tick(): Promise<void> {
 
 async function harness() {
   const { client, serverTransport } = await createConnectedLocalClient();
+  serverTransport.onMessage((message) => {
+    if (message.payload.kind === 'session.start') {
+      serverTransport.send(
+        createWireMessage({
+          kind: 'session.started',
+          replyTo: message.payload.clientReqId,
+          sessionId,
+        }),
+      );
+    }
+  });
   return {
     client,
     send(this: void, event: AgentEvent) {
       serverTransport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
     },
+    /** Round-trip a real session.start so the client records fresh-run creation provenance. */
+    async createSession(this: void) {
+      await client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    },
     close(this: void) {
       client.dispose();
       serverTransport.close();
+    },
+  };
+}
+
+async function attachedHarness() {
+  const [clientTransport, hubTransport] = createLocalTransportPair();
+  await hubTransport.connect();
+  const hub = new Hub();
+  hub.addConnection(hubTransport);
+  const client = new LinkCodeClient(clientTransport);
+  await client.connect();
+  await client.setSubscriptionMode('attached');
+  return {
+    client,
+    hub,
+    close(this: void) {
+      client.dispose();
+      hub.removeConnection(hubTransport);
+      hubTransport.close();
     },
   };
 }
@@ -73,7 +134,9 @@ describe('createConversationStore', () => {
     close();
   });
 
-  it('enriches a lossy seeded prompt with its live image instead of appending a duplicate', async () => {
+  // A lossy provider row can never exact-match an attachment echo: the echo renders as its own
+  // message — attachments stay on it, the row keeps its cursor — instead of enriching the row.
+  it('renders a lossy seeded prompt and its attachment echo separately', async () => {
     const { client, send, close } = await harness();
     const livePrompt: AgentEvent = {
       type: 'user-message',
@@ -110,14 +173,20 @@ describe('createConversationStore', () => {
     });
 
     const messages = store.getSnapshot().items.filter((item) => item.kind === 'message');
-    expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(3);
     expect(messages[0]).toMatchObject({
       id: 'provider-prompt',
       role: 'user',
-      blocks: livePrompt.content,
+      blocks: [{ type: 'text', text: 'describe this image' }],
       branchCursor: 'provider-cursor',
     });
     expect(messages[1]).toMatchObject({ id: 'reply', role: 'assistant' });
+    expect(messages[2]).toMatchObject({
+      id: 'host-prompt',
+      role: 'user',
+      blocks: livePrompt.content,
+      branchCursor: 'live-cursor',
+    });
     close();
   });
 
@@ -308,6 +377,342 @@ describe('createConversationStore', () => {
     send(userText('hello'));
     await tick();
     expect(store.getSnapshot().items).toHaveLength(1);
+    close();
+  });
+
+  it('keeps prompt order when a reseed covers a same-id double echo', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('old prompt', 'host-m1'));
+    send(userText('old prompt', 'host-m1', 'live-cursor-old'));
+    send(agentText('reply', 'provider-reply'));
+    send(userText('new prompt', 'host-m2', 'live-cursor-new'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('old prompt', 'provider-u1') },
+        { event: agentText('reply', 'provider-reply') },
+        { event: userText('new prompt', 'provider-u2', 'provider-cursor-new') },
+      ],
+      uptoSeq: 4,
+    });
+    expect(userTexts(store)).toEqual(['old prompt', 'new prompt']);
+    expect(userCursors(store)).toEqual(['live-cursor-old', 'provider-cursor-new']);
+    close();
+  });
+
+  it('keeps a single covered prompt in place across a reseed', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('first prompt', 'host-m1'));
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    send(agentText('reply', 'provider-reply'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('first prompt', 'provider-u1'), ts: 1_700_000_000_000 },
+        { event: agentText('reply', 'provider-reply') },
+      ],
+      uptoSeq: 3,
+    });
+    expect(userTexts(store)).toEqual(['first prompt']);
+    expect(userCursors(store)).toEqual(['live-cursor']);
+    // The cursor fill must not disturb the provider timestamp or duplicate the item.
+    expect(store.getSnapshot().items[0].receivedAt).toBe(1_700_000_000_000);
+    expect(store.getSnapshot().items).toHaveLength(2);
+    close();
+  });
+
+  it('folds a covered prompt re-echo into the seed row even when it lands past the cut', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('first prompt', 'host-m1'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('first prompt', 'provider-u1') }],
+      uptoSeq: 1,
+    });
+    expect(userTexts(store)).toEqual(['first prompt']);
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    await tick();
+    expect(userTexts(store)).toEqual(['first prompt']);
+    expect(userCursors(store)).toEqual(['live-cursor']);
+    close();
+  });
+
+  it('keeps the seed row cursor when the consuming echo carries none', async () => {
+    const { client, send, close } = await harness();
+    send(userText('first prompt', 'host-m1'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('first prompt', 'provider-u1', 'provider-cursor') }],
+      uptoSeq: 1,
+    });
+    expect(userCursors(store)).toEqual(['provider-cursor']);
+    close();
+  });
+
+  it('never lets an echo cursor displace a provider cursor', async () => {
+    const { client, send, close } = await harness();
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('first prompt', 'provider-u1', 'provider-cursor') }],
+      uptoSeq: 1,
+    });
+    expect(userCursors(store)).toEqual(['provider-cursor']);
+    close();
+  });
+
+  it('keeps provider cursors in place when a repeated prompt mis-binds', async () => {
+    const { client, send, close } = await harness();
+    send(userText('repeat', 'host-m2', 'live-cursor'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('repeat', 'provider-u1', 'provider-cursor-1') },
+        { event: userText('repeat', 'provider-u2', 'provider-cursor-2') },
+      ],
+      uptoSeq: 1,
+    });
+    expect(userTexts(store)).toEqual(['repeat', 'repeat']);
+    expect(userCursors(store)).toEqual(['provider-cursor-1', 'provider-cursor-2']);
+    close();
+  });
+
+  it('never fills a cursor-less row through an ambiguous bind', async () => {
+    const { client, send, close } = await harness();
+    send(userText('repeat', 'host-m2', 'live-cursor'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('repeat', 'provider-u1') },
+        { event: userText('repeat', 'provider-u2') },
+      ],
+      uptoSeq: 1,
+    });
+    expect(userTexts(store)).toEqual(['repeat', 'repeat']);
+    expect(userCursors(store)).toEqual([undefined, undefined]);
+    close();
+  });
+
+  it('does not aim a rewind through an ambiguous bind', async () => {
+    const { client, send, close } = await harness();
+    send(userText('repeat', 'host-m2', 'live-cursor'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('repeat', 'provider-u1') },
+        { event: agentText('reply one', 'provider-r1') },
+        { event: userText('repeat', 'provider-u2') },
+        { event: agentText('reply two', 'provider-r2') },
+      ],
+      uptoSeq: 1,
+    });
+    expect(userTexts(store)).toEqual(['repeat', 'repeat']);
+
+    send({ type: 'conversation-rewind', messageId: 'host-m2' as MessageId });
+    send(userText('replacement prompt', 'host-m3'));
+    await tick();
+    expect(userTexts(store)).toEqual(['repeat', 'repeat', 'replacement prompt']);
+    const { items } = store.getSnapshot();
+    const agentTexts = items.flatMap((item) =>
+      item.kind === 'message' && item.role === 'assistant' && item.blocks[0]?.type === 'text'
+        ? [item.blocks[0].text]
+        : [],
+    );
+    expect(agentTexts).toEqual(['reply one', 'reply two']);
+    close();
+  });
+
+  it('translates a rewind citing the host id of the trusted first prompt', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('old prompt', 'host-m1'));
+    send(agentText('reply', 'provider-reply'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('old prompt', 'provider-u1') },
+        { event: agentText('reply', 'provider-reply') },
+      ],
+      uptoSeq: 2,
+    });
+    expect(userTexts(store)).toEqual(['old prompt']);
+
+    // A live-only co-viewer rewrites the prompt it knows as host-m1; this store folded it as
+    // provider-u1, so the trusted alias translates the rewind to cut the seeded entry.
+    send({ type: 'conversation-rewind', messageId: 'host-m1' as MessageId });
+    send(userText('rewritten prompt', 'host-m2'));
+    await tick();
+    expect(userTexts(store)).toEqual(['rewritten prompt']);
+    close();
+  });
+
+  // Branch/rewrite production ordering: the replacement echoes bare before the new run's ref,
+  // but the preceding rewind wiped the buffer — retained history forbids trusting the bind.
+  it('does not trust a bare echo that follows a rewind', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('repeat', 'host-m0'));
+    await tick();
+    send({ type: 'conversation-rewind', messageId: 'host-m0' as MessageId });
+    send(userText('repeat', 'host-m1'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('repeat', 'provider-u1') },
+        { event: agentText('reply one', 'provider-r1') },
+      ],
+      uptoSeq: 3,
+    });
+    expect(userTexts(store)).toEqual(['repeat']);
+    send(userText('repeat', 'host-m1', 'live-cursor'));
+    await tick();
+    expect(userCursors(store)).toEqual([undefined]);
+
+    send({ type: 'conversation-rewind', messageId: 'host-m1' as MessageId });
+    send(userText('replacement prompt', 'host-m2'));
+    await tick();
+    expect(userTexts(store)).toEqual(['repeat', 'replacement prompt']);
+    close();
+  });
+
+  // A reconnected client sees seqs restart at 1 and record origin survives resumes — neither is
+  // run provenance. Without same-client creation, a resume-window bare echo must not be trusted.
+  it('does not trust a bare echo on a session this client did not create', async () => {
+    const { client, send, close } = await harness();
+    send(userText('first prompt', 'host-m1'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [{ event: userText('first prompt', 'provider-u1') }],
+      uptoSeq: 1,
+    });
+    expect(userTexts(store)).toEqual(['first prompt']);
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    await tick();
+    expect(userCursors(store)).toEqual([undefined]);
+    send({ type: 'conversation-rewind', messageId: 'host-m1' as MessageId });
+    send(userText('replacement prompt', 'host-m2'));
+    await tick();
+    expect(userTexts(store)).toEqual(['first prompt', 'replacement prompt']);
+    close();
+  });
+
+  it('does not trust creation provenance before the first attached delivery', async () => {
+    const { client, hub, close } = await attachedHarness();
+    const broadcast = (event: AgentEvent): void => {
+      hub.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+    };
+    hub.onMessage(({ payload }) => {
+      if (payload.kind !== 'session.start' && payload.kind !== 'session.resume') return;
+      if (payload.kind === 'session.resume') {
+        broadcast({ type: 'status', status: 'starting' });
+        broadcast({ type: 'status', status: 'idle' });
+      }
+      hub.send(
+        createWireMessage({
+          kind: 'session.started',
+          replyTo: payload.clientReqId,
+          sessionId,
+        }),
+      );
+    });
+
+    await client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    // Another client can create provider history before this attached-mode client observes the id.
+    broadcast(userText('repeat', 'missed-old'));
+    broadcast(agentText('valid old reply', 'provider-reply'));
+    broadcast({ type: 'status', status: 'stopped' });
+    await tick();
+    expect(client.eventSeq(sessionId)).toBe(0);
+
+    client.attachSession(sessionId);
+    await tick();
+    await client.resumeSession(sessionId);
+    expect(client.eventsSnapshot(sessionId)[0]?.seq).toBe(1);
+    // Claude can echo before its detached consume loop reports the resumed session-ref.
+    broadcast(userText('repeat', 'host-new'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('repeat', 'provider-old') },
+        { event: agentText('valid old reply', 'provider-reply') },
+      ],
+      uptoSeq: client.eventSeq(sessionId),
+    });
+    expect(userTexts(store)).toEqual(['repeat']);
+
+    broadcast(userText('repeat', 'host-new', 'new-run-cursor'));
+    await tick();
+    expect(userCursors(store)).toEqual([undefined]);
+
+    broadcast({ type: 'conversation-rewind', messageId: 'host-new' as MessageId });
+    broadcast(userText('replacement', 'host-replacement'));
+    await tick();
+    expect(userTexts(store)).toEqual(['repeat', 'replacement']);
+    close();
+  });
+
+  it('does not trust a bare echo bound past the first user row', async () => {
+    const { client, send, createSession, close } = await harness();
+    await createSession();
+    send(userText('second prompt', 'host-m2'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, {
+      events: [
+        { event: userText('first prompt', 'provider-u1') },
+        { event: userText('second prompt', 'provider-u2') },
+      ],
+      uptoSeq: 1,
+    });
+    send(userText('second prompt', 'host-m2', 'live-cursor'));
+    await tick();
+    expect(userCursors(store)).toEqual([undefined, undefined]);
+    close();
+  });
+
+  it('folds a same-id re-echo in place when no seed covers it', async () => {
+    const { client, send, close } = await harness();
+    send(userText('first prompt', 'host-m1'));
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    send(agentText('reply', 'provider-reply'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId);
+    const items = store.getSnapshot().items;
+    const user = items.find((i) => i.kind === 'message' && i.role === 'user');
+    expect(user?.kind === 'message' ? user.branchCursor : undefined).toBe('live-cursor');
+    expect(items.filter((i) => i.kind === 'message' && i.role === 'user')).toHaveLength(1);
+    expect(items).toHaveLength(2);
+    close();
+  });
+
+  it('folds a cursor-bearing re-echo of a prompt the snapshot never flushed', async () => {
+    const { client, send, close } = await harness();
+    send(userText('first prompt', 'host-m1'));
+    await tick();
+
+    const store = createConversationStore(client, sessionId, { events: [], uptoSeq: 1 });
+    expect(userTexts(store)).toEqual(['first prompt']);
+    send(userText('first prompt', 'host-m1', 'live-cursor'));
+    await tick();
+    expect(userTexts(store)).toEqual(['first prompt']);
+    const user = store.getSnapshot().items.find((i) => i.kind === 'message' && i.role === 'user');
+    expect(user?.kind === 'message' ? user.branchCursor : undefined).toBe('live-cursor');
     close();
   });
 });

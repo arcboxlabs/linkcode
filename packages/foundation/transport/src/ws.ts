@@ -63,6 +63,10 @@ export class WsTransport extends WireConnection {
     this.armClosedListener();
   }
 
+  get reconnectsTransparently(): boolean {
+    return this.reconnectOpts !== null && !(this.attempt >= this.reconnectOpts.maxRetries);
+  }
+
   override connect(): Promise<void> {
     this.disposed = false;
     this.established = false;

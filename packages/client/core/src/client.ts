@@ -238,6 +238,10 @@ export class LinkCodeClient {
   /** Framebuffer-frame listeners keyed by udid, so each panel tab only sees its device's frames. */
   private readonly simulatorFrameSubs = new Map<string, Set<SimulatorFrameCb>>();
   private readonly connectionCloseSubs = new Set<ConnectionCloseCb>();
+  /** Sessions whose initial fresh run this client has observed without a delivery gap. */
+  private readonly freshSessionIds = new Set<SessionId>();
+  private subscriptionMode: SessionSubscriptionMode = 'all';
+  private subscriptionEpoch = 0;
   private unsub: Unsubscribe | null = null;
   private offClose: Unsubscribe | null = null;
   private state: ConnectionState = 'idle';
@@ -250,6 +254,11 @@ export class LinkCodeClient {
     private readonly transport: Transport,
     options: LinkCodeClientOptions = {},
   ) {
+    if (transport.reconnectsTransparently === true) {
+      throw new Error(
+        'LinkCodeClient: transport cannot reconnect transparently; create a fresh client generation',
+      );
+    }
     const randomUUID = resolveRandomUUID(options.randomUUID);
     this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
@@ -665,7 +674,18 @@ export class LinkCodeClient {
   }
 
   startSessionWithWarnings(opts: StartOptions): Promise<SessionStartResult> {
-    return this.control.startSession(opts);
+    const provenanceEpoch = this.subscriptionMode === 'all' ? this.subscriptionEpoch : undefined;
+    return this.control.startSession(opts).then((result) => {
+      if (provenanceEpoch === this.subscriptionEpoch && this.subscriptionMode === 'all') {
+        this.freshSessionIds.add(result.sessionId);
+      }
+      return result;
+    });
+  }
+
+  /** Whether fresh-run provenance remains valid for trusted seed binds. */
+  hasFreshSessionProvenance(sessionId: SessionId): boolean {
+    return this.freshSessionIds.has(sessionId);
   }
 
   getAgentCatalog(agentKind: AgentKind, cwd?: string): Promise<AgentStartCatalog> {
@@ -788,7 +808,15 @@ export class LinkCodeClient {
 
   /** See {@link ControlChannel.setSubscriptionMode}. */
   setSubscriptionMode(mode: SessionSubscriptionMode): Promise<RequestAck> {
-    return this.control.setSubscriptionMode(mode);
+    if (mode === 'attached') {
+      this.subscriptionMode = mode;
+      this.subscriptionEpoch += 1;
+      this.freshSessionIds.clear();
+    }
+    return this.control.setSubscriptionMode(mode).then((ack) => {
+      this.subscriptionMode = mode;
+      return ack;
+    });
   }
 
   setModel(sessionId: SessionId, model: string, accountId?: string): Promise<RequestAck> {

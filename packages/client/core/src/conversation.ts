@@ -207,8 +207,10 @@ export function createConversationBuilder(): ConversationBuilder {
         return;
       }
 
+      // Cut at the id's FIRST entry — the item's creation. Later entries with the same id are
+      // in-place updates (echo cursor merges), and anchoring on one would replay the rewound item.
       let cut = -1;
-      for (let index = entries.length - 1; index >= 0; index -= 1) {
+      for (let index = 0; index < entries.length; index += 1) {
         const candidate = entries[index].event;
         if (candidate.type === 'user-message' && candidate.messageId === event.messageId) {
           cut = index;

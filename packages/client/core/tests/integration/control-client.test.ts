@@ -8,6 +8,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import { createWireMessage } from '@linkcode/transport';
+import { nullthrow } from 'foxts/guard';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import type { SequencedAgentEvent } from '../../src/client';
@@ -213,6 +214,67 @@ describe('LinkCodeClient control API', () => {
 });
 
 describe('LinkCodeClient event delivery scope', () => {
+  it('requires uninterrupted all-event delivery for fresh-session provenance', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const nextSessionId = 'sess-control-next' as SessionId;
+    const lastSessionId = 'sess-control-last' as SessionId;
+    const stableSessionId = 'sess-control-stable' as SessionId;
+    const sessionIds = [sessionId, nextSessionId, lastSessionId, stableSessionId];
+    const delayedReplies: Array<() => void> = [];
+    let sessionIndex = 0;
+
+    serverTransport.onMessage((msg) => {
+      const payload = msg.payload;
+      if (payload.kind === 'session.start') {
+        const startedSessionId = sessionIds[sessionIndex] ?? lastSessionId;
+        sessionIndex += 1;
+        const reply = (): void => {
+          serverTransport.send(
+            createWireMessage({
+              kind: 'session.started',
+              replyTo: payload.clientReqId,
+              sessionId: startedSessionId,
+            }),
+          );
+        };
+        if (sessionIndex === 1) reply();
+        else delayedReplies.push(reply);
+      } else if (payload.kind === 'subscription.set') {
+        serverTransport.send(
+          createWireMessage({ kind: 'request.succeeded', replyTo: payload.clientReqId }),
+        );
+      }
+    });
+
+    const first = await client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    expect(client.hasFreshSessionProvenance(first)).toBe(true);
+    await client.setSubscriptionMode('attached');
+    expect(client.hasFreshSessionProvenance(first)).toBe(false);
+    const attachedStart = client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    await wait(10);
+    await client.setSubscriptionMode('all');
+    nullthrow(delayedReplies[0])();
+    const second = await attachedStart;
+    expect(client.hasFreshSessionProvenance(second)).toBe(false);
+
+    const interruptedStart = client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    await wait(10);
+    await client.setSubscriptionMode('attached');
+    await client.setSubscriptionMode('all');
+    nullthrow(delayedReplies[1])();
+    const third = await interruptedStart;
+    expect(client.hasFreshSessionProvenance(third)).toBe(false);
+
+    const stableStart = client.startSession({ kind: 'claude-code', cwd: '/workspace' });
+    await wait(10);
+    nullthrow(delayedReplies[2])();
+    const fourth = await stableStart;
+    expect(client.hasFreshSessionProvenance(fourth)).toBe(true);
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('negotiates the subscription mode and announces which sessions it observes', async () => {
     const { client, serverTransport } = await createConnectedLocalClient({
       randomUUID: () => 'scope',
