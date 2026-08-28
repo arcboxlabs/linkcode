@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0](https://github.com/arcboxlabs/linkcode/compare/v0.27.0...v0.28.0) (2026-08-28)
+
+
+### Features
+
+* **mobile:** add remote push notifications ([#386](https://github.com/arcboxlabs/linkcode/issues/386)) ([53b6420](https://github.com/arcboxlabs/linkcode/commit/53b6420734c0fa7a1d77636a52d6764408310d9f))
+
+
+### Bug Fixes
+
+* **desktop:** verify better-sqlite3's shipped prebuild ([#485](https://github.com/arcboxlabs/linkcode/issues/485)) ([2679cb4](https://github.com/arcboxlabs/linkcode/commit/2679cb4fdfdba7c6aee01bcc0b34c3649a68cbc2))
+
 ## [0.27.0](https://github.com/arcboxlabs/linkcode/compare/v0.26.1...v0.27.0) (2026-08-27)
 
 
