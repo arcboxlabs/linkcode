@@ -285,7 +285,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
       );
-      for (const workspace of workspaces.list()) {
+      const workspaceList = workspaces.list();
+      for (let i = 0, len = workspaceList.length; i < len; i++) {
+        const workspace = workspaceList[i];
         if (workspace.kind === 'worktree' && !worktrees.hasPath(workspace.cwd)) {
           yield* tryOperation(
             'store',

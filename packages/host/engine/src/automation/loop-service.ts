@@ -57,12 +57,16 @@ export class LoopService {
   }
 
   async start(): Promise<void> {
-    for (const loop of await this.store.load()) {
+    const stored = await this.store.load();
+    for (let i = 0, len = stored.length; i < len; i++) {
+      const loop = stored[i];
       this.loops.set(loop.loopId, loop);
     }
     // A loop is a single bounded job; a restart cannot resume its worker sessions, so mark any that
     // were mid-run as stopped rather than pretending to continue.
-    for (const loop of await this.store.loadRunning()) {
+    const running = await this.store.loadRunning();
+    for (let i = 0, len = running.length; i < len; i++) {
+      const loop = running[i];
       loop.status = 'stopped';
       loop.error = 'daemon restarted before the loop finished';
       loop.endedAt = this.now();

@@ -51,7 +51,10 @@ export class SessionRecordRegistry {
       ),
       Effect.tap((records) =>
         Effect.sync(() => {
-          for (const record of records) this.records.set(record.sessionId, record);
+          for (let i = 0, len = records.length; i < len; i++) {
+            const record = records[i];
+            this.records.set(record.sessionId, record);
+          }
         }),
       ),
       Effect.asVoid,
@@ -308,7 +311,8 @@ function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
 const WHITESPACE_RUN_RE = /\s+/g;
 
 function titleFromContent(content: ContentBlock[]): string | undefined {
-  for (const block of content) {
+  for (let i = 0, len = content.length; i < len; i++) {
+    const block = content[i];
     if (block.type !== 'text') continue;
     const text = block.text.trim().replaceAll(WHITESPACE_RUN_RE, ' ');
     if (text.length === 0) continue;

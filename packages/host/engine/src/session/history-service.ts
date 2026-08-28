@@ -94,7 +94,8 @@ export class HistoryService {
       Effect.tap((result) =>
         Effect.sync(() => {
           this.invalidateEventCacheFromList(kind, result.sessions);
-          for (const session of result.sessions) {
+          for (let i = 0, len = result.sessions.length; i < len; i++) {
+            const session = result.sessions[i];
             const historyKey = eventCacheKey(kind, session.historyId);
             if (opts.cwd) this.historyCwdById.set(historyKey, opts.cwd);
             else this.historyCwdById.delete(historyKey);
@@ -230,7 +231,8 @@ export class HistoryService {
           // eslint-disable-next-line no-await-in-loop -- Provider cursors require serial pagination.
           await adapter.readHistory({ historyId, cwd, limit: 1000, cursor }),
         );
-        for (const entry of result.events) {
+        for (let i = 0, len = result.events.length; i < len; i++) {
+          const entry = result.events[i];
           if (entry.event.type === 'user-message' && entry.event.branchCursor !== undefined) {
             branchablePrompts.push({
               branchCursor: entry.event.branchCursor,
@@ -284,7 +286,8 @@ export class HistoryService {
   }
 
   private invalidateEventCacheFromList(kind: AgentKind, sessions: AgentHistorySession[]): void {
-    for (const session of sessions) {
+    for (let i = 0, len = sessions.length; i < len; i++) {
+      const session = sessions[i];
       const key = eventCacheKey(kind, session.historyId);
       const cached = this.eventCache.get(key);
       if (cached && cached.fingerprint !== sessionFingerprint(session)) this.eventCache.delete(key);
