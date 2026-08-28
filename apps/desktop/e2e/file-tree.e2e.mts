@@ -48,7 +48,7 @@ async function treeRowLabels(win: Page): Promise<string[]> {
   return win.evaluate(() => {
     const host = document.querySelector('file-tree-container');
     const rows = host?.shadowRoot?.querySelectorAll('button[data-type="item"]') ?? [];
-    return [...rows].map((row) => row.getAttribute('aria-label') ?? '');
+    return Array.from(rows, (row) => row.getAttribute('aria-label') ?? '');
   });
 }
 

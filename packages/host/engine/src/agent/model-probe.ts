@@ -272,7 +272,7 @@ export async function probeServiceModels(
 
   const merged = new Map<string, AccountModel>();
   const lists = await Promise.all(
-    [...byUrl.values()].map(async ({ source, protocols }) => ({
+    Array.from(byUrl.values(), async ({ source, protocols }) => ({
       models: await probeEndpointModels(source, secret, request),
       protocols,
     })),

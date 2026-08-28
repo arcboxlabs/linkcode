@@ -25,7 +25,7 @@ export class InMemoryScheduleStore implements ScheduleStore {
   private readonly runs = new Map<string, ScheduleRun>();
 
   load(): Promise<Schedule[]> {
-    return Promise.resolve([...this.schedules.values()].map((s) => structuredClone(s)));
+    return Promise.resolve(Array.from(this.schedules.values(), (s) => structuredClone(s)));
   }
 
   save(schedule: Schedule): Promise<void> {

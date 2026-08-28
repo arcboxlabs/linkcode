@@ -6,6 +6,7 @@ import process from 'node:process';
 import { promisify } from 'node:util';
 import { executableSearchLocations } from '@linkcode/common/node';
 import type { AgentAuthStatus } from '@linkcode/schema';
+import { split0th } from 'foxts/split-nth';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,7 +44,7 @@ export abstract class AgentCliProbe {
    * because the SDKs' `exports` maps reject bare CJS resolution outright.
    */
   sdkPlatformPackagePresent(): boolean {
-    const scope = this.sdkPackage.split('/', 1)[0];
+    const scope = split0th(this.sdkPackage, '/');
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
     return paths.some((dir) => existsSync(join(dir, scope, this.platformPackageBase())));
   }
@@ -54,7 +55,7 @@ export abstract class AgentCliProbe {
    * is nested elsewhere (codex vendors under `vendor/` and resolves its own path).
    */
   sdkPlatformBinaryPath(): string | undefined {
-    const scope = this.sdkPackage.split('/', 1)[0];
+    const scope = split0th(this.sdkPackage, '/');
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
     for (const dir of paths) {
       const candidate = join(dir, scope, this.platformPackageBase(), this.binaryName());

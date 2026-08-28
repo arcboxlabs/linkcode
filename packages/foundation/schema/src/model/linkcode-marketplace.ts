@@ -1,3 +1,4 @@
+import { split0th } from 'foxts/split-nth';
 import { z } from 'zod';
 import {
   LinkCodeMarketplaceIdSchema,
@@ -64,7 +65,7 @@ function validateMarketplacePlugin(
         path: ['releases', index, 'manifest', 'id'],
       });
     }
-    const precedenceVersion = release.manifest.version.split('+', 1)[0];
+    const precedenceVersion = split0th(release.manifest.version, '+');
     if (versions.has(precedenceVersion)) {
       ctx.addIssue({
         code: 'custom',

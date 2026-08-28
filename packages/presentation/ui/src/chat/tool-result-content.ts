@@ -147,7 +147,7 @@ export function toolCallReadPreviewText(toolCall: ToolCall, text: string): strin
       prefixEnd += 1;
     }
 
-    if (prefixEnd === cursor || numberedText.codePointAt(prefixEnd) !== 9) return text;
+    if (prefixEnd === cursor || numberedText.charCodeAt(prefixEnd) !== 9) return text;
     const lineNumber = Number.parseInt(numberedText.slice(cursor, prefixEnd), 10);
     if (lineNumber !== expectedLine || !Number.isSafeInteger(lineNumber) || lineNumber < 1) {
       return text;

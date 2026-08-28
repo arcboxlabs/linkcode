@@ -75,7 +75,7 @@ export class SimulatorConsentService {
 
   state(): SimulatorConsentState {
     return {
-      entries: [...this.decisions].map(([udid, decision]) => ({ udid, decision })),
+      entries: Array.from(this.decisions, ([udid, decision]) => ({ udid, decision })),
       agentToolsEnabled: this.agentToolsEnabled,
     };
   }
@@ -152,7 +152,7 @@ export class SimulatorConsentService {
         resolve(decision);
       };
     });
-    const timer = setTimeout(() => settle('denied'), this.askTimeoutMs);
+    const timer = setTimeout(settle, this.askTimeoutMs, 'denied');
     timer.unref?.();
     this.pending.set(udid, { promise, settle, timer });
     return promise;

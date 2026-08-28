@@ -117,7 +117,7 @@ function groupByProviderDirectory(entries: readonly AgentHistorySession[]) {
     if (group) group.push(entry);
     else groups.set(key, [entry]);
   }
-  return [...groups.values()].map((group) => ({
+  return Array.from(groups.values(), (group) => ({
     kind: group[0].kind,
     cwd: group[0].cwd ?? '',
     entries: group,

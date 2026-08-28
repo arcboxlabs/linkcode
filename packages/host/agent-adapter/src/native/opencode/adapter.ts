@@ -30,6 +30,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
+import { split0th } from 'foxts/split-nth';
 import { wait } from 'foxts/wait';
 import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
@@ -314,7 +315,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     // The model ref decides routing (prompts carry `{providerID, modelID}`), so it wins; the
     // resolved known provider covers the common case of a model id typed without one.
-    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : cred.knownProvider;
+    const providerID = opts.model?.includes('/') ? split0th(opts.model, '/') : cred.knownProvider;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
@@ -613,7 +614,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const raced = await Promise.race([
         abort,
         new Promise<typeof ABORT_TIMED_OUT>((resolve) => {
-          timer = setTimeout(() => resolve(ABORT_TIMED_OUT), ABORT_WAIT_MS);
+          timer = setTimeout(resolve, ABORT_WAIT_MS, ABORT_TIMED_OUT);
         }),
       ]);
       if (raced === ABORT_TIMED_OUT) {

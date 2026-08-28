@@ -225,9 +225,9 @@ describe('ScriptService', () => {
     const { service, backend, routes, sent } = makeService();
 
     await Effect.runPromise(service.start(cwd, 'web'));
-    const hostname = [...sent]
-      .map((p) => (p.kind === 'script.status' ? p.script.hostname : undefined))
-      .find(Boolean)!;
+    const hostname = Array.from(sent, (p) =>
+      p.kind === 'script.status' ? p.script.hostname : undefined,
+    ).find(Boolean)!;
 
     await Effect.runPromise(service.stop(cwd, 'web'));
     expect(backend.opens[0].process.killed).toBe(true);

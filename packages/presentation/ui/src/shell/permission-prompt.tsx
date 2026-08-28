@@ -166,7 +166,7 @@ function permissionDetails(item: PermissionConversationItem): PermissionDetail[]
     if (rawPath) files.add(rawPath);
   }
 
-  const details: PermissionDetail[] = [...files].map((value) => ({ label: 'file', value }));
+  const details: PermissionDetail[] = Array.from(files, (value) => ({ label: 'file', value }));
   if (showRawArguments) {
     details.push({ label: 'arguments', value: JSON.stringify(raw, null, 2) });
   } else {

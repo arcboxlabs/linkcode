@@ -26,7 +26,7 @@ const RE_MISMATCHED_PUBLICATION_SOURCE = /must equal sourceGitSha/;
 const RE_LEGACY_DESKTOP_UPLOAD = /"s3:\/\/\$\{R2_BUCKET\}\/\$\{R2_PREFIX\}\/"/;
 const RE_LEGACY_RELEASE_TAG = /must equal refs\/tags\/v1\.2\.3/;
 const RE_SECRETS_EXPRESSION = /secrets(?:\.|\[)/;
-const ACTIONS_EXPRESSION = String.fromCodePoint(36);
+const ACTIONS_EXPRESSION = String.fromCharCode(36);
 
 function sha(character) {
   return character.repeat(64);

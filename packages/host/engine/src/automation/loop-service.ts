@@ -183,7 +183,7 @@ export class LoopService {
   /** Resolves once all accepted loop fibers finish persistence, reporting, and session cleanup. */
   settleAll(): Effect.Effect<void> {
     return Effect.asVoid(
-      Effect.all([...this.handles.values()].map(({ fiber }) => Fiber.await(fiber))),
+      Effect.all(Array.from(this.handles.values(), ({ fiber }) => Fiber.await(fiber))),
     );
   }
 

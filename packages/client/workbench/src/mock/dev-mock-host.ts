@@ -322,7 +322,7 @@ export class DevMockHost {
         this.send({
           kind: 'session.listed',
           replyTo: p.clientReqId,
-          sessions: [...this.sessions.values()].map((session) => toSessionInfo(session)),
+          sessions: Array.from(this.sessions.values(), (session) => toSessionInfo(session)),
         });
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
@@ -530,7 +530,7 @@ export class DevMockHost {
                   ...branchList,
                   branches: [
                     ...branchList.branches,
-                    ...[...created].map((name) => ({
+                    ...Array.from(created, (name) => ({
                       name,
                       isCurrent: false,
                       lastCommitAt: Date.now(),
@@ -705,7 +705,7 @@ export class DevMockHost {
         this.send({
           kind: 'terminal.listed',
           replyTo: p.clientReqId,
-          terminals: [...this.terminals.values()].map((terminal) => terminal.metadata),
+          terminals: Array.from(this.terminals.values(), (terminal) => terminal.metadata),
         });
         break;
       case 'terminal.open':

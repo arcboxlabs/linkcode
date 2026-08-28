@@ -62,7 +62,7 @@ function isBase64(data: string): boolean {
     if (!isDigit && !isUppercase && !isLowercase && code !== 43 && code !== 47) return false;
   }
   for (let index = payloadLength; index < data.length; index += 1) {
-    if (data.codePointAt(index) !== 61) return false;
+    if (data.charCodeAt(index) !== 61) return false;
   }
   return true;
 }

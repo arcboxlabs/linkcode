@@ -325,7 +325,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const flagBusy = useCallback(() => {
     setBusy(true);
     clearTimeout(busyTimerRef.current);
-    busyTimerRef.current = setTimeout(() => setBusy(false), BUSY_BANNER_MS);
+    busyTimerRef.current = setTimeout(setBusy, BUSY_BANNER_MS, false);
   }, []);
 
   const handleTouch = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {

@@ -146,7 +146,7 @@ async function verifyActivityRunHierarchy(page: Page): Promise<void> {
     );
     if (!(body instanceof HTMLElement)) throw new Error('Missing expanded activity body');
 
-    const children = [...body.children].map((row) => {
+    const children = Array.from(body.children, (row) => {
       const child = row.firstElementChild;
       if (!(child instanceof HTMLElement)) throw new Error('Missing activity child header');
       return {

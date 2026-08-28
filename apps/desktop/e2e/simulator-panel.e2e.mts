@@ -29,6 +29,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { noop } from 'foxts/noop';
+import { split0th } from 'foxts/split-nth';
 import { wait } from 'foxts/wait';
 import type { ElectronApplication, Page } from 'playwright-core';
 import { _electron } from 'playwright-core';
@@ -471,9 +472,12 @@ async function run(
       // stream is the same wire the panel sends when a dropdown changes.
       const workerPid = (): string | null => {
         try {
-          return execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], { encoding: 'utf8' })
-            .trim()
-            .split('\n', 1)[0];
+          return split0th(
+            execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], {
+              encoding: 'utf8',
+            }).trim(),
+            '\n',
+          );
         } catch {
           return null;
         }

@@ -175,7 +175,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
       // 0.144.1: list 3.3s, one read ~160ms). Market entries keep the summary's own metadata and
       // simply carry no component list.
       const plugins = await Promise.all(
-        [...entries.values()].map(async ({ marketplace, summary }) =>
+        Array.from(entries.values(), async ({ marketplace, summary }) =>
           normalizeCodexPlugin(
             marketplace,
             summary,
