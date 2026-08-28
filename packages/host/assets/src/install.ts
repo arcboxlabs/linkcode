@@ -121,8 +121,15 @@ async function doInstall(
         artifact.member,
         join(stage, binaryName(descriptor)),
       );
-      for (const member of artifact.extraMembers ?? []) {
-        await extractMember(archive, artifact.format, member, join(stage, posix.basename(member)));
+      if (artifact.extraMembers != null) {
+        for (const member of artifact.extraMembers) {
+          await extractMember(
+            archive,
+            artifact.format,
+            member,
+            join(stage, posix.basename(member)),
+          );
+        }
       }
     }
     publish(

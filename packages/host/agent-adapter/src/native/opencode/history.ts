@@ -66,7 +66,7 @@ export function opencodeMcpToolName(
   let match: { server: string; tool: string } | undefined;
   let matchedLength = 0;
   for (const server of mcpServers) {
-    const prefix = `${server.replace(OPENCODE_TOOL_NAME_SANITIZE_RE, '_')}_`;
+    const prefix = `${server.replaceAll(OPENCODE_TOOL_NAME_SANITIZE_RE, '_')}_`;
     if (prefix.length <= matchedLength || tool.length <= prefix.length) continue;
     if (tool.startsWith(prefix)) {
       match = { server, tool: tool.slice(prefix.length) };

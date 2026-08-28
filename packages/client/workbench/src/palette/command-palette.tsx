@@ -97,10 +97,12 @@ function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.R
       : []),
   ];
   let targetWorkspace: WorkspaceRecord | null = null;
-  for (const workspace of workspaces ?? []) {
-    if (workspaceKind(workspace) === 'project') {
-      targetWorkspace = workspace;
-      break;
+  if (workspaces != null) {
+    for (const workspace of workspaces) {
+      if (workspaceKind(workspace) === 'project') {
+        targetWorkspace = workspace;
+        break;
+      }
     }
   }
   const commands: PaletteCommand[] = targetWorkspace

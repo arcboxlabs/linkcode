@@ -57,7 +57,7 @@ export function parseTelemetryConfig(value: unknown): TelemetryConfig | null {
 
 /** Fetches public sampling configuration without delaying telemetry initialization on failure. */
 export async function fetchTelemetryConfig(
-  fetcher: TelemetryConfigFetcher = globalThis.fetch,
+  fetcher: TelemetryConfigFetcher = fetch,
 ): Promise<TelemetryConfig | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);

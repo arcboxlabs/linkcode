@@ -157,10 +157,14 @@ function permissionDetails(item: PermissionConversationItem): PermissionDetail[]
   const showRawArguments = toolCall.kind === 'other' && raw !== undefined;
 
   const files = new Set<string>();
-  for (const item of toolCall.content ?? []) {
-    if (item.type === 'diff') files.add(item.path);
+  if (toolCall.content != null) {
+    for (const item of toolCall.content) {
+      if (item.type === 'diff') files.add(item.path);
+    }
   }
-  for (const location of toolCall.locations ?? []) files.add(location.path);
+  if (toolCall.locations != null) {
+    for (const location of toolCall.locations) files.add(location.path);
+  }
   if (!showRawArguments) {
     const rawPath = stringField(raw, 'path') ?? stringField(raw, 'file_path');
     if (rawPath) files.add(rawPath);

@@ -52,14 +52,16 @@ export function groupModelsByProvider(
 ): ModelProviderGroups | null {
   const ungrouped: ModelOption[] = [];
   const byProvider = new Map<string, ModelOption[]>();
-  for (const option of options ?? []) {
-    if (option.description === undefined) {
-      ungrouped.push(option);
-      continue;
+  if (options != null) {
+    for (const option of options) {
+      if (option.description === undefined) {
+        ungrouped.push(option);
+        continue;
+      }
+      const group = byProvider.get(option.description);
+      if (group) group.push(option);
+      else byProvider.set(option.description, [option]);
     }
-    const group = byProvider.get(option.description);
-    if (group) group.push(option);
-    else byProvider.set(option.description, [option]);
   }
   if (byProvider.size < 2) return null;
   return {

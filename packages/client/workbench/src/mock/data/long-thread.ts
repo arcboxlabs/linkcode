@@ -44,8 +44,7 @@ export function createLongThreadScript(messageId: (slug: string) => MessageId): 
       content: textBlock(replyBody(turn, subject)),
     });
   }
-  script.push({ type: 'stop', stopReason: 'end_turn' });
-  script.push({ type: 'status', status: 'idle' });
+  script.push({ type: 'stop', stopReason: 'end_turn' }, { type: 'status', status: 'idle' });
   return script;
 }
 

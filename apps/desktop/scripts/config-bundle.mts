@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 // Relative on purpose: this module is inlined into the bundled Vite config, which runs under
 // plain Node — Node cannot resolve the package's extensionless TS source exports.
+// eslint-disable-next-line import-x/no-relative-packages -- see above
 import { parseBrandIdentityArtifact } from '../../../packages/foundation/common/src/config/brand-identity';
 import {
   configBuildBundleDefaults,

@@ -169,7 +169,7 @@ export class ClaudeCodePluginAdapter implements PluginProviderAdapter {
    * never surfaces (verified on CLI 2.1.220) — a plain filesystem read is the only source.
    * Enablement comes from the merged `skillOverrides` map, keyed by skill name. */
   async listStandaloneSkills(opts: PluginDiscoveryOptions = {}): Promise<StandaloneSkill[]> {
-    const roots: { dir: string; scope: StandaloneSkill['scope'] }[] = [
+    const roots: Array<{ dir: string; scope: StandaloneSkill['scope'] }> = [
       { dir: this.userSkillsDir, scope: 'user' },
     ];
     if (opts.cwd) roots.push({ dir: join(opts.cwd, '.claude', 'skills'), scope: 'project' });

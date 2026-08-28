@@ -416,10 +416,7 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       message: { content: [{ type: 'tool_result', tool_use_id: EDIT_ID, content: 'updated' }] },
       tool_use_result: toolUseResult,
     });
-    const liveSettle = live
-      .tools()
-      .filter((t) => t.toolCallId === EDIT_ID)
-      .at(-1);
+    const liveSettle = live.tools().findLast((t) => t.toolCallId === EDIT_ID);
 
     // History: `getSubagentMessages` strips `tool_use_result`, so the patch has to come from the
     // subagent's own raw transcript instead.
@@ -444,7 +441,7 @@ describe('ClaudeCodeAdapter readHistory subagent splice', () => {
       }),
     );
     const result = await adapter.readHistory({ historyId: asHistoryId(SESSION) });
-    const replayedSettle = result.events.filter((e) => e.itemId === EDIT_ID).at(-1)?.event;
+    const replayedSettle = result.events.findLast((e) => e.itemId === EDIT_ID)?.event;
 
     expect(replayedSettle?.type).toBe('tool-call');
     if (replayedSettle?.type !== 'tool-call') return;

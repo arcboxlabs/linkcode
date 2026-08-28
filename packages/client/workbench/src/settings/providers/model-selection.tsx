@@ -150,7 +150,7 @@ export function ModelSelection({
           {t('models.required')}
         </p>
       ) : null}
-      {error !== undefined ? <p className="text-destructive text-xs">{error}</p> : null}
+      {error === undefined ? null : <p className="text-destructive text-xs">{error}</p>}
       {listed.length > 0 ? (
         <div className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border p-2">
           {listed.map((model) => {

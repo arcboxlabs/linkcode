@@ -297,18 +297,18 @@ export class PiAdapter extends BaseAgentAdapter {
     const file = await findPiSessionFile(opts.historyId);
     if (!file) throw new Error(`pi: history '${opts.historyId}' was not found`);
     const sourceManager = pi.SessionManager.open(file);
-    if (predecessor !== null) {
-      if (!sourceManager.getEntry(predecessor)) {
-        throw new Error(`pi: history branch predecessor '${predecessor}' was not found`);
-      }
-      sourceManager.createBranchedSession(predecessor);
-      this.pendingBranchManager = sourceManager;
-    } else {
+    if (predecessor === null) {
       this.pendingBranchManager = pi.SessionManager.create(
         sourceManager.getCwd(),
         sourceManager.getSessionDir(),
         { parentSession: file },
       );
+    } else {
+      if (!sourceManager.getEntry(predecessor)) {
+        throw new Error(`pi: history branch predecessor '${predecessor}' was not found`);
+      }
+      sourceManager.createBranchedSession(predecessor);
+      this.pendingBranchManager = sourceManager;
     }
     await this.start(startOpts);
   }

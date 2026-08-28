@@ -80,10 +80,12 @@ function collectNodes(lockfile: Lockfile, rootKey: string): Map<string, ClosureN
     const snapshot = snapshots[key] ?? {};
     const deps = new Map<string, string>();
     for (const source of [snapshot.dependencies, snapshot.optionalDependencies]) {
-      for (const [depName, depVersion] of Object.entries(source ?? {})) {
-        const childKey = `${depName}@${depVersion}`;
-        deps.set(depName, childKey);
-        queue.push(childKey);
+      if (source != null) {
+        for (const [depName, depVersion] of Object.entries(source)) {
+          const childKey = `${depName}@${depVersion}`;
+          deps.set(depName, childKey);
+          queue.push(childKey);
+        }
       }
     }
     nodes.set(key, {

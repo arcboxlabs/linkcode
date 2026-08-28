@@ -30,12 +30,16 @@ interface DetailRow {
  * fields through `locations`/`content`, and the model keeps the rest. */
 function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
   const rows: DetailRow[] = [];
-  for (const location of toolCall.locations ?? []) {
-    rows.push({ key: `loc:${location.path}`, value: location.path });
+  if (toolCall.locations != null) {
+    for (const location of toolCall.locations) {
+      rows.push({ key: `loc:${location.path}`, value: location.path });
+    }
   }
-  for (const content of toolCall.content ?? []) {
-    if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
-      rows.push({ key: `diff:${content.path}`, value: content.path });
+  if (toolCall.content != null) {
+    for (const content of toolCall.content) {
+      if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
+        rows.push({ key: `diff:${content.path}`, value: content.path });
+      }
     }
   }
   const input = toolCall.rawInput;

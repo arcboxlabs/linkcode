@@ -322,13 +322,15 @@ function usageWindows(
   push('seven_day_oauth_apps', 10080, limits.seven_day_oauth_apps);
   push('seven_day_opus', 10080, limits.seven_day_opus);
   push('seven_day_sonnet', 10080, limits.seven_day_sonnet);
-  for (const bucket of limits.model_scoped ?? []) {
-    windows.push({
-      label: bucket.display_name,
-      utilization: bucket.utilization,
-      resetsAt: bucket.resets_at,
-      durationMins: 10080,
-    });
+  if (limits.model_scoped != null) {
+    for (const bucket of limits.model_scoped) {
+      windows.push({
+        label: bucket.display_name,
+        utilization: bucket.utilization,
+        resetsAt: bucket.resets_at,
+        durationMins: 10080,
+      });
+    }
   }
   return windows;
 }

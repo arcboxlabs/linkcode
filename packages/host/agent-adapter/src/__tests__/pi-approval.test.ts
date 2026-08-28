@@ -38,15 +38,17 @@ vi.mock('@earendil-works/pi-coding-agent', async () => {
         private readonly options: { extensionFactories?: Array<(api: unknown) => void> },
       ) {}
       reload() {
-        for (const factory of this.options.extensionFactories ?? []) {
-          factory({
-            on(_name: string, handler: Gate) {
-              sdk.gate = handler;
-            },
-            registerTool(tool: RegisteredTool) {
-              sdk.tool = tool;
-            },
-          });
+        if (this.options.extensionFactories != null) {
+          for (const factory of this.options.extensionFactories) {
+            factory({
+              on(_name: string, handler: Gate) {
+                sdk.gate = handler;
+              },
+              registerTool(tool: RegisteredTool) {
+                sdk.tool = tool;
+              },
+            });
+          }
         }
         return Promise.resolve();
       }

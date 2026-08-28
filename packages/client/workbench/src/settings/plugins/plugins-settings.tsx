@@ -33,8 +33,10 @@ export function PluginsSettingsPanel(): React.ReactNode {
   const mutating = toggle.isMutating || install.isMutating || uninstall.isMutating;
 
   const missingRuntimes = new Set<string>();
-  for (const [kind, runtime] of Object.entries(runtimes ?? {})) {
-    if (runtime.status === 'missing') missingRuntimes.add(kind);
+  if (runtimes != null) {
+    for (const [kind, runtime] of Object.entries(runtimes)) {
+      if (runtime.status === 'missing') missingRuntimes.add(kind);
+    }
   }
 
   const groupsFor = (installed: boolean) =>

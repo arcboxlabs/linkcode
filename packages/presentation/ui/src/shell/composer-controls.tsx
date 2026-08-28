@@ -43,8 +43,10 @@ function optionById<T extends { id: string }>(
   options: readonly T[] | undefined,
   id: string | null,
 ): T | undefined {
-  for (const option of options ?? []) {
-    if (option.id === id) return option;
+  if (options != null) {
+    for (const option of options) {
+      if (option.id === id) return option;
+    }
   }
   return undefined;
 }

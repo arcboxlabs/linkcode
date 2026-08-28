@@ -105,9 +105,11 @@ export function sanitizeSentryTransaction<T extends SentryTransactionEvent>(
     ? sanitizeProfileContext(event.contexts.profile)
     : undefined;
   const spans: TransactionSpan[] = [];
-  for (const span of event.spans ?? []) {
-    const sanitizedSpan = sanitizeSpan(span, options);
-    if (sanitizedSpan) spans.push(sanitizedSpan);
+  if (event.spans != null) {
+    for (const span of event.spans) {
+      const sanitizedSpan = sanitizeSpan(span, options);
+      if (sanitizedSpan) spans.push(sanitizedSpan);
+    }
   }
   const sanitized: SentryTransactionEvent = {
     event_id: validId(event.event_id, RE_EVENT_ID),

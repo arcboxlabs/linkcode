@@ -21,10 +21,11 @@ const SCHEMES = [
   'Gruvbox Dark',
 ];
 
-const hex = (color) =>
-  color
+function hex(color) {
+  return color
     ? `#${[color.r, color.g, color.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
     : undefined;
+}
 
 async function main() {
   const require = createRequire(import.meta.url);
