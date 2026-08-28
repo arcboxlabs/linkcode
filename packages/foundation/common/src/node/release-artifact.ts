@@ -89,7 +89,9 @@ async function artifactFile(
   path: string,
 ): Promise<{ path: string; sha256: string; sizeBytes: number }> {
   const absoluteRoot = await realpath(root);
-  const absolutePath = resolve(root, path);
+  // Resolve against the canonicalized root: a symlinked root (macOS /var → /private/var)
+  // would otherwise make every legitimate path read as an escape.
+  const absolutePath = resolve(absoluteRoot, path);
   const relativePath = relative(absoluteRoot, absolutePath);
   if (relativePath === '' || relativePath.startsWith('..') || relativePath.includes('\\')) {
     throw new TypeError(`artifact path escapes its isolated root: ${path}`);
@@ -357,7 +359,9 @@ export async function writeReleaseArtifactProvenance(
   artifactRoot: string,
 ): Promise<void> {
   const absoluteRoot = await realpath(artifactRoot);
-  const absolutePath = resolve(artifactRoot, path);
+  // Resolve against the canonicalized root: a symlinked root (macOS /var → /private/var)
+  // would otherwise make every legitimate path read as an escape.
+  const absolutePath = resolve(absoluteRoot, path);
   const relativePath = relative(absoluteRoot, absolutePath);
   if (relativePath === '' || relativePath.startsWith('..') || relativePath.includes('\\')) {
     throw new TypeError(`provenance path escapes its isolated root: ${path}`);
