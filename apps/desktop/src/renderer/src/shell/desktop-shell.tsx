@@ -197,15 +197,17 @@ export function DesktopShell({
   // same-document DOM move, preserving the React tree and the terminal's canvas.
   const { current: rightContentHost } = useSingleton(() => createPanelContentHost());
   const { current: bottomContentHost } = useSingleton(() => createPanelContentHost());
-  const { current: attachRightContentHost } = useSingleton(
-    () => (target: HTMLDivElement | null) => {
+  const attachRightContentHost = useCallback(
+    (target: HTMLDivElement | null) => {
       if (target !== null) target.append(rightContentHost);
     },
+    [rightContentHost],
   );
-  const { current: attachBottomContentHost } = useSingleton(
-    () => (target: HTMLDivElement | null) => {
+  const attachBottomContentHost = useCallback(
+    (target: HTMLDivElement | null) => {
       if (target !== null) target.append(bottomContentHost);
     },
+    [bottomContentHost],
   );
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
