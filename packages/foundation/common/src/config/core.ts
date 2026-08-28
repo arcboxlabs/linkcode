@@ -330,7 +330,9 @@ export class ConfigCore<Definitions extends ConfigDefinitions> {
     const before = this.#stateIdentity();
     const next: Record<string, ConfigValue> = {};
     const staged: Array<keyof ConfigValues<Definitions>> = [];
-    for (const key of Object.keys(this.#options.definitions)) {
+    const definitionKeys = Object.keys(this.#options.definitions);
+    for (let i = 0, len = definitionKeys.length; i < len; i++) {
+      const key = definitionKeys[i];
       const candidate = lkg.values[key];
       const pinned = this.#coldPinned[key];
       if (lkg.snapshot.document.applyModes[key] === 'hot') {

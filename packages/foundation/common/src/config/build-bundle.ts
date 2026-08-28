@@ -30,7 +30,9 @@ function fail(message: string): never {
 }
 
 function assertKeyring(keyring: Readonly<Record<string, string>>, label: string): void {
-  for (const [keyId, publicKey] of Object.entries(keyring)) {
+  const entries = Object.entries(keyring);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [keyId, publicKey] = entries[i];
     let decoded: Uint8Array;
     try {
       decoded = decodeBase64Url(publicKey);
@@ -45,7 +47,11 @@ function assertKeyring(keyring: Readonly<Record<string, string>>, label: string)
 
 function sha256Hex(bytes: Uint8Array): string {
   let hex = '';
-  for (const byte of sha256(bytes)) hex += byte.toString(16).padStart(2, '0');
+  const digest = sha256(bytes);
+  for (let i = 0, len = digest.length; i < len; i++) {
+    const byte = digest[i];
+    hex += byte.toString(16).padStart(2, '0');
+  }
   return hex;
 }
 

@@ -76,7 +76,8 @@ function assertReleaseBinding(bundle: ConfigBuildBundle, manifest: ReleaseManife
     ['configRevisionId', bundle.provenance.configRevisionId, manifest.configRevisionId],
     ['expectedSnapshotSha256', bundle.snapshot.sha256, manifest.expectedSnapshotSha256],
   ] as const;
-  for (const [field, actual, expected] of checks) {
+  for (let i = 0, len = checks.length; i < len; i++) {
+    const [field, actual, expected] = checks[i];
     if (actual !== expected) {
       throw new Error(`release manifest ${field} does not match the rendered bundle`);
     }
@@ -217,7 +218,9 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
   }
   const paths = new Set<string>();
   const artifacts: Array<ReleaseArtifactProvenance['artifacts'][number]> = [];
-  for (const [index, value] of provenance.artifacts.entries()) {
+  for (let i = 0, len = provenance.artifacts.length; i < len; i++) {
+    const index = i,
+      value = provenance.artifacts[i];
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new TypeError(`release provenance artifact ${index} must be an object`);
     }

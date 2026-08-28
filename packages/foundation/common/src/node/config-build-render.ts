@@ -144,12 +144,15 @@ function parseReleaseManifest(value: unknown, path: string): ConfigBuildReleaseM
     throw new TypeError(`Release manifest at ${path} has an unsupported format version`);
   }
   const keys = version === 1 ? RELEASE_MANIFEST_V1_KEY_SET : RELEASE_MANIFEST_V2_KEY_SET;
-  for (const key of Object.keys(manifest)) {
+  const manifestKeys = Object.keys(manifest);
+  for (let i = 0, len = manifestKeys.length; i < len; i++) {
+    const key = manifestKeys[i];
     if (!keys.has(key)) {
       throw new TypeError(`Release manifest at ${path} contains unsupported field ${key}`);
     }
   }
-  for (const key of RELEASE_MANIFEST_BASE_KEYS) {
+  for (let i = 0, len = RELEASE_MANIFEST_BASE_KEYS.length; i < len; i++) {
+    const key = RELEASE_MANIFEST_BASE_KEYS[i];
     if (!(key in manifest)) {
       throw new TypeError(`Release manifest at ${path} is missing field ${key}`);
     }
@@ -244,11 +247,13 @@ export async function assertReleaseManifestBinding(
   }
   const manifest = parseReleaseManifest(JSON.parse(manifestText), manifestPath);
   const digest = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
-  for (const field of [
+  const hexDigestFields = [
     'expectedSnapshotSha256',
     'publicKeyringsSha256',
     'revisionSha256',
-  ] as const) {
+  ] as const;
+  for (let i = 0, len = hexDigestFields.length; i < len; i++) {
+    const field = hexDigestFields[i];
     if (!RE_HEX_SHA256.test(manifest[field])) {
       throw new TypeError(`Release manifest ${field} must be a lowercase 64-hex SHA-256`);
     }
@@ -269,7 +274,8 @@ export async function assertReleaseManifestBinding(
     ['telemetryEndpoint', manifest.telemetryEndpoint, bundle.endpoints.telemetry],
     ['expectedSnapshotSha256', manifest.expectedSnapshotSha256, bundle.snapshot.sha256],
   ];
-  for (const [field, expected, got] of checks) {
+  for (let i = 0, len = checks.length; i < len; i++) {
+    const [field, expected, got] = checks[i];
     if (expected !== got) {
       throw new Error(
         `Release manifest binding failed: ${field} is pinned to ${expected} but this build used ${got}`,

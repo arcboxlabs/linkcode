@@ -30,7 +30,9 @@ export function applyMergePatch(
     typeof target === 'object' && target !== null && !Array.isArray(target)
       ? cloneJson(target)
       : {};
-  for (const [key, patchValue] of Object.entries(patch)) {
+  const patchEntries = Object.entries(patch);
+  for (let i = 0, len = patchEntries.length; i < len; i++) {
+    const [key, patchValue] = patchEntries[i];
     const merged = applyMergePatch(result[key], patchValue);
     if (merged === undefined) Reflect.deleteProperty(result, key);
     else result[key] = merged;
@@ -52,7 +54,9 @@ export function applyConfigPatch(
     });
     return acc;
   }, {});
-  for (const [key, patchValue] of Object.entries(patch)) {
+  const patchEntries = Object.entries(patch);
+  for (let i = 0, len = patchEntries.length; i < len; i++) {
+    const [key, patchValue] = patchEntries[i];
     if (!isConfigKey(key)) fail(`patch key ${key} is invalid`);
     const merged = applyMergePatch(result[key], patchValue);
     if (merged === undefined) Reflect.deleteProperty(result, key);

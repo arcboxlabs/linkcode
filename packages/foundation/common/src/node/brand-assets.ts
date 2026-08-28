@@ -52,7 +52,8 @@ export function stageBrandAssets(options: {
   const dir = validatedAssetDir(options.structuralDir, options.assetsPath);
   const entries = readdirSync(dir).sort();
   const label = options.assetsPath;
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const stats = lstatSync(join(dir, entry));
     if (stats.isSymbolicLink()) fail(`brand asset ${label}/${entry} must not be a symlink`);
     if (!stats.isFile()) {

@@ -96,7 +96,9 @@ function resolveService(
   account: Account,
   kind: AgentKind,
 ): ResolvedBinding {
-  for (const protocol of preferredProtocols(service, kind)) {
+  const protocols = preferredProtocols(service, kind);
+  for (let i = 0, len = protocols.length; i < len; i++) {
+    const protocol = protocols[i];
     const variant = service.variants[protocol];
     if (!variant) continue;
     const params = account.endpointParams ?? {};
@@ -191,7 +193,9 @@ function providerEnvFor(
   const mapping = variant.endpointEnv?.[kind];
   if (!mapping) return undefined;
   const env: Record<string, string> = {};
-  for (const [param, name] of Object.entries(mapping)) {
+  const mappingEntries = Object.entries(mapping);
+  for (let i = 0, len = mappingEntries.length; i < len; i++) {
+    const [param, name] = mappingEntries[i];
     const value = params[param];
     if (value !== undefined) env[name] = value;
   }

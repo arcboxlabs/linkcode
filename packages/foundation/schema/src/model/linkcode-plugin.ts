@@ -126,7 +126,8 @@ function rejectDuplicateComponents(
   ctx: z.RefinementCtx,
 ): void {
   const names = new Set<string>();
-  for (const component of manifest.components) {
+  for (let i = 0, len = manifest.components.length; i < len; i++) {
+    const component = manifest.components[i];
     const key = `${component.kind}:${component.name}`;
     if (names.has(key)) {
       ctx.addIssue({

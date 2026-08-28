@@ -24,7 +24,9 @@ const PermissionOptionsSchema = z
   .min(1)
   .superRefine((options, ctx) => {
     const optionIds = new Set<string>();
-    for (const [index, option] of options.entries()) {
+    for (let i = 0, len = options.length; i < len; i++) {
+      const index = i,
+        option = options[i];
       if (optionIds.has(option.optionId)) {
         ctx.addIssue({
           code: 'custom',

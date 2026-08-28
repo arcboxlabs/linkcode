@@ -139,7 +139,9 @@ export const ConfigSnapshotSchema = z
   .catchall(JsonValueSchema)
   .superRefine((snapshot, context) => {
     const coveredKeys = new Set<string>();
-    for (const [key, value] of Object.entries(snapshot.values)) {
+    const valueEntries = Object.entries(snapshot.values);
+    for (let i = 0, len = valueEntries.length; i < len; i++) {
+      const [key, value] = valueEntries[i];
       if (!isConfigKey(key)) {
         context.addIssue({
           code: 'custom',
@@ -156,8 +158,12 @@ export const ConfigSnapshotSchema = z
       }
       coveredKeys.add(key);
     }
-    for (const [index, override] of snapshot.overrides.entries()) {
-      for (const [key, value] of Object.entries(override.set)) {
+    for (let i = 0, len = snapshot.overrides.length; i < len; i++) {
+      const index = i,
+        override = snapshot.overrides[i];
+      const overrideEntries = Object.entries(override.set);
+      for (let j = 0, entryCount = overrideEntries.length; j < entryCount; j++) {
+        const [key, value] = overrideEntries[j];
         if (!isConfigKey(key)) {
           context.addIssue({
             code: 'custom',
@@ -175,7 +181,9 @@ export const ConfigSnapshotSchema = z
         coveredKeys.add(key);
       }
     }
-    for (const key of Object.keys(snapshot.rollouts)) {
+    const rolloutKeys = Object.keys(snapshot.rollouts);
+    for (let i = 0, len = rolloutKeys.length; i < len; i++) {
+      const key = rolloutKeys[i];
       if (!key.startsWith('feature.') || !isConfigKey(key)) {
         context.addIssue({
           code: 'custom',
@@ -185,7 +193,9 @@ export const ConfigSnapshotSchema = z
       }
       coveredKeys.add(key);
     }
-    for (const key of Object.keys(snapshot.applyModes)) {
+    const applyModeKeys = Object.keys(snapshot.applyModes);
+    for (let i = 0, len = applyModeKeys.length; i < len; i++) {
+      const key = applyModeKeys[i];
       if (!isConfigKey(key)) {
         context.addIssue({
           code: 'custom',
@@ -271,7 +281,9 @@ export const ConfigBuildBundleSchema = z
     snapshot: ConfigBuildBundleSnapshotEnvelopeSchema,
   })
   .superRefine((bundle, context) => {
-    for (const kind of ['normal', 'emergency'] as const) {
+    const keyringKinds = ['normal', 'emergency'] as const;
+    for (let i = 0, len = keyringKinds.length; i < len; i++) {
+      const kind = keyringKinds[i];
       if (
         (bundle.endpoints[kind] === null) !==
         (Object.keys(bundle.keyrings[kind]).at(0) === undefined)
@@ -338,7 +350,9 @@ export const EmergencyDocumentSchema = z
   })
   .catchall(SignedJsonValueSchema)
   .superRefine((document, context) => {
-    for (const [index, key] of document.disabledFeatures.entries()) {
+    for (let i = 0, len = document.disabledFeatures.length; i < len; i++) {
+      const index = i,
+        key = document.disabledFeatures[i];
       if (!key.startsWith('feature.') || !isConfigKey(key)) {
         context.addIssue({
           code: 'custom',
@@ -486,13 +500,17 @@ function assertSignedEnvelopeValue(value: unknown, label: string): asserts value
   }
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return;
   if (Array.isArray(value)) {
-    for (const [index, entry] of value.entries()) {
+    for (let i = 0, len = value.length; i < len; i++) {
+      const index = i,
+        entry = value[i];
       assertSignedEnvelopeValue(entry, `${label}[${index}]`);
     }
     return;
   }
   if (!isRecord(value)) throw new TypeError(`${label} must contain only JSON values`);
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     assertSignedEnvelopeValue(entry, `${label}.${key}`);
   }
 }

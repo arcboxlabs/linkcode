@@ -101,7 +101,11 @@ export class TunnelClient {
       throw new Error('TunnelClient: host messages must be sent through a peer');
     }
     const ws = this.openSocket();
-    for (const frame of this.encoder.encode(message)) ws.send(frame);
+    const frames = this.encoder.encode(message);
+    for (let i = 0, len = frames.length; i < len; i++) {
+      const frame = frames[i];
+      ws.send(frame);
+    }
   }
 
   onMessage(cb: (message: string) => void): () => void {
@@ -155,7 +159,10 @@ export class TunnelClient {
       throw failure;
     }
     if (this.candidateWs === ws) this.candidateWs = null;
-    for (const event of prepared.buffered) this.handleMessage(ws, event);
+    for (let i = 0, len = prepared.buffered.length; i < len; i++) {
+      const event = prepared.buffered[i];
+      this.handleMessage(ws, event);
+    }
     if (this.closedByUser || ws !== this.ws) {
       throw new Error('TunnelClient: socket closed during handshake');
     }
@@ -277,7 +284,11 @@ export class TunnelClient {
       this.adopt(ws, prepared);
       const queued = this.handoffQueue;
       this.handoffQueue = null;
-      if (queued) for (const frame of queued) ws.send(frame);
+      if (queued)
+        for (let i = 0, len = queued.length; i < len; i++) {
+          const frame = queued[i];
+          ws.send(frame);
+        }
       if (current !== ws && current.readyState === current.OPEN) current.close(1000);
     } catch {
       if (handoffStarted) this.abortHandoff(current);
@@ -288,7 +299,9 @@ export class TunnelClient {
   private sendToPeer(peerId: string, message: string): void {
     if (!this.peers.has(peerId)) throw new Error('TunnelPeer: connection closed');
     const ws = this.handoffQueue ? null : this.openSocket();
-    for (const data of this.encoder.encode(message)) {
+    const chunks = this.encoder.encode(message);
+    for (let i = 0, len = chunks.length; i < len; i++) {
+      const data = chunks[i];
       const frame = encodeTunnelPeerFrame({ kind: 'peer.data', peerId, data });
       if (this.handoffQueue) this.handoffQueue.push(frame);
       else ws?.send(frame);
@@ -358,7 +371,8 @@ export class TunnelClient {
 
   private reconcilePeers(buffered: readonly MessageEvent[]): void {
     const successorPeers = new Set<string>();
-    for (const event of buffered) {
+    for (let i = 0, len = buffered.length; i < len; i++) {
+      const event = buffered[i];
       if (!(event.data instanceof ArrayBuffer)) continue;
       const frame = decodeTunnelPeerFrame(event.data);
       if (frame?.kind === 'peer.join') successorPeers.add(frame.peerId);
