@@ -156,11 +156,12 @@ export function createConversationStore(
   const sync = (): void => {
     if (!seeded) {
       seeded = true;
-      if (seed)
+      if (seed) {
         for (let i = 0, len = seed.events.length; i < len; i++) {
           const entry = seed.events[i];
           builder.advance(entry.event, entry.ts);
         }
+      }
     }
     if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);

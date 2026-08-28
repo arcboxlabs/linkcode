@@ -284,11 +284,12 @@ export class TunnelClient {
       this.adopt(ws, prepared);
       const queued = this.handoffQueue;
       this.handoffQueue = null;
-      if (queued)
+      if (queued) {
         for (let i = 0, len = queued.length; i < len; i++) {
           const frame = queued[i];
           ws.send(frame);
         }
+      }
       if (current !== ws && current.readyState === current.OPEN) current.close(1000);
     } catch {
       if (handoffStarted) this.abortHandoff(current);

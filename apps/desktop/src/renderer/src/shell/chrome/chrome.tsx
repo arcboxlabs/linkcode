@@ -459,6 +459,14 @@ function ChromeSlotTarget({
   );
 }
 
+const nativeTrafficLightInsetJsx = (
+  <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />
+);
+
+const windowControlsInsetJsx = (
+  <div aria-hidden className="w-(--lc-chrome-window-controls-inset) shrink-0" />
+);
+
 function StableLeftChrome({
   contentRef,
   hasNativeTrafficLights,
@@ -474,7 +482,7 @@ function StableLeftChrome({
         ref={contentRef}
         className="pointer-events-none flex h-full items-center gap-(--lc-chrome-control-gap)"
       >
-        {hasNativeTrafficLights ? <NativeTrafficLightInset /> : null}
+        {hasNativeTrafficLights ? nativeTrafficLightInsetJsx : null}
         {children}
       </div>
     </div>
@@ -573,7 +581,7 @@ function StableRightChrome({
         {children}
         {/* Reserve the space the persistent window-controls layer (DesktopWindowControls, mounted at
             the app root) floats over, so the panel toggles never sit under it. */}
-        {showWindowControls ? <WindowControlsInset /> : null}
+        {showWindowControls ? windowControlsInsetJsx : null}
       </div>
     </div>
   );
@@ -678,14 +686,6 @@ function ResourcesChromeControl({
       </PopoverPopup>
     </Popover>
   );
-}
-
-function NativeTrafficLightInset(): React.ReactNode {
-  return <div aria-hidden className="w-(--lc-chrome-traffic-inset) shrink-0" />;
-}
-
-function WindowControlsInset(): React.ReactNode {
-  return <div aria-hidden className="w-(--lc-chrome-window-controls-inset) shrink-0" />;
 }
 
 function createChromeSlotKey(

@@ -335,11 +335,12 @@ export class TerminalChannel {
     }
     set.add(cb);
     const replay = this.replay.get(terminalId);
-    if (replay)
+    if (replay) {
       for (let i = 0, len = replay.length; i < len; i++) {
         const event = replay[i];
         cb(event);
       }
+    }
     return () => set.delete(cb);
   }
 

@@ -1436,10 +1436,9 @@ export class DevMockHost {
     ];
 
     for (let i = 0, len = script.length; i < len; i++) {
-      const event = script[i];
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       if (!(await waitForShowcaseStep(session, epoch))) return false;
-      this.emit(session.sessionId, event);
+      this.emit(session.sessionId, script[i]);
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
     this.writeTerminal(terminalId, SHOWCASE_TERMINAL_START_OUTPUT);
