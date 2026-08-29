@@ -117,6 +117,8 @@ export function useConversation(
 export interface SessionsApi {
   /** Known sessions (daemon snapshot merged with ones created in this client), newest last. */
   sessions: SessionInfo[];
+  /** The same sessions keyed by id: O(1) lookups for screens that re-render per stream delta. */
+  sessionsById: ReadonlyMap<SessionId, SessionInfo>;
   /** The currently focused session, or null. */
   activeId: SessionId | null;
   /** Focus a session (or clear the selection). */
@@ -217,5 +219,14 @@ export function useSessions(): SessionsApi {
     [client],
   );
 
-  return { sessions, activeId, select: setActiveId, create, stop, refresh, loading };
+  const sessionsById = useMemo(() => {
+    const byId = new Map<SessionId, SessionInfo>();
+    for (let i = 0, len = sessions.length; i < len; i++) {
+      const session = sessions[i];
+      byId.set(session.sessionId, session);
+    }
+    return byId;
+  }, [sessions]);
+
+  return { sessions, sessionsById, activeId, select: setActiveId, create, stop, refresh, loading };
 }

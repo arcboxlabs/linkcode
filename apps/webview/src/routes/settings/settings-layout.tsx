@@ -29,6 +29,10 @@ const SETTINGS_ROUTES: Record<string, string> = {
   developer: '/settings/developer',
 };
 const RE_TRAILING_SLASH = /\/$/;
+// Inverted once at module scope: the active tab is a single O(1) lookup per navigation.
+const SETTINGS_TAB_BY_PATH = new Map(
+  Object.entries(SETTINGS_ROUTES).map(([key, route]) => [route, key]),
+);
 
 export function SettingsLayout(): React.ReactNode {
   const t = useTranslations('settings');
@@ -36,6 +40,7 @@ export function SettingsLayout(): React.ReactNode {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const searchKeywords = useSettingsSearchKeywords();
+  const activeKey = SETTINGS_TAB_BY_PATH.get(pathname.replace(RE_TRAILING_SLASH, ''));
 
   const navGroups = [
     {
@@ -47,7 +52,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <SettingsIcon className="size-4" />,
           label: t('tabs.general'),
           keywords: searchKeywords.general,
-          active: isActive(pathname, ''),
+          active: activeKey === 'general',
           render: <Link to="/settings" />,
         },
         {
@@ -55,7 +60,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <SunMoonIcon className="size-4" />,
           label: t('tabs.appearance'),
           keywords: searchKeywords.appearance,
-          active: isActive(pathname, 'appearance'),
+          active: activeKey === 'appearance',
           render: <Link to="/settings/appearance" />,
         },
         {
@@ -63,7 +68,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <TerminalIcon className="size-4" />,
           label: t('tabs.terminal'),
           keywords: searchKeywords.terminal,
-          active: isActive(pathname, 'terminal'),
+          active: activeKey === 'terminal',
           render: <Link to="/settings/terminal" />,
         },
         {
@@ -71,7 +76,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <BellIcon className="size-4" />,
           label: t('tabs.notifications'),
           keywords: searchKeywords.notifications,
-          active: isActive(pathname, 'notifications'),
+          active: activeKey === 'notifications',
           render: <Link to="/settings/notifications" />,
         },
         {
@@ -79,7 +84,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <CreditCardIcon className="size-4" />,
           label: t('tabs.billing'),
           keywords: searchKeywords.billing,
-          active: isActive(pathname, 'billing'),
+          active: activeKey === 'billing',
           render: <Link to="/settings/billing" />,
         },
       ],
@@ -93,7 +98,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <BotIcon className="size-4" />,
           label: t('tabs.agents'),
           keywords: searchKeywords.agents,
-          active: isActive(pathname, 'agents'),
+          active: activeKey === 'agents',
           render: <Link to="/settings/agents" />,
         },
         {
@@ -101,7 +106,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <KeyRoundIcon className="size-4" />,
           label: t('tabs.providers'),
           keywords: searchKeywords.providers,
-          active: isActive(pathname, 'providers'),
+          active: activeKey === 'providers',
           render: <Link to="/settings/providers" />,
         },
         {
@@ -109,7 +114,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <PuzzleIcon className="size-4" />,
           label: t('tabs.plugins'),
           keywords: searchKeywords.plugins,
-          active: isActive(pathname, 'plugins'),
+          active: activeKey === 'plugins',
           render: <Link to="/settings/plugins" />,
         },
         {
@@ -117,7 +122,7 @@ export function SettingsLayout(): React.ReactNode {
           icon: <SendIcon className="size-4" />,
           label: t('tabs.imChannel'),
           keywords: searchKeywords.imChannel,
-          active: isActive(pathname, 'messaging'),
+          active: activeKey === 'messaging',
           render: <Link to="/settings/messaging" />,
         },
       ],
@@ -131,15 +136,17 @@ export function SettingsLayout(): React.ReactNode {
           icon: <CodeXmlIcon className="size-4" />,
           label: t('tabs.developer'),
           keywords: searchKeywords.developer,
-          active: isActive(pathname, 'developer'),
+          active: activeKey === 'developer',
           render: <Link to="/settings/developer" />,
         },
       ],
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
-  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
-  const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
+  const activeLabel =
+    activeKey === undefined
+      ? undefined
+      : t(`tabs.${activeKey === 'messaging' ? 'imChannel' : activeKey}`);
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -172,21 +179,4 @@ export function SettingsLayout(): React.ReactNode {
       </main>
     </div>
   );
-}
-
-function isActive(
-  pathname: string,
-  section:
-    | ''
-    | 'appearance'
-    | 'terminal'
-    | 'developer'
-    | 'notifications'
-    | 'billing'
-    | 'providers'
-    | 'plugins'
-    | 'agents'
-    | 'messaging',
-): boolean {
-  return pathname.replace(RE_TRAILING_SLASH, '') === `/settings${section ? `/${section}` : ''}`;
 }

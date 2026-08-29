@@ -31,7 +31,7 @@ import {
   UnplugIcon,
   VideoIcon,
 } from 'lucide-react';
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { useBackgroundSimulatorStreams } from './background-streams';
@@ -237,8 +237,18 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const openUdids =
     tabs.udids.length > 0 ? tabs.udids : defaultUdid === null ? EMPTY_UDIDS : [defaultUdid];
   const activeUdid = tabs.activeUdid ?? defaultUdid;
-  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- a host exposes a handful of simulators at most; a lookup Map would outweigh the scan
-  const device = devices?.find((item) => item.udid === activeUdid) ?? null;
+  // Keyed once per device-list change: the panel re-renders per stream frame, the list rarely moves.
+  const devicesByUdid = useMemo(() => {
+    const byUdid = new Map<string, SimulatorDevice>();
+    if (devices !== null) {
+      for (let i = 0, len = devices.length; i < len; i++) {
+        const item = devices[i];
+        byUdid.set(item.udid, item);
+      }
+    }
+    return byUdid;
+  }, [devices]);
+  const device = (activeUdid === null ? undefined : devicesByUdid.get(activeUdid)) ?? null;
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
   // Optimistic until the probe resolves: assume interactive so a capable host streams immediately.
