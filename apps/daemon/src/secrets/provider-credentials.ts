@@ -76,7 +76,9 @@ export function detachProviderSecrets(
   const stripped: ProvidersConfig = {};
   const secrets = new Map<string, string>();
 
-  for (const [kind, config] of Object.entries(providers)) {
+  const providerEntries = Object.entries(providers);
+  for (let i = 0, len = providerEntries.length; i < len; i++) {
+    const [kind, config] = providerEntries[i];
     const { apiKey, ...rest } = config;
     if (apiKey !== undefined) secrets.set(kind, apiKey);
     Reflect.set(stripped, kind, rest);

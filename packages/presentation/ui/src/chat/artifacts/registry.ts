@@ -65,7 +65,8 @@ export interface ResolvedInlineArtifact {
 /** Run detectors over a fence (first match wins). Returns null — degrade to a plain
  * code block — when nothing matches or the matched kind cannot render inline. */
 export function resolveFencedArtifact(block: FencedBlock): ResolvedInlineArtifact | null {
-  for (const detector of detectors) {
+  for (let i = 0, len = detectors.length; i < len; i++) {
+    const detector = detectors[i];
     const artifact = detector.detectFence(block);
     if (!artifact) continue;
     const definition = kinds.get(artifact.kind);

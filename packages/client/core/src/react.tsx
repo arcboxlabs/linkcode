@@ -8,7 +8,6 @@ import type {
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
-import type * as React from 'react';
 import {
   createContext,
   useCallback,

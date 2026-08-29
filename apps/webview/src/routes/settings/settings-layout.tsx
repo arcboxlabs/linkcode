@@ -138,7 +138,7 @@ export function SettingsLayout(): React.ReactNode {
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
   const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
 
   return (

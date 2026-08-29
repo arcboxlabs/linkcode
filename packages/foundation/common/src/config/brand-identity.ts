@@ -66,7 +66,9 @@ function requireExactKeys(
   allowed: ReadonlySet<string>,
   label: string,
 ): void {
-  for (const key of Object.keys(value)) {
+  const keys = Object.keys(value);
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const key = keys[i];
     if (!allowed.has(key)) fail(`${label} contains unsupported field ${key}`);
   }
   for (const key of allowed) {
@@ -79,7 +81,8 @@ function assertApplicationId(value: string, platform: ConfigPlatform, label: str
   const segments = value.split('.');
   if (segments.length < 2) fail(`${label} must contain at least two segments`);
   const segmentRule = platform === 'android' ? RE_ANDROID_ID_SEGMENT : RE_APPLE_ID_SEGMENT;
-  for (const segment of segments) {
+  for (let i = 0, len = segments.length; i < len; i++) {
+    const segment = segments[i];
     if (!segmentRule.test(segment)) {
       fail(`${label} segment ${segment || '(empty)'} is invalid for ${platform}`);
     }
@@ -108,7 +111,9 @@ function assertAssetsPath(value: string, label: string): void {
   if (value[0] === '/' || value.includes('\\')) {
     fail(`${label} must be a forward-slash relative path`);
   }
-  for (const segment of value.split('/')) {
+  const segments = value.split('/');
+  for (let i = 0, len = segments.length; i < len; i++) {
+    const segment = segments[i];
     if (segment === '' || segment === '.' || segment === '..') {
       fail(`${label} must not contain empty, dot, or parent segments`);
     }

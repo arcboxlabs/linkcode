@@ -169,7 +169,8 @@ describe('emergency handoff signed documents', () => {
 describe('emergency handoff anti-replay decision table', () => {
   it('reproduces every frozen decision', () => {
     expect(fixture.antiReplayCases).toHaveLength(5);
-    for (const testCase of fixture.antiReplayCases) {
+    for (let i = 0, len = fixture.antiReplayCases.length; i < len; i++) {
+      const testCase = fixture.antiReplayCases[i];
       expect(
         decideAntiReplay(
           replayState(testCase.candidate as DocumentName),
@@ -183,7 +184,8 @@ describe('emergency handoff anti-replay decision table', () => {
   it.each(PLATFORMS)('holds decision-table parity on re-signed %s documents', async (platform) => {
     const target: ConfigTarget = { ...TARGET, platform };
     const states: Record<string, { payloadSha256: string; version: string }> = {};
-    for (const name of DOCUMENT_NAMES) {
+    for (let i = 0, len = DOCUMENT_NAMES.length; i < len; i++) {
+      const name = DOCUMENT_NAMES[i];
       const signed = resignForPlatform(name, platform);
       // eslint-disable-next-line no-await-in-loop -- documents verify sequentially by design
       const verified = await verifyEmergencyBytes(encoder.encode(JSON.stringify(signed)), {
@@ -201,7 +203,8 @@ describe('emergency handoff anti-replay decision table', () => {
         expect(verified.payloadSha256).toBe(fixture.documents[name].payloadSha256);
       }
     }
-    for (const testCase of fixture.antiReplayCases) {
+    for (let i = 0, len = fixture.antiReplayCases.length; i < len; i++) {
+      const testCase = fixture.antiReplayCases[i];
       expect(
         decideAntiReplay(
           states[testCase.candidate],
@@ -258,7 +261,7 @@ function hex(bytes: Uint8Array): string {
 
 function hexBytes(text: string): Uint8Array {
   const bytes = new Uint8Array(text.length / 2);
-  for (let index = 0; index < bytes.length; index += 1) {
+  for (let index = 0, len = bytes.length; index < len; index += 1) {
     bytes[index] = Number.parseInt(text.slice(index * 2, index * 2 + 2), 16);
   }
   return bytes;

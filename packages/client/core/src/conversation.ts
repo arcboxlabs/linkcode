@@ -218,7 +218,10 @@ export function createConversationBuilder(): ConversationBuilder {
       if (cut < 0) return;
       entries = entries.slice(0, cut);
       projection = createConversationProjection();
-      for (const entry of entries) projection.advance(entry.event, entry.receivedAt);
+      for (let i = 0, len = entries.length; i < len; i++) {
+        const entry = entries[i];
+        projection.advance(entry.event, entry.receivedAt);
+      }
     },
     snapshot: () => projection.snapshot(),
   };
@@ -741,7 +744,10 @@ function createConversationProjection(): ConversationBuilder {
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */
 export function buildConversation(events: readonly AgentEvent[]): Conversation {
   const builder = createConversationBuilder();
-  for (const event of events) builder.advance(event);
+  for (let i = 0, len = events.length; i < len; i++) {
+    const event = events[i];
+    builder.advance(event);
+  }
   return builder.snapshot();
 }
 

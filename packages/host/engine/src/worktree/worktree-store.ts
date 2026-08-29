@@ -10,7 +10,7 @@ export class InMemoryWorktreeStore implements WorktreeStore {
   private readonly records = new Map<string, WorktreeRecord>();
 
   load(): Promise<WorktreeRecord[]> {
-    return Promise.resolve([...this.records.values()].map((record) => structuredClone(record)));
+    return Promise.resolve(Array.from(this.records.values(), (record) => structuredClone(record)));
   }
 
   save(record: WorktreeRecord): Promise<void> {

@@ -210,10 +210,12 @@ export function sanitizeMobileProductAnalyticsEvent<
   const eventProperties = EVENT_PROPERTIES.get(event.event);
   if (!eventProperties) return null;
 
-  const properties = Object.fromEntries(
-    Object.entries(event.properties ?? {}).filter(
-      ([key]) => COMMON_PROPERTIES.has(key) || eventProperties.has(key),
-    ),
+  const properties = Object.entries(event.properties ?? {}).reduce<Record<string, unknown>>(
+    (acc, [key, value]) => {
+      if (COMMON_PROPERTIES.has(key) || eventProperties.has(key)) acc[key] = value;
+      return acc;
+    },
+    {},
   );
 
   return { ...event, properties, $set: undefined, $set_once: undefined };

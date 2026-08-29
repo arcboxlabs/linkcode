@@ -56,7 +56,9 @@ function parseSemver(value: string): ParsedSemver | null {
 }
 
 function compareSemver(left: ParsedSemver, right: ParsedSemver): number {
-  for (const field of ['major', 'minor', 'patch'] as const) {
+  const coreFields = ['major', 'minor', 'patch'] as const;
+  for (let i = 0, len = coreFields.length; i < len; i++) {
+    const field = coreFields[i];
     const comparison = compareDecimal(left[field], right[field]);
     if (comparison !== 0) return comparison;
   }
@@ -84,7 +86,8 @@ function parseVersionRange(value: string): readonly VersionComparator[] | null {
   const parts = value.split(' ');
   if (parts.some((part) => part.length === 0)) return null;
   const comparators: VersionComparator[] = [];
-  for (const part of parts) {
+  for (let i = 0, len = parts.length; i < len; i++) {
+    const part = parts[i];
     const operator = (['>=', '<=', '>', '<', '='] as const).find((candidate) =>
       part.startsWith(candidate),
     );

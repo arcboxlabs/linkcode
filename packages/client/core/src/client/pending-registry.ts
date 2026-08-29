@@ -245,7 +245,9 @@ export class PendingRegistry {
 
   /** Reject a pending request by id alone — a `request.failed` reply doesn't carry which kind it was. */
   reject(id: string, err: Error): boolean {
-    for (const map of Object.values(this.maps)) {
+    const maps = Object.values(this.maps);
+    for (let i = 0, len = maps.length; i < len; i++) {
+      const map = maps[i];
       const pending = map.get(id);
       if (pending) {
         map.delete(id);
@@ -258,7 +260,9 @@ export class PendingRegistry {
 
   /** Reject every in-flight request across every kind, so awaiters get an error instead of hanging forever. */
   failAll(err: Error): void {
-    for (const map of Object.values(this.maps)) {
+    const maps = Object.values(this.maps);
+    for (let i = 0, len = maps.length; i < len; i++) {
+      const map = maps[i];
       for (const pending of map.values()) pending.reject(err);
       map.clear();
     }

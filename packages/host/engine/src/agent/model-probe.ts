@@ -230,7 +230,8 @@ export async function probeEndpointModels(
   if (!parsed.success) throw new Error(`${url.href} did not answer a model list`);
   const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
   const byId = new Map<string, AccountModel>();
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (entry.id && !byId.has(entry.id)) {
       byId.set(entry.id, {
         id: entry.id,
@@ -256,7 +257,8 @@ export async function probeServiceModels(
   request: ModelListRequest = requestPublicModelList,
 ): Promise<AccountModel[]> {
   const byUrl = new Map<string, { source: ServiceModelList; protocols: AccountProtocol[] }>();
-  for (const protocol of AccountProtocolSchema.options) {
+  for (let i = 0, len = AccountProtocolSchema.options.length; i < len; i++) {
+    const protocol = AccountProtocolSchema.options[i];
     // A protocol this service does not actually serve (no variant at all) must not fall through
     // to the service-level list — that would tag every model with a protocol the service never
     // offered.
@@ -272,13 +274,15 @@ export async function probeServiceModels(
 
   const merged = new Map<string, AccountModel>();
   const lists = await Promise.all(
-    [...byUrl.values()].map(async ({ source, protocols }) => ({
+    Array.from(byUrl.values(), async ({ source, protocols }) => ({
       models: await probeEndpointModels(source, secret, request),
       protocols,
     })),
   );
-  for (const { models, protocols } of lists) {
-    for (const model of models) {
+  for (let i = 0, len = lists.length; i < len; i++) {
+    const { models, protocols } = lists[i];
+    for (let j = 0, modelCount = models.length; j < modelCount; j++) {
+      const model = models[j];
       const known = merged.get(model.id);
       const combined = [...new Set([...(known?.protocols ?? []), ...protocols])];
       merged.set(model.id, { ...model, protocols: combined });

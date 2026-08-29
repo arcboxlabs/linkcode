@@ -25,6 +25,7 @@ const OptionalStringSchema = z.string().min(1).nullish();
 const OptionalUrlSchema = z.url().nullish().catch(null);
 const OptionalHttpUrlSchema = z.httpUrl().nullish().catch(null);
 const DISCOVERY_TIMEOUT_MS = 30000;
+const collator = new Intl.Collator();
 
 const CodexPluginSourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('local'), path: z.string().min(1) }),
@@ -175,7 +176,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
       // 0.144.1: list 3.3s, one read ~160ms). Market entries keep the summary's own metadata and
       // simply carry no component list.
       const plugins = await Promise.all(
-        [...entries.values()].map(async ({ marketplace, summary }) =>
+        Array.from(entries.values(), async ({ marketplace, summary }) =>
           normalizeCodexPlugin(
             marketplace,
             summary,
@@ -185,7 +186,7 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
           ),
         ),
       );
-      return plugins.sort((left, right) => left.id.localeCompare(right.id));
+      return plugins.sort((left, right) => collator.compare(left.id, right.id));
     }, opts.signal);
   }
 
@@ -203,8 +204,12 @@ export class CodexPluginAdapter implements PluginProviderAdapter {
         ),
       );
       const names = new Set<string>();
-      for (const detail of details) {
-        for (const name of detail.mcpServers) names.add(name);
+      for (let i = 0, len = details.length; i < len; i++) {
+        const detail = details[i];
+        const mcpServers = detail.mcpServers;
+        for (let j = 0, serverCount = mcpServers.length; j < serverCount; j++) {
+          names.add(mcpServers[j]);
+        }
       }
       return [...names];
     }, opts.signal);
@@ -362,7 +367,9 @@ async function findCodexPlugin(
 ): Promise<{ marketplace: CodexMarketplace; summary: CodexPluginSummary }> {
   // `plugin/installed` answers the same envelope as `plugin/list`, minus the remote catalog.
   const value = await server.request(method, { cwds: opts.cwd ? [opts.cwd] : undefined });
-  for (const marketplace of CodexPluginListSchema.parse(value).marketplaces) {
+  const marketplaces = CodexPluginListSchema.parse(value).marketplaces;
+  for (let i = 0, len = marketplaces.length; i < len; i++) {
+    const marketplace = marketplaces[i];
     const summary = marketplace.plugins.find((plugin) => plugin.id === id);
     if (summary) return { marketplace, summary };
   }
@@ -397,8 +404,11 @@ async function readCodexPluginDetailStrict(
 function codexCatalogEntries(catalog: z.infer<typeof CodexPluginListSchema>) {
   // The remote curated catalog can list one id twice; retain the installed copy, else the first.
   const entries = new Map<string, { marketplace: CodexMarketplace; summary: CodexPluginSummary }>();
-  for (const marketplace of catalog.marketplaces) {
-    for (const summary of marketplace.plugins) {
+  for (let i = 0, len = catalog.marketplaces.length; i < len; i++) {
+    const marketplace = catalog.marketplaces[i];
+    const summaries = marketplace.plugins;
+    for (let j = 0, summaryCount = summaries.length; j < summaryCount; j++) {
+      const summary = summaries[j];
       const seen = entries.get(summary.id);
       if (seen && !summary.installed) continue;
       entries.set(summary.id, { marketplace, summary });
@@ -410,9 +420,11 @@ function codexCatalogEntries(catalog: z.infer<typeof CodexPluginListSchema>) {
 function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {
   const parsed = CodexSkillListSchema.parse(value);
   const skills = new Map<string, StandaloneSkill>();
-  for (const group of parsed.data) {
-    for (const raw of group.skills) {
-      const entry = CodexSkillEntrySchema.safeParse(raw);
+  for (let i = 0, len = parsed.data.length; i < len; i++) {
+    const group = parsed.data[i];
+    const rawSkills = group.skills;
+    for (let j = 0, skillCount = rawSkills.length; j < skillCount; j++) {
+      const entry = CodexSkillEntrySchema.safeParse(rawSkills[j]);
       if (!entry.success) continue;
       const { name, description, path, scope } = entry.data;
       // Plugin-qualified names (`plugin:skill`) belong to Plugin.components, not this list.
@@ -429,7 +441,7 @@ function normalizeCodexStandaloneSkills(value: unknown): StandaloneSkill[] {
       });
     }
   }
-  return [...skills.values()].sort((left, right) => left.id.localeCompare(right.id));
+  return [...skills.values()].sort((left, right) => collator.compare(left.id, right.id));
 }
 
 async function startCodexPluginServer(signal: AbortSignal): Promise<CodexPluginServer> {
@@ -549,7 +561,7 @@ function codexComponents(detail: CodexPluginDetail): PluginComponent[] {
     ...detail.mcpServers.map((name) => ({ kind: 'mcp-server' as const, name })),
   ];
   return components.sort((left, right) => {
-    const kind = left.kind.localeCompare(right.kind);
-    return kind === 0 ? left.name.localeCompare(right.name) : kind;
+    const kind = collator.compare(left.kind, right.kind);
+    return kind === 0 ? collator.compare(left.name, right.name) : kind;
   });
 }

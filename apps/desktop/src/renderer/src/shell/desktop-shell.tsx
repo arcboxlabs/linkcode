@@ -37,7 +37,6 @@ import { Card } from 'coss-ui/components/card';
 import { toastManager } from 'coss-ui/components/toast';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -192,21 +191,24 @@ export function DesktopShell({
   const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
   const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
   const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
-  // Content boxes reported by the active panel-region instances (docked or maximized overlay).
-  const [rightContentTarget, setRightContentTarget] = useState<HTMLDivElement | null>(null);
-  const [bottomContentTarget, setBottomContentTarget] = useState<HTMLDivElement | null>(null);
   // Persistent portal hosts: React keys a portal by its container, so portaling into the reported
   // target directly would remount the subtree on every docked↔maximized handoff. Each side portals
-  // into one stable host div that a layout effect moves between targets — a same-document DOM
-  // move, preserving the React tree and the terminal's canvas.
+  // into one stable host div that the active panel-region's callback ref moves between targets — a
+  // same-document DOM move, preserving the React tree and the terminal's canvas.
   const { current: rightContentHost } = useSingleton(() => createPanelContentHost());
   const { current: bottomContentHost } = useSingleton(() => createPanelContentHost());
-  useLayoutEffect(() => {
-    if (rightContentTarget !== null) rightContentTarget.append(rightContentHost);
-  }, [rightContentTarget, rightContentHost]);
-  useLayoutEffect(() => {
-    if (bottomContentTarget !== null) bottomContentTarget.append(bottomContentHost);
-  }, [bottomContentTarget, bottomContentHost]);
+  const attachRightContentHost = useCallback(
+    (target: HTMLDivElement | null) => {
+      if (target !== null) target.append(rightContentHost);
+    },
+    [rightContentHost],
+  );
+  const attachBottomContentHost = useCallback(
+    (target: HTMLDivElement | null) => {
+      if (target !== null) target.append(bottomContentHost);
+    },
+    [bottomContentHost],
+  );
   // Desktop mounts below the connection gate, so the host is connected whenever this renders.
   const tConnection = useTranslations('workbench.connection');
   const tComposer = useTranslations('workbench.composer');
@@ -510,7 +512,7 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        terminalContentTargetRef={setRightContentTarget}
+        terminalContentTargetRef={attachRightContentHost}
         onSelectSection={setActiveSection}
         onAddSection={addRightSection}
         onCloseSection={(section) => {
@@ -548,7 +550,7 @@ export function DesktopShell({
         chromeVisible={options.chromeVisible}
         contentHidden={options.contentHidden}
         chromeSurface={chromeSurface}
-        contentTargetRef={setBottomContentTarget}
+        contentTargetRef={attachBottomContentHost}
         onSelectTab={(id) => updatePanel((current) => ({ ...current, activeTabId: id }))}
         onCloseTab={(id) => closeTab(id)}
         onAddWindow={(type) => addWindow(type)}
@@ -589,7 +591,8 @@ export function DesktopShell({
     // Browser webviews live here permanently: unmounting or DOM-moving a webview
     // reloads it, so section and tab switches only toggle visibility.
     const activeIsBrowser = rightPanel.activeSection === 'browser';
-    for (const tab of rightPanel.browser.tabs) {
+    for (let i = 0, len = rightPanel.browser.tabs.length; i < len; i++) {
+      const tab = rightPanel.browser.tabs[i];
       items.push({
         id: tab.id,
         active: activeIsBrowser && tab.id === rightPanel.browser.activeTabId,

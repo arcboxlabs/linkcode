@@ -20,7 +20,10 @@ const FIXTURE_SHA256 = {
 
 function toHex(bytes: Uint8Array): string {
   let hex = '';
-  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  for (let i = 0, len = bytes.length; i < len; i++) {
+    const byte = bytes[i];
+    hex += byte.toString(16).padStart(2, '0');
+  }
   return hex;
 }
 
@@ -34,7 +37,9 @@ function mutate(change: (artifact: Record<string, any>) => void): unknown {
 
 describe('brand identity v1 vendored fixtures', () => {
   it('matches the frozen publisher bytes exactly', async () => {
-    for (const [name, digest] of Object.entries(FIXTURE_SHA256)) {
+    const fixtureDigests = Object.entries(FIXTURE_SHA256);
+    for (let i = 0, len = fixtureDigests.length; i < len; i++) {
+      const [name, digest] = fixtureDigests[i];
       const suffix = name === 'desktop' ? '' : `-${name}`;
       // eslint-disable-next-line no-await-in-loop -- four small reads
       const bytes = await readFile(
@@ -45,12 +50,14 @@ describe('brand identity v1 vendored fixtures', () => {
   });
 
   it('validates every fixture and preserves its target', () => {
-    for (const [raw, brandId, platform, channel] of [
+    const fixtureCases = [
       [fixture, 'acme', 'desktop', 'stable'],
       [fixtureIos, 'acme', 'ios', 'stable'],
       [fixtureAndroid, 'acme', 'android', 'stable'],
       [fixtureZenithCanary, 'zenith', 'desktop', 'canary'],
-    ] as const) {
+    ] as const;
+    for (let i = 0, len = fixtureCases.length; i < len; i++) {
+      const [raw, brandId, platform, channel] = fixtureCases[i];
       const identity = parseBrandIdentityArtifact(structuredClone(raw));
       expect(identity.brandId).toBe(brandId);
       expect(identity.platform).toBe(platform);
@@ -196,7 +203,8 @@ describe('parseBrandIdentityArtifact', () => {
         'manifestSchemaVersion',
       ],
     ];
-    for (const [change, message] of cases) {
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [change, message] = cases[i];
       expect(() => parseBrandIdentityArtifact(mutate(change))).toThrow(message);
     }
   });

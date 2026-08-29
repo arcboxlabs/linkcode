@@ -34,7 +34,8 @@ class FakeCodexServer {
   close(): void {
     this.closed = true;
     const rejections = this.held.splice(0);
-    for (const reject of rejections) {
+    for (let i = 0, len = rejections.length; i < len; i++) {
+      const reject = rejections[i];
       reject(new Error('codex: app-server connection is closed'));
     }
   }

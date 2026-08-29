@@ -9,7 +9,11 @@ const roots: string[] = [];
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
+  const staleRoots = roots.splice(0);
+  for (let i = 0, len = staleRoots.length; i < len; i++) {
+    const root = staleRoots[i];
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 describe('Pi model registry integration', () => {

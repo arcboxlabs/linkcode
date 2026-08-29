@@ -61,10 +61,13 @@ run('pnpm', ['--filter', '@linkcode/daemon', '--prod', 'deploy', '--legacy', out
 rmSync(join(outDir, 'dist'), { recursive: true, force: true });
 cpSync(join(daemonDir, 'dist'), join(outDir, 'dist'), { recursive: true });
 
-for (const [scope, prefix] of PRUNE) {
+for (let i = 0, len = PRUNE.length; i < len; i++) {
+  const [scope, prefix] = PRUNE[i];
   const scopeDir = join(outDir, 'node_modules', scope);
   if (!existsSync(scopeDir)) continue;
-  for (const entry of readdirSync(scopeDir)) {
+  const scopeEntries = readdirSync(scopeDir);
+  for (let j = 0, entryCount = scopeEntries.length; j < entryCount; j++) {
+    const entry = scopeEntries[j];
     if (entry.startsWith(prefix)) rmSync(join(scopeDir, entry), { recursive: true, force: true });
   }
 }
@@ -74,7 +77,9 @@ console.log(`daemon packaged at ${outDir} (${Math.round(bytes / 1e6)} MB)`);
 
 function dirSize(dir: string): number {
   let total = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const full = join(dir, entry.name);
     if (entry.isDirectory()) total += dirSize(full);
     else if (entry.isFile()) total += statSync(full).size;

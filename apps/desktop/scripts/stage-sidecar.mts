@@ -44,7 +44,8 @@ function stage(arch: string, cross?: CrossBuild): void {
   });
   const destDir = join(desktopDir, 'sidecar', arch);
   mkdirSync(destDir, { recursive: true });
-  for (const crate of crates) {
+  for (let i = 0, len = crates.length; i < len; i++) {
+    const crate = crates[i];
     const binary = process.platform === 'win32' ? `${crate}.exe` : crate;
     const built = join(repoRoot, 'target', ...(cross ? [cross.target] : []), 'release', binary);
     cpSync(built, join(destDir, binary));

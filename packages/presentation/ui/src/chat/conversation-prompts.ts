@@ -72,7 +72,8 @@ export function selectPendingPromptItems(
 /** toolCallIds whose authoritative permission resolution declined the gated action. */
 export function declinedToolCallIds(items: readonly ConversationItem[]): Set<string> {
   const ids = new Set<string>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind !== 'approval') continue;
     if (!item.resolution) continue;
     const outcome = item.resolution.outcome;

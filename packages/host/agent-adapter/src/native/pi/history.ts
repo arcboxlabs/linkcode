@@ -138,7 +138,8 @@ export function mapPiHistoryEvents(
       event: { type: 'tool-call', toolCall: value },
     });
   };
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const ts = timestampMs(entry.timestamp);
     if (entry.type === 'compaction') {
       events.push({
@@ -166,7 +167,13 @@ export function mapPiHistoryEvents(
       const responseId = typeof message.responseId === 'string' ? message.responseId : undefined;
       const messageTimestamp =
         typeof message.timestamp === 'number' ? message.timestamp : undefined;
-      for (const [contentIndex, block] of message.content.entries()) {
+      const blocks = message.content;
+      for (
+        let contentIndex = 0, blockCount = blocks.length;
+        contentIndex < blockCount;
+        contentIndex++
+      ) {
+        const block = blocks[contentIndex];
         if (!isRecord(block)) continue;
         if (block.type === 'text') {
           const id = piMessageBlockId(
@@ -251,7 +258,8 @@ export function lastPiModelChange(entries: SessionEntry[]) {
   return null;
 }
 function firstUser(entries: SessionEntry[]): string | undefined {
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (entry.type === 'message' && isRecord(entry.message) && entry.message.role === 'user') {
       const content = entry.message.content;
       const text =

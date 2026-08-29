@@ -31,7 +31,9 @@ describe('resolveBinding: one explicit endpoint', () => {
   it('routes an anthropic endpoint natively to claude-code, opencode and pi', () => {
     const endpoint = { baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' } as const;
     const anthropic = account({ endpoint });
-    for (const kind of ['claude-code', 'opencode', 'pi'] as const) {
+    const nativeKinds = ['claude-code', 'opencode', 'pi'] as const;
+    for (let i = 0, len = nativeKinds.length; i < len; i++) {
+      const kind = nativeKinds[i];
       expect(resolveBinding(anthropic, kind)).toEqual({ tier: 'native', ...endpoint });
     }
     expect(resolveBinding(anthropic, 'codex')).toEqual({
@@ -68,7 +70,8 @@ describe('resolveBinding: one explicit endpoint', () => {
 
   it('keeps a pre-catalog bare key bindable everywhere', () => {
     const legacy = account({});
-    for (const kind of ALL_KINDS) {
+    for (let i = 0, len = ALL_KINDS.length; i < len; i++) {
+      const kind = ALL_KINDS[i];
       expect(resolveBinding(legacy, kind)).toEqual({ tier: 'native' });
     }
   });
@@ -120,7 +123,9 @@ describe('resolveBinding: variant chosen per agent', () => {
       protocol: 'openai-responses',
       baseUrl: 'https://api.deepseek.com',
     });
-    for (const kind of ['opencode', 'pi'] as const) {
+    const providerRoutedKinds = ['opencode', 'pi'] as const;
+    for (let i = 0, len = providerRoutedKinds.length; i < len; i++) {
+      const kind = providerRoutedKinds[i];
       expect(resolveBinding(deepseek, kind)).toEqual({
         tier: 'native',
         protocol: 'openai-chat',
@@ -172,7 +177,8 @@ describe('resolveBinding: variant chosen per agent', () => {
       ['openrouter', 'https://openrouter.ai/api/v1'],
       ['vercel-gateway', 'https://ai-gateway.vercel.sh/v1'],
     ] as const;
-    for (const [service, baseUrl] of cases) {
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [service, baseUrl] = cases[i];
       expect(resolveBinding(account({ service }), 'codex')).toEqual({
         tier: 'native',
         protocol: 'openai-responses',
@@ -201,7 +207,9 @@ describe('resolveBinding: variant chosen per agent', () => {
       protocol: 'openai-chat',
       baseUrl: 'https://gateway.linkcode.ai/v1',
     });
-    for (const kind of ['opencode', 'pi'] as const) {
+    const providerRoutedKinds = ['opencode', 'pi'] as const;
+    for (let i = 0, len = providerRoutedKinds.length; i < len; i++) {
+      const kind = providerRoutedKinds[i];
       expect(resolveBinding(gateway, kind)).toEqual({
         tier: 'native',
         protocol: 'openai-chat',
@@ -217,7 +225,9 @@ describe('resolveBinding: variant chosen per agent', () => {
 
   it('leaves opencode and pi on their known-provider variant when a responses one exists', () => {
     // The added responses variants carry no knownProvider, so provider-routed agents are untouched.
-    for (const kind of ['opencode', 'pi'] as const) {
+    const providerRoutedKinds = ['opencode', 'pi'] as const;
+    for (let i = 0, len = providerRoutedKinds.length; i < len; i++) {
+      const kind = providerRoutedKinds[i];
       expect(resolveBinding(account({ service: 'xai' }), kind)).toMatchObject({
         protocol: 'openai-chat',
         knownProvider: 'xai',
@@ -355,7 +365,9 @@ describe('catalog helpers', () => {
   it('keeps the model-list url independent of the variant an agent resolves to', () => {
     // Deriving from the resolved variant is what this replaced: the anthropic variants of these two
     // sit on different paths, so appending would ask a route that does not exist.
-    for (const id of ['deepseek', 'vercel-gateway']) {
+    const serviceIds = ['deepseek', 'vercel-gateway'];
+    for (let i = 0, len = serviceIds.length; i < len; i++) {
+      const id = serviceIds[i];
       const service = nullthrow(endpointServiceById(id), `${id} missing`);
       const anthropic = nullthrow(service.variants.anthropic, `${id} anthropic variant missing`);
       expect(nullthrow(service.models, `${id} model list missing`).url).not.toBe(

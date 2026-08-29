@@ -80,7 +80,8 @@ const pointerArtifacts: Record<Exclude<ServerMode, 'offline'>, PointerArtifact> 
 };
 
 const snapshotArtifacts = new Map<string, Buffer>();
-for (const step of fixture.steps) {
+for (let i = 0, len = fixture.steps.length; i < len; i++) {
+  const step = fixture.steps[i];
   const bytes = snapshotBytes(step);
   const existing = snapshotArtifacts.get(step.snapshotPath);
   assert(!existing || existing.equals(bytes), `conflicting fixture path ${step.snapshotPath}`);

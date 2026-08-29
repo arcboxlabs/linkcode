@@ -153,7 +153,7 @@ export function HistoryBrowserList({
     );
   }
 
-  if (entries.length === 0 && loadError != null) {
+  if (loadError != null && entries.length === 0) {
     return (
       <Empty>
         <EmptyMedia variant="icon">

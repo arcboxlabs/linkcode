@@ -174,7 +174,8 @@ const KNOWN_EXTENSIONS = new Set([
 export function hasKnownFileIdentity(name: string): boolean {
   const basename = fileBasename(name).toLowerCase();
   if (iconForFileName(basename) !== undefined) return true;
-  for (const [compoundExtension] of MATERIAL_COMPOUND_EXTENSION_ENTRIES) {
+  for (let i = 0, len = MATERIAL_COMPOUND_EXTENSION_ENTRIES.length; i < len; i++) {
+    const [compoundExtension] = MATERIAL_COMPOUND_EXTENSION_ENTRIES[i];
     if (basename.endsWith(`.${compoundExtension}`)) return true;
   }
   return KNOWN_EXTENSIONS.has(fileExtension(basename));
@@ -197,7 +198,8 @@ export function fileIconFor({ kind, mimeType, name }: FileIconInput): FileIconCo
   const fileNameIcon = iconForFileName(basename);
   if (fileNameIcon) return fileNameIcon;
 
-  for (const [compoundExtension, icon] of MATERIAL_COMPOUND_EXTENSION_ENTRIES) {
+  for (let i = 0, len = MATERIAL_COMPOUND_EXTENSION_ENTRIES.length; i < len; i++) {
+    const [compoundExtension, icon] = MATERIAL_COMPOUND_EXTENSION_ENTRIES[i];
     if (icon && basename.endsWith(`.${compoundExtension}`)) return icon;
   }
 
@@ -214,7 +216,8 @@ function iconForFileName(basename: string): FileIconComponent | undefined {
   const materialIcon = MATERIAL_FILE_NAME_ICONS[basename];
   if (materialIcon) return materialIcon;
 
-  for (const [prefix, icon] of MATERIAL_FILE_NAME_PREFIX_ICONS) {
+  for (let i = 0, len = MATERIAL_FILE_NAME_PREFIX_ICONS.length; i < len; i++) {
+    const [prefix, icon] = MATERIAL_FILE_NAME_PREFIX_ICONS[i];
     if (basename.startsWith(prefix)) return icon;
   }
 

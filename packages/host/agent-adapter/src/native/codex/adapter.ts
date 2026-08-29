@@ -93,15 +93,20 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
 
 const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
 
+const collator = new Intl.Collator();
+
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
-  for (const entry of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const entry = response.data[i];
     if (!isRecord(entry) || !Array.isArray(entry.skills)) continue;
-    for (const skill of entry.skills) {
+    const skills = entry.skills;
+    for (let j = 0, skillCount = skills.length; j < skillCount; j++) {
+      const skill = skills[j];
       if (!isRecord(skill) || skill.enabled !== true) continue;
       const name = stringField(skill, 'name');
       const path = stringField(skill, 'path');
@@ -123,7 +128,7 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
       });
     }
   }
-  return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...commands.values()].sort((a, b) => collator.compare(a.name, b.name));
 }
 
 /** Composer icons render at chip size; anything bigger than this is not an icon. */
@@ -235,7 +240,8 @@ interface CodexModelCatalog {
 function codexModelCatalog(response: unknown): CodexModelCatalog {
   const catalog: CodexModelCatalog = { defaultModel: undefined, models: [] };
   if (!isRecord(response) || !Array.isArray(response.data)) return catalog;
-  for (const candidate of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const candidate = response.data[i];
     if (!isRecord(candidate)) continue;
     const model = stringField(candidate, 'model') ?? stringField(candidate, 'id');
     if (!model) continue;
@@ -243,7 +249,8 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
     let effortLevels: EffortLevel[] | undefined;
     if (Array.isArray(advertised)) {
       const supported = new Set<EffortLevel>();
-      for (const option of advertised) {
+      for (let j = 0, optionCount = advertised.length; j < optionCount; j++) {
+        const option = advertised[j];
         if (!isRecord(option)) continue;
         const effort = EffortLevelSchema.safeParse(stringField(option, 'reasoningEffort'));
         if (effort.success && effort.data !== 'ultracode') supported.add(effort.data);
@@ -354,7 +361,8 @@ export function codexMcpConfigOverrides(
   const out: Record<string, unknown> = {};
   if (!servers?.length) return out;
   let hasHttp = false;
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     const prefix = `mcp_servers.${server.name}`;
     if (server.type === 'http') {
       if (server.headers && !isObjectEmpty(server.headers)) {
@@ -642,7 +650,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     // live-verified against codex app-server 0.144.1; nothing documents it (codex has no .d.ts) —
     // verify again if the app-server pin moves.
     const input: CodexTurnInput[] = [];
-    for (const block of content) {
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
       if (block.type === 'text') {
         const previous = input.at(-1);
         if (previous?.type === 'text') previous.text += `\n${block.text}`;
@@ -1049,7 +1058,10 @@ export class CodexAdapter extends BaseAgentAdapter {
       // The icon reads awaited — re-check that a newer refresh or server didn't win meanwhile.
       if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
       this.skillCommands.clear();
-      for (const skill of skills) this.skillCommands.set(skill.name, skill);
+      for (let i = 0, len = skills.length; i < len; i++) {
+        const skill = skills[i];
+        this.skillCommands.set(skill.name, skill);
+      }
       this.emitCommands([COMPACT_COMMAND, ...capSkillIconPayload(catalog)]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
@@ -1360,7 +1372,10 @@ export class CodexAdapter extends BaseAgentAdapter {
           this.emitTool(toolCall);
           break;
         }
-        for (const content of toolCall.content) this.appendToolContent(id, content);
+        for (let i = 0, len = toolCall.content.length; i < len; i++) {
+          const content = toolCall.content[i];
+          this.appendToolContent(id, content);
+        }
         this.emitTool({ ...toolCall, content: undefined });
         break;
       }
@@ -1368,7 +1383,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const changes = Array.isArray(item.changes) ? item.changes.filter(isRecord) : [];
         const locations: Array<{ path: string }> = [];
         const content: ToolCallContent[] = [];
-        for (const change of changes) {
+        for (let i = 0, len = changes.length; i < len; i++) {
+          const change = changes[i];
           const path = stringField(change, 'path');
           if (!path) continue;
           // An update kind can carry a rename: `kind: {type:'update', move_path}` with `path`

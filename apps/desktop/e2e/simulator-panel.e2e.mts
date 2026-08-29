@@ -29,6 +29,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { noop } from 'foxts/noop';
+import { split0th } from 'foxts/split-nth';
 import { wait } from 'foxts/wait';
 import type { ElectronApplication, Page } from 'playwright-core';
 import { _electron } from 'playwright-core';
@@ -243,7 +244,9 @@ async function run(
   let plusTarget = null as Awaited<ReturnType<typeof plus.all>>[number] | null;
   const plusDeadline = Date.now() + 15000;
   while (plusTarget === null && Date.now() < plusDeadline) {
-    for (const candidate of await plus.all()) {
+    const candidates = await plus.all();
+    for (let i = 0, len = candidates.length; i < len; i++) {
+      const candidate = candidates[i];
       try {
         await candidate.click({ trial: true, timeout: 1000 });
         plusTarget = candidate;
@@ -259,7 +262,9 @@ async function run(
     await win.screenshot({ path: shot });
     console.error(`screenshot: ${shot}`);
     console.error(`toggle aria-pressed: ${await toggle.getAttribute('aria-pressed')}`);
-    for (const candidate of await plus.all()) {
+    const candidates = await plus.all();
+    for (let i = 0, len = candidates.length; i < len; i++) {
+      const candidate = candidates[i];
       console.error(`plus box: ${JSON.stringify(await candidate.boundingBox())}`);
     }
     fail('the section strip + trigger never became clickable');
@@ -382,7 +387,7 @@ async function run(
           ctx.drawImage(source, 0, 0, 32, 64);
           const data = ctx.getImageData(0, 0, 32, 64).data;
           let hash = 0;
-          for (let i = 0; i < data.length; i += 16) {
+          for (let i = 0, len = data.length; i < len; i += 16) {
             hash = ((hash * 31 + data[i]) & 0xff_ff_ff) >>> 0;
           }
           return hash;
@@ -471,9 +476,12 @@ async function run(
       // stream is the same wire the panel sends when a dropdown changes.
       const workerPid = (): string | null => {
         try {
-          return execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], { encoding: 'utf8' })
-            .trim()
-            .split('\n', 1)[0];
+          return split0th(
+            execFileSync('pgrep', ['-f', `capture-worker ${bootedUdid}`], {
+              encoding: 'utf8',
+            }).trim(),
+            '\n',
+          );
         } catch {
           return null;
         }

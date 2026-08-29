@@ -68,7 +68,10 @@ function parseShortstat(output: string): { files: number; additions: number; del
 }
 
 afterAll(() => {
-  for (const dir of roots) rmSync(dir, { recursive: true, force: true });
+  for (let i = 0, len = roots.length; i < len; i++) {
+    const dir = roots[i];
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe('readGitDiff', () => {
@@ -111,11 +114,17 @@ describe('readGitDiff', () => {
   it('truncates at the last complete file boundary once the patch exceeds the byte cap', async () => {
     const dir = makeRepo();
     const fileNames = ['f0.txt', 'f1.txt', 'f2.txt', 'f3.txt', 'f4.txt'];
-    for (const name of fileNames) writeFileSync(join(dir, name), 'seed\n');
+    for (let i = 0, len = fileNames.length; i < len; i++) {
+      const name = fileNames[i];
+      writeFileSync(join(dir, name), 'seed\n');
+    }
     git(dir, 'add', ...fileNames);
     commit(dir, 'init');
     // ~500KB of unique content per file, ~2.5MB combined — comfortably over the 2MB cap.
-    for (const name of fileNames) writeFileSync(join(dir, name), bigLineBlock(500000, name));
+    for (let i = 0, len = fileNames.length; i < len; i++) {
+      const name = fileNames[i];
+      writeFileSync(join(dir, name), bigLineBlock(500000, name));
+    }
 
     const diff = await Effect.runPromise(readGitDiff(dir, 'uncommitted'));
     expect(diff.truncated).toBe(true);

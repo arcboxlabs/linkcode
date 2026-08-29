@@ -7,6 +7,8 @@ import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSessionStore } from '../../src/session-store';
 
+const collator = new Intl.Collator();
+
 function makeRecord(value: Record<string, unknown>): SessionRecord {
   return SessionRecordSchema.parse({
     sessionId: 'sess-1',
@@ -41,7 +43,7 @@ describe('daemon sqlite session store', () => {
     await store.save(created);
     await store.save(imported);
 
-    const loaded = (await store.load()).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    const loaded = (await store.load()).sort((a, b) => collator.compare(a.sessionId, b.sessionId));
     expect(loaded).toEqual([created, imported]);
   });
 

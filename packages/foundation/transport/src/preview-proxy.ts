@@ -198,7 +198,7 @@ function proxyUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, port: 
 
   upstream.on('connect', () => {
     const lines = [`${req.method ?? 'GET'} ${req.url ?? '/'} HTTP/1.1`];
-    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+    for (let i = 0, len = req.rawHeaders.length; i < len; i += 2) {
       lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
     }
     upstream.write(`${lines.join('\r\n')}\r\n\r\n`);

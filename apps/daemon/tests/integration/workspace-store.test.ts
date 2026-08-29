@@ -3,6 +3,8 @@ import { WorkspaceRecordSchema } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { createWorkspaceStore } from '../../src/workspace-store';
 
+const collator = new Intl.Collator();
+
 function makeRecord(value: Record<string, unknown>): WorkspaceRecord {
   return WorkspaceRecordSchema.parse({
     workspaceId: 'ws-1',
@@ -22,7 +24,9 @@ describe('daemon sqlite workspace store', () => {
     await store.save(named);
     await store.save(unnamed);
 
-    const loaded = (await store.load()).sort((a, b) => a.workspaceId.localeCompare(b.workspaceId));
+    const loaded = (await store.load()).sort((a, b) =>
+      collator.compare(a.workspaceId, b.workspaceId),
+    );
     expect(loaded).toEqual([named, unnamed]);
   });
 

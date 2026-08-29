@@ -26,7 +26,9 @@ export function registerDesktopConfigIpc(): () => void {
     return getDesktopConfig().refresh();
   });
   const unsubscribe = getDesktopConfig().onHotUpdate((keys) => {
-    for (const window of BrowserWindow.getAllWindows()) {
+    const windows = BrowserWindow.getAllWindows();
+    for (let i = 0, len = windows.length; i < len; i++) {
+      const window = windows[i];
       if (!window.isDestroyed()) window.webContents.send(CONFIG_HOT_UPDATE_CHANNEL, keys);
     }
   });

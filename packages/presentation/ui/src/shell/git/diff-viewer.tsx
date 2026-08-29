@@ -23,6 +23,14 @@ export interface DiffViewerProps {
   className?: string;
 }
 
+const diffViewerSkeletonJsx = (
+  <div className="flex flex-col gap-3 p-3">
+    {createFixedArray(4).map((i) => (
+      <Skeleton key={i} className="h-24 w-full" />
+    ))}
+  </div>
+);
+
 /** The right panel's Diff section content: a `@pierre/diffs` viewer for an already-fetched patch. */
 export function DiffViewer({
   patch,
@@ -56,7 +64,7 @@ export function DiffViewer({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {files.length === 0 ? (
           isLoading ? (
-            <DiffViewerSkeleton />
+            diffViewerSkeletonJsx
           ) : error ? (
             <DiffViewerEmpty
               title={t('errorTitle')}
@@ -90,15 +98,5 @@ function DiffViewerEmpty({
       <EmptyTitle>{title}</EmptyTitle>
       <EmptyDescription>{description}</EmptyDescription>
     </Empty>
-  );
-}
-
-function DiffViewerSkeleton(): React.ReactNode {
-  return (
-    <div className="flex flex-col gap-3 p-3">
-      {createFixedArray(4).map((i) => (
-        <Skeleton key={i} className="h-24 w-full" />
-      ))}
-    </div>
   );
 }

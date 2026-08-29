@@ -31,7 +31,10 @@ function fakeChild() {
     buffered += chunk.toString();
     const lines = buffered.split('\n');
     buffered = lines.pop() ?? '';
-    for (const line of lines) writes.push(JSON.parse(line) as Record<string, unknown>);
+    for (let i = 0, len = lines.length; i < len; i++) {
+      const line = lines[i];
+      writes.push(JSON.parse(line) as Record<string, unknown>);
+    }
   });
   return {
     child,

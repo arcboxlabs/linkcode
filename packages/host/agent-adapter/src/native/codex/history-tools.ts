@@ -377,7 +377,8 @@ export function applyPatchToolView(input: string): ApplyPatchView | null {
   const lines = input.split('\n');
   // An envelope ending in '\n' splits into a trailing '' that is not a content line.
   if (lines.at(-1) === '') lines.pop();
-  for (const line of lines) {
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.startsWith('*** Update File: ')) {
       flush();
       updatePath = line.slice('*** Update File: '.length);

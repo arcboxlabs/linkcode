@@ -1,4 +1,3 @@
-import type * as React from 'react';
 import type { WorkbenchConnectionSource } from '../runtime/connection-controller';
 import { DebugProvider } from '../runtime/debug';
 import { WorkbenchConnectionGate, WorkbenchRuntimeProvider } from '../runtime/provider';
