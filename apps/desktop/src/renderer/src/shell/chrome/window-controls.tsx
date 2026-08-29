@@ -1,8 +1,8 @@
 import { ShellIconButton } from '@linkcode/ui';
 import { systemBridge } from '@renderer/ipc';
-import { useEffect } from 'foxact/use-abortable-effect';
 import { CopyIcon, MinusIcon, SquareIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect } from 'react';
+import useSWRImmutable from 'swr/immutable';
 import type { DesktopChromeMetricsStyle } from './metrics';
 import { DESKTOP_CHROME_METRICS_STYLE } from './metrics';
 
@@ -34,13 +34,17 @@ export function DesktopWindowControls(): React.ReactNode {
  * `systemBridge.window` IPC; maximize state comes from the main-pushed `onMaximizedChange`.
  */
 function WindowControls(): React.ReactNode {
-  const [maximized, setMaximized] = useState(false);
-  useEffect((signal) => {
-    void systemBridge.window.isMaximized().then((value) => {
-      if (!signal.aborted) setMaximized(value);
-    });
-    return systemBridge.window.onMaximizedChange(setMaximized);
-  }, []);
+  const { data: maximized = false, mutate } = useSWRImmutable('desktop:window-maximized', () =>
+    systemBridge.window.isMaximized(),
+  );
+  useEffect(
+    () =>
+      systemBridge.window.onMaximizedChange((value) => {
+        // update value directly and avoid re-fetch
+        mutate(value, { revalidate: false });
+      }),
+    [mutate],
+  );
 
   return (
     <div className="pointer-events-auto flex h-full items-center gap-(--lc-chrome-control-gap)">
