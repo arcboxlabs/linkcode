@@ -4,7 +4,6 @@ import type {
   SimulatorButton,
   SimulatorDevice,
   SimulatorOrientation,
-  SimulatorStatus,
 } from '@linkcode/schema';
 import type {
   SimulatorKeyPress,
@@ -42,6 +41,7 @@ import { SimulatorDeviceTabs } from './device-tabs';
 import { selectDeviceTabs, simulatorSessionKey, useSimulatorPanelStore } from './panel-store';
 import { SimulatorSetupChecklist } from './setup-checklist';
 import { useSimulatorShortcuts } from './shortcuts';
+import { useSimulatorStatus } from './status';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -170,10 +170,17 @@ function QuietSelect({
 export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
-  const [status, setStatus] = useState<SimulatorStatus | null>(null);
+  // While the host is still being provisioned, keep asking: a step finished in Xcode (or by the
+  // download this panel started) should tick itself off without the user restarting anything.
+  // The engine only caches a fully-ready probe, so this really does re-read the host.
+  const { data: status = null } = useSimulatorStatus(client, {
+    refreshInterval: SETUP_REPROBE_MS,
+  });
   /** True between clicking "download the runtime" and the runtime appearing in a later probe. */
   const [installingRuntime, setInstallingRuntime] = useState(false);
-  const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
+  const { data: devices = null, mutate: mutateDevices } = useSWR('simulator-devices', () =>
+    client.simulatorList().catch((): SimulatorDevice[] => []),
+  );
   const sessionKey = simulatorSessionKey(sessionId);
   const tabs = useSimulatorPanelStore((state) => selectDeviceTabs(state, sessionKey));
   const openDevice = useSimulatorPanelStore((state) => state.openDevice);
@@ -198,39 +205,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [detached, setDetached] = useState<Readonly<Record<string, boolean>>>({});
 
   useEffect(
-    (signal) => {
-      const probe = (): void => {
-        void client
-          .simulatorStatus()
-          .then((value) => {
-            if (!signal.aborted) setStatus(value);
-          })
-          .catch(() => {
-            if (!signal.aborted) setStatus({ available: false });
-          });
-      };
-      probe();
-      // While the host is still being provisioned, keep asking: a step finished in Xcode (or by the
-      // download this panel started) should tick itself off without the user restarting anything.
-      // The engine only caches a fully-ready probe, so this really does re-read the host.
-      const reprobe = setInterval(probe, SETUP_REPROBE_MS);
-      void client
-        .simulatorList()
-        .then((value) => {
-          if (!signal.aborted) setDevices(value);
-        })
-        .catch(() => {
-          if (!signal.aborted) setDevices([]);
-        });
-      const unsubscribe = client.subscribeSimulatorDevicesChanged(setDevices);
-      return () => {
-        clearInterval(reprobe);
-        unsubscribe();
-        clearTimeout(busyTimerRef.current);
-      };
-    },
-    [client],
+    () =>
+      client.subscribeSimulatorDevicesChanged((next) => {
+        // update value directly and avoid re-fetch
+        mutateDevices(next, { revalidate: false });
+      }),
+    [client, mutateDevices],
   );
+  useEffect(() => () => clearTimeout(busyTimerRef.current), []);
 
   // Until the user opens a second device the panel shows one implicitly, so a fresh thread needs no
   // setup click. Opening another materializes that implicit tab first (see `addDevice`).

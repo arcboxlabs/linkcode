@@ -12,6 +12,7 @@ import {
 } from '@linkcode/workbench';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
+import useSWRImmutable from 'swr/immutable';
 import { DesktopAutomationsView } from './automations/automations-view';
 import { cloudDataBridge } from './cloud-auth/bridges';
 import { desktopDaemonConnectionSource } from './daemon-connection-source';
@@ -109,15 +110,12 @@ function DesktopConnectionFallback(): React.ReactNode {
 
 /** Whether main supervises the daemon (packaged, no override) — picks the failure copy. */
 function useDaemonIsManaged(): boolean {
+  // Managed-ness only moves with the override, so the override is the cache key: changing it
+  // re-fetches, and everything else serves the cached answer.
   const daemonUrlOverride = useDesktopSettingsStore((state) => state.daemonUrlOverride);
-  const [managed, setManaged] = useState(false);
-  useEffect(
-    (signal) => {
-      void systemBridge.daemon.isManaged().then((value) => {
-        if (!signal.aborted) setManaged(value);
-      });
-    },
-    [daemonUrlOverride],
+  const { data: managed = false } = useSWRImmutable(
+    ['desktop:daemon-managed', daemonUrlOverride],
+    () => systemBridge.daemon.isManaged(),
   );
   return managed;
 }
