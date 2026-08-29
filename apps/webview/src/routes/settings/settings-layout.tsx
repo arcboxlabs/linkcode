@@ -28,6 +28,20 @@ const SETTINGS_ROUTES: Record<string, string> = {
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
+// One table for the sidebar items and the page header — a tab whose message key differs
+// from its route key (messaging → imChannel) stays consistent in both by construction.
+const SETTINGS_TAB_LABEL_KEYS: Record<string, string> = {
+  general: 'tabs.general',
+  appearance: 'tabs.appearance',
+  terminal: 'tabs.terminal',
+  notifications: 'tabs.notifications',
+  billing: 'tabs.billing',
+  agents: 'tabs.agents',
+  providers: 'tabs.providers',
+  plugins: 'tabs.plugins',
+  messaging: 'tabs.imChannel',
+  developer: 'tabs.developer',
+};
 const RE_TRAILING_SLASH = /\/$/;
 // Inverted once at module scope: the active tab is a single O(1) lookup per navigation.
 const SETTINGS_TAB_BY_PATH = new Map(
@@ -50,7 +64,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'general',
           icon: <SettingsIcon className="size-4" />,
-          label: t('tabs.general'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.general),
           keywords: searchKeywords.general,
           active: activeKey === 'general',
           render: <Link to="/settings" />,
@@ -58,7 +72,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'appearance',
           icon: <SunMoonIcon className="size-4" />,
-          label: t('tabs.appearance'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.appearance),
           keywords: searchKeywords.appearance,
           active: activeKey === 'appearance',
           render: <Link to="/settings/appearance" />,
@@ -66,7 +80,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'terminal',
           icon: <TerminalIcon className="size-4" />,
-          label: t('tabs.terminal'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.terminal),
           keywords: searchKeywords.terminal,
           active: activeKey === 'terminal',
           render: <Link to="/settings/terminal" />,
@@ -74,7 +88,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'notifications',
           icon: <BellIcon className="size-4" />,
-          label: t('tabs.notifications'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.notifications),
           keywords: searchKeywords.notifications,
           active: activeKey === 'notifications',
           render: <Link to="/settings/notifications" />,
@@ -82,7 +96,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'billing',
           icon: <CreditCardIcon className="size-4" />,
-          label: t('tabs.billing'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.billing),
           keywords: searchKeywords.billing,
           active: activeKey === 'billing',
           render: <Link to="/settings/billing" />,
@@ -96,7 +110,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'agents',
           icon: <BotIcon className="size-4" />,
-          label: t('tabs.agents'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.agents),
           keywords: searchKeywords.agents,
           active: activeKey === 'agents',
           render: <Link to="/settings/agents" />,
@@ -104,7 +118,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'providers',
           icon: <KeyRoundIcon className="size-4" />,
-          label: t('tabs.providers'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.providers),
           keywords: searchKeywords.providers,
           active: activeKey === 'providers',
           render: <Link to="/settings/providers" />,
@@ -112,7 +126,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'plugins',
           icon: <PuzzleIcon className="size-4" />,
-          label: t('tabs.plugins'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.plugins),
           keywords: searchKeywords.plugins,
           active: activeKey === 'plugins',
           render: <Link to="/settings/plugins" />,
@@ -120,7 +134,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'messaging',
           icon: <SendIcon className="size-4" />,
-          label: t('tabs.imChannel'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.messaging),
           keywords: searchKeywords.imChannel,
           active: activeKey === 'messaging',
           render: <Link to="/settings/messaging" />,
@@ -134,7 +148,7 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'developer',
           icon: <CodeXmlIcon className="size-4" />,
-          label: t('tabs.developer'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.developer),
           keywords: searchKeywords.developer,
           active: activeKey === 'developer',
           render: <Link to="/settings/developer" />,
@@ -143,10 +157,7 @@ export function SettingsLayout(): React.ReactNode {
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
-  const activeLabel =
-    activeKey === undefined
-      ? undefined
-      : t(`tabs.${activeKey === 'messaging' ? 'imChannel' : activeKey}`);
+  const activeLabel = activeKey === undefined ? undefined : t(SETTINGS_TAB_LABEL_KEYS[activeKey]);
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">

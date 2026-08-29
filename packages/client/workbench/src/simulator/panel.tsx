@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import useSWR from 'swr';
+import useSWRImmutable from 'swr/immutable';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { useBackgroundSimulatorStreams } from './background-streams';
@@ -241,12 +242,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const isDetached = udid !== null && (detached[udid] ?? false);
   const canStream = sessionId !== null && udid !== null && booted && interactive && !isDetached;
 
-  // The screen-outline mask (a base64 PNG) is static per device, so it is a keyed fetch-and-cache;
-  // a fetch failure means the host has none and the screen falls back to generic rounding.
-  const { data: maskPng } = useSWR(
+  // The screen-outline mask (a base64 PNG) is static per device, so it is a keyed fetch-and-cache
+  // that must never revalidate — switching back to a seen device serves the cache, full stop.
+  // A fetch failure means the host has none and the screen falls back to generic rounding.
+  const { data: maskPng } = useSWRImmutable(
     udid === null ? null : [SCREEN_MASK_KEY, udid],
     ([, maskUdid]: [string, string]) => client.simulatorScreenMask(maskUdid),
-    { revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
+    { shouldRetryOnError: false },
   );
 
   const subscribe = useCallback(
