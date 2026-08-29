@@ -32,6 +32,7 @@ import {
   VideoIcon,
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import useSWR from 'swr';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { useBackgroundSimulatorStreams } from './background-streams';
@@ -55,6 +56,8 @@ import {
 } from './stream-settings-store';
 
 const BUSY_BANNER_MS = 3000;
+
+const SCREEN_MASK_KEY = 'simulator-screen-mask';
 
 /** How often to re-probe while the host is still missing a provisioning step. Slow on purpose: the
  * thing being waited on is a multi-gigabyte download or a human in Xcode, not a fast operation. */
@@ -176,8 +179,6 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const openDevice = useSimulatorPanelStore((state) => state.openDevice);
   const closeDevice = useSimulatorPanelStore((state) => state.closeDevice);
   const selectDevice = useSimulatorPanelStore((state) => state.selectDevice);
-  /** Screen-outline masks by udid as base64 PNGs; `null` = the host has none (generic rounding). */
-  const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Shortcut owner: the chords below only fire while this panel is on screen. */
@@ -258,22 +259,13 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const isDetached = udid !== null && (detached[udid] ?? false);
   const canStream = sessionId !== null && udid !== null && booted && interactive && !isDetached;
 
-  // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
-  // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
-  // land the result for the next switch back. No stale-overwrite race exists: writes are keyed
-  // by the udid captured at fetch time (never clobbering another udid's entry), and the ref
-  // guarantees at most one fetch per udid, so no two writes ever target the same key.
-  const maskFetchedRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (udid === null || maskFetchedRef.current.has(udid)) return;
-    maskFetchedRef.current.add(udid);
-    void client
-      .simulatorScreenMask(udid)
-      // eslint-disable-next-line vibe-proof/react-detect-potential-race-condition -- see above
-      .then((data) => setMasks((prev) => ({ ...prev, [udid]: data })))
-      // eslint-disable-next-line vibe-proof/react-detect-potential-race-condition -- see above
-      .catch(() => setMasks((prev) => ({ ...prev, [udid]: null })));
-  }, [client, udid]);
+  // The screen-outline mask (a base64 PNG) is static per device, so it is a keyed fetch-and-cache;
+  // a fetch failure means the host has none and the screen falls back to generic rounding.
+  const { data: maskPng } = useSWR(
+    udid === null ? null : [SCREEN_MASK_KEY, udid],
+    ([, maskUdid]: [string, string]) => client.simulatorScreenMask(maskUdid),
+    { revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
+  );
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -597,7 +589,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               onPinch={handlePinch}
               onKey={handleKey}
               onText={handleText}
-              maskPng={masks[udid] ?? null}
+              maskPng={maskPng ?? null}
               onScreenCanvas={setScreenCanvas}
               agentPointer={agentActivity.point}
               placeholder={
