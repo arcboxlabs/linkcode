@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
+  class CloudAccountMismatchError extends Error {
+    override name = 'CloudAccountMismatchError';
+  }
   class IdpTokenAcquisitionError extends Error {
     override name = 'IdpTokenAcquisitionError';
   }
@@ -28,6 +31,7 @@ const mocks = vi.hoisted(() => {
       url?: string;
     }>,
     removeHost: vi.fn(),
+    CloudAccountMismatchError,
     IdpTokenAcquisitionError,
   };
 });
@@ -46,6 +50,7 @@ vi.mock('../client', () => ({
 }));
 
 vi.mock('../account', () => ({
+  CloudAccountMismatchError: mocks.CloudAccountMismatchError,
   reauthenticateToCloud: mocks.reauthenticateToCloud,
 }));
 
@@ -162,6 +167,18 @@ describe('deleteAccount', () => {
     expect(mocks.fetchDelete).not.toHaveBeenCalled();
   });
 
+  it('does not report or delete after browser re-authentication switches accounts', async () => {
+    mocks.reauthenticateToCloud.mockRejectedValueOnce(
+      new mocks.CloudAccountMismatchError('different account'),
+    );
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'account-mismatch' });
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
+    expect(mocks.captureException).not.toHaveBeenCalled();
+  });
+
   it('reports reauthentication-failed without ever sending the delete request', async () => {
     mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
     mocks.reauthenticateWithApple.mockRejectedValueOnce(new Error('cancelled'));
@@ -222,6 +239,18 @@ describe('deleteAccount', () => {
 
   it('reports a server failure from the deletion endpoint', async () => {
     mocks.fetchDelete.mockResolvedValueOnce({ data: null, error: { status: 503 } });
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'failed' });
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { account_deletion_stage: 'response' } }),
+    );
+  });
+
+  it('reports an unexpected client error from the deletion endpoint', async () => {
+    mocks.fetchDelete.mockResolvedValueOnce({ data: null, error: { status: 403 } });
 
     const result = await deleteAccount();
 

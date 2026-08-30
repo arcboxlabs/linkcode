@@ -1302,6 +1302,8 @@ export const en = {
       deleteReauthenticationFailed: 'Could not confirm it’s you. Please try again.',
       deleteAppleDeviceRequired:
         'This account must be confirmed on a device that supports Sign in with Apple.',
+      deleteAccountMismatch:
+        'A different account was signed in. Sign in again with the account you want to delete.',
       deleteFailed: 'Could not delete your account. Please try again.',
       deleteSoleOwner:
         'You own a shared organization with other members. Transfer ownership before deleting your account.',

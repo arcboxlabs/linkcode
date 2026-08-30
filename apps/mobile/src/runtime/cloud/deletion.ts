@@ -1,7 +1,7 @@
 import { useHostRegistryStore } from '@mobile/stores/host-store';
 import * as Sentry from '@sentry/react-native';
 import { z } from 'zod';
-import { reauthenticateToCloud } from './account';
+import { CloudAccountMismatchError, reauthenticateToCloud } from './account';
 import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 import {
@@ -22,6 +22,8 @@ export type AccountDeletionOutcome =
   | { kind: 'reauthentication-failed' }
   /** The server requires Apple re-authentication, which this device cannot perform. */
   | { kind: 'apple-device-required' }
+  /** Browser re-authentication signed in a different Cloud account. */
+  | { kind: 'account-mismatch' }
   /** The delete request failed before any state changed (network error, or
    * a 409 pre-check) — the account is untouched. `code` is the server's biz
    * code when available (e.g. `ACCOUNT_DELETION_SOLE_ORGANIZATION_OWNER`),
@@ -100,6 +102,9 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
       // Browser re-authentication relies on the server's session-freshness check.
       await reauthenticateToCloud();
     } catch (error) {
+      if (error instanceof CloudAccountMismatchError) {
+        return { kind: 'account-mismatch' };
+      }
       reportFailure('browser-sign-in', error);
       return { kind: 'reauthentication-failed' };
     }
@@ -125,7 +130,7 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
       reportFailure('cloud-identity', new Error('Cloud rejected account re-authentication'));
       return { kind: 'reauthentication-failed' };
     }
-    if (response.error.status >= 500) {
+    if (response.error.status !== 409) {
       reportFailure('response', new Error(`account deletion failed (${response.error.status})`));
     }
     return {

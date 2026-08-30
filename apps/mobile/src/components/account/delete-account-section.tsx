@@ -32,6 +32,10 @@ export function DeleteAccountSection(): React.ReactNode {
         Alert.alert(t('deleteAppleDeviceRequired'));
         return;
       }
+      if (outcome.kind === 'account-mismatch') {
+        Alert.alert(t('deleteAccountMismatch'));
+        return;
+      }
       if (outcome.kind === 'failed') {
         Alert.alert(failureMessage(outcome.code));
         return;

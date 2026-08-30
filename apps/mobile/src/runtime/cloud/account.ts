@@ -45,6 +45,10 @@ const freshSessionSchema = z.object({
   user: z.object({ id: z.string().min(1) }),
 });
 
+export class CloudAccountMismatchError extends Error {
+  override name = 'CloudAccountMismatchError';
+}
+
 async function readAuthoritativeSession(): Promise<{ sessionId: string; userId: string }> {
   const { data, error } = await cloudAuthClient.$fetch<unknown>(
     `${CLOUD_URL}/auth/get-session?disableCookieCache=true`,
@@ -63,7 +67,8 @@ export async function reauthenticateToCloud(): Promise<void> {
     throw new Error('browser re-authentication did not create a fresh session');
   }
   if (current.userId !== previous.userId) {
-    throw new Error('browser re-authentication signed in a different account');
+    await cloudAuthClient.signOut();
+    throw new CloudAccountMismatchError('browser re-authentication signed in a different account');
   }
 }
 

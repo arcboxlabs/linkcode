@@ -29,8 +29,8 @@ const idpAuthClient = createAuthClient({
 interface AppleNativeAuthentication {
   /** A fresh, short-lived IdP JWT (`GET /api/auth/token`) naming this account's central identity. */
   idpToken: string;
-  /** Apple's single-use authorization code. Only account deletion requires it. */
-  authorizationCode: string | null;
+  /** Apple's single-use authorization code from this authentication. */
+  authorizationCode: string;
 }
 
 export class IdpTokenAcquisitionError extends Error {
@@ -62,6 +62,9 @@ async function authenticateWithAppleNatively(): Promise<AppleNativeAuthenticatio
   }
   if (!credential.identityToken) {
     throw new Error('Apple sign-in returned no identity token');
+  }
+  if (!credential.authorizationCode) {
+    throw new Error('Apple sign-in returned no authorization code');
   }
   // Apple only discloses the name on the very first authorization — forward
   // it so the IdP profile starts populated instead of empty.
@@ -111,19 +114,7 @@ export async function signInWithApple(): Promise<void> {
   }
 }
 
-/**
- * Account deletion needs both identity proof and Apple's revocation credential.
- */
-export async function reauthenticateWithApple(): Promise<{
-  idpToken: string;
-  authorizationCode: string;
-}> {
-  const authentication = await authenticateWithAppleNatively();
-  if (!authentication.authorizationCode) {
-    throw new Error('Apple sign-in returned no authorization code');
-  }
-  return { ...authentication, authorizationCode: authentication.authorizationCode };
-}
+export const reauthenticateWithApple = authenticateWithAppleNatively;
 
 export async function isAppleAuthenticationAvailable(): Promise<boolean> {
   return AppleAuthentication.isAvailableAsync();

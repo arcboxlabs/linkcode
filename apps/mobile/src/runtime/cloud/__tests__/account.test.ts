@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   fetchSession: vi.fn(),
   signInSocial: vi.fn(),
+  signOut: vi.fn(() => Promise.resolve({ error: null })),
 }));
 
 vi.mock('../client', () => ({
@@ -10,6 +11,7 @@ vi.mock('../client', () => ({
   cloudAuthClient: {
     $fetch: mocks.fetchSession,
     signIn: { social: mocks.signInSocial },
+    signOut: mocks.signOut,
   },
 }));
 
@@ -79,5 +81,6 @@ describe('reauthenticateToCloud', () => {
     await expect(reauthenticateToCloud()).rejects.toThrow(
       'browser re-authentication signed in a different account',
     );
+    expect(mocks.signOut).toHaveBeenCalledTimes(1);
   });
 });
