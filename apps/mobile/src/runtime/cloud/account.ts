@@ -67,7 +67,7 @@ export async function reauthenticateToCloud(): Promise<void> {
     throw new Error('browser re-authentication did not create a fresh session');
   }
   if (current.userId !== previous.userId) {
-    await cloudAuthClient.signOut();
+    await cloudAuthClient.signOut().catch(noop);
     throw new CloudAccountMismatchError('browser re-authentication signed in a different account');
   }
 }
