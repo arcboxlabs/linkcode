@@ -40,6 +40,7 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { useSingleton } from 'foxact/use-singleton';
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import useSWRImmutable from 'swr/immutable';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useShallow } from 'zustand/react/shallow';
 import { DesktopThreadImMenu } from '../cloud-auth/thread-im-menu';
@@ -61,6 +62,9 @@ import { useDesktopShellStore } from './store/store';
 import { UpdateNotice } from './update-notice';
 import { useDesktopPaletteCommands } from './use-desktop-palette-commands';
 import { useDesktopShellShortcuts } from './use-desktop-shell-shortcuts';
+
+/** Stable fallback while the one-shot editor probe is in flight. */
+const EMPTY_EDITORS: SessionTitleMenuEditor[] = [];
 
 export function DesktopShell({
   systemBridge,
@@ -186,8 +190,15 @@ export function DesktopShell({
     createDesktopShellStyle(shellState),
   );
   const desktopPlatform = systemBridge.app.platform;
-  const [appVersion, setAppVersion] = useState('');
-  const [editors, setEditors] = useState<SessionTitleMenuEditor[]>([]);
+  // Both are constant for the process lifetime — fetched once, cached forever.
+  const { data: appVersionValue } = useSWRImmutable('desktop:app-version', () =>
+    systemBridge.app.version(),
+  );
+  const appVersion = appVersionValue === undefined ? '' : `v${appVersionValue}`;
+  // Probed once per window: main caches the detection for its whole process lifetime anyway.
+  const { data: editors = EMPTY_EDITORS } = useSWRImmutable('desktop:shell-editors', () =>
+    systemBridge.shell.listEditors(),
+  );
   const sidebarShortcut = useKeyboardShortcutLabel('desktop.toggle-sidebar');
   const bottomPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-bottom-panel');
   const rightPanelShortcut = useKeyboardShortcutLabel('desktop.toggle-right-panel');
@@ -258,25 +269,6 @@ export function DesktopShell({
   const sidebarClassName = hasNativeBackdrop ? 'border-r-0 bg-sidebar/25' : 'border-r-0 bg-sidebar';
   const expandedPanel = getExpandedPanel(expansionStack, rightPanel.open, bottomPanel.open);
   const chromeSurface = getChromeSurface(expandedPanel);
-
-  useEffect(
-    (signal) => {
-      void systemBridge.app.version().then((value) => {
-        if (!signal.aborted) setAppVersion(`v${value}`);
-      });
-    },
-    [systemBridge],
-  );
-
-  // Probed once per window: main caches the detection for its whole process lifetime anyway.
-  useEffect(
-    (signal) => {
-      void systemBridge.shell.listEditors().then((value) => {
-        if (!signal.aborted) setEditors(value);
-      });
-    },
-    [systemBridge],
-  );
 
   const openBrowserTab = useDesktopShellStore((state) => state.openBrowserTab);
   useEffect(() => systemBridge.browser.onOpenTab(openBrowserTab), [systemBridge, openBrowserTab]);

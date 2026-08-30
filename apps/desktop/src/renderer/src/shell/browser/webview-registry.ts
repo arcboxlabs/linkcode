@@ -9,6 +9,7 @@ import { noop } from 'foxts/noop';
 interface WebviewEntry {
   webview: WebviewTag;
   generation: number;
+  readyNow: boolean;
   ready: Promise<void>;
   resolveReady: () => void;
 }
@@ -21,7 +22,7 @@ function unreadyEntry(webview: WebviewTag, generation: number): WebviewEntry {
   const ready = new Promise<void>((resolve) => {
     resolveReady = resolve;
   });
-  return { webview, generation, ready, resolveReady };
+  return { webview, generation, readyNow: false, ready, resolveReady };
 }
 
 export function registerBrowserWebview(tabId: string, webview: WebviewTag | null): void {
@@ -48,7 +49,16 @@ export function markBrowserWebviewUnready(tabId: string): void {
 }
 
 export function markBrowserWebviewReady(tabId: string): void {
-  webviews.get(tabId)?.resolveReady();
+  const entry = webviews.get(tabId);
+  if (entry) {
+    entry.readyNow = true;
+    entry.resolveReady();
+  }
+}
+
+/** Synchronous readiness read, for `useSyncExternalStore` snapshots. */
+export function isBrowserWebviewReady(tabId: string): boolean {
+  return webviews.get(tabId)?.readyNow ?? false;
 }
 
 export function advanceBrowserWebviewGeneration(tabId: string): void {
