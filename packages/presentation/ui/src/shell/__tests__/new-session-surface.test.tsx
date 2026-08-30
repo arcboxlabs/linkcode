@@ -56,6 +56,7 @@ const RE_PI_WIDE = /Pi Wide/;
 const RE_HIGH_EFFORT = /High/;
 const RE_LOW_EFFORT = /Low/;
 const RE_GPT_56_SOL = /GPT-5.6-Sol/;
+const RE_HARNESS_CLAUDE_CODE_BUTTON = /Claude Code/;
 const RE_HARNESS_CLAUDE_CODE_MENU = /harness.*Claude Code/;
 const RE_MODEL_SONNET_5_MENU = /model.*Sonnet 5/;
 const RE_OPUS_5 = /Opus 5/;
@@ -290,6 +291,60 @@ describe('NewSessionSurface', () => {
       expect(screen.getByRole('button', { name: RE_MODEL_DEFAULT })).toBeTruthy();
     },
   );
+
+  it('omits disabled harnesses and falls back from a disabled remembered harness', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialHarness: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        selectableHarnesses={['claude-code', 'codex']}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_HARNESS_CLAUDE_CODE_BUTTON }));
+    const harnessItem = await screen.findByRole('menuitem', {
+      name: RE_HARNESS_CLAUDE_CODE_MENU,
+    });
+    harnessItem.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(await screen.findByRole('menuitemradio', { name: 'Claude Code' })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: 'Codex' })).toBeTruthy();
+    expect(screen.queryByRole('menuitemradio', { name: 'OpenCode' })).toBeNull();
+    await user.keyboard('{ArrowLeft}{Escape}');
+
+    typeInComposer('use enabled harness');
+    await pressInComposer('Enter');
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'claude-code' })),
+    );
+  });
+
+  it('blocks submission when every harness is disabled', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialHarness: 'opencode', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={onSubmit}
+        selectableHarnesses={[]}
+        workspaces={[]}
+      />,
+    );
+
+    typeInComposer('no harness can run this');
+    await pressInComposer('Enter');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 
   it('keeps permission mode visible while the agent catalog is unavailable', () => {
     render(

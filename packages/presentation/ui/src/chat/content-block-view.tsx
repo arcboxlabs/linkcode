@@ -1,4 +1,5 @@
 import type { ContentBlock } from '@linkcode/schema';
+import { split0th } from 'foxts/split-nth';
 import { useTranslations } from 'use-intl';
 import { fileBasename } from './artifacts/file-kind';
 import { codeLanguageForResource } from './code-language';
@@ -9,7 +10,7 @@ import { linkTargetForUri } from './link-target';
 import { Markdown, SmoothMarkdown } from './markdown';
 
 function resourceLabel(uri: string, fallback: string): string {
-  const visible = uri.split('#', 1)[0]?.split('?', 1)[0] ?? '';
+  const visible = split0th(split0th(uri, '#'), '?');
   if (visible.endsWith('/')) return fallback;
   const label = fileBasename(visible);
   return label && !label.includes(':') ? label : fallback;
@@ -36,9 +37,10 @@ export function ContentBlockView({
     case 'image':
       return (
         <img
-          alt=""
+          alt={block.name ?? ''}
           className="my-2 max-h-80 max-w-full rounded-xl border border-border"
           src={block.uri ?? `data:${block.mimeType};base64,${block.data}`}
+          title={block.name}
         />
       );
     case 'audio':

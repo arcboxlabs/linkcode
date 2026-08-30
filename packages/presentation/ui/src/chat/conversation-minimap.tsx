@@ -92,7 +92,8 @@ export function useConversationMinimap(count: number): {
 }
 
 function segmentText(segment: TurnSegment, role: 'user' | 'assistant'): string {
-  for (const item of segment.items) {
+  for (let i = 0, len = segment.items.length; i < len; i++) {
+    const item = segment.items[i];
     if (item.kind !== 'message' || item.role !== role) continue;
     const text = item.blocks
       .map((block) => (block.type === 'text' ? block.text : ''))

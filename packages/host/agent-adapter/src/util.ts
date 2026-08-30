@@ -23,11 +23,10 @@ export function contentToText(content: ContentBlock[]): string {
  * from — the target shape differs per vendor, so only this extraction step is shared. */
 export function imageBlocksFrom(
   content: ContentBlock[],
-): Array<{ data: string; mimeType: string }> {
-  return content.reduce<Array<{ data: string; mimeType: string }>>((images, c) => {
-    if (c.type === 'image') images.push({ data: c.data, mimeType: c.mimeType });
-    return images;
-  }, []);
+): Array<Extract<ContentBlock, { type: 'image' }>> {
+  return content.filter(
+    (block): block is Extract<ContentBlock, { type: 'image' }> => block.type === 'image',
+  );
 }
 
 const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as const;
@@ -37,7 +36,8 @@ const PATH_INPUT_KEYS = ['file_path', 'path', 'notebook_path', 'filePath'] as co
 export function locationsFromToolInput(input: unknown): ToolCallLocation[] | undefined {
   if (input === null || typeof input !== 'object') return undefined;
   const record = input as Record<string, unknown>;
-  for (const key of PATH_INPUT_KEYS) {
+  for (let i = 0, len = PATH_INPUT_KEYS.length; i < len; i++) {
+    const key = PATH_INPUT_KEYS[i];
     const value = record[key];
     if (typeof value === 'string' && value.length > 0) return [{ path: value }];
   }

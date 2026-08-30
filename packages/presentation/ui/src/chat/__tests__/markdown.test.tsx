@@ -313,7 +313,7 @@ it('chips source-file inline code while prose-shaped tokens stay code', () => {
   );
   fireEvent.click(getByRole('button', { name: 'src/main.rs:7' }));
   expect(openFile).toHaveBeenCalledWith('src/main.rs');
-  const codeTexts = [...container.querySelectorAll('code')].map((el) => el.textContent);
+  const codeTexts = Array.from(container.querySelectorAll('code'), (el) => el.textContent);
   expect(codeTexts).toEqual(['origin/main', 'foo.bar']);
 });
 

@@ -14,6 +14,23 @@ function resourceLink(uri: string): ContentBlock {
   return { type: 'resource_link', uri, name: 'ARCHITECTURE.md' };
 }
 
+it('uses the preserved attachment name for an image preview', () => {
+  const { getByRole } = render(
+    <ContentBlockView
+      block={{
+        type: 'image',
+        data: 'cG5n',
+        mimeType: 'image/png',
+        name: 'architecture.png',
+      }}
+    />,
+  );
+
+  const image = getByRole('img', { name: 'architecture.png' });
+  expect(image.getAttribute('title')).toBe('architecture.png');
+  expect(image.getAttribute('src')).toBe('data:image/png;base64,cG5n');
+});
+
 // The pre-chip renderer emitted a target=_blank anchor whose file:// href was blocked from
 // http(s) origins — a dead click. File uris must route the artifact host actions instead.
 it('opens file resource links through the artifact host actions', () => {

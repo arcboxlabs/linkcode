@@ -87,7 +87,12 @@ export async function readImageFileAsComposerAttachment(
     ...pending,
     status: 'ready',
     url: dataUrl,
-    block: { type: 'image', data: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: file.type },
+    block: {
+      type: 'image',
+      data: dataUrl.slice(dataUrl.indexOf(',') + 1),
+      mimeType: file.type,
+      name: file.name,
+    },
   };
 }
 
@@ -155,7 +160,7 @@ export function attachmentFromReadFile(
     sizeBytes: file.size,
     status: 'ready',
     url: `data:${mimeType};base64,${file.content}`,
-    block: { type: 'image', data: file.content, mimeType },
+    block: { type: 'image', data: file.content, mimeType, name },
   };
 }
 

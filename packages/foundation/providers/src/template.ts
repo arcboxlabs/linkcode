@@ -2,7 +2,7 @@ const PLACEHOLDER_PATTERN = /\{([a-z_]+)\}/g;
 
 /** Account-specific `{placeholder}` fields a templated endpoint URL needs filled. */
 export function templatePlaceholders(baseUrl: string): string[] {
-  return [...baseUrl.matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1]);
+  return Array.from(baseUrl.matchAll(PLACEHOLDER_PATTERN), (match) => match[1]);
 }
 
 export function fillTemplate(baseUrl: string, values: Record<string, string>): string {

@@ -5,7 +5,11 @@ import { getProviderConfig } from '@linkcode/sdk';
 import { modelChoiceKey } from '@linkcode/ui';
 import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { accountModelOptions, useAccountModelOptions } from '../model-options';
+import {
+  accountModelOptions,
+  selectableHarnessKinds,
+  useAccountModelOptions,
+} from '../model-options';
 
 const { useDataMock } = vi.hoisted(() => ({ useDataMock: vi.fn() }));
 
@@ -125,5 +129,16 @@ describe('accountModelOptions', () => {
     providersData = {};
     rerender();
     expect(result.current).toEqual({});
+  });
+});
+
+describe('selectableHarnessKinds', () => {
+  it('includes unconfigured harnesses by default and removes disabled ones', () => {
+    expect(selectableHarnessKinds({ opencode: { enabled: false } })).toEqual([
+      'claude-code',
+      'codex',
+      'pi',
+      'grok-build',
+    ]);
   });
 });

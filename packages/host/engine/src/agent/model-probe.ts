@@ -1,10 +1,21 @@
-import type { LookupAddress } from 'node:dns';
-import { lookup as dnsLookup } from 'node:dns/promises';
+import type { Agent as HttpAgent } from 'node:http';
 import { request as httpRequest } from 'node:http';
+import type { Agent as HttpsAgent } from 'node:https';
 import { request as httpsRequest } from 'node:https';
-import { BlockList, isIP } from 'node:net';
-import type { ServiceModelList } from '@linkcode/providers';
-import type { AccountEndpoint, AccountModel, AccountSecret } from '@linkcode/schema';
+import type { EndpointService, ServiceModelList } from '@linkcode/providers';
+import type {
+  AccountEndpoint,
+  AccountModel,
+  AccountProtocol,
+  AccountSecret,
+} from '@linkcode/schema';
+import { AccountProtocolSchema } from '@linkcode/schema';
+import {
+  AntiSSRFError,
+  AntiSSRFPolicy,
+  IPAddressRanges,
+  PolicyConfigOptions,
+} from '@microsoft/antissrf';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { z } from 'zod';
 
@@ -17,6 +28,19 @@ import { z } from 'zod';
  * are the bare origin — hence the two different model-list paths below. Both answer
  * `{data:[{id,…}]}`; Anthropic adds `display_name` and paginates (one 1000-entry page is every
  * model any vendor currently serves).
+ *
+ * **Network boundary.** The URL can be free text, so the daemon must not become a probe of the
+ * user's own network. `@microsoft/antissrf` supplies the denied ranges — a table that tracks IANA
+ * registries and covers far more than loopback/RFC1918 (cloud metadata, Azure wireserver, AS112,
+ * SRv6, Teredo) — and enforces them inside the agent's DNS lookup, so the checked address is the
+ * one the socket connects to and a rebind between check and connect has no gap to land in.
+ *
+ * The one range class re-permitted is the one an RFC forbids real hosts from occupying (2544
+ * benchmarking, 5737/3849 documentation). Nothing routable lives there, so a *name* resolving into
+ * it can only be a local resolver's placeholder — which is exactly what a fake-IP tunnel (Clash,
+ * sing-box, Surge) hands out for every hostname it proxies. Denying that class buys no protection
+ * and strands every user behind such a tunnel; connecting to the placeholder is what hands the
+ * request back to the tunnel that minted it.
  */
 
 const PROBE_TIMEOUT_MS = 10000;
@@ -25,46 +49,19 @@ const ERROR_BODY_LIMIT = 200;
 const RESPONSE_BODY_LIMIT = 1024 * 1024;
 const MODEL_LIMIT = 10000;
 const TRAILING_SLASH_PATTERN = /\/+$/;
-const BLOCKED_IPV4 = new BlockList();
-const BLOCKED_IPV6 = new BlockList();
+/** Both refusal kinds the policy raises — a denied address, and plaintext HTTP carrying a secret. */
+const POLICY_REFUSAL = 'Model detection only reaches public HTTPS endpoints';
 
-for (const [network, prefix] of [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.0.0.0', 24],
-  ['192.0.2.0', 24],
-  ['192.168.0.0', 16],
-  ['198.18.0.0', 15],
-  ['198.51.100.0', 24],
-  ['203.0.113.0', 24],
-  ['224.0.0.0', 4],
-  ['240.0.0.0', 4],
-] as const) {
-  BLOCKED_IPV4.addSubnet(network, prefix, 'ipv4');
-}
-for (const [network, prefix] of [
-  ['::', 128],
-  ['::1', 128],
-  ['::', 96],
-  ['::ffff:0:0', 96],
-  ['::ffff:0:0:0', 96],
-  ['64:ff9b::', 96],
-  ['64:ff9b:1::', 48],
-  ['100::', 64],
-  ['2001:db8::', 32],
-  ['2001::', 32],
-  ['2002::', 16],
-  ['fc00::', 7],
-  ['fec0::', 10],
-  ['fe80::', 10],
-  ['ff00::', 8],
-] as const) {
-  BLOCKED_IPV6.addSubnet(network, prefix, 'ipv6');
-}
+export const PROBE_POLICY = new AntiSSRFPolicy(PolicyConfigOptions.ExternalOnlyLatest);
+// `fc00::/18` is sing-box's IPv6 pool; RFC 4193 leaves that half unassigned, so real ULA
+// deployments (Tailscale, Docker) sit in `fd00::/8` and stay denied.
+PROBE_POLICY.addAllowedAddresses([
+  ...IPAddressRanges.benchmarking,
+  ...IPAddressRanges.documentation,
+  'fc00::/18',
+]);
+const PROBE_HTTPS_AGENT = PROBE_POLICY.getHttpsAgent();
+const PROBE_HTTP_AGENT = PROBE_POLICY.getHttpAgent();
 
 /** Tolerant of a relay that answers a bare array instead of the vendors' `{data}` envelope. */
 const ModelEntrySchema = z.object({
@@ -87,7 +84,7 @@ export type ModelListRequest = (
   headers: Record<string, string>,
   signal?: AbortSignal,
 ) => Promise<ModelListResponse>;
-export type ModelProbe = typeof probeEndpointModels;
+export type ModelProbe = typeof probeServiceModels;
 
 /** A custom account names its own endpoint, so its list path can only be guessed from the protocol.
  * Catalog services never come through here — they carry an explicit URL (`@linkcode/providers`). */
@@ -122,61 +119,8 @@ function normalizedHostname(url: URL): string {
   return url.hostname[0] === '[' ? url.hostname.slice(1, -1) : url.hostname;
 }
 
-function isBlockedAddress(address: LookupAddress): boolean {
-  return address.family === 4
-    ? BLOCKED_IPV4.check(address.address, 'ipv4')
-    : BLOCKED_IPV6.check(address.address, 'ipv6');
-}
-
-export async function resolvePublicEndpoint(
-  url: URL,
-  lookup: typeof dnsLookup = dnsLookup,
-): Promise<LookupAddress> {
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Model detection requires an HTTP(S) endpoint');
-  }
-  const hostname = normalizedHostname(url);
-  const family = isIP(hostname);
-  const addresses = family
-    ? [{ address: hostname, family }]
-    : await lookup(hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || addresses.some(isBlockedAddress)) {
-    throw new Error('Model detection cannot access private or non-routable addresses');
-  }
-  return addresses[0];
-}
-
-export async function requestPublicModelList(
-  url: URL,
-  headers: Record<string, string>,
-  signal?: AbortSignal,
-): Promise<ModelListResponse> {
-  const address = await withAbort(resolvePublicEndpoint(url), signal);
-  return requestModelListAtAddress(url, headers, address, signal);
-}
-
-function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise((resolve, reject) => {
-    const onAbort = () => reject(abortReason(signal));
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-    void promise
-      .then((value) => {
-        signal.removeEventListener('abort', onAbort);
-        resolve(value);
-      })
-      .catch((error: unknown) => {
-        signal.removeEventListener('abort', onAbort);
-        reject(normalizeError(error, 'Model endpoint resolution failed'));
-      });
-  });
-}
-
 function normalizeError(error: unknown, fallback: string): Error {
+  if (error instanceof AntiSSRFError) return new Error(POLICY_REFUSAL);
   return new Error(extractErrorMessage(error, false) ?? fallback);
 }
 
@@ -184,13 +128,18 @@ function abortReason(signal: AbortSignal): Error {
   return normalizeError(signal.reason, 'Model detection aborted');
 }
 
-export function requestModelListAtAddress(
+/** `agent` is the network boundary; overriding it is for tests that drive the transport itself. */
+export function requestPublicModelList(
   url: URL,
   headers: Record<string, string>,
-  address: LookupAddress,
   signal?: AbortSignal,
+  agent?: HttpAgent | HttpsAgent,
 ): Promise<ModelListResponse> {
   return new Promise((resolve, reject) => {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      reject(new Error('Model detection requires an HTTP(S) endpoint'));
+      return;
+    }
     let settled = false;
     let responseEnded = false;
     const settleError = (error: unknown) => {
@@ -198,15 +147,15 @@ export function requestModelListAtAddress(
       settled = true;
       reject(normalizeError(error, 'Model-list request failed'));
     };
-    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+    const secure = url.protocol === 'https:';
+    const request = (secure ? httpsRequest : httpRequest)(
       {
-        hostname: address.address,
-        family: address.family,
+        hostname: normalizedHostname(url),
         port: url.port,
         path: `${url.pathname}${url.search}`,
         method: 'GET',
-        headers: { ...headers, host: url.host },
-        ...(url.protocol === 'https:' && { servername: normalizedHostname(url) }),
+        headers,
+        agent: agent ?? (secure ? PROBE_HTTPS_AGENT : PROBE_HTTP_AGENT),
         signal,
       },
       (response) => {
@@ -281,7 +230,8 @@ export async function probeEndpointModels(
   if (!parsed.success) throw new Error(`${url.href} did not answer a model list`);
   const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
   const byId = new Map<string, AccountModel>();
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (entry.id && !byId.has(entry.id)) {
       byId.set(entry.id, {
         id: entry.id,
@@ -290,4 +240,53 @@ export async function probeEndpointModels(
     }
   }
   return [...byId.values()];
+}
+
+/**
+ * Every model a service serves, across every variant reachable with this one secret, each tagged
+ * with the protocols whose list actually returned it. Most services serve one list for every
+ * variant (`ServiceVariant.models` absent everywhere), so this makes exactly one request; a
+ * service like LinkCode Gateway, whose `openai-responses` variant lists a strict subset of the
+ * service-level list, makes one request per distinct list and merges the results — a model
+ * returned by more than one list is tagged with every protocol whose list named it, not just the
+ * first.
+ */
+export async function probeServiceModels(
+  service: EndpointService,
+  secret: AccountSecret,
+  request: ModelListRequest = requestPublicModelList,
+): Promise<AccountModel[]> {
+  const byUrl = new Map<string, { source: ServiceModelList; protocols: AccountProtocol[] }>();
+  for (let i = 0, len = AccountProtocolSchema.options.length; i < len; i++) {
+    const protocol = AccountProtocolSchema.options[i];
+    // A protocol this service does not actually serve (no variant at all) must not fall through
+    // to the service-level list — that would tag every model with a protocol the service never
+    // offered.
+    const variant = service.variants[protocol];
+    if (!variant) continue;
+    const source = variant.models ?? service.models;
+    if (!source) continue;
+    const existing = byUrl.get(source.url);
+    if (existing) existing.protocols.push(protocol);
+    else byUrl.set(source.url, { source, protocols: [protocol] });
+  }
+  if (byUrl.size === 0) throw new Error(`${service.id} serves no model list`);
+
+  const merged = new Map<string, AccountModel>();
+  const lists = await Promise.all(
+    Array.from(byUrl.values(), async ({ source, protocols }) => ({
+      models: await probeEndpointModels(source, secret, request),
+      protocols,
+    })),
+  );
+  for (let i = 0, len = lists.length; i < len; i++) {
+    const { models, protocols } = lists[i];
+    for (let j = 0, modelCount = models.length; j < modelCount; j++) {
+      const model = models[j];
+      const known = merged.get(model.id);
+      const combined = [...new Set([...(known?.protocols ?? []), ...protocols])];
+      merged.set(model.id, { ...model, protocols: combined });
+    }
+  }
+  return [...merged.values()];
 }

@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+import { Agent, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ServiceModelList } from '@linkcode/providers';
 import type { AccountEndpoint } from '@linkcode/schema';
@@ -7,9 +7,9 @@ import type { ModelListRequest } from '../agent/model-probe';
 import {
   modelListHeaders,
   modelListUrlFromEndpoint,
+  PROBE_POLICY,
   probeEndpointModels,
-  requestModelListAtAddress,
-  resolvePublicEndpoint,
+  requestPublicModelList,
 } from '../agent/model-probe';
 
 const anthropicEndpoint: AccountEndpoint = {
@@ -24,14 +24,19 @@ const anthropic: ServiceModelList = { url: 'https://relay.test/v1/models', wire:
 const openai: ServiceModelList = { url: 'https://relay.test/v1/models', wire: 'openai' };
 const REJECTION_PATTERN = /401.*invalid api key/;
 const NOT_A_LIST_PATTERN = /did not answer a model list/;
-const HTTP_PATTERN = /HTTP/;
-const PRIVATE_PATTERN = /private/;
+const HTTP_PATTERN = /HTTP\(S\)/;
+const REFUSAL_PATTERN = /public HTTPS/;
 const EXCEEDED_PATTERN = /exceeded/;
 const TIMED_OUT_PATTERN = /timed out/;
 const INVALID_ENDPOINT_PATTERN = /cannot contain/;
 
 function jsonResponse(body: unknown): Awaited<ReturnType<ModelListRequest>> {
   return { status: 200, statusText: 'OK', body: JSON.stringify(body) };
+}
+
+/** The transport tests drive a loopback server, which the probe policy exists to refuse. */
+function unguarded(): Agent {
+  return new Agent();
 }
 
 describe('custom endpoint model list addressing', () => {
@@ -114,22 +119,53 @@ describe('probeEndpointModels', () => {
 });
 
 describe('model probe network boundary', () => {
-  it('rejects unsupported schemes and private destinations', async () => {
-    await expect(resolvePublicEndpoint(new URL('file:///tmp/models'))).rejects.toThrow(
+  it('rejects an unsupported scheme', async () => {
+    await expect(requestPublicModelList(new URL('file:///tmp/models'), {})).rejects.toThrow(
       HTTP_PATTERN,
     );
-    await expect(resolvePublicEndpoint(new URL('http://127.0.0.1/models'))).rejects.toThrow(
-      PRIVATE_PATTERN,
-    );
-    await expect(resolvePublicEndpoint(new URL('http://[::1]/models'))).rejects.toThrow(
-      PRIVATE_PATTERN,
-    );
-    await expect(resolvePublicEndpoint(new URL('http://[fec0::1]/models'))).rejects.toThrow(
-      PRIVATE_PATTERN,
-    );
-    await expect(resolvePublicEndpoint(new URL('http://[64:ff9b::7f00:1]/models'))).rejects.toThrow(
-      PRIVATE_PATTERN,
-    );
+  });
+
+  it('never connects to a loopback endpoint', async () => {
+    let received = 0;
+    const server = createServer((_request, response) => {
+      received += 1;
+      response.end('{}');
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const port = (server.address() as AddressInfo).port;
+    try {
+      await expect(
+        requestPublicModelList(new URL(`http://127.0.0.1:${port}/models`), {}),
+      ).rejects.toThrow(REFUSAL_PATTERN);
+      expect(received).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
+  });
+
+  it('re-permits only the ranges a fake-IP tunnel mints from', () => {
+    const permitted = ['198.18.16.15', '198.19.255.255', '203.0.113.9'];
+    for (let i = 0, len = permitted.length; i < len; i++) {
+      const address = permitted[i];
+      expect(PROBE_POLICY.allowedAddresses.check(address, 'ipv4')).toBe(true);
+    }
+    expect(PROBE_POLICY.allowedAddresses.check('fc00::1', 'ipv6')).toBe(true);
+    // Real ULA is assigned out of `fd00::/8` (Tailscale, Docker) and must stay unreachable.
+    expect(PROBE_POLICY.allowedAddresses.check('fd00::1', 'ipv6')).toBe(false);
+    const denied = ['127.0.0.1', '192.168.1.1', '169.254.169.254', '168.63.129.16'];
+    for (let i = 0, len = denied.length; i < len; i++) {
+      const address = denied[i];
+      expect(PROBE_POLICY.allowedAddresses.check(address, 'ipv4')).toBe(false);
+      expect(PROBE_POLICY.deniedAddresses.check(address, 'ipv4')).toBe(true);
+    }
+  });
+
+  it('refuses to carry a secret over plaintext HTTP', () => {
+    expect(PROBE_POLICY.allowPlainTextHttp).toBe(false);
   });
 
   it('enforces an absolute deadline', async () => {
@@ -171,10 +207,11 @@ describe('model probe network boundary', () => {
     });
     const sourcePort = (source.address() as AddressInfo).port;
     try {
-      const result = await requestModelListAtAddress(
-        new URL(`http://relay.test:${sourcePort}/models`),
+      const result = await requestPublicModelList(
+        new URL(`http://127.0.0.1:${sourcePort}/models`),
         { 'x-api-key': 'secret' },
-        { address: '127.0.0.1', family: 4 },
+        undefined,
+        unguarded(),
       );
       expect(result.status).toBe(302);
       expect(redirectedRequests).toBe(0);
@@ -200,10 +237,11 @@ describe('model probe network boundary', () => {
     const port = (server.address() as AddressInfo).port;
     try {
       await expect(
-        requestModelListAtAddress(
-          new URL(`http://relay.test:${port}/models`),
+        requestPublicModelList(
+          new URL(`http://127.0.0.1:${port}/models`),
           {},
-          { address: '127.0.0.1', family: 4 },
+          undefined,
+          unguarded(),
         ),
       ).rejects.toThrow(EXCEEDED_PATTERN);
     } finally {
@@ -225,10 +263,11 @@ describe('model probe network boundary', () => {
     const port = (server.address() as AddressInfo).port;
     try {
       await expect(
-        requestModelListAtAddress(
-          new URL(`http://relay.test:${port}/models`),
+        requestPublicModelList(
+          new URL(`http://127.0.0.1:${port}/models`),
           {},
-          { address: '127.0.0.1', family: 4 },
+          undefined,
+          unguarded(),
         ),
       ).rejects.toThrow();
     } finally {

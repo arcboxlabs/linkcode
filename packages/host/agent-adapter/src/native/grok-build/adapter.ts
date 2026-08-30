@@ -28,7 +28,7 @@ const POLICIES = [
     name: 'Bypass permissions',
     description: 'All tools run without approval prompts; this adapter cannot change it.',
   },
-] as const satisfies ReadonlyArray<ApprovalPolicy>;
+] as const satisfies readonly ApprovalPolicy[];
 
 /**
  * Grok Build adapter — drives the local `grok` CLI in **headless** mode (`grok -p`), not ACP.

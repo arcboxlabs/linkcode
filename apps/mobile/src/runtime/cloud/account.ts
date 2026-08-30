@@ -1,4 +1,5 @@
-import { noop } from 'foxact/noop';
+import { disableDeviceNotifications } from '@mobile/runtime/notifications';
+import { falseFn, noop, trueFn } from 'foxts/noop';
 import { z } from 'zod';
 import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
@@ -41,29 +42,49 @@ export async function signInToCloud(): Promise<void> {
 
 const freshSessionSchema = z.object({
   session: z.object({ id: z.string().min(1) }),
+  user: z.object({ id: z.string().min(1) }),
 });
 
-async function getAuthoritativeSessionId(): Promise<string> {
+async function readAuthoritativeSession(): Promise<{ sessionId: string; userId: string }> {
   const { data, error } = await cloudAuthClient.$fetch<unknown>(
     `${CLOUD_URL}/auth/get-session?disableCookieCache=true`,
     {},
   );
   if (error) throw new Error(`session read failed (${error.status})`);
-  return freshSessionSchema.parse(data).session.id;
+  const { session, user } = freshSessionSchema.parse(data);
+  return { sessionId: session.id, userId: user.id };
 }
 
 export async function reauthenticateToCloud(): Promise<void> {
-  const previousSessionId = await getAuthoritativeSessionId();
+  const previous = await readAuthoritativeSession();
   await signInToCloud();
-  const currentSessionId = await getAuthoritativeSessionId();
-  if (currentSessionId === previousSessionId) {
+  const current = await readAuthoritativeSession();
+  if (current.sessionId === previous.sessionId) {
     throw new Error('browser re-authentication did not create a fresh session');
+  }
+  if (current.userId !== previous.userId) {
+    throw new Error('browser re-authentication signed in a different account');
   }
 }
 
-export async function signOutOfCloud(): Promise<void> {
-  await cloudAuthClient.signOut();
-  // Forget the enrollment so a different account signing in on this phone
-  // registers the device under itself instead of silently skipping.
-  await clearDeviceEnrollment().catch(noop);
+export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
+  let pushDeliveryDisabled = false;
+  let signedOut = false;
+  try {
+    pushDeliveryDisabled = await disableDeviceNotifications({
+      revokeToken: options.revokePushToken,
+      rollbackOnFailure: false,
+    })
+      .then(trueFn)
+      .catch(falseFn);
+    const { error } = await cloudAuthClient.signOut();
+    if (error) throw new Error(`sign-out failed (${error.status})`);
+    signedOut = true;
+  } finally {
+    // Retain enrollment whenever a still-live device binding may need recovery after sign-out.
+    const deviceAlreadyRevoked = options.revokePushToken === false;
+    if (pushDeliveryDisabled && (signedOut || deviceAlreadyRevoked)) {
+      await clearDeviceEnrollment().catch(noop);
+    }
+  }
 }

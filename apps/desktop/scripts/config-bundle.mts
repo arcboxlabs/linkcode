@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
 // Relative on purpose: this module is inlined into the bundled Vite config, which runs under
 // plain Node — Node cannot resolve the package's extensionless TS source exports.
+// eslint-disable-next-line import-x/no-relative-packages -- see above
 import { parseBrandIdentityArtifact } from '../../../packages/foundation/common/src/config/brand-identity';
 import {
   configBuildBundleDefaults,
@@ -47,13 +48,16 @@ const BUNDLE_FILE = 'config-build-bundle.json';
 const BRAND_IDENTITY_FILE = 'brand-identity.json';
 const BRAND_BUILDER_FILE = 'electron-builder.brand.json';
 const BRAND_ICON_FILE = 'brand-assets/icon.png';
+const collator = new Intl.Collator();
 
 function listFiles(dir: string, prefix = ''): string[] {
   if (!existsSync(dir)) return [];
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  )) {
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+    collator.compare(a.name, b.name),
+  );
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) appendArrayInPlace(files, listFiles(join(dir, entry.name), relative));
     else files.push(relative);

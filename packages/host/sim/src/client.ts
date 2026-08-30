@@ -331,7 +331,11 @@ export class SimSidecarClient {
     child.stdout.on('data', (chunk: Buffer) => {
       if (this.child !== child) return;
       try {
-        for (const frame of this.decoder.feed(chunk)) this.handleFrame(frame);
+        const decodedFrames = this.decoder.feed(chunk);
+        for (let i = 0, len = decodedFrames.length; i < len; i++) {
+          const frame = decodedFrames[i];
+          this.handleFrame(frame);
+        }
       } catch {
         // A corrupt stream cannot be resynchronized mid-flight; drop the child and start over.
         child.kill();

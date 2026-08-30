@@ -9,7 +9,7 @@ import { z } from 'zod';
  *
  * `EXPO_PUBLIC_CLOUD_URL` (an Expo built-in inlined-at-build-time env var, set via
  * `.env.local` — gitignored, never committed) overrides the production origin for a
- * local dev build pointed at a local `svc dev` stack (CODE-292; see AGENTS.local.md).
+ * local dev build pointed at a local `svc dev` stack.
  * Unset in any build that isn't explicitly configured for local dev, so production
  * and EAS builds are unaffected.
  */

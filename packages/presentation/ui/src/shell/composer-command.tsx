@@ -186,7 +186,8 @@ export function buildComposerCommandGroups({
   ];
   const commandItems: ComposerCommandEntry[] = [];
   if (commandSource === 'slash') {
-    for (const command of agentCommands) {
+    for (let i = 0, len = agentCommands.length; i < len; i++) {
+      const command = agentCommands[i];
       // Aliases and display names match too (typing /cost surfaces /usage); selection inserts
       // the canonical name.
       if (
@@ -214,13 +215,15 @@ export function buildComposerCommandGroups({
       });
     }
   }
-  for (const item of commandItemCandidates) {
+  for (let i = 0, len = commandItemCandidates.length; i < len; i++) {
+    const item = commandItemCandidates[i];
     if (commandSource === 'slash' && item.source === 'plus') continue;
     if (matchesQuery(item.label, item.value, item.hint, commandQuery)) commandItems.push(item);
   }
 
   if (commandSource === 'plus' && modesEnabled) {
-    for (const mode of availableModes) {
+    for (let i = 0, len = availableModes.length; i < len; i++) {
+      const mode = availableModes[i];
       if (!matchesQuery(mode.name, mode.modeId, mode.description, commandQuery)) continue;
       commandItems.push({
         active: currentModeId === mode.modeId,

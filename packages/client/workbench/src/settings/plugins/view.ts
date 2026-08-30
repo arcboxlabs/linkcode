@@ -14,7 +14,8 @@ export type { PluginCardView, PluginMcpServerRow, PluginProviderGroup, SkillRowV
 export function pluginCardView(plugin: Plugin): PluginCardView {
   const title = plugin.displayName ?? plugin.name;
   const componentCounts: Partial<Record<PluginComponentKind, number>> = {};
-  for (const component of plugin.components) {
+  for (let i = 0, len = plugin.components.length; i < len; i++) {
+    const component = plugin.components[i];
     componentCounts[component.kind] = (componentCounts[component.kind] ?? 0) + 1;
   }
   const available = plugin.availability === 'available';
@@ -64,7 +65,8 @@ export function pluginProviderGroups(
 ): PluginProviderGroup[] {
   return list.providerStatus.map((status) => {
     const plugins: PluginCardView[] = [];
-    for (const plugin of list.plugins) {
+    for (let i = 0, len = list.plugins.length; i < len; i++) {
+      const plugin = list.plugins[i];
       if (plugin.provider !== status.provider) continue;
       if (plugin.installations.length > 0 !== opts.installed) continue;
       plugins.push(pluginCardView(plugin));
@@ -90,7 +92,8 @@ export function filterPluginCards(
 /** Plugin-bundled skills (installed plugins only) followed by standalone skills. */
 export function skillRows(list: PluginList): SkillRowView[] {
   const rows: SkillRowView[] = [];
-  for (const plugin of list.plugins) {
+  for (let i = 0, len = list.plugins.length; i < len; i++) {
+    const plugin = list.plugins[i];
     if (plugin.installations.length === 0) continue;
     const card = pluginCardView(plugin);
     const skills = plugin.components.filter((component) => component.kind === 'skill');
@@ -98,7 +101,8 @@ export function skillRows(list: PluginList): SkillRowView[] {
       plugin.installations.length === 1
         ? plugin.installations[0].enabled
         : plugin.installations.some((entry) => entry.enabled);
-    for (const skill of skills) {
+    for (let j = 0, skillCount = skills.length; j < skillCount; j++) {
+      const skill = skills[j];
       rows.push({
         key: `${card.key}:${skill.name}`,
         provider: plugin.provider,
@@ -115,7 +119,8 @@ export function skillRows(list: PluginList): SkillRowView[] {
       });
     }
   }
-  for (const skill of list.standaloneSkills) {
+  for (let i = 0, len = list.standaloneSkills.length; i < len; i++) {
+    const skill = list.standaloneSkills[i];
     rows.push(standaloneSkillRow(skill));
   }
   return rows;
@@ -141,11 +146,14 @@ function standaloneSkillRow(skill: StandaloneSkill): SkillRowView {
 /** Read-only projection of plugin-provided MCP servers for the MCP tab's lower section. */
 export function pluginMcpServerRows(plugins: readonly Plugin[]): PluginMcpServerRow[] {
   const rows: PluginMcpServerRow[] = [];
-  for (const plugin of plugins) {
+  for (let i = 0, len = plugins.length; i < len; i++) {
+    const plugin = plugins[i];
     if (plugin.installations.length === 0) continue;
     const title = plugin.displayName ?? plugin.name;
     const pluginEnabled = plugin.installations.some((entry) => entry.enabled);
-    for (const component of plugin.components) {
+    const components = plugin.components;
+    for (let j = 0, componentCount = components.length; j < componentCount; j++) {
+      const component = components[j];
       if (component.kind !== 'mcp-server') continue;
       rows.push({
         key: `${plugin.provider}:${plugin.id}:${component.name}`,

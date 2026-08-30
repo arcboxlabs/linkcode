@@ -31,7 +31,10 @@ export function registerBrowserWebview(tabId: string, webview: WebviewTag | null
   else webviews.delete(tabId);
   // Wake callers waiting on an entry that was removed or replaced so they can follow the map.
   previous?.resolveReady();
-  for (const resolve of registrationWaiters.get(tabId) ?? []) resolve(entry);
+  const waiters = registrationWaiters.get(tabId);
+  if (waiters != null) {
+    for (const resolve of waiters) resolve(entry);
+  }
   registrationWaiters.delete(tabId);
 }
 

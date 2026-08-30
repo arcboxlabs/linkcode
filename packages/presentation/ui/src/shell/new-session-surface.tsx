@@ -89,6 +89,8 @@ export interface NewSessionSurfaceProps {
   /** Frontend capability stub used until attachment support is advertised by sessions. */
   attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
+  /** Harnesses enabled for new threads; null while configuration is loading. */
+  selectableHarnesses?: AgentKind[] | null;
   /** The models each agent offers, from every account enabled for it. They lead the picker and their
    * head is the agent's default; the agent's own catalog follows for a run on its own login. */
   accountModels?: Readonly<Partial<Record<AgentKind, ModelOption[]>>> | null;
@@ -125,7 +127,8 @@ function workspaceById(
   workspaceId: WorkspaceId | null,
 ): WorkspaceRecord | null {
   if (workspaceId === null) return null;
-  for (const workspace of workspaces) {
+  for (let i = 0, len = workspaces.length; i < len; i++) {
+    const workspace = workspaces[i];
     if (workspace.workspaceId === workspaceId) return workspace;
   }
   return null;
@@ -144,6 +147,7 @@ export function NewSessionSurface({
   runtimeCues,
   attachmentSupport,
   agentCatalogs,
+  selectableHarnesses,
   accountModels,
   preferredEfforts,
   preferredBranches,
@@ -159,7 +163,12 @@ export function NewSessionSurface({
   onPickAttachmentFiles,
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
-  const [harness, setHarness] = useState(draft.initialHarness);
+  const availableHarnesses =
+    selectableHarnesses === undefined ? SELECTABLE_HARNESSES : (selectableHarnesses ?? []);
+  const [preferredHarness, setPreferredHarness] = useState(draft.initialHarness);
+  const harness = availableHarnesses.includes(preferredHarness)
+    ? preferredHarness
+    : availableHarnesses.at(0);
   const [selectedModels, setSelectedModels] = useState<Partial<Record<AgentKind, string | null>>>(
     {},
   );
@@ -182,17 +191,20 @@ export function NewSessionSurface({
     ? (selectedBranches[selected.workspaceId] ?? preferredBranches?.[selected.workspaceId])
     : undefined;
   const branchMode = selectedBranch?.mode ?? 'local';
-  const catalog = agentCatalogs?.[harness];
-  const localModel = selectedModels[harness];
+  const catalog = harness === undefined ? undefined : agentCatalogs?.[harness];
+  const localModel = harness === undefined ? undefined : selectedModels[harness];
   const selectedModel = localModel === undefined ? null : localModel;
-  const localEffort = selectedEfforts[harness];
-  const effort = localEffort === undefined ? (preferredEfforts?.[harness] ?? null) : localEffort;
+  const localEffort = harness === undefined ? undefined : selectedEfforts[harness];
+  const effort =
+    localEffort === undefined && harness !== undefined
+      ? (preferredEfforts?.[harness] ?? null)
+      : (localEffort ?? null);
   // Every offered model comes from an account enabled for this agent, and its head is what an
   // untouched draft runs on — the same entry the daemon derives. The agent's own catalog is
   // deliberately absent: a model nobody enabled an account for is not on offer, so the account
   // switches govern this menu completely rather than sitting beside a list they cannot reach.
-  const pickable: ModelOption[] = accountModels?.[harness] ?? [];
-  const localAccount = selectedAccounts[harness];
+  const pickable: ModelOption[] = harness === undefined ? [] : (accountModels?.[harness] ?? []);
+  const localAccount = harness === undefined ? undefined : selectedAccounts[harness];
   // `null` is "the accounts have not loaded", so there is no head yet.
   const modelOption =
     selectedModel === null
@@ -223,7 +235,7 @@ export function NewSessionSurface({
   // Only a real pick travels to the adapter. Every catalog default — policy, model, effort — is a
   // display value: submitting one would read as an explicit choice and override the agent's own
   // startup resolution — claude's `permissions.defaultMode`, codex's configured `config.toml`.
-  const pickedPolicyId = selectedPolicies[harness];
+  const pickedPolicyId = harness === undefined ? undefined : selectedPolicies[harness];
   const currentPolicyId =
     pickedPolicyId ?? catalog?.defaultPolicyId ?? catalog?.policies[0]?.policyId;
   const approvalPolicy =
@@ -233,6 +245,7 @@ export function NewSessionSurface({
 
   async function submit(input: NewSessionSubmission['input']): Promise<void> {
     if (!selected) throw new Error('Cannot start a session without a workspace');
+    if (!harness) throw new Error('Cannot start a session without an enabled harness');
     setPending(true);
     try {
       await onSubmit({
@@ -270,11 +283,12 @@ export function NewSessionSurface({
   }
 
   function handleHarnessChange(nextHarness: AgentKind): Promise<void> {
-    setHarness(nextHarness);
+    setPreferredHarness(nextHarness);
     return Promise.resolve();
   }
 
   function handleModelChange(next: ModelOption): Promise<void> {
+    if (!harness) return Promise.resolve();
     setSelectedModels((current) => ({ ...current, [harness]: next.id }));
     // The account is part of the pick: two accounts can serve the same id, and the session must
     // start on the one whose entry was chosen.
@@ -283,16 +297,19 @@ export function NewSessionSurface({
   }
 
   function handleEffortChange(nextEffort: EffortLevel): Promise<void> {
+    if (!harness) return Promise.resolve();
     setSelectedEfforts((current) => ({ ...current, [harness]: nextEffort }));
     return Promise.resolve();
   }
 
   function handleResetModel(): void {
+    if (!harness) return;
     setSelectedModels((current) => ({ ...current, [harness]: null }));
     setSelectedAccounts((current) => ({ ...current, [harness]: null }));
   }
 
   function handleResetEffort(): void {
+    if (!harness) return;
     setSelectedEfforts((current) => ({ ...current, [harness]: null }));
   }
 
@@ -302,6 +319,7 @@ export function NewSessionSurface({
   }
 
   function handleApprovalPolicyChange(policyId: string): Promise<void> {
+    if (!harness) return Promise.resolve();
     setSelectedPolicies((current) => ({ ...current, [harness]: policyId }));
     return Promise.resolve();
   }
@@ -310,13 +328,13 @@ export function NewSessionSurface({
     selected && !isChatSelected
       ? t('headingIn', { name: selected.name ?? repositoryLabel(selected.cwd) })
       : t('heading');
-  const cue = runtimeCues?.[harness];
-  const capabilities = AGENT_INPUT_CAPABILITIES[harness];
+  const cue = harness === undefined ? undefined : runtimeCues?.[harness];
+  const capabilities = harness === undefined ? undefined : AGENT_INPUT_CAPABILITIES[harness];
   const directiveControls: ComposerDirectiveControls = {
-    slash: capabilities.slashCommands
+    slash: capabilities?.slashCommands
       ? { state: 'loading', onInvokeCommand: handleInvokeCommand }
       : { state: 'unsupported' },
-    shell: capabilities.shellCommand
+    shell: capabilities?.shellCommand
       ? { state: 'ready', onRunShellCommand: handleRunShellCommand }
       : { state: 'unsupported' },
   };
@@ -350,7 +368,7 @@ export function NewSessionSurface({
           <h1 className="px-4 pb-8 text-center font-semibold text-2xl text-foreground">
             {heading}
           </h1>
-          {cue && (
+          {cue && harness && (
             <div className="px-4 pb-3">
               <div className="mx-auto max-w-3xl">
                 <AgentOnboardingCard
@@ -364,9 +382,9 @@ export function NewSessionSurface({
             </div>
           )}
           <Composer
-            agentLabel={AGENT_LABELS[harness]}
+            agentLabel={harness === undefined ? undefined : AGENT_LABELS[harness]}
             agentKind={harness}
-            attachmentsSupported={Boolean(attachmentSupport?.[harness])}
+            attachmentsSupported={Boolean(harness && attachmentSupport?.[harness])}
             blockDirectivesWithAttachments
             disabled={pending || !selected}
             directiveControls={directiveControls}
@@ -374,10 +392,8 @@ export function NewSessionSurface({
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(selected?.cwd, query)}
             runtimeCues={runtimeCues}
-            // Only the runtime gates sending. An empty list is not a refusal: an agent with no
-            // account still resolves its own model, and the one case the daemon does refuse — an
-            // account pinned with nothing picked — reports itself rather than greying the button.
-            sendBlocked={cue !== undefined}
+            // A missing runtime or enabled harness blocks sending; account/model failures report themselves.
+            sendBlocked={harness === undefined || cue !== undefined}
             currentModeId={modeId}
             currentModel={displayedModel}
             currentEffort={displayedEffort}
@@ -385,7 +401,7 @@ export function NewSessionSurface({
             currentAccountId={modelOption?.accountId}
             approvalPolicy={approvalPolicy}
             approvalPolicyPlaceholder={t('permissionMode')}
-            selectableHarnesses={SELECTABLE_HARNESSES}
+            selectableHarnesses={availableHarnesses}
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}

@@ -128,6 +128,12 @@ export function BrowserWebviewPane({
     const syncDocument = (): void => {
       ready = true;
       markBrowserWebviewReady(tabId);
+      /* `nav` mirrors an external event target (the guest webview). This setter normally runs
+       * from webview events, but the effect also invokes it once synchronously via the
+       * post-subscribe probe below, closing the race where a cached page finished loading
+       * before the listeners attached. There is no earlier call site: the webview element
+       * itself arrives via state, so the probe must live in the effect that subscribes. */
+      // eslint-disable-next-line vibe-proof/react-no-use-effect-watching -- see above
       setNav((prev) => ({
         ...prev,
         isLoading: webview.isLoading(),

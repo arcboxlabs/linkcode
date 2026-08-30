@@ -57,7 +57,10 @@ export class SimulatorConsentService {
   async init(): Promise<void> {
     const state = await this.store.load();
     this.agentToolsEnabled = state.agentToolsEnabled;
-    for (const entry of state.entries) this.decisions.set(entry.udid, entry.decision);
+    for (let i = 0, len = state.entries.length; i < len; i++) {
+      const entry = state.entries[i];
+      this.decisions.set(entry.udid, entry.decision);
+    }
   }
 
   /**
@@ -75,7 +78,7 @@ export class SimulatorConsentService {
 
   state(): SimulatorConsentState {
     return {
-      entries: [...this.decisions].map(([udid, decision]) => ({ udid, decision })),
+      entries: Array.from(this.decisions, ([udid, decision]) => ({ udid, decision })),
       agentToolsEnabled: this.agentToolsEnabled,
     };
   }
@@ -152,7 +155,7 @@ export class SimulatorConsentService {
         resolve(decision);
       };
     });
-    const timer = setTimeout(() => settle('denied'), this.askTimeoutMs);
+    const timer = setTimeout(settle, this.askTimeoutMs, 'denied');
     timer.unref?.();
     this.pending.set(udid, { promise, settle, timer });
     return promise;

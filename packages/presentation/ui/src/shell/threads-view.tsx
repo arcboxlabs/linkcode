@@ -17,10 +17,10 @@ import {
   PinnedSection,
   SectionAccordionTrigger,
   ShowMoreToggle,
-  SIDEBAR_SORTABLE_SENSORS,
   ThreadGroupHeader,
   ThreadRow,
 } from './sidebar';
+import { SORTABLE_SENSORS } from './sortable-sensors';
 
 const SIDEBAR_SECTIONS = [
   'pinned',
@@ -98,7 +98,8 @@ export function ThreadsView({
   const projectGroups: ThreadGroupViewModel[] = [];
   let pinnedGroup: ThreadGroupViewModel | undefined;
   let chatGroup: ThreadGroupViewModel | undefined;
-  for (const group of groups) {
+  for (let i = 0, len = groups.length; i < len; i++) {
+    const group = groups[i];
     if (group.isPinned) pinnedGroup = group;
     else if (group.isChat) chatGroup = group;
     else projectGroups.push(group);
@@ -154,7 +155,7 @@ export function ThreadsView({
 
   return (
     <DragDropProvider
-      sensors={SIDEBAR_SORTABLE_SENSORS}
+      sensors={SORTABLE_SENSORS}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
@@ -165,7 +166,9 @@ export function ThreadsView({
         className="flex flex-col gap-0.5"
         value={openSections}
         onValueChange={(next) => {
-          for (const section of changedAccordionValues(SIDEBAR_SECTIONS, openSections, next)) {
+          const changedSections = changedAccordionValues(SIDEBAR_SECTIONS, openSections, next);
+          for (let i = 0, len = changedSections.length; i < len; i++) {
+            const section = changedSections[i];
             onToggleSectionCollapsed(section);
           }
         }}
@@ -214,7 +217,13 @@ export function ThreadsView({
                 className="flex flex-col gap-0.5"
                 value={openGroupKeys}
                 onValueChange={(next) => {
-                  for (const key of changedAccordionValues(projectGroupKeys, openGroupKeys, next)) {
+                  const changedGroupKeys = changedAccordionValues(
+                    projectGroupKeys,
+                    openGroupKeys,
+                    next,
+                  );
+                  for (let i = 0, len = changedGroupKeys.length; i < len; i++) {
+                    const key = changedGroupKeys[i];
                     onToggleGroupCollapsed(key);
                   }
                 }}

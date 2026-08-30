@@ -30,7 +30,9 @@ function reconcileMigrationLedger(sqlite: Sqlite.Database, migrationsFolder: str
     'UPDATE __drizzle_migrations SET created_at = ? WHERE hash = ? AND created_at <> ?',
   );
   sqlite.transaction(() => {
-    for (const migration of readMigrationFiles({ migrationsFolder })) {
+    const migrations = readMigrationFiles({ migrationsFolder });
+    for (let i = 0, len = migrations.length; i < len; i++) {
+      const migration = migrations[i];
       realign.run(migration.folderMillis, migration.hash, migration.folderMillis);
     }
   })();
@@ -59,7 +61,8 @@ export function createSessionStore(dbPath: string): SessionStore {
         .orderBy(asc(sessionRuns.sessionId), asc(sessionRuns.seq))
         .all();
       const runsBySession = new Map<string, RunRow[]>();
-      for (const run of runRows) {
+      for (let i = 0, len = runRows.length; i < len; i++) {
+        const run = runRows[i];
         const bucket = runsBySession.get(run.sessionId);
         if (bucket) bucket.push(run);
         else runsBySession.set(run.sessionId, [run]);

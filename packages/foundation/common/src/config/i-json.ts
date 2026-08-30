@@ -7,7 +7,7 @@ const NUMBER_PATTERN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?/iy;
 
 export function encodeBase64Url(bytes: Uint8Array): string {
   let encoded = '';
-  for (let index = 0; index < bytes.length; index += 3) {
+  for (let index = 0, len = bytes.length; index < len; index += 3) {
     const remaining = bytes.length - index;
     const first = bytes[index];
     const second = remaining > 1 ? bytes[index + 1] : 0;
@@ -47,7 +47,16 @@ export function cloneJson<Value extends JsonValue>(value: Value): Value;
 export function cloneJson(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map((entry) => cloneJson(entry));
   if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneJson(entry)]));
+    return Object.entries(value).reduce<Record<string, JsonValue>>((acc, [key, entry]) => {
+      // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the clone.
+      Object.defineProperty(acc, key, {
+        configurable: true,
+        enumerable: true,
+        value: cloneJson(entry),
+        writable: true,
+      });
+      return acc;
+    }, {});
   }
   return value;
 }
@@ -63,11 +72,16 @@ function assertIJsonValue(value: unknown, label: string): asserts value is JsonV
   }
   if (value === null || typeof value === 'boolean') return;
   if (Array.isArray(value)) {
-    for (const [index, entry] of value.entries()) assertIJsonValue(entry, `${label}[${index}]`);
+    for (let index = 0, len = value.length; index < len; index++) {
+      const entry = value[index];
+      assertIJsonValue(entry, `${label}[${index}]`);
+    }
     return;
   }
   if (typeof value !== 'object') throw new TypeError(`${label} is not an I-JSON value`);
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     assertUnicodeScalarString(key, `${label} key`);
     assertIJsonValue(entry, `${label}.${key}`);
   }

@@ -90,7 +90,8 @@ function toolContentMarkdown(content: ToolCallContent, opts: RenderOptions): str
 
 export function toolCallMarkdown(toolCall: ToolCall, opts: RenderOptions = {}): string {
   const parts = [`${TOOL_STATUS_ICON[toolCall.status]} *${toolCall.title || toolCall.kind}*`];
-  for (const content of toolCall.content) {
+  for (let i = 0, len = toolCall.content.length; i < len; i++) {
+    const content = toolCall.content[i];
     const text = toolContentMarkdown(content, opts);
     if (text.length > 0) parts.push(text);
   }
@@ -121,7 +122,8 @@ export function permissionMarkdown(
 /** The agent's structured ask (AskUserQuestion): each question with its options as bullets. */
 export function questionMarkdown(questions: readonly Question[]): string {
   const parts: string[] = ['❓ **Question**'];
-  for (const question of questions) {
+  for (let i = 0, len = questions.length; i < len; i++) {
+    const question = questions[i];
     parts.push(question.prompt);
     appendArrayInPlace(
       parts,
@@ -164,7 +166,8 @@ export function renderTurns(
   opts: RenderOptions = {},
 ): RenderedTurn[] {
   const turns: RenderedTurn[] = [];
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     let turn = turns.at(-1);
     if (turn?.turnId !== item.turnId) {
       turn = { turnId: item.turnId, userMarkdown: null, agentMarkdown: '', items: [] };
@@ -190,7 +193,9 @@ export function renderConversation(
   opts: RenderOptions = {},
 ): string {
   const parts: string[] = [];
-  for (const turn of renderTurns(items, opts)) {
+  const rendered = renderTurns(items, opts);
+  for (let i = 0, len = rendered.length; i < len; i++) {
+    const turn = rendered[i];
     if (turn.userMarkdown !== null) parts.push(`👤 ${turn.userMarkdown}`);
     if (turn.agentMarkdown.length > 0) parts.push(turn.agentMarkdown);
   }

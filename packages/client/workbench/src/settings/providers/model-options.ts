@@ -25,7 +25,8 @@ export function accountModelOptions(
 ): Partial<Record<AgentKind, ModelOption[]>> {
   const pool = accounts ?? [];
   const options: Partial<Record<AgentKind, ModelOption[]>> = {};
-  for (const kind of AgentKindSchema.options) {
+  for (let i = 0, len = AgentKindSchema.options.length; i < len; i++) {
+    const kind = AgentKindSchema.options[i];
     const bindable = pool.some((account) => resolveBinding(account, kind).tier !== 'unavailable');
     if (!bindable) continue;
     options[kind] = enabledAccountModels(pool, providers, kind).map(({ account, model }) => ({
@@ -36,6 +37,11 @@ export function accountModelOptions(
     }));
   }
   return options;
+}
+
+/** Harnesses offered when creating a thread; missing config entries retain the enabled default. */
+export function selectableHarnessKinds(providers: ProvidersConfig): AgentKind[] {
+  return AgentKindSchema.options.filter((kind) => providers[kind]?.enabled ?? true);
 }
 
 /** `null` until both daemon-owned sources have loaded, so a picker never briefly offers a set that

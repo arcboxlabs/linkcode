@@ -172,7 +172,10 @@ export function createAiGatewaySidecar(options: AiGatewaySidecarOptions = {}): T
     },
     async closeAll() {
       const entries = [...running.values()];
-      for (const entry of entries) entry.close();
+      for (let i = 0, len = entries.length; i < len; i++) {
+        const entry = entries[i];
+        entry.close();
+      }
       await Promise.allSettled(entries.map((entry) => entry.ready));
     },
   };

@@ -13,6 +13,10 @@ vi.mock('../client', () => ({
   },
 }));
 
+vi.mock('@mobile/runtime/notifications', () => ({
+  disableDeviceNotifications: vi.fn(() => Promise.resolve(true)),
+}));
+
 vi.mock('../devices', () => ({ clearDeviceEnrollment: vi.fn() }));
 
 import { reauthenticateToCloud } from '../account';
@@ -25,8 +29,14 @@ describe('reauthenticateToCloud', () => {
   it('rejects when the browser resolves without replacing the old session', async () => {
     mocks.signInSocial.mockResolvedValueOnce({ error: null });
     mocks.fetchSession
-      .mockResolvedValueOnce({ data: { session: { id: 'old-session' } }, error: null })
-      .mockResolvedValueOnce({ data: { session: { id: 'old-session' } }, error: null });
+      .mockResolvedValueOnce({
+        data: { session: { id: 'old-session' }, user: { id: 'user-1' } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { session: { id: 'old-session' }, user: { id: 'user-1' } },
+        error: null,
+      });
 
     await expect(reauthenticateToCloud()).rejects.toThrow(
       'browser re-authentication did not create a fresh session',
@@ -42,9 +52,32 @@ describe('reauthenticateToCloud', () => {
   it('accepts a session created by the current browser flow', async () => {
     mocks.signInSocial.mockResolvedValueOnce({ error: null });
     mocks.fetchSession
-      .mockResolvedValueOnce({ data: { session: { id: 'old-session' } }, error: null })
-      .mockResolvedValueOnce({ data: { session: { id: 'new-session' } }, error: null });
+      .mockResolvedValueOnce({
+        data: { session: { id: 'old-session' }, user: { id: 'user-1' } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { session: { id: 'new-session' }, user: { id: 'user-1' } },
+        error: null,
+      });
 
     await expect(reauthenticateToCloud()).resolves.toBeUndefined();
+  });
+
+  it('rejects when the browser creates a session for another account', async () => {
+    mocks.signInSocial.mockResolvedValueOnce({ error: null });
+    mocks.fetchSession
+      .mockResolvedValueOnce({
+        data: { session: { id: 'old-session' }, user: { id: 'user-1' } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { session: { id: 'new-session' }, user: { id: 'user-2' } },
+        error: null,
+      });
+
+    await expect(reauthenticateToCloud()).rejects.toThrow(
+      'browser re-authentication signed in a different account',
+    );
   });
 });

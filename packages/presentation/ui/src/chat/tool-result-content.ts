@@ -15,7 +15,8 @@ export function stringValue(
   keys: readonly string[],
 ): string | undefined {
   if (!record) return undefined;
-  for (const key of keys) {
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const key = keys[i];
     const value = record[key];
     if (typeof value === 'string' && value.length > 0) return value;
   }
@@ -147,7 +148,7 @@ export function toolCallReadPreviewText(toolCall: ToolCall, text: string): strin
       prefixEnd += 1;
     }
 
-    if (prefixEnd === cursor || numberedText.codePointAt(prefixEnd) !== 9) return text;
+    if (prefixEnd === cursor || numberedText.charCodeAt(prefixEnd) !== 9) return text;
     const lineNumber = Number.parseInt(numberedText.slice(cursor, prefixEnd), 10);
     if (lineNumber !== expectedLine || !Number.isSafeInteger(lineNumber) || lineNumber < 1) {
       return text;

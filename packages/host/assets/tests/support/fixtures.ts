@@ -19,7 +19,9 @@ export function makeTgz(
 ): TgzFixture {
   const root = mkdtempSync(join(tmpdir(), 'tgz-fixture-'));
   const members = { [member]: content, ...extraMembers };
-  for (const [path, data] of Object.entries(members)) {
+  const memberEntries = Object.entries(members);
+  for (let i = 0, len = memberEntries.length; i < len; i++) {
+    const [path, data] = memberEntries[i];
     const file = join(root, path);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, data, { mode: 0o644 });
@@ -37,7 +39,9 @@ export function makeTgz(
 /** Build an npm-shaped tgz: every file under the standard `package/` root. */
 export function makePackageTgz(files: Record<string, string>): TgzFixture {
   const root = mkdtempSync(join(tmpdir(), 'pkg-fixture-'));
-  for (const [name, content] of Object.entries(files)) {
+  const fileEntries = Object.entries(files);
+  for (let i = 0, len = fileEntries.length; i < len; i++) {
+    const [name, content] = fileEntries[i];
     const file = join(root, 'package', name);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content, { mode: 0o644 });

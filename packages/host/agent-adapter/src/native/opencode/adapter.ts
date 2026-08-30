@@ -30,6 +30,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { invariant, nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { falseFn } from 'foxts/noop';
+import { split0th } from 'foxts/split-nth';
 import { wait } from 'foxts/wait';
 import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
@@ -82,7 +83,8 @@ export function opencodeMcpConfig(
 ): Record<string, McpLocalConfig | McpRemoteConfig> | undefined {
   if (!servers?.length) return undefined;
   const out: Record<string, McpLocalConfig | McpRemoteConfig> = {};
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     out[server.name] =
       server.type === 'http'
         ? {
@@ -180,13 +182,16 @@ function opencodeModelOptions(
 ): AgentModelOption[] {
   const connected = new Set(listed.connected);
   const models: AgentModelOption[] = [];
-  for (const provider of listed.all) {
+  for (let i = 0, len = listed.all.length; i < len; i++) {
+    const provider = listed.all[i];
     if (credentialProviderId) {
       if (provider.id !== credentialProviderId) continue;
     } else if (!connected.has(provider.id) && provider.source !== 'api') {
       continue;
     }
-    for (const [modelId, model] of Object.entries(provider.models)) {
+    const modelEntries = Object.entries(provider.models);
+    for (let j = 0, modelCount = modelEntries.length; j < modelCount; j++) {
+      const [modelId, model] = modelEntries[j];
       models.push({
         id: `${provider.id}/${modelId}`,
         label: model.name || modelId,
@@ -314,7 +319,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
     // The model ref decides routing (prompts carry `{providerID, modelID}`), so it wins; the
     // resolved known provider covers the common case of a model id typed without one.
-    const providerID = opts.model?.includes('/') ? opts.model.split('/', 1)[0] : cred.knownProvider;
+    const providerID = opts.model?.includes('/') ? split0th(opts.model, '/') : cred.knownProvider;
     const options: { apiKey?: string; baseURL?: string } = {};
     const key = cred.apiKey ?? cred.authToken;
     if (key) options.apiKey = key;
@@ -492,6 +497,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         (image): FilePartInput => ({
           type: 'file',
           mime: image.mimeType,
+          filename: image.name,
           url: `data:${image.mimeType};base64,${image.data}`,
         }),
       ),
@@ -612,7 +618,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const raced = await Promise.race([
         abort,
         new Promise<typeof ABORT_TIMED_OUT>((resolve) => {
-          timer = setTimeout(() => resolve(ABORT_TIMED_OUT), ABORT_WAIT_MS);
+          timer = setTimeout(resolve, ABORT_WAIT_MS, ABORT_TIMED_OUT);
         }),
       ]);
       if (raced === ABORT_TIMED_OUT) {
@@ -720,7 +726,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (!this.client) return;
     try {
       const config = await this.client.config.get({ directory: this.directory });
-      for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+      const configuredNames = Object.keys(config.data?.mcp ?? {});
+      for (let i = 0, len = configuredNames.length; i < len; i++) {
+        const name = configuredNames[i];
+        names.add(name);
+      }
       this.mcpServerNames = [...names];
     } catch {
       // fetch rejects on a dead server — retitling is never worth failing the session for.
@@ -750,7 +760,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       const names = new Set(opts.mcpServerNames);
       try {
         const config = await client.config.get({ directory: got.data.directory });
-        for (const name of Object.keys(config.data?.mcp ?? {})) names.add(name);
+        const configuredNames = Object.keys(config.data?.mcp ?? {});
+        for (let i = 0, len = configuredNames.length; i < len; i++) {
+          const name = configuredNames[i];
+          names.add(name);
+        }
       } catch {
         // fetch rejects on a dead server — the read proceeds with the caller's hint set.
       }
@@ -1221,7 +1235,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       if (!answer) return [];
       const selected = new Set(answer.selectedOptionIds);
       const labels: string[] = [];
-      for (const [oi, option] of q.options.entries()) {
+      for (let oi = 0, len = q.options.length; oi < len; oi++) {
+        const option = q.options[oi];
         if (selected.has(`o${oi}`)) labels.push(option.label);
       }
       const custom = answer.customText?.trim();
@@ -1254,7 +1269,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         // cumulative part updates do not retransmit an ever-growing content array.
         const toolCall = toolCallFromPart(part, this.mcpServerNames);
         if (toolCall.status === 'completed' || toolCall.status === 'failed') {
-          for (const content of toolCall.content) this.appendToolContent(part.id, content);
+          for (let i = 0, len = toolCall.content.length; i < len; i++) {
+            const content = toolCall.content[i];
+            this.appendToolContent(part.id, content);
+          }
           this.emitTool({ ...toolCall, content: undefined });
         } else {
           this.emitTool(toolCall);

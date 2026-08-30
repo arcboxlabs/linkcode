@@ -65,8 +65,9 @@ export function opencodeMcpToolName(
 ): { server: string; tool: string } | undefined {
   let match: { server: string; tool: string } | undefined;
   let matchedLength = 0;
-  for (const server of mcpServers) {
-    const prefix = `${server.replace(OPENCODE_TOOL_NAME_SANITIZE_RE, '_')}_`;
+  for (let i = 0, len = mcpServers.length; i < len; i++) {
+    const server = mcpServers[i];
+    const prefix = `${server.replaceAll(OPENCODE_TOOL_NAME_SANITIZE_RE, '_')}_`;
     if (prefix.length <= matchedLength || tool.length <= prefix.length) continue;
     if (tool.startsWith(prefix)) {
       match = { server, tool: tool.slice(prefix.length) };
@@ -146,7 +147,8 @@ export function mapOpencodeHistoryEvents(
   mcpServers: readonly string[] = [],
 ): AgentHistoryEvent[] {
   const events: AgentHistoryEvent[] = [];
-  for (const { info, parts } of messages) {
+  for (let i = 0, len = messages.length; i < len; i++) {
+    const { info, parts } = messages[i];
     const ts = info.time.created;
     if (info.role === 'user') {
       const text = parts
@@ -169,7 +171,8 @@ export function mapOpencodeHistoryEvents(
       }
       continue;
     }
-    for (const part of parts) {
+    for (let j = 0, partCount = parts.length; j < partCount; j++) {
+      const part = parts[j];
       switch (part.type) {
         case 'text': {
           const event = textHistoryEvent(historyId, 'assistant', part.id, part.text, ts);

@@ -9,7 +9,11 @@ export type ThemePreference = z.infer<typeof ThemePreferenceSchema>;
 
 /** Persisted subset — every field optional so partial/stale storage merges over the defaults. */
 const PersistedSettingsSchema = z
-  .object({ themePreference: ThemePreferenceSchema, keepHostsConnected: z.boolean() })
+  .object({
+    themePreference: ThemePreferenceSchema,
+    keepHostsConnected: z.boolean(),
+    notificationsEnabled: z.boolean(),
+  })
   .partial();
 type PersistedSettings = z.infer<typeof PersistedSettingsSchema>;
 
@@ -18,8 +22,10 @@ export interface SettingsState {
   /** Hold every saved host's connection open, not just the selected one. Off by default: a phone
    * pays for each socket in bytes and battery, and only one host is on screen at a time. */
   keepHostsConnected: boolean;
+  notificationsEnabled: boolean;
   setThemePreference: (preference: ThemePreference) => void;
   setKeepHostsConnected: (keep: boolean) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -27,8 +33,10 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       themePreference: 'system',
       keepHostsConnected: false,
+      notificationsEnabled: false,
       setThemePreference: (preference) => set({ themePreference: preference }),
       setKeepHostsConnected: (keep) => set({ keepHostsConnected: keep }),
+      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
     }),
     {
       name: 'linkcode.mobile.settings:v2',
@@ -37,6 +45,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         themePreference: state.themePreference,
         keepHostsConnected: state.keepHostsConnected,
+        notificationsEnabled: state.notificationsEnabled,
       }),
     },
   ),

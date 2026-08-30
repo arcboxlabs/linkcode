@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.28.0](https://github.com/arcboxlabs/linkcode/compare/v0.27.0...v0.28.0) (2026-08-28)
+
+
+### Features
+
+* **mobile:** add remote push notifications ([#386](https://github.com/arcboxlabs/linkcode/issues/386)) ([53b6420](https://github.com/arcboxlabs/linkcode/commit/53b6420734c0fa7a1d77636a52d6764408310d9f))
+
+
+### Bug Fixes
+
+* **desktop:** verify better-sqlite3's shipped prebuild ([#485](https://github.com/arcboxlabs/linkcode/issues/485)) ([2679cb4](https://github.com/arcboxlabs/linkcode/commit/2679cb4fdfdba7c6aee01bcc0b34c3649a68cbc2))
+
+## [0.27.0](https://github.com/arcboxlabs/linkcode/compare/v0.26.1...v0.27.0) (2026-08-27)
+
+
+### Features
+
+* **providers:** resolve LinkCode Gateway as a Codex-native endpoint ([#477](https://github.com/arcboxlabs/linkcode/issues/477)) ([a79b917](https://github.com/arcboxlabs/linkcode/commit/a79b91709eef28386e1618afd2ffdec110f99ebe))
+
+
+### Bug Fixes
+
+* **client-core:** keep image prompts in place ([#464](https://github.com/arcboxlabs/linkcode/issues/464)) ([d46d560](https://github.com/arcboxlabs/linkcode/commit/d46d5602a106a7bd23497bd3fa267c30fe6aa7f1))
+
+## [0.26.1](https://github.com/arcboxlabs/linkcode/compare/v0.26.0...v0.26.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent-adapter,engine:** stream codex rollout reads and evict expired history caches ([#466](https://github.com/arcboxlabs/linkcode/issues/466)) ([fedc6ec](https://github.com/arcboxlabs/linkcode/commit/fedc6ec6ff505ded1dbeabea9bcd818b7a998ffb))
+* **pi:** preserve account model IDs with slashes ([#471](https://github.com/arcboxlabs/linkcode/issues/471)) ([6bb0633](https://github.com/arcboxlabs/linkcode/commit/6bb0633a5edbffe61b4244fa34b73179bd42b175))
+
+## [0.26.0](https://github.com/arcboxlabs/linkcode/compare/v0.25.2...v0.26.0) (2026-08-24)
+
+
+### Features
+
+* **settings:** add usage and billing balance ([#468](https://github.com/arcboxlabs/linkcode/issues/468)) ([5d2e3a4](https://github.com/arcboxlabs/linkcode/commit/5d2e3a41cae2aae70489672d66594b9d6b305a77))
+
+
+### Bug Fixes
+
+* **i18n:** normalize CJK punctuation and fix tracking-widest on zh-CN group labels ([#467](https://github.com/arcboxlabs/linkcode/issues/467)) ([63b3813](https://github.com/arcboxlabs/linkcode/commit/63b3813061b1676418a525d8885cbe69aeaaf2b2))
+* **ui:** use official agent icons ([#475](https://github.com/arcboxlabs/linkcode/issues/475)) ([1fb2a9b](https://github.com/arcboxlabs/linkcode/commit/1fb2a9b6ed2d8fbaa61eac7b5d4cb90535760df9))
+
+## [0.25.2](https://github.com/arcboxlabs/linkcode/compare/v0.25.1...v0.25.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **attachments:** preserve original image filenames ([#463](https://github.com/arcboxlabs/linkcode/issues/463)) ([c5e864b](https://github.com/arcboxlabs/linkcode/commit/c5e864bc9742629af0907c48add1ecff1567c713))
+* **engine:** reach model endpoints through fake-IP tunnels ([f382df6](https://github.com/arcboxlabs/linkcode/commit/f382df6a45222c8a4939bfc503494f21c3b8141d))
+
+## [0.25.1](https://github.com/arcboxlabs/linkcode/compare/v0.25.0...v0.25.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **assets:** update aigateway to 0.6.0 ([#461](https://github.com/arcboxlabs/linkcode/issues/461)) ([5673022](https://github.com/arcboxlabs/linkcode/commit/56730223e541c976faf6f2fd93b1449988be8029))
+
+## [0.25.0](https://github.com/arcboxlabs/linkcode/compare/v0.24.0...v0.25.0) (2026-08-20)
+
+
+### Features
+
+* **providers:** allow ordering accounts and selecting default models ([#459](https://github.com/arcboxlabs/linkcode/issues/459)) ([e57e4ab](https://github.com/arcboxlabs/linkcode/commit/e57e4ab6cb8948ac9392d83083fd915e6e8e9d4e))
+
+
+### Bug Fixes
+
+* **release:** preserve reviewed legacy destinations ([#448](https://github.com/arcboxlabs/linkcode/issues/448)) ([4e710cd](https://github.com/arcboxlabs/linkcode/commit/4e710cd6f6c1ffe2c1ea051c73eee62ef49b3c1f))
+* **workbench:** hide disabled harnesses from new tasks ([#460](https://github.com/arcboxlabs/linkcode/issues/460)) ([03a6b01](https://github.com/arcboxlabs/linkcode/commit/03a6b01b72acf0e084481881f6f74aa19cf3037b))
+* **workbench:** require models when adding providers ([#458](https://github.com/arcboxlabs/linkcode/issues/458)) ([41c4fde](https://github.com/arcboxlabs/linkcode/commit/41c4fde9711dbe07676a423175ced788b8a21fed))
+
 ## [0.24.0](https://github.com/arcboxlabs/linkcode/compare/v0.23.1...v0.24.0) (2026-08-17)
 
 

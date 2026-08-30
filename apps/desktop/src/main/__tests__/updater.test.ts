@@ -21,7 +21,11 @@ vi.mock('electron-updater', () => ({ autoUpdater: mocks.autoUpdater }));
 vi.mock('../constants', () => ({ CHANNEL: 'release' }));
 
 function emit(event: string, ...args: unknown[]): void {
-  for (const listener of mocks.listeners.get(event) ?? []) listener(...args);
+  const listeners = mocks.listeners.get(event) ?? [];
+  for (let i = 0, len = listeners.length; i < len; i++) {
+    const listener = listeners[i];
+    listener(...args);
+  }
 }
 
 describe('desktop updater', () => {

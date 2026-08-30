@@ -13,6 +13,7 @@ import { MessageIdSchema, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
+  getProviderConfig,
   hostArtifact,
   hostWorkspaceFile,
   readWorkspaceFile,
@@ -57,8 +58,11 @@ import { RuntimeNewSessionBranchPicker } from '../git/new-session-branch-picker'
 import { WorkbenchCommandPalette } from '../palette/command-palette';
 import { openCommandPalette } from '../palette/store';
 import { useWorkbenchSdkClient } from '../runtime/provider';
-import { useMutation } from '../runtime/tayori';
-import { useAccountModelOptions } from '../settings/providers/model-options';
+import { useData, useMutation } from '../runtime/tayori';
+import {
+  selectableHarnessKinds,
+  useAccountModelOptions,
+} from '../settings/providers/model-options';
 import { RuntimeBranchStatus } from '../sidebar/branch-status';
 import { useSidebarGroupCollapseStore } from '../sidebar/collapse-store';
 import { useSidebarOrderStore } from '../sidebar/order-store';
@@ -230,11 +234,13 @@ function WorkbenchSessionSurface({
   const [respondingRequestIds, addRespondingRequest, removeRespondingRequest] = useSet<string>();
   const [responseErrors, setResponseErrors] = useState(() => new Map<string, string>());
   const visibleResponseErrors = new Map<string, string>();
-  for (const requestId of conversation.pendingPermissionIds) {
+  for (let i = 0, len = conversation.pendingPermissionIds.length; i < len; i++) {
+    const requestId = conversation.pendingPermissionIds[i];
     const message = responseErrors.get(requestId);
     if (message) visibleResponseErrors.set(requestId, message);
   }
-  for (const requestId of conversation.pendingQuestionIds) {
+  for (let i = 0, len = conversation.pendingQuestionIds.length; i < len; i++) {
+    const requestId = conversation.pendingQuestionIds[i];
     const message = responseErrors.get(requestId);
     if (message) visibleResponseErrors.set(requestId, message);
   }
@@ -242,6 +248,8 @@ function WorkbenchSessionSurface({
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const accountModels = useAccountModelOptions();
+  const { data: providers } = useData(getProviderConfig, {});
+  const selectableHarnesses = providers === undefined ? null : selectableHarnessKinds(providers);
   const sdkClient = useWorkbenchSdkClient();
   const activeSessionId = sessions.activeId;
   // Announce observation of the focused session so the daemon replays buffered per-session state
@@ -552,7 +560,8 @@ function WorkbenchSessionSurface({
   const workspacesById = new Map<WorkspaceId, WorkspaceRecord>();
   let chatWorkspace: WorkspaceRecord | null = null;
   const projectWorkspaces: WorkspaceRecord[] = [];
-  for (const workspace of allWorkspaces) {
+  for (let i = 0, len = allWorkspaces.length; i < len; i++) {
+    const workspace = allWorkspaces[i];
     const kind = workspaceKind(workspace);
     if (kind === 'worktree') continue;
     workspacesById.set(workspace.workspaceId, workspace);
@@ -660,6 +669,7 @@ function WorkbenchSessionSurface({
       newSessionWorkspaceId={newSessionWorkspaceId}
       onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
       accountModels={accountModels}
+      selectableHarnesses={selectableHarnesses}
       agentCatalogs={agentCatalogs}
       newSessionPreferredEfforts={newSessionPreferredEfforts}
       newSessionPreferredBranches={newSessionPreferredBranches}

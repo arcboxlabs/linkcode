@@ -74,6 +74,14 @@ export function SettingsLayout(): React.ReactNode {
           active: isActive(pathname, 'notifications'),
           render: <Link to="/settings/notifications" />,
         },
+        {
+          key: 'billing',
+          icon: <CreditCardIcon className="size-4" />,
+          label: t('tabs.billing'),
+          keywords: searchKeywords.billing,
+          active: isActive(pathname, 'billing'),
+          render: <Link to="/settings/billing" />,
+        },
       ],
     },
     {
@@ -95,14 +103,6 @@ export function SettingsLayout(): React.ReactNode {
           keywords: searchKeywords.providers,
           active: isActive(pathname, 'providers'),
           render: <Link to="/settings/providers" />,
-        },
-        {
-          key: 'billing',
-          icon: <CreditCardIcon className="size-4" />,
-          label: t('tabs.billing'),
-          keywords: searchKeywords.billing,
-          active: isActive(pathname, 'billing'),
-          render: <Link to="/settings/billing" />,
         },
         {
           key: 'plugins',
@@ -138,7 +138,7 @@ export function SettingsLayout(): React.ReactNode {
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
   const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
 
   return (

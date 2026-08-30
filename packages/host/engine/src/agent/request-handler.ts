@@ -1,5 +1,5 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
-import { modelListSource } from '@linkcode/providers';
+import { endpointServiceById } from '@linkcode/providers';
 import type { AccountSecret, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
@@ -10,7 +10,7 @@ import type { WireResponder } from '../wire/responder';
 import type { CustomMcpServerService } from './custom-mcp-service';
 import type { AgentLoginService } from './login-service';
 import type { ModelProbe } from './model-probe';
-import { probeEndpointModels } from './model-probe';
+import { probeServiceModels } from './model-probe';
 import type { ProviderConfigStore } from './provider-config';
 import { applyProviderDefaults } from './provider-config';
 import type { AgentRuntimeService } from './runtime-service';
@@ -40,7 +40,7 @@ export class AgentRequestHandler {
     private readonly logins: AgentLoginService | undefined,
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
-    private readonly probeModels: ModelProbe = probeEndpointModels,
+    private readonly probeModels: ModelProbe = probeServiceModels,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
@@ -141,12 +141,12 @@ export class AgentRequestHandler {
           payload.clientReqId,
           Effect.tryPromise({
             try: async () => {
-              const source = modelListSource(payload.service);
-              if (!source) {
+              const service = endpointServiceById(payload.service);
+              if (!service) {
                 throw new Error(`${payload.service} serves no model list`);
               }
               const models = await this.probeModels(
-                source,
+                service,
                 this.probeSecret(payload.service, payload.credential),
               );
               this.transport.send(

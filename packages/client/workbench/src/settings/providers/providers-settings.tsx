@@ -10,6 +10,8 @@ import {
   DialogTitle,
 } from 'coss-ui/components/dialog';
 import { Skeleton } from 'coss-ui/components/skeleton';
+import { toastManager } from 'coss-ui/components/toast';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimes } from '../../agent-runtime/hooks';
 import { useAgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
@@ -78,6 +80,28 @@ export function ProvidersSettingsPanel({
     void applyProviders(withAccountEnabled(providers ?? {}, kind, selected.id, enabled, pool));
   };
 
+  const handleReorder = async (orderedIds: string[]): Promise<void> => {
+    const reordered = orderedIds.flatMap((id) => {
+      const account = accountsById.get(id);
+      return account ? [account] : [];
+    });
+    if (reordered.length !== pool.length) return;
+
+    await mutateAccounts(reordered, { revalidate: false });
+    try {
+      await saveAccounts.trigger({ accounts: reordered });
+    } catch (error) {
+      await mutateAccounts(pool, { revalidate: false });
+      toastManager.add({
+        type: 'error',
+        title: t('reorderFailed'),
+        description: extractErrorMessage(error, false),
+      });
+      return;
+    }
+    await mutateAccounts();
+  };
+
   // Every account joins the pool the same way. A subscription used to bind itself to its agent on
   // the way in; with no default to claim, adding one is adding one.
   const handleAdd = async (account: Account): Promise<void> => {
@@ -123,7 +147,11 @@ export function ProvidersSettingsPanel({
       <AccountList
         {...accountList}
         loading={accountsLoading}
+        reorderDisabled={busy}
         onSelect={select}
+        onReorder={(orderedIds) => {
+          void handleReorder(orderedIds);
+        }}
         onAdd={startAdd}
         onUseLinkCodeGateway={
           linkCodeGateway ? () => pickService(LINKCODE_GATEWAY_SERVICE_ID) : undefined

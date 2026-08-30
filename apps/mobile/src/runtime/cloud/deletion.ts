@@ -6,17 +6,11 @@ import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 import {
   IdpTokenAcquisitionError,
+  isAppleAuthenticationAvailable,
   isAppleSignInCancel,
   reauthenticateWithApple,
   signOutOfIdp,
 } from './idp';
-
-/**
- * CODE-292: permanent, in-app account deletion. `deleteAccount` is the whole
- * flow — reauthentication, the single `DELETE /account` request, and local
- * teardown; `runAccountDeletionTeardown` is exported separately only so a
- * retry (best-effort, on next launch/foreground) can re-run just that part.
- */
 
 export type AccountDeletionRevocation = 'completed' | 'failed' | 'not_applicable';
 
@@ -26,6 +20,8 @@ export type AccountDeletionOutcome =
   /** Reauthentication itself failed (wrong account, cancelled, expired) — the
    * account is untouched; PONR was never reached. */
   | { kind: 'reauthentication-failed' }
+  /** The server requires Apple re-authentication, which this device cannot perform. */
+  | { kind: 'apple-device-required' }
   /** The delete request failed before any state changed (network error, or
    * a 409 pre-check) — the account is untouched. `code` is the server's biz
    * code when available (e.g. `ACCOUNT_DELETION_SOLE_ORGANIZATION_OWNER`),
@@ -48,6 +44,7 @@ type AccountDeletionFailureStage =
   | 'idp-token'
   | 'browser-sign-in'
   | 'cloud-identity'
+  | 'response'
   | 'transport';
 
 function reportFailure(stage: AccountDeletionFailureStage, error: unknown): void {
@@ -83,6 +80,9 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
 
   if (method === 'native') {
     try {
+      if (!(await isAppleAuthenticationAvailable())) {
+        return { kind: 'apple-device-required' };
+      }
       const reauth = await reauthenticateWithApple();
       idpToken = reauth.idpToken;
       appleAuthorizationCode = reauth.authorizationCode;
@@ -97,10 +97,7 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
     }
   } else {
     try {
-      // No local proof to mint for this branch (D-19's accepted gap) — the
-      // request below instead relies on the server's session-freshness
-      // check, so re-running the existing browser sign-in flow (which mints
-      // a fresh session) *is* this branch's re-authentication.
+      // Browser re-authentication relies on the server's session-freshness check.
       await reauthenticateToCloud();
     } catch (error) {
       reportFailure('browser-sign-in', error);
@@ -119,11 +116,7 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
     });
   } catch (error) {
     reportFailure('transport', error);
-    // No response ever arrived — never report acceptance on a guess (D-23,
-    // reversing the original §3.4 "treat as pending" call). Retrying is
-    // always safe: the server's deletion CAS is idempotent, so if this
-    // request actually landed, retrying just observes `completed` without
-    // repeating any side effect.
+    // Without an HTTP response, never claim that the server accepted deletion.
     return { kind: 'failed' };
   }
 
@@ -132,9 +125,9 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
       reportFailure('cloud-identity', new Error('Cloud rejected account re-authentication'));
       return { kind: 'reauthentication-failed' };
     }
-    // Any other status (409 pre-check, or a pre-PONR 500): the design's
-    // contract is that only a pre-PONR failure returns an error status at
-    // all, so the account is untouched either way.
+    if (response.error.status >= 500) {
+      reportFailure('response', new Error(`account deletion failed (${response.error.status})`));
+    }
     return {
       kind: 'failed',
       code: typeof response.error.code === 'string' ? response.error.code : undefined,
@@ -143,8 +136,8 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
 
   const parsed = deletionResponseSchema.safeParse(response.data);
   if (!parsed.success) {
-    // The server accepted the request but the response shape is unreadable —
-    // ambiguous in the same way a network failure is: assume accepted.
+    reportFailure('response', parsed.error);
+    // A successful HTTP response proves acceptance even when its body is unreadable.
     return { kind: 'pending' };
   }
   if (parsed.data.status === 'pending') {
@@ -170,7 +163,8 @@ export async function runAccountDeletionTeardown(): Promise<void> {
     signOutOfIdp(),
     clearDeviceEnrollment(),
   ]);
-  for (const result of results) {
+  for (let index = 0, length = results.length; index < length; index += 1) {
+    const result = results[index];
     if (result.status === 'rejected') {
       Sentry.captureException(result.reason);
     }
@@ -182,15 +176,11 @@ export async function runAccountDeletionTeardown(): Promise<void> {
   }
 }
 
-/** Removes every tunnel-derived host profile — account-scoped, so it can't
- * outlive the account (design.md §3.5). Direct/LAN profiles, which name a
- * URL rather than an account-issued host id, are left alone. Selected-host
- * fallback and connection disposal are already handled by existing reactive
- * code (`useSelectedHost`, `HostConnectionScope`) once these rows disappear —
- * this function must not re-implement either. */
+/** Removes account-scoped tunnel profiles. Reactive consumers handle connection disposal. */
 function removeTunnelHosts(): void {
   const { hosts, removeHost } = useHostRegistryStore.getState();
-  for (const host of hosts) {
+  for (let index = 0, length = hosts.length; index < length; index += 1) {
+    const host = hosts[index];
     if ('tunnelHostId' in host) removeHost(host.id);
   }
 }

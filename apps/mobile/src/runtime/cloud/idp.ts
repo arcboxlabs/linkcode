@@ -29,9 +29,8 @@ const idpAuthClient = createAuthClient({
 interface AppleNativeAuthentication {
   /** A fresh, short-lived IdP JWT (`GET /api/auth/token`) naming this account's central identity. */
   idpToken: string;
-  /** Apple's single-use, 5-minute authorization code from this same authentication — the
-   * account-deletion flow's only use for it (CODE-292 D-7). */
-  authorizationCode: string;
+  /** Apple's single-use authorization code. Only account deletion requires it. */
+  authorizationCode: string | null;
 }
 
 export class IdpTokenAcquisitionError extends Error {
@@ -64,10 +63,6 @@ async function authenticateWithAppleNatively(): Promise<AppleNativeAuthenticatio
   if (!credential.identityToken) {
     throw new Error('Apple sign-in returned no identity token');
   }
-  if (!credential.authorizationCode) {
-    throw new Error('Apple sign-in returned no authorization code');
-  }
-
   // Apple only discloses the name on the very first authorization — forward
   // it so the IdP profile starts populated instead of empty.
   const { givenName, familyName } = credential.fullName ?? {};
@@ -117,17 +112,27 @@ export async function signInWithApple(): Promise<void> {
 }
 
 /**
- * Account-deletion re-authentication for Apple-signed-in accounts (CODE-292
- * D-5/D-19): re-proves presence and returns both the fresh IdP JWT (identity
- * proof) and the fresh `authorizationCode` (Apple revocation credential) —
- * never touching the cloud session, which the delete request itself replaces.
+ * Account deletion needs both identity proof and Apple's revocation credential.
  */
-export const reauthenticateWithApple = authenticateWithAppleNatively;
+export async function reauthenticateWithApple(): Promise<{
+  idpToken: string;
+  authorizationCode: string;
+}> {
+  const authentication = await authenticateWithAppleNatively();
+  if (!authentication.authorizationCode) {
+    throw new Error('Apple sign-in returned no authorization code');
+  }
+  return { ...authentication, authorizationCode: authentication.authorizationCode };
+}
+
+export async function isAppleAuthenticationAvailable(): Promise<boolean> {
+  return AppleAuthentication.isAvailableAsync();
+}
 
 /**
  * Clears the IdP's own SecureStore session (`arcbox-idp` prefix) — never
- * touched by `signOutOfCloud()`, which only knows about the cloud session
- * (CODE-292 §3.5). Best-effort: a failure here doesn't roll back anything.
+ * touched by `signOutOfCloud()`, which only knows about the cloud session.
+ * Best-effort: a failure here does not roll back an accepted deletion.
  */
 export async function signOutOfIdp(): Promise<void> {
   await idpAuthClient.signOut();

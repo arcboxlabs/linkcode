@@ -122,7 +122,9 @@ describe('classification', () => {
       'unsupported-contract': 'parse_failure',
       'unsupported-schema': 'parse_failure',
     };
-    for (const [code, failureType] of Object.entries(expected)) {
+    const expectedEntries = Object.entries(expected);
+    for (let i = 0, len = expectedEntries.length; i < len; i++) {
+      const [code, failureType] = expectedEntries[i];
       expect(configTelemetryFailureType(code as ConfigErrorCode)).toBe(failureType);
     }
   });
@@ -238,7 +240,9 @@ describe('ConfigTelemetryReporter', () => {
   });
 
   it('dequeues on 202 duplicate replay and terminal 400/409 rejections without retrying', async () => {
-    for (const outcome of ['accepted', 'rejected'] as const) {
+    const outcomes = ['accepted', 'rejected'] as const;
+    for (let i = 0, len = outcomes.length; i < len; i++) {
+      const outcome = outcomes[i];
       const sent: ConfigTelemetryRequest[] = [];
       const reporter = makeReporter({
         send(request) {
@@ -379,7 +383,8 @@ describe('ConfigTelemetryReporter', () => {
       { ...valid, rollout: { channel: 'canary', email: 'user@example.com' } },
       { ...valid, clientEventId: 'not-a-uuid' },
     ];
-    for (const event of tampered) {
+    for (let i = 0, len = tampered.length; i < len; i++) {
+      const event = tampered[i];
       storage.values.set(key, JSON.stringify({ version: 1, events: [event] }));
       // eslint-disable-next-line no-await-in-loop -- each corrupted queue is checked in isolation
       await expect(probe.snapshotQueue()).resolves.toEqual([]);
@@ -412,7 +417,8 @@ describe('ConfigTelemetryReporter', () => {
     ];
     const storage = new MemoryStorage();
     const probe = makeReporter({ storage });
-    for (const event of tampered) {
+    for (let i = 0, len = tampered.length; i < len; i++) {
+      const event = tampered[i];
       storage.values.set(key, JSON.stringify({ version: 1, events: [event] }));
       // eslint-disable-next-line no-await-in-loop -- each corrupted queue is checked in isolation
       await expect(probe.snapshotQueue()).resolves.toEqual([]);

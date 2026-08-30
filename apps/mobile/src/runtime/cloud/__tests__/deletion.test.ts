@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
     reauthenticateToCloud: vi.fn(() => Promise.resolve()),
     reauthenticateWithApple: vi.fn(),
+    isAppleAuthenticationAvailable: vi.fn(() => Promise.resolve(true)),
     // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
     signOutOfIdp: vi.fn(() => Promise.resolve()),
     // eslint-disable-next-line sukka/prefer-foxts-noop -- see above
@@ -50,6 +51,7 @@ vi.mock('../account', () => ({
 
 vi.mock('../idp', () => ({
   IdpTokenAcquisitionError: mocks.IdpTokenAcquisitionError,
+  isAppleAuthenticationAvailable: mocks.isAppleAuthenticationAvailable,
   isAppleSignInCancel: (error: unknown) =>
     typeof error === 'object' &&
     error !== null &&
@@ -73,6 +75,7 @@ import { deleteAccount, runAccountDeletionTeardown } from '../deletion';
 
 beforeEach(() => {
   mocks.fetchRequirements.mockResolvedValue({ data: { method: 'browser' }, error: null });
+  mocks.isAppleAuthenticationAvailable.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -117,6 +120,18 @@ describe('deleteAccount', () => {
         body: { idpToken: 'jwt-1', appleAuthorizationCode: 'apple-code-1' },
       }),
     );
+  });
+
+  it('does not report or delete when native re-authentication is unavailable', async () => {
+    mocks.fetchRequirements.mockResolvedValueOnce({ data: { method: 'native' }, error: null });
+    mocks.isAppleAuthenticationAvailable.mockResolvedValueOnce(false);
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'apple-device-required' });
+    expect(mocks.reauthenticateWithApple).not.toHaveBeenCalled();
+    expect(mocks.fetchDelete).not.toHaveBeenCalled();
+    expect(mocks.captureException).not.toHaveBeenCalled();
   });
 
   it('on the non-Apple branch, re-runs the browser sign-in and sends the request without an idpToken', async () => {
@@ -202,6 +217,19 @@ describe('deleteAccount', () => {
       kind: 'failed',
       code: 'ACCOUNT_DELETION_SOLE_ORGANIZATION_OWNER',
     });
+    expect(mocks.captureException).not.toHaveBeenCalled();
+  });
+
+  it('reports a server failure from the deletion endpoint', async () => {
+    mocks.fetchDelete.mockResolvedValueOnce({ data: null, error: { status: 503 } });
+
+    const result = await deleteAccount();
+
+    expect(result).toEqual({ kind: 'failed' });
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { account_deletion_stage: 'response' } }),
+    );
   });
 
   it('treats a pending server response as pending, carrying the reference through', async () => {
@@ -229,6 +257,10 @@ describe('deleteAccount', () => {
     const result = await deleteAccount();
 
     expect(result).toEqual({ kind: 'pending' });
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { account_deletion_stage: 'response' } }),
+    );
   });
 });
 

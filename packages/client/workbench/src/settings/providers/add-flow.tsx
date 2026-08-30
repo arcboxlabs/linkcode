@@ -9,7 +9,13 @@ import {
   serviceProtocols,
   templatePlaceholders,
 } from '@linkcode/providers';
-import type { Account, AccountModel, AccountProtocol, AgentRuntimes } from '@linkcode/schema';
+import type {
+  Account,
+  AccountModel,
+  AccountProtocol,
+  AccountSecret,
+  AgentRuntimes,
+} from '@linkcode/schema';
 import { AccountModelSchema } from '@linkcode/schema';
 import { AgentOnboardingCard, ServiceIcon } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
@@ -28,7 +34,7 @@ import { ChevronLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { Control, FieldValues, Path } from 'react-hook-form';
 import { Controller, useForm } from 'react-hook-form';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import { z } from 'zod';
 import type { AgentRuntimeOnboarding } from '../../agent-runtime/onboarding';
 import type { ModelSources } from './model-selection';
@@ -39,7 +45,10 @@ const GROUPS: ServiceGroup[] = ['subscription', 'direct', 'gateway', 'custom'];
 const SERVICES_BY_GROUP = new Map<ServiceGroup, ServiceDescriptor[]>(
   GROUPS.map((group) => [group, []]),
 );
-for (const service of SERVICE_CATALOG) SERVICES_BY_GROUP.get(service.group)?.push(service);
+for (let i = 0, len = SERVICE_CATALOG.length; i < len; i++) {
+  const service = SERVICE_CATALOG[i];
+  SERVICES_BY_GROUP.get(service.group)?.push(service);
+}
 
 /** Account constructors live at module scope: `Date.now` may not run in a component body. */
 function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdAt'> {
@@ -49,13 +58,13 @@ function newAccountBase(label: string): Pick<Account, 'id' | 'label' | 'createdA
 function oauthAccount(
   service: Extract<ServiceDescriptor, { kind: 'oauth' }>,
   label: string,
-  models: AccountModel[] = [],
+  models: AccountModel[],
 ): Account {
   return {
     ...newAccountBase(label),
     service: service.id,
     credential: { type: 'oauth', agent: service.agent },
-    ...(models.length > 0 && { models }),
+    models,
   };
 }
 
@@ -63,7 +72,9 @@ function oauthAccount(
  * its own endpoint from those, so no protocol is chosen here. */
 function catalogAccount(service: EndpointService, draft: CatalogDraft): Account {
   const trimmed: Record<string, string> = {};
-  for (const key of servicePlaceholders(service)) {
+  const placeholderKeys = servicePlaceholders(service);
+  for (let i = 0, len = placeholderKeys.length; i < len; i++) {
+    const key = placeholderKeys[i];
     const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
     trimmed[key] = value.trim();
   }
@@ -75,15 +86,21 @@ function catalogAccount(service: EndpointService, draft: CatalogDraft): Account 
         ? { type: 'auth-token', token: draft.secret }
         : { type: 'api-key', key: draft.secret },
     ...(!isObjectEmpty(trimmed) && { endpointParams: trimmed }),
-    ...(draft.models.length > 0 && { models: draft.models }),
+    models: draft.models,
   };
 }
 
 /** Placeholders across every variant: one secret covers them all, so the form asks once. */
 function servicePlaceholders(service: EndpointService): string[] {
   const keys = new Set<string>();
-  for (const variant of Object.values(service.variants)) {
-    for (const key of templatePlaceholders(variant.baseUrl)) keys.add(key);
+  const variants = Object.values(service.variants);
+  for (let i = 0, len = variants.length; i < len; i++) {
+    const variant = variants[i];
+    const placeholders = templatePlaceholders(variant.baseUrl);
+    for (let j = 0, placeholderCount = placeholders.length; j < placeholderCount; j++) {
+      const key = placeholders[j];
+      keys.add(key);
+    }
   }
   return [...keys];
 }
@@ -131,11 +148,17 @@ export function ServiceCatalogView({
   linkCodeGatewayAvailable?: boolean;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
+  const locale = useLocale();
+  // tracking-widest (0.1em) inflates Latin glyphs beside CJK, making e.g. "API" in
+  // "API 直连" read as full-width. CJK glyphs carry natural sidebearings, so skip it.
+  const groupLabelTracking = locale.startsWith('zh') ? '' : ' tracking-widest';
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
       {GROUPS.map((group) => (
         <div key={group} className="flex flex-col gap-2">
-          <span className="font-semibold text-2xs text-muted-foreground uppercase tracking-widest">
+          <span
+            className={`font-semibold text-2xs text-muted-foreground uppercase${groupLabelTracking}`}
+          >
             {t(`group.${group}`)}
           </span>
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
@@ -214,6 +237,7 @@ export function AddAccountForm({
         <LinkCodeGatewayForm
           service={service}
           access={linkCodeGateway}
+          sources={sources}
           busy={busy}
           onSubmit={onSubmit}
         />
@@ -239,11 +263,13 @@ type LinkCodeGatewayDraft = z.infer<typeof LinkCodeGatewayDraftSchema>;
 function LinkCodeGatewayForm({
   service,
   access,
+  sources,
   busy,
   onSubmit,
 }: {
   service: Extract<ServiceDescriptor, { kind: 'endpoint' }>;
   access: LinkCodeGatewayAccess | undefined;
+  sources: ModelSources | undefined;
   busy: boolean;
   onSubmit: (account: Account) => void;
 }): React.ReactNode {
@@ -257,6 +283,7 @@ function LinkCodeGatewayForm({
     resolver: zodResolver(LinkCodeGatewayDraftSchema),
     defaultValues: { label: t(`serviceName.${service.id}`) },
   });
+  const [createdKey, setCreatedKey] = useState<string | undefined>(undefined);
 
   if (!access?.signedIn) {
     return (
@@ -281,11 +308,17 @@ function LinkCodeGatewayForm({
       className="flex flex-col gap-3"
       onSubmit={handleSubmit(async ({ label }) => {
         try {
-          const key = await access.createKey(label);
+          if (!sources) throw new Error(t('models.fetchFailed'));
+          const key = createdKey ?? (await access.createKey(label));
+          setCreatedKey(key);
+          const credential: AccountSecret = { type: 'auth-token', token: key };
+          const models = await sources.probeInline(service.id, credential);
+          if (models.length === 0) throw new Error(t('models.required'));
           onSubmit({
             ...newAccountBase(label),
             service: service.id,
-            credential: { type: 'auth-token', token: key },
+            credential,
+            models,
           });
         } catch (error) {
           setError('root', {
@@ -305,7 +338,7 @@ function LinkCodeGatewayForm({
         </p>
       ) : null}
       <div className="flex justify-end pt-1">
-        <Button type="submit" size="sm" disabled={busy || isSubmitting}>
+        <Button type="submit" size="sm" disabled={busy || isSubmitting || !sources}>
           {t('linkCodeUseGateway')}
         </Button>
       </div>
@@ -444,6 +477,7 @@ function OauthCreateForm({
   const cue = onboarding.cues[service.agent] ?? { state: 'needs-login', phase: 'idle' as const };
   const loginInProgress =
     cue.state === 'needs-login' && (cue.phase === 'opening' || cue.phase === 'awaiting-code');
+  const hasModels = models.length > 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -461,6 +495,7 @@ function OauthCreateForm({
         disabled={busy || loginInProgress}
         onChange={setModels}
         onFetch={fetchModels}
+        required
         selected={models}
       />
       {loggedIn ? (
@@ -474,7 +509,7 @@ function OauthCreateForm({
             <Button
               type="button"
               size="sm"
-              disabled={busy || label.trim() === ''}
+              disabled={busy || label.trim() === '' || !hasModels}
               onClick={() => onSubmit(oauthAccount(service, label, models))}
             >
               {t('form.submit')}
@@ -488,7 +523,7 @@ function OauthCreateForm({
           onDownload={onboarding.download}
           onContinueUnverified={onboarding.acknowledgeUnverified}
           onLogin={
-            busy || label.trim() === ''
+            !hasModels || busy || label.trim() === ''
               ? undefined
               : (kind) => {
                   onboarding.login(kind, () => onSubmit(oauthAccount(service, label, models)));
@@ -506,13 +541,15 @@ const CatalogDraftSchema = z.object({
   label: z.string().min(1),
   secret: z.string().min(1),
   placeholders: z.record(z.string(), z.string()),
-  models: z.array(AccountModelSchema),
+  models: z.array(AccountModelSchema).min(1),
 });
 type CatalogDraft = z.infer<typeof CatalogDraftSchema>;
 
 function catalogDraftSchema(service: EndpointService): typeof CatalogDraftSchema {
   return CatalogDraftSchema.superRefine((draft, ctx) => {
-    for (const key of servicePlaceholders(service)) {
+    const placeholderKeys = servicePlaceholders(service);
+    for (let i = 0, len = placeholderKeys.length; i < len; i++) {
+      const key = placeholderKeys[i];
       const value = Object.hasOwn(draft.placeholders, key) ? draft.placeholders[key] : '';
       if (!value.trim()) {
         ctx.addIssue({ code: 'custom', path: ['placeholders', key], message: 'required' });
@@ -606,6 +643,7 @@ function CatalogAccountForm({
             disabled={busy}
             onChange={field.onChange}
             onFetch={fetchModels}
+            required
             selected={field.value}
           />
         )}
@@ -630,6 +668,9 @@ const CustomDraftSchema = z.object({
   protocol: z.string(),
   models: z.array(AccountModelSchema),
 });
+const CustomCreateDraftSchema = CustomDraftSchema.extend({
+  models: z.array(AccountModelSchema).min(1),
+});
 type CustomDraft = z.infer<typeof CustomDraftSchema>;
 
 /** The full free-form account form (any endpoint, any protocol) — no catalog seeding. */
@@ -651,7 +692,7 @@ function CustomAccountForm({
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<CustomDraft>({
-    resolver: zodResolver(CustomDraftSchema),
+    resolver: zodResolver(account === undefined ? CustomCreateDraftSchema : CustomDraftSchema),
     defaultValues: {
       label: account?.label ?? '',
       type:
@@ -747,6 +788,7 @@ function CustomAccountForm({
             disabled={busy}
             onChange={field.onChange}
             onFetch={fetchModels}
+            required={account === undefined}
             selected={field.value}
           />
         )}

@@ -98,6 +98,31 @@ describe('agent wire variants', () => {
     ).toBe(false);
   });
 
+  it('preserves image attachment names through the wire schema', () => {
+    const parsed = WireMessageSchema.parse({
+      v: WIRE_PROTOCOL_VERSION,
+      id: 'message-1',
+      ts: 0,
+      payload: {
+        kind: 'agent.input',
+        clientReqId: 'request-1',
+        sessionId: 'session-1',
+        input: {
+          type: 'prompt',
+          content: [
+            { type: 'image', data: 'cG5n', mimeType: 'image/png', name: 'architecture.png' },
+          ],
+        },
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      payload: {
+        input: { content: [{ name: 'architecture.png' }] },
+      },
+    });
+  });
+
   it('requires identity on user messages', () => {
     expect(
       WireMessageSchema.safeParse({

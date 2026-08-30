@@ -28,6 +28,10 @@ export function DeleteAccountSection(): React.ReactNode {
         Alert.alert(t('deleteReauthenticationFailed'));
         return;
       }
+      if (outcome.kind === 'apple-device-required') {
+        Alert.alert(t('deleteAppleDeviceRequired'));
+        return;
+      }
       if (outcome.kind === 'failed') {
         Alert.alert(failureMessage(outcome.code));
         return;
@@ -40,9 +44,7 @@ export function DeleteAccountSection(): React.ReactNode {
         Alert.alert(t('deletePending'));
         return;
       }
-      // Success never says "contact support" — a failed revocation is still
-      // a successful deletion, just with a manual Apple follow-up
-      // (design.md §3.4, TN3194).
+      // A failed revocation still leaves deletion successful and needs manual Apple follow-up.
       if (outcome.authorizationRevocation === 'failed') {
         Alert.alert(t('deleteRevocationFailedTitle'), t('deleteRevocationFailedMessage'));
       } else {
@@ -60,9 +62,6 @@ export function DeleteAccountSection(): React.ReactNode {
         text: t('deleteConfirm'),
         style: 'destructive',
         onPress() {
-          // Deliberately no retry affordance — the server is idempotent on
-          // replay, but a client-side retry button would invite repeating
-          // an operation that may have already fully succeeded.
           void run();
         },
       },

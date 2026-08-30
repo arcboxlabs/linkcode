@@ -229,10 +229,12 @@ describe('PluginService', () => {
     });
     const service = new PluginService(factory);
 
-    for (const mutation of [
+    const mutations = [
       service.installPlugin('claude-code', 'any'),
       service.uninstallPlugin('claude-code', 'any'),
-    ]) {
+    ];
+    for (let i = 0, len = mutations.length; i < len; i++) {
+      const mutation = mutations[i];
       expect(await Effect.runPromise(Effect.flip(mutation))).toMatchObject({
         _tag: 'RequestError',
         code: 'unsupported',

@@ -9,8 +9,12 @@ import { WebSocket, WebSocketServer } from 'ws';
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterAll(async () => {
-  // eslint-disable-next-line no-await-in-loop -- teardown must run one at a time in LIFO order
-  for (const cleanup of cleanups.reverse()) await cleanup();
+  const pending = cleanups.reverse();
+  for (let i = 0, len = pending.length; i < len; i++) {
+    const cleanup = pending[i];
+    // eslint-disable-next-line no-await-in-loop -- teardown must run one at a time in LIFO order
+    await cleanup();
+  }
 });
 
 /** An upstream dev-server stand-in: echoes the request path and Host, and echoes WS frames. */

@@ -61,6 +61,21 @@ export async function clearDeviceEnrollment(): Promise<void> {
   await SecureStore.deleteItemAsync(ENROLLMENT_KEY);
 }
 
+export async function registerDevicePushToken(expoPushToken: string): Promise<void> {
+  const { error } = await cloudAuthClient.$fetch<unknown>(`${CLOUD_URL}/devices/push-token`, {
+    method: 'PUT',
+    body: { expoPushToken },
+  });
+  if (error) throw new Error(`push token registration failed (${error.status})`);
+}
+
+export async function revokeDevicePushToken(): Promise<void> {
+  const { error } = await cloudAuthClient.$fetch<unknown>(`${CLOUD_URL}/devices/push-token`, {
+    method: 'DELETE',
+  });
+  if (error) throw new Error(`push token revocation failed (${error.status})`);
+}
+
 /** Client view of cloud device rows; timestamps arrive as ISO strings over JSON. */
 export const CloudDeviceSchema = z.object({
   id: z.string().min(1),
