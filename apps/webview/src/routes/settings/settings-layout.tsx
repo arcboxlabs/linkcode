@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
-const SETTINGS_ROUTES: Record<string, string> = {
+const SETTINGS_ROUTES = {
   general: '/settings',
   appearance: '/settings/appearance',
   terminal: '/settings/terminal',
@@ -28,9 +28,12 @@ const SETTINGS_ROUTES: Record<string, string> = {
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
+/** The routes table is the one place the tab-key set is written down. */
+type SettingsTabKey = keyof typeof SETTINGS_ROUTES;
 // One table for the sidebar items and the page header — a tab whose message key differs
-// from its route key (messaging → imChannel) stays consistent in both by construction.
-const SETTINGS_TAB_LABEL_KEYS: Record<string, string> = {
+// from its route key (messaging → imChannel) stays consistent in both by construction,
+// and the `SettingsTabKey` bound makes drift against the routes a typecheck error.
+const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTabKey, string> = {
   general: 'tabs.general',
   appearance: 'tabs.appearance',
   terminal: 'tabs.terminal',
@@ -44,8 +47,11 @@ const SETTINGS_TAB_LABEL_KEYS: Record<string, string> = {
 };
 const RE_TRAILING_SLASH = /\/$/;
 // Inverted once at module scope: the active tab is a single O(1) lookup per navigation.
+// Object.entries widens keys to string, so restore the key type for typed lookups below.
 const SETTINGS_TAB_BY_PATH = new Map(
-  Object.entries(SETTINGS_ROUTES).map(([key, route]) => [route, key]),
+  (Object.entries(SETTINGS_ROUTES) as Array<[SettingsTabKey, string]>).map(
+    ([key, route]) => [route, key] as const,
+  ),
 );
 
 export function SettingsLayout(): React.ReactNode {
@@ -171,7 +177,8 @@ export function SettingsLayout(): React.ReactNode {
             onSearchChange={setSearchQuery}
             onSearchSubmit={() => {
               const first = visibleGroups.flatMap((group) => group.items).at(0);
-              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key]);
+              // The shared nav type widens item keys to string; ours are authored from the table.
+              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key as SettingsTabKey]);
             }}
             searchEmptyLabel={t('searchNoResults')}
             groups={visibleGroups}
