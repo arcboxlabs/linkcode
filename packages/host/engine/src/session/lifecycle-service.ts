@@ -5,12 +5,14 @@ import type {
   AgentKind,
   ContentBlock,
   MessageId,
+  OperationId,
   RunId,
   SessionAutomation,
   SessionId,
   SessionRecord,
   StartOptions,
   TurnId,
+  TurnSubmitInput,
   WorkspaceId,
   WorkspaceRecord,
   WorktreeRecord,
@@ -18,8 +20,19 @@ import type {
 import { Effect, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
+import type {
+  ConversationTurnService,
+  PersistedTurnIntent,
+  TerminalOperation,
+} from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
-import { RequestError, toOperationFailure } from '../failure';
+import {
+  OperationError,
+  OperationTimeout,
+  RequestError,
+  toOperationFailure,
+  toRequestFailure,
+} from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
 import type { WorktreeService } from '../worktree/worktree-service';
 import type { HistoryService } from './history-service';
@@ -35,6 +48,33 @@ import type { ResolvedStartOptions, SessionStartOptionsResolver } from './start-
 
 type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
 
+/** A wedged provider launch or dispatch must fail the operation, never the session forever. */
+const TURN_SUBMIT_TIMEOUT_MS = 60_000;
+
+export interface TurnSubmitRequest {
+  readonly sessionId: SessionId;
+  readonly operationId: OperationId;
+  readonly input: TurnSubmitInput;
+  /** Absent = plain send onto the active leaf; `null` = new root lineage; a turn id = tip-continue
+   * or (once checkpoints exist) fork. */
+  readonly parentTurnId?: TurnId | null;
+  readonly expectedGraphRevision?: number;
+}
+
+/** Provider work a submit needs: none (live adapter continues), a cold resume, or a fresh session. */
+type TurnLaunch = 'continue' | 'resume' | 'fresh';
+
+function toAgentInput(input: TurnSubmitInput): AgentInput {
+  if (input.type !== 'prompt') return input;
+  // attachment_ref blocks are refused at admit until the attachment store lands.
+  return {
+    type: 'prompt',
+    content: input.blocks.flatMap((block) =>
+      block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
+    ),
+  };
+}
+
 export class SessionLifecycleService {
   readonly driver: SessionDriver;
   private readonly importSemaphores = new Map<string, Semaphore.Semaphore>();
@@ -49,6 +89,7 @@ export class SessionLifecycleService {
     private readonly startOptions: SessionStartOptionsResolver,
     private readonly workspaces: WorkspaceRegistry,
     private readonly worktrees: WorktreeService,
+    private readonly turns: ConversationTurnService,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -293,10 +334,229 @@ export class SessionLifecycleService {
     );
   }
 
-  /** Wake a cold session in place under the same LinkCode id. */
+  /**
+   * The `turn.submit` saga — idempotent by `operationId`, atomic from the client's view:
+   * replay → admit (short critical section) → persist intent (the durable commit point) →
+   * provider work + dispatch outside the semaphore under a hard timeout. Every post-persist
+   * outcome is committed-or-failed, never absent; the returned terminal operation is the reply.
+   */
+  submitTurn(request: TurnSubmitRequest): Effect.Effect<TerminalOperation, EngineFailure> {
+    const { sessions, turns } = this;
+    const admitSubmit = this.admitSubmit.bind(this);
+    const relaunchFresh = this.relaunchFresh.bind(this);
+    const resumeSession = this.resumeSession.bind(this);
+    return Effect.gen(function* () {
+      // Replay before any validation: a reply lost to a disconnect must not duplicate a sibling.
+      const existing = yield* turns.getOperation(request.operationId);
+      if (existing !== undefined) {
+        if (existing.state !== 'open') return existing;
+        return yield* Effect.fail(
+          new RequestError({ code: 'busy', message: 'The operation is still in flight' }),
+        );
+      }
+      const { intent, launch } = yield* admitSubmit(request);
+      const dispatch = Effect.gen(function* () {
+        if (launch === 'fresh') {
+          yield* relaunchFresh(request.sessionId, intent.turn.runId);
+        } else if (launch === 'resume') {
+          yield* resumeSession(undefined, request.sessionId, {
+            runId: intent.turn.runId,
+            baseTurnId: intent.turn.parentTurnId ?? undefined,
+          });
+        }
+        yield* sessions.sendInput(request.sessionId, toAgentInput(request.input), intent);
+      });
+      return yield* dispatch.pipe(
+        Effect.timeoutOrElse({
+          duration: TURN_SUBMIT_TIMEOUT_MS,
+          orElse: () =>
+            Effect.fail(
+              new OperationTimeout({
+                operation: 'turn.submit',
+                duration: TURN_SUBMIT_TIMEOUT_MS,
+                publicMessage: 'The provider did not accept the turn in time',
+              }),
+            ),
+        }),
+        Effect.matchEffect({
+          onSuccess: () =>
+            turns.getOperation(request.operationId).pipe(
+              Effect.flatMap((operation) =>
+                operation === undefined || operation.state === 'open'
+                  ? Effect.fail(
+                      new OperationError({
+                        subsystem: 'store',
+                        operation: 'turn.submit.commit',
+                        publicMessage: 'The dispatched turn was not committed',
+                        cause: undefined,
+                      }),
+                    )
+                  : Effect.succeed(operation),
+              ),
+            ),
+          // Any post-persist failure resolves the operation; a retry replays this stored error.
+          onFailure: (error) => turns.resolveFailed(intent, toRequestFailure(error)),
+        }),
+      );
+    });
+  }
+
+  /**
+   * Steps 1–2 of the submit saga under the per-session critical section: typed `busy` while a
+   * turn runs or another operation is open, parent/revision validation for explicit-parent
+   * submits, then the durable intent persist. At most one operation can be open per session and
+   * this section is serialized, so the revision check here is decisive.
+   */
+  private admitSubmit(
+    request: TurnSubmitRequest,
+  ): Effect.Effect<{ intent: PersistedTurnIntent; launch: TurnLaunch }, EngineFailure> {
+    return this.sessionSemaphore(request.sessionId).withPermit(
+      Effect.suspend(() => {
+        const record = this.records.get(request.sessionId);
+        if (!record) {
+          return Effect.fail(
+            new RequestError({
+              code: 'not_found',
+              message: `Unknown session: ${request.sessionId}`,
+            }),
+          );
+        }
+        if (this.sessions.isBusy(request.sessionId)) {
+          return Effect.fail(
+            new RequestError({ code: 'busy', message: `Session is busy: ${request.sessionId}` }),
+          );
+        }
+        if (
+          request.input.type === 'prompt' &&
+          request.input.blocks.some((block) => block.type === 'attachment_ref')
+        ) {
+          // Seam: attachment existence/readiness/capability validation lands with the store.
+          return Effect.fail(
+            new RequestError({
+              code: 'unsupported',
+              message: 'Prompt attachments are not supported yet',
+            }),
+          );
+        }
+        // Seam: the worktree co-leaseholder busy gate joins this critical section later.
+        const { sessions, turns } = this;
+        return Effect.gen(function* () {
+          if (yield* turns.hasOpenOperation(request.sessionId)) {
+            return yield* Effect.fail(
+              new RequestError({
+                code: 'busy',
+                message: 'Another operation is open on this session',
+              }),
+            );
+          }
+          let parentTurnId: TurnId | null;
+          let launch: TurnLaunch;
+          if (request.parentTurnId === undefined) {
+            // Plain send: no guards — targets the current active leaf under the busy rules alone.
+            parentTurnId = record.activeLeafTurnId ?? null;
+            launch = 'continue';
+          } else if (request.parentTurnId === null) {
+            if (request.expectedGraphRevision !== record.graphRevision) {
+              return yield* Effect.fail(
+                new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
+              );
+            }
+            parentTurnId = null;
+            launch = 'fresh';
+          } else {
+            const existingTurns = yield* turns.listTurns(request.sessionId);
+            const parent = existingTurns.find((turn) => turn.turnId === request.parentTurnId);
+            if (!parent) {
+              return yield* Effect.fail(
+                new RequestError({
+                  code: 'not_found',
+                  message: `Unknown turn: ${request.parentTurnId}`,
+                }),
+              );
+            }
+            if (parent.state !== 'completed') {
+              return yield* Effect.fail(
+                new RequestError({
+                  code: 'conflict',
+                  message: 'The parent turn has not completed',
+                }),
+              );
+            }
+            if (request.expectedGraphRevision !== record.graphRevision) {
+              return yield* Effect.fail(
+                new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
+              );
+            }
+            if (request.parentTurnId === record.activeLeafTurnId) {
+              // Tip-continue on the active lineage: the provider history head IS this leaf.
+              parentTurnId = request.parentTurnId;
+              launch = 'continue';
+            } else {
+              // Fork seam: per-turn provider checkpoints are not captured yet, so this read
+              // always finds none and every interior/edit fork is refused loudly.
+              const bindings = yield* turns.listBindings(request.parentTurnId);
+              return yield* Effect.fail(
+                new RequestError({
+                  code: 'unsupported',
+                  message:
+                    bindings.length === 0
+                      ? 'This turn has no provider checkpoint to fork from'
+                      : 'Forking from an earlier turn is not supported yet',
+                }),
+              );
+            }
+          }
+          const liveRunId =
+            launch === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
+          if (launch === 'continue' && liveRunId === undefined) launch = 'resume';
+          const intent = yield* turns.persistIntent({
+            sessionId: request.sessionId,
+            operationId: request.operationId,
+            runId: liveRunId ?? mintRunId(),
+            parentTurnId,
+            input: request.input,
+          });
+          return { intent, launch };
+        });
+      }),
+    );
+  }
+
+  /** Replace the session's adapter with a fresh provider session under the same LinkCode id —
+   * the `parentTurnId: null` (new root lineage) submit path. */
+  private relaunchFresh(sessionId: SessionId, runId: RunId): Effect.Effect<void, EngineFailure> {
+    return this.sessionSemaphore(sessionId).withPermit(
+      Effect.suspend(() => {
+        const record = this.records.get(sessionId);
+        if (!record) {
+          return Effect.fail(
+            new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+          );
+        }
+        const { sessions } = this;
+        const resolveForRecord = this.resolveForRecord.bind(this);
+        const launchRun = this.launchRun.bind(this);
+        return Effect.gen(function* () {
+          const resolved = yield* resolveForRecord(record);
+          yield* sessions.stopForReplacement(sessionId);
+          yield* launchRun(
+            undefined,
+            record,
+            resolved,
+            (adapter) => sessions.startAdapter(adapter, resolved.options),
+            { registerRecord: false, runId },
+          );
+        });
+      }),
+    );
+  }
+
+  /** Wake a cold session in place under the same LinkCode id. `run` lets a submit pre-mint the
+   * relaunch's run identity so the persisted turn references it. */
   resumeSession(
     replyTo: string | undefined,
     sessionId: SessionId,
+    run: { runId?: RunId; baseTurnId?: TurnId } = {},
   ): Effect.Effect<void, EngineFailure> {
     return this.sessionSemaphore(sessionId).withPermit(
       Effect.suspend(() => {
@@ -335,6 +595,7 @@ export class SessionLifecycleService {
           }
           yield* launchRun(replyTo, record, resolved, resumeStrategy(historyId, resolved.options), {
             historyId,
+            ...run,
           });
         });
       }),

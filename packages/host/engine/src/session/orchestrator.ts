@@ -84,6 +84,11 @@ export class SessionOrchestrator {
     return session !== undefined && (session.turnInputActive || session.status === 'running');
   }
 
+  /** The run the live adapter serves; `undefined` doubles as the cold-session signal. */
+  liveRunId(sessionId: SessionId): RunId | undefined {
+    return this.sessions.get(sessionId)?.runId;
+  }
+
   /** The running adapter's history capabilities — asked of the live instance rather than a fresh
    * one, so a caller about to tear it down learns what *this* session can do. */
   historyCapabilities(sessionId: SessionId): AgentHistoryCapabilities | undefined {

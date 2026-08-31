@@ -214,6 +214,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     startOptions,
     workspaces,
     worktrees,
+    conversationTurns,
   );
   const sessionRequests = new SessionRequestHandler(
     transport,
@@ -227,7 +228,11 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     sessionLifecycle,
     responder,
   );
-  const conversationRequests = new ConversationRequestHandler(conversationStore, responder);
+  const conversationRequests = new ConversationRequestHandler(
+    transport,
+    sessionLifecycle,
+    responder,
+  );
   const scheduler = new ScheduleService(
     transport,
     deps.scheduleStore ?? new InMemoryScheduleStore(),

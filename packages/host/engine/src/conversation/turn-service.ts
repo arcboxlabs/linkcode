@@ -8,6 +8,7 @@ import type {
   PromptBlock,
   PromptId,
   PromptRecord,
+  ProviderTurnBinding,
   RunId,
   SessionId,
   StopReason,
@@ -98,6 +99,10 @@ export class ConversationTurnService {
 
   listTurns(sessionId: SessionId): Effect.Effect<ConversationTurn[], OperationError> {
     return storeOperation('conversation.turns.list', () => this.store.listTurns(sessionId));
+  }
+
+  listBindings(turnId: TurnId): Effect.Effect<ProviderTurnBinding[], OperationError> {
+    return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
 
   /** The durable commit point: turn (`preparing`), prompt, and open operation persist in one
