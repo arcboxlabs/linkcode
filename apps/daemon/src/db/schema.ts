@@ -1,3 +1,4 @@
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   index,
   integer,
@@ -97,6 +98,97 @@ export const sessionResources = sqliteTable(
     index('session_resources_session_idx').on(table.sessionId),
     uniqueIndex('session_resources_locator_idx').on(table.sessionId, table.normalizedLocatorKey),
   ],
+);
+
+/**
+ * Conversation turn-tree tables. These mirror the `Conversation*` schemas from `@linkcode/schema`
+ * and are written ONLY by the conversation store's dedicated connection (../conversation-store.ts):
+ * the submit saga's transactions are multi-table, and atomicity across the per-store connections
+ * does not exist. Prompt content is user-authored and must never enter logs/telemetry.
+ */
+export const prompts = sqliteTable('prompts', {
+  promptId: text('prompt_id').primaryKey(),
+  /** JSON `PromptBlock[]` — references only, never bytes or absolute paths. */
+  blocksJson: text('blocks_json').notNull(),
+  /** JSON `AttachmentId[]`; ordered snapshot. `prompt_attachment_refs` is the derived GC index. */
+  contextAttachmentIdsJson: text('context_attachment_ids_json').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+/** Refcount edges for attachment GC: every attachment a prompt references, blocks and context. */
+export const promptAttachmentRefs = sqliteTable(
+  'prompt_attachment_refs',
+  {
+    promptId: text('prompt_id')
+      .notNull()
+      .references(() => prompts.promptId, { onDelete: 'cascade' }),
+    attachmentId: text('attachment_id').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.promptId, table.attachmentId] })],
+);
+
+export const conversationTurns = sqliteTable(
+  'conversation_turns',
+  {
+    turnId: text('turn_id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.sessionId, { onDelete: 'cascade' }),
+    /** null = child of the session root. Cascade keeps a subtree consistent under session delete. */
+    parentTurnId: text('parent_turn_id').references(
+      (): AnySQLiteColumn => conversationTurns.turnId,
+      {
+        onDelete: 'cascade',
+      },
+    ),
+    siblingOrdinal: integer('sibling_ordinal').notNull(),
+    inputType: text('input_type', { enum: ['prompt', 'command', 'shell-command'] }).notNull(),
+    /** No cascade: a referenced prompt must outlive the reference (shared across forks). */
+    promptId: text('prompt_id').references(() => prompts.promptId),
+    commandName: text('command_name'),
+    commandArguments: text('command_arguments'),
+    shellCommand: text('shell_command'),
+    runId: text('run_id').notNull(),
+    state: text('state', {
+      enum: ['preparing', 'dispatching', 'running', 'completed', 'failed', 'cancelled'],
+    }).notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('conversation_turns_session_idx').on(table.sessionId)],
+);
+
+/** One row per (turn, provider history); forks re-bind. `checkpoint` is adapter-opaque. */
+export const providerTurnBindings = sqliteTable(
+  'provider_turn_bindings',
+  {
+    turnId: text('turn_id')
+      .notNull()
+      .references(() => conversationTurns.turnId, { onDelete: 'cascade' }),
+    runId: text('run_id').notNull(),
+    historyId: text('history_id').notNull(),
+    checkpoint: text('checkpoint').notNull(),
+    capturedFrom: text('captured_from', { enum: ['live', 'replay'] }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.turnId, table.historyId] })],
+);
+
+/** Idempotency journal for conversation mutations; mirrors `ConversationOperation`. */
+export const conversationOperations = sqliteTable(
+  'conversation_operations',
+  {
+    operationId: text('operation_id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.sessionId, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    state: text('state', { enum: ['open', 'succeeded', 'failed'] }).notNull(),
+    turnId: text('turn_id'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    createdAt: integer('created_at').notNull(),
+    resolvedAt: integer('resolved_at'),
+  },
+  (table) => [index('conversation_operations_session_idx').on(table.sessionId)],
 );
 
 /**

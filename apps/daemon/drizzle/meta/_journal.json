@@ -78,6 +78,13 @@
       "when": 1788167878416,
       "tag": "0010_chilly_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788169743965,
+      "tag": "0011_flippant_bastion",
+      "breakpoints": true
     }
   ]
 }
