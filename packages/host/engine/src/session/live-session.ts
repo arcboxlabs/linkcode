@@ -11,6 +11,7 @@ import type {
   ContentBlock,
   EffortLevel,
   MessageId,
+  RunId,
   SessionId,
   SessionInfo,
 } from '@linkcode/schema';
@@ -58,6 +59,8 @@ export class LiveSession {
   constructor(
     readonly adapter: AgentAdapter,
     sessionId: SessionId,
+    /** The `SessionRun` this adapter serves — run bookkeeping addresses runs by this id. */
+    readonly runId: RunId,
     readonly scope: Scope.Closeable,
     readonly closed: Deferred.Deferred<void, OperationError>,
   ) {

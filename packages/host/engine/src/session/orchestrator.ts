@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   McpWarning,
   MessageId,
+  RunId,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -194,10 +195,11 @@ export class SessionOrchestrator {
     });
   }
 
-  /** Bind a record to a live adapter. The record's current run must already be last in `runs`. */
+  /** Bind a record to a live adapter serving `runId` — the run the caller just recorded. */
   startLive(
     replyTo: string | undefined,
     record: SessionRecord,
+    runId: RunId,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     mcpWarnings: readonly McpWarning[] = [],
     options: {
@@ -227,7 +229,7 @@ export class SessionOrchestrator {
         if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
-        const session = new LiveSession(adapter, sessionId, scope, closed);
+        const session = new LiveSession(adapter, sessionId, runId, scope, closed);
         const startupEvents: AgentEvent[] = [];
         let bufferEvents = rewindMessageId !== undefined;
         session.listen((event) => {
@@ -359,7 +361,7 @@ export class SessionOrchestrator {
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
               if (releaseSession) this.onStopped(sessionId);
-              this.records.sealCurrentRun(sessionId);
+              this.records.sealRun(sessionId, session.runId);
               return recordLiveSessions(this.sessions.size);
             }),
           ),
@@ -384,7 +386,7 @@ export class SessionOrchestrator {
         Effect.andThen(
           Effect.sync(() => {
             session.stopListening();
-            this.records.sealCurrentRun(sessionId);
+            this.records.sealRun(sessionId, session.runId);
           }),
         ),
         Effect.andThen(stopBestEffort(session.adapter)),

@@ -145,9 +145,11 @@ export class SessionRecordRegistry {
     );
   }
 
-  bindHistoryId(sessionId: SessionId, historyId: AgentHistoryId): void {
+  /** Bind a provider history to the run that reported it — by id, never "the newest row": a
+   * replacement adapter's late `session-ref` must not rebind whatever run launched after it. */
+  bindHistoryId(sessionId: SessionId, runId: RunId, historyId: AgentHistoryId): void {
     const record = this.records.get(sessionId);
-    const run = record?.runs.at(-1);
+    const run = record?.runs.find((candidate) => candidate.runId === runId);
     if (!record || !run || run.historyId === historyId) return;
     run.historyId = historyId;
     this.persist(record);
@@ -177,28 +179,37 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
-  sealCurrentRun(sessionId: SessionId): void {
+  /** Seal the run the ending adapter served — by id, so a stale adapter's death cannot stamp
+   * `endedAt` onto a replacement run that is still live. */
+  sealRun(sessionId: SessionId, runId: RunId): void {
     const record = this.records.get(sessionId);
-    const run = record?.runs.at(-1);
+    const run = record?.runs.find((candidate) => candidate.runId === runId);
     if (!record || !run || run.endedAt !== undefined) return;
     run.endedAt = Date.now();
     this.persist(record);
   }
 
+  /** Whether `runId` is the session's current (newest) run — the source-side gate that drops a
+   * replaced adapter's session-scoped events. */
+  isCurrentRun(sessionId: SessionId, runId: RunId): boolean {
+    return this.records.get(sessionId)?.runs.at(-1)?.runId === runId;
+  }
+
   /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
-   * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. */
-  beginRun(
-    sessionId: SessionId,
-    run: Omit<SessionRun, 'runId' | 'startedAt' | 'endedAt'> = {},
-  ): void {
+   * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. Returns
+   * the run's identity (caller-supplied or minted here) even when the record is gone, so a
+   * launch already in flight keeps an addressable run. */
+  beginRun(sessionId: SessionId, run: Omit<SessionRun, 'startedAt' | 'endedAt'> = {}): RunId {
+    const runId = run.runId ?? mintRunId();
     const record = this.records.get(sessionId);
-    if (!record) return;
-    record.runs.push({ runId: mintRunId(), startedAt: Date.now(), ...definedFields(run) });
+    if (!record) return runId;
+    record.runs.push({ startedAt: Date.now(), ...definedFields(run), runId });
     this.persist(record);
     // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
     // must revalidate. Nothing else announces a relaunch: it sends no `session.started`, and a
     // resumed run already carries the historyId that would otherwise notify via `bindHistoryId`.
     this.onChanged(sessionId, 'updated');
+    return runId;
   }
 
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {

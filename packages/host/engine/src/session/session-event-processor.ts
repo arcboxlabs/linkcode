@@ -10,6 +10,19 @@ import type { SessionRecordRegistry } from './session-record-registry';
 
 const SOURCE_TOOL_KINDS = new Set<ToolKind>(['fetch', 'read', 'search']);
 
+/** Events describing the SESSION rather than a turn — status and catalogs. A replaced adapter's
+ * stragglers of these kinds must not paint the session with a dead run's state; turn-scoped
+ * events keep their old attribution and pass through. */
+const SESSION_SCOPED_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'status',
+  'approval-policy-update',
+  'model-update',
+  'effort-update',
+  'available-commands-update',
+  'available-models-update',
+  'capabilities-update',
+]);
+
 /** Applies adapter events to live state, durable records, and wire projections. */
 export class SessionEventProcessor {
   constructor(
@@ -95,14 +108,20 @@ export class SessionEventProcessor {
     // Adapter callbacks are synchronous; contain failures to this session instead of throwing into
     // the SDK operation that emitted the event.
     try {
+      if (
+        SESSION_SCOPED_EVENT_TYPES.has(event.type) &&
+        !this.records.isCurrentRun(sessionId, session.runId)
+      ) {
+        return;
+      }
       this.broadcast(sessionId, session.apply(event));
       this.registerResources(sessionId, event);
       switch (event.type) {
         case 'status':
-          if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
+          if (event.status === 'stopped') this.records.sealRun(sessionId, session.runId);
           break;
         case 'session-ref':
-          this.records.bindHistoryId(sessionId, event.historyId);
+          this.records.bindHistoryId(sessionId, session.runId, event.historyId);
           break;
         case 'title-update':
           this.records.setProviderTitle(sessionId, event.title);

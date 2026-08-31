@@ -1,4 +1,4 @@
-import type { AgentInput, SessionId, StartOptions } from '@linkcode/schema';
+import type { AgentInput, RunId, SessionId, StartOptions } from '@linkcode/schema';
 import {
   ConversationOperationSchema,
   ConversationTurnSchema,
@@ -371,6 +371,7 @@ describe('engine session lifecycle', () => {
         const session = new LiveSession(
           new FakeAdapter(),
           'sess-interrupt' as SessionId,
+          'run-interrupt' as RunId,
           scope,
           closed,
         );

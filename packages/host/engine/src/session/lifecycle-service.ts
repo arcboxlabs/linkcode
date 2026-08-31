@@ -5,10 +5,12 @@ import type {
   AgentKind,
   ContentBlock,
   MessageId,
+  RunId,
   SessionAutomation,
   SessionId,
   SessionRecord,
   StartOptions,
+  TurnId,
   WorkspaceId,
   WorkspaceRecord,
   WorktreeRecord,
@@ -104,6 +106,7 @@ export class SessionLifecycleService {
         if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
       }
       const now = Date.now();
+      const runId = mintRunId();
       const record: SessionRecord = {
         sessionId,
         kind: resolved.kind,
@@ -112,12 +115,13 @@ export class SessionLifecycleService {
         createdVia: resolved.createdVia,
         createdAt: now,
         updatedAt: now,
-        runs: [{ runId: mintRunId(), startedAt: now, ...runOf(resolved, accountId) }],
+        runs: [{ runId, startedAt: now, ...runOf(resolved, accountId) }],
         graphRevision: 0,
       };
       yield* sessions.startLive(
         replyTo,
         record,
+        runId,
         (adapter) => sessions.startAdapter(adapter, resolved),
         warnings,
       );
@@ -183,6 +187,7 @@ export class SessionLifecycleService {
         if (worktree) yield* workspaceRegisterWorktree(workspaces, worktree, parent.workspaceId);
       }
       const now = Date.now();
+      const runId = mintRunId();
       const record: SessionRecord = {
         sessionId,
         kind,
@@ -190,14 +195,13 @@ export class SessionLifecycleService {
         origin: { type: 'imported', historyId, importedAt: now },
         createdAt: now,
         updatedAt: now,
-        runs: [
-          { runId: mintRunId(), historyId, startedAt: now, ...runOf(startOptions, accountId) },
-        ],
+        runs: [{ runId, historyId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
       };
       yield* sessions.startLive(
         replyTo,
         record,
+        runId,
         (adapter) => history.resume(adapter, historyId, startOptions),
         warnings,
       );
@@ -470,7 +474,8 @@ export class SessionLifecycleService {
   }
 
   /** Record the run this launch begins, then bind the record to a fresh adapter. Every relaunch of
-   * an existing record goes through here, so `runs` has exactly one writer. */
+   * an existing record goes through here, so `runs` has exactly one writer. `runId`/`baseTurnId`
+   * let a submit pre-mint the run its persisted turn references. */
   private launchRun(
     replyTo: string | undefined,
     record: SessionRecord,
@@ -478,20 +483,25 @@ export class SessionLifecycleService {
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     options: {
       historyId?: AgentHistoryId;
+      runId?: RunId;
+      baseTurnId?: TurnId;
       initialInput?: AgentInput;
       registerRecord?: boolean;
       rewindMessageId?: MessageId;
     } = {},
   ): Effect.Effect<void, EngineFailure> {
-    const { historyId, ...startOptions } = options;
+    const { baseTurnId, historyId, runId, ...startOptions } = options;
     return Effect.suspend(() => {
-      this.records.beginRun(record.sessionId, {
+      const launchedRunId = this.records.beginRun(record.sessionId, {
         ...runOf(resolved.options, resolved.accountId),
         historyId,
+        runId,
+        baseTurnId,
       });
       return this.sessions.startLive(
         replyTo,
         record,
+        launchedRunId,
         startAdapter,
         resolved.warnings,
         startOptions,
@@ -526,6 +536,7 @@ export class SessionLifecycleService {
         sessionId,
       );
       const now = Date.now();
+      const runId = mintRunId();
       const record: SessionRecord = {
         sessionId,
         kind: startOptions.kind,
@@ -535,11 +546,11 @@ export class SessionLifecycleService {
         automation: options.automation,
         createdAt: now,
         updatedAt: now,
-        runs: [{ runId: mintRunId(), startedAt: now, ...runOf(startOptions, accountId) }],
+        runs: [{ runId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
-      yield* sessions.startLive(undefined, record, (adapter) =>
+      yield* sessions.startLive(undefined, record, runId, (adapter) =>
         sessions.startAdapter(adapter, startOptions),
       );
       return record.sessionId;
