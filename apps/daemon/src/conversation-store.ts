@@ -127,7 +127,10 @@ export function createConversationStore(dbPath: string): ConversationStore {
 
     persistTurnIntent(intent: ConversationTurnIntent): Promise<void> {
       db.transaction((tx) => {
-        const prompt = intent.prompt;
+        const prompt =
+          intent.turn.input.type === 'prompt' && intent.turn.input.promptId !== null
+            ? intent.prompt
+            : undefined;
         if (prompt) {
           // Prompts are immutable: a replayed intent re-inserts the identical record.
           tx.insert(prompts).values(toPromptRow(prompt)).onConflictDoNothing().run();

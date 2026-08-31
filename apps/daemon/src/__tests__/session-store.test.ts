@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionRecordSchema, SessionRunSchema } from '@linkcode/schema';
+import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSessionStore } from '../session-store';
 
@@ -55,14 +56,14 @@ describe('SQLite session store', () => {
     expect(await createSessionStore(database).load()).toEqual([record]);
   });
 
-  it('round-trips the forked origin variant', async () => {
+  it('round-trips additive fork provenance and upgrades an existing forked origin row', async () => {
     const database = await databasePath();
     const record = SessionRecordSchema.parse({
       sessionId: 'session-forked',
       kind: 'codex',
       cwd: '/repo',
-      origin: {
-        type: 'forked',
+      origin: { type: 'created' },
+      forkOrigin: {
         sourceSessionId: 'session-source',
         sourceTurnId: 'turn-cut',
         forkedAt: 5,
@@ -73,6 +74,14 @@ describe('SQLite session store', () => {
     });
     await createSessionStore(database).save(record);
 
+    expect(await createSessionStore(database).load()).toEqual([record]);
+
+    const sqlite = new Sqlite(database);
+    expect(sqlite.prepare('SELECT origin_type FROM sessions').pluck().get()).toBe('created');
+    sqlite
+      .prepare("UPDATE sessions SET origin_type = 'forked' WHERE session_id = ?")
+      .run(record.sessionId);
+    sqlite.close();
     expect(await createSessionStore(database).load()).toEqual([record]);
   });
 

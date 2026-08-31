@@ -102,6 +102,7 @@ export class SessionRecordRegistry {
       updatedAt: record.updatedAt,
       title: record.title,
       origin: record.origin,
+      forkOrigin: record.forkOrigin,
       createdVia: record.createdVia,
       automation: record.automation,
       historyId: latestHistoryId(record),

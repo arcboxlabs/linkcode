@@ -124,9 +124,9 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originType: record.origin.type,
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
-    originSourceSessionId: record.origin.type === 'forked' ? record.origin.sourceSessionId : null,
-    originSourceTurnId: record.origin.type === 'forked' ? record.origin.sourceTurnId : null,
-    originForkedAt: record.origin.type === 'forked' ? record.origin.forkedAt : null,
+    originSourceSessionId: record.forkOrigin?.sourceSessionId ?? null,
+    originSourceTurnId: record.forkOrigin?.sourceTurnId ?? null,
+    originForkedAt: record.forkOrigin?.forkedAt ?? null,
     createdVia: record.createdVia ?? null,
     automationKind: record.automation?.kind ?? null,
     automationId: record.automation?.id ?? null,
@@ -144,6 +144,7 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
     cwd: row.cwd,
     title: row.title ?? undefined,
     origin: toOrigin(row),
+    forkOrigin: toForkOrigin(row),
     createdVia: row.createdVia ?? undefined,
     automation:
       row.automationKind && row.automationId
@@ -168,17 +169,24 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
 }
 
 function toOrigin(row: SessionRow): unknown {
-  switch (row.originType) {
-    case 'imported':
-      return { type: 'imported', historyId: row.originHistoryId, importedAt: row.originImportedAt };
-    case 'forked':
-      return {
-        type: 'forked',
-        sourceSessionId: row.originSourceSessionId,
-        sourceTurnId: row.originSourceTurnId,
-        forkedAt: row.originForkedAt,
-      };
-    default:
-      return { type: 'created' };
+  if (row.originType === 'imported') {
+    return { type: 'imported', historyId: row.originHistoryId, importedAt: row.originImportedAt };
   }
+  return { type: 'created' };
+}
+
+function toForkOrigin(row: SessionRow): unknown {
+  if (
+    row.originType !== 'forked' &&
+    row.originSourceSessionId === null &&
+    row.originSourceTurnId === null &&
+    row.originForkedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    sourceSessionId: row.originSourceSessionId,
+    sourceTurnId: row.originSourceTurnId,
+    forkedAt: row.originForkedAt,
+  };
 }

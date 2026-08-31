@@ -112,6 +112,13 @@ describe('SQLite conversation store', () => {
    */
   it('round-trips every turn field, all three input shapes included', async () => {
     const database = await databaseWithSessions('s-1');
+    const migratedTurn = turn({
+      turnId: 't-5',
+      parentTurnId: TurnIdSchema.parse('t-4'),
+      input: { type: 'prompt', promptId: null },
+      state: 'completed',
+      createdAt: 5,
+    });
     const turns = [
       turn({
         turnId: 't-1',
@@ -143,6 +150,7 @@ describe('SQLite conversation store', () => {
         state: 'running',
         createdAt: 4,
       }),
+      migratedTurn,
     ];
     const store = createConversationStore(database);
     await store.persistTurnIntent({
@@ -154,9 +162,15 @@ describe('SQLite conversation store', () => {
       await store.saveTurn(turns[i]);
     }
 
-    expect(await createConversationStore(database).listTurns(SessionIdSchema.parse('s-1'))).toEqual(
-      turns,
-    );
+    await store.persistTurnIntent({
+      turn: migratedTurn,
+      prompt: prompt('p-migrated'),
+      operation: openOperation('op-migrated'),
+    });
+
+    const reopened = createConversationStore(database);
+    expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual(turns);
+    expect(await reopened.getPrompt(PromptIdSchema.parse('p-migrated'))).toBeUndefined();
   });
 
   it('round-trips prompts, preserving block and context order', async () => {
@@ -287,5 +301,10 @@ describe('SQLite conversation store', () => {
     expect(await reopened.getPrompt(PromptIdSchema.parse('p-own'))).toBeUndefined();
     expect(await reopened.getPrompt(PromptIdSchema.parse('p-shared'))).toEqual(prompt('p-shared'));
     expect(await reopened.listTurns(SessionIdSchema.parse('s-fork'))).toHaveLength(1);
+
+    await store.deleteSession(SessionIdSchema.parse('s-fork'));
+    expect(
+      await createConversationStore(database).getPrompt(PromptIdSchema.parse('p-shared')),
+    ).toBeUndefined();
   });
 });

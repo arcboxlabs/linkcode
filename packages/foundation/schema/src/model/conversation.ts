@@ -37,7 +37,11 @@ export type PromptRecord = z.infer<typeof PromptRecordSchema>;
  * shell-command start turns today and must be first-class, or ordinals and checkpoints
  * misalign with provider history. */
 export const TurnInputSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('prompt'), promptId: PromptIdSchema }),
+  z.object({
+    type: z.literal('prompt'),
+    /** null is reserved for lossy migrated replay; a live submit always mints a prompt record. */
+    promptId: PromptIdSchema.nullable(),
+  }),
   z.object({
     type: z.literal('command'),
     name: z.string().min(1),

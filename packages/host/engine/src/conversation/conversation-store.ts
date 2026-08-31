@@ -97,7 +97,13 @@ export class InMemoryConversationStore implements ConversationStore {
 
   async persistTurnIntent(intent: ConversationTurnIntent): Promise<void> {
     await this.saveTurn(intent.turn);
-    if (intent.prompt) this.prompts.set(intent.prompt.promptId, structuredClone(intent.prompt));
+    if (
+      intent.turn.input.type === 'prompt' &&
+      intent.turn.input.promptId !== null &&
+      intent.prompt
+    ) {
+      this.prompts.set(intent.prompt.promptId, structuredClone(intent.prompt));
+    }
     this.operations.set(intent.operation.operationId, structuredClone(intent.operation));
   }
 
@@ -119,7 +125,9 @@ export class InMemoryConversationStore implements ConversationStore {
     }
     const referenced = new Set<PromptId>();
     for (const turn of this.turns.values()) {
-      if (turn.input.type === 'prompt') referenced.add(turn.input.promptId);
+      if (turn.input.type === 'prompt' && turn.input.promptId !== null) {
+        referenced.add(turn.input.promptId);
+      }
     }
     for (const promptId of this.prompts.keys()) {
       if (!referenced.has(promptId)) this.prompts.delete(promptId);

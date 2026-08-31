@@ -103,6 +103,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.stateDir,
     fileHost,
   );
+  const conversations = deps.conversationStore ?? new InMemoryConversationStore();
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -158,6 +159,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       deps.simulatorMcp?.release(sessionId);
     },
     resources,
+    conversations,
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
@@ -218,10 +220,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     sessionLifecycle,
     responder,
   );
-  const conversationRequests = new ConversationRequestHandler(
-    deps.conversationStore ?? new InMemoryConversationStore(),
-    responder,
-  );
+  const conversationRequests = new ConversationRequestHandler(conversations, responder);
   const scheduler = new ScheduleService(
     transport,
     deps.scheduleStore ?? new InMemoryScheduleStore(),

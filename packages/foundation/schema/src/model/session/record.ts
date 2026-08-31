@@ -33,15 +33,17 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
     historyId: AgentHistoryIdSchema,
     importedAt: TimestampSchema,
   }),
-  z.object({
-    type: z.literal('forked'),
-    sourceSessionId: SessionIdSchema,
-    /** The source turn the fork was taken through (its copied prefix ends there). */
-    sourceTurnId: TurnIdSchema,
-    forkedAt: TimestampSchema,
-  }),
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
+
+/** Additive fork provenance: old peers ignore this key and keep parsing `origin: created`. */
+export const ForkOriginSchema = z.object({
+  sourceSessionId: SessionIdSchema,
+  /** The source turn the fork was taken through (its copied prefix ends there). */
+  sourceTurnId: TurnIdSchema,
+  forkedAt: TimestampSchema,
+});
+export type ForkOrigin = z.infer<typeof ForkOriginSchema>;
 
 /**
  * One live start/resume of a session. Providers usually mint a new native id per resume, so a
@@ -81,6 +83,7 @@ export const SessionRecordSchema = z.object({
   /** Provider title when available; otherwise derived from the first prompt. */
   title: z.string().optional(),
   origin: SessionOriginSchema,
+  forkOrigin: ForkOriginSchema.optional(),
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
   /** Set when an automation created this session; clients hide tagged sessions from Threads. */
@@ -106,6 +109,7 @@ export const SessionInfoSchema = z.object({
   updatedAt: TimestampSchema,
   title: z.string().optional(),
   origin: SessionOriginSchema.optional(),
+  forkOrigin: ForkOriginSchema.optional(),
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
   /** Set when an automation created this session; clients hide tagged sessions from Threads. */
