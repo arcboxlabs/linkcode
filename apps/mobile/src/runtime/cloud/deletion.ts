@@ -24,8 +24,9 @@ export type AccountDeletionOutcome =
   | { kind: 'apple-device-required' }
   /** Browser re-authentication signed in a different Cloud account. */
   | { kind: 'account-mismatch' }
-  /** The delete request failed before any state changed (network error, or
-   * a 409 pre-check) — the account is untouched. `code` is the server's biz
+  /** No HTTP response arrived, so the client cannot know whether deletion crossed PONR. */
+  | { kind: 'unknown' }
+  /** The server rejected the request before any state changed. `code` is the server's biz
    * code when available (e.g. `ACCOUNT_DELETION_SOLE_ORGANIZATION_OWNER`),
    * for copy that names the specific reason. */
   | { kind: 'failed'; code?: string };
@@ -121,8 +122,7 @@ export async function deleteAccount(): Promise<AccountDeletionOutcome> {
     });
   } catch (error) {
     reportFailure('transport', error);
-    // Without an HTTP response, never claim that the server accepted deletion.
-    return { kind: 'failed' };
+    return { kind: 'unknown' };
   }
 
   if (response.error) {
