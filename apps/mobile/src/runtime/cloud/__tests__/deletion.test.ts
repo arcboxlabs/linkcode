@@ -272,12 +272,16 @@ describe('deleteAccount', () => {
     expect(result).toEqual({ kind: 'pending', reference: 'ref-1' });
   });
 
-  it('treats a thrown network error as failed — never assumes acceptance', async () => {
+  it('treats a thrown network error as unknown and reports the transport failure', async () => {
     mocks.fetchDelete.mockRejectedValueOnce(new Error('offline'));
 
     const result = await deleteAccount();
 
-    expect(result).toEqual({ kind: 'failed' });
+    expect(result).toEqual({ kind: 'unknown' });
+    expect(mocks.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { account_deletion_stage: 'transport' } }),
+    );
   });
 
   it('treats an unparseable success response as pending rather than completed', async () => {

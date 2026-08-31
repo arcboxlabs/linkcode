@@ -36,6 +36,10 @@ export function DeleteAccountSection(): React.ReactNode {
         Alert.alert(t('deleteAccountMismatch'));
         return;
       }
+      if (outcome.kind === 'unknown') {
+        Alert.alert(t('deleteUnknown'));
+        return;
+      }
       if (outcome.kind === 'failed') {
         Alert.alert(failureMessage(outcome.code));
         return;
