@@ -19,6 +19,7 @@ import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
@@ -186,20 +187,56 @@ export class SessionOrchestrator {
       }
       session.turnInputActive = true;
       const content: ContentBlock[] = [{ type: 'text', text }];
+      const { records, turns } = this;
       return session.run(
-        Effect.sync(() => {
-          this.events.broadcast(sessionId, [
-            { type: 'user-message', messageId: nextMessageId(), content },
-          ]);
-          this.records.setTitleFromContent(sessionId, content);
-        }).pipe(
-          Effect.andThen(
-            watchTurn(
-              session.adapter,
-              () => session.adapter.send({ type: 'prompt', content }),
-              opts,
+        Effect.gen({ self: this }, function* () {
+          if (yield* turns.hasOpenOperation(sessionId)) {
+            return yield* Effect.fail(
+              new RequestError({ code: 'busy', message: `Session is busy: ${sessionId}` }),
+            );
+          }
+          const intent = yield* turns.persistIntent({
+            sessionId,
+            operationId: mintOperationId(),
+            runId: session.runId,
+            parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+            input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
+          });
+          const result = yield* Effect.sync(() => {
+            this.events.broadcast(sessionId, [
+              { type: 'user-message', messageId: nextMessageId(), content },
+            ]);
+            records.setTitleFromContent(sessionId, content);
+          }).pipe(
+            Effect.andThen(
+              watchTurn(session.adapter, () => session.adapter.send({ type: 'prompt', content }), {
+                ...opts,
+                onDispatchAccepted: turns.commitRunning(intent),
+              }),
             ),
-          ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? turns
+                    .resolveFailed(intent, {
+                      code: 'operation_failed',
+                      message: 'Automation prompt failed',
+                    })
+                    .pipe(
+                      Effect.catch((error) =>
+                        Effect.logError(
+                          'Failed to record the rejected automation turn',
+                          { sessionId },
+                          error.cause,
+                        ),
+                      ),
+                    )
+                : Effect.void,
+            ),
+          );
+          turns.settleStop(sessionId, session.runId, result.stopReason);
+          if (session.status !== 'running') session.turnInputActive = false;
+          return result;
+        }).pipe(
           Effect.onExit((exit) =>
             Exit.isFailure(exit)
               ? Effect.sync(() => {

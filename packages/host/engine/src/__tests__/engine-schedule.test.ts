@@ -12,13 +12,15 @@ import type {
   ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
-import { textBlock } from '@linkcode/schema';
+import { SessionResourceIdSchema, textBlock } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
+import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { InMemoryResourceStore } from '../resource/resource-store';
 import { createTestEngine } from './fixtures/test-engine';
 
 /** Adapter that answers a prompt turn by emitting one assistant chunk and a stop. */
@@ -32,6 +34,8 @@ class ScheduleFakeAdapter implements AgentAdapter {
   };
   private readonly listeners = new Set<(e: AgentEvent) => void>();
 
+  constructor(private readonly promptInputs: AgentInput[]) {}
+
   start(): Promise<void> {
     return Promise.resolve();
   }
@@ -42,6 +46,7 @@ class ScheduleFakeAdapter implements AgentAdapter {
 
   send(input: AgentInput): Promise<void> {
     if (input.type === 'prompt') {
+      this.promptInputs.push(structuredClone(input));
       this.emit({
         type: 'agent-message-chunk',
         messageId: 'm1' as MessageId,
@@ -92,6 +97,7 @@ function pick<K extends WirePayload['kind']>(
 
 function harness() {
   const sent: WirePayload[] = [];
+  const promptInputs: AgentInput[] = [];
   let handler: ((msg: ValidatedWireMessage) => void) | null = null;
   const transport: Transport = {
     connect: () => Promise.resolve(),
@@ -105,8 +111,10 @@ function harness() {
     onClose: () => noop,
     close: noop,
   };
-  const factory: AdapterFactory = () => new ScheduleFakeAdapter();
-  const engine = createTestEngine(transport, { factory });
+  const conversationStore = new InMemoryConversationStore();
+  const resourceStore = new InMemoryResourceStore();
+  const factory: AdapterFactory = () => new ScheduleFakeAdapter(promptInputs);
+  const engine = createTestEngine(transport, { factory, conversationStore, resourceStore });
 
   function inject(payload: WirePayload): void {
     nullthrow(handler, 'engine not started')(createWireMessage(payload));
@@ -116,7 +124,7 @@ function harness() {
       await wait(0);
     }
   }
-  return { engine, sent, inject, settle };
+  return { engine, sent, promptInputs, conversationStore, resourceStore, inject, settle };
 }
 
 const SPEC = {
@@ -165,6 +173,65 @@ describe('engine schedule wiring', () => {
     );
     expect(automationSession?.automation).toEqual({ kind: 'schedule', id: scheduleId });
     expect(automationSession?.status).toBe('stopped');
+  });
+
+  it('records an existing-session schedule prompt as a completed turn', async () => {
+    const h = harness();
+    await h.engine.start();
+    h.inject({
+      kind: 'session.start',
+      clientReqId: 'session',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    await h.settle();
+    const sessionId = pick(h.sent, 'session.started', 'session').sessionId;
+    const sourceUrl = 'https://example.com/reference';
+    await h.resourceStore.save(
+      {
+        resourceId: SessionResourceIdSchema.parse('resource-source'),
+        sessionId,
+        direction: 'source',
+        name: 'Reference',
+        kind: 'link',
+        status: 'ready',
+        locator: { type: 'url', url: sourceUrl },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      sourceUrl,
+    );
+
+    h.inject({
+      kind: 'schedule.create',
+      clientReqId: 'create',
+      spec: { ...SPEC, target: { type: 'session', sessionId } },
+    });
+    await h.settle();
+    const scheduleId = pick(h.sent, 'schedule.created', 'create').schedule.scheduleId;
+    h.inject({ kind: 'schedule.run-once', clientReqId: 'run', scheduleId });
+    await h.settle();
+
+    const [turn] = await h.conversationStore.listTurns(sessionId);
+    expect(turn).toMatchObject({
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      state: 'completed',
+      input: { type: 'prompt' },
+    });
+    if (turn.input.type !== 'prompt') throw new Error('expected a prompt turn');
+    expect((await h.conversationStore.getPrompt(turn.input.promptId))?.blocks).toEqual([
+      { type: 'text', text: SPEC.prompt },
+    ]);
+    expect(await h.conversationStore.listOpenOperations(sessionId)).toHaveLength(0);
+    expect(h.promptInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: SPEC.prompt }] },
+    ]);
+    expect(h.sent).toContainEqual({
+      kind: 'conversation.graph.changed',
+      sessionId,
+      graphRevision: 1,
+      activeLeafTurnId: turn.turnId,
+    });
   });
 
   it('reports an unknown schedule as not found', async () => {
