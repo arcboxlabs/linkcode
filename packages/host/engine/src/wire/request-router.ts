@@ -6,6 +6,7 @@ import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
 import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { BrowserRequestHandler } from '../browser/request-handler';
+import type { ConversationRequestHandler } from '../conversation/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import { observeRequest } from '../observability';
 import type { PluginRequestHandler } from '../plugin/request-handler';
@@ -22,6 +23,7 @@ import type { WorkspaceRequestHandler } from '../workspace/request-handler';
 interface RequestHandlers {
   readonly session: SessionRequestHandler;
   readonly history: HistoryRequestHandler;
+  readonly conversation: ConversationRequestHandler;
   readonly agent: AgentRequestHandler;
   readonly asset: ManagedAssetService;
   readonly workspace: WorkspaceRequestHandler;
@@ -74,6 +76,11 @@ export class WireRequestRouter {
       case 'history.resume':
       case 'history.branch': {
         return this.handlers.history.handle(p);
+      }
+      case 'turn.submit':
+      case 'conversation.graph.get':
+      case 'conversation.read': {
+        return this.handlers.conversation.handle(p);
       }
       case 'agent-runtime.list':
       case 'agent.catalog':
