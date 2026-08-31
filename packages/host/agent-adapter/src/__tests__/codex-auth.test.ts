@@ -70,11 +70,11 @@ const RETRY_401 = {
   },
 };
 
-async function promptedAdapter() {
+async function promptedAdapter(options: StartOptions = start) {
   const adapter = new TestCodex();
   const events: AgentEvent[] = [];
   adapter.onEvent((e) => events.push(e));
-  await adapter.start(start);
+  await adapter.start(options);
   await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hi' }] });
   const server = adapter.fakeServers[0];
   server.notify('turn/started', { turn: { id: 'turn-1' } });
@@ -105,6 +105,27 @@ describe('CodexAdapter auth failure (CODE-174)', () => {
     expect(errors[0].recoverable).toBe(false);
     // The turn settles idle without waiting out the ~27s retry storm.
     expect(events.at(-1)).toEqual({ type: 'status', status: 'idle' });
+    expect(server.closed).toBe(true);
+  });
+
+  it('reports a Gateway 401 as provider auth failure without requesting ChatGPT login', async () => {
+    const { events, server } = await promptedAdapter({
+      ...start,
+      model: 'openai/gpt-5.6',
+      config: {
+        authToken: 'gateway-token',
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+      },
+    });
+    server.notify('error', RETRY_401);
+
+    const errors = errorEvents(events);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      message: 'Codex provider authentication failed',
+      recoverable: true,
+    });
+    expect(errors[0].code).toBeUndefined();
     expect(server.closed).toBe(true);
   });
 
