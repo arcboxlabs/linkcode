@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import type {
   AgentHistoryId,
   AgentKind,
   ContentBlock,
+  RunId,
   SessionChangeReason,
   SessionId,
   SessionInfo,
@@ -14,6 +16,10 @@ import { nullthrow } from 'foxts/guard';
 import { isObjectEmpty } from 'foxts/is-object-empty';
 import { OperationError } from '../failure';
 import type { SessionStore } from './session-store';
+
+export function mintRunId(): RunId {
+  return `run-${randomUUID()}` as RunId;
+}
 
 const TITLE_MAX_LENGTH = 80;
 type RunTask = (effect: Effect.Effect<void>) => void;
@@ -180,10 +186,13 @@ export class SessionRecordRegistry {
 
   /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
    * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. */
-  beginRun(sessionId: SessionId, run: Omit<SessionRun, 'startedAt' | 'endedAt'> = {}): void {
+  beginRun(
+    sessionId: SessionId,
+    run: Omit<SessionRun, 'runId' | 'startedAt' | 'endedAt'> = {},
+  ): void {
     const record = this.records.get(sessionId);
     if (!record) return;
-    record.runs.push({ startedAt: Date.now(), ...definedFields(run) });
+    record.runs.push({ runId: mintRunId(), startedAt: Date.now(), ...definedFields(run) });
     this.persist(record);
     // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
     // must revalidate. Nothing else announces a relaunch: it sends no `session.started`, and a

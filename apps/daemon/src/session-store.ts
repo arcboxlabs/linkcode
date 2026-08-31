@@ -87,6 +87,8 @@ export function createSessionStore(dbPath: string): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
+                runId: run.runId,
+                baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,
                 model: run.model ?? null,
@@ -119,9 +121,14 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originType: record.origin.type,
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
+    originSourceSessionId: record.origin.type === 'forked' ? record.origin.sourceSessionId : null,
+    originSourceTurnId: record.origin.type === 'forked' ? record.origin.sourceTurnId : null,
+    originForkedAt: record.origin.type === 'forked' ? record.origin.forkedAt : null,
     createdVia: record.createdVia ?? null,
     automationKind: record.automation?.kind ?? null,
     automationId: record.automation?.id ?? null,
+    activeLeafTurnId: record.activeLeafTurnId ?? null,
+    graphRevision: record.graphRevision,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -133,22 +140,19 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
     kind: row.kind,
     cwd: row.cwd,
     title: row.title ?? undefined,
-    origin:
-      row.originType === 'imported'
-        ? {
-            type: 'imported',
-            historyId: row.originHistoryId,
-            importedAt: row.originImportedAt,
-          }
-        : { type: 'created' },
+    origin: toOrigin(row),
     createdVia: row.createdVia ?? undefined,
     automation:
       row.automationKind && row.automationId
         ? { kind: row.automationKind, id: row.automationId }
         : undefined,
+    activeLeafTurnId: row.activeLeafTurnId ?? undefined,
+    graphRevision: row.graphRevision,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({
+      runId: run.runId ?? undefined,
+      baseTurnId: run.baseTurnId ?? undefined,
       historyId: run.historyId ?? undefined,
       accountId: run.accountId ?? undefined,
       model: run.model ?? undefined,
@@ -158,4 +162,20 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
       endedAt: run.endedAt ?? undefined,
     })),
   });
+}
+
+function toOrigin(row: SessionRow): unknown {
+  switch (row.originType) {
+    case 'imported':
+      return { type: 'imported', historyId: row.originHistoryId, importedAt: row.originImportedAt };
+    case 'forked':
+      return {
+        type: 'forked',
+        sourceSessionId: row.originSourceSessionId,
+        sourceTurnId: row.originSourceTurnId,
+        forkedAt: row.originForkedAt,
+      };
+    default:
+      return { type: 'created' };
+  }
 }

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SessionRecordSchema } from '@linkcode/schema';
+import { SessionRecordSchema, SessionRunSchema } from '@linkcode/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSessionStore } from '../session-store';
 
@@ -34,9 +34,13 @@ describe('SQLite session store', () => {
       origin: { type: 'created' },
       createdAt: 1,
       updatedAt: 2,
+      activeLeafTurnId: 'turn-leaf',
+      graphRevision: 7,
       runs: [
-        { startedAt: 1, endedAt: 2, historyId: 'native-1', accountId: 'acc_first' },
+        { runId: 'run-1', startedAt: 1, endedAt: 2, historyId: 'native-1', accountId: 'acc_first' },
         {
+          runId: 'run-2',
+          baseTurnId: 'turn-base',
           startedAt: 3,
           historyId: 'native-2',
           accountId: 'acc_second',
@@ -45,6 +49,27 @@ describe('SQLite session store', () => {
           approvalPolicyId: 'acceptEdits',
         },
       ],
+    });
+    await createSessionStore(database).save(record);
+
+    expect(await createSessionStore(database).load()).toEqual([record]);
+  });
+
+  it('round-trips the forked origin variant', async () => {
+    const database = await databasePath();
+    const record = SessionRecordSchema.parse({
+      sessionId: 'session-forked',
+      kind: 'codex',
+      cwd: '/repo',
+      origin: {
+        type: 'forked',
+        sourceSessionId: 'session-source',
+        sourceTurnId: 'turn-cut',
+        forkedAt: 5,
+      },
+      createdAt: 5,
+      updatedAt: 6,
+      runs: [],
     });
     await createSessionStore(database).save(record);
 
@@ -61,15 +86,21 @@ describe('SQLite session store', () => {
       createdAt: 1,
       updatedAt: 1,
       runs: [
-        { startedAt: 1, model: 'first' },
-        { startedAt: 2, model: 'second' },
-        { startedAt: 3, model: 'third' },
+        { runId: 'run-1', startedAt: 1, model: 'first' },
+        { runId: 'run-2', startedAt: 2, model: 'second' },
+        { runId: 'run-3', startedAt: 3, model: 'third' },
       ],
     });
     const store = createSessionStore(database);
     await store.save(record);
     // A later save rewrites the whole run list; the newest run is what a relaunch reads back.
-    await store.save({ ...record, runs: [...record.runs, { startedAt: 4, model: 'fourth' }] });
+    await store.save({
+      ...record,
+      runs: [
+        ...record.runs,
+        SessionRunSchema.parse({ runId: 'run-4', startedAt: 4, model: 'fourth' }),
+      ],
+    });
 
     const [reloaded] = await createSessionStore(database).load();
     expect(reloaded.runs.map((run) => run.model)).toEqual(['first', 'second', 'third', 'fourth']);

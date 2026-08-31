@@ -4,6 +4,7 @@ export * from './agent-runtime';
 export * from './artifact';
 export * from './browser';
 export * from './content';
+export * from './conversation';
 export * from './custom-mcp';
 export * from './daemon-discovery';
 export * from './file';

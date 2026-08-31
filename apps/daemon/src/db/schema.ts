@@ -19,14 +19,21 @@ export const sessions = sqliteTable(
     kind: text('kind').notNull(),
     cwd: text('cwd').notNull(),
     title: text('title'),
-    originType: text('origin_type', { enum: ['created', 'imported'] }).notNull(),
+    originType: text('origin_type', { enum: ['created', 'imported', 'forked'] }).notNull(),
     originHistoryId: text('origin_history_id'),
     originImportedAt: integer('origin_imported_at'),
+    originSourceSessionId: text('origin_source_session_id'),
+    originSourceTurnId: text('origin_source_turn_id'),
+    originForkedAt: integer('origin_forked_at'),
     /** IM platform the session was created from (`SessionRecord.createdVia`); null for LinkCode clients. */
     createdVia: text('created_via'),
     /** Automation that created this session (`SessionRecord.automation`); null for user sessions. */
     automationKind: text('automation_kind', { enum: ['loop', 'schedule'] }),
     automationId: text('automation_id'),
+    /** Deliberately no FK to `conversation_turns`: the turn tree is written on the conversation
+     * store's own connection, and the two tables would otherwise cycle. */
+    activeLeafTurnId: text('active_leaf_turn_id'),
+    graphRevision: integer('graph_revision').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -42,6 +49,10 @@ export const sessionRuns = sqliteTable(
       .references(() => sessions.sessionId, { onDelete: 'cascade' }),
     /** Position within the session's run list — array order is part of the record. */
     seq: integer('seq').notNull(),
+    /** Explicit run identity (`SessionRun.runId`); nullable in DDL only because SQLite cannot add a
+     * NOT NULL column — the migration backfills every row and the store always writes it. */
+    runId: text('run_id'),
+    baseTurnId: text('base_turn_id'),
     historyId: text('history_id'),
     /** What the thread is set to, replayed on relaunch (`SessionRunSchema`). Every one of these must
      * round-trip, or a restart silently moves the thread back onto the agent's configured default. */
@@ -52,7 +63,10 @@ export const sessionRuns = sqliteTable(
     startedAt: integer('started_at').notNull(),
     endedAt: integer('ended_at'),
   },
-  (table) => [index('session_runs_session_id_idx').on(table.sessionId)],
+  (table) => [
+    index('session_runs_session_id_idx').on(table.sessionId),
+    uniqueIndex('session_runs_run_id_unique').on(table.runId),
+  ],
 );
 
 export const sessionResources = sqliteTable(

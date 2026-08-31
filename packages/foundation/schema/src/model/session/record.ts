@@ -5,8 +5,10 @@ import { ImPlatformSchema } from '../im';
 import {
   AgentHistoryIdSchema,
   AgentKindSchema,
+  RunIdSchema,
   SessionIdSchema,
   TimestampSchema,
+  TurnIdSchema,
 } from '../primitives';
 import { ApprovalPolicyIdSchema } from './control';
 import { SessionStatusSchema } from './lifecycle';
@@ -31,6 +33,13 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
     historyId: AgentHistoryIdSchema,
     importedAt: TimestampSchema,
   }),
+  z.object({
+    type: z.literal('forked'),
+    sourceSessionId: SessionIdSchema,
+    /** The source turn the fork was taken through (its copied prefix ends there). */
+    sourceTurnId: TurnIdSchema,
+    forkedAt: TimestampSchema,
+  }),
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
 
@@ -44,6 +53,11 @@ export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
  * that would pin every thread to its first launch and cut it off from the agent's default for good.
  */
 export const SessionRunSchema = z.object({
+  /** Explicit run identity — run sealing and session-ref binding address runs by id, never
+   * positionally. */
+  runId: RunIdSchema,
+  /** The turn this run was launched from (fork/resume base); absent for a fresh root run. */
+  baseTurnId: TurnIdSchema.optional(),
   historyId: AgentHistoryIdSchema.optional(),
   /** The account this run resolved to. Credentials and base URL are injected once at spawn, so the
    * account is fixed for the run's lifetime and a later rebind does not move it. */
@@ -73,6 +87,10 @@ export const SessionRecordSchema = z.object({
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   runs: z.array(SessionRunSchema),
+  /** Host default view of the turn tree; moves only on a successful submit. */
+  activeLeafTurnId: TurnIdSchema.optional(),
+  /** Optimistic-concurrency counter for graph mutations. */
+  graphRevision: z.number().int().nonnegative().default(0),
 });
 export type SessionRecord = z.infer<typeof SessionRecordSchema>;
 
