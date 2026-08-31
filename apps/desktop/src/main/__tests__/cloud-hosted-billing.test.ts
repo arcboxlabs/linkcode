@@ -52,7 +52,9 @@ vi.mock('../cloud-auth/storage', () => ({
 
 describe('desktop hosted billing handoff', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
+    delete process.env.LINKCODE_PROFILE;
     mocks.handlers.clear();
     mocks.setAsDefaultProtocolClient.mockReturnValue(true);
     mocks.openExternal.mockResolvedValue(undefined);
@@ -73,6 +75,19 @@ describe('desktop hosted billing handoff', () => {
     expect(mocks.setAsDefaultProtocolClient).toHaveBeenCalled();
     expect(mocks.openExternal).toHaveBeenCalledWith(
       'https://console.linkcode.ai/billing?returnTarget=linkcode-dev%3A%2F%2Fbilling%2Freturn',
+    );
+  });
+
+  it('isolates the native return target by profile', async () => {
+    process.env.LINKCODE_PROFILE = 'code-603';
+    const { setupCloudAuth } = await import('../cloud-auth/client');
+    const { CLOUD_OPEN_HOSTED_BILLING_CHANNEL } = await import('../../shared/cloud');
+    setupCloudAuth();
+
+    await mocks.handlers.get(CLOUD_OPEN_HOSTED_BILLING_CHANNEL)?.();
+
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      'https://console.linkcode.ai/billing?returnTarget=linkcode-dev-code-603%3A%2F%2Fbilling%2Freturn',
     );
   });
 

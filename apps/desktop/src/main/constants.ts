@@ -76,11 +76,14 @@ export const STORAGE_DIR_NAME =
 
 /**
  * OAuth deep-link protocol (see cloud-auth/client.ts): brand-owned when a brand identity is
- * embedded, split per channel so a development build never fights the installed release over
+ * embedded, split per channel and profile so concurrently running identities never fight over
  * the OS-global scheme.
  */
-export const CLOUD_AUTH_SCHEME =
+const CLOUD_AUTH_SCHEME_BASE =
   BRAND_BASE?.authScheme ?? (CHANNEL === 'development' ? 'linkcode-dev' : 'linkcode');
+
+export const CLOUD_AUTH_SCHEME =
+  PROFILE === undefined ? CLOUD_AUTH_SCHEME_BASE : `${CLOUD_AUTH_SCHEME_BASE}-${PROFILE}`;
 
 /** The channel's workspace directory (`~/LinkCode`, `~/LinkCode Development`) — shared across
  * that channel's profiles on purpose, but never across channels (CODE-460). Must agree with the
