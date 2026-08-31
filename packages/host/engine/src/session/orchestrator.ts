@@ -18,7 +18,7 @@ import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
-import type { ConversationStore } from '../conversation/conversation-store';
+import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
@@ -42,11 +42,18 @@ export class SessionOrchestrator {
     reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
     private readonly resources: ResourceService,
-    private readonly conversations: ConversationStore,
+    private readonly turns: ConversationTurnService,
     private readonly browserTools?: BrowserToolsetFactory,
   ) {
-    this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure, resources);
-    this.inputs = new SessionInputDispatcher(records, this.events, resources);
+    this.events = new SessionEventProcessor(
+      transport,
+      records,
+      runtimes,
+      reportFailure,
+      resources,
+      turns,
+    );
+    this.inputs = new SessionInputDispatcher(records, this.events, resources, turns);
   }
 
   private get(sessionId: SessionId): LiveSession | undefined {
@@ -88,10 +95,16 @@ export class SessionOrchestrator {
     if (session) this.events.broadcast(sessionId, session.replay());
   }
 
-  sendInput(sessionId: SessionId, input: AgentInput): Effect.Effect<void, unknown> {
+  sendInput(
+    sessionId: SessionId,
+    input: AgentInput,
+    prepared?: PersistedTurnIntent,
+  ): Effect.Effect<void, unknown> {
     return Effect.suspend<void, unknown, never>(() => {
       const session = this.requireSession(sessionId);
-      return session.run(Effect.suspend(() => this.inputs.send(sessionId, session, input)));
+      return session.run(
+        Effect.suspend(() => this.inputs.send(sessionId, session, input, prepared)),
+      );
     });
   }
 
@@ -361,6 +374,8 @@ export class SessionOrchestrator {
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
               if (releaseSession) this.onStopped(sessionId);
+              // Teardown mid-turn kills the turn without a stop frame; settle it here.
+              this.turns.settleStatus(sessionId, session.runId, 'stopped');
               this.records.sealRun(sessionId, session.runId);
               return recordLiveSessions(this.sessions.size);
             }),

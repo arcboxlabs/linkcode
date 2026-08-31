@@ -2,7 +2,9 @@ import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
 import { Effect } from 'effect';
-import { OperationError, RequestError } from '../failure';
+import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
+import { OperationError, RequestError, toRequestFailure } from '../failure';
 import type { ResourceService } from '../resource/service';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
@@ -16,12 +18,16 @@ export class SessionInputDispatcher {
     private readonly records: SessionRecordRegistry,
     private readonly events: SessionEventProcessor,
     private readonly resources: ResourceService,
+    private readonly turns: ConversationTurnService,
   ) {}
 
+  /** `prepared` is a submit-saga intent already persisted for this dispatch; without one, a
+   * turn-starting legacy input persists its own plain-send intent — the graph misses no turns. */
   send(
     sessionId: SessionId,
     session: LiveSession,
     input: AgentInput,
+    prepared?: PersistedTurnIntent,
   ): Effect.Effect<void, unknown> {
     const startsTurn =
       input.type === 'prompt' || input.type === 'command' || input.type === 'shell-command';
@@ -56,9 +62,19 @@ export class SessionInputDispatcher {
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
     }
-    const { events, records, resources } = this;
+    const { events, records, resources, turns } = this;
     const promptMessageId = input.type === 'prompt' ? nextMessageId() : undefined;
     return Effect.gen(function* () {
+      // A submit operation in flight owns the session; legacy inputs respect the same admit gate.
+      if (startsTurn && prepared === undefined && (yield* turns.hasOpenOperation(sessionId))) {
+        const error = new RequestError({
+          code: 'busy',
+          message: `Session is busy: ${sessionId}`,
+          reportedInConversation: true,
+        });
+        events.rejectInput(sessionId, error.message);
+        return yield* Effect.fail(error);
+      }
       let adapterInput: AgentInput = input;
       if (input.type === 'prompt') {
         yield* Effect.try({
@@ -83,6 +99,29 @@ export class SessionInputDispatcher {
         );
       }
       if (startsTurn) session.turnInputActive = true;
+      // The durable commit point precedes the irreversible dispatch: kill or failure past here
+      // leaves a `failed` turn, never an absent one.
+      let intent = prepared;
+      if (startsTurn && intent === undefined) {
+        intent = yield* turns
+          .persistIntent({
+            sessionId,
+            operationId: mintOperationId(),
+            runId: session.runId,
+            parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+            input:
+              input.type === 'prompt'
+                ? { type: 'prompt', blocks: promptBlocksFromContent(input.content) }
+                : input,
+          })
+          .pipe(
+            Effect.tapError(() =>
+              Effect.sync(() => {
+                if (session.status !== 'running') session.turnInputActive = false;
+              }),
+            ),
+          );
+      }
       // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
       if (promptMessageId !== undefined && input.type === 'prompt') {
         events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
@@ -140,13 +179,32 @@ export class SessionInputDispatcher {
             }
             if (startsTurn && session.status !== 'running') session.turnInputActive = false;
             if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
-          }).pipe(Effect.andThen(Effect.fail(error))),
+          }).pipe(
+            Effect.andThen(
+              intent === undefined
+                ? Effect.void
+                : turns
+                    .resolveFailed(intent, toRequestFailure(error))
+                    .pipe(
+                      Effect.catch((resolveError) =>
+                        Effect.logError(
+                          'Failed to record the rejected turn',
+                          { sessionId },
+                          resolveError.cause,
+                        ),
+                      ),
+                    ),
+            ),
+            Effect.andThen(Effect.fail(error)),
+          ),
         ),
       );
       if (responseInput && respondingAsk) {
         const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
         if (resolution) events.broadcast(sessionId, [resolution]);
       }
+      // The provider accepted the dispatch: the turn flips to running and the default leaf moves.
+      if (intent !== undefined) yield* turns.commitRunning(intent);
       // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
       if (startsTurn && session.status !== 'running') session.turnInputActive = false;
     });

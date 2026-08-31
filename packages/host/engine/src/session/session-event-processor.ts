@@ -4,6 +4,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { ConversationTurnService } from '../conversation/turn-service';
 import type { ResourceService } from '../resource/service';
 import type { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
@@ -31,6 +32,7 @@ export class SessionEventProcessor {
     private readonly runtimes: AgentRuntimeService,
     private readonly reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly resources: ResourceService,
+    private readonly turns: ConversationTurnService,
   ) {}
 
   broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
@@ -119,6 +121,12 @@ export class SessionEventProcessor {
       switch (event.type) {
         case 'status':
           if (event.status === 'stopped') this.records.sealRun(sessionId, session.runId);
+          if (event.status === 'idle' || event.status === 'stopped') {
+            this.turns.settleStatus(sessionId, session.runId, event.status);
+          }
+          break;
+        case 'stop':
+          this.turns.settleStop(sessionId, session.runId, event.stopReason);
           break;
         case 'session-ref':
           this.records.bindHistoryId(sessionId, session.runId, event.historyId);
@@ -128,6 +136,7 @@ export class SessionEventProcessor {
           break;
         case 'error':
           if (event.code === AUTH_FAILED_ERROR_CODE) this.runtimes.refresh();
+          this.turns.noteError(sessionId, session.runId);
           break;
         default:
           break;

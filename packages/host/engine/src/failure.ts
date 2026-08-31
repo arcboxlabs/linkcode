@@ -9,6 +9,8 @@ export type RequestErrorCode =
   | 'invalid_request'
   | 'not_found'
   | 'conflict'
+  /** A turn is running or another operation is open on the session; retry once it settles. */
+  | 'busy'
   /** The request was understood and refused — the user withheld consent, not a broken call. */
   | 'forbidden'
   | 'unsupported'

@@ -10,6 +10,7 @@ import type {
   SessionRecord,
   SessionRun,
   StartOptions,
+  TurnId,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
@@ -193,6 +194,18 @@ export class SessionRecordRegistry {
    * replaced adapter's session-scoped events. */
   isCurrentRun(sessionId: SessionId, runId: RunId): boolean {
     return this.records.get(sessionId)?.runs.at(-1)?.runId === runId;
+  }
+
+  /** A submit committed: the graph gained a running turn — bump the revision and move the host
+   * default leaf. Not an identity change (`SessionInfo` projects neither field), so it notifies
+   * nobody; clients follow `conversation.graph.changed`. Returns the new revision. */
+  commitGraphMove(sessionId: SessionId, leafTurnId: TurnId): number | undefined {
+    const record = this.records.get(sessionId);
+    if (!record) return undefined;
+    record.graphRevision += 1;
+    record.activeLeafTurnId = leafTurnId;
+    this.persist(record);
+    return record.graphRevision;
   }
 
   /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
