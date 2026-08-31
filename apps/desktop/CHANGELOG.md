@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.0](https://github.com/arcboxlabs/linkcode/compare/v0.28.0...v0.29.0) (2026-08-31)
+
+
+### Features
+
+* **mobile:** add in-app permanent account deletion ([#481](https://github.com/arcboxlabs/linkcode/issues/481)) ([cc5388a](https://github.com/arcboxlabs/linkcode/commit/cc5388a6a97af08b914d90ec376f3d81686018ef))
+
+
+### Bug Fixes
+
+* **codex:** route account providers explicitly ([#497](https://github.com/arcboxlabs/linkcode/issues/497)) ([b18fdc4](https://github.com/arcboxlabs/linkcode/commit/b18fdc477b33769888253930e1e724fa152acfbe))
+
 ## [0.28.0](https://github.com/arcboxlabs/linkcode/compare/v0.27.0...v0.28.0) (2026-08-28)
 
 
