@@ -207,6 +207,45 @@ export class ConversationTurnService {
     });
   }
 
+  /** Boot recovery: no adapter survives a restart, so every open operation and every non-terminal
+   * turn is dead. Resolve them as failed — a retry then replays a typed error instead of hanging,
+   * and the graph shows the attempt as `failed`, never absent. */
+  recover(sessionIds: Iterable<SessionId>): Effect.Effect<void, OperationError> {
+    return Effect.gen({ self: this }, function* () {
+      const open = yield* storeOperation('conversation.operations.list', () =>
+        this.store.listOpenOperations(),
+      );
+      // Open operations can outlive their session record; sweep their sessions too.
+      const sweep = new Set<SessionId>(sessionIds);
+      for (let i = 0, len = open.length; i < len; i++) sweep.add(open[i].sessionId);
+      for (const sessionId of sweep) {
+        const turns = yield* this.listTurns(sessionId);
+        for (let i = 0, len = turns.length; i < len; i++) {
+          const turn = turns[i];
+          if (TERMINAL_TURN_STATES.has(turn.state)) continue;
+          yield* storeOperation('conversation.turn.save', () =>
+            this.store.saveTurn({ ...turn, state: 'failed' }),
+          );
+        }
+      }
+      const resolvedAt = Date.now();
+      for (let i = 0, len = open.length; i < len; i++) {
+        const operation = open[i];
+        yield* storeOperation('conversation.operation.resolve', () =>
+          this.store.resolveOperation({
+            ...operation,
+            state: 'failed',
+            error: {
+              code: 'operation_failed',
+              message: 'The daemon restarted before the turn was dispatched',
+            },
+            resolvedAt,
+          }),
+        );
+      }
+    });
+  }
+
   /** An adapter `error` while the run's turn is live; decides `failed` on a stop-less settle. */
   noteError(sessionId: SessionId, runId: RunId): void {
     const entry = this.runningFor(sessionId, runId);

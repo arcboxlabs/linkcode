@@ -299,6 +299,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       yield* records.start((effect) => {
         runTask(effect);
       });
+      // Before requests are accepted: open operations and non-terminal turns cannot outlive the
+      // adapters that ran them, and a retried operation must replay a terminal result.
+      yield* conversationTurns.recover(Array.from(records.values(), ({ sessionId }) => sessionId));
       yield* worktrees.start(new Set(Array.from(records.values(), ({ sessionId }) => sessionId)));
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),

@@ -25,6 +25,7 @@ import type {
   PersistedTurnIntent,
   TerminalOperation,
 } from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import {
   OperationError,
@@ -297,37 +298,71 @@ export class SessionLifecycleService {
           );
         }
 
-        const { history, sessions } = this;
+        const { history, sessions, turns } = this;
         const resolveForRecord = this.resolveForRecord.bind(this);
         const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
+          if (yield* turns.hasOpenOperation(sourceSessionId)) {
+            return yield* Effect.fail(
+              new RequestError({
+                code: 'busy',
+                message: 'Another operation is open on this session',
+              }),
+            );
+          }
           const resolved = yield* resolveForRecord(source);
-          yield* sessions.stopForReplacement(sourceSessionId);
-          const resolvedBranchCursor =
-            liveCursor.type === 'live'
-              ? yield* history.resolveLiveBranchCursor(
-                  source.kind,
-                  sourceHistoryId,
-                  source.cwd,
-                  liveCursor.offsetFromEnd,
-                  liveCursor.contentFingerprint,
-                )
-              : branchCursor;
-          yield* launchRun(
-            replyTo,
-            source,
-            resolved,
-            (adapter) =>
-              history.branch(
-                adapter,
-                { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
-                resolved.options,
+          // The runtime rewrite stays destructive for old clients, but the tree records the
+          // replacement non-destructively. Live-echo message ids are never persisted, so
+          // `sourceMessageId` cannot name a graph turn; best-effort, the replacement lands as a
+          // sibling of the active leaf. Nothing is guessed destructively.
+          const runId = mintRunId();
+          const existingTurns = yield* turns.listTurns(sourceSessionId);
+          const activeLeaf = existingTurns.find((turn) => turn.turnId === source.activeLeafTurnId);
+          const intent = yield* turns.persistIntent({
+            sessionId: sourceSessionId,
+            operationId: mintOperationId(),
+            runId,
+            parentTurnId: activeLeaf?.parentTurnId ?? null,
+            input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
+          });
+          yield* Effect.gen(function* () {
+            yield* sessions.stopForReplacement(sourceSessionId);
+            const resolvedBranchCursor =
+              liveCursor.type === 'live'
+                ? yield* history.resolveLiveBranchCursor(
+                    source.kind,
+                    sourceHistoryId,
+                    source.cwd,
+                    liveCursor.offsetFromEnd,
+                    liveCursor.contentFingerprint,
+                  )
+                : branchCursor;
+            yield* launchRun(
+              replyTo,
+              source,
+              resolved,
+              (adapter) =>
+                history.branch(
+                  adapter,
+                  { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
+                  resolved.options,
+                ),
+              {
+                initialInput: { type: 'prompt', content },
+                preparedTurn: intent,
+                registerRecord: false,
+                rewindMessageId: sourceMessageId,
+                runId,
+              },
+            );
+          }).pipe(
+            // The dispatcher resolves dispatch failures itself; this covers stop/branch failures.
+            Effect.tapError((error) =>
+              turns.resolveFailed(intent, toRequestFailure(error)).pipe(
+                Effect.catch(() => Effect.void),
+                Effect.asVoid,
               ),
-            {
-              initialInput: { type: 'prompt', content },
-              registerRecord: false,
-              rewindMessageId: sourceMessageId,
-            },
+            ),
           );
         });
       }),
@@ -747,6 +782,7 @@ export class SessionLifecycleService {
       runId?: RunId;
       baseTurnId?: TurnId;
       initialInput?: AgentInput;
+      preparedTurn?: PersistedTurnIntent;
       registerRecord?: boolean;
       rewindMessageId?: MessageId;
     } = {},

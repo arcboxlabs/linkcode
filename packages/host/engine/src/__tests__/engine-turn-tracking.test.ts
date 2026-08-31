@@ -1,7 +1,15 @@
-import type { AgentInput } from '@linkcode/schema';
-import { OperationIdSchema, RunIdSchema, TurnIdSchema, textBlock } from '@linkcode/schema';
+import { asHistoryId } from '@linkcode/agent-adapter';
+import type { AgentHistoryCapabilities, AgentInput } from '@linkcode/schema';
+import {
+  MessageIdSchema,
+  OperationIdSchema,
+  RunIdSchema,
+  SessionIdSchema,
+  TurnIdSchema,
+  textBlock,
+} from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import { InMemorySessionStore } from '../session/session-store';
 import {
@@ -15,6 +23,20 @@ class RejectingTurnAdapter extends FakeAdapter {
   override send(input: AgentInput): Promise<void> {
     this.sentInputs.push(input);
     return Promise.reject(new Error('provider rejected input'));
+  }
+}
+
+class BranchingAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    branch: true,
+  };
+
+  branchHistory(): Promise<void> {
+    this.emit({ type: 'session-ref', historyId: asHistoryId('native-child') });
+    return Promise.resolve();
   }
 }
 
@@ -182,6 +204,113 @@ describe('legacy input turn tracking', () => {
 
     const [turn] = await h.conversationStore.listTurns(h.sessionId);
     expect(turn.state).toBe('cancelled');
+  });
+
+  it('records a legacy rewrite as a sibling turn and moves the active leaf', async () => {
+    const h = await startedHarness(() => new BranchingAdapter());
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'original',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [textBlock('original prompt')] },
+    });
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite',
+      sourceSessionId: h.sessionId,
+      sourceMessageId: MessageIdSchema.parse('source-message'),
+      branchCursor: 'opaque-cursor',
+      content: [textBlock('edited prompt')],
+    });
+    await vi.waitFor(() =>
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'session.started', replyTo: 'rewrite' }),
+      ),
+    );
+
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns).toHaveLength(2);
+    const original = nullthrow(turns.find((turn) => turn.siblingOrdinal === 1));
+    const replacement = nullthrow(turns.find((turn) => turn.siblingOrdinal === 2));
+    expect(original.state).toBe('completed');
+    // The replacement is a sibling under the rewritten turn's parent, never a child of the leaf.
+    expect(replacement).toMatchObject({ parentTurnId: null, state: 'running' });
+    if (replacement.input.type !== 'prompt') throw new Error('expected a prompt turn');
+    const prompt = await h.conversationStore.getPrompt(replacement.input.promptId);
+    expect(prompt?.blocks).toEqual([{ type: 'text', text: 'edited prompt' }]);
+    const [record] = await h.store.load();
+    expect(record.activeLeafTurnId).toBe(replacement.turnId);
+    expect(record.runs.at(-1)?.runId).toBe(replacement.runId);
+  });
+
+  it('resolves open operations and dead turns at boot, and replays the stored error', async () => {
+    const conversationStore = new InMemoryConversationStore();
+    const sessionId = SessionIdSchema.parse('sess-recover');
+    await conversationStore.persistTurnIntent({
+      turn: {
+        turnId: TurnIdSchema.parse('turn-preparing'),
+        sessionId,
+        parentTurnId: null,
+        siblingOrdinal: 1,
+        input: { type: 'shell-command', command: 'sleep 1' },
+        runId: RunIdSchema.parse('run-dead'),
+        state: 'preparing',
+        createdAt: Date.now(),
+      },
+      operation: {
+        operationId: OperationIdSchema.parse('op-interrupted'),
+        sessionId,
+        kind: 'turn.submit',
+        state: 'open',
+        createdAt: Date.now(),
+      },
+    });
+    await conversationStore.saveTurn({
+      turnId: TurnIdSchema.parse('turn-running'),
+      sessionId,
+      parentTurnId: null,
+      siblingOrdinal: 2,
+      input: { type: 'shell-command', command: 'sleep 2' },
+      runId: RunIdSchema.parse('run-dead'),
+      state: 'running',
+      createdAt: Date.now(),
+    });
+
+    const h = harness(
+      new InMemorySessionStore(),
+      () => new FakeAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
+    await h.engine.start();
+
+    const turns = await conversationStore.listTurns(sessionId);
+    expect(turns.map((turn) => turn.state)).toEqual(['failed', 'failed']);
+    expect(await conversationStore.listOpenOperations()).toHaveLength(0);
+
+    // Replay happens before any validation, so even an unknown session replays the result.
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 'replayed',
+      sessionId,
+      operationId: OperationIdSchema.parse('op-interrupted'),
+      input: { type: 'shell-command', command: 'sleep 1' },
+    });
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'request.failed',
+        replyTo: 'replayed',
+        code: 'operation_failed',
+        message: 'The daemon restarted before the turn was dispatched',
+      }),
+    );
   });
 
   it('refuses a legacy turn input while an operation is open', async () => {

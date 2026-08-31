@@ -222,6 +222,8 @@ export class SessionOrchestrator {
     mcpWarnings: readonly McpWarning[] = [],
     options: {
       initialInput?: AgentInput;
+      /** Turn intent already persisted for `initialInput`; its dispatch commits or fails it. */
+      preparedTurn?: PersistedTurnIntent;
       registerRecord?: boolean;
       rewindMessageId?: MessageId;
     } = {},
@@ -239,7 +241,7 @@ export class SessionOrchestrator {
     const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
-    const { initialInput, registerRecord = true, rewindMessageId } = options;
+    const { initialInput, preparedTurn, registerRecord = true, rewindMessageId } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
@@ -296,7 +298,7 @@ export class SessionOrchestrator {
         }
         if (initialInput !== undefined) {
           yield* session
-            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput)))
+            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput, preparedTurn)))
             .pipe(
               Effect.mapError((cause) =>
                 toOperationFailure(cause, {
