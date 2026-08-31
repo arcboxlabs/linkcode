@@ -53,9 +53,10 @@ export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
  * that would pin every thread to its first launch and cut it off from the agent's default for good.
  */
 export const SessionRunSchema = z.object({
-  /** Explicit run identity — run sealing and session-ref binding address runs by id, never
-   * positionally. */
-  runId: RunIdSchema,
+  /** Explicit run identity — writers always mint it. Optional at the parse boundary until the
+   * compatibility floor passes v80: ≤v79 daemons emit runs without it, and `session.imported`
+   * carries this schema, so a required field would make newer clients drop that reply. */
+  runId: RunIdSchema.optional(),
   /** The turn this run was launched from (fork/resume base); absent for a fresh root run. */
   baseTurnId: TurnIdSchema.optional(),
   historyId: AgentHistoryIdSchema.optional(),

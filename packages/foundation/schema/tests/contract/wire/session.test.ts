@@ -35,4 +35,28 @@ describe('session wire variants', () => {
   it('rejects a branch without an explicit mode', () => {
     expect(parseWireMessage(sessionStart('high', { name: 'feature' })).ok).toBe(false);
   });
+
+  it('accepts a legacy session.imported record whose runs predate runId', () => {
+    // ≤v79 daemons emit runs without runId; required-ness waits for the floor bump.
+    expect(
+      parseWireMessage({
+        v: WIRE_PROTOCOL_VERSION,
+        id: 'message-1',
+        ts: 0,
+        payload: {
+          kind: 'session.imported',
+          replyTo: 'request-1',
+          record: {
+            sessionId: 'session-1',
+            kind: 'claude-code',
+            cwd: '/repo',
+            origin: { type: 'created' },
+            createdAt: 1,
+            updatedAt: 2,
+            runs: [{ startedAt: 1, historyId: 'native-1' }],
+          },
+        },
+      }).ok,
+    ).toBe(true);
+  });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,7 +88,9 @@ export function createSessionStore(dbPath: string): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
-                runId: run.runId,
+                // Writers mint runId; the fallback keeps the column non-null for a legacy record
+                // (wire-optional until the floor bump) without minting on read.
+                runId: run.runId ?? `run-${randomUUID()}`,
                 baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,
