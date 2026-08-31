@@ -4,11 +4,27 @@ import { join } from 'node:path';
 import { SessionRecordSchema, SessionRunSchema } from '@linkcode/schema';
 import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { DaemonDatabase } from '../db/database';
+import { openDaemonDatabase } from '../db/database';
 import { createSessionStore } from '../session-store';
 
 const temporaryDirectories: string[] = [];
+const openDatabases = new Set<DaemonDatabase>();
+
+function openDatabase(path: string): DaemonDatabase {
+  const database = openDaemonDatabase(path);
+  openDatabases.add(database);
+  return database;
+}
+
+function closeDatabase(database: DaemonDatabase): void {
+  database.close();
+  openDatabases.delete(database);
+}
 
 afterEach(async () => {
+  for (const database of openDatabases) database.close();
+  openDatabases.clear();
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -51,9 +67,11 @@ describe('SQLite session store', () => {
         },
       ],
     });
-    await createSessionStore(database).save(record);
+    const first = openDatabase(database);
+    await createSessionStore(first.client).save(record);
+    closeDatabase(first);
 
-    expect(await createSessionStore(database).load()).toEqual([record]);
+    expect(await createSessionStore(openDatabase(database).client).load()).toEqual([record]);
   });
 
   it('round-trips additive fork provenance and upgrades an existing forked origin row', async () => {
@@ -72,17 +90,21 @@ describe('SQLite session store', () => {
       updatedAt: 6,
       runs: [],
     });
-    await createSessionStore(database).save(record);
+    const first = openDatabase(database);
+    await createSessionStore(first.client).save(record);
+    closeDatabase(first);
 
-    expect(await createSessionStore(database).load()).toEqual([record]);
+    const second = openDatabase(database);
+    expect(await createSessionStore(second.client).load()).toEqual([record]);
 
+    closeDatabase(second);
     const sqlite = new Sqlite(database);
     expect(sqlite.prepare('SELECT origin_type FROM sessions').pluck().get()).toBe('created');
     sqlite
       .prepare("UPDATE sessions SET origin_type = 'forked' WHERE session_id = ?")
       .run(record.sessionId);
     sqlite.close();
-    expect(await createSessionStore(database).load()).toEqual([record]);
+    expect(await createSessionStore(openDatabase(database).client).load()).toEqual([record]);
   });
 
   it('keeps run order across a reload, since the array position is part of the record', async () => {
@@ -100,7 +122,8 @@ describe('SQLite session store', () => {
         { runId: 'run-3', startedAt: 3, model: 'third' },
       ],
     });
-    const store = createSessionStore(database);
+    const first = openDatabase(database);
+    const store = createSessionStore(first.client);
     await store.save(record);
     // A later save rewrites the whole run list; the newest run is what a relaunch reads back.
     await store.save({
@@ -111,7 +134,8 @@ describe('SQLite session store', () => {
       ],
     });
 
-    const [reloaded] = await createSessionStore(database).load();
+    closeDatabase(first);
+    const [reloaded] = await createSessionStore(openDatabase(database).client).load();
     expect(reloaded.runs.map((run) => run.model)).toEqual(['first', 'second', 'third', 'fourth']);
   });
 

@@ -42,6 +42,7 @@ import {
   worktreeRoot,
 } from './config';
 import { createConversationStore } from './conversation-store';
+import { openDaemonDatabase } from './db/database';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import type { ManagedAgentKind } from './managed-agent-refresh';
@@ -267,18 +268,20 @@ async function main(): Promise<void> {
       if (simulatorMcp) {
         yield* Effect.addFinalizer(() => finalize(() => simulatorMcp.close()));
       }
+      const database = yield* Effect.acquireRelease(
+        Effect.sync(() => openDaemonDatabase(databasePath())),
+        (owned) => finalize(owned.close),
+      );
       const EngineInfrastructureLive = makeEngineInfrastructureLayer(hub, {
         providerStore: store,
         ptyBackend: new SidecarPtyBackend(resolveSidecarPath()),
         simulators,
         simulatorMcp,
         simulatorConsent,
-        sessionStore: createSessionStore(databasePath()),
-        // After sessionStore, whose constructor applies the migrations these tables come from.
-        conversationStore: createConversationStore(databasePath()),
+        sessionStore: createSessionStore(database.client),
+        conversationStore: createConversationStore(database.client),
         resourceStore: createResourceStore(databasePath()),
         stateDir: daemonStateDir(),
-        // After sessionStore so its migration-ledger reconcile runs before this store migrates.
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),

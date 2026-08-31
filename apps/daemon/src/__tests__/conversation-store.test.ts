@@ -17,22 +17,40 @@ import {
 } from '@linkcode/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createConversationStore } from '../conversation-store';
+import type { DaemonDatabase } from '../db/database';
+import { openDaemonDatabase } from '../db/database';
 import { createSessionStore } from '../session-store';
 
 const temporaryDirectories: string[] = [];
+const openDatabases = new Set<DaemonDatabase>();
+
+function openDatabase(path: string): DaemonDatabase {
+  const database = openDaemonDatabase(path);
+  openDatabases.add(database);
+  return database;
+}
+
+function closeDatabase(database: DaemonDatabase): void {
+  database.close();
+  openDatabases.delete(database);
+}
 
 afterEach(async () => {
+  for (const database of openDatabases) database.close();
+  openDatabases.clear();
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
-/** Migrations belong to the session store; turn rows FK-reference its sessions table. */
-async function databaseWithSessions(...sessionIds: string[]): Promise<string> {
+async function databaseWithSessions(
+  ...sessionIds: string[]
+): Promise<{ readonly path: string; readonly database: DaemonDatabase }> {
   const directory = await mkdtemp(join(tmpdir(), 'linkcode-conversation-store-'));
   temporaryDirectories.push(directory);
-  const database = join(directory, 'daemon.db');
-  const sessions = createSessionStore(database);
+  const path = join(directory, 'daemon.db');
+  const database = openDatabase(path);
+  const sessions = createSessionStore(database.client);
   for (let i = 0, len = sessionIds.length; i < len; i++) {
     await sessions.save(
       SessionRecordSchema.parse({
@@ -46,7 +64,7 @@ async function databaseWithSessions(...sessionIds: string[]): Promise<string> {
       }),
     );
   }
-  return database;
+  return { path, database };
 }
 
 function turn(value: {
@@ -112,7 +130,7 @@ describe('SQLite conversation store', () => {
    * catch it (the daemon store trap in apps/daemon/AGENTS.md).
    */
   it('round-trips every turn field, all three input shapes included', async () => {
-    const database = await databaseWithSessions('s-1');
+    const { path, database } = await databaseWithSessions('s-1');
     const migratedTurn = turn({
       turnId: 't-5',
       parentTurnId: TurnIdSchema.parse('t-4'),
@@ -153,7 +171,7 @@ describe('SQLite conversation store', () => {
       }),
       migratedTurn,
     ];
-    const store = createConversationStore(database);
+    const store = createConversationStore(database.client);
     await store.persistTurnIntent({
       turn: turns[0],
       prompt: prompt('p-1'),
@@ -176,23 +194,24 @@ describe('SQLite conversation store', () => {
       operation: openOperation('op-migrated'),
     });
 
-    const reopened = createConversationStore(database);
+    closeDatabase(database);
+    const reopened = createConversationStore(openDatabase(path).client);
     expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual(turns);
     expect(await reopened.getPrompt(PromptIdSchema.parse('p-migrated'))).toBeUndefined();
   });
 
   it('round-trips prompts, preserving block and context order', async () => {
-    const database = await databaseWithSessions('s-1');
-    await seedIntent(createConversationStore(database));
+    const { database } = await databaseWithSessions('s-1');
+    await seedIntent(createConversationStore(database.client));
 
-    expect(await createConversationStore(database).getPrompt(PromptIdSchema.parse('p-1'))).toEqual(
-      prompt('p-1'),
-    );
+    expect(
+      await createConversationStore(database.client).getPrompt(PromptIdSchema.parse('p-1')),
+    ).toEqual(prompt('p-1'));
   });
 
   it('round-trips bindings and re-captures by (turn, history)', async () => {
-    const database = await databaseWithSessions('s-1');
-    const store = createConversationStore(database);
+    const { database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
     await seedIntent(store);
     const live = ProviderTurnBindingSchema.parse({
       turnId: 't-prompted',
@@ -211,13 +230,13 @@ describe('SQLite conversation store', () => {
     await store.saveBinding(recaptured);
 
     expect(
-      await createConversationStore(database).listBindings(TurnIdSchema.parse('t-prompted')),
+      await createConversationStore(database.client).listBindings(TurnIdSchema.parse('t-prompted')),
     ).toEqual([recaptured, { ...live, historyId: 'native-2', capturedFrom: 'replay' }]);
   });
 
   it('round-trips operations through every state', async () => {
-    const database = await databaseWithSessions('s-1');
-    const store = createConversationStore(database);
+    const { path, database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
     await seedIntent(store);
     expect(await store.getOperation(OperationIdSchema.parse('op-1'))).toEqual(
       openOperation('op-1'),
@@ -257,7 +276,8 @@ describe('SQLite conversation store', () => {
     });
     await store.resolveOperation(failed, { ...doomed, state: 'failed' });
 
-    const reopened = createConversationStore(database);
+    closeDatabase(database);
+    const reopened = createConversationStore(openDatabase(path).client);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-1'))).toEqual(succeeded);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-2'))).toEqual(failed);
     expect(await reopened.listOpenOperations()).toEqual([]);
@@ -268,8 +288,8 @@ describe('SQLite conversation store', () => {
   });
 
   it('deleteSession purges turns, bindings, and operations but keeps prompts shared with a fork', async () => {
-    const database = await databaseWithSessions('s-parent', 's-fork');
-    const store = createConversationStore(database);
+    const { path, database } = await databaseWithSessions('s-parent', 's-fork');
+    const store = createConversationStore(database.client);
     await store.persistTurnIntent({
       turn: turn({
         turnId: 't-shared',
@@ -315,7 +335,8 @@ describe('SQLite conversation store', () => {
 
     await store.deleteSession(SessionIdSchema.parse('s-parent'));
 
-    const reopened = createConversationStore(database);
+    closeDatabase(database);
+    const reopened = createConversationStore(openDatabase(path).client);
     expect(await reopened.listTurns(SessionIdSchema.parse('s-parent'))).toEqual([]);
     expect(await reopened.listBindings(TurnIdSchema.parse('t-shared'))).toEqual([]);
     expect(await reopened.listOpenOperations()).toEqual([]);
@@ -323,10 +344,8 @@ describe('SQLite conversation store', () => {
     expect(await reopened.getPrompt(PromptIdSchema.parse('p-shared'))).toEqual(prompt('p-shared'));
     expect(await reopened.listTurns(SessionIdSchema.parse('s-fork'))).toHaveLength(1);
 
-    await store.deleteSession(SessionIdSchema.parse('s-fork'));
-    expect(
-      await createConversationStore(database).getPrompt(PromptIdSchema.parse('p-shared')),
-    ).toBeUndefined();
+    await reopened.deleteSession(SessionIdSchema.parse('s-fork'));
+    expect(await reopened.getPrompt(PromptIdSchema.parse('p-shared'))).toBeUndefined();
   });
 
   it('refuses a second intent while the session has an open operation', async () => {

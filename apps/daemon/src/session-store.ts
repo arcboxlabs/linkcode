@@ -1,58 +1,19 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import type { SessionStore } from '@linkcode/engine';
 import type { SessionRecord } from '@linkcode/schema';
 import { SessionRecordSchema } from '@linkcode/schema';
-import Sqlite from 'better-sqlite3';
 import { asc, eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { readMigrationFiles } from 'drizzle-orm/migrator';
-import { nullthrow } from 'foxts/guard';
+import type { DaemonDatabaseClient } from './db/database';
 import { sessionRuns, sessions } from './db/schema';
 
 type SessionRow = typeof sessions.$inferSelect;
 type RunRow = typeof sessionRuns.$inferSelect;
 
 /**
- * drizzle's migrator keys "already applied?" on the journal `when` vs the recorded `created_at`,
- * never the content hash — a regenerated migration gets a fresh `when`, re-runs its non-idempotent
- * DDL, and crashes the daemon at boot. A recorded hash (sha256 of the SQL) proves that migration
- * already ran, so realign its `created_at` to the current journal before migrating; genuinely new
- * migrations (unrecorded hash) still run and still fail loudly.
+ * SQLite-backed `SessionStore` borrowing the shared graph/session connection. Rows are validated
+ * back through `SessionRecordSchema` on load — the zod schema stays the contract.
  */
-function reconcileMigrationLedger(sqlite: Sqlite.Database, migrationsFolder: string): void {
-  const hasLedger = sqlite
-    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'")
-    .get();
-  if (!hasLedger) return; // First boot — nothing has been applied yet.
-  const realign = sqlite.prepare(
-    'UPDATE __drizzle_migrations SET created_at = ? WHERE hash = ? AND created_at <> ?',
-  );
-  sqlite.transaction(() => {
-    const migrations = readMigrationFiles({ migrationsFolder });
-    for (let i = 0, len = migrations.length; i < len; i++) {
-      const migration = migrations[i];
-      realign.run(migration.folderMillis, migration.hash, migration.folderMillis);
-    }
-  })();
-}
-
-/**
- * SQLite-backed `SessionStore` (drizzle over better-sqlite3) at `~/.linkcode/daemon.db`. Rows are
- * validated back through `SessionRecordSchema` on load — the zod schema stays the contract.
- */
-export function createSessionStore(dbPath: string): SessionStore {
-  if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
-  const sqlite = new Sqlite(dbPath);
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite);
-  const migrationsFolder = fileURLToPath(new URL('../drizzle', import.meta.url));
-  reconcileMigrationLedger(sqlite, migrationsFolder);
-  migrate(db, { migrationsFolder });
-
+export function createSessionStore(db: DaemonDatabaseClient): SessionStore {
   return {
     load(): Promise<SessionRecord[]> {
       const sessionRows = db.select().from(sessions).all();
@@ -88,9 +49,9 @@ export function createSessionStore(dbPath: string): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
-                // runId is optional at the wire parse boundary only; every writer mints it, so a
-                // runId-less run here is a bug — minting one would drift the durable id per save.
-                runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
+                // Writers mint runId; the fallback keeps the column non-null for a legacy record
+                // (wire-optional until the floor bump) without minting on read.
+                runId: run.runId ?? `run-${randomUUID()}`,
                 baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,

@@ -1,7 +1,4 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import type { ConversationStore, ConversationTurnIntent } from '@linkcode/engine';
-import { ConversationSessionBusyError } from '@linkcode/engine';
 import type {
   ConversationOperation,
   ConversationTurn,
@@ -18,9 +15,8 @@ import {
   PromptRecordSchema,
   ProviderTurnBindingSchema,
 } from '@linkcode/schema';
-import Sqlite from 'better-sqlite3';
-import { and, asc, count, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { and, asc, eq, inArray, isNotNull, notInArray } from 'drizzle-orm';
+import type { DaemonDatabaseClient } from './db/database';
 import {
   conversationOperations,
   conversationTurns,
@@ -33,27 +29,27 @@ type TurnRow = typeof conversationTurns.$inferSelect;
 type PromptRow = typeof prompts.$inferSelect;
 type OperationRow = typeof conversationOperations.$inferSelect;
 
-type Db = ReturnType<typeof drizzle>;
+type Db = DaemonDatabaseClient;
 type DbOrTx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /**
- * SQLite-backed `ConversationStore` on ONE dedicated connection — the multi-table methods run in
- * `db.transaction`, which the submit saga's atomicity guarantees hang on. Rows are validated back
- * through the zod schemas on load. Migrations are owned by the session store, which must be
- * constructed first.
+ * SQLite-backed `ConversationStore` on the daemon's shared graph/session connection. Multi-table
+ * methods run in `db.transaction`; rows are validated back through the zod schemas on load.
  */
-export function createConversationStore(dbPath: string): ConversationStore {
-  if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
-  const sqlite = new Sqlite(dbPath);
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite);
-
+export function createConversationStore(db: DaemonDatabaseClient): ConversationStore {
   function upsertTurn(tx: DbOrTx, turn: ConversationTurn): void {
     const row = toTurnRow(turn);
     tx.insert(conversationTurns)
       .values(row)
       .onConflictDoUpdate({ target: conversationTurns.turnId, set: row })
+      .run();
+  }
+
+  function upsertOperation(tx: DbOrTx, operation: ConversationOperation): void {
+    const row = toOperationRow(operation);
+    tx.insert(conversationOperations)
+      .values(row)
+      .onConflictDoUpdate({ target: conversationOperations.operationId, set: row })
       .run();
   }
 
@@ -118,42 +114,14 @@ export function createConversationStore(dbPath: string): ConversationStore {
       return Promise.resolve(rows.map(toOperation));
     },
 
-    persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn> {
-      const { parentTurnId, sessionId } = intent.turn;
-      const persisted = db.transaction((tx) => {
-        const open = tx
-          .select({ operationId: conversationOperations.operationId })
-          .from(conversationOperations)
-          .where(
-            and(
-              eq(conversationOperations.sessionId, sessionId),
-              eq(conversationOperations.state, 'open'),
-            ),
-          )
-          .get();
-        if (open) throw new ConversationSessionBusyError(sessionId);
-        const siblings = tx
-          .select({ value: count() })
-          .from(conversationTurns)
-          .where(
-            and(
-              eq(conversationTurns.sessionId, sessionId),
-              parentTurnId === null
-                ? isNull(conversationTurns.parentTurnId)
-                : eq(conversationTurns.parentTurnId, parentTurnId),
-            ),
-          )
-          .get();
-        const turn: ConversationTurn = {
-          ...intent.turn,
-          siblingOrdinal: (siblings?.value ?? 0) + 1,
-        };
+    persistTurnIntent(intent: ConversationTurnIntent): Promise<void> {
+      db.transaction((tx) => {
         const prompt =
           intent.turn.input.type === 'prompt' && intent.turn.input.promptId !== null
             ? intent.prompt
             : undefined;
         if (prompt) {
-          // Prompts are immutable and shared across forks; a re-referencing insert is a no-op.
+          // Prompts are immutable: a replayed intent re-inserts the identical record.
           tx.insert(prompts).values(toPromptRow(prompt)).onConflictDoNothing().run();
           const referenced = attachmentIdsOf(prompt);
           if (referenced.length > 0) {
@@ -165,32 +133,18 @@ export function createConversationStore(dbPath: string): ConversationStore {
               .run();
           }
         }
-        // Plain inserts: a replayed operationId must conflict here, never re-open a terminal row.
-        tx.insert(conversationTurns).values(toTurnRow(turn)).run();
-        tx.insert(conversationOperations).values(toOperationRow(intent.operation)).run();
-        return turn;
+        upsertTurn(tx, intent.turn);
+        upsertOperation(tx, intent.operation);
       });
-      return Promise.resolve(persisted);
+      return Promise.resolve();
     },
 
-    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean> {
-      const transitioned = db.transaction((tx) => {
-        const result = tx
-          .update(conversationOperations)
-          .set(toOperationRow(operation))
-          .where(
-            and(
-              eq(conversationOperations.operationId, operation.operationId),
-              eq(conversationOperations.state, 'open'),
-            ),
-          )
-          .run();
-        // A concurrent resolver already stored a terminal result; the first writer stands.
-        if (result.changes === 0) return false;
+    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void> {
+      db.transaction((tx) => {
+        upsertOperation(tx, operation);
         if (turn) upsertTurn(tx, turn);
-        return true;
       });
-      return Promise.resolve(transitioned);
+      return Promise.resolve();
     },
 
     deleteSession(sessionId: SessionId): Promise<void> {
