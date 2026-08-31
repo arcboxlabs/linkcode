@@ -32,6 +32,7 @@ import { noop } from 'foxts/noop';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
+import type { AgentCredential } from '../../credential';
 import { codexEnv, readAgentCredential } from '../../credential';
 import { decodeHistoryBranchCursor } from '../../history-branch';
 import {
@@ -276,6 +277,22 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
 export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
 
 const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
+const CODEX_PROVIDER_AUTH_FAILED_MESSAGE = 'Codex provider authentication failed';
+const CODEX_ACCOUNT_PROVIDER_ID = 'linkcode-account';
+
+function accountProviderOverrides(credential: AgentCredential): Record<string, unknown> {
+  const key = credential.apiKey ?? credential.authToken;
+  if (!key || !credential.baseUrl) return {};
+  const prefix = `model_providers.${CODEX_ACCOUNT_PROVIDER_ID}`;
+  return {
+    [`${prefix}.name`]: 'LinkCode Account',
+    [`${prefix}.base_url`]: credential.baseUrl,
+    [`${prefix}.wire_api`]: 'responses',
+    [`${prefix}.env_key`]: 'CODEX_API_KEY',
+    [`${prefix}.supports_websockets`]: false,
+    [`${prefix}.requires_openai_auth`]: false,
+  };
+}
 
 /** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
  * structured status (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`) rides only the
@@ -491,9 +508,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** The contextCompaction item announced by item/started but not yet settled by item/completed.
    * Teardown settles it so an interrupted turn never strands a live "compacting…" row. */
   private pendingCompactionId: string | null = null;
-  /** Latched on the first 401; cleared when a fresh server spawns. The process caches credentials
-   * for its whole lifetime (verified live — an `auth.json` written after spawn is never re-read),
-   * so the flag both dedupes the retry storm's banners and marks this server unrecoverable in place. */
+  /** Latched on the first 401; credentials are process-cached, so the server cannot recover in place. */
   private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
@@ -895,7 +910,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.processEnvironment,
       'codex: project environment not loaded',
     );
-    const credentialEnv = codexEnv(readAgentCredential(opts.config));
+    const credential = readAgentCredential(opts.config);
+    const credentialEnv = codexEnv(credential);
+    const providerOverrides = accountProviderOverrides(credential);
     const serverEnvironment = credentialEnv
       ? { ...processEnvironment, ...credentialEnv }
       : processEnvironment;
@@ -945,6 +962,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       const preset = POLICY_PRESETS[this.policyId];
       const configOverrides = {
+        ...providerOverrides,
         ...(opts.additionalDirectories?.length && {
           'sandbox_workspace_write.writable_roots': opts.additionalDirectories,
         }),
@@ -953,6 +971,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       const params = {
         cwd: opts.cwd,
         model: this.model,
+        ...(!isObjectEmpty(providerOverrides) && { modelProvider: CODEX_ACCOUNT_PROVIDER_ID }),
         approvalPolicy: preset.approvalPolicy,
         ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
         ...(!isObjectEmpty(configOverrides) && { config: configOverrides }),
@@ -1077,7 +1096,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const server = this.server;
     const threadId = this.threadId;
     if (server && threadId) return { server, threadId };
-    throw new Error(this.authFailed ? CODEX_AUTH_FAILED_MESSAGE : 'codex: session not started');
+    throw new Error(this.authFailed ? this.authFailureMessage() : 'codex: session not started');
   }
 
   private async startTurn(input: CodexTurnInput[]): Promise<void> {
@@ -1128,10 +1147,25 @@ export class CodexAdapter extends BaseAgentAdapter {
   private handleAuthFailure(): void {
     if (this.authFailed) return;
     this.authFailed = true;
-    this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    if (this.hasProviderCredential()) {
+      this.emitProviderError(CODEX_PROVIDER_AUTH_FAILED_MESSAGE, { statusCode: 401 });
+    } else {
+      this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    }
     // Deliberate close(): CodexAppServer suppresses onExit for it, so no exit alarm follows.
     this.server?.close();
     this.finalizeServer();
+  }
+
+  private hasProviderCredential(): boolean {
+    const { apiKey, authToken } = readAgentCredential(this.opts?.config);
+    return Boolean(apiKey || authToken);
+  }
+
+  private authFailureMessage(): string {
+    return this.hasProviderCredential()
+      ? CODEX_PROVIDER_AUTH_FAILED_MESSAGE
+      : CODEX_AUTH_FAILED_MESSAGE;
   }
 
   /** Shared unwind for a crashed or retired server: finalize the turn and arm the next prompt to

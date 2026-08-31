@@ -364,6 +364,37 @@ describe('CodexAdapter shell-command passthrough', () => {
     expect(overridden.configuredSandboxEnvironment).toEqual(overridden.fakeServers[0].opts.env);
   });
 
+  it('routes account credentials through a non-WebSocket Responses provider', async () => {
+    const adapter = new TestCodex();
+    await adapter.start({
+      ...start,
+      model: 'openai/gpt-5.6',
+      config: {
+        authToken: 'gateway-token',
+        baseUrl: 'https://gateway.linkcode.ai/v1',
+      },
+    });
+
+    expect(adapter.fakeServers[0].opts.env).toMatchObject({
+      CODEX_API_KEY: 'gateway-token',
+      OPENAI_BASE_URL: 'https://gateway.linkcode.ai/v1',
+    });
+    expect(adapter.fakeServers[0].requests).toContainEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({
+        model: 'openai/gpt-5.6',
+        modelProvider: 'linkcode-account',
+        config: expect.objectContaining({
+          'model_providers.linkcode-account.base_url': 'https://gateway.linkcode.ai/v1',
+          'model_providers.linkcode-account.wire_api': 'responses',
+          'model_providers.linkcode-account.env_key': 'CODEX_API_KEY',
+          'model_providers.linkcode-account.supports_websockets': false,
+          'model_providers.linkcode-account.requires_openai_auth': false,
+        }),
+      }),
+    });
+  });
+
   it('announces the gated command and requests permission by subject reference', async () => {
     const adapter = new TestCodex();
     const events: AgentEvent[] = [];
