@@ -11,6 +11,10 @@ declare namespace NodeJS {
     EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN?: string;
     EXPO_PUBLIC_POSTHOG_HOST?: string;
     EXPO_PUBLIC_CONFIG_SIGNING_POC?: string;
+    /** Overrides the Cloud API base URL; unset defaults to production. */
+    EXPO_PUBLIC_CLOUD_URL?: string;
+    /** Overrides the central IdP base URL; unset defaults to production. */
+    EXPO_PUBLIC_IDP_URL?: string;
   }
 }
 

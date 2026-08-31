@@ -1255,6 +1255,23 @@ export const zhCN = {
       revokeThisDeviceMessage: '这是当前使用的手机——撤销后本机也会退出登录。',
       revokeCancel: '取消',
       revokeError: '撤销设备失败。',
+      deleteAccount: '删除账号',
+      deleteTitle: '删除你的账号？',
+      deleteMessage:
+        '此操作将永久删除你的 LinkCode Cloud 账号，且无法撤销。与该账号关联的设备、隧道连接与消息记录都会被移除。Apple 内购订阅不会自动取消，请在 App Store 设置中管理。',
+      deleteCancel: '取消',
+      deleteConfirm: '删除',
+      deleteReauthenticationFailed: '无法确认身份，请重试。',
+      deleteAppleDeviceRequired: '此账号必须在支持「通过 Apple 登录」的设备上确认身份后删除。',
+      deleteAccountMismatch: '刚才登录的是另一个账号。请重新登录你想删除的账号。',
+      deleteFailed: '删除账号失败，请重试。',
+      deleteSoleOwner: '你是某个共享组织的唯一所有者。请先转移所有权，再删除账号。',
+      deleteEmergencyHold: '该账号暂不支持自助删除，请联系支持完成删除。',
+      deleteCompleted: '你的账号已删除。',
+      deletePending: '已收到删除请求，部分步骤需人工处理，将在 3~5 个工作日内完成。',
+      deleteRevocationFailedTitle: '移除 LinkCode 的 Apple 登录权限',
+      deleteRevocationFailedMessage:
+        '账号已删除，但未能自动移除 Apple 的登录授权。请到「设置 →［你的姓名］→ 使用 Apple ID 登录」中移除 LinkCode。',
     },
     sessions: {
       title: '线程',

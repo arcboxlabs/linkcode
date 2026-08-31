@@ -1,6 +1,7 @@
 import { disableDeviceNotifications } from '@mobile/runtime/notifications';
 import { falseFn, noop, trueFn } from 'foxts/noop';
-import { cloudAuthClient } from './client';
+import { z } from 'zod';
+import { CLOUD_URL, cloudAuthClient } from './client';
 import { clearDeviceEnrollment } from './devices';
 
 /** The cloud's genericOAuth provider id — the central IdP is the only sign-in path. */
@@ -37,6 +38,38 @@ export async function signInToCloud(): Promise<void> {
     callbackURL: '/connect',
   });
   if (error) throw new Error(`sign-in failed (${error.status})`);
+}
+
+const freshSessionSchema = z.object({
+  session: z.object({ id: z.string().min(1) }),
+  user: z.object({ id: z.string().min(1) }),
+});
+
+export class CloudAccountMismatchError extends Error {
+  override name = 'CloudAccountMismatchError';
+}
+
+async function readAuthoritativeSession(): Promise<{ sessionId: string; userId: string }> {
+  const { data, error } = await cloudAuthClient.$fetch<unknown>(
+    `${CLOUD_URL}/auth/get-session?disableCookieCache=true`,
+    {},
+  );
+  if (error) throw new Error(`session read failed (${error.status})`);
+  const { session, user } = freshSessionSchema.parse(data);
+  return { sessionId: session.id, userId: user.id };
+}
+
+export async function reauthenticateToCloud(): Promise<void> {
+  const previous = await readAuthoritativeSession();
+  await signInToCloud();
+  const current = await readAuthoritativeSession();
+  if (current.sessionId === previous.sessionId) {
+    throw new Error('browser re-authentication did not create a fresh session');
+  }
+  if (current.userId !== previous.userId) {
+    await cloudAuthClient.signOut().catch(noop);
+    throw new CloudAccountMismatchError('browser re-authentication signed in a different account');
+  }
 }
 
 export async function signOutOfCloud(options: { revokePushToken?: boolean } = {}): Promise<void> {
