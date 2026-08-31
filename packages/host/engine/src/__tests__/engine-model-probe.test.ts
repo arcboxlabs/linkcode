@@ -206,6 +206,12 @@ describe('config.probe-models', () => {
       if (url === '/v1/models?protocol=openai-responses') {
         return { status: 200, body: JSON.stringify({ data: [{ id: 'openai/gpt-5.6' }] }) };
       }
+      if (url === '/v1/models?protocol=anthropic') {
+        return {
+          status: 200,
+          body: JSON.stringify({ data: [{ id: 'anthropic/claude-sonnet-5' }] }),
+        };
+      }
       if (url === '/v1/models') {
         return {
           status: 200,
@@ -235,11 +241,20 @@ describe('config.probe-models', () => {
           // Returned by both lists: tagged with every protocol whose list named it.
           protocols: ['openai-chat', 'openai-responses'],
         },
-        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat'] },
+        {
+          id: 'anthropic/claude-sonnet-5',
+          // Protocol order follows PROTOCOL_ORDER's processing order, not the mock's response
+          // order: the anthropic-only list merges in before the shared openai-chat one.
+          protocols: ['anthropic', 'openai-chat'],
+        },
       ]),
     );
     expect(reply.models).toHaveLength(2);
-    expect(seen.sort()).toEqual(['/v1/models', '/v1/models?protocol=openai-responses']);
+    expect(seen.sort()).toEqual([
+      '/v1/models',
+      '/v1/models?protocol=anthropic',
+      '/v1/models?protocol=openai-responses',
+    ]);
   });
 
   it('refuses to send an account secret to a service it does not belong to', async () => {
