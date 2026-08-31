@@ -1264,6 +1264,7 @@ export const zhCN = {
       deleteReauthenticationFailed: '无法确认身份，请重试。',
       deleteAppleDeviceRequired: '此账号必须在支持「通过 Apple 登录」的设备上确认身份后删除。',
       deleteAccountMismatch: '刚才登录的是另一个账号。请重新登录你想删除的账号。',
+      deleteUnknown: '无法确认删除请求是否已收到。请在网络恢复后检查账号状态。',
       deleteFailed: '删除账号失败，请重试。',
       deleteSoleOwner: '你是某个共享组织的唯一所有者。请先转移所有权，再删除账号。',
       deleteEmergencyHold: '该账号暂不支持自助删除，请联系支持完成删除。',

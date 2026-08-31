@@ -1304,6 +1304,8 @@ export const en = {
         'This account must be confirmed on a device that supports Sign in with Apple.',
       deleteAccountMismatch:
         'A different account was signed in. Sign in again with the account you want to delete.',
+      deleteUnknown:
+        'We couldn’t confirm whether your deletion request was received. Check your account status when you’re back online.',
       deleteFailed: 'Could not delete your account. Please try again.',
       deleteSoleOwner:
         'You own a shared organization with other members. Transfer ownership before deleting your account.',
