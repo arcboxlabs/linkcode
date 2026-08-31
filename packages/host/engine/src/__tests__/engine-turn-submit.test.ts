@@ -1,0 +1,358 @@
+import { asHistoryId } from '@linkcode/agent-adapter';
+import type { AgentInput, TurnId, WirePayload } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  OperationIdSchema,
+  RunIdSchema,
+  SessionIdSchema,
+  TurnIdSchema,
+} from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
+import { describe, expect, it, vi } from 'vitest';
+import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { InMemorySessionStore } from '../session/session-store';
+import {
+  FakeAdapter,
+  createSessionHarness as harness,
+  settleEngineTasks,
+  startedSessionId as startedId,
+} from './fixtures/session-harness';
+
+class RejectingTurnAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return Promise.reject(new Error('provider rejected input'));
+  }
+}
+
+class RejectOnceAdapter extends FakeAdapter {
+  private rejected = false;
+
+  override send(input: AgentInput): Promise<void> {
+    if (!this.rejected) {
+      this.rejected = true;
+      return Promise.reject(new Error('provider rejected input'));
+    }
+    return super.send(input);
+  }
+}
+
+function submittedTurnId(sent: WirePayload[], replyTo: string): TurnId {
+  const reply = sent.find(
+    (payload) => payload.kind === 'turn.submitted' && payload.replyTo === replyTo,
+  );
+  if (reply?.kind !== 'turn.submitted') throw new Error(`no turn.submitted for ${replyTo}`);
+  return reply.turnId;
+}
+
+function failure(sent: WirePayload[], replyTo: string) {
+  const reply = sent.find(
+    (payload) => payload.kind === 'request.failed' && payload.replyTo === replyTo,
+  );
+  if (reply?.kind !== 'request.failed') throw new Error(`no request.failed for ${replyTo}`);
+  return reply;
+}
+
+async function startedHarness(makeAdapter: () => FakeAdapter = () => new FakeAdapter()) {
+  const conversationStore = new InMemoryConversationStore();
+  const h = harness(
+    new InMemorySessionStore(),
+    makeAdapter,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { conversationStore },
+  );
+  await h.engine.start();
+  await h.inject({
+    kind: 'session.start',
+    clientReqId: 'r1',
+    opts: { kind: 'claude-code', cwd: '/repo' },
+  });
+  const sessionId = startedId(h.sent, 'r1');
+  return { ...h, conversationStore, sessionId, adapter: nullthrow(h.adapters[0]) };
+}
+
+function submitPrompt(
+  h: Awaited<ReturnType<typeof startedHarness>>,
+  clientReqId: string,
+  text: string,
+  extra: Partial<{ parentTurnId: TurnId | null; expectedGraphRevision: number }> = {},
+) {
+  return h.inject({
+    kind: 'turn.submit',
+    clientReqId,
+    sessionId: h.sessionId,
+    operationId: OperationIdSchema.parse(`op-${clientReqId}`),
+    input: { type: 'prompt', blocks: [{ type: 'text', text }] },
+    ...extra,
+  });
+}
+
+describe('turn.submit saga', () => {
+  it('submits a plain send onto a live session and commits the turn', async () => {
+    const h = await startedHarness();
+
+    await submitPrompt(h, 's1', 'hello');
+
+    const turnId = submittedTurnId(h.sent, 's1');
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+    expect(turn).toMatchObject({
+      turnId,
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      state: 'running',
+    });
+    expect(h.adapter.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'hello' }] },
+    ]);
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'conversation.graph.changed',
+        sessionId: h.sessionId,
+        graphRevision: 1,
+        activeLeafTurnId: turnId,
+      }),
+    );
+    expect(
+      h.sent.some(
+        (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+      ),
+    ).toBe(true);
+  });
+
+  it('replays a lost reply verbatim instead of duplicating a sibling', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'hello');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's1-retry',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-s1'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'hello' }] },
+    });
+
+    expect(submittedTurnId(h.sent, 's1-retry')).toBe(firstTurnId);
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(1);
+    expect(h.adapter.sentInputs).toHaveLength(1);
+  });
+
+  it('refuses a submit while a turn is running', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'hello');
+    h.adapter.emit({ type: 'status', status: 'running' });
+
+    await submitPrompt(h, 's2', 'racing');
+
+    expect(failure(h.sent, 's2').code).toBe('busy');
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(1);
+  });
+
+  it('refuses a submit while another operation is open', async () => {
+    const h = await startedHarness();
+    await h.conversationStore.persistTurnIntent({
+      turn: {
+        turnId: TurnIdSchema.parse('turn-open'),
+        sessionId: h.sessionId,
+        parentTurnId: null,
+        siblingOrdinal: 1,
+        input: { type: 'shell-command', command: 'sleep 1' },
+        runId: RunIdSchema.parse('run-elsewhere'),
+        state: 'preparing',
+        createdAt: Date.now(),
+      },
+      operation: {
+        operationId: OperationIdSchema.parse('op-open'),
+        sessionId: h.sessionId,
+        kind: 'turn.submit',
+        state: 'open',
+        createdAt: Date.now(),
+      },
+    });
+
+    await submitPrompt(h, 's1', 'hello');
+
+    expect(failure(h.sent, 's1').code).toBe('busy');
+  });
+
+  it('tip-continues the active leaf with the revision guard, and conflicts when stale', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's2', 'stale', { parentTurnId: firstTurnId, expectedGraphRevision: 0 });
+    expect(failure(h.sent, 's2').code).toBe('conflict');
+
+    await submitPrompt(h, 's3', 'continue', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 1,
+    });
+    const secondTurnId = submittedTurnId(h.sent, 's3');
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === secondTurnId)).toMatchObject({
+      parentTurnId: firstTurnId,
+      siblingOrdinal: 1,
+      state: 'running',
+    });
+  });
+
+  it('plain sends carry no revision guard even after the graph moved', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's2', 'second');
+
+    const secondTurnId = submittedTurnId(h.sent, 's2');
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === secondTurnId)?.parentTurnId).toBe(
+      submittedTurnId(h.sent, 's1'),
+    );
+  });
+
+  it('refuses an interior fork while no provider checkpoint exists', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'second');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'fork attempt', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+
+    expect(failure(h.sent, 's3').code).toBe('unsupported');
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(2);
+  });
+
+  it('persists the intent before dispatch and replays the stored failure', async () => {
+    const h = await startedHarness(() => new RejectingTurnAdapter());
+
+    await submitPrompt(h, 's1', 'doomed');
+
+    const stored = failure(h.sent, 's1');
+    expect(stored.code).toBe('operation_failed');
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+    expect(turn.state).toBe('failed');
+
+    // Same operationId as s1 replays the stored error without touching the adapter again.
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's1-replay',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-s1'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'doomed' }] },
+    });
+    const replayed = failure(h.sent, 's1-replay');
+    expect(replayed.code).toBe(stored.code);
+    expect(replayed.message).toBe(stored.message);
+  });
+
+  it('keeps ordinals stable across failed siblings', async () => {
+    const h = await startedHarness(() => new RejectOnceAdapter());
+
+    await submitPrompt(h, 's1', 'first try');
+    await submitPrompt(h, 's2', 'second try');
+
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns).toHaveLength(2);
+    expect(turns.map((turn) => [turn.siblingOrdinal, turn.state]).sort()).toEqual([
+      [1, 'failed'],
+      [2, 'running'],
+    ]);
+    expect(new Set(turns.map((turn) => turn.parentTurnId))).toEqual(new Set([null]));
+  });
+
+  it('starts a fresh provider session for a null-parent submit', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+
+    const rootTurnId = submittedTurnId(h.sent, 's2');
+    expect(h.adapter.stopped).toBe(true);
+    const replacement = nullthrow(h.adapters[1]);
+    expect(replacement.startedWith).not.toBeNull();
+    expect(replacement.resumedFrom).toBeNull();
+    expect(replacement.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'new root' }] },
+    ]);
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === rootTurnId)).toMatchObject({
+      parentTurnId: null,
+      siblingOrdinal: 2,
+      state: 'running',
+    });
+  });
+
+  it('resumes a cold session for a plain send with an addressable new run', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
+
+    await submitPrompt(h, 's2', 'wake up');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+
+    const resumed = nullthrow(h.adapters[1]);
+    expect(resumed.resumedFrom).toBe('native-1');
+    const secondTurnId = submittedTurnId(h.sent, 's2');
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    const second = nullthrow(turns.find((turn) => turn.turnId === secondTurnId));
+    expect(second).toMatchObject({ parentTurnId: firstTurnId, state: 'running' });
+    const [record] = await h.store.load();
+    const run = record.runs.at(-1);
+    expect(run?.runId).toBe(second.runId);
+    expect(run?.baseTurnId).toBe(firstTurnId);
+  });
+
+  it('refuses unknown sessions, unknown parents, and attachment blocks', async () => {
+    const h = await startedHarness();
+
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's-nosession',
+      sessionId: SessionIdSchema.parse('sess-missing'),
+      operationId: OperationIdSchema.parse('op-nosession'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'x' }] },
+    });
+    expect(failure(h.sent, 's-nosession').code).toBe('not_found');
+
+    await submitPrompt(h, 's-noparent', 'x', {
+      parentTurnId: TurnIdSchema.parse('turn-missing'),
+      expectedGraphRevision: 0,
+    });
+    expect(failure(h.sent, 's-noparent').code).toBe('not_found');
+
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's-attachment',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-attachment'),
+      input: {
+        type: 'prompt',
+        blocks: [{ type: 'attachment_ref', attachmentId: AttachmentIdSchema.parse('att-1') }],
+      },
+    });
+    expect(failure(h.sent, 's-attachment').code).toBe('unsupported');
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
+  });
+});
