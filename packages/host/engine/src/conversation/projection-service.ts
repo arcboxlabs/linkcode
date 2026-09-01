@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
+import { boundedLimit } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryEvent,
@@ -17,6 +17,7 @@ import {
   compareConversationWatermarks,
   MAX_ATTACHMENT_TOTAL_BASE64_LENGTH,
   MessageIdSchema,
+  TurnIdSchema,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
@@ -136,18 +137,48 @@ export class ConversationProjectionService {
       }
       const leafTurnId = request.leafTurnId ?? record.activeLeafTurnId;
       const path = pathToLeaf(byId, leafTurnId);
+      // A bare offset would splice across mutations (a settle flips the attribution gate, the
+      // leaf moves, garbage restarts silently): the cursor pins the exact projection shape it
+      // paged, and any drift or undecodable cursor is a typed conflict — never a silent splice.
+      const settled = path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state)).length;
+      let offset = 0;
+      if (request.cursor !== undefined) {
+        const decoded = decodeReadCursor(request.cursor);
+        if (
+          decoded?.graphRevision !== record.graphRevision ||
+          decoded.leafTurnId !== leafTurnId ||
+          decoded.settled !== settled
+        ) {
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'conflict',
+              message: 'The conversation changed while paging; restart the read',
+            }),
+          );
+        }
+        offset = decoded.offset;
+      }
       // Positional attribution is sound only on the active lineage: a sibling lineage has the
       // same path length by construction (and can carry identical prompt text on a retry), so an
       // inactive-leaf read renders host rows + placeholders until per-turn bindings (CODE-632).
       const isActiveLineage = leafTurnId !== undefined && leafTurnId === record.activeLeafTurnId;
       const durable = yield* composeDurable(record, path, isActiveLineage);
       const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
-      const { events, cursor } = pageReadItems(
+      const { events, nextOffset } = pageReadItems(
         durable,
         tail,
-        cursorOffset(request.cursor),
+        offset,
         boundedLimit(request.limit, 1000, 1000),
       );
+      const cursor =
+        nextOffset !== undefined && leafTurnId !== undefined
+          ? JSON.stringify({
+              graphRevision: record.graphRevision,
+              leafTurnId,
+              settled,
+              offset: nextOffset,
+            })
+          : undefined;
       return {
         sessionId: request.sessionId,
         graphRevision: record.graphRevision,
@@ -413,7 +444,7 @@ export function pageReadItems(
   offset: number,
   limit: number,
   budget = READ_PAGE_BYTE_BUDGET,
-): { events: ConversationReadItem[]; cursor?: string } {
+): { events: ConversationReadItem[]; nextOffset?: number } {
   const page: ConversationReadItem[] = [];
   let pageBytes = 0;
   let index = Math.min(offset, durable.length);
@@ -424,13 +455,52 @@ export function pageReadItems(
     pageBytes += size;
     page.push(durable[index]);
   }
-  if (index < durable.length) return { events: page, cursor: String(index) };
+  if (index < durable.length) return { events: page, nextOffset: index };
   const trimmedTail = trimTailToBudget(tail, budget);
   const tailBytes = trimmedTail.reduce((sum, item) => sum + itemBytes(item), 0);
   if (page.length > 0 && trimmedTail.length > 0 && pageBytes + tailBytes > budget) {
-    return { events: page, cursor: String(index) };
+    return { events: page, nextOffset: index };
   }
   return { events: [...page, ...trimmedTail] };
+}
+
+interface ReadCursor {
+  readonly graphRevision: number;
+  readonly leafTurnId: TurnId;
+  readonly settled: number;
+  readonly offset: number;
+}
+
+function decodeReadCursor(raw: string): ReadCursor | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('graphRevision' in parsed) ||
+    typeof parsed.graphRevision !== 'number' ||
+    !('settled' in parsed) ||
+    typeof parsed.settled !== 'number' ||
+    !('offset' in parsed) ||
+    typeof parsed.offset !== 'number' ||
+    !Number.isSafeInteger(parsed.offset) ||
+    parsed.offset < 0 ||
+    !('leafTurnId' in parsed)
+  ) {
+    return undefined;
+  }
+  const leaf = TurnIdSchema.safeParse(parsed.leafTurnId);
+  if (!leaf.success) return undefined;
+  return {
+    graphRevision: parsed.graphRevision,
+    leafTurnId: leaf.data,
+    settled: parsed.settled,
+    offset: parsed.offset,
+  };
 }
 
 function trimTailToBudget(

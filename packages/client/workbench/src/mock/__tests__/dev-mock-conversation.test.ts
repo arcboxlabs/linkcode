@@ -87,10 +87,42 @@ describe('dev mock host conversation parity', () => {
       throw new Error('expected a user row first');
     }
     expect(userRow.event.content).toEqual([{ type: 'text', text: '$ ls' }]);
+    // Deterministic like the daemon: a re-read converges on the same row identity.
+    expect(userRow.event.messageId).toBe(`msg-${submitted.turnId}`);
     expect(placeholder).toMatchObject({
       type: 'history-unavailable',
       turnId: submitted.turnId,
     });
+  }, 15000);
+
+  it('fails loudly on parameters it would otherwise ignore', async () => {
+    const { request } = createHost();
+    const started = await request(
+      { kind: 'session.start', clientReqId: 'r1', opts: { kind: 'claude-code', cwd: '/mock' } },
+      'r1',
+    );
+    if (started.kind !== 'session.started') throw new Error('session did not start');
+    const sessionId = started.sessionId;
+
+    const pagedRead = await request(
+      { kind: 'conversation.read', clientReqId: 'c-paged', sessionId, cursor: '1' },
+      'c-paged',
+    );
+    expect(pagedRead.kind).toBe('request.failed');
+
+    const parentSubmit = await request(
+      {
+        kind: 'turn.submit',
+        clientReqId: 's-parent',
+        sessionId,
+        operationId: OperationIdSchema.parse('op-mock-parent'),
+        input: { type: 'shell-command', command: 'ls' },
+        parentTurnId: null,
+        expectedGraphRevision: 0,
+      },
+      's-parent',
+    );
+    expect(parentSubmit.kind).toBe('request.failed');
   }, 15000);
 
   it('fails loudly for conversation reads on unknown sessions', async () => {

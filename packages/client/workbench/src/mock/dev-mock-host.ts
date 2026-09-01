@@ -398,6 +398,11 @@ export class DevMockHost {
           this.sendFailure(p.clientReqId, `Unknown session: ${p.sessionId}`);
           break;
         }
+        // Fail loudly on parameters the mock would silently ignore.
+        if (p.leafTurnId !== undefined || p.cursor !== undefined || p.limit !== undefined) {
+          this.sendFailure(p.clientReqId, 'Dev mock host does not support read paging yet.');
+          break;
+        }
         const leaf = session.graphTurns.at(-1);
         // Minimal parity: host user rows + the no-history placeholder, one final page. The mock
         // has no provider transcripts, so this mirrors the daemon's prompt-only fallback.
@@ -408,7 +413,8 @@ export class DevMockHost {
             ts: graph.createdAt,
             event: {
               type: 'user-message',
-              messageId: this.nextMessageId('mock-turn-user'),
+              // Deterministic like the daemon: re-reads must converge on one row per turn.
+              messageId: `msg-${graph.turnId}` as MessageId,
               content: structuredClone(content),
             },
           },
@@ -1320,6 +1326,11 @@ export class DevMockHost {
     }
     if (session.status === 'running') {
       this.sendFailure(p.clientReqId, `Session is busy: ${p.sessionId}`);
+      return;
+    }
+    // Fail loudly on parameters the mock would silently ignore (plain sends only).
+    if (p.parentTurnId !== undefined || p.expectedGraphRevision !== undefined) {
+      this.sendFailure(p.clientReqId, 'Dev mock host does not support explicit-parent submits.');
       return;
     }
     const content = turnSubmitContent(p.input);

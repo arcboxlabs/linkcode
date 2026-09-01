@@ -377,6 +377,43 @@ describe('conversation.read', () => {
     );
   });
 
+  it('rejects stale and undecodable cursors with a typed conflict', async () => {
+    const h = await startedHarness();
+    await completeTurn(h, 's1', 'one');
+    await completeTurn(h, 's2', 'two');
+    await h.inject({
+      kind: 'conversation.read',
+      clientReqId: 'rr-p1',
+      sessionId: h.sessionId,
+      limit: 1,
+    });
+    const page1 = readResult(h.sent, 'rr-p1');
+    expect(page1.cursor).toBeDefined();
+
+    // The graph moves between pages: the pinned cursor must conflict, never splice.
+    await completeTurn(h, 's3', 'three');
+    await h.inject({
+      kind: 'conversation.read',
+      clientReqId: 'rr-stale',
+      sessionId: h.sessionId,
+      cursor: page1.cursor,
+    });
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({ kind: 'request.failed', replyTo: 'rr-stale', code: 'conflict' }),
+    );
+
+    // Garbage never maps to offset 0 (a silent restart).
+    await h.inject({
+      kind: 'conversation.read',
+      clientReqId: 'rr-garbage',
+      sessionId: h.sessionId,
+      cursor: 'garbage',
+    });
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({ kind: 'request.failed', replyTo: 'rr-garbage', code: 'conflict' }),
+    );
+  });
+
   it('pages by the logical-message byte budget with the watermark on the final page only', async () => {
     const h = await startedHarness();
     await completeTurn(h, 's1', big('a'));

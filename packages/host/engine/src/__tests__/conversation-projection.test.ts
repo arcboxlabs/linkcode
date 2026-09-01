@@ -13,7 +13,7 @@ import type {
   TurnId,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
-import { Effect } from 'effect';
+import { Cause, Effect, Exit } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
@@ -21,6 +21,7 @@ import type { JournaledEvent } from '../conversation/live-journal';
 import { ConversationLiveJournals } from '../conversation/live-journal';
 import { ConversationProjectionService, pageReadItems } from '../conversation/projection-service';
 import { ConversationTurnService } from '../conversation/turn-service';
+import { RequestError } from '../failure';
 import { HistoryService } from '../session/history-service';
 import { SessionRecordRegistry } from '../session/session-record-registry';
 import { InMemorySessionStore } from '../session/session-store';
@@ -535,16 +536,16 @@ describe('pageReadItems byte budget', () => {
 
     const first = pageReadItems(items, [], 0, 1000, budget);
     expect(first.events).toEqual([items[0]]);
-    expect(first.cursor).toBe('1');
+    expect(first.nextOffset).toBe(1);
 
     const second = pageReadItems(items, [], 1, 1000, budget);
     expect(second.events).toEqual([items[1]]);
-    expect(second.cursor).toBeUndefined();
+    expect(second.nextOffset).toBeUndefined();
 
     // An item alone above the budget still ships as its own page.
     const oversized = pageReadItems([textItem('t3', 'z'.repeat(4000))], [], 0, 1000, budget);
     expect(oversized.events).toHaveLength(1);
-    expect(oversized.cursor).toBeUndefined();
+    expect(oversized.nextOffset).toBeUndefined();
   });
 
   it('keeps the live tail atomic to the final page', () => {
@@ -555,11 +556,11 @@ describe('pageReadItems byte budget', () => {
     // The tail does not fit next to the durable remainder: it gets its own final page.
     const first = pageReadItems(durable, tail, 0, 1000, budget);
     expect(first.events).toEqual(durable);
-    expect(first.cursor).toBe('1');
+    expect(first.nextOffset).toBe(1);
 
     const last = pageReadItems(durable, tail, 1, 1000, budget);
     expect(last.events).toEqual(tail);
-    expect(last.cursor).toBeUndefined();
+    expect(last.nextOffset).toBeUndefined();
   });
 
   it('trims an oversized tail from the front and clears the damaged stream', () => {
@@ -573,6 +574,91 @@ describe('pageReadItems byte budget', () => {
     const page = pageReadItems([], [bigChunk, laterChunk, otherChunk], 0, 1000, budget);
     // Dropping the stream head drops its retained continuation too — never a headless splice.
     expect(page.events).toEqual([otherChunk]);
-    expect(page.cursor).toBeUndefined();
+    expect(page.nextOffset).toBeUndefined();
+  });
+});
+
+describe('conversation read cursor integrity', () => {
+  async function pagedService() {
+    const liveTurnId = 'turn-live' as TurnId;
+    const setup = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord(liveTurnId),
+    });
+    await setup.store.saveTurn({
+      turnId: 'turn-done' as TurnId,
+      sessionId,
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'ls' },
+      runId,
+      state: 'completed',
+      createdAt: 5,
+    });
+    await setup.store.saveTurn({
+      turnId: liveTurnId,
+      sessionId,
+      parentTurnId: 'turn-done' as TurnId,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'pwd' },
+      runId,
+      state: 'running',
+      createdAt: 10,
+    });
+    return { ...setup, liveTurnId };
+  }
+
+  async function expectConflict(
+    effect: Effect.Effect<unknown, RequestError | unknown>,
+  ): Promise<void> {
+    const exit = await Effect.runPromiseExit(effect);
+    if (!Exit.isFailure(exit)) throw new Error('expected a conflict failure');
+    const error = Cause.squash(exit.cause);
+    if (!(error instanceof RequestError)) throw new Error('expected a RequestError');
+    expect(error.code).toBe('conflict');
+  }
+
+  it('pages with a structured cursor and rejects it once a turn settles', async () => {
+    const { service, store, liveTurnId } = await pagedService();
+
+    const first = await Effect.runPromise(service.read({ sessionId, limit: 1 }));
+    expect(first.cursor).toBeDefined();
+    expect(first.watermark).toBeUndefined();
+
+    const second = await Effect.runPromise(
+      service.read({ sessionId, cursor: first.cursor, limit: 1 }),
+    );
+    expect(second.events).toHaveLength(1);
+
+    // The live turn settles WITHOUT a graph-revision bump: the attribution gate's shape flipped,
+    // so the old cursor must conflict instead of splicing across the mutation.
+    await store.saveTurn({
+      turnId: liveTurnId,
+      sessionId,
+      parentTurnId: 'turn-done' as TurnId,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'pwd' },
+      runId,
+      state: 'completed',
+      createdAt: 10,
+    });
+    await expectConflict(service.read({ sessionId, cursor: first.cursor, limit: 1 }));
+  });
+
+  it('rejects undecodable and tampered cursors instead of restarting silently', async () => {
+    const { service } = await pagedService();
+    await expectConflict(service.read({ sessionId, cursor: 'garbage' }));
+    await expectConflict(service.read({ sessionId, cursor: '{}' }));
+    await expectConflict(
+      service.read({
+        sessionId,
+        cursor: JSON.stringify({
+          graphRevision: 999,
+          leafTurnId: 'turn-live',
+          settled: 1,
+          offset: 1,
+        }),
+      }),
+    );
   });
 });
