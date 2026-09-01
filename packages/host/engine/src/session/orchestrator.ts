@@ -314,13 +314,20 @@ export class SessionOrchestrator {
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         });
+        // Exit-based, not tapError: an interrupted start (submit timeout, teardown racing the
+        // launch) must also unregister the session, or it stays a zombie in `'starting'` whose
+        // next submit would 'continue' into an adapter that never started.
         yield* session
           .run(startAdapterSession)
           .pipe(
-            Effect.tapError(() =>
-              discardFailedStart(session).pipe(
-                Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
-              ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? discardFailedStart(session).pipe(
+                    Effect.catch((error) =>
+                      Effect.logError('Failed to discard session record', error),
+                    ),
+                  )
+                : Effect.void,
             ),
           );
         if (rewindMessageId !== undefined) {

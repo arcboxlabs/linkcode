@@ -1,10 +1,10 @@
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import { Effect } from 'effect';
+import { Effect, Exit } from 'effect';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
-import { OperationError, RequestError, toRequestFailure } from '../failure';
+import { causeToRequestFailure, OperationError, RequestError } from '../failure';
 import type { ResourceService } from '../resource/service';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
@@ -64,6 +64,9 @@ export class SessionInputDispatcher {
     }
     const { events, records, resources, turns } = this;
     const promptMessageId = input.type === 'prompt' ? nextMessageId() : undefined;
+    // Set synchronously, before the first await, so a same-tick second turn input cannot slip
+    // past the gate above while this one is still validating; every failure exit releases it.
+    if (startsTurn) session.turnInputActive = true;
     return Effect.gen(function* () {
       // A submit operation in flight owns the session; legacy inputs respect the same admit gate.
       if (startsTurn && prepared === undefined && (yield* turns.hasOpenOperation(sessionId))) {
@@ -98,115 +101,113 @@ export class SessionInputDispatcher {
           ),
         );
       }
-      if (startsTurn) session.turnInputActive = true;
       // The durable commit point precedes the irreversible dispatch: kill or failure past here
       // leaves a `failed` turn, never an absent one.
       let intent = prepared;
       if (startsTurn && intent === undefined) {
-        intent = yield* turns
-          .persistIntent({
-            sessionId,
-            operationId: mintOperationId(),
-            runId: session.runId,
-            parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
-            input:
-              input.type === 'prompt'
-                ? { type: 'prompt', blocks: promptBlocksFromContent(input.content) }
-                : input,
-          })
-          .pipe(
-            Effect.tapError(() =>
-              Effect.sync(() => {
-                if (session.status !== 'running') session.turnInputActive = false;
-              }),
-            ),
-          );
+        intent = yield* turns.persistIntent({
+          sessionId,
+          operationId: mintOperationId(),
+          runId: session.runId,
+          parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+          input:
+            input.type === 'prompt'
+              ? { type: 'prompt', blocks: promptBlocksFromContent(input.content) }
+              : input,
+        });
       }
-      // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
-      if (promptMessageId !== undefined && input.type === 'prompt') {
-        events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
-        records.setTitleFromContent(sessionId, input.content);
-      } else if (input.type === 'command' || input.type === 'shell-command') {
-        const text =
-          input.type === 'command'
-            ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
-            : `$ ${input.command}`;
-        events.broadcast(sessionId, [
-          {
-            type: 'user-message',
-            messageId: nextMessageId(),
-            content: [{ type: 'text', text }],
-          },
-        ]);
-      }
-      const responseInput =
-        input.type === 'permission-response' || input.type === 'question-response'
-          ? input
+      const persisted = intent;
+      const dispatch = Effect.gen(function* () {
+        // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+        if (promptMessageId !== undefined && input.type === 'prompt') {
+          events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
+          records.setTitleFromContent(sessionId, input.content);
+        } else if (input.type === 'command' || input.type === 'shell-command') {
+          const text =
+            input.type === 'command'
+              ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
+              : `$ ${input.command}`;
+          events.broadcast(sessionId, [
+            {
+              type: 'user-message',
+              messageId: nextMessageId(),
+              content: [{ type: 'text', text }],
+            },
+          ]);
+        }
+        const responseInput =
+          input.type === 'permission-response' || input.type === 'question-response'
+            ? input
+            : undefined;
+        const respondingAsk = responseInput
+          ? session.interactions.beginResponse(responseInput)
           : undefined;
-      const respondingAsk = responseInput
-        ? session.interactions.beginResponse(responseInput)
-        : undefined;
-      if (responseInput && respondingAsk) {
-        events.broadcast(sessionId, [
-          {
-            type: 'prompt-response-status',
-            requestId: responseInput.requestId,
-            status: 'responding',
-          },
-        ]);
-      }
-      yield* Effect.tryPromise({
-        try: () => session.adapter.send(adapterInput),
-        catch: (cause) =>
-          new OperationError({
-            subsystem: 'agent',
-            operation: 'session.input',
-            publicMessage: 'Agent input was rejected',
-            cause,
-            ...(startsTurn && { reportedInConversation: true }),
-          }),
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            if (responseInput && respondingAsk) {
-              events.broadcast(
-                sessionId,
-                session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
-              );
-            }
-            if (promptMessageId !== undefined) {
-              events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
-            }
-            if (startsTurn && session.status !== 'running') session.turnInputActive = false;
-            if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
-          }).pipe(
-            Effect.andThen(
-              intent === undefined
-                ? Effect.void
-                : turns
-                    .resolveFailed(intent, toRequestFailure(error))
-                    .pipe(
-                      Effect.catch((resolveError) =>
-                        Effect.logError(
-                          'Failed to record the rejected turn',
-                          { sessionId },
-                          resolveError.cause,
-                        ),
-                      ),
-                    ),
-            ),
-            Effect.andThen(Effect.fail(error)),
+        if (responseInput && respondingAsk) {
+          events.broadcast(sessionId, [
+            {
+              type: 'prompt-response-status',
+              requestId: responseInput.requestId,
+              status: 'responding',
+            },
+          ]);
+        }
+        yield* Effect.tryPromise({
+          try: () => session.adapter.send(adapterInput),
+          catch: (cause) =>
+            new OperationError({
+              subsystem: 'agent',
+              operation: 'session.input',
+              publicMessage: 'Agent input was rejected',
+              cause,
+              ...(startsTurn && { reportedInConversation: true }),
+            }),
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              if (responseInput && respondingAsk) {
+                events.broadcast(
+                  sessionId,
+                  session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
+                );
+              }
+              if (promptMessageId !== undefined) {
+                events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
+              }
+              if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
+            }),
           ),
+        );
+        if (responseInput && respondingAsk) {
+          const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
+          if (resolution) events.broadcast(sessionId, [resolution]);
+        }
+        // The provider accepted the dispatch: the turn flips to running and the default leaf moves.
+        if (persisted !== undefined) yield* turns.commitRunning(persisted);
+        // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
+        if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+      });
+      if (persisted === undefined) return yield* dispatch;
+      // Every non-success exit past the durable commit point — dispatch rejection, commit failure,
+      // interrupt, defect — must resolve the operation, or the session wedges `busy`. Detached:
+      // this fiber runs in the session scope, and a teardown must not wait on the store write.
+      return yield* dispatch.pipe(
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit)
+            ? Effect.sync(() => {
+                turns.resolveFailedDetached(persisted, causeToRequestFailure(exit.cause));
+              })
+            : Effect.void,
         ),
       );
-      if (responseInput && respondingAsk) {
-        const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-        if (resolution) events.broadcast(sessionId, [resolution]);
-      }
-      // The provider accepted the dispatch: the turn flips to running and the default leaf moves.
-      if (intent !== undefined) yield* turns.commitRunning(intent);
-      // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
-      if (startsTurn && session.status !== 'running') session.turnInputActive = false;
-    });
+    }).pipe(
+      Effect.onExit((exit) =>
+        startsTurn && Exit.isFailure(exit)
+          ? Effect.sync(() => {
+              // A failed or interrupted dispatch can exit before a lifecycle event releases it.
+              if (session.status !== 'running') session.turnInputActive = false;
+            })
+          : Effect.void,
+      ),
+    );
   }
 }

@@ -17,7 +17,7 @@ import type {
   WorkspaceRecord,
   WorktreeRecord,
 } from '@linkcode/schema';
-import { Effect, Semaphore } from 'effect';
+import { Effect, Exit, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
 import type {
@@ -28,6 +28,7 @@ import type {
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import {
+  causeToRequestFailure,
   OperationError,
   OperationTimeout,
   RequestError,
@@ -356,12 +357,15 @@ export class SessionLifecycleService {
               },
             );
           }).pipe(
-            // The dispatcher resolves dispatch failures itself; this covers stop/branch failures.
-            Effect.tapError((error) =>
-              turns.resolveFailed(intent, toRequestFailure(error)).pipe(
-                Effect.catch(() => Effect.void),
-                Effect.asVoid,
-              ),
+            // The dispatcher resolves dispatch failures itself; this covers stop/branch failures
+            // plus any interrupt or defect on the way to dispatch.
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? turns.resolveFailed(intent, causeToRequestFailure(exit.cause)).pipe(
+                    Effect.catch(() => Effect.void),
+                    Effect.asVoid,
+                  )
+                : Effect.void,
             ),
           );
         });
@@ -432,6 +436,22 @@ export class SessionLifecycleService {
           // Any post-persist failure resolves the operation; a retry replays this stored error.
           onFailure: (error) => turns.resolveFailed(intent, toRequestFailure(error)),
         }),
+        // Interrupts and defects bypass the typed match; the open operation must still resolve,
+        // or the session wedges `busy` until the daemon restarts.
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit)
+            ? turns.resolveFailed(intent, causeToRequestFailure(exit.cause)).pipe(
+                Effect.catch((error) =>
+                  Effect.logError(
+                    'Failed to resolve the interrupted turn',
+                    { sessionId: request.sessionId },
+                    error.cause,
+                  ),
+                ),
+                Effect.asVoid,
+              )
+            : Effect.void,
+        ),
       );
     });
   }

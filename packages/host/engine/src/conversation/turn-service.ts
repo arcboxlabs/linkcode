@@ -18,9 +18,10 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
-import { OperationError } from '../failure';
+import { OperationError, RequestError } from '../failure';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationStore } from './conversation-store';
+import { ConversationSessionBusyError } from './conversation-store';
 
 export function mintOperationId(): OperationId {
   return `op-${randomUUID()}` as OperationId;
@@ -105,14 +106,25 @@ export class ConversationTurnService {
     return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
 
-  /** The durable commit point: turn (`preparing`), prompt, and open operation persist in one
-   * transaction, before any irreversible provider work. Preparing turns are not broadcast. */
-  persistIntent(spec: TurnIntentSpec): Effect.Effect<PersistedTurnIntent, OperationError> {
+  deleteSession(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    return storeOperation('conversation.delete-session', () =>
+      this.store.deleteSession(sessionId),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.running.delete(sessionId);
+        }),
+      ),
+    );
+  }
+
+  /** The durable commit point: turn (`preparing`, ordinal store-assigned inside the transaction),
+   * prompt, and open operation persist in one transaction, before any irreversible provider work.
+   * The store's own admission guard turns a racing intent into a typed `busy`. */
+  persistIntent(
+    spec: TurnIntentSpec,
+  ): Effect.Effect<PersistedTurnIntent, OperationError | RequestError> {
     return Effect.gen({ self: this }, function* () {
-      const siblings = yield* this.listTurns(spec.sessionId);
-      // Rows are never deleted and failed/cancelled turns keep their ordinals, so a count is stable.
-      const siblingOrdinal =
-        siblings.filter((turn) => turn.parentTurnId === spec.parentTurnId).length + 1;
       const now = Date.now();
       let prompt: PromptRecord | undefined;
       let input: TurnInput;
@@ -127,11 +139,10 @@ export class ConversationTurnService {
       } else {
         input = spec.input;
       }
-      const turn: ConversationTurn = {
+      const turn: Omit<ConversationTurn, 'siblingOrdinal'> = {
         turnId: mintTurnId(),
         sessionId: spec.sessionId,
         parentTurnId: spec.parentTurnId,
-        siblingOrdinal,
         input,
         runId: spec.runId,
         state: 'preparing',
@@ -144,10 +155,21 @@ export class ConversationTurnService {
         state: 'open' as const,
         createdAt: now,
       };
-      yield* storeOperation('conversation.intent.persist', () =>
+      const persisted = yield* storeOperation('conversation.intent.persist', () =>
         this.store.persistTurnIntent({ turn, prompt, operation }),
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.fail(
+            error.cause instanceof ConversationSessionBusyError
+              ? new RequestError({
+                  code: 'busy',
+                  message: 'Another operation is open on this session',
+                })
+              : error,
+          ),
+        ),
       );
-      return { turn, operation };
+      return { turn: persisted, operation };
     });
   }
 
@@ -205,6 +227,26 @@ export class ConversationTurnService {
       if (running?.turn.turnId === intent.turn.turnId) this.running.delete(intent.turn.sessionId);
       return operation;
     });
+  }
+
+  /** {@link resolveFailed} for exit paths inside a session-scoped fiber: enqueued on the engine
+   * task runner so an interrupting teardown never waits behind the store write. */
+  resolveFailedDetached(
+    intent: PersistedTurnIntent,
+    error: { readonly code: string; readonly message: string },
+  ): void {
+    this.runTask(
+      this.resolveFailed(intent, error).pipe(
+        Effect.catch((resolveError) =>
+          Effect.logError(
+            'Failed to record the rejected turn',
+            { sessionId: intent.turn.sessionId },
+            resolveError.cause,
+          ),
+        ),
+        Effect.asVoid,
+      ),
+    );
   }
 
   /** Boot recovery: no adapter survives a restart, so every open operation and every non-terminal
@@ -286,8 +328,11 @@ export class ConversationTurnService {
 
   private trackRunning(turn: ConversationTurn): void {
     const stale = this.running.get(turn.sessionId);
-    // A new dispatch was admitted, so an unsettled predecessor demonstrably ended; close it out.
-    if (stale && stale.turn.turnId !== turn.turnId) this.persistTurnState(stale.turn, 'completed');
+    // A new dispatch was admitted, so an unsettled predecessor demonstrably ended; close it out —
+    // as failed when an adapter error was seen during its run, never a guessed 'completed'.
+    if (stale && stale.turn.turnId !== turn.turnId) {
+      this.persistTurnState(stale.turn, stale.sawError ? 'failed' : 'completed');
+    }
     this.running.set(turn.sessionId, { turn, sawError: false });
   }
 
