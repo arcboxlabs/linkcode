@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { nullthrow } from 'foxts/guard';
 import { sessionRuns, sessions } from './db/schema';
 
 type SessionRow = typeof sessions.$inferSelect;
@@ -88,9 +88,9 @@ export function createSessionStore(dbPath: string): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
-                // Writers mint runId; the fallback keeps the column non-null for a legacy record
-                // (wire-optional until the floor bump) without minting on read.
-                runId: run.runId ?? `run-${randomUUID()}`,
+                // runId is optional at the wire parse boundary only; every writer mints it, so a
+                // runId-less run here is a bug — minting one would drift the durable id per save.
+                runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
                 baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,

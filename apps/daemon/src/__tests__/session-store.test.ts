@@ -114,4 +114,22 @@ describe('SQLite session store', () => {
     const [reloaded] = await createSessionStore(database).load();
     expect(reloaded.runs.map((run) => run.model)).toEqual(['first', 'second', 'third', 'fourth']);
   });
+
+  it('refuses to save a run without a runId instead of minting a drifting one', async () => {
+    const database = await databasePath();
+    // runId is optional at the wire parse boundary only; every engine writer mints it.
+    const record = SessionRecordSchema.parse({
+      sessionId: 'session-runless',
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 1,
+      runs: [{ startedAt: 1 }],
+    });
+
+    await expect(async () => createSessionStore(database).save(record)).rejects.toThrow(
+      'without runId',
+    );
+  });
 });

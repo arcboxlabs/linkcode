@@ -1,4 +1,9 @@
-import { WIRE_PROTOCOL_VERSION, WireMessageSchema, WirePayloadSchema } from '@linkcode/schema';
+import {
+  deliveryOf,
+  WIRE_PROTOCOL_VERSION,
+  WireMessageSchema,
+  WirePayloadSchema,
+} from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 
 function parses(payload: unknown): boolean {
@@ -107,6 +112,11 @@ describe('conversation read/graph frames', () => {
       graphRevision: 4,
     });
     expect(payload.kind).toBe('conversation.graph.changed');
+    // The delivery table, not just the payload shape: attached clients of OTHER sessions must
+    // never receive another thread's graph moves.
+    const delivery = deliveryOf(payload);
+    if (delivery?.scope !== 'session') throw new Error('expected session-scoped delivery');
+    expect(delivery.sessionId(payload)).toBe('session-1');
   });
 });
 
