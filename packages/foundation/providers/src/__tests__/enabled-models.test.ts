@@ -83,12 +83,8 @@ describe('enabledAccountModels', () => {
       'openai/gpt-5.6',
       'openai/gpt-4.1',
     ]);
-    // claude-code and opencode both fall through to the account's own native anthropic wire (no
-    // knownProvider pins opencode elsewhere), so only the model actually tagged for it, plus the
-    // untagged one, survive.
-    expect(enabledAccountModels([gateway], {}, 'claude-code').map(({ model }) => model.id)).toEqual(
-      ['anthropic/claude-sonnet-5', 'openai/gpt-4.1'],
-    );
+    // opencode falls through to the account's own native anthropic wire (no knownProvider pins it
+    // elsewhere), so only the model actually tagged for it, plus the untagged one, survive.
     expect(enabledAccountModels([gateway], {}, 'opencode').map(({ model }) => model.id)).toEqual([
       'anthropic/claude-sonnet-5',
       'openai/gpt-4.1',

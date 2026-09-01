@@ -1,12 +1,7 @@
 import type { Account, AgentKind, AgentRuntimes } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
-import {
-  endpointServiceById,
-  modelListSource,
-  modelListSourceForProtocol,
-  serviceById,
-} from '../catalog';
+import { endpointServiceById, modelListSource, serviceById } from '../catalog';
 import { detectedLogins } from '../detected-logins';
 import { resolveBinding, serviceProtocols } from '../resolve';
 import { fillTemplate, templatePlaceholders } from '../template';
@@ -228,10 +223,6 @@ describe('resolveBinding: variant chosen per agent', () => {
       tier: 'native',
       protocol: 'openai-responses',
       baseUrl: 'https://gateway.linkcode.ai/v1',
-    });
-    expect(modelListSourceForProtocol('linkcode-gateway', 'anthropic')).toEqual({
-      url: 'https://gateway.linkcode.ai/v1/models?protocol=anthropic',
-      wire: 'anthropic',
     });
   });
 
